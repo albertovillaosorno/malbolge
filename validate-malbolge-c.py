@@ -31,8 +31,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "files",
         nargs="+",
-        metavar="FILE.c",
-        help="explicit C translation units to validate; directories are never scanned",
+        metavar="INPUT",
+        help=(
+            "explicit .c translation units to validate; an explicitly named directory "
+            "is accepted only when its basename is doom"
+        ),
     )
     parser.add_argument(
         "--profile",
@@ -60,12 +63,30 @@ def _validated_files(raw_files: list[str]) -> list[Path]:
         path = Path(raw)
         if not path.exists():
             raise ValueError(f"input does not exist: {path}")
+        if path.is_dir():
+            if path.name.casefold() != "doom":
+                raise ValueError(
+                    "directories are accepted only for an explicitly named doom directory: "
+                    f"{path}"
+                )
+            doom_files = sorted(
+                candidate.resolve()
+                for candidate in path.rglob("*")
+                if candidate.is_file() and candidate.suffix.lower() == ".c"
+            )
+            if not doom_files:
+                raise ValueError(f"doom directory contains no C translation units: {path}")
+            files.extend(doom_files)
+            continue
         if not path.is_file():
-            raise ValueError(f"directories are not accepted; name each .c file explicitly: {path}")
+            raise ValueError(f"input is not a regular file: {path}")
         if path.suffix.lower() != ".c":
             raise ValueError(f"Malbolge guest validation accepts C translation units only: {path}")
         files.append(path.resolve())
-    return files
+
+    # Preserve deterministic first-seen order while avoiding duplicate work when
+    # a file is named directly and is also contained in an explicitly passed doom/.
+    return list(dict.fromkeys(files))
 
 
 def _run(command: list[str]) -> int:

@@ -7,8 +7,9 @@ native-code policy.
 ## Manual validation only
 
 Guest-C validation is deliberately opt-in. The repository does not infer guest
-status from the `.c` extension, directory ownership, a magic source comment, or
-an exclusion list. Native/reference C such as the VM oracle, conformance
+status from the `.c` extension, general directory ownership, a magic source
+comment, or an exclusion list. Native/reference C such as the VM oracle,
+conformance
 harnesses, historical sources, host tooling, and raw interoperability inputs are
 therefore never constrained merely because they are C.
 
@@ -24,9 +25,18 @@ Several explicitly selected units may be checked in one invocation:
 python validate-malbolge-c.py first.c second.c
 ```
 
-The root validator never scans directories. Passing a directory is an error.
-This makes selection a caller decision and prevents the Malbolge guest profile
-from contaminating unrelated C/C++ validation.
+The one directory exception is an explicitly passed directory whose basename is
+`doom` (case-insensitive). That directory is recursively expanded to its `.c`
+translation units in deterministic path order:
+
+```text
+python validate-malbolge-c.py path/to/doom
+```
+
+Other directories are rejected. This special case exists because DOOM is a
+deliberate whole-program compatibility workload; it does not turn directory
+discovery into general repository policy. Selection therefore remains an
+explicit caller decision and cannot contaminate unrelated C/C++ validation.
 
 `validate-malbolge-c.py` uses the repository-pinned LLVM 22.1.8 clang-tidy and
 `tools/tidy/malbolge-clang-tidy.yaml`. Once the out-of-tree plugin exists, pass
