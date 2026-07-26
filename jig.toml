@@ -1,0 +1,190 @@
+[jig]
+schema_version = 1
+
+[header]
+confidential = false
+copyright = "Copyright (c) 2026 Alberto Villa Osorno."
+exempt_paths = ["tools/malbolge/main.c"]
+extensions = ["c", "rs"]
+max_lines = 96
+path_rule = "All paths in this header are repository-root relative."
+required_boundary_fields = ["Allows", "Defaults", "Description", "Merge-When", "Must-Not", "Owns", "Split-When", "Summary", "Usage"]
+require_module_summary = true
+
+[license]
+files = ["LICENSE"]
+spdx_expression = "MIT"
+
+[language]
+analyzed = ["rust"]
+present = ["c", "cpp", "cuda", "latex", "malbolge", "python", "rust"]
+
+[linters.applicability.clang-format]
+enabled = true
+reason = "Clang formatting governs the C, C++, and CUDA implementation surface."
+
+[linters.applicability.clang-tidy]
+enabled = true
+reason = "Clang diagnostics govern the admitted C and C++ compiler surface."
+
+[linters.applicability.clippy-config]
+enabled = true
+reason = "clippy.toml governs repository-authored Rust utilities."
+
+[linters.applicability.clippy-lints]
+enabled = false
+reason = "No Cargo workspace manifest exists yet."
+
+[linters.applicability.coverage-py]
+enabled = false
+reason = "Jig first-party coverage will be authoritative."
+
+[linters.applicability.csharp-global]
+enabled = false
+reason = "The repository contains no C# source."
+
+[linters.applicability.csharp-visualstudio]
+enabled = false
+reason = "The repository contains no C# source."
+
+[linters.applicability.directory-build]
+enabled = true
+reason = "MSBuild configuration governs native Windows compiler settings."
+
+[linters.applicability.editorconfig]
+enabled = true
+reason = "EditorConfig governs repository-authored text surfaces."
+
+[linters.applicability.msvc-cpp]
+enabled = true
+reason = "MSVC settings govern the admitted native Windows C and C++ surface."
+
+[linters.applicability.pyright]
+enabled = true
+reason = "Python is an admitted research and orchestration language."
+
+[linters.applicability.pytest]
+enabled = true
+reason = "pytest governs admitted Python verification work."
+
+[linters.applicability.ruff]
+enabled = true
+reason = "Ruff governs admitted Python research and orchestration code."
+
+[linters.applicability.rust-toolchain]
+enabled = true
+reason = "The repository pins Rust for authored utilities and future product code."
+
+[linters.applicability.rustc-lints]
+enabled = false
+reason = "No Cargo workspace manifest exists yet."
+
+[linters.applicability.rustfmt]
+enabled = true
+reason = "rustfmt governs repository-authored Rust utilities."
+
+[linters.applicability.typescript]
+enabled = false
+reason = "The repository contains no TypeScript source."
+
+[linters.applicability.unreal]
+enabled = false
+reason = "The repository is not an Unreal Engine project."
+
+[rules]
+all_registered = true
+allow_disable = false
+unknown_rule = "deny"
+
+[cspell]
+config_path = "cspell.json"
+dictionary_root = "integrations/cspell"
+files = ["**/*.{md,mdc,rs,toml,json,jsonc,yml,yaml}", ".editorconfig", ".editorignore", ".gitattributes", ".gitignore"]
+ignore_paths = [".cache/**", ".dependencies/**", ".git/**", ".logs/**", ".temp/**", "Cargo.lock", "engine/src/adapters/rust/generated/**", "pnpm-lock.yaml", "scraping/contracts/rust/generated/**", "target/**"]
+language = "en-US"
+min_word_length = 3
+schema = "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json"
+version = "0.2"
+
+[tool.git]
+path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
+version = "2.54.0.windows.1"
+
+[version.git]
+current = "2.54.0.windows.1"
+latest = "2.54.0.windows.1"
+
+[version.git.projection.tool]
+kind = "tool"
+target = "git"
+template = "{version}"
+
+[portability]
+forbidden_roots = [".jig-cache", ".turbo", "cache", "dependencies", "logs", "target", "temp", "tmp"]
+required_roots = [".cache", ".dependencies", ".logs", ".temp"]
+
+[portability.rust]
+cargo_config = ".cargo/config.toml"
+target_dir = ".cache/rust/target"
+
+[rigor]
+conflict = "fail"
+mode = "additive"
+
+[taxonomy]
+required = true
+unknown_paths = "deny"
+overlapping_roles = "deny"
+one_role_per_path = true
+spaces_in_paths = "deny"
+
+[taxonomy.role.cargo_configuration]
+paths = [".cargo/"]
+
+[taxonomy.role.documentation]
+paths = ["docs/README.md", "docs/bibliography/", "docs/legal/", "docs/research/", "docs/technical/"]
+
+[taxonomy.role.integrations]
+paths = ["integrations/"]
+
+[taxonomy.role.product]
+paths = ["accelerator/", "algorithms/", "benchmarks/", "compatibility/", "compiler/", "doom/", "examples/", "execution/", "interop/", "libc/", "math/", "optimizer/", "runtime/", "src/", "verifier/", "vm/"]
+
+[taxonomy.role.root_governance]
+paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "CITATION.cff", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]
+
+[taxonomy.role.tests]
+paths = ["tests/"]
+
+[taxonomy.role.todo]
+paths = ["docs/todo/"]
+
+[taxonomy.role.tools]
+paths = ["tools/"]
+
+[architecture.component.malbolge]
+depends_on = []
+
+[analysis]
+cache = "bounded"
+full_workspace = true
+incremental = true
+
+[commit]
+allowed_scopes = ["adr", "ci", "compiler", "config", "docs", "foundation", "legal", "repo", "research", "runtime", "tests", "tooling"]
+allowed_trailers = ["BREAKING CHANGE"]
+allowed_types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "release", "revert", "style", "test"]
+allow_merge_commits = false
+allow_revert_type = true
+body_line_max_length = 80
+body_min_length = 80
+required_trailers = []
+require_scope = true
+subject_max_length = 72
+
+[contribution]
+exact_form = true
+private_authoritative_review = true
+
+[git]
+required_hooks = ["commit-msg"]
