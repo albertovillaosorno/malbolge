@@ -11,11 +11,11 @@ adr_paths:
   - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - "jig.toml"
-  - ".dependencies/"
-  - "todo/"
+  - ".dependencies/jig/"
+  - "docs/todo/"
   - "TODO.md"
 validation:
-  - "jig validate --root ."
+  - ".dependencies/jig/bin/jig.cmd validate --root ."
 ---
 # TODO - Jig repository governance
 
@@ -39,8 +39,14 @@ without weakening unrelated linter contracts.
 
 ## Evidence
 
-- Expected durable artifact surface: `jig.toml`, `.dependencies/`, `todo/`,
-  `TODO.md`.
-- Required evidence: reviewed authority text plus deterministic
-  parser/schema/governance tests for the declared boundary.
+- Repository-local Jig 26.3.1 is installed through the source-linked launcher
+  under `.dependencies/jig/bin/`, and `jig.toml` describes the current polyglot
+  repository.
+- `jig check --root .` and `jig validate --root .` currently reach only two
+  repository diagnostics, both owned by `pytest.ini`: coverage flags remain in
+  `[pytest].addopts`, and `[pytest].required_plugins` is not reviewed.
+- Commit-history, documentation-taxonomy, ADR, TODO, header, and repository
+  architecture diagnostics are clean after the 2026-07-26 governance migration.
+- Completion remains blocked until the pytest configuration is reconciled by the
+  linter/configuration owner and repository-local Jig validates cleanly.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.

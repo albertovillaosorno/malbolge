@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active; validation is blocked only by the reviewed pytest configuration.
 
 ## Intent
 
@@ -29,10 +29,13 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ## Evidence Boundary
 
-- Expected durable artifact surface: `jig.toml`, `.dependencies/`, `todo/`,
-  `TODO.md`.
-- Required evidence: reviewed authority text plus deterministic
-  parser/schema/governance tests for the declared boundary.
+- Repository-local Jig 26.3.1 is installed under `.dependencies/jig/bin/` and
+  executes from the repository-local source-linked authority.
+- Current `jig check` and `jig validate` runs report only `JIG-LINT-001`
+  and `JIG-LINT-005` for `pytest.ini`; documentation, TODO, ADR, header,
+  taxonomy, commit-history, and architecture diagnostics are otherwise clean.
+- The remaining failure is not waived here. The pytest configuration owner must
+  reconcile the reviewed addopts/plugin contract before this TODO can close.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -47,7 +50,9 @@ selecting an implicit repository policy.
 
 ## Implementation
 
-Not implemented. This proposed contract does not claim executable support yet.
+The repository-local launcher and `jig.toml` are installed and executable. The
+contract remains incomplete only because current pytest configuration does not
+yet satisfy its reviewed linter authority.
 
 ## References
 
