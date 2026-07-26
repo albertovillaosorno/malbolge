@@ -1,5 +1,5 @@
 [jig]
-schema_version = 3
+schema_version = 4
 
 [header]
 adapters = ["c:c:slash-line", "rs:rust:slash-line"]
@@ -261,6 +261,7 @@ args = ["check", "--workspace", "--all-features"]
 [portability]
 forbidden_roots = [".jig-cache", ".turbo", "cache", "dependencies", "logs", "target", "temp", "tmp"]
 required_roots = [".cache", ".dependencies", ".logs", ".temp"]
+runtime_roots = [".cache", ".dependencies", ".temp"]
 
 [portability.rust]
 cargo_config = ".cargo/config.toml"

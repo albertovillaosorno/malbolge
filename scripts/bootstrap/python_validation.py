@@ -55,7 +55,11 @@ def _run(command: list[str]) -> str:
 
 
 def _write_pytest_launcher() -> None:
-    launcher = '@echo off\r\n"%~dp0python.exe" -m pytest %*\r\n'
+    cache_line = (
+        r'set "PYTHONPYCACHEPREFIX=%~dp0..\..\..\..\.cache\python\pycache"'
+    )
+    execution_line = '"%~dp0python.exe" -m pytest %*'
+    launcher = f"@echo off\r\n{cache_line}\r\n{execution_line}\r\n"
     _ = PYTEST_JIG.write_text(launcher, encoding="ascii", newline="")
 
 
