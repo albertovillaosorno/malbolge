@@ -19,9 +19,11 @@ REQUIREMENTS = (
 SCRIPTS = ENVIRONMENT / "Scripts"
 PYTHON = SCRIPTS / "python.exe"
 PYTEST_JIG = SCRIPTS / "pytest-jig.cmd"
+PYTHON_JIG = SCRIPTS / "python-jig.cmd"
 EXPECTED_TOOLS = {
     "basedpyright.exe": "basedpyright 1.39.9",
     "pytest-jig.cmd": "pytest 9.1.1",
+    "python-jig.cmd": "Python 3.14.6",
     "ruff.exe": "ruff 0.16.0",
 }
 
@@ -54,13 +56,26 @@ def _run(command: list[str]) -> str:
     return completed.stdout.strip()
 
 
-def _write_pytest_launcher() -> None:
-    cache_line = (
-        r'set "PYTHONPYCACHEPREFIX=%~dp0..\..\..\..\.cache\python\pycache"'
+def _cache_line() -> str:
+    return r'set "PYTHONPYCACHEPREFIX=%~dp0..\..\..\..\.cache\python\pycache"'
+
+
+def _write_launchers() -> None:
+    cache_line = _cache_line()
+    python_line = '"%~dp0python.exe" %*'
+    python_launcher = f"@echo off\r\n{cache_line}\r\n{python_line}\r\n"
+    _ = PYTHON_JIG.write_text(
+        python_launcher,
+        encoding="ascii",
+        newline="",
     )
-    execution_line = '"%~dp0python.exe" -m pytest %*'
-    launcher = f"@echo off\r\n{cache_line}\r\n{execution_line}\r\n"
-    _ = PYTEST_JIG.write_text(launcher, encoding="ascii", newline="")
+    pytest_line = '"%~dp0python.exe" -m pytest %*'
+    pytest_launcher = f"@echo off\r\n{cache_line}\r\n{pytest_line}\r\n"
+    _ = PYTEST_JIG.write_text(
+        pytest_launcher,
+        encoding="ascii",
+        newline="",
+    )
 
 
 def _provision() -> None:
@@ -77,7 +92,7 @@ def _provision() -> None:
         "--requirement",
         str(REQUIREMENTS),
     ])
-    _write_pytest_launcher()
+    _write_launchers()
 
 
 def _verify_tool(executable: str, expected: str) -> None:

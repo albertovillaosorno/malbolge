@@ -28,6 +28,12 @@ reason = "Repository-wide execution cannot exclude immutable historical C with t
 enabled = false
 reason = "Repository-wide execution would conflate immutable historical, host/native, and guest C; Malbolge guest compatibility is explicit tools/tidy validation until Jig supports path-scoped native targets."
 
+[linters.override.pyright_ignored_temp]
+linter = "pyright"
+key = "exclude"
+value = ".cache\n.dependencies\n.git\n.temp\n.venv\nnode_modules\ntarget\n**/__pycache__\n**/.temp"
+reason = "Gitignored *.temp trees are non-authored scratch; Pyright must not validate concurrent disposable files outside the governed source surface."
+
 [linters.override.ruff_selector_names]
 linter = "ruff"
 key = "lint.ignore"
