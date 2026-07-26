@@ -1,4 +1,48 @@
-//! Deterministic quality and modernization pass for interoperability C.
+// File:
+//   - quality.rs
+// Path:
+//   - interop/algorithms/quality.rs
+//
+// Copyright:
+//   - Copyright (c) 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - MIT
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+// Path-Rule:
+//   - All paths in this header are repository-root relative.
+//
+// Boundary-Contract:
+// - Owns:
+//   - Deterministic modernization and lowerability rewrites for generated C.
+// - Must-Not:
+//   - Bypass malbolge-tidy or hide behavior changes behind lint suppressions.
+// - Allows:
+//   - Inputs: canonical amalgamated C plus explicit interoperability adapters.
+//   - Outputs: modern deterministic C accepted by the declared target profile.
+//   - Side effects: generated artifacts only below the declared local out root.
+// - Split-When:
+//   - Split when one rewrite family becomes a reusable independently tested pass.
+// - Merge-When:
+//   - Merge when another pass owns the same modernization and conformance rules.
+// - Summary:
+//   - Normalize generated interoperability C into verified lowerable source.
+// - Description:
+//   - Converts repeated defects into deterministic AST-aware transformation rules.
+// - Usage:
+//   - Runs after amalgamation and before end-to-end C-to-Malbolge compilation.
+// - Defaults:
+//   - Unsupported or unverified behavior-affecting rewrites fail closed.
+//
+// Related documents:
+// - docs/technical/interoperability/doom-modernization.md
+// - docs/todo/open/applications/doom-quality-and-modernization-pass.mdc
+//
+// Large file:
+//   - false
+////! Deterministic quality and modernization pass for interoperability C.
 //!
 //! This algorithm receives the canonical single-file artifact produced by
 //! `amalgamate.rs` and turns it into C that is simultaneously:

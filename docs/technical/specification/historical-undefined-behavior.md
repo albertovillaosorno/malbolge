@@ -1,13 +1,8 @@
 # Historical Interpreter Defects And Specification Discrepancies
 
-- Status: Active historical catalogue
-- Planning identity: `historical-undefined-behavior-catalogue`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Specification Authority And Malbolge
-  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+Active historical catalogue
 
 ## Purpose
 
@@ -19,7 +14,33 @@ The resolution rule is simple: the written 1998 specification defines classic
 Malbolge. Interpreter disagreements are implementation defects unless a later
 accepted language profile explicitly changes the specification.
 
-## H-001 - Input And Output Reversed
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `tools/malbolge/`
+- `docs/technical/specification/`
+- `tests/compatibility/`
+
+## Current Behavior
+
+### Compatibility Policy
+
+Historical compatibility is evidence, not semantic authority.
+
+1. Where the C interpreter is defined and agrees with the specification, it is a
+   useful differential oracle. 2. Where it disagrees with the specification, the
+   modern VM follows the specification. 3. Where it invokes or risks C undefined
+   behavior, modern code uses deterministic specification-derived behavior or
+   rejects an underspecified source boundary. 4. `legacy-ben` may emulate
+   selected defects only through explicit, safe modern logic and only for
+   historical study.
+
+This policy intentionally permits old bug-dependent examples to stop working.
+The compiler and execution platform optimize a clean machine definition rather
+than preserving accidental nostalgia.
+
+### H-001 - Input And Output Reversed
 
 Classification: **historical interpreter defect**.
 
@@ -41,7 +62,7 @@ archaeology but cannot redefine the language or satisfy compiler verification.
 Required fixture: `spec-io-roundtrip.malbolge` must distinguish the normative
 read-then-write behavior from the historical interpreter's write-then-read bug.
 
-## H-002 - Non-Graphical Current Cell Does Not Terminate
+### H-002 - Non-Graphical Current Cell Does Not Terminate
 
 Classification: **historical interpreter defect**.
 
@@ -60,7 +81,7 @@ Normative rule: the machine terminates immediately.
 A legacy diagnostic harness may demonstrate the historical non-progressing state
 using bounded stepping or a separately controlled process.
 
-## H-003 - Fewer Than Two Loaded Words
+### H-003 - Fewer Than Two Loaded Words
 
 Classification: **C undefined behavior / underspecified loader edge**.
 
@@ -77,7 +98,7 @@ a meaningful recurrence base for zero- or one-word programs.
 Project rule: normative tooling rejects source that cannot provide the two
 predecessor cells required by the specified recurrence.
 
-## H-004 - Pointer Change Can Expose Invalid Self-Encryption Index
+### H-004 - Pointer Change Can Expose Invalid Self-Encryption Index
 
 Classification: **C undefined behavior risk**.
 
@@ -89,7 +110,7 @@ Project rule: the normative transition is defined from the specification and
 validated before any optimized implementation performs a table access. No modern
 VM may reproduce an out-of-bounds C lookup.
 
-## H-005 - Exotic Newline Branch Reads An Uninitialized Local
+### H-005 - Exotic Newline Branch Reads An Uninitialized Local
 
 Classification: **C undefined behavior / portability defect**.
 
@@ -100,7 +121,7 @@ has been initialized by an input instruction.
 Project rule: line feed is explicit numeric value `10`. Host character-set
 peculiarities do not alter guest semantics.
 
-## H-006 - Loader Validation Depends On Host `isspace`
+### H-006 - Loader Validation Depends On Host `isspace`
 
 Classification: **portability defect**.
 
@@ -111,7 +132,7 @@ ASCII. This can admit host-dependent or non-graphical inputs.
 Project rule: source encoding and whitespace are explicit and
 locale-independent.
 
-## H-007 - Historical Text-Mode I/O
+### H-007 - Historical Text-Mode I/O
 
 Classification: **portability defect**.
 
@@ -122,7 +143,7 @@ Malbolge behavior.
 Project rule: compiler, VM, tests, and self-hosting runtime define byte-stream
 semantics explicitly.
 
-## H-008 - Historical Host Integer And Memory-Model Assumptions
+### H-008 - Historical Host Integer And Memory-Model Assumptions
 
 Classification: **portability defect**.
 
@@ -133,7 +154,7 @@ of the ten-trit abstract machine.
 Project rule: guest word width and address-space semantics are independent of
 host integer types and host allocation models.
 
-## H-009 - Output Conversion Is Host-C Shaped
+### H-009 - Output Conversion Is Host-C Shaped
 
 Classification: **implementation boundary**.
 
@@ -145,7 +166,7 @@ Project rule: the normative output mapping is specified explicitly by the
 language/runtime profile and implemented identically by Rust, C, native, and
 accelerator backends.
 
-## H-010 - Halt Control Flow Is Easy To Mis-Factor
+### H-010 - Halt Control Flow Is Easy To Mis-Factor
 
 Classification: **conformance trap, not a specification defect**.
 
@@ -153,25 +174,41 @@ The halt instruction terminates immediately; an implementation must not execute
 post-halt self-modification or pointer advancement merely because those actions
 are factored into shared code for other instructions.
 
-## Compatibility Policy
+## Invariants
 
-Historical compatibility is evidence, not semantic authority.
+- Every known implementation defect or undefined/pathological behavior is
+  classified as intended semantics, compatibility quirk, implementation defect,
+  or unspecified historical behavior with a regression fixture where
+  reproducible.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
 
-1. Where the C interpreter is defined and agrees with the specification, it is a
-useful differential oracle. 2. Where it disagrees with the specification, the
-modern VM follows the specification. 3. Where it invokes or risks C undefined
-behavior, modern code uses deterministic specification-derived behavior or
-rejects an underspecified source boundary. 4. `legacy-ben` may emulate selected
-defects only through explicit, safe modern logic and only for historical study.
+## Failure Behavior
 
-This policy intentionally permits old bug-dependent examples to stop working.
-The compiler and execution platform optimize a clean machine definition rather
-than preserving accidental nostalgia.
+- Unsupported, unverified, or contradictory behavior remains explicit; silent
+  semantic fallback is not accepted.
 
-## Sources
+## Verification
+
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.
+- Prerequisite completion evidence:
+  `historical-malbolge-semantics-specification`.
+## References
+
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 - [Historical Malbolge semantics](malbolge-1998.md)
-- [Original Malbolge bibliography record][malbolge-bib]
+- `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
 - `tools/malbolge/main.c`
 
-[malbolge-bib]: ../../bibliography/malbolge-and-esolangs/malbolge-1998.md
+### Governing ADR Paths
+
+- `docs/technical/adr/specification-authority-and-malbolge-evolution.md`

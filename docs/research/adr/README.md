@@ -1,8 +1,19 @@
-# Research Decision Records
+# Adr
 
-Research ADRs own durable choices about scientific method, experiment identity,
-statistical treatment, research-capsule structure, publication, and the
-promotion or retirement of experimental algorithms.
+## Purpose
 
-Findings and measurements belong in research records, not ADRs. An experiment
-result becomes a repository decision only through an explicit decision record.
+Catalog `docs/research/adr/`.
+
+## Owns
+
+Records physically owned by `docs/research/adr/`.
+
+## Does Not Own
+
+Product semantics, legal permission, source identity, or ordinary engineering.
+
+## Contents
+
+- `parametric-multi-objective-algorithm-evaluation.md`
+- `research-evidence-and-algorithm-mirror.md`
+- `template.md`

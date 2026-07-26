@@ -1,25 +1,34 @@
 # Canonical Malbolge target profile
 
-- Status: Proposed
-- Planning identity: `canonical-malbolge-target-profile`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Specification Authority And Malbolge
-  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+Proposed
 
 ## Purpose
 
 Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `malbolge.json`
+- `docs/technical/specification/`
+- `compatibility/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `canonical-malbolge-target-profile`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -39,7 +48,14 @@ selecting an implicit repository policy.
   `docs/technical/specification/`, `compatibility/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
+- Prerequisite completion evidence:
+  `historical-malbolge-semantics-specification`,
+  `historical-undefined-behavior-catalogue`.
+## References
 
-## Implementation Status
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/specification-authority-and-malbolge-evolution.md`

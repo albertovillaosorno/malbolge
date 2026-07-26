@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.verification-trust-boundary`
+
 ## Context
 
 Superoptimization, stochastic search, GPU kernels, learned heuristics, and
@@ -25,7 +29,24 @@ The historical interpreter on its documented agreement domain, independent
 modern VMs, bounded/exhaustive tests, and small checkers form overlapping
 evidence sources rather than one monolithic trusted optimizer.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the verification trust boundary boundary explicit, reviewable, and
+  stable before implementation depends on it.
+
+## Disadvantages
+
+- Independent verification adds implementation and runtime cost that
+  optimization alone would avoid.
+
+## Consequences
+
+- Performance components can evolve rapidly without gaining semantic authority.
+- Verification cost is an explicit benchmark dimension.
+- A verifier rejection is a normal candidate outcome, not a reason to relax the
+  verifier.
+
+## Rejected Alternatives
 
 ### Trust production optimizer tests alone
 
@@ -38,14 +59,7 @@ Rejected as an initial requirement because it would make experimentation
 prohibitively expensive. Verifying outputs through smaller trusted contracts is
 a better research boundary.
 
-## Consequences
-
-- Performance components can evolve rapidly without gaining semantic authority.
-- Verification cost is an explicit benchmark dimension.
-- A verifier rejection is a normal candidate outcome, not a reason to relax the
-  verifier.
-
-## Implementation Notes
+## Evidence
 
 Verification modes must identify bounded assumptions. A bounded result must not
 be presented as an unbounded proof.

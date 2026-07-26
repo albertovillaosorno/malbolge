@@ -1,14 +1,22 @@
-# Research Documentation
+# Research
 
-Research documentation owns bounded scientific investigations performed by the
-repository. It separates hypotheses from evidence and correctness from
-performance.
+## Purpose
 
-- `adr/` owns durable research-method decisions.
-- `algorithms/` owns academic records for genuine experimental algorithms.
-- `methodology/` owns reusable experimental and statistical procedures.
-- `papers/` owns publication-grade LaTeX projects derived from reproducible
-  research records.
+Catalog repository research.
 
-External sources are cited through `docs/bibliography/`; bibliography is not a
-child of research.
+## Owns
+
+Questions, hypotheses, methods, experiments, results, limitations, and papers.
+
+## Does Not Own
+
+Product semantics, legal permission, source identity, or ordinary engineering.
+
+## Contents
+
+- `adr/`
+- `algorithms/`
+- `methodology/`
+- `papers/`
+- `studies/`
+- `template.md`

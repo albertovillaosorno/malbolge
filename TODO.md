@@ -2,9 +2,9 @@
 
 ## Operating contract
 
-This file contains unfinished work only. Every `### TODO` heading has one
-typed record under `docs/todo/`. Completed work leaves this file only after
-its implementation, specification, tests, and validation evidence are durable.
+This file contains unfinished work only. Every `### TODO` heading has one typed
+record under `docs/todo/open/`. Completed work leaves this file only after its
+implementation, specification, tests, and validation evidence are durable.
 
 The repository is organized by responsibility, not implementation language.
 Rust, C, Python, CUDA, PyTorch, and Malbolge may coexist inside one component
@@ -14,13 +14,13 @@ architecture; artificial Rust crates must not become repository boundaries.
 The historical Ben Olmstead interpreter is immutable primary implementation
 evidence, not semantic authority and not project-owned source. Project code is
 MIT licensed; the original interpreter keeps its own public-domain notice and is
-explicitly excluded from relicensing.
-Planning is intentionally front-loaded. Before implementation begins, TODO
-work must be decomposed into typed TODOs with real dependencies, bounded scope,
-provable acceptance criteria, and named evidence. Once planning is stable, the
-next pass promotes settled decisions into ADRs, specifications, technical docs,
-research records, and mathematical contracts; implementation follows those
-artifacts rather than inventing architecture opportunistically in source code.
+explicitly excluded from relicensing. Planning is intentionally front-loaded.
+Before implementation begins, TODO work must be decomposed into typed TODOs with
+real dependencies, bounded scope, provable acceptance criteria, and named
+evidence. Once planning is stable, the next pass promotes settled decisions into
+ADRs, specifications, technical docs, research records, and mathematical
+contracts; implementation follows those artifacts rather than inventing
+architecture opportunistically in source code.
 
 A TODO is not complete because code exists. It is complete only when its
 declared behavior, negative/boundary cases, relevant research or mathematical
@@ -40,12 +40,14 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - The written 1998 specification defines classic Malbolge semantics. Modern
   backends are verified against that specification; Ben's interpreter supplies
   differential evidence only on the documented agreement subset.
-- There is one modern Malbolge product. The normative 1998 machine is the classic
-  target profile; `legacy-ben` behavior is historical evidence, not a separate
-  semantic product line.
-- CPU execution is always available. GPU acceleration is optional through a
-  replaceable accelerator boundary; CUDA is the first adapter, not a semantic
-  dependency.
+- There is one modern Malbolge product. The normative 1998 machine is the
+  classic target profile; `legacy-ben` behavior is historical evidence, not a
+  separate semantic product line.
+- CPU execution is always available on the declared 64-bit host baseline:
+  x86-64 and AArch64 are first-class architectures from the initial
+  implementation slice.
+- GPU acceleration is optional through a replaceable accelerator boundary. CUDA
+  and ROCm are the first GPU runtime adapters; neither is a semantic dependency.
 - Optimizers, CUDA kernels, PyTorch models, stochastic search, and other large
   heuristic components may be untrusted. Deterministic verification decides
   whether emitted code is accepted.
@@ -147,9 +149,9 @@ that family. A global `docs/adr/` is forbidden so unrelated decisions cannot
 collapse into an STM-style ADR monolith. ADRs contain bounded decisions and
 tradeoffs; technical specifications, research findings, legal analysis, and
 bibliography records remain ordinary documentation under their owning family.
-`docs/cspell/` remains the editorial support surface used by CSpell and is not a
-fifth authority family. Jig will eventually validate this topology; Malbolge
-must not grow a parallel documentation linter to enforce it.
+`integrations/cspell/` remains the editorial support surface used by CSpell and
+is not a fifth authority family. Jig will eventually validate this topology;
+Malbolge must not grow a parallel documentation linter to enforce it.
 
 ### TODO - Repository bibliography taxonomy and citation provenance
 
@@ -184,9 +186,9 @@ chat-history archive is created during promotion.
 Establish the documentation baseline that must pass before normal product
 implementation history begins. The gate requires the four documentation families
 and their local ADR roots, a usable repository bibliography baseline, all
-existing TODO decisions routed to an owning durable document or an
-explicitly unresolved record, valid local links, and no accidental global
-`docs/adr/`. `docs/cspell/` remains intact as editorial support. Scaffolding,
+existing TODO decisions routed to an owning durable document or an explicitly
+unresolved record, valid local links, and no accidental global `docs/adr/`.
+`integrations/cspell/` remains intact as editorial support. Scaffolding,
 configuration, and concurrent Jig development may exist before this gate, but
 new product implementation work starts only after the documentation baseline is
 reviewable. Documentation and planning commits may precede this gate. Passing it
@@ -206,11 +208,11 @@ that evidence supports or rejects a technique.
 ### TODO - Algorithm research mirror and local output contract
 
 Standardize the semantic mirror between `docs/research/algorithms/<id>/` and
-`algorithms/<id>/`, including stable algorithm identity, optional `theory.tex`,
-implementation/test layout, experiment configuration, and Git-ignored local
-`out/`. Define the explicit exception for ordinary product algorithms such as
-DOOM interoperability transformations, which require engineering evidence but
-not artificial academic capsules.
+`algorithms/<id>/`, including stable algorithm identity, optional
+`math/algorithms/<id>.tex`, implementation/test layout, experiment
+configuration, and Git-ignored local `out/`. Define the explicit exception for
+ordinary product algorithms such as DOOM interoperability transformations, which
+require engineering evidence but not artificial academic capsules.
 
 ### TODO - Reproducible experiment identity and manifest
 
@@ -274,8 +276,8 @@ and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
 verified state-graph mathematics, compile demonstrably stable regions to native
 machine code before execution, specialize hot or mutation-sensitive regions at
 runtime, and deoptimize safely to the interpreter whenever a code-version guard
-or speculative assumption fails. The normative VM contract remains the semantic baseline;
-native tiers are accelerators of identical observable behavior.
+or speculative assumption fails. The normative VM contract remains the semantic
+baseline; native tiers are accelerators of identical observable behavior.
 
 ### TODO - Ahead-of-execution native translation
 
@@ -325,9 +327,9 @@ AOT-only, JIT-only, and fully tiered execution.
 ### TODO - Malbolge 2 extended memory model
 
 Remove the practical 59,049-word ceiling through an explicit extension while
-preserving normative 1998 specification behavior for programs inside the classic machine. Define
-multiword or paged addressing without pretending a ten-trit word can directly
-address arbitrary memory.
+preserving normative 1998 specification behavior for programs inside the classic
+machine. Define multiword or paged addressing without pretending a ten-trit word
+can directly address arbitrary memory.
 
 ### TODO - Historical-interpreter fallback capsule
 
@@ -464,7 +466,7 @@ exact results and clearly label probabilistic hash-only diagnostics.
 
 ### TODO - LaTeX mathematical specification framework
 
-Create a `mathematics/` surface of `.tex` specifications for ternary words,
+Create a `math/` surface of `.tex` specifications for ternary words,
 rotation, crazy operation, decoding, self-modification, memory models, compiler
 lowering, equivalence relations, and search cost functions.
 
@@ -493,8 +495,8 @@ VM evidence.
 ### TODO - Deterministic CPU optimizer
 
 Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the specification-conformant CPU baseline for accelerator
-implementations.
+a GPU, even when much slower, and acts as the specification-conformant CPU
+baseline on both x86-64 and AArch64 hosts for accelerator implementations.
 
 ### TODO - Replaceable accelerator boundary
 
@@ -506,7 +508,7 @@ directly on CUDA APIs.
 
 Separate optimization/search strategy from accelerator hardware. Define common
 algorithm ports for enumerative, stochastic, Monte Carlo, evolutionary, learned,
-hybrid, pruning, and future strategies, and let CPU, CUDA, AMD, or later
+hybrid, pruning, and future strategies, and let CPU, CUDA, ROCm, or later
 hardware adapters provide execution capacity for those strategies. Select
 algorithms and hardware through deterministic configuration with optional CLI
 overrides, record the exact combination in benchmark evidence, and permit
@@ -542,10 +544,10 @@ programs and bounded practical times for novel complex searches on capable GPUs.
 Treat "seconds, not hours" as an engineering target backed by benchmarks rather
 than an unverified promise.
 
-### TODO - Future AMD and non-CUDA adapters
+### TODO - ROCm accelerator adapter
 
-Add interchangeable AMD and other accelerator implementations without changing
-compiler semantics, target profiles, or verifier contracts.
+Add a ROCm accelerator implementation behind the same hardware-neutral port
+without changing compiler semantics, target profiles, or verifier contracts.
 
 ### TODO - Reusable block catalogue
 

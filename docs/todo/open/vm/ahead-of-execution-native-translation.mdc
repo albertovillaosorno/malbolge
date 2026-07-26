@@ -1,0 +1,63 @@
+---
+id: "ahead-of-execution-native-translation"
+status: "pending"
+lane: "11"
+area: "vm"
+task: "TODO - Ahead-of-execution native translation"
+contract: "docs/technical/runtime/execution/ahead-of-execution-native-translation.md"
+depends_on:
+  - "tiered-native-execution-engine"
+  - "native-x86-64-and-aarch64-backends"
+  - "self-modification-state-graph-optimizer"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Ahead-of-execution native translation
+
+## Objective
+
+Translate reachable stable Malbolge regions into native code in memory before
+guest execution begins. Use a compact portable micro-IR between Malbolge decode
+and architecture-specific code generation, cache verified compiled regions by
+program identity, target profile, architecture, and code-state assumptions, and
+fall back to ordinary VM execution for regions that cannot yet be proven stable.
+
+## Acceptance
+
+- Only regions whose code-state assumptions are explicit may be compiled before
+  execution, and cache keys include every assumption required for safe native
+  reuse.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
+- Prerequisite completion evidence: `tiered-native-execution-engine`,
+
+ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.

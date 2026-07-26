@@ -1,16 +1,15 @@
 # Publication-grade paper pipeline
 
-- Status: Proposed
-- Record type: Methodology
-- Planning identity: `publication-grade-paper-pipeline`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate publication-grade paper
+pipeline?
+
+## Background
 
 Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
 of turning mature investigations into publication-quality papers with canonical
@@ -18,7 +17,17 @@ bibliography, equations, figures, tables, experiment provenance, limitations,
 and regenerated results without making publication a prerequisite for ordinary
 engineering work.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Methodology
+- Planning identity: `publication-grade-paper-pipeline`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - A mature research capsule can generate a reproducible paper with canonical
   citations, equations, figures/tables derived from recorded experiments,
@@ -32,16 +41,16 @@ engineering work.
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
-results. Source claims resolve through `docs/bibliography/`. The
-[LaTeX bibliography record](../../bibliography/documentation-and-publication/latex.md)
-defines the publication tool family; a repository-local pinned TeX toolchain is
-still required before PDF regeneration can be called reproducible.
+results. Source claims resolve through `docs/bibliography/`. The [LaTeX
+bibliography record](../../bibliography/tooling/latex.md) defines the
+publication tool family; a repository-local pinned TeX toolchain is still
+required before PDF regeneration can be called reproducible.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `docs/research/`, `algorithms/`,
   `benchmarks/research/`.
@@ -51,7 +60,22 @@ still required before PDF regeneration can be called reproducible.
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)

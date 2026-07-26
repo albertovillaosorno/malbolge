@@ -1,8 +1,12 @@
 # Ben Olmstead Malbolge Public-Domain Boundary
 
-- Status: Evidence recorded; repository boundary accepted
-- As-of date: 2026-07-26
-- Counsel review: Not performed
+## Status
+
+Evidence recorded; repository boundary accepted
+
+## As-of Date
+
+2026-07-26
 
 ## Question Presented
 
@@ -17,17 +21,7 @@ Malbolge as public domain. The original interpreter source separately contains a
 public-domain dedication in its header.
 
 The source evidence is cataloged in
-[Original Malbolge bibliography record][malbolge-bib].
-
-## Repository Boundary
-
-`tools/malbolge/main.c` is retained as historical primary implementation
-evidence and is not relicensed under the repository MIT License. The repository may add
-project-authored wrappers, tests, documentation, and replacement
-implementations under MIT without rewriting the historical source notice.
-
-The root `LICENSE` applies to repository-authored material unless a file or
-record states a different applicable boundary.
+`docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`.
 
 ## Not Established
 
@@ -35,22 +29,37 @@ This record does not attempt to assign a modern SPDX identifier to Ben
 Olmstead's custom public-domain dedication, and it does not claim that public
 domain is equivalent to the MIT License.
 
-## Required Facts Or Authorities
+## Required Facts
 
 Any future redistribution package that changes how the historical file is
 bundled must preserve the file's original notice and re-review the package
 boundary.
 
-## Sources
+## Authorities
 
-- [Original Malbolge bibliography record][malbolge-bib]
-- `tools/malbolge/main.c`
-- `LICENSE`
+- Canonical external authorities are referenced through `docs/bibliography/`
+  where available.
 
-## Review Boundary
+## Analysis
+
+`tools/malbolge/main.c` is retained as historical primary implementation
+evidence and is not relicensed under the repository MIT License. The repository
+may add project-authored wrappers, tests, documentation, and replacement
+implementations under MIT without rewriting the historical source notice.
+
+The root `LICENSE` applies to repository-authored material unless a file or
+record states a different applicable boundary.
 
 Re-review if the historical file is replaced, modified, vendored from a
 different source, or included in a distribution with materially different
 license metadata.
 
-[malbolge-bib]: ../../bibliography/malbolge-and-esolangs/malbolge-1998.md
+## Conclusion Boundary
+
+This record is bounded repository research and is not legal advice.
+
+## Sources
+
+- `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
+- `tools/malbolge/main.c`
+- `LICENSE`

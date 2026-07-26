@@ -1,14 +1,8 @@
 # C-level source mapping and debugging
 
-- Status: Proposed
-- Planning identity: `c-level-source-mapping-and-debugging`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [C Level Source Debugging](../adr/c-level-source-debugging.md)
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+Proposed
 
 ## Purpose
 
@@ -16,12 +10,26 @@ Generate source maps from Malbolge addresses through lowered IR back to C source
 locations. Expose debugging at the C level; keep low-level VM tracing primarily
 for implementation and verification.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `compiler/`
+- `src/`
+- `tests/compiler/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `c-level-source-mapping-and-debugging`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -42,7 +50,15 @@ profile requirements fail closed before emitting accepted target code.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
+- Prerequisite completion evidence: `typed-compiler-ir`,
+  `malbolge-layout-and-encoding-backend`.
+## References
 
-## Implementation Status
+- [C Level Source Debugging](../adr/c-level-source-debugging.md)
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/c-level-source-debugging.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`

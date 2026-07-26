@@ -1,6 +1,18 @@
-# Bibliography Decision Records
+# Adr
 
-Bibliography ADRs own durable choices about source taxonomy, evidence quality,
-citation identity, provenance, currentness, and deduplication. They do not own
-the factual content of source records and cannot turn external evidence into
-repository policy.
+## Purpose
+
+Catalog `docs/bibliography/adr/`.
+
+## Owns
+
+Records physically owned by `docs/bibliography/adr/`.
+
+## Does Not Own
+
+Repository policy, legal conclusions, or research conclusions.
+
+## Contents
+
+- `source-taxonomy-and-citation-provenance.md`
+- `template.md`

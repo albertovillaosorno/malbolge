@@ -1,8 +1,9 @@
 # Stochastic and guided search
 
 This directory is the executable mirror for research ID
-`stochastic-and-guided-search`. The academic record is
-[`docs/research/algorithms/stochastic-and-guided-search/README.md`](../../docs/research/algorithms/stochastic-and-guided-search/README.md).
+`stochastic-and-guided-search`. The human research record uses the same ID under
+`docs/research/algorithms/`, and its mathematical contract, when present, uses
+the same ID under `math/algorithms/`.
 
 Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.

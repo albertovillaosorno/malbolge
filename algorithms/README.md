@@ -1,8 +1,8 @@
 # Algorithm Implementations
 
 This directory contains executable implementations of algorithms studied or
-compared by the compiler research program. It is organized by algorithm identity,
-not language or hardware.
+compared by the compiler research program. It is organized by algorithm
+identity, not language or hardware.
 
 ```text
 algorithms/<id>/

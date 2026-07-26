@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.tiered-native-execution`
+
 ## Context
 
 Literal interpretation of a sequential self-modifying machine can impose large
@@ -26,7 +30,22 @@ Native code caches include all semantic assumptions required for safe reuse.
 Users can disable JIT, AOT, or all native execution. `--interpreter-only` must
 perform no hidden native generation or native-cache reuse.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the tiered native execution boundary explicit, reviewable, and stable
+  before implementation depends on it.
+
+## Disadvantages
+
+- The decision increases cross-backend implementation and validation cost.
+
+## Consequences
+
+- Native execution is an optimization layer, never the VM specification.
+- Deoptimization and cache identity become correctness-critical components.
+- Interpreter-only benchmarks provide a stable baseline for execution research.
+
+## Rejected Alternatives
 
 ### Interpreter only
 
@@ -38,13 +57,7 @@ it prevents research into eliminating host overhead while preserving semantics.
 Rejected as a universal strategy because arbitrary self-modification can
 invalidate static assumptions.
 
-## Consequences
-
-- Native execution is an optimization layer, never the VM specification.
-- Deoptimization and cache identity become correctness-critical components.
-- Interpreter-only benchmarks provide a stable baseline for execution research.
-
-## Implementation Notes
+## Evidence
 
 State-graph reductions can feed both AOT and JIT, but a graph optimization must
 be verified before it changes native-execution assumptions.

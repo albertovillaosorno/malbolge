@@ -1,26 +1,24 @@
-# Algorithm Research Records
+# Algorithms
 
-Each child directory is one research question or algorithm and mirrors the same
-stable identifier under `algorithms/` when executable experimentation is needed.
+## Purpose
 
-A mature record contains only the artifacts it actually needs from this shape:
+Catalog `docs/research/algorithms/`.
 
-```text
-docs/research/algorithms/<id>/
-|-- README.md       question, hypotheses, method, results, threats to validity
-|-- theory.tex      definitions, derivations, proofs, equivalence arguments
-`-- figures/        authored or reproducibly generated publication figures
-```
+## Owns
 
-Citations resolve against the canonical bibliography under
-`docs/bibliography/`; do not fork citation metadata into dozens of
-algorithm-local BibTeX databases unless a publication format requires a generated
-subset.
+Records physically owned by `docs/research/algorithms/`.
 
-`README.md` should identify the correctness oracle, workloads and provenance,
-independent and dependent variables, baselines, hardware controls, randomization
-and seeds, stopping rules, benchmark methodology, negative results, and the
-criteria required before the algorithm may influence production code.
+## Does Not Own
 
-A `.tex` file is required only when there is actual mathematics to state. Do not
-manufacture decorative equations to satisfy structure.
+Product semantics, legal permission, source identity, or ordinary engineering.
+
+## Contents
+
+- `adaptive-accelerator-resource-budgeting/`
+- `compact-guest-bytecode-strategy/`
+- `malbolge-specific-optimization-mathematics/`
+- `pytorch-search-orchestration/`
+- `search-pruning-and-state-canonicalization/`
+- `self-modification-state-graph-optimizer/`
+- `stochastic-and-guided-search/`
+- `template/`

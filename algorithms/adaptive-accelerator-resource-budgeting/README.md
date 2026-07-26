@@ -1,8 +1,9 @@
 # Adaptive accelerator resource budgeting
 
 This directory is the executable mirror for research ID
-`adaptive-accelerator-resource-budgeting`. The academic record is
-[`docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md`](../../docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md).
+`adaptive-accelerator-resource-budgeting`. The human research record uses the
+same ID under `docs/research/algorithms/`, and its mathematical contract, when
+present, uses the same ID under `math/algorithms/`.
 
 Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.

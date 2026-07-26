@@ -1,15 +1,26 @@
 # Historical Malbolge Semantics Specification
 
+## Status
+
+Active normative specification
+
+## Purpose
+
 - Status: Active normative specification
 - Planning identity: `historical-malbolge-semantics-specification`
 - Last reviewed: 2026-07-26
 
-## Governing Decisions
+## Scope
 
-- [Specification Authority And Malbolge
-  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+This document governs the following declared TODO scope:
 
-## Authority
+- `tools/malbolge/`
+- `docs/technical/specification/`
+- `math/specification/`
+
+## Current Behavior
+
+### Authority
 
 Ben Olmstead's 1998 prose specification is the normative authority for the
 classic machine in this repository. The original C interpreter at
@@ -21,7 +32,7 @@ intersection where its behavior is defined and agrees with this specification.
 Known disagreements and C defects are cataloged in
 [`historical-undefined-behavior.md`](historical-undefined-behavior.md).
 
-## Machine State
+### Machine State
 
 Let
 
@@ -32,10 +43,10 @@ exactly `W` words. The machine state contains accumulator `A`, code pointer `C`,
 data pointer `D`, memory `M`, an input byte stream, and an output byte stream.
 All three registers begin at zero.
 
-The normative ternary rotate and crazy operation are defined in
-[`mathematics/machine.tex`](mathematics/machine.tex).
+The normative ternary rotate and crazy operation are defined in The normative
+equation source is `math/specification/malbolge-1998.tex`.
 
-## Loading
+### Loading
 
 Whitespace is ignored and does not consume memory. Each non-whitespace source
 character is checked using its loaded position `i`:
@@ -58,7 +69,7 @@ whitespace plus graphical ASCII source bytes `33..126`. Inputs for which the
 historical prose lacks enough information to construct the required two-cell
 memory recurrence are rejected rather than resolved through host C behavior.
 
-## Decode
+### Decode
 
 Before execution, the current cell must be graphical ASCII `33..126`. Otherwise
 the classic machine terminates immediately.
@@ -71,7 +82,7 @@ decoded = xlat1[(M[C] - 33 + C) mod 94]
 
 A decoded character not listed below is a no-op.
 
-## Instructions
+### Instructions
 
 ### `j`
 
@@ -121,7 +132,7 @@ Terminate the machine immediately.
 
 Perform no instruction-specific operation.
 
-## Self-Modification
+### Self-Modification
 
 After every non-halting instruction, the instruction at the current code pointer
 is encrypted through the 94-character `xlat2` table described by the 1998
@@ -133,7 +144,7 @@ state-level tests. Historical C behavior may be used as corroborating evidence
 only where it agrees with the normative text and does not invoke C undefined
 behavior.
 
-## Pointer Advancement
+### Pointer Advancement
 
 After a non-halting instruction and its self-modification, both `C` and `D`
 advance by one with classic-word wraparound:
@@ -143,7 +154,7 @@ C := (C + 1) mod 59049
 D := (D + 1) mod 59049
 ```
 
-## Observation Model
+### Observation Model
 
 Specification conformance compares:
 
@@ -156,7 +167,7 @@ Specification conformance compares:
 Host allocation strategy, C integer types, buffering, locales, text-mode file
 translation, and historical implementation accidents are not guest semantics.
 
-## Implementation Freedom
+### Implementation Freedom
 
 A conforming VM may use Rust, C, SIMD, JIT/AOT compilation, GPU kernels,
 clusters, lookup tables, packed ternary forms, or other implementations. Those
@@ -166,7 +177,7 @@ normative machine.
 This separation is deliberate: the language semantics remain small and stable
 while execution and compiler algorithms may be optimized aggressively.
 
-## Historical Interpreter Role
+### Historical Interpreter Role
 
 `tools/malbolge/main.c` is retained unchanged for:
 
@@ -178,9 +189,37 @@ while execution and compiler algorithms may be optimized aggressively.
 
 It does not override the specification.
 
-## Sources
+## Invariants
 
-- [Original Malbolge bibliography record][malbolge-bib]
+- The specification defines loader behavior, registers, memory, instruction
+  decode, crazy operation, rotate, I/O, self-encryption, increments/wrap, and
+  halt/error behavior as explicit state transitions.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Failure Behavior
+
+- Unsupported, unverified, or contradictory behavior remains explicit; silent
+  semantic fallback is not accepted.
+
+## Verification
+
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `math/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.
+## References
+
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+
+- `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
 - `tools/malbolge/main.c`
 
-[malbolge-bib]: ../../bibliography/malbolge-and-esolangs/malbolge-1998.md
+### Governing ADR Paths
+
+- `docs/technical/adr/specification-authority-and-malbolge-evolution.md`

@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.deterministic-c-surface-and-clang-tooling`
+
 ## Context
 
 Human-authored applications need a practical source language, while direct
@@ -27,7 +31,25 @@ program. A clean program rejected later as unsupported is a tooling bug.
 AST-aware transformations own semantic rewrites. Regex is permitted only when a
 change is proven purely textual.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the deterministic c surface and clang tooling boundary explicit,
+  reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- The deterministic profile intentionally rejects some otherwise valid hosted C
+  programs.
+
+## Consequences
+
+- Lowerability is a contract, not a best-effort compiler property.
+- C diagnostics must distinguish forbidden semantics from capabilities that are
+  merely not implemented yet.
+- Compiler and tidy plugin share target-profile/ABI authority without sharing
+  lowering implementation.
+
+## Rejected Alternatives
 
 ### Rust as the user source language
 
@@ -45,22 +67,11 @@ impossible.
 Rejected because maintaining a Clang fork adds unnecessary toolchain ownership
 and makes version drift harder to reason about.
 
-## Consequences
-
-- Lowerability is a contract, not a best-effort compiler property.
-- C diagnostics must distinguish forbidden semantics from capabilities that are
-  merely not implemented yet.
-- Compiler and tidy plugin share target-profile/ABI authority without sharing
-  lowering implementation.
-
 ## Evidence
 
-- [ISO/IEC C language bibliography record](../../bibliography/programming-languages/c.md)
-- [Clang LibTooling bibliography
-  record](../../bibliography/compiler-and-runtime/clang-libtooling.md)
-- [clang-tidy bibliography record](../../bibliography/validation-tooling/clang-tidy.md)
-
-## Implementation Notes
+- [ISO/IEC C language bibliography record](../../bibliography/languages/c.md)
+- `docs/bibliography/platforms-and-runtimes/compiler/clang-libtooling.md`
+- [clang-tidy bibliography record](../../bibliography/tooling/clang-tidy.md)
 
 The plugin is pinned to the same LLVM revision used by frontend tooling. Profile
 options must be deterministic and suitable for command-line and Jig invocation.

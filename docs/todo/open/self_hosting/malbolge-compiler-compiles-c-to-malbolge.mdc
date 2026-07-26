@@ -1,0 +1,49 @@
+---
+id: "malbolge-compiler-compiles-c-to-malbolge"
+status: "pending"
+lane: "14"
+area: "self_hosting"
+task: "TODO - Malbolge compiler compiles C to Malbolge"
+contract: "docs/technical/compiler/self-hosting/malbolge-compiler-compiles-c-to-malbolge.md"
+depends_on:
+  - "compile-c2malbolge-c-to-malbolge"
+  - "deterministic-binary-byte-stream-runtime"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/self-hosting-as-conformance-goal.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "examples/self_host/"
+  - "compiler/"
+  - "tests/self_hosting/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Malbolge compiler compiles C to Malbolge
+
+## Objective
+
+Use `c2malbolge.malbolge` to consume C source and emit a new working `.malbolge`
+program, proving practical self-hosting of the translation path.
+
+## Acceptance
+
+- Running `c2malbolge.malbolge` inside the VM can consume C source bytes and
+  emit a valid `.malbolge` program without invoking the native compiler as a
+  hidden host service.
+- The hosted stage performs the claimed compilation work inside the guest
+  execution model rather than delegating the essential operation to the host.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `examples/self_host/`, `compiler/`,
+  `tests/self_hosting/`.
+- Required evidence: compiler inputs/outputs, canonical comparison against
+  native compilation, resource/profile requirements, and verifier acceptance.
+- Prerequisite completion evidence: `compile-c2malbolge-c-to-malbolge`,
+  `deterministic-binary-byte-stream-runtime`.

@@ -1,25 +1,32 @@
 # Benchmark and statistical evidence protocol
 
-- Status: Proposed
-- Record type: Methodology
-- Planning identity: `benchmark-and-statistical-evidence-protocol`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
-- [Parametric Multi Objective Algorithm
-  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate benchmark and statistical
+evidence protocol?
+
+## Background
 
 Define fair-comparison workloads, warmup, repetitions, confidence/dispersion
 reporting, outlier policy, randomized-search treatment, time/quality tradeoffs,
 resource normalization, and raw-sample retention rules. Performance claims must
 identify uncertainty and may never substitute for semantic verification.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Methodology
+- Planning identity: `benchmark-and-statistical-evidence-protocol`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - The protocol fixes fair workload equivalence, warmup, repetitions,
   randomization, stopping rules, raw-sample retention, uncertainty/dispersion
@@ -36,13 +43,13 @@ identify uncertainty and may never substitute for semantic verification.
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `docs/research/`, `algorithms/`,
   `benchmarks/research/`.
@@ -55,7 +62,24 @@ results. Source claims resolve through `docs/bibliography/`.
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+- [Parametric Multi Objective Algorithm
+  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)

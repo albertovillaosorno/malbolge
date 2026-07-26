@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.research.research-evidence-and-algorithm-mirror`
+
 ## Context
 
 The repository is both a product implementation and a compiler-research
@@ -31,7 +35,25 @@ itself. Promotion requires an explicit owning technical decision or contract.
 Product algorithms remain with their owning subsystem when they do not pose a
 genuine research question.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the research evidence and algorithm mirror boundary explicit,
+  reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- The decision constrains future implementation until a later ADR deliberately
+  supersedes it.
+
+## Consequences
+
+- Research can be reproduced and cited independently from production code.
+- Null and negative results remain durable evidence.
+- Product architecture is not accidentally determined by whichever experiment
+  was written first.
+- Multiple implementation languages can coexist under one algorithm identity.
+
+## Rejected Alternatives
 
 ### Put all algorithms under the research mirror
 
@@ -44,15 +66,7 @@ stable identity
 Rejected because results, code, and later papers would lose deterministic
 traceability.
 
-## Consequences
-
-- Research can be reproduced and cited independently from production code.
-- Null and negative results remain durable evidence.
-- Product architecture is not accidentally determined by whichever experiment
-  was written first.
-- Multiple implementation languages can coexist under one algorithm identity.
-
-## Implementation Notes
+## Evidence
 
 External sources resolve through `docs/bibliography/`. Generated experiment
 artifacts remain under the owning algorithm `out/` directory and are ignored by

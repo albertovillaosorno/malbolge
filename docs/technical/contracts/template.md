@@ -1,33 +1,41 @@
 # Technical Contract Template
 
-- Status: Proposed
-- Last reviewed: YYYY-MM-DD
+## Status
 
-## Governing Decisions
+Proposed
 
-List exact accepted or proposed ADRs that own choices required by this contract.
-
-## Purpose
+## Intent
 
 State the repository-owned behavior or interface this contract defines.
 
-## Model
+## Contract
+
+### Model
 
 Describe inputs, outputs, state, identities, boundaries, and data flow.
 
-## Invariants
+### Invariants
 
 List conditions that must always hold when the contract is implemented.
 
-## Failure Behavior
+## Evidence Boundary
+
+Describe the evidence required before the status can become Active.
+
+## Diagnostics
 
 Describe rejected input, fail-closed behavior, diagnostics, and rollback or
 fallback semantics where applicable.
 
-## Verification
+## Examples
 
-Describe the evidence required before the status can become Active.
+- No normative example is required at this planning stage unless the contract
+  states one.
 
-## Implementation Status
+## Implementation
 
 Not implemented.
+
+## References
+
+List exact accepted or proposed ADRs that own choices required by this contract.

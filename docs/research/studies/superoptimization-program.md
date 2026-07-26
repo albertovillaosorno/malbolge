@@ -1,16 +1,15 @@
 # Superoptimization research program
 
-- Status: Proposed
-- Record type: Study
-- Planning identity: `superoptimization-research-program`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate superoptimization research
+program?
+
+## Background
 
 Ask which search strategies find smaller or faster verified Malbolge blocks
 under fixed time and evaluation budgets. Build a rigorous research track
@@ -21,7 +20,17 @@ evaluation, and prior Malbolge code generation techniques. Maintain a source-
 backed bibliography and convert useful results into explicit compiler
 hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Study
+- Planning identity: `superoptimization-research-program`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - The program maintains a source-backed map from prior
   superoptimization/synthesis work to falsifiable Malbolge-specific hypotheses
@@ -35,13 +44,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `docs/research/`, `algorithms/`,
   `benchmarks/research/`.
@@ -51,7 +60,22 @@ results. Source claims resolve through `docs/bibliography/`.
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)

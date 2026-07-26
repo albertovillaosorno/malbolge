@@ -1,0 +1,43 @@
+---
+id: "historical-malbolge-semantics-specification"
+status: "pending"
+lane: "1"
+area: "foundation"
+task: "TODO - Historical Malbolge semantics specification"
+contract: "docs/technical/specification/malbolge-1998.md"
+depends_on:
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "tools/malbolge/"
+  - "docs/technical/specification/"
+  - "math/specification/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Historical Malbolge semantics specification
+
+## Objective
+
+Specify the original 1998 machine: 59,049 ten-trit words, registers, decoding,
+crazy operation, rotation, self-encryption, input/output, wraparound, loading,
+and termination behavior.
+
+## Acceptance
+
+- The specification defines loader behavior, registers, memory, instruction
+  decode, crazy operation, rotate, I/O, self-encryption, increments/wrap, and
+  halt/error behavior as explicit state transitions.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `math/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.

@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.self-hosting-as-conformance-goal`
+
 ## Context
 
 A C-to-Malbolge compiler can appear successful while depending on host-only
@@ -24,7 +28,23 @@ host service.
 Native and hosted outputs are compared by canonical artifact identity or by an
 explicit verified normalization when byte identity is not a promised property.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the self-hosting as conformance goal boundary explicit, reviewable, and
+  stable before implementation depends on it.
+
+## Disadvantages
+
+- Self-hosting substantially raises portability and bootstrap constraints on the
+  compiler.
+
+## Consequences
+
+- Host-only conveniences cannot quietly become compiler semantic dependencies.
+- Binary byte-stream input/output is a first-class guest capability.
+- Self-hosting provides an end-to-end stress test beyond application examples.
+
+## Rejected Alternatives
 
 ### Treat self-hosting as a novelty demo
 
@@ -36,13 +56,7 @@ portability, deterministic output, and verification contracts.
 Rejected because it would block incremental implementation and validation of the
 underlying compiler stages.
 
-## Consequences
-
-- Host-only conveniences cannot quietly become compiler semantic dependencies.
-- Binary byte-stream input/output is a first-class guest capability.
-- Self-hosting provides an end-to-end stress test beyond application examples.
-
-## Implementation Notes
+## Evidence
 
 The hosted compiler may be slow. Correctness and independence from hidden host
 compilation are required before performance optimization.

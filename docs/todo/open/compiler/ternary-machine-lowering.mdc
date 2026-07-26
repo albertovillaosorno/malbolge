@@ -1,0 +1,50 @@
+---
+id: "ternary-machine-lowering"
+status: "pending"
+lane: "9"
+area: "compiler"
+task: "TODO - Ternary machine lowering"
+contract: "docs/technical/compiler/ternary-machine-lowering.md"
+depends_on:
+  - "typed-compiler-ir"
+  - "guest-runtime-and-allocator"
+  - "malbolge-specific-optimization-mathematics"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "compiler/"
+  - "src/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Ternary machine lowering
+
+## Objective
+
+Lower typed C IR into a compact ternary virtual-machine representation suited to
+Malbolge instead of translating C operations directly instruction by
+instruction.
+
+## Acceptance
+
+- Every IR operation lowers to explicit ternary/runtime operations with defined
+  pre/postconditions and no direct host implementation of guest computation.
+- The stage has deterministic input/output form, rejects malformed or
+  unsupported input explicitly, and preserves source/profile provenance needed
+  downstream.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
+- Required evidence: golden/round-trip or normalized stage fixtures,
+  deterministic hashes where promised, and end-to-end lowering regression cases.
+- Prerequisite completion evidence: `typed-compiler-ir`,
+  `guest-runtime-and-allocator`, `malbolge-specific-optimization-mathematics`.

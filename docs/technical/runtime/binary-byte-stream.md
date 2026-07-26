@@ -1,14 +1,8 @@
 # Deterministic binary byte-stream runtime
 
-- Status: Proposed
-- Planning identity: `deterministic-binary-byte-stream-runtime`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
-- [Verification Trust Boundary](../adr/verification-trust-boundary.md)
+Proposed
 
 ## Purpose
 
@@ -16,12 +10,27 @@ Prove generated programs can consume and emit arbitrary binary byte streams
 without host-side format logic, creating the foundation for real deterministic
 file transformers.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `docs/technical/examples/`
+- `tests/applications/`
+- `benchmarks/applications/`
+- `runtime/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `deterministic-binary-byte-stream-runtime`. The implementation may change
 internal representation or language choices without changing the observable
 behavior, trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -42,7 +51,15 @@ demonstrations may not substitute host logic for guest behavior.
   `tests/applications/`, `benchmarks/applications/`, `runtime/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `guest-runtime-and-allocator`,
+  `malbolge-layout-and-encoding-backend`.
+## References
 
-## Implementation Status
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+- [Verification Trust Boundary](../adr/verification-trust-boundary.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
+- `docs/technical/adr/verification-trust-boundary.md`

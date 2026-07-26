@@ -24,17 +24,17 @@
   "dictionaryDefinitions": [
     {
       "name": "jig-english",
-      "path": "./docs/cspell/english.txt",
+      "path": "./integrations/cspell/english.txt",
       "addWords": true
     },
     {
       "name": "jig-named-entities",
-      "path": "./docs/cspell/named-entities.txt",
+      "path": "./integrations/cspell/named-entities.txt",
       "addWords": true
     },
     {
       "name": "jig-technical",
-      "path": "./docs/cspell/technical.txt",
+      "path": "./integrations/cspell/technical.txt",
       "addWords": true
     }
   ],

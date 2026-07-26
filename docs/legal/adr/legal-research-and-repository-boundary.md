@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.legal.legal-research-and-repository-boundary`
+
 ## Context
 
 The repository includes an original public-domain interpreter, project-authored
@@ -29,7 +33,26 @@ intent, successful compilation, or a permissive license on unrelated material.
 Canonical external source identity belongs in `docs/bibliography/` and is cited
 from legal records rather than duplicated.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the legal research and repository boundary boundary explicit,
+  reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- The decision constrains future implementation until a later ADR deliberately
+  supersedes it.
+
+## Consequences
+
+- The public-domain oracle, MIT project code, user-supplied inputs, and
+  generated outputs can have explicit independent boundaries.
+- Unresolved legal facts remain visible instead of becoming favorable
+  assumptions.
+- Repository decisions can cite legal research without pretending an ADR is
+  external legal authority.
+
+## Rejected Alternatives
 
 ### Put all legal content in ADRs
 
@@ -42,16 +65,7 @@ Rejected because bibliography records own source/provenance facts and are
 non-governing; they should not become repositories for legal application
 analysis.
 
-## Consequences
-
-- The public-domain oracle, MIT project code, user-supplied inputs, and generated
-  outputs can have explicit independent boundaries.
-- Unresolved legal facts remain visible instead of becoming favorable
-  assumptions.
-- Repository decisions can cite legal research without pretending an ADR is
-  external legal authority.
-
-## Implementation Notes
+## Evidence
 
 Consequential legal conclusions remain subject to qualified counsel. Records
 must include an as-of date and identify when re-review is required.

@@ -1,16 +1,18 @@
-# Mathematical Specifications
+# Mathematics
 
-This directory contains normative mathematical definitions used by the VM,
-compiler, verifier, and optimization research.
+## Purpose
 
-- [`machine.tex`](machine.tex) defines the classic ten-trit word domain, ternary
-  rotation, and digitwise crazy operation.
-- [`framework.md`](framework.md) defines the documentation contract for future
-  mathematical specifications.
-- [`correspondence.md`](correspondence.md) defines the requirement to connect
-  mathematical claims to executable or machine-checked evidence.
+Catalog `docs/technical/specification/mathematics/`.
 
-Research-specific derivations remain beside their research algorithm under
-`docs/research/algorithms/<id>/`. A research equation becomes a production
-semantic authority only when promoted into this normative surface through the
-appropriate decision and verification work.
+## Owns
+
+Records physically owned by `docs/technical/specification/mathematics/`.
+
+## Does Not Own
+
+External source authority, research conclusions, legal analysis, or TODO state.
+
+## Contents
+
+- `correspondence.md`
+- `framework.md`

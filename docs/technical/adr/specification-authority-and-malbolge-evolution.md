@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.specification-authority-and-malbolge-evolution`
+
 ## Context
 
 Malbolge has two primary historical artifacts from 1998: Ben Olmstead's prose
@@ -41,7 +45,31 @@ normative machine. Classic ten-trit arithmetic, crazy operation, rotate,
 decoding, self-modification, input/output meanings, termination, and pointer
 rules remain the base semantics unless a later profile explicitly changes them.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the specification authority and malbolge evolution boundary explicit,
+  reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- The decision constrains future implementation until a later ADR deliberately
+  supersedes it.
+
+## Consequences
+
+- `<` means input and `/` means output in the modern classic profile.
+- Executing a non-graphical current cell terminates the classic machine as the
+  specification states.
+- Historical programs that depended on interpreter bugs may behave differently
+  under the modern VM.
+- Test corpora must distinguish specification conformance from Ben-interpreter
+  compatibility.
+- GPU, cluster, JIT/AOT, optimizer, and verifier implementations share one clean
+  semantic contract instead of reproducing host-C accidents.
+- The historical interpreter remains useful without being the architecture's
+  semantic root.
+
+## Rejected Alternatives
 
 ### Treat the original C interpreter as the language authority
 
@@ -62,21 +90,7 @@ Rejected. The file is valuable primary evidence, exposes historical defects, and
 provides differential coverage for the large semantic intersection where it
 matches the written specification.
 
-## Consequences
-
-- `<` means input and `/` means output in the modern classic profile.
-- Executing a non-graphical current cell terminates the classic machine as the
-  specification states.
-- Historical programs that depended on interpreter bugs may behave differently
-  under the modern VM.
-- Test corpora must distinguish specification conformance from Ben-interpreter
-  compatibility.
-- GPU, cluster, JIT/AOT, optimizer, and verifier implementations share one clean
-  semantic contract instead of reproducing host-C accidents.
-- The historical interpreter remains useful without being the architecture's
-  semantic root.
-
-## Implementation Notes
+## Evidence
 
 The canonical classic profile should identify itself as
 specification-conformant. If a legacy Ben-interpreter mode is implemented, its

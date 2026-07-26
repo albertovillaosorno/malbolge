@@ -1,8 +1,9 @@
 # PyTorch search orchestration
 
 This directory is the executable mirror for research ID
-`pytorch-search-orchestration`. The academic record is
-[`docs/research/algorithms/pytorch-search-orchestration/README.md`](../../docs/research/algorithms/pytorch-search-orchestration/README.md).
+`pytorch-search-orchestration`. The human research record uses the same ID under
+`docs/research/algorithms/`, and its mathematical contract, when present, uses
+the same ID under `math/algorithms/`.
 
 Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.

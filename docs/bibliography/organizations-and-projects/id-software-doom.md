@@ -1,23 +1,24 @@
 # DOOM Open Source Release
 
-- Review status: Verified
-- Evidence status: Verified
-- As-of date: 2026-07-26
+## Status
 
-## Identity
+Verified; evidence verified.
+
+## Subject
 
 - Canonical name: id Software DOOM Open Source Release
-- Subject class: Historical third-party source release and interoperability input
+- Subject class: Historical third-party source release and interoperability
+  input
 - Stable identifier: `id-Software/DOOM`
 - Publisher or authority: id Software repository under the ZeniMax organization
 
-## Repository Relevance
+## Repository Use
 
 The ignored local `doom/` tree is an optional user-supplied interoperability
 input for amalgamation, modernization, lint conformance, C-to-Malbolge
 compilation, and end-to-end performance demonstrations.
 
-## Source Quality And Provenance
+## Provenance
 
 The official GitHub repository is the primary source reviewed here. The
 repository identifies the source as GPL-2.0 licensed. Its historical README
@@ -25,7 +26,22 @@ states that real DOOM game data is still required and explains that the released
 code targeted Linux because the DOS source depended on a copyrighted sound
 library that was not released.
 
-## Verified Claims
+## Identity And Version
+
+- Canonical name: id Software DOOM Open Source Release
+- Subject class: Historical third-party source release and interoperability
+  input
+- Stable identifier: `id-Software/DOOM`
+- Publisher or authority: id Software repository under the ZeniMax organization
+
+## License Or Terms
+
+This is external material. Citation does not relicense the source or import its
+terms into the repository MIT license.
+
+## Evidence
+
+### Verified
 
 - The source repository is licensed under GNU GPL 2.0.
 - The source release does not include the game data needed to run DOOM.
@@ -34,7 +50,7 @@ library that was not released.
 - The release notes describe the code as portable enough to invite ports and
   improvements while documenting historical implementation limitations.
 
-## Unresolved Evidence
+### Unresolved
 
 This record does not establish the rights or provenance of any user-supplied
 WAD/game-data files. Those remain external to the repository and require their

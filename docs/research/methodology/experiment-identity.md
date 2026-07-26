@@ -1,16 +1,15 @@
 # Reproducible experiment identity and manifest
 
-- Status: Proposed
-- Record type: Methodology
-- Planning identity: `reproducible-experiment-identity-and-manifest`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate reproducible experiment
+identity and manifest?
+
+## Background
 
 Define a versioned experiment manifest that records algorithm identity, exact
 implementation/configuration, target profile, workload hashes, seeds, stopping
@@ -18,7 +17,17 @@ rules, host/accelerator identity, memory budget, compiler/tool versions, and
 output location so any reported experiment can be reconstructed without editing
 source constants.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Methodology
+- Planning identity: `reproducible-experiment-identity-and-manifest`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - One manifest is sufficient to reconstruct the exact challenge, algorithm,
   seed, budget, target profile, toolchain, host/accelerator identity, and local
@@ -32,15 +41,16 @@ source constants.
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`. TOML is one
-[cataloged configuration format](../../bibliography/documentation-and-publication/toml.md),
-but the experiment schema owns semantics independently of its serialization.
+[cataloged configuration
+format](../../bibliography/specifications-and-standards/toml.md), but the
+experiment schema owns semantics independently of its serialization.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `docs/research/`, `algorithms/`,
   `benchmarks/research/`.
@@ -50,7 +60,22 @@ but the experiment schema owns semantics independently of its serialization.
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)

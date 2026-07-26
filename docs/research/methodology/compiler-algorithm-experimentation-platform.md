@@ -1,20 +1,15 @@
 # Compiler algorithm experimentation platform
 
-- Status: Proposed
-- Record type: Methodology
-- Planning identity: `compiler-algorithm-experimentation-platform`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Repository Responsibility
-  Boundaries](../../technical/adr/repository-responsibility-boundaries.md)
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
-- [Parametric Multi Objective Algorithm
-  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate compiler algorithm
+experimentation platform?
+
+## Background
 
 Make the repository a reproducible laboratory for compiler research, not merely
 an implementation of one fixed C-to-Malbolge pipeline. Experimental algorithms
@@ -27,7 +22,17 @@ semantic code, record exact configuration/seeds/inputs, compare against common
 correctness oracles, and emit reproducible evidence so a new algorithm can be
 accepted, rejected, or retired without becoming architecture by accident.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Methodology
+- Planning identity: `compiler-algorithm-experimentation-platform`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - A new experimental compiler algorithm can be added, configured, compared
   against a baseline, verified, and removed without editing trusted VM/compiler
@@ -41,13 +46,13 @@ accepted, rejected, or retired without becoming architecture by accident.
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `algorithms/`, `docs/research/`,
   `benchmarks/`, `tests/`.
@@ -57,7 +62,26 @@ results. Source claims resolve through `docs/bibliography/`.
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Repository Responsibility
+  Boundaries](../../technical/adr/repository-responsibility-boundaries.md)
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+- [Parametric Multi Objective Algorithm
+  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)

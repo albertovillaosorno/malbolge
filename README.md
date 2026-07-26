@@ -22,8 +22,9 @@ compiler backend, optimizer, JIT/AOT engine, and accelerator implementations are
 still planned work.
 
 [`TODO.md`](TODO.md) contains unfinished work only. Every TODO heading has one
-typed record under [`docs/todo/`](docs/todo/). A TODO disappears only after its
-contract, implementation or research result, tests, and evidence are durable.
+typed record under [`docs/todo/open/`](docs/todo/). A TODO disappears only after
+its contract, implementation or research result, tests, and evidence are
+durable.
 
 ## Semantic authority
 
@@ -40,9 +41,9 @@ pointers. Modern VMs, compilers, verifiers, native backends, and accelerators
 follow the specification. A future explicitly named `legacy-ben` mode is kept
 only for archaeology and differential diagnosis.
 
-See the [specification-authority ADR][spec-authority], the
-[normative machine specification][machine-spec], and the
-[historical defect catalogue][historical-defects].
+See the specification-authority ADR under `docs/technical/adr/`, the [normative
+machine specification][machine-spec], and
+`docs/technical/specification/historical-undefined-behavior.md`.
 
 ## Target workflow
 
@@ -78,16 +79,16 @@ malbolge-tidy accepts P
 c2malbolge(P) succeeds for the declared target profile
 ```
 
-A compiler rejection after a clean lowerability verdict is a tooling defect,
-not a user mistake.
+A compiler rejection after a clean lowerability verdict is a tooling defect, not
+a user mistake.
 
 ## Engineering model
 
-The repository is organized by responsibility, never by implementation
-language. Rust, C, C++, CUDA, Python, LaTeX, and Malbolge may live beside one
-another when they implement the same capability. Cargo is a build mechanism,
-not the architecture, and the project deliberately avoids turning Rust crates
-into artificial system boundaries.
+The repository is organized by responsibility, never by implementation language.
+Rust, C, C++, CUDA, Python, LaTeX, and Malbolge may live beside one another when
+they implement the same capability. Cargo is a build mechanism, not the
+architecture, and the project deliberately avoids turning Rust crates into
+artificial system boundaries.
 
 The major responsibility surfaces are:
 
@@ -99,8 +100,7 @@ The major responsibility surfaces are:
   Malbolge semantics instead of becoming host shortcuts;
 - `verifier/` for translation validation, static analysis, differential checks,
   fuzzing, exhaustive checks, and proof material;
-- `accelerator/` for CPU, CUDA, future AMD, and other replaceable execution
-  capacity;
+- `accelerator/` for CPU, CUDA, ROCm, and other replaceable execution capacity;
 - `optimizer/` for optimization responsibilities promoted from verified
   research;
 - `algorithms/` for executable research algorithms with mirrored academic
@@ -168,8 +168,8 @@ algorithms/<id>/
 
 The documentation side records question, hypothesis, prior work, mathematical
 model, experiment design, evidence, limitations, and conclusion. The executable
-side contains the implementation, verifier boundary, experiment manifest,
-tests, and a Git-ignored local `out/` directory.
+side contains the implementation, verifier boundary, experiment manifest, tests,
+and a Git-ignored local `out/` directory.
 
 Ordinary engineering algorithms are not forced into fake papers. For example,
 DOOM amalgamation and modernization remain under `interop/algorithms/` because
@@ -211,7 +211,8 @@ software project: canonical external source records live under
 `docs/bibliography/`, research conclusions under `docs/research/`, technical
 behavior under `docs/technical/`, and legal analysis under `docs/legal/`.
 
-See the [repository source-verification ledger][source-verification] and
+See the source-verification ledger under
+`docs/bibliography/provenance-and-methodology/repository/` and the
 [scientific-method contract][scientific-method].
 
 ## Real-world stress tests
@@ -264,8 +265,9 @@ compile another C program
 new .malbolge artifact
 ```
 
-A self-hosted compiler is accepted only if native and Malbolge-hosted compilation
-remain semantically equivalent under the declared comparison contract.
+A self-hosted compiler is accepted only if native and Malbolge-hosted
+compilation remain semantically equivalent under the declared comparison
+contract.
 
 ## Documentation
 
@@ -281,16 +283,16 @@ Repository knowledge is split into four authority families:
   identity, provenance, versions, and verification state.
 
 Each family has its own `adr/` for decisions local to that family. There is no
-global `docs/adr/`. [`docs/todo/`](docs/todo/) is planning infrastructure and
-[`docs/cspell/`](docs/cspell/) is editorial tooling support; neither is a fifth
-authority family.
+global `docs/adr/`. [`docs/todo/open/`](docs/todo/) is planning infrastructure
+and [`integrations/cspell/`](integrations/cspell/) is validation integration
+support; neither is a fifth authority family.
 
-Start with [`docs/README.md`](docs/README.md), then use the family indexes:
+Start with the four documentation-family catalogs:
 
-- [technical index](docs/technical/index.md);
-- [research index](docs/research/index.md);
-- [legal index](docs/legal/index.md); and
-- [bibliography index](docs/bibliography/index.md).
+- [technical catalog](docs/technical/README.md);
+- [research catalog](docs/research/README.md);
+- [legal catalog](docs/legal/README.md); and
+- [bibliography catalog](docs/bibliography/README.md).
 
 ## Historical material and license boundary
 
@@ -304,17 +306,18 @@ The written Malbolge specification and historical interpreter are themselves
 historical primary sources. The repository preserves their disagreements rather
 than rewriting history to make them look consistent.
 
-See the [Ben Olmstead boundary][ben-boundary],
-[repository MIT boundary][mit-boundary], and [legal disclaimer][legal-disclaimer].
+See the [Ben Olmstead boundary][ben-boundary], [repository MIT
+boundary][mit-boundary], and [legal disclaimer][legal-disclaimer].
 
 ## How to cite
 
 A machine-readable [`CITATION.cff`](CITATION.cff) is provided for GitHub and
-citation tooling; its format/provenance is cataloged in the
-[CFF bibliography record][cff-bib]. The citation date is deliberately frozen at **July 26, 2026**.
-It is the repository's stable citation epoch, not a moving "last modified"
-date. Git history may continue indefinitely without silently changing the year
-or date in citations already used by readers.
+citation tooling. Its format and provenance are cataloged in
+`docs/bibliography/specifications-and-standards/citation-file-format.md`. The
+citation date is deliberately frozen at **July 26, 2026**. It is the
+repository's stable citation epoch, not a moving "last modified" date. Git
+history may continue indefinitely without silently changing the year or date in
+citations already used by readers.
 
 ```text
 Villa Osorno, Alberto. (2026, July 26). Malbolge: C-to-Malbolge compiler and
@@ -336,11 +339,7 @@ Repository-authored material is available under the MIT License in
 has authority to license.
 
 [ben-boundary]: docs/legal/licenses/ben-olmstead-malbolge-public-domain.md
-[cff-bib]: docs/bibliography/documentation-and-publication/citation-file-format.md
-[historical-defects]: docs/technical/specification/historical-undefined-behavior.md
-[legal-disclaimer]: docs/legal/disclaimer.md
+[legal-disclaimer]: docs/legal/repository/disclaimer.md
 [machine-spec]: docs/technical/specification/malbolge-1998.md
 [mit-boundary]: docs/legal/licenses/repository-mit-license-boundary.md
 [scientific-method]: docs/research/methodology/scientific-method.md
-[source-verification]: docs/bibliography/provenance/repository-source-verification.md
-[spec-authority]: docs/technical/adr/specification-authority-and-malbolge-evolution.md

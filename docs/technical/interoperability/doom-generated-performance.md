@@ -1,17 +1,8 @@
 # DOOM playable generated-code performance
 
-- Status: Proposed
-- Planning identity: `doom-playable-generated-code-performance`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Deterministic C Surface And Clang
-  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
-- [Legal Research And Repository
-  Boundary](../../legal/adr/legal-research-and-repository-boundary.md)
+Proposed
 
 ## Purpose
 
@@ -24,12 +15,28 @@ than declaring success merely because the program eventually runs. Preserve the
 same game semantics while optimizing; performance-specific substitutions require
 explicit equivalence evidence.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `tests/applications/doom/`
+- `benchmarks/doom/`
+- `compiler/`
+- `execution/`
+- `accelerator/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `doom-playable-generated-code-performance`. The implementation may change
 internal representation or language choices without changing the observable
 behavior, trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -53,10 +60,23 @@ demonstrations may not substitute host logic for guest behavior.
   `benchmarks/doom/`, `compiler/`, `execution/`, `accelerator/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
+  `malbolge-layout-and-encoding-backend`,
+  `explicit-native-tier-execution-controls`, `deterministic-cpu-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
+## References
 
-## Implementation Status
+- [Deterministic C Surface And Clang
+  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+- [Legal Research And Repository
+  Boundary](../../legal/adr/legal-research-and-repository-boundary.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
+- `docs/legal/adr/legal-research-and-repository-boundary.md`

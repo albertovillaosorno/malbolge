@@ -1,14 +1,8 @@
 # Versioned C and Malbolge example corpus
 
-- Status: Proposed
-- Planning identity: `versioned-c-and-malbolge-example-corpus`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
-- [Verification Trust Boundary](../adr/verification-trust-boundary.md)
+Proposed
 
 ## Purpose
 
@@ -21,12 +15,26 @@ command, expected behavior, and verification evidence. Documentation examples
 are versioned deliberately; normal benchmark outputs remain local under their
 owning `out/` directories.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `docs/technical/examples/`
+- `tests/golden/`
+- `compiler/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `versioned-c-and-malbolge-example-corpus`. The implementation may change
 internal representation or language choices without changing the observable
 behavior, trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -47,7 +55,16 @@ demonstrations may not substitute host logic for guest behavior.
   `tests/golden/`, `compiler/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `parametric-compiler-challenge-generator`,
+  `malbolge-layout-and-encoding-backend`, `translation-validation`,
+  `deterministic-cross-backend-artifact-hashing`.
+## References
 
-## Implementation Status
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+- [Verification Trust Boundary](../adr/verification-trust-boundary.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
+- `docs/technical/adr/verification-trust-boundary.md`

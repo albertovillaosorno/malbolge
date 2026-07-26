@@ -1,20 +1,15 @@
 # Parametric compiler challenge generator
 
-- Status: Proposed
-- Record type: Methodology
-- Planning identity: `parametric-compiler-challenge-generator`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Parametric Multi Objective Algorithm
-  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
-- [Verification Trust
-  Boundary](../../technical/adr/verification-trust-boundary.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate parametric compiler challenge
+generator?
+
+## Background
 
 Build deterministic workload generators whose difficulty can grow continuously
 instead of saturating at one application-specific threshold. Generate families
@@ -26,7 +21,17 @@ semantic oracles. Every instance is identified by family, version, seed, target
 profile, and explicit difficulty parameters so two algorithms can be compared on
 exactly the same problem rather than on vaguely similar examples.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Methodology
+- Planning identity: `parametric-compiler-challenge-generator`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - Every challenge has stable family/version/seed/profile identity, an oracle,
   and difficulty parameters that can scale beyond trivial saturation while
@@ -40,13 +45,13 @@ exactly the same problem rather than on vaguely similar examples.
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `benchmarks/challenges/`, `docs/research/`,
   `tests/analysis/`, `compiler/`.
@@ -56,7 +61,26 @@ results. Source claims resolve through `docs/bibliography/`.
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Parametric Multi Objective Algorithm
+  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+- [Verification Trust
+  Boundary](../../technical/adr/verification-trust-boundary.md)

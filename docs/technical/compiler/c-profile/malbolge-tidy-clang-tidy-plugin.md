@@ -1,15 +1,8 @@
 # malbolge-tidy clang-tidy plugin
 
-- Status: Proposed
-- Planning identity: `malbolge-tidy-clang-tidy-plugin`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Deterministic C Surface And Clang
-  Tooling](../../adr/deterministic-c-surface-and-clang-tooling.md)
-- [Compiler Pipeline And Guest
-  Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
+Proposed
 
 ## Purpose
 
@@ -17,12 +10,28 @@ Build `tools/tidy/` as an out-of-tree clang-tidy plugin compiled against the
 pinned LLVM version. Add Malbolge checks without forking Clang or weakening the
 existing clang-tidy baseline.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `tools/tidy/`
+- `libc/`
+- `runtime/`
+- `docs/technical/specification/`
+- `tests/tidy/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `malbolge-tidy-clang-tidy-plugin`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -43,7 +52,16 @@ lowered through host-dependent behavior.
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
+- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`,
+  `jig-repository-governance`.
+## References
 
-## Implementation Status
+- [Deterministic C Surface And Clang
+  Tooling](../../adr/deterministic-c-surface-and-clang-tooling.md)
+- [Compiler Pipeline And Guest
+  Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`

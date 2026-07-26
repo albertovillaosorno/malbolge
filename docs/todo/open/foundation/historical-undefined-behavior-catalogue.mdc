@@ -1,0 +1,47 @@
+---
+id: "historical-undefined-behavior-catalogue"
+status: "pending"
+lane: "2"
+area: "foundation"
+task: "TODO - Historical undefined-behavior catalogue"
+contract: "docs/technical/specification/historical-undefined-behavior.md"
+depends_on:
+  - "historical-malbolge-semantics-specification"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "tools/malbolge/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Historical undefined-behavior catalogue
+
+## Objective
+
+Catalogue one-instruction loading, invalid executable cells, platform-dependent
+newline behavior, source validation quirks, and other accidental or undefined C
+behavior separately from intended Malbolge semantics.
+
+## Acceptance
+
+- Every known implementation defect or undefined/pathological behavior is
+  classified as intended semantics, compatibility quirk, implementation defect,
+  or unspecified historical behavior with a regression fixture where
+  reproducible.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.
+- Prerequisite completion evidence:
+  `historical-malbolge-semantics-specification`.

@@ -1,28 +1,34 @@
 # Self-hosting equivalence proof
 
-- Status: Proposed
-- Planning identity: `self-hosting-equivalence-proof`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Self Hosting As Conformance
-  Goal](../../adr/self-hosting-as-conformance-goal.md)
-- [Compiler Pipeline And Guest
-  Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
-- [Verification Trust Boundary](../../adr/verification-trust-boundary.md)
+Proposed
 
 ## Purpose
 
 Compare native and Malbolge-hosted compiler outputs or normalized semantic
 artifacts and prove self-hosting does not silently change compilation meaning.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `examples/self_host/`
+- `compiler/`
+- `tests/self_hosting/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `self-hosting-equivalence-proof`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -43,7 +49,18 @@ failed conformance result.
   `tests/self_hosting/`.
 - Required evidence: compiler inputs/outputs, canonical comparison against
   native compilation, resource/profile requirements, and verifier acceptance.
+- Prerequisite completion evidence: `malbolge-compiler-compiles-c-to-malbolge`,
+  `translation-validation`, `proof-producing-lowering`.
+## References
 
-## Implementation Status
+- [Self Hosting As Conformance
+  Goal](../../adr/self-hosting-as-conformance-goal.md)
+- [Compiler Pipeline And Guest
+  Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
+- [Verification Trust Boundary](../../adr/verification-trust-boundary.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/self-hosting-as-conformance-goal.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
+- `docs/technical/adr/verification-trust-boundary.md`

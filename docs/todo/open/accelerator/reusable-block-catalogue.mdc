@@ -1,0 +1,52 @@
+---
+id: "reusable-block-catalogue"
+status: "pending"
+lane: "13"
+area: "accelerator"
+task: "TODO - Reusable block catalogue"
+contract: "docs/technical/integrations/accelerators/reusable-block-catalogue.md"
+depends_on:
+  - "deterministic-cpu-optimizer"
+  - "translation-validation"
+  - "malbolge-layout-and-encoding-backend"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Reusable block catalogue
+
+## Objective
+
+Build a deterministic catalogue of verified arithmetic, branch, memory, calling
+convention, and runtime blocks so common operations are solved once and reused
+instead of synthesized from scratch for every compilation.
+
+## Acceptance
+
+- Every catalog entry binds semantic pre/postconditions, profile constraints,
+  cost metrics, provenance, and verifier identity; lookup never substitutes a
+  block whose contract does not match.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `deterministic-cpu-optimizer`,
+  `translation-validation`, `malbolge-layout-and-encoding-backend`.

@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.replaceable-accelerator-and-algorithm-ports`
+
 ## Context
 
 Candidate search and batch VM execution can benefit from GPUs, but binding the
@@ -16,7 +20,7 @@ Hardware acceleration and search algorithms are independent ports.
 
 Hardware adapters provide capabilities such as batch execution, candidate
 evaluation, memory/resource reporting, and asynchronous work submission. CPU is
-the mandatory reference implementation; CUDA is the first GPU adapter; AMD and
+the mandatory reference implementation; CUDA is the first GPU adapter; ROCm and
 future devices can implement the same contract.
 
 Algorithm adapters describe enumerative, stochastic, Monte Carlo, evolutionary,
@@ -26,17 +30,14 @@ that executes their batches.
 Runtime resource budgeting adapts batch size, state layout, caches, and search
 breadth to measured device capacity rather than fixed VRAM assumptions.
 
-## Alternatives Considered
+## Advantages
 
-### CUDA-owned optimizer architecture
+- Makes the replaceable accelerator and algorithm ports boundary explicit,
+  reviewable, and stable before implementation depends on it.
 
-Rejected because optimization semantics and research strategy would become tied
-to NVIDIA-specific APIs.
+## Disadvantages
 
-### Separate algorithms per hardware backend
-
-Rejected because it prevents fair comparison of the same strategy across CPU,
-CUDA, AMD, and future devices.
+- The decision increases cross-backend implementation and validation cost.
 
 ## Consequences
 
@@ -46,7 +47,19 @@ CUDA, AMD, and future devices.
 - More memory or compute can increase measured throughput but no exponential
   scaling claim is accepted without evidence.
 
-## Implementation Notes
+## Rejected Alternatives
+
+### CUDA-owned optimizer architecture
+
+Rejected because optimization semantics and research strategy would become tied
+to NVIDIA-specific APIs.
+
+### Separate algorithms per hardware backend
+
+Rejected because it prevents fair comparison of the same strategy across CPU,
+CUDA, ROCm, and future devices.
+
+## Evidence
 
 Unsupported hardware/algorithm combinations fail explicitly. Correctness remains
 verifier-owned even when candidate evaluation occurs on an accelerator.

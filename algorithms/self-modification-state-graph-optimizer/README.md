@@ -1,8 +1,9 @@
 # Self-modification state-graph optimizer
 
 This directory is the executable mirror for research ID
-`self-modification-state-graph-optimizer`. The academic record is
-[`docs/research/algorithms/self-modification-state-graph-optimizer/README.md`](../../docs/research/algorithms/self-modification-state-graph-optimizer/README.md).
+`self-modification-state-graph-optimizer`. The human research record uses the
+same ID under `docs/research/algorithms/`, and its mathematical contract, when
+present, uses the same ID under `math/algorithms/`.
 
 Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.

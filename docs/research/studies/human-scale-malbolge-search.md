@@ -1,25 +1,32 @@
 # Human-scale Malbolge search study
 
-- Status: Proposed
-- Record type: Study
-- Planning identity: `human-scale-malbolge-search-study`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
-- [Parametric Multi Objective Algorithm
-  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)
+## Research Question
 
-## Purpose
+What evidence and method are required to evaluate human-scale malbolge search
+study?
+
+## Background
 
 Create a bounded experiment illustrating why manual Malbolge synthesis is
 cognitively impractical even for very capable humans, separating attention and
 energy limits from machine-search throughput without bogus IQ or neuroscience
 claims.
 
-## Evidence Model
+- Status: Proposed
+- Record type: Study
+- Planning identity: `human-scale-malbolge-search-study`
+- Last reviewed: 2026-07-26
+
+## Prior Work
+
+Prior-work claims must resolve through canonical records under
+`docs/bibliography/`.
+
+## Hypothesis
 
 - The study uses bounded reproducible tasks and measured search-space/work
   estimates and avoids unsupported IQ, cognition, or neuroscience claims about
@@ -36,13 +43,13 @@ claims.
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
 
-## Method Or Procedure
+## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-## Verification And Review
+## Evidence
 
 - Expected durable artifact surface: `docs/research/`, `algorithms/`,
   `benchmarks/research/`.
@@ -55,7 +62,24 @@ results. Source claims resolve through `docs/bibliography/`.
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
 
-## Current Status
+## Results
 
 No completed research result or implementation claim is made by this proposed
 record.
+
+## Threats to Validity
+
+The record is proposed; implementation bias, workload selection, hardware
+effects, and incomplete replication remain threats until measured.
+
+## Conclusion
+
+Open. No technique is promoted to product architecture until the declared
+evidence supports it.
+
+## References
+
+- [Research Evidence And Algorithm
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md)
+- [Parametric Multi Objective Algorithm
+  Evaluation](../adr/parametric-multi-objective-algorithm-evaluation.md)

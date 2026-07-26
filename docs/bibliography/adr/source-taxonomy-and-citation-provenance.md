@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.bibliography.source-taxonomy-and-citation-provenance`
+
 ## Context
 
 Technical specifications, research papers, legal analysis, and governance all
@@ -34,7 +38,25 @@ external authority.
 A bibliography citation never creates repository policy, establishes legal
 permission, or proves an experimental conclusion by itself.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the bibliography source taxonomy and citation provenance boundary
+  explicit, reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- Exact taxonomy increases migration work when the documentation contract
+  changes.
+
+## Consequences
+
+- One source record can support several documentation families.
+- Source currentness and uncertainty remain visible without changing product
+  decisions automatically.
+- Research papers can generate `.bib` projections from canonical evidence later
+  without making BibTeX the only human-readable source catalog.
+
+## Rejected Alternatives
 
 ### Research-owned bibliography
 
@@ -46,19 +68,12 @@ sources.
 Rejected because source identity, version drift, and provenance would be copied
 and become inconsistent.
 
-## Consequences
-
-- One source record can support several documentation families.
-- Source currentness and uncertainty remain visible without changing product
-  decisions automatically.
-- Research papers can generate `.bib` projections from canonical evidence later
-  without making BibTeX the only human-readable source catalog.
-
-## Implementation Notes
+## Evidence
 
 `docs/bibliography/adr/` owns only bibliography-governance decisions. Subject
-records use `docs/bibliography/template.md` as the baseline shape.
+records use `docs/bibliography/provenance-and-methodology/template.md` as the baseline shape.
 
-`docs/bibliography/provenance/` owns claim-level verification ledgers. Those
-ledgers may cite Git commits as internal decision provenance, but external facts
-still resolve to primary or authoritative bibliography records.
+`docs/bibliography/provenance-and-methodology/repository/` owns claim-level
+verification ledgers. Those ledgers may cite Git commits as internal decision
+provenance, but external facts still resolve to primary or authoritative
+bibliography records.

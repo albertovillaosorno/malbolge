@@ -1,8 +1,18 @@
-# Legal Decision Records
+# Adr
 
-Legal ADRs record repository decisions about source-use posture, license
-handling, publication boundaries, and the treatment of unresolved legal facts.
-They do not turn an engineering preference into an external legal conclusion.
+## Purpose
 
-Dated authority analysis remains in ordinary legal records. Bibliography records
-remain non-governing evidence.
+Catalog `docs/legal/adr/`.
+
+## Owns
+
+Records physically owned by `docs/legal/adr/`.
+
+## Does Not Own
+
+Technical architecture, research results, or inferred permission.
+
+## Contents
+
+- `legal-research-and-repository-boundary.md`
+- `template.md`

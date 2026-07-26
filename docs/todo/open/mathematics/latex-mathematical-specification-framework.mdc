@@ -1,0 +1,53 @@
+---
+id: "latex-mathematical-specification-framework"
+status: "pending"
+lane: "5"
+area: "mathematics"
+task: "TODO - LaTeX mathematical specification framework"
+contract: "docs/technical/specification/mathematics/framework.md"
+depends_on:
+  - "historical-malbolge-semantics-specification"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "math/specification/"
+  - "docs/research/algorithms/"
+  - "algorithms/"
+  - "tests/mathematics/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - LaTeX mathematical specification framework
+
+## Objective
+
+Create a `math/` surface of `.tex` specifications for ternary words,
+rotation, crazy operation, decoding, self-modification, memory models, compiler
+lowering, equivalence relations, and search cost functions.
+
+## Acceptance
+
+- Normative equations have stable notation/definitions and a buildable LaTeX
+  structure that can be referenced by research records and executable
+  correspondence tests.
+- Definitions state domains and assumptions precisely; executable code cannot
+  claim a mathematical reduction outside those stated preconditions.
+- Every correctness-relevant equation or equivalence used by implementation has
+  explicit domain assumptions and a traceable executable correspondence check.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `math/`, `docs/research/algorithms/`,
+  `algorithms/`, `tests/mathematics/`.
+- Required evidence: `.tex` definitions/derivations plus exhaustive,
+  property-based, or machine-checked correspondence for the admitted domain.
+- Prerequisite completion evidence:
+  `historical-malbolge-semantics-specification`.
+- Mathematical evidence pending: normative/research LaTeX source plus executable
+  or machine-checked correspondence for the claimed domain.

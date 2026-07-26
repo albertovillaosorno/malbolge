@@ -1,0 +1,51 @@
+---
+id: "rocm-accelerator-adapter"
+status: "pending"
+lane: "9"
+area: "accelerator"
+task: "TODO - ROCm accelerator adapter"
+contract: "docs/technical/integrations/accelerators/rocm-accelerator-adapter.md"
+depends_on:
+  - "replaceable-accelerator-boundary"
+  - "configurable-accelerator-algorithm-adapters"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/rocm/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - ROCm accelerator adapter
+
+## Objective
+
+Add a ROCm accelerator implementation behind the same hardware-neutral port
+without changing compiler semantics, target profiles, or verifier contracts.
+
+## Acceptance
+
+- The ROCm adapter satisfies the same capability/algorithm contracts without
+  CUDA types, APIs, or configuration becoming required by shared compiler code.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/rocm/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results against x86-64 and
+  AArch64 hosts, ROCm device/runtime metadata, failure/fallback tests, and
+  benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
+  `configurable-accelerator-algorithm-adapters`.

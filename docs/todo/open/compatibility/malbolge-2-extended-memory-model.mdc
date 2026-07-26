@@ -1,0 +1,49 @@
+---
+id: "malbolge-2-extended-memory-model"
+status: "pending"
+lane: "6"
+area: "compatibility"
+task: "TODO - Malbolge 2 extended memory model"
+contract: "docs/technical/compatibility/malbolge-2-extended-memory-model.md"
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "safe-rust-malbolge-vm"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "compatibility/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Malbolge 2 extended memory model
+
+## Objective
+
+Remove the practical 59,049-word ceiling through an explicit extension while
+preserving normative 1998 specification behavior for programs inside the classic
+machine. Define multiword or paged addressing without pretending a ten-trit word
+can directly address arbitrary memory.
+
+## Acceptance
+
+- The extension permits logical addresses beyond 59048 while preserving classic
+  10-trit arithmetic/crazy/rotate behavior and observational identity for
+  programs that remain inside classic bounds.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `safe-rust-malbolge-vm`.

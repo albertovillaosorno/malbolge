@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.research.parametric-multi-objective-algorithm-evaluation`
+
 ## Context
 
 Fixed demonstrations such as a game can saturate: two algorithms may both exceed
@@ -30,7 +34,25 @@ The challenge schema is machine-readable so human researchers and LLM-based
 agents can propose algorithms against the same verifier. An agent never
 self-certifies correctness.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the parametric multi-objective algorithm evaluation boundary explicit,
+  reviewable, and stable before implementation depends on it.
+
+## Disadvantages
+
+- The decision constrains future implementation until a later ADR deliberately
+  supersedes it.
+
+## Consequences
+
+- DOOM remains a valuable real-world interoperability demonstration but not the
+  scientific definition of optimizer quality.
+- Research reports must retain raw multidimensional evidence.
+- Challenge generators and semantic oracles become reusable research
+  infrastructure.
+
+## Rejected Alternatives
 
 ### One flagship application benchmark
 
@@ -42,15 +64,7 @@ once all algorithms cross the application's fixed usability threshold.
 Rejected as authoritative because weighting hides whether an algorithm trades
 memory, runtime, compilation cost, success probability, or output size.
 
-## Consequences
-
-- DOOM remains a valuable real-world interoperability demonstration but not the
-  scientific definition of optimizer quality.
-- Research reports must retain raw multidimensional evidence.
-- Challenge generators and semantic oracles become reusable research
-  infrastructure.
-
-## Implementation Notes
+## Evidence
 
 Difficulty need not be mathematically monotonic for every individual instance,
 but families must expose enough controlled scaling to support capacity studies

@@ -1,17 +1,8 @@
 # User-supplied DOOM source interoperability generator
 
-- Status: Proposed
-- Planning identity: `user-supplied-doom-source-interoperability-generator`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Deterministic C Surface And Clang
-  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
-- [Legal Research And Repository
-  Boundary](../../legal/adr/legal-research-and-repository-boundary.md)
+Proposed
 
 ## Purpose
 
@@ -25,13 +16,28 @@ amalgamated build before admitting the artifact to later transformation. The
 repository does not redistribute the user-supplied source or game data, and
 generated material keeps its applicable upstream license and provenance.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `doom/`
+- `interop/algorithms/amalgamate.rs`
+- `interop/algorithms/out/`
+- `tests/applications/doom/out/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `user-supplied-doom-source-interoperability-generator`. The implementation may
 change internal representation or language choices without changing the
 observable behavior, trust boundary, or ownership rules stated by its governing
 decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -53,7 +59,19 @@ demonstrations may not substitute host logic for guest behavior.
   `tests/applications/doom/out/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `clang-c-frontend-integration`,
+  `reuse-shar-legal-and-interoperability-corpus`.
+## References
 
-## Implementation Status
+- [Deterministic C Surface And Clang
+  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+- [Legal Research And Repository
+  Boundary](../../legal/adr/legal-research-and-repository-boundary.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
+- `docs/legal/adr/legal-research-and-repository-boundary.md`

@@ -4,58 +4,181 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.documentation-authority-taxonomy`
+
 ## Context
 
-The repository needs durable decisions, technical specifications, research
-records, legal analysis, and source provenance. A single global ADR tree scales
-poorly because unrelated domains compete for one taxonomy and decision records
-begin to absorb material that should remain ordinary documentation.
+The repository needs durable technical specifications, research records, legal
+analysis, source provenance, mathematical contracts, and typed unfinished work.
+A global ADR tree scales poorly because unrelated domains compete for one
+namespace, while permissive documentation layouts allow duplicate catalogs and
+ambiguous ownership to accumulate.
 
 The repository also needs a shape that Jig can validate mechanically without
-requiring Malbolge to own a second documentation-linter implementation.
+requiring Malbolge to implement a second documentation linter.
 
 ## Decision
 
-Documentation is organized by authority family before subject taxonomy.
+Documentation is organized by authority family before subject taxonomy. Exactly
+four authoritative families live under `docs/`:
 
-The four authority families are `technical`, `research`, `legal`, and
-`bibliography`. Each family owns a local `adr/` directory for decisions that
-belong to that family. A global `docs/adr/` directory is not permitted.
+- `docs/technical/`;
+- `docs/research/`;
+- `docs/legal/`; and
+- `docs/bibliography/`.
 
-ADRs contain bounded durable decisions and material alternatives. They do not
-contain implementation tutorials, research result dumps, legal-source summaries,
-bibliography entries, TODO history, or chat transcripts merely because those
-items influenced a decision.
+Each family owns a local `adr/` directory. A global `docs/adr/` directory is not
+permitted. `docs/todo/` is typed governance state, not a fifth authority family.
+Validation integration data such as CSpell dictionaries lives under
+`integrations/`, and machine-governed `.tex` specifications live under `math/`.
 
-`docs/cspell/` remains under `docs/` as editorial tooling support. It is not an
-authority family.
+### Closed First-Level Categories
 
-## Alternatives Considered
+Technical documentation may use:
 
-### Global ADR repository
+- `architecture`;
+- `compatibility`;
+- `compiler`;
+- `contracts`;
+- `examples`;
+- `generated`;
+- `integrations`;
+- `interoperability`;
+- `runtime`;
+- `specification`;
+- `tooling`; and
+- `verification`.
 
-A single `docs/adr/` tree can provide strong individual ADR discipline, but at
-large scale it becomes a monolithic taxonomy spanning unrelated knowledge
-owners. This repository rejects that shape.
+Research documentation may use:
 
-### No ADRs outside technical documentation
+- `algorithms`;
+- `experiments`;
+- `methodology`;
+- `papers`; and
+- `studies`.
 
-Keeping every decision under technical documentation would incorrectly make
-research-method, legal-handling, and bibliography-governance decisions appear
-to be technical behavior.
+Legal documentation may use:
+
+- `authorities`;
+- `cases`;
+- `contracts`;
+- `doctrines`;
+- `interoperability`;
+- `jurisdictions`;
+- `licenses`;
+- `platforms`;
+- `repository`; and
+- `statutes`.
+
+Bibliography documentation may use:
+
+- `languages`;
+- `legal-and-regulatory`;
+- `libraries`;
+- `organizations-and-projects`;
+- `platforms-and-runtimes`;
+- `provenance-and-methodology`;
+- `publications`;
+- `specifications-and-standards`; and
+- `tooling`.
+
+### Catalog Contract
+
+Every family and nested documentation directory uses `README.md` as its catalog.
+A second `index.md` catalog is not maintained. Catalog H2 sections are exactly:
+
+1. `Purpose`; 2. `Owns`; 3. `Does Not Own`; and 4. `Contents`.
+
+### Record Schemas
+
+Family records are Markdown-only. ADRs use the exact H2 sequence:
+
+1. `Status`; 2. `Decision ID`; 3. `Context`; 4. `Decision`; 5. `Advantages`; 6.
+   `Disadvantages`; 7. `Consequences`; 8. `Rejected Alternatives`; and 9.
+   `Evidence`.
+
+Ordinary technical records use `Status`, `Purpose`, `Scope`, `Current Behavior`,
+`Invariants`, `Failure Behavior`, `Verification`, and `References`. Technical
+contracts use `Status`, `Intent`, `Contract`, `Evidence Boundary`,
+`Diagnostics`, `Examples`, `Implementation`, and `References`.
+
+Research, legal, and bibliography records use their family-specific schemas
+recorded by Jig and mirrored by the current repository templates. A schema
+change is a governance migration and must update both the validator and these
+accepted authorities together.
+
+### Planning And Mathematical Authority
+
+Active typed work lives under `docs/todo/open/<area>/<id>.mdc`. Completed work
+moves to `docs/todo/completed/<area>/<id>.mdc` only after its durable evidence
+is accepted and its exact heading leaves `TODO.md`.
+
+Human explanations of mathematics remain in the appropriate documentation
+family. Machine-governed mathematical sources live under `math/specification/`
+or `math/algorithms/`. A `.tex` specification defines mathematics; it does not
+by itself prove that an implementation satisfies the mathematics.
+
+## Advantages
+
+- Every durable proposition has one visible authority owner.
+- ADRs remain close to the documentation family they govern.
+- Catalog and record shapes are deterministic enough for fail-closed validation.
+- Research prose, executable experiments, and mathematical contracts remain
+  distinct without being separated by implementation language.
+- TODO lifecycle state and CSpell data no longer masquerade as documentation
+  authority.
+
+## Disadvantages
+
+- Exact taxonomy makes structural changes explicit migrations rather than cheap
+  ad hoc folder creation.
+- New documentation categories require an accepted governance change instead of
+  appearing opportunistically.
+- Strict schemas require editorial work when old documents are promoted.
 
 ## Consequences
 
-- Readers choose the authority family before navigating subject taxonomy.
-- Decision records remain near the documentation they govern.
-- Bibliography and research remain independent surfaces.
-- Jig can validate one closed documentation topology later without Malbolge
-  implementing a duplicate validator.
-- Cross-family decisions require one primary owning ADR and references from
-  affected documents rather than duplicated accepted authorities.
+- Readers navigate by authority family and then by responsibility.
+- Every nested documentation directory has one `README.md` catalog.
+- `index.md` is not used as a competing catalog convention.
+- `integrations/cspell/` is validation integration data outside `docs/`.
+- `.tex` artifacts are kept under `math/`, outside Markdown-only documentation
+  families.
+- Jig may validate this topology directly instead of Malbolge owning a duplicate
+  validator.
 
-## Implementation Notes
+## Rejected Alternatives
 
-The documentation root is governed by `docs/README.md`. Each family maintains
-an index, template surface, and local ADR guidance. Empty subject directories may
-exist during planning, but authority is created only by reviewed records.
+### Global ADR Repository
+
+A single `docs/adr/` tree was rejected because it becomes a monolithic taxonomy
+spanning unrelated knowledge owners.
+
+### Research-Owned Bibliography
+
+Bibliography was not nested under research because technical and legal records
+consume the same external evidence.
+
+### Documentation-Owned Mathematical Sources
+
+Keeping `.tex` under `docs/` was rejected once documentation became
+Markdown-only. Mathematical contracts are machine-governed artifacts with a
+separate correspondence obligation.
+
+### Duplicate README And Index Catalogs
+
+Maintaining both `README.md` and `index.md` was rejected because two catalogs
+can drift while appearing equally authoritative.
+
+## Evidence
+
+- the four documentation-family catalogs
+- `docs/technical/README.md`
+- `docs/research/README.md`
+- `docs/legal/README.md`
+- `docs/bibliography/README.md`
+- `docs/todo/open/`
+- `integrations/cspell/`
+- `math/README.md`

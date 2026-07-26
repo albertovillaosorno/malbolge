@@ -1,17 +1,23 @@
-# Legal Documentation
+# Legal
 
-Legal documentation contains dated legal and source-use research relevant to
-repository publication, licensing, interoperability, user-supplied inputs, and
-third-party boundaries. It does not provide legal advice or infer permission
-from engineering intent.
+## Purpose
 
-- `adr/` contains repository decisions about legal/documentation handling.
-- `authorities/` contains bounded authority summaries when needed.
-- `licenses/` contains license-specific analysis and repository boundaries.
-- `interoperability/` contains interoperability/source-use analysis.
-- `repository/` contains repository publication and distribution boundaries.
+Catalog repository legal and source-use research.
 
-External legal sources are recorded in `docs/bibliography/` and cited from legal
-records rather than duplicated.
+## Owns
 
-See [disclaimer.md](disclaimer.md) for the legal-research boundary.
+Bounded legal questions, authorities, analysis, and family-local decisions.
+
+## Does Not Own
+
+Technical architecture, research results, or inferred permission.
+
+## Contents
+
+- `adr/`
+- `authorities/`
+- `interoperability/`
+- `licenses/`
+- `repository/`
+- `disclaimer.md`
+- `template.md`

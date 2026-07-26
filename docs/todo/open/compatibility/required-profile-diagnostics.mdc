@@ -1,0 +1,48 @@
+---
+id: "required-profile-diagnostics"
+status: "pending"
+lane: "7"
+area: "compatibility"
+task: "TODO - Required-profile diagnostics"
+contract: "docs/technical/compatibility/required-profile-diagnostics.md"
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "malbolge-2-extended-memory-model"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "compatibility/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Required-profile diagnostics
+
+## Objective
+
+Emit deterministic diagnostics such as `This program requires Malbolge >= 2`,
+the required memory size, and the original 59,049-word limit when historical
+execution is impossible.
+
+## Acceptance
+
+- Programs that require an unsupported target profile fail before unsafe
+  execution with deterministic diagnostics naming required
+  version/features/memory and the runtime capability that is missing.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `malbolge-2-extended-memory-model`.

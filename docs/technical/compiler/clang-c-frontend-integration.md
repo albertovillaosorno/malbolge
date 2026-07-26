@@ -1,27 +1,34 @@
 # Clang C frontend integration
 
-- Status: Proposed
-- Planning identity: `clang-c-frontend-integration`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Deterministic C Surface And Clang
-  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
-- [Compiler Pipeline And Guest
-  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
+Proposed
 
 ## Purpose
 
 Use Clang as the C parser, type system, constant evaluator, source-location
 provider, and AST frontend instead of building another C parser.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `compiler/`
+- `src/`
+- `tests/compiler/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `clang-c-frontend-integration`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -42,7 +49,15 @@ profile requirements fail closed before emitting accepted target code.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
+- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
+## References
 
-## Implementation Status
+- [Deterministic C Surface And Clang
+  Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
+- [Compiler Pipeline And Guest
+  Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
+- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`

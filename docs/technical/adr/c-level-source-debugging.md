@@ -4,6 +4,10 @@
 
 Accepted.
 
+## Decision ID
+
+`jig.malbolge.technical.c-level-source-debugging`
+
 ## Context
 
 Generated Malbolge may be extremely large and position-dependent. Requiring an
@@ -20,7 +24,24 @@ inspect raw VM state for implementation work, but normal application debugging
 supports C file/line breakpoints, stepping, frames, variables, and lowering
 traces where representable.
 
-## Alternatives Considered
+## Advantages
+
+- Makes the c-level source debugging boundary explicit, reviewable, and stable
+  before implementation depends on it.
+
+## Disadvantages
+
+- Source-level mapping requires metadata that raw target execution would not
+  otherwise need.
+
+## Consequences
+
+- Source provenance becomes part of compiler contracts.
+- Optimization must preserve enough mapping information for useful diagnostics.
+- Debug builds may trade output size or optimization quality for source
+  observability.
+
+## Rejected Alternatives
 
 ### Raw Malbolge debugger only
 
@@ -32,14 +53,7 @@ validation.
 Rejected because the target language remains difficult; providing tooling does
 not change target semantics.
 
-## Consequences
-
-- Source provenance becomes part of compiler contracts.
-- Optimization must preserve enough mapping information for useful diagnostics.
-- Debug builds may trade output size or optimization quality for source
-  observability.
-
-## Implementation Notes
+## Evidence
 
 The source-map file format is versioned and deterministic. Debugger support must
 not require host implementations of guest application logic.

@@ -1,14 +1,10 @@
 # Planning corpus promotion to durable documentation
 
-- Status: Proposed
-- Planning identity: `planning-corpus-promotion-to-durable-documentation`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
+Proposed
 
-- [Documentation Authority Taxonomy](../adr/documentation-authority-taxonomy.md)
-
-## Purpose
+## Intent
 
 Once ROADMAP and typed TODO coverage are stable, classify every settled planning
 choice into its durable owning surface instead of copying TODO prose wholesale.
@@ -21,7 +17,9 @@ choices remain visibly proposed; implementation details remain in their owning
 technical documents. No global catch-all ADR, duplicate authority, or
 chat-history archive is created during promotion.
 
-## Proposed Model
+## Contract
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `planning-corpus-promotion-to-durable-documentation`. The implementation may
@@ -29,7 +27,7 @@ change internal representation or language choices without changing the
 observable behavior, trust boundary, or ownership rules stated by its governing
 decisions.
 
-## Invariants
+### Invariants
 
 - Every settled planning decision is routed to one owning durable document
   family; unresolved choices remain explicitly proposed rather than being
@@ -44,18 +42,35 @@ decisions.
   real existing files with no invented placeholder paths or duplicate
   authorities.
 
-## Failure Behavior
+## Evidence Boundary
+
+- Expected durable artifact surface: the four documentation families plus
+  updated `contract`/`adr_paths` metadata across the active TODO registry.
+- Prerequisite completion evidence: `documentation-authority-taxonomy`,
+  `repository-bibliography-taxonomy-and-citation-provenance`,
+  `academic-research-methodology-and-evidence-model`, and
+  `reuse-shar-legal-and-interoperability-corpus`.
+- Evidence must include a complete mapping from active TODO intent to owning
+  durable documentation or an explicit unresolved decision record.
+
+## Diagnostics
 
 Missing or competing authority blocks promotion rather than creating a duplicate
 or placeholder decision.
 
-## Verification
+## Examples
 
-- Expected durable artifact surface: the four documentation families plus
-  updated `contract`/`adr_paths` metadata across the active TODO registry.
-- Evidence must include a complete mapping from active TODO intent to
-  owning durable documentation or an explicit unresolved decision record.
+- No normative example is required at this planning stage unless the contract
+  states one.
 
-## Implementation Status
+## Implementation
 
 Not implemented. This proposed contract does not claim executable support yet.
+
+## References
+
+- [Documentation Authority Taxonomy](../adr/documentation-authority-taxonomy.md)
+
+### Governing ADR Paths
+
+- `docs/technical/adr/documentation-authority-taxonomy.md`

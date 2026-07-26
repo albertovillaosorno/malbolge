@@ -1,13 +1,8 @@
 # Malbolge 2 extended memory model
 
-- Status: Proposed
-- Planning identity: `malbolge-2-extended-memory-model`
-- Last reviewed: 2026-07-26
+## Status
 
-## Governing Decisions
-
-- [Specification Authority And Malbolge
-  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+Proposed
 
 ## Purpose
 
@@ -16,12 +11,26 @@ preserving normative 1998 specification behavior for programs inside the classic
 machine. Define multiword or paged addressing without pretending a ten-trit word
 can directly address arbitrary memory.
 
-## Proposed Model
+## Scope
+
+This document governs the following declared TODO scope:
+
+- `compatibility/`
+- `docs/technical/specification/`
+- `tests/compatibility/`
+
+## Current Behavior
+
+### Proposed Model
 
 This record defines the contract that implementation must satisfy for
 `malbolge-2-extended-memory-model`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
+
+### Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
@@ -42,7 +51,13 @@ diagnostic; classic behavior is never guessed.
   `docs/technical/specification/`, `tests/compatibility/`.
 - Required evidence: classic specification-conformance corpus plus
   extension/profile boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `safe-rust-malbolge-vm`.
+## References
 
-## Implementation Status
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Governing ADR Paths
+
+- `docs/technical/adr/specification-authority-and-malbolge-evolution.md`
