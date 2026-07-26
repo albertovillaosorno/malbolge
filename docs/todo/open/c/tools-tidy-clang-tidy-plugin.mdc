@@ -1,6 +1,6 @@
 ---
 id: "tools-tidy-clang-tidy-plugin"
-status: "pending"
+status: "active"
 lane: "7"
 area: "c"
 task: "TODO - tools/tidy clang-tidy plugin"
@@ -34,8 +34,12 @@ existing clang-tidy baseline.
 - The out-of-tree plugin loads against the pinned LLVM version, registers only
   documented `malbolge-*` checks, and emits deterministic source-located
   diagnostics without weakening ordinary clang-tidy checks.
+- Guest-C validation is manual and opt-in for explicitly named translation
+  units; arbitrary repository C is never enrolled by extension or source marker.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
+- Rust fixtures/tests develop and regress the profile; they are not the
+  user-facing compatibility validator.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and

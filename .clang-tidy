@@ -1,19 +1,20 @@
-# Jig C/C++ validation authority.
+# Repository host/native C/C++ validation authority.
 #
-# VERIFIED AGAINST: LLVM 24 (clang-tools-extra/clang-tidy), the checkout at
-# reference/llvm-project. 472 registered checks across 23 families. Every check
-# name, option name, and alias direction below was read out of that source, not
-# recalled. Re-verify on every clang-tidy version bump: families are renamed and
-# merged between releases, and a config that names a check which no longer
-# exists is silently inert, which is indistinguishable from passing.
+# VERIFIED AGAINST: stable LLVM 22.1.8 (clang-tools-extra/clang-tidy). The
+# shipped binary registers 604 checks across 25 families. Every check name,
+# option name, and alias direction below was verified against that binary and
+# the llvmorg-22.1.8 source. Re-verify on every clang-tidy version bump:
+# families are renamed and merged between releases, and a config that names a
+# check which no longer exists is silently inert, which is indistinguishable
+# from passing.
 #
 # clang-tidy is not yet pinned in jig.toml. When it is added under [tool] and
 # [validation], this file becomes the executed contract; until then it is the
-# declared contract only. The native validator contract roadmap task owns that
+# declared contract only. The native validator contract TODO task owns that
 # wiring.
 #
-# This file is the single authority. A repository-local .clang-tidy must never
-# relax it.
+# This file is the host/native validation authority. Malbolge guest-C compatibility is
+# a separate explicit profile under tools/tidy/ and must never be inferred from this file.
 InheritParentConfig: false
 
 # ENABLED FAMILIES ('*' below turns everything on). Families with no surface in
@@ -25,11 +26,10 @@ InheritParentConfig: false
 #   boost-*           Boost migration correctness (inert without Boost).
 #   bugprone-*        real bug patterns: swapped arguments, bad sizeof, unsafe
 #                     libc functions, use-after-move, narrowing, and the
-#                     signed-bitwise and exhaustive-if/else checks that used to
-#                     live in hicpp-*.
+#                     signed conversions and control-flow errors.
 #   cert-*            SEI CERT C/C++ secure-coding rules. Most members are now
 #                     aliases of bugprone/misc canonicals; the alias list below
-#                     is current as of LLVM 24.
+#                     is current as of LLVM 22.1.8.
 #   clang-analyzer-*  path-sensitive static analysis: null derefs, leaks,
 #                     double free, uninitialized reads, taint.
 #   clang-diagnostic-* compiler warnings surfaced as checks; combined with
@@ -47,6 +47,10 @@ InheritParentConfig: false
 #   google-*          non-alias members: no using-namespace in headers, no
 #                     global names in headers, fixed-width ints over
 #                     short/long (runtime-int), owned TODOs.
+#   hicpp-*           five independent High Integrity C++ checks remain in
+#                     LLVM 22.1.8: exception-baseclass, ignored-remove-result,
+#                     multiway-paths-covered, no-assembler, and signed-bitwise.
+#                     Its aliases are disabled below in favor of canonicals.
 #   linuxkernel-*     kernel err-return checking (inert outside kernel calls).
 #   llvm-*            path-derived header guards (llvm-header-guard is the
 #                     single header-guard authority), deterministic include
@@ -73,18 +77,6 @@ InheritParentConfig: false
 #   zircon-*          option-driven temporary-object bans (inert with the
 #                     default empty class list).
 #
-# NOT LISTED, BECAUSE IT NO LONGER EXISTS:
-#   hicpp-*           The High Integrity C++ module was removed from
-#                     clang-tools-extra before LLVM 24. Its unique checks were
-#                     absorbed elsewhere: signed-bitwise -> bugprone,
-#                     no-assembler -> portability, exception-baseclass ->
-#                     bugprone, multiway-paths-covered -> the new
-#                     bugprone-unhandled-code-paths. Every hicpp name is now
-#                     unknown, so disabling one is a no-op and configuring one
-#                     silently loses the strictness it was meant to add. All
-#                     hicpp entries were removed for that reason and their two
-#                     CheckOptions re-pointed at the surviving canonicals.
-#
 # DISABLED, GROUP 1 - ALIASES (canonical check kept -> alias removed).
 # Removing an alias never weakens validation: the identical check still runs
 # under its canonical name. Leaving one enabled is not a weakening either, but
@@ -105,14 +97,12 @@ InheritParentConfig: false
 #   cert-dcl59-cpp        = misc-anonymous-namespace-in-header
 #   cert-env33-c          = bugprone-command-processor
 #   cert-err09-cpp        = misc-throw-by-value-catch-by-reference
-#   cert-err33-c          = bugprone-unused-return-value
 #   cert-err34-c          = bugprone-unchecked-string-to-number-conversion
 #   cert-err52-cpp        = modernize-avoid-setjmp-longjmp
 #   cert-err58-cpp        = bugprone-throwing-static-initialization
 #   cert-err60-cpp        = bugprone-exception-copy-constructor-throws
 #   cert-err61-cpp        = misc-throw-by-value-catch-by-reference
 #   cert-exp42-c          = bugprone-suspicious-memory-comparison
-#   cert-exp45-c          = bugprone-assignment-in-selection-statement
 #   cert-fio38-c          = misc-non-copyable-objects
 #   cert-flp30-c          = bugprone-float-loop-counter
 #   cert-flp37-c          = bugprone-suspicious-memory-comparison
@@ -139,8 +129,6 @@ InheritParentConfig: false
 #                         = readability-magic-numbers
 #   cppcoreguidelines-c-copy-assignment-signature
 #                         = misc-unconventional-assign-operator
-#   cppcoreguidelines-explicit-constructor
-#                         = misc-explicit-constructor
 #   cppcoreguidelines-explicit-virtual-functions
 #                         = modernize-use-override
 #   cppcoreguidelines-macro-to-enum
@@ -165,8 +153,6 @@ InheritParentConfig: false
 #                         = misc-multiple-inheritance
 #   google-build-namespaces
 #                         = misc-anonymous-namespace-in-header
-#   google-explicit-constructor
-#                         = misc-explicit-constructor
 #   google-readability-braces-around-statements
 #                         = readability-braces-around-statements
 #   google-readability-casting
@@ -175,11 +161,47 @@ InheritParentConfig: false
 #                         = readability-function-size
 #   google-readability-namespace-comments
 #                         = llvm-namespace-comment
+#   hicpp-avoid-c-arrays  = modernize-avoid-c-arrays
+#   hicpp-avoid-goto      = cppcoreguidelines-avoid-goto
+#   hicpp-braces-around-statements
+#                         = readability-braces-around-statements
+#   hicpp-deprecated-headers
+#                         = modernize-deprecated-headers
+#   hicpp-explicit-conversions
+#                         = google-explicit-constructor
+#   hicpp-function-size   = readability-function-size
+#   hicpp-invalid-access-moved
+#                         = bugprone-use-after-move
+#   hicpp-member-init     = cppcoreguidelines-pro-type-member-init
+#   hicpp-move-const-arg  = performance-move-const-arg
+#   hicpp-named-parameter = readability-named-parameter
+#   hicpp-new-delete-operators
+#                         = misc-new-delete-overloads
+#   hicpp-no-array-decay
+#                         = cppcoreguidelines-pro-bounds-array-to-pointer-decay
+#   hicpp-no-malloc       = cppcoreguidelines-no-malloc
+#   hicpp-noexcept-move
+#                         = performance-noexcept-move-constructor
+#   hicpp-special-member-functions
+#                         = cppcoreguidelines-special-member-functions
+#   hicpp-static-assert   = misc-static-assert
+#   hicpp-undelegated-constructor
+#                         = bugprone-undelegated-constructor
+#   hicpp-uppercase-literal-suffix
+#                         = readability-uppercase-literal-suffix
+#   hicpp-use-auto        = modernize-use-auto
+#   hicpp-use-emplace     = modernize-use-emplace
+#   hicpp-use-equals-default
+#                         = modernize-use-equals-default
+#   hicpp-use-equals-delete
+#                         = modernize-use-equals-delete
+#   hicpp-use-noexcept    = modernize-use-noexcept
+#   hicpp-use-nullptr     = modernize-use-nullptr
+#   hicpp-use-override    = modernize-use-override
+#   hicpp-vararg          = cppcoreguidelines-pro-type-vararg
 #   llvm-else-after-return
 #                         = readability-else-after-return
 #   llvm-qualified-auto   = readability-qualified-auto
-#   performance-faster-string-find
-#                         = performance-prefer-single-char-overloads
 #
 # DISABLED, GROUP 2 - CONFLICTS (strictest/conventional side kept).
 #   modernize-use-trailing-return-type
@@ -198,7 +220,7 @@ InheritParentConfig: false
 #       mandatory via misc-use-internal-linkage.
 #   Note on a pair that looks conflicting but is not:
 #       readability-else-after-return (no else after return) and
-#       bugprone-unhandled-code-paths with WarnOnMissingElse (every if/else-if
+#       hicpp-multiway-paths-covered with WarnOnMissingElse (every if/else-if
 #       chain ends in else) share a fixed point: chains whose branches return
 #       are flattened into sequential early-return ifs, at which point no
 #       if/else-if chain remains and both checks are silent. Both stay enabled.
@@ -235,14 +257,12 @@ Checks: >
   -cert-dcl59-cpp,
   -cert-env33-c,
   -cert-err09-cpp,
-  -cert-err33-c,
   -cert-err34-c,
   -cert-err52-cpp,
   -cert-err58-cpp,
   -cert-err60-cpp,
   -cert-err61-cpp,
   -cert-exp42-c,
-  -cert-exp45-c,
   -cert-fio38-c,
   -cert-flp30-c,
   -cert-flp37-c,
@@ -266,7 +286,6 @@ Checks: >
   -cppcoreguidelines-avoid-c-arrays,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-c-copy-assignment-signature,
-  -cppcoreguidelines-explicit-constructor,
   -cppcoreguidelines-explicit-virtual-functions,
   -cppcoreguidelines-macro-to-enum,
   -cppcoreguidelines-narrowing-conversions,
@@ -278,14 +297,38 @@ Checks: >
   -fuchsia-header-anon-namespaces,
   -fuchsia-multiple-inheritance,
   -google-build-namespaces,
-  -google-explicit-constructor,
   -google-readability-braces-around-statements,
   -google-readability-casting,
   -google-readability-function-size,
   -google-readability-namespace-comments,
+  -hicpp-avoid-c-arrays,
+  -hicpp-avoid-goto,
+  -hicpp-braces-around-statements,
+  -hicpp-deprecated-headers,
+  -hicpp-explicit-conversions,
+  -hicpp-function-size,
+  -hicpp-invalid-access-moved,
+  -hicpp-member-init,
+  -hicpp-move-const-arg,
+  -hicpp-named-parameter,
+  -hicpp-new-delete-operators,
+  -hicpp-no-array-decay,
+  -hicpp-no-malloc,
+  -hicpp-noexcept-move,
+  -hicpp-special-member-functions,
+  -hicpp-static-assert,
+  -hicpp-undelegated-constructor,
+  -hicpp-uppercase-literal-suffix,
+  -hicpp-use-auto,
+  -hicpp-use-emplace,
+  -hicpp-use-equals-default,
+  -hicpp-use-equals-delete,
+  -hicpp-use-noexcept,
+  -hicpp-use-nullptr,
+  -hicpp-use-override,
+  -hicpp-vararg,
   -llvm-else-after-return,
   -llvm-qualified-auto,
-  -performance-faster-string-find,
   -modernize-use-trailing-return-type,
   -misc-use-anonymous-namespace,
   -llvmlibc-*,
@@ -337,7 +380,7 @@ UseColor: false
 # account name into diagnostic text, so identical source produces different
 # gate output on different machines. That is a real determinism defect in a gate
 # whose purpose is reproducible verdicts. The value is deliberately not a
-# person: TODO ownership belongs in the tracked roadmap, not in a comment.
+# person: TODO ownership belongs in the tracked TODO, not in a comment.
 User: 'jig'
 
 # Compiler flags appended AFTER any compile-database arguments so this operator
@@ -400,7 +443,7 @@ ExtraArgs:
   # Statically provable null dereferences are errors at compile time.
   - '-Wnull-dereference'
 
-# Options for enabled checks. Every key was verified to exist in LLVM 24, and
+# Options for enabled checks. Every key was verified to exist in LLVM 22.1.8,
 # every value is either a strictness dial at its maximum useful setting or a
 # documented calibration. Options whose upstream default is already the
 # strictest value are still pinned, so a future default change cannot relax this
@@ -430,7 +473,7 @@ CheckOptions:
   readability-function-size.NestingThreshold: '4'
   readability-function-size.VariableThreshold: '15'
   # --- macros are never an escape hatch -----------------------------------
-  # Sixteen checks default IgnoreMacros to true, which means code laundered
+# Fifteen checks default IgnoreMacros to true, which means code laundered
   # through a macro silently escapes them. Every one is turned off. This is the
   # single largest strictness gap in a default clang-tidy configuration.
   cppcoreguidelines-special-member-functions.IgnoreMacros: 'false'
@@ -447,7 +490,6 @@ CheckOptions:
   readability-redundant-casting.IgnoreMacros: 'false'
   readability-redundant-declaration.IgnoreMacros: 'false'
   readability-redundant-smartptr-get.IgnoreMacros: 'false'
-  readability-trivial-switch.IgnoreMacros: 'false'
   readability-uppercase-literal-suffix.IgnoreMacros: 'false'
   # Command-line macro definitions are audited like any other macro.
   cppcoreguidelines-macro-usage.IgnoreCommandLineMacros: 'false'
@@ -463,8 +505,6 @@ CheckOptions:
   modernize-make-shared.IgnoreDefaultInitialization: 'false'
   modernize-make-unique.IgnoreDefaultInitialization: 'false'
   modernize-min-max-use-initializer-list.IgnoreNonTrivialTypes: 'false'
-  # A reference the check cannot see is still a reference.
-  modernize-use-default-member-init.IgnoreNonVisibleReferences: 'false'
   # extern "C" blocks obey the same typedef/using rule as everything else.
   modernize-use-using.IgnoreExternC: 'false'
   # Coroutine parameters are copied like any other parameter.
@@ -491,20 +531,20 @@ CheckOptions:
   bugprone-sizeof-expression.WarnOnSizeOfIntegerExpression: 'true'
   # A logical-not applied to strcmp reads as inequality and means equality.
   bugprone-suspicious-string-compare.WarnOnLogicalNotComparison: 'true'
-  # Every if / else-if chain must end with an else. This replaces the removed
-  # hicpp-multiway-paths-covered; upstream disables it by default as noisy,
-  # which is precisely the tradeoff this gate accepts. An intentionally empty
-  # else with a clarifying comment is the documented compliant form.
-  bugprone-unhandled-code-paths.WarnOnMissingElse: 'true'
+  # Discarding remove/unique results through a void cast is still an error.
+  hicpp-ignored-remove-result.AllowCastToVoid: 'false'
+  # Every if / else-if chain must end with an else. Upstream disables this as
+  # noisy, which is precisely the tradeoff this gate accepts. An intentionally
+  # empty else with a clarifying comment is the documented compliant form.
+  hicpp-multiway-paths-covered.WarnOnMissingElse: 'true'
   # Enum arithmetic across unrelated enums is diagnosed under the strict set.
   bugprone-suspicious-enum-usage.StrictMode: 'true'
   # Existing argument comments must match the parameter name exactly; a stale
   # comment is treated as a wrong comment.
   bugprone-argument-comment.StrictMode: 'true'
   # Bitwise operations on signed operands are errors with no literal exemption;
-  # use unsigned fixed-width types from stdint.h. This key moved here from
-  # hicpp-signed-bitwise when that module was removed.
-  bugprone-signed-bitwise.IgnorePositiveIntegerLiterals: 'false'
+  # use unsigned fixed-width types from stdint.h.
+  hicpp-signed-bitwise.IgnorePositiveIntegerLiterals: 'false'
   # const_cast is reported even in the cases the check treats as tolerable.
   cppcoreguidelines-pro-type-const-cast.StrictMode: 'true'
   # Pointers that could be const-qualified are reported, not only values.
@@ -524,10 +564,6 @@ CheckOptions:
   # exactly equivalent in corner cases, so no printf survives unexamined.
   modernize-use-std-format.StrictMode: 'true'
   modernize-use-std-print.StrictMode: 'true'
-  # Overloaded functions are included when proposing string_view parameters.
-  modernize-use-string-view.CheckOverloadedFunctions: 'true'
-  # A value_or that takes ownership is reported alongside the copying form.
-  performance-expensive-value-or.WarnOnOwnershipTaking: 'true'
   # Every range-for auto copy is reported, not only expensive ones.
   performance-for-range-copy.WarnOnAllAutoCopies: 'true'
   # String concatenation in loops is flagged in strict mode.

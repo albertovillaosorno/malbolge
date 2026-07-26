@@ -25,7 +25,7 @@ reason = "Clang formatting governs the C, C++, and CUDA implementation surface."
 
 [linters.applicability.clang-tidy]
 enabled = true
-reason = "Clang diagnostics govern the admitted C and C++ compiler surface."
+reason = "Clang diagnostics govern host/native C and C++; Malbolge guest-C compatibility is an explicit tools/tidy validation."
 
 [linters.applicability.clippy-config]
 enabled = true

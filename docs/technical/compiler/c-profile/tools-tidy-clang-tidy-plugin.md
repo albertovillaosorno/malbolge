@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -31,15 +31,22 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+A manual root validator and stock-clang bootstrap profile are executable. The
+out-of-tree `malbolge-*` plugin remains unfinished, so a bootstrap-clean verdict
+does not yet claim complete C-to-Malbolge lowerability.
 
 ## Invariants
 
 - The out-of-tree plugin loads against the pinned LLVM version, registers only
   documented `malbolge-*` checks, and emits deterministic source-located
   diagnostics without weakening ordinary clang-tidy checks.
+- Guest-C validation is opt-in for explicitly selected translation units; arbitrary
+  repository C is never enrolled by extension, inherited `.clang-tidy`, or magic
+  source comments.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
+- Rust fixtures/tests exist to develop and regress this profile; explicit
+  `tools/tidy` invocation remains the user-facing compatibility decision.
 
 ## Failure Behavior
 
