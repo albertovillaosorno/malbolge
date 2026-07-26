@@ -8,4 +8,3 @@ The research record must eventually state a falsifiable question, hypotheses,
 related work, correctness oracle, experiment design, results including negative
 or null results, threats to validity, and promotion criteria. Add `theory.tex`
 only when the investigation has real mathematics to state.
-

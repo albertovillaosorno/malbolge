@@ -5,4 +5,3 @@ Versioned examples pair project-owned C source with intentionally generated
 reproducible build command, expected behavior, and verification evidence.
 
 Transient compiler output does not belong here.
-

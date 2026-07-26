@@ -24,4 +24,3 @@ criteria required before the algorithm may influence production code.
 
 A `.tex` file is required only when there is actual mathematics to state. Do not
 manufacture decorative equations to satisfy structure.
-

@@ -7,4 +7,3 @@ for compiler algorithms studied in this repository.
 
 Until those individual contracts are completed, TODO records remain the planning
 authority for unfinished methodology work.
-
