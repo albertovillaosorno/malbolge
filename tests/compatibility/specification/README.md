@@ -20,3 +20,11 @@ while the historical C interpreter loops without pointer progress.
 
 The historical interpreter must never be modified to make these fixtures pass.
 It is evidence of the defect; modern VMs implement the specification.
+
+The `output-low-byte` state fixture fixes the byte-stream interpretation of `/`:
+output is `A mod 256`, so accumulator `59048` emits byte `0xA8`.
+
+The `invalid-self-encryption-target` fixture fixes the H-004 modern failure
+boundary. `i` changes `C` before self-encryption; if the resulting cell is not
+graphical ASCII, a conforming modern VM reports an explicit invalid transition
+without reproducing or partially committing the historical out-of-bounds lookup.

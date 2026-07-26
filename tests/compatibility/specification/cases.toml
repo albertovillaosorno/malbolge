@@ -35,3 +35,22 @@ source_hex = "44"
 specification_policy = "reject-insufficient-recurrence-base"
 legacy_ben_behavior = "undefined-memory-read"
 issue = "H-003"
+
+[[case]]
+id = "output-low-byte"
+kind = "state"
+decoded_instruction = "/"
+accumulator = 59048
+spec_output_hex = "A8"
+spec_termination = "continue"
+issue = "spec-io-byte-domain"
+
+[[case]]
+id = "invalid-self-encryption-target"
+kind = "state"
+decoded_instruction = "i"
+next_code_pointer = 2
+next_code_cell = 0
+specification_policy = "reject-transition-atomically"
+legacy_ben_behavior = "out-of-bounds-xlat2-risk"
+issue = "H-004"

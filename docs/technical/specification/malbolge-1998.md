@@ -108,18 +108,20 @@ store the result in both `M[D]` and `A`.
 
 ### `<`
 
-Read one ASCII input value into `A`.
+Read one input byte into `A` as an unsigned value in `0..=255`.
 
 - Line feed is numeric value `10`.
 - End of input is represented by `59048`.
+- The host text encoding does not reinterpret byte values before they enter `A`.
 
 This is the normative input instruction even though the original C interpreter
 accidentally implements `<` as output.
 
 ### `/`
 
-Convert `A` to the corresponding ASCII output value and write it to stdout.
-Value `10` is line feed.
+Write the low byte of `A`, defined as `A mod 256`, to stdout. Value `10` is
+line feed. Values above `255` therefore have deterministic byte-stream output
+semantics rather than relying on host `putc` conversion details.
 
 This is the normative output instruction even though the original C interpreter
 accidentally implements `/` as input.
@@ -138,11 +140,15 @@ After every non-halting instruction, the instruction at the current code pointer
 is encrypted through the 94-character `xlat2` table described by the 1998
 specification. The resulting character replaces the current cell.
 
-The exact behavior of pointer-changing instructions and the post-instruction
-mutation must be represented by one deterministic VM transition and covered by
-state-level tests. Historical C behavior may be used as corroborating evidence
-only where it agrees with the normative text and does not invoke C undefined
-behavior.
+The `i` instruction changes `C` before this encryption step. Therefore the
+encryption target is the resulting code pointer, not necessarily the cell that
+contained the decoded `i` instruction.
+
+The encryption table is defined only for graphical ASCII values `33..=126`. If
+a pointer-changing instruction exposes a non-graphical encryption target, modern
+VMs report an explicit invalid-transition diagnostic before table access and do
+not partially commit the transition. The historical C out-of-bounds behavior is
+H-004 implementation evidence, not normative semantics.
 
 ### Pointer Advancement
 
