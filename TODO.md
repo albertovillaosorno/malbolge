@@ -137,9 +137,9 @@ without weakening unrelated linter contracts.
 
 Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators. Schema
-v1 now distinguishes frozen `malbolge-1998` from current `malbolge-2026.1` and
-has fail-closed validation; universal consumer adoption remains open. Useful
-evolution is versioned rather than modeled as a separate "extended" language.
+v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`, and selects
+the scalable 14-trit `malbolge-2026.2` profile as current; universal consumer
+adoption remains open. Evolution is versioned rather than branded "extended".
 
 ### TODO - Historical interpreter legal boundary
 
@@ -359,10 +359,10 @@ AOT-only, JIT-only, and fully tiered execution.
 ### TODO - Scalable Malbolge memory model
 
 Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as an exact historical conformance profile. Define a ternary
-scaling model for words/addressing/memory that remains recognizably Malbolge and
-supports useful workloads such as normalized DOOM without inheriting accidental
-limits from Ben's interpreter.
+`malbolge-1998` as exact historical conformance. Schema v2 now selects the
+14-trit `malbolge-2026.2` geometry with 4,782,969 directly addressed words;
+profile-aware consumer/runtime adoption and exact capability diagnostics remain
+open rather than silently falling back to the classic machine.
 
 ### TODO - Historical-interpreter fallback capsule
 

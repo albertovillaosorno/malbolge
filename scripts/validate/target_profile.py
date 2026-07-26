@@ -13,7 +13,7 @@ from typing import cast
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "malbolge.json"
 HISTORICAL_PROFILE = "malbolge-1998"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
@@ -43,6 +43,7 @@ SEMANTIC_KEYS = frozenset({
     "rotate",
     "self_modification",
 })
+SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {"eof_word"}
 
 type JsonScalar = bool | int | float | str | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -216,8 +217,8 @@ def _validate_profile(profile_id: str, value: JsonValue) -> JsonObject:
         semantics["eof_word"],
         f"{context}.semantics.eof_word",
     )
-    if eof_word >= modulus:
-        _fail(f"{context}.semantics.eof_word escapes word domain")
+    if eof_word != modulus - 1:
+        _fail(f"{context}.semantics.eof_word must equal word maximum")
     return profile
 
 
@@ -248,6 +249,34 @@ def _validate_historical(profile: JsonObject) -> None:
         _fail(f"{HISTORICAL_PROFILE} EOF word changed")
 
 
+def _semantic_core(profile: JsonObject) -> JsonObject:
+    semantics = _expect_mapping(profile["semantics"], "profile semantics")
+    return {key: semantics[key] for key in SEMANTIC_CORE_KEYS}
+
+
+def _current_profile_ids(
+    validated: dict[str, JsonObject],
+) -> list[str]:
+    return sorted(
+        profile_id
+        for profile_id, profile in validated.items()
+        if profile["kind"] == CURRENT_KIND
+    )
+
+
+def _validate_semantic_cores(
+    validated: dict[str, JsonObject],
+    historical: JsonObject,
+) -> None:
+    historical_core = _semantic_core(historical)
+    for profile_id, profile in validated.items():
+        if (
+            profile_id != HISTORICAL_PROFILE
+            and _semantic_core(profile) != historical_core
+        ):
+            _fail(f"schema v2 profile {profile_id} changed semantic core")
+
+
 def _validate_profile_identities(
     current_profile: str,
     validated: dict[str, JsonObject],
@@ -259,8 +288,9 @@ def _validate_profile_identities(
         _fail(f"current_profile must have kind={CURRENT_KIND}")
     if current_profile == HISTORICAL_PROFILE:
         _fail(f"current profile identity must differ from {HISTORICAL_PROFILE}")
-    if current["semantics"] != historical["semantics"]:
-        _fail("schema v1 current profile changed historical semantic core")
+    if _current_profile_ids(validated) != [current_profile]:
+        _fail("exactly current_profile must have kind=current")
+    _validate_semantic_cores(validated, historical)
 
 
 def validate_document(document: JsonObject) -> None:

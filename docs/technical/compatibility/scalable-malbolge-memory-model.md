@@ -2,67 +2,152 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
-Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as an exact historical conformance profile. Define a deterministic
-ternary scaling model for words, addressing, and memory that can support useful
-workloads without inheriting accidental limits from Ben's interpreter or the
-host architecture.
+Remove the historical 59,049-word ceiling from current Malbolge without
+creating a separately branded extended language. Scaling remains ternary: an
+`N`-trit profile has one `N`-trit word domain and exactly `3^N` directly
+addressable words. The frozen `malbolge-1998` profile remains exactly ten trits
+and 59,049 words.
 
 ## Scope
 
 This document governs the following declared TODO scope:
 
+- `malbolge.json`
 - `compatibility/`
 - `docs/technical/specification/`
 - `tests/compatibility/`
 
 ## Current Behavior
 
-### Proposed Model
+### Profile Model
 
-This record defines the contract that implementation must satisfy for
-`scalable-malbolge-memory-model`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+For a target profile with `N` trits, define `W_N = 3^N`.
+
+- A machine word is an unsigned value in `0..=W_N-1`.
+- Memory contains exactly `W_N` words.
+- `A`, `C`, `D`, memory words, and direct addresses use that same word domain.
+- `C` and `D` advance modulo `W_N`.
+- No host pointer width, virtual-memory page size, decimal multiplier, or
+  implementation-language integer width participates in guest addressing.
+
+Schema version 2 deliberately selects this single-word ternary geometry instead
+of a paged or multiword address scheme. A later schema may add another model,
+but it must use a new explicit profile identity.
+
+### Ternary Operations
+
+The defining operations generalize with the profile width rather than acquiring
+new truth tables.
+
+Rotation of `x` is the same one-trit circular right rotation used by the 1998
+machine:
+
+`rotate_N(x) = floor(x / 3) + (x mod 3) * 3^(N-1)`.
+
+The crazy operation applies the original 3-by-3 crazy truth table independently
+to exactly `N` corresponding trit pairs. Increasing `N` adds trit positions; it
+does not change the operation on any existing position.
+
+The loader recurrence remains the same recurrence over profile-width words.
+Positional decode retains the historical 94-entry translation rule: the
+profile-width numeric `C` participates in the same modulo-94 decode phase.
+Post-instruction encryption remains the historical graphical-cell translation.
+Self-modification therefore remains fundamental rather than being weakened to
+make larger memory easier to implement.
+
+### Input, Output, and EOF
+
+`<` remains byte input and `/` remains output. Output is still `A mod 256`.
+
+EOF is the maximum profile word, preserving the historical all-two-trit
+sentinel:
+
+`EOF_N = 3^N - 1`.
+
+For `malbolge-1998`, this is 59,048. For the current 14-trit profile it is
+4,782,968.
+
+### Versioned Profiles
+
+The canonical identities are currently:
+
+- `malbolge-1998`: historical conformance, `N = 10`, 59,049 words.
+- `malbolge-2026.1`: retained versioned transition identity, `N = 10`.
+- `malbolge-2026.2`: current profile, `N = 14`, 4,782,969 words.
+
+A profile is immutable once published. If measurements show that 14 trits are
+insufficient, the project publishes another profile with a larger `N`; it never
+silently enlarges `malbolge-2026.2`.
+
+### Why Fourteen Trits
+
+The tracked normalized DOOM development oracle currently contains 1,497,009
+source bytes. This is only a lower-bound workload proxy: source bytes are not a
+prediction of compiled Malbolge words.
+
+Thirteen trits provide 1,594,323 words, only 97,314 words beyond that proxy.
+That first mathematically sufficient width is already nearly saturated before
+representing compiled code, runtime state, data, or compiler expansion. The
+project therefore advances exactly one additional native ternary digit. Fourteen
+trits provide 4,782,969 words.
+
+This is not a claim that DOOM now fits after compilation. It is the first
+versioned scalable geometry with defensible workload evidence. Future compiler
+and runtime measurements remain authoritative for deciding whether another
+trit is required.
+
+The exact source snapshot and candidate arithmetic are retained in
+`compatibility/scalable-memory-evidence.json`.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+`malbolge.json` schema version 2 defines and selects `malbolge-2026.2`.
+`tests/compatibility/test_scalable_memory.py` independently verifies profile
+geometry, N-trit rotate, digitwise crazy, EOF, wraparound, and the link to the
+tracked DOOM evidence snapshot.
+
+The existing safe Rust `Machine` still implements the frozen 1998 machine only.
+It must not silently execute a `malbolge-2026.2` artifact as if it were
+`malbolge-1998`. Runtime/compiler adoption and deterministic required-profile
+diagnostics remain separate open work.
 
 ## Invariants
 
-- Current Malbolge permits logical addresses beyond 59048 under an explicit
-  versioned profile; `malbolge-1998` remains exactly ten-trit and 59,049 words.
-- The design evaluates ternary-native generalization (for example a larger trit
-  width with correspondingly defined rotate/crazy behavior) and/or explicit
-  multiword/paged addressing. It must not inherit host pointer width implicitly.
-- Scaling preserves Malbolge's defining ternary arithmetic, crazy operation,
-  rotate, self-modification, post-encryption, sequential execution, and
-  determinism unless a profile deliberately versions a semantic change.
-- Workload evidence, including normalized DOOM requirements, informs practical
-  capacities; arbitrary decimal or host-memory multipliers are not authority.
+- `malbolge-1998` remains exactly ten trits and 59,049 words.
+- Every schema-v2 profile uses radix 3 and `word.modulus = 3^trits`.
+- `single-word-modular` memory has exactly `word.modulus` words.
+- EOF is exactly `word.modulus - 1`.
+- Scaling does not change sequential deterministic guest execution, crazy,
+  rotate, self-modification, post-encryption, or byte-I/O meanings.
+- Exactly one profile has `kind = "current"`, and it is named by
+  `current_profile`.
+- Larger capacity always receives a new immutable profile identity.
 
 ## Failure Behavior
 
-A profile mismatch or unsupported capacity fails with an explicit requirement
-diagnostic; neither current nor `malbolge-1998` semantics are guessed.
+A consumer that cannot implement the selected profile fails explicitly before
+execution or compilation. It never truncates an address, clamps a word, silently
+falls back to 59,049 words, or borrows host pointer behavior.
 
 ## Verification
 
-- Expected durable artifact surface: `compatibility/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: `malbolge-1998` specification-conformance corpus plus
-  current/profile capacity boundary fixtures and exact diagnostics.
-- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
-  `safe-rust-malbolge-vm`.
+- `python scripts/validate/target_profile.py` validates the closed profile
+  schema and cross-profile invariants.
+- `tests/test_target_profile.py` covers schema/profile failure boundaries.
+- `tests/compatibility/test_scalable_memory.py` independently checks scalable
+  ternary geometry and the workload-evidence link.
+- `compatibility/scalable-memory-evidence.json` retains the exact tracked source
+  hash, source-byte proxy, candidate capacities, and selected profile.
+
 ## References
 
 - [Specification Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+- [Canonical Malbolge target profile](../specification/target-profile.md)
 
 ### Governing ADR Paths
 

@@ -42,9 +42,10 @@ through explicit versioned profiles; do not turn historical resource ceilings or
 Ben-interpreter defects into permanent current-language constraints.
 
 Repository-root `malbolge.json` is the target-profile identity authority. Schema
-v1 selects `malbolge-2026.1` as current while preserving `malbolge-1998` as a
-separate immutable identity. Validate profile edits with
-`python scripts/validate/target_profile.py` and its standard-library tests.
+v2 selects the 14-trit `malbolge-2026.2` profile as current, retains
+`malbolge-2026.1` as an immutable ten-trit transition identity, and preserves
+`malbolge-1998` as frozen historical conformance. Validate profile edits with
+`python scripts/validate/target_profile.py` and the Python compatibility tests.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.

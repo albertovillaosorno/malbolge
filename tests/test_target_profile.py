@@ -10,6 +10,10 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "malbolge.json"
+CURRENT_PROFILE = "malbolge-2026.2"
+CURRENT_TRITS = 14
+CURRENT_WORDS = 4_782_969
+CURRENT_EOF = CURRENT_WORDS - 1
 
 
 def _canonical_text() -> str:
@@ -26,7 +30,7 @@ def _expect_invalid(text: str) -> None:
 
 
 def test_canonical_profile_is_valid() -> None:
-    """The committed canonical profile satisfies schema v1."""
+    """The committed canonical profile satisfies schema v2."""
     validator.validate_text(_canonical_text())
 
 
@@ -38,7 +42,7 @@ def test_current_profile_identity_is_distinct() -> None:
 
 def test_duplicate_json_keys_fail_closed() -> None:
     """Duplicate object keys are rejected before semantic validation."""
-    _expect_invalid('{"schema_version":1,"schema_version":1}')
+    _expect_invalid('{"schema_version":2,"schema_version":2}')
 
 
 def test_historical_word_model_cannot_drift() -> None:
@@ -47,8 +51,8 @@ def test_historical_word_model_cannot_drift() -> None:
     _expect_invalid(changed)
 
 
-def test_current_semantic_core_cannot_drift_in_schema_v1() -> None:
-    """Schema v1 does not admit a parallel current guest profile."""
+def test_current_semantic_core_cannot_drift_in_schema_v2() -> None:
+    """Schema v2 does not admit a parallel current guest profile."""
     marker = '"guest_order": "sequential"'
     before, separator, current = _canonical_text().rpartition(marker)
     assert separator == marker
@@ -58,17 +62,59 @@ def test_current_semantic_core_cannot_drift_in_schema_v1() -> None:
 
 def test_single_word_memory_matches_word_modulus() -> None:
     """Single-word modular memory cannot escape its address word domain."""
-    marker = '"words": 59049'
+    marker = '"words": 4782969'
     before, separator, current = _canonical_text().rpartition(marker)
     assert separator == marker
-    _expect_invalid(before + '"words": 59048' + current)
+    _expect_invalid(before + '"words": 4782968' + current)
 
 
 def test_unknown_schema_key_fails_closed() -> None:
     """Unknown top-level policy is rejected instead of ignored."""
     changed = _canonical_text().replace(
-        '"schema_version": 1,',
-        '"schema_version": 1, "implicit_fallback": true,',
+        '"schema_version": 2,',
+        '"schema_version": 2, "implicit_fallback": true,',
+        1,
+    )
+    _expect_invalid(changed)
+
+
+def test_current_profile_is_fourteen_trit_scalable_geometry() -> None:
+    """The current profile is the first selected scalable ternary geometry."""
+    document = validator.load_document(PROFILE_PATH)
+    profiles = document["profiles"]
+    assert isinstance(profiles, dict)
+    current_id = document["current_profile"]
+    assert isinstance(current_id, str)
+    assert current_id == CURRENT_PROFILE
+    current = profiles[current_id]
+    assert isinstance(current, dict)
+    word = current["word"]
+    memory = current["memory"]
+    semantics = current["semantics"]
+    assert isinstance(word, dict)
+    assert isinstance(memory, dict)
+    assert isinstance(semantics, dict)
+    assert word["trits"] == CURRENT_TRITS
+    assert word["modulus"] == CURRENT_WORDS
+    assert memory["words"] == CURRENT_WORDS
+    assert semantics["eof_word"] == CURRENT_EOF
+
+
+def test_scaled_eof_must_track_word_maximum() -> None:
+    """EOF remains the all-two-trit maximum word for every geometry."""
+    changed = _canonical_text().replace(
+        '"eof_word": 4782968',
+        '"eof_word": 59048',
+        1,
+    )
+    _expect_invalid(changed)
+
+
+def test_only_selected_profile_has_current_kind() -> None:
+    """Old profile identities cannot also claim to be the current default."""
+    changed = _canonical_text().replace(
+        '"kind": "versioned"',
+        '"kind": "current"',
         1,
     )
     _expect_invalid(changed)

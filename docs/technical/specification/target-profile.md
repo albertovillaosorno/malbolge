@@ -32,24 +32,25 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Schema version 1 is implemented in repository-root `malbolge.json`. It contains
-an immutable `malbolge-1998` historical-conformance profile and selects
-`malbolge-2026.1` as the first explicit current-language identity. The current
-profile intentionally has the same ten-trit/59,049-word executable envelope as
-the historical profile until the scalable-memory TODO resolves the larger
-addressing model. The separate identity is nevertheless mandatory: future
-profiles advance `current_profile` instead of mutating old artifact semantics.
+Schema version 2 is implemented in repository-root `malbolge.json`. It contains
+an immutable `malbolge-1998` historical-conformance profile, retains the
+`malbolge-2026.1` ten-trit transition identity, and selects `malbolge-2026.2` as
+the current language profile. The current profile uses the scalable 14-trit
+single-word ternary geometry defined by the scalable-memory contract:
+4,782,969 word values and the same number of directly addressed memory words.
 
 `scripts/validate/target_profile.py` provides a dependency-free closed-schema
 validator using duplicate-key-rejecting JSON parsing. It enforces exact schema
-keys, ternary word consistency, single-word memory consistency, the frozen 1998
-machine envelope, distinct current identity, and the schema-v1 sequential,
-deterministic, self-modifying semantic core. Standard-library tests exercise
-positive and fail-closed cases.
+keys, ternary word consistency, single-word memory consistency, EOF at the
+maximum profile word, the frozen 1998 machine envelope, exactly one selected
+current identity, and preservation of the sequential deterministic
+self-modifying semantic core across schema-v2 profiles.
 
-Cross-component consumption is not complete. The existing VM still implements
-its 1998-profile constants directly and compiler/tidy/runtime consumers are not
-yet universally profile-driven, so this contract remains active.
+Cross-component consumption is not complete. The existing safe Rust VM still
+implements `malbolge-1998` constants directly and must not silently execute a
+`malbolge-2026.2` artifact. Compiler, tidy, verifier, runtime, and accelerator
+consumers are not yet universally profile-driven, so this contract remains
+active.
 
 ## Invariants
 
@@ -76,7 +77,8 @@ selecting an implicit repository policy.
   `docs/technical/specification/`, `compatibility/`,
   `scripts/validate/target_profile.py`, `tests/test_target_profile.py`.
 - Executable schema checks: `python scripts/validate/target_profile.py` and
-  `python -m unittest tests/test_target_profile.py`.
+  `.dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini
+  tests/test_target_profile.py tests/compatibility/test_scalable_memory.py`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:

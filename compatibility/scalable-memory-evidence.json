@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "workload_proxy": {
+    "artifact": "interop/algorithms/quality/comparison/metrics.json",
+    "corpus": "after",
+    "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f",
+    "source_bytes": 1497009,
+    "meaning": "Tracked normalized-source size is a lower-bound capacity proxy only; it is not a prediction of compiled Malbolge size."
+  },
+  "candidate_widths": [
+    {
+      "trits": 13,
+      "words": 1594323,
+      "headroom_over_proxy_words": 97314,
+      "decision": "rejected-near-saturation"
+    },
+    {
+      "trits": 14,
+      "words": 4782969,
+      "headroom_over_proxy_words": 3285960,
+      "decision": "selected-initial-scalable-profile"
+    }
+  ],
+  "selected_profile": "malbolge-2026.2",
+  "selection_rule": "Thirteen trits is the first ternary width exceeding the tracked source proxy but leaves only 97,314 words. Advance exactly one inherent ternary digit to fourteen trits; future compiler/runtime measurements may require another versioned width."
+}

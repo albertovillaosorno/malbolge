@@ -1,5 +1,5 @@
 [jig]
-schema_version = 2
+schema_version = 3
 
 [header]
 adapters = ["c:c:slash-line", "rs:rust:slash-line"]
