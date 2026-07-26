@@ -32,7 +32,7 @@ AlignAfterOpenBracket: true
 IndentAccessModifiers: true
 IndentCaseBlocks: true
 IndentCaseLabels: true
-IndentGotoLabels: OuterIndent
+IndentGotoLabels: true
 IndentPPDirectives: None
 NamespaceIndentation: All
 
