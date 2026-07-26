@@ -372,11 +372,11 @@ metadata that the original loader ignores.
 
 ### TODO - Required-profile diagnostics
 
-Emit deterministic diagnostics naming the required Malbolge profile/features,
-required memory or word/address capacity, and the selected runtime capability.
-When `malbolge-1998` is explicitly requested, report its 59,049-word limit as a
-historical-profile constraint rather than presenting it as the language's
-permanent maximum.
+Emit deterministic diagnostics naming required profile/features/capacity and
+runtime capability. The safe Rust facade now rejects `malbolge-2026.2` before
+loading with exact 14-trit/4,782,969-word requirements and reports classic
+capacity overflow as a 59,049-word historical-profile ceiling; propagation into
+compiler artifacts and other runtime consumers remains open.
 
 ### TODO - Custom target profile identity
 

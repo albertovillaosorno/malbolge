@@ -58,6 +58,8 @@ mod execution;
 mod instructions;
 #[path = "vm/modes.rs"]
 mod modes;
+#[path = "vm/profile_requirements.rs"]
+mod profile_requirements;
 #[path = "vm/tables.rs"]
 mod tables;
 #[path = "vm/tracing.rs"]

@@ -46,6 +46,10 @@ v2 selects the 14-trit `malbolge-2026.2` profile as current, retains
 `malbolge-2026.1` as an immutable ten-trit transition identity, and preserves
 `malbolge-1998` as frozen historical conformance. Validate profile edits with
 `python scripts/validate/target_profile.py` and the Python compatibility tests.
+The safe Rust VM remains classic-capability only. Profile-aware construction must
+preflight against `safe-rust-classic`; do not silently execute `malbolge-2026.2`
+through the ten-trit loader. The checked-in Rust descriptors are generated from
+`malbolge.json` and must remain byte-exact with the validator renderer.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.

@@ -38,6 +38,14 @@ bytes, committed I/O, termination, and rejected transition results without
 changing guest semantics. Memory-transition correctness remains directly covered
 by instruction and atomicity fixtures rather than duplicated by the trace layer.
 
+The classic execution facade now carries an explicit canonical target-profile
+identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
+classic compatibility, while `from_source_for_profile()` performs a typed
+runtime-capability preflight before source loading. The present safe Rust engine
+advertises only ten trits/59,049 words, so the current 14-trit
+`malbolge-2026.2` profile fails before reaching the classic loader rather than
+being truncated or silently reinterpreted.
+
 Independent differential evidence now exists against the separately implemented
 pure-C VM. Both implementations compute semantic signature
 `0xa74cec75a875c85a` without sharing transition implementation code. The
@@ -70,6 +78,9 @@ memory, input consumption, or output.
 - `tests/vm/` exercises all seven instruction families, no-op behavior, pointer
   wrap, byte/EOF I/O, loader boundaries, bounded execution, self-encryption,
   jump-target encryption, rejected-transition atomicity, and trace hooks.
+- `tests/vm/profile_requirements.rs` verifies canonical profile identity,
+  current-profile fail-closed preflight, transition-profile acceptance, and the
+  exact historical-profile ceiling diagnostic.
 - `tests/vm/differential.rs` recomputes semantic signature
   `0xa74cec75a875c85a` from the public Rust API.
 - `tests/vm/c_conformance.c` independently produces and asserts the same

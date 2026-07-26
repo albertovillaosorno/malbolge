@@ -1,6 +1,6 @@
 ---
 id: "required-profile-diagnostics"
-status: "pending"
+status: "active"
 lane: "7"
 area: "compatibility"
 task: "TODO - Required-profile diagnostics"
@@ -12,10 +12,19 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
+  - "malbolge.json"
   - "compatibility/"
   - "docs/technical/specification/"
+  - "vm/src/profile.rs"
+  - "vm/src/profile_generated.rs"
+  - "vm/src/execution.rs"
+  - "scripts/validate/target_profile.py"
   - "tests/compatibility/"
+  - "tests/test_target_profile.py"
+  - "tests/vm/profile_requirements.rs"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
 # TODO - Required-profile diagnostics
@@ -26,6 +35,26 @@ Emit deterministic diagnostics naming the required Malbolge profile/features,
 required memory or address capacity, and missing runtime capability. When
 `malbolge-1998` is selected, report its 59,049-word ceiling explicitly as a
 historical-profile constraint.
+
+
+**Current implementation.**
+
+- The target-profile validator renders `vm/src/profile_generated.rs` from
+  canonical `malbolge.json`; pytest requires byte-exact projection equality.
+- `vm/src/profile.rs` exposes canonical descriptors plus the explicit
+  `safe-rust-classic` runtime envelope: ten trits, 59,049 words, and all
+  normative schema-v2 semantic features.
+- `ExecutionMachine::from_source_for_profile()` runs profile/runtime preflight
+  before the classic loader and retains the exact accepted profile identity.
+- `malbolge-2026.2` fails before loading with `MALBOLGE-PROFILE-001`, naming its
+  required 14 trits/4,782,969 words and the classic runtime's missing
+  `word-trits,memory-words` dimensions.
+- A requirement beyond `malbolge-1998` emits `MALBOLGE-PROFILE-002` with
+  `constraint=historical-profile-ceiling` and its exact 59,049-word capacity.
+- The equivalent ten-trit `malbolge-2026.1` profile is admitted without losing
+  its profile identity, and unknown profile IDs never fall back implicitly.
+- Compiler artifact metadata and non-VM runtime consumers do not yet all carry
+  these requirements, so repository-wide completion remains open.
 
 ## Acceptance
 
@@ -41,8 +70,9 @@ historical-profile constraint.
 
 ## Evidence
 
-- Expected durable artifact surface: `compatibility/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
+- Current durable evidence includes `vm/src/profile.rs`, the generated
+  `vm/src/profile_generated.rs` projection, `tests/vm/profile_requirements.rs`,
+  and the compatibility/profile Python suites.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,

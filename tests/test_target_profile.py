@@ -118,3 +118,11 @@ def test_only_selected_profile_has_current_kind() -> None:
         1,
     )
     _expect_invalid(changed)
+
+
+def test_rust_projection_matches_canonical_profile() -> None:
+    """Checked-in Rust profile data is a byte-exact JSON projection."""
+    document = validator.load_document(PROFILE_PATH)
+    expected = validator.render_rust_projection(document)
+    observed = validator.RUST_PROJECTION.read_text(encoding="utf-8")
+    assert observed == expected

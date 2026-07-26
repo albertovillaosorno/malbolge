@@ -50,7 +50,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
     ExecutionMode, LoadError, Machine, MachineError, Memory, MemoryError,
-    Registers, RunOutcome, StepOutcome, StepTrace, Termination, Word,
+    ProfileDescriptor, ProfileRequirementError, Registers, RunOutcome,
+    StepOutcome, StepTrace, Termination, Word, historical_profile,
+    preflight_profile, safe_rust_classic_capability,
 };
 
 /// Mode-tagged failure from construction or execution.
@@ -93,6 +95,16 @@ impl ExecutionError {
     pub const fn mode(self) -> ExecutionMode {
         self.mode
     }
+
+    const fn profile(
+        mode: ExecutionMode,
+        error: ProfileRequirementError,
+    ) -> Self {
+        Self {
+            kind: ExecutionErrorKind::Profile(error),
+            mode,
+        }
+    }
 }
 
 impl Display for ExecutionError {
@@ -104,6 +116,7 @@ impl Display for ExecutionError {
             },
             ExecutionErrorKind::Load(error) => Display::fmt(&error, f),
             ExecutionErrorKind::Machine(error) => Display::fmt(&error, f),
+            ExecutionErrorKind::Profile(error) => Display::fmt(&error, f),
         }
     }
 }
@@ -117,6 +130,8 @@ pub enum ExecutionErrorKind {
     Load(LoadError),
     /// A machine transition failed after construction.
     Machine(MachineError),
+    /// Target profile or runtime capability preflight failed before loading.
+    Profile(ProfileRequirementError),
 }
 
 /// Owned machine with one explicit, immutable execution-mode identity.
@@ -124,6 +139,7 @@ pub enum ExecutionErrorKind {
 pub struct ExecutionMachine {
     machine: Machine,
     mode: ExecutionMode,
+    profile: &'static ProfileDescriptor,
 }
 
 impl ExecutionMachine {
@@ -145,10 +161,31 @@ impl ExecutionMachine {
         input: Vec<u8>,
         mode: ExecutionMode,
     ) -> Result<Self, ExecutionError> {
+        Self::from_source_for_profile(source, input, mode, historical_profile())
+    }
+
+    /// Loads source after an explicit canonical target-profile preflight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionError`] when the mode is disabled, the safe Rust VM
+    /// cannot implement `profile`, or source loading fails after preflight.
+    pub fn from_source_for_profile(
+        source: &[u8],
+        input: Vec<u8>,
+        mode: ExecutionMode,
+        profile: &'static ProfileDescriptor,
+    ) -> Result<Self, ExecutionError> {
         Self::check_mode(mode)?;
+        preflight_profile(
+            profile,
+            profile.memory_words(),
+            safe_rust_classic_capability(),
+        )
+        .map_err(|error| ExecutionError::profile(mode, error))?;
         let machine = Machine::from_source(source, input)
             .map_err(|error| ExecutionError::load(mode, error))?;
-        Ok(Self { machine, mode })
+        Ok(Self { machine, mode, profile })
     }
 
     /// Constructs an execution facade from validated state.
@@ -166,6 +203,7 @@ impl ExecutionMachine {
         Ok(Self {
             machine: Machine::with_registers(memory, input, registers),
             mode,
+            profile: historical_profile(),
         })
     }
 
@@ -194,6 +232,12 @@ impl ExecutionMachine {
     #[must_use]
     pub fn output(&self) -> &[u8] {
         self.machine.output()
+    }
+
+    /// Returns the exact canonical target profile for this machine.
+    #[must_use]
+    pub const fn profile(&self) -> &'static ProfileDescriptor {
+        self.profile
     }
 
     /// Returns the current register values.

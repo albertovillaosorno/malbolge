@@ -52,6 +52,7 @@ mod loader;
 mod machine;
 mod memory;
 mod mode;
+mod profile;
 mod trace;
 mod word;
 
@@ -67,6 +68,12 @@ pub use machine::{
 };
 pub use memory::{Memory, MemoryError};
 pub use mode::{ExecutionMode, ExecutionModeParseError};
+pub use profile::{
+    ProfileDescriptor, ProfileFeature, ProfileKind, ProfileRequirementError,
+    ProfileRequirementErrorKind, RuntimeCapability, current_profile,
+    historical_profile, preflight_profile, safe_rust_classic_capability,
+    target_profile,
+};
 pub use trace::{MachineObservation, StepTrace, TraceInput};
 pub use word::{MAX_WORD_VALUE, MEMORY_WORDS, Word, WordError};
 const GRAPHICAL_START: u16 = 33;

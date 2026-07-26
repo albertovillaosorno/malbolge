@@ -12,6 +12,7 @@ from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "malbolge.json"
+RUST_PROJECTION = ROOT / "vm" / "src" / "profile_generated.rs"
 HISTORICAL_PROFILE = "malbolge-1998"
 SCHEMA_VERSION = 2
 CURRENT_KIND = "current"
@@ -26,6 +27,10 @@ HISTORICAL_WORDS = 59_049
 HISTORICAL_EOF = 59_048
 TERNARY_RADIX = 3
 HISTORICAL_VERSION = "1998"
+ASCII_SPACE = 0x20
+ASCII_TILDE = 0x7E
+BACKSLASH = "\\"
+DOUBLE_QUOTE = '"'
 
 TOP_LEVEL_KEYS = frozenset({"current_profile", "profiles", "schema_version"})
 PROFILE_KEYS = frozenset({"kind", "memory", "semantics", "version", "word"})
@@ -314,6 +319,169 @@ def validate_document(document: JsonObject) -> None:
         validated[profile_id] = _validate_profile(profile_id, profile_value)
 
     _validate_profile_identities(current_profile, validated)
+
+
+def _rust_string(value: str, context: str) -> str:
+    escaped: list[str] = []
+    for character in value:
+        codepoint = ord(character)
+        if character == BACKSLASH:
+            escaped.append("\\\\")
+        elif character == DOUBLE_QUOTE:
+            escaped.append('\\"')
+        elif ASCII_SPACE <= codepoint <= ASCII_TILDE:
+            escaped.append(character)
+        else:
+            _fail(f"{context} must use printable ASCII for Rust projection")
+    return '"' + "".join(escaped) + '"'
+
+
+def _rust_integer(value: JsonValue, context: str) -> str:
+    return f"{_expect_int(value, context):_}"
+
+
+def _rust_profile_kind(kind: str) -> str:
+    variants = {
+        CURRENT_KIND: "ProfileKind::Current",
+        HISTORICAL_KIND: "ProfileKind::HistoricalConformance",
+        VERSIONED_KIND: "ProfileKind::Versioned",
+    }
+    return variants[kind]
+
+
+def _profile_projection_lines(
+    index: int,
+    profile_id: str,
+    profile: JsonObject,
+) -> list[str]:
+    word = _expect_mapping(profile["word"], f"profiles.{profile_id}.word")
+    memory = _expect_mapping(
+        profile["memory"],
+        f"profiles.{profile_id}.memory",
+    )
+    semantics = _expect_mapping(
+        profile["semantics"],
+        f"profiles.{profile_id}.semantics",
+    )
+    kind = _expect_string(profile["kind"], f"profiles.{profile_id}.kind")
+    version = _expect_string(
+        profile["version"],
+        f"profiles.{profile_id}.version",
+    )
+    declaration = (
+        f"pub(super) static PROFILE_{index}: ProfileDescriptor = "
+        "ProfileDescriptor {"
+    )
+    return [
+        declaration,
+        f"    eof_word: {_rust_integer(semantics["eof_word"], "eof_word")},",
+        f"    id: {_rust_string(profile_id, "profile id")},",
+        f"    kind: {_rust_profile_kind(kind)},",
+        f"    memory_words: {_rust_integer(memory["words"], "memory.words")},",
+        f"    version: {_rust_string(version, "profile version")},",
+        f"    word_modulus: {_rust_integer(word["modulus"], "word.modulus")},",
+        f"    word_trits: {_rust_integer(word["trits"], "word.trits")},",
+        "};",
+    ]
+
+
+def render_rust_projection(document: JsonObject) -> str:
+    """Render the checked-in Rust projection of canonical target profiles.
+
+    Returns:
+        Deterministic Rust source derived only from validated `malbolge.json`.
+
+    """
+    validate_document(document)
+    current_profile = _expect_string(
+        document["current_profile"],
+        "current_profile",
+    )
+    profiles = _expect_mapping(document["profiles"], "profiles")
+    profile_ids = sorted(profiles)
+    current_index = profile_ids.index(current_profile)
+    historical_index = profile_ids.index(HISTORICAL_PROFILE)
+    lines = [
+        "// File:",
+        "//   - profile_generated.rs",
+        "// Path:",
+        "//   - vm/src/profile_generated.rs",
+        "//",
+        "// Copyright:",
+        "//   - Copyright (c) 2026 Alberto Villa Osorno.",
+        "// SPDX-License-Identifier:",
+        "//   - MIT",
+        "// Confidential:",
+        "//   - false",
+        "// License-File:",
+        "//   - LICENSE",
+        "// Path-Rule:",
+        "//   - All paths in this header are repository-root relative.",
+        "//",
+        "// Boundary-Contract:",
+        "// - Owns:",
+        "//   - Generated Rust projection of canonical Malbolge profiles.",
+        "// - Must-Not:",
+        "//   - Become an independent profile authority or contain hand edits.",
+        "// - Allows:",
+        "//   - Inputs: validated repository-root `malbolge.json` only.",
+        "//   - Outputs: immutable descriptors for the safe Rust runtime.",
+        "//   - Side effects: none after deterministic generation.",
+        "// - Split-When:",
+        "//   - Split when another language needs an independent projection.",
+        "// - Merge-When:",
+        "//   - Merge when runtime consumes canonical JSON directly.",
+        "// - Summary:",
+        "//   - Generated canonical target-profile descriptors for Rust.",
+        "// - Description:",
+        "//   - Keeps runtime identity synchronized with `malbolge.json`.",
+        "// - Usage:",
+        "//   - Regenerate through the target-profile validator helpers.",
+        "// - Defaults:",
+        "//   - Any renderer drift fails the test suite.",
+        "//",
+        "// Related documents:",
+        "// - malbolge.json",
+        "// - docs/technical/specification/target-profile.md",
+        "//",
+        "// Large file:",
+        "//   - false",
+        "",
+        "//! Generated canonical target-profile descriptors for Rust.",
+        "",
+        "use super::{ProfileDescriptor, ProfileKind};",
+        "",
+    ]
+    lines.extend([
+        (
+            "pub(super) static CURRENT_PROFILE: &ProfileDescriptor = "
+            f"&PROFILE_{current_index};"
+        ),
+        (
+            "pub(super) static HISTORICAL_PROFILE: &ProfileDescriptor = "
+            f"&PROFILE_{historical_index};"
+        ),
+        "",
+    ])
+    for index, profile_id in enumerate(profile_ids):
+        profile = _expect_mapping(
+            profiles[profile_id], f"profiles.{profile_id}"
+        )
+        lines.extend(_profile_projection_lines(index, profile_id, profile))
+        lines.append("")
+    references = ", ".join(
+        f"&PROFILE_{index}" for index in range(len(profile_ids))
+    )
+    descriptor_type = (
+        f"pub(super) static PROFILE_DESCRIPTORS: "
+        f"[&ProfileDescriptor; {len(profile_ids)}] ="
+    )
+    lines.extend([
+        descriptor_type,
+        f"    [{references}];",
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def validate_text(text: str) -> None:
