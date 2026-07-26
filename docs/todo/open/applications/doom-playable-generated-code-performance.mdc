@@ -1,12 +1,12 @@
 ---
 id: "doom-playable-generated-code-performance"
 status: "pending"
-lane: "13"
+lane: "14"
 area: "applications"
 task: "TODO - DOOM playable generated-code performance"
 contract: "docs/technical/interoperability/doom-generated-performance.md"
 depends_on:
-  - "doom-quality-and-modernization-pass"
+  - "user-supplied-doom-source-interoperability-generator"
   - "malbolge-layout-and-encoding-backend"
   - "explicit-native-tier-execution-controls"
   - "deterministic-cpu-optimizer"
@@ -58,7 +58,8 @@ explicit equivalence evidence.
   `benchmarks/doom/`, `compiler/`, `execution/`, `accelerator/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
-- Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
+- Prerequisite completion evidence:
+  `user-supplied-doom-source-interoperability-generator`,
   `malbolge-layout-and-encoding-backend`,
   `explicit-native-tier-execution-controls`, `deterministic-cpu-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible

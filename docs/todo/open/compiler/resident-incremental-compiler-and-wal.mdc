@@ -1,0 +1,58 @@
+---
+id: "resident-incremental-compiler-and-wal"
+status: "pending"
+lane: "14"
+area: "compiler"
+task: "TODO - Resident incremental compiler and WAL"
+contract: "docs/technical/compiler/resident-incremental-compiler-and-wal.md"
+depends_on:
+  - "state-aware-malbolge-linker"
+  - "c-level-source-mapping-and-debugging"
+  - "reusable-block-catalogue"
+  - "compiler-algorithm-experimentation-platform"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "compiler/server/"
+  - "compiler/"
+  - "tests/compiler/"
+  - "benchmarks/compiler/"
+  - "runtime/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Resident incremental compiler and WAL
+
+## Objective
+
+Build a native long-lived compiler service that keeps parsed source, normalized
+IR, dependency state, verified blocks, link plans, and reusable artifacts
+resident in RAM. Persist a deterministic write-ahead log for crash recovery and
+recompile only the semantic invalidation closure of an edit.
+
+## Acceptance
+
+- Cold and resident builds are semantically equivalent, with byte-identical
+  artifacts where deterministic artifact identity is promised.
+- WAL/cache state is versioned, recoverable or discardable, and never semantic
+  authority over source, IR, verifier, or target behavior.
+- Invalidation propagates through source, type, IR, layout, link,
+  self-modification, and verifier dependencies.
+- Fixed-width regions, equal character counts, equal source positions, or textual
+  hashes may accelerate lookup but never authorize reuse by themselves.
+- Server or IPC failure falls back to a cold compilation path without changing
+  compiler acceptance semantics.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/server/`, `compiler/`,
+  `tests/compiler/`, `benchmarks/compiler/`, `runtime/`.
+- Required evidence: cold/warm differential builds, invalidation traces,
+  crash/recovery WAL fixtures, cache provenance, and latency decomposition.
+- Prerequisite completion evidence: `state-aware-malbolge-linker`,
+  `c-level-source-mapping-and-debugging`, `reusable-block-catalogue`,
+  `compiler-algorithm-experimentation-platform`.

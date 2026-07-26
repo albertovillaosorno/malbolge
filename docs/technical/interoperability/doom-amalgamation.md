@@ -6,63 +6,65 @@ Proposed
 
 ## Purpose
 
-Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
-directory and use `interop/algorithms/amalgamate.rs` to construct the canonical
-intermediate `interop/algorithms/out/doom_amalgamated.c`. Resolve translation-
-unit boundaries, internal-linkage collisions, preprocessing environments,
-includes, declarations, and provenance through pinned Clang rather than unsafe
-textual concatenation. Differentially compare the original native build with the
-amalgamated build before admitting the artifact to later transformation. The
-repository does not redistribute the user-supplied source or game data, and
-generated material keeps its applicable upstream license and provenance.
+Amalgamate the already normalized generated DOOM source tree into one canonical C
+translation artifact without changing native semantics. The generator exists to
+make later compiler/tooling experiments consume one deterministic source artifact
+without pretending that plain file concatenation preserves C translation-unit
+behavior.
 
 ## Scope
 
 This document governs the following declared TODO scope:
 
-- `doom/`
 - `interop/algorithms/amalgamate.rs`
-- `interop/algorithms/out/`
-- `tests/applications/doom/out/`
+- `interop/algorithms/out/doom_fixed/`
+- `interop/algorithms/out/doom_amalgamated.c`
+- `tests/applications/doom/out/doom.c`
 
 ## Current Behavior
 
 ### Proposed Model
 
-This record defines the contract that implementation must satisfy for
-`user-supplied-doom-source-interoperability-generator`. The implementation may
-change internal representation or language choices without changing the
-observable behavior, trust boundary, or ownership rules stated by its governing
-decisions.
+`amalgamate.rs` consumes the normalized multi-file tree produced by the quality
+pass. Pinned Clang preprocessing/AST information provides translation-unit,
+linkage, macro, declaration, and provenance context. The algorithm deterministically
+renames or materializes only what is necessary to preserve semantics when the
+translation units become one file.
+
+The final admitted source artifact is `doom_amalgamated.c`; the end-to-end test
+receives a byte-identical copy named `doom.c` under its ignored output directory.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+Not implemented. The repository does not claim that normalized DOOM sources can
+currently be amalgamated correctly.
 
 ## Invariants
 
-- The source tree under ignored `doom/` is never modified; `amalgamate.rs`
-  writes `interop/algorithms/out/doom_amalgamated.c` deterministically and
-  preserves required provenance.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
+- The input is the generated normalized tree, not the original user-owned tree.
+- Amalgamation is AST/preprocessor aware where C scope, types, macros, linkage, or
+  conditional compilation affect meaning.
+- Internal-linkage collisions are resolved deterministically with provenance.
+- Required upstream licensing/provenance information survives aggregation.
+- Manual source edits are not part of the accepted reproducible pipeline.
 
 ## Failure Behavior
 
-Missing external inputs or unmet target capabilities fail explicitly;
-demonstrations may not substitute host logic for guest behavior.
+Unresolved translation-unit semantics, ambiguous preprocessing state, failed
+native differential checks, or provenance loss fail explicitly and leave the
+last accepted generated stage intact.
 
 ## Verification
 
-- Expected durable artifact surface: `doom/`,
-  `interop/algorithms/amalgamate.rs`, `interop/algorithms/out/`,
-  `tests/applications/doom/out/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
-- Prerequisite completion evidence: `clang-c-frontend-integration`,
-  `reuse-shar-legal-and-interoperability-corpus`.
+- Repeated aggregation from the same normalized tree yields byte-identical output.
+- Native differential tests compare the normalized multi-file build with the
+  amalgamated build over the strongest practical corpus and state observations.
+- Symbol/linkage manifests prove collision handling and deterministic renaming.
+- The test `doom.c` copy is byte-identical to the accepted amalgamated artifact.
+
 ## References
 
+- [DOOM quality and modernization pass](doom-modernization.md)
 - [Deterministic C Surface And Clang
   Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
 - [Compiler Pipeline And Guest

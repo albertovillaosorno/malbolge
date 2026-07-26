@@ -1,11 +1,12 @@
 ---
 id: "user-supplied-doom-source-interoperability-generator"
 status: "pending"
-lane: "8"
+lane: "13"
 area: "applications"
 task: "TODO - User-supplied DOOM source interoperability generator"
 contract: "docs/technical/interoperability/doom-amalgamation.md"
 depends_on:
+  - "doom-quality-and-modernization-pass"
   - "clang-c-frontend-integration"
   - "reuse-shar-legal-and-interoperability-corpus"
   - "documentation-readiness-and-implementation-gate"
@@ -14,10 +15,10 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
-  - "doom/"
   - "interop/algorithms/amalgamate.rs"
-  - "interop/algorithms/out/"
-  - "tests/applications/doom/out/"
+  - "interop/algorithms/out/doom_fixed/"
+  - "interop/algorithms/out/doom_amalgamated.c"
+  - "tests/applications/doom/out/doom.c"
 validation:
   - "jig validate --root ."
 ---
@@ -25,34 +26,34 @@ validation:
 
 ## Objective
 
-Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
-directory and use `interop/algorithms/amalgamate.rs` to construct the canonical
-intermediate `interop/algorithms/out/doom_amalgamated.c`. Resolve translation-
-unit boundaries, internal-linkage collisions, preprocessing environments,
-includes, declarations, and provenance through pinned Clang rather than unsafe
-textual concatenation. Differentially compare the original native build with the
-amalgamated build before admitting the artifact to later transformation. The
-repository does not redistribute the user-supplied source or game data, and
-generated material keeps its applicable upstream license and provenance.
+Consume the accepted normalized DOOM source tree produced by `quality.rs` and use
+`interop/algorithms/amalgamate.rs` to emit one deterministic
+`interop/algorithms/out/doom_amalgamated.c`. Resolve translation-unit boundaries,
+internal-linkage collisions, preprocessing environments, includes, declarations,
+and provenance through pinned Clang before admitting the single-file artifact.
 
 ## Acceptance
 
-- The source tree under ignored `doom/` is never modified; `amalgamate.rs`
-  writes `interop/algorithms/out/doom_amalgamated.c` deterministically and
-  preserves required provenance.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- `amalgamate.rs` consumes only the normalized generated tree and never rewrites
+  the user-owned source tree directly.
+- Translation-unit semantics, internal linkage, macro environments, declaration
+  ordering, and required provenance survive deterministic aggregation.
+- Plain textual concatenation and source-specific hand patches are not accepted
+  implementations of amalgamation.
+- The normalized multi-file build and the amalgamated native build are compared
+  differentially before admission.
+- The accepted `doom_amalgamated.c` is copied byte-for-byte to
+  `tests/applications/doom/out/doom.c` for the end-to-end pipeline fixture.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Expected durable artifact surface: `doom/`,
-  `interop/algorithms/amalgamate.rs`, `interop/algorithms/out/`,
-  `tests/applications/doom/out/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
-- Prerequisite completion evidence: `clang-c-frontend-integration`,
-  `reuse-shar-legal-and-interoperability-corpus`.
+- Expected durable artifact surface: `interop/algorithms/amalgamate.rs`,
+  `interop/algorithms/out/doom_fixed/`,
+  `interop/algorithms/out/doom_amalgamated.c`,
+  `tests/applications/doom/out/doom.c`.
+- Required evidence: normalized/amalgamated manifests, deterministic hashes,
+  native differential traces, and provenance mapping.
+- Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
+  `clang-c-frontend-integration`, `reuse-shar-legal-and-interoperability-corpus`.

@@ -16,6 +16,6 @@ External source authority, research conclusions, legal analysis, or TODO state.
 
 - `deterministic-c-to-malbolge-abi.md`
 - `guest-runtime-and-allocator.md`
-- `malbolge-tidy-clang-tidy-plugin.md`
-- `malbolge-tidy-lowerability-contract.md`
+- `tools-tidy-clang-tidy-plugin.md`
+- `tools-tidy-lowerability-contract.md`
 - `supported-libc-contract.md`

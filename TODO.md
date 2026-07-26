@@ -31,9 +31,13 @@ enough for the TODO heading to disappear without losing unfinished intent.
 
 - Human-authored application code is C; generated target artifacts use the full
   `.malbolge` extension.
-- `malbolge-tidy` defines the C surface the compiler promises to lower.
-- A clean `malbolge-tidy` verdict must imply successful compilation for the
+- `tools/tidy` defines the C surface the compiler promises to lower.
+- A clean `tools/tidy` verdict must imply successful compilation for the
   declared target profile; otherwise the defect belongs to our tooling.
+- `tools/tidy` constrains source determinism and lowerability; it does not
+  make synthesis linear or otherwise prove a compile-time complexity class.
+  Search, composition, linking, verification, and reuse costs remain empirical
+  properties of their owning algorithms and must be measured separately.
 - The host may execute the VM and provide fundamental byte input/output, but it
   may not secretly implement guest algorithms such as PDF writing, hashing,
   allocation, parsing, formatting, or application logic.
@@ -51,9 +55,22 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - Optimizers, CUDA kernels, PyTorch models, stochastic search, and other large
   heuristic components may be untrusted. Deterministic verification decides
   whether emitted code is accepted.
-- Logical execution remains deterministic and sequential unless an extension
-  explicitly specifies otherwise. Parallel host execution is legal only when it
-  is observationally equivalent to that logical order.
+- Classic Malbolge execution remains deterministic and sequential. Performance
+  work must not invent a parallel or nonlinear guest profile merely to make the
+  compiler, VM, linker, or optimizer easier. Parallel host execution is legal
+  only when it is observationally equivalent to the normative logical order;
+  any future semantic extension requires independent motivation and authority.
+- Self-modification and post-instruction encryption are fundamental guest
+  semantics. Generated code must not become globally immutable merely to make
+  linking, JIT, hot reload, or host parallelism easier. Immutable host caches are
+  allowed only behind version guards that preserve guest-visible mutation.
+- Scaling claims are hypotheses until measured. Report raw search, compositional
+  reuse, verification, stitching, cache, and invalidation costs separately so an
+  amortized fast path is never presented as the complexity of the full problem.
+- Incremental compiler state, resident RAM images, and WAL records are rebuildable
+  acceleration evidence rather than semantic authority. Equal byte counts, line
+  positions, or textual hashes may be fast paths only after semantic dependency
+  and self-modification contracts prove reuse safe.
 - Mathematical claims used by compilation and optimization are represented in
   reviewable `.tex` specifications and connected to executable evidence.
 - This repository is also a compiler-algorithm laboratory. Experimental IRs,
@@ -363,13 +380,13 @@ Specify fixed integer widths, signed behavior, endianness, pointers, alignment,
 object representation, stack rules, recursion policy, I/O, and a fail-closed
 policy for undefined or target-dependent C behavior.
 
-### TODO - malbolge-tidy clang-tidy plugin
+### TODO - tools/tidy clang-tidy plugin
 
 Build `tools/tidy/` as an out-of-tree clang-tidy plugin compiled against the
 pinned LLVM version. Add Malbolge checks without forking Clang or weakening the
 existing clang-tidy baseline.
 
-### TODO - malbolge-tidy lowerability contract
+### TODO - tools/tidy lowerability contract
 
 Partition checks into language, ABI, runtime, determinism, and resource families
 and enforce the promise that every accepted translation unit is supported by the
@@ -412,6 +429,14 @@ Implement address-sensitive instruction layout, self-modification planning,
 encoding, jumps, data placement, runtime linkage, and final `.malbolge`
 emission.
 
+### TODO - State-aware Malbolge linker
+
+Build a linker that composes independently compiled Malbolge blocks while
+resolving symbols, addresses, entry/exit machine-state contracts, positional
+decode phase, post-instruction encryption phase, and self-modification footprints.
+Relocation is valid only when independent verification proves that stitching the
+blocks preserves the same guest-visible transition semantics.
+
 ### TODO - Compact guest bytecode strategy
 
 Evaluate a VM-inside-Malbolge strategy where large programs are represented as
@@ -423,6 +448,15 @@ code-size explosion or compilation cost.
 Generate source maps from Malbolge addresses through lowered IR back to C source
 locations. Expose debugging at the C level; keep low-level VM tracing primarily
 for implementation and verification.
+
+### TODO - Resident incremental compiler and WAL
+
+Build a native long-lived compiler service that keeps parsed source, normalized
+IR, dependency state, verified block identities, layout evidence, and reusable
+artifacts resident in RAM. Persist a deterministic write-ahead log sufficient to
+recover or discard cache state after interruption. Recompile and relink only the
+semantic invalidation closure of an edit; fixed-width or same-position textual
+matches may accelerate lookup but never replace AST/IR dependency evidence.
 
 ## Verification and static analysis
 
@@ -539,10 +573,11 @@ resources into measured throughput instead of hitting fixed artificial limits.
 
 ### TODO - Compilation latency performance budget
 
-Establish measured compile-time budgets aimed at seconds for cached or common
-programs and bounded practical times for novel complex searches on capable GPUs.
-Treat "seconds, not hours" as an engineering target backed by benchmarks rather
-than an unverified promise.
+Establish measured compile-time budgets for cold compilation, warm resident
+compilation, incremental invalidation, verified block reuse, relinking, and novel
+search. Treat "seconds, not hours" as an engineering target rather than a
+promise, and never report a cached or compositional fast path as the complexity
+of raw synthesis.
 
 ### TODO - ROCm accelerator adapter
 
@@ -553,7 +588,9 @@ without changing compiler semantics, target profiles, or verifier contracts.
 
 Build a deterministic catalogue of verified arithmetic, branch, memory, calling
 convention, and runtime blocks so common operations are solved once and reused
-instead of synthesized from scratch for every compilation.
+instead of synthesized from scratch for every compilation. Every reusable block
+must carry entry/exit state, layout assumptions, mutation footprint, target
+profile, cost, provenance, and verifier evidence required for safe linking.
 
 ### TODO - Stochastic and guided search
 
@@ -618,35 +655,28 @@ command, expected behavior, and verification evidence. Documentation examples
 are versioned deliberately; normal benchmark outputs remain local under their
 owning `out/` directories.
 
-### TODO - User-supplied DOOM source interoperability generator
-
-Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
-directory and use `interop/algorithms/amalgamate.rs` to construct the canonical
-intermediate `interop/algorithms/out/doom_amalgamated.c`. Resolve translation-
-unit boundaries, internal-linkage collisions, preprocessing environments,
-includes, declarations, and provenance through pinned Clang rather than unsafe
-textual concatenation. Differentially compare the original native build with the
-amalgamated build before admitting the artifact to later transformation. The
-repository does not redistribute the user-supplied source or game data, and
-generated material keeps its applicable upstream license and provenance.
-
 ### TODO - DOOM quality and modernization pass
 
-Use `interop/algorithms/quality.rs` to transform
-`interop/algorithms/out/doom_amalgamated.c` into the clean modern-host artifact
-`interop/algorithms/out/doom_fixed.c`, which must pass the complete
-`malbolge-tidy` contract without suppressions. Convert repeated linter failures
-into reusable AST transformations; replace unavailable legacy platform
-integration through explicit adapters for video, input, timing, audio, and game-
-data access; support scalable modern resolutions and a measured 60 FPS target
-where game semantics permit it; repair demonstrable source defects; remove
-nonessential inherited comments and stale notes while preserving required legal
-provenance; and regenerate concise project-quality comments where useful. After
-validation, copy `doom_fixed.c` byte-for-byte to
-`tests/applications/doom/out/doom.c` for the end-to-end test harness.
-Differential native tests follow every behavior-affecting rewrite. Regex is
-allowed only for transformations proven to be purely textual; user-owned DOOM
-data remains external.
+Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
+and use `interop/algorithms/quality.rs` to produce a deterministic normalized
+source tree under `interop/algorithms/out/doom_fixed/`. Repair repeated
+`tools/tidy` diagnostic families with reusable AST transformations, replace
+unavailable legacy platform integration through explicit video, input, timing,
+audio, and game-data adapters, support scalable modern resolutions and measured
+frame-rate targets, and remove stale comments without discarding required legal
+provenance. Differential native tests follow every behavior-affecting rewrite.
+The user-owned input tree is never modified and remains external to the repo.
+
+### TODO - User-supplied DOOM source interoperability generator
+
+Use `interop/algorithms/amalgamate.rs` only after the quality pass has produced
+the normalized source tree. Resolve translation-unit boundaries, internal-linkage
+collisions, preprocessing environments, includes, declarations, and provenance
+through pinned Clang, then emit one deterministic
+`interop/algorithms/out/doom_amalgamated.c`. Differentially compare the normalized
+multi-file build with the amalgamated build before copying the accepted artifact
+byte-for-byte to `tests/applications/doom/out/doom.c`. Plain textual
+concatenation and source-specific hand patches are not accepted algorithms.
 ### TODO - DOOM playable generated-code performance
 
 Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
@@ -712,6 +742,16 @@ canonicalization, pruning, translation validation, learned guidance, GPU batch
 evaluation, and prior Malbolge code generation techniques. Maintain a
 source-backed bibliography and convert useful results into explicit compiler
 hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
+
+### TODO - Empirical Malbolge synthesis scaling law
+
+Measure how verified synthesis cost grows with block difficulty, target-state
+entropy, self-modification footprint, layout coupling, and available reusable
+catalogue coverage. Compare blind search, structured search, compositional reuse,
+learned guidance, and accelerator-backed evaluation under identical budgets.
+Fit competing empirical models rather than assuming exponential, linear, or
+sublinear behavior, and report where each model ceases to explain observations.
+
 ### TODO - Human-scale Malbolge search study
 
 Create a bounded experiment illustrating why manual Malbolge synthesis is

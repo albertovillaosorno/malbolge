@@ -1,7 +1,7 @@
 ---
 id: "compilation-latency-performance-budget"
 status: "pending"
-lane: "13"
+lane: "15"
 area: "accelerator"
 task: "TODO - Compilation latency performance budget"
 contract: "docs/technical/integrations/accelerators/compilation-latency-performance-budget.md"
@@ -9,6 +9,8 @@ depends_on:
   - "benchmark-and-statistical-evidence-protocol"
   - "malbolge-layout-and-encoding-backend"
   - "deterministic-cpu-optimizer"
+  - "resident-incremental-compiler-and-wal"
+  - "empirical-malbolge-synthesis-scaling-law"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
@@ -17,7 +19,9 @@ scope:
   - "accelerator/"
   - "algorithms/"
   - "optimizer/"
+  - "compiler/server/"
   - "benchmarks/accelerator/"
+  - "benchmarks/compiler/"
   - "tests/optimizer/"
 validation:
   - "jig validate --root ."
@@ -26,35 +30,34 @@ validation:
 
 ## Objective
 
-Establish measured compile-time budgets aimed at seconds for cached or common
-programs and bounded practical times for novel complex searches on capable GPUs.
-Treat "seconds, not hours" as an engineering target backed by benchmarks rather
-than an unverified promise.
+Establish measured compile-time budgets for cold compilation, warm resident
+compilation, semantic invalidation, verified block reuse, relinking,
+verification, and novel search. Treat "seconds, not hours" as an engineering
+target rather than a promised property of Malbolge synthesis.
 
 ## Acceptance
 
-- Compile-time budgets are expressed per workload/difficulty/resource class and
-  report cold, warm-cache, synthesis, verification, and stitching costs rather
-  than one opaque total.
-- A CPU/reference path remains sufficient for correctness, and accelerator
-  failure/unavailability changes performance rather than semantic acceptance.
-- Performance conclusions use equivalent workloads and report raw-sample
-  provenance, resource budgets, dispersion/uncertainty, and failure/success
-  behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- Budgets are expressed per workload, difficulty, target profile, cache state,
+  and resource class rather than as one repository-wide number.
+- Measurements separate parsing/lowering, invalidation, raw search, catalogue
+  reuse, verification, linking, serialization, IPC, and artifact emission.
+- Cold and warm results are never conflated, and a resident-cache fast path is
+  not presented as the asymptotic cost of raw synthesis.
+- CPU/reference execution remains sufficient for correctness; accelerator or
+  resident-server failure changes performance rather than semantic acceptance.
+- Claims about scaling cite the empirical scaling study and the exact measured
+  regime instead of asserting linear or exponential behavior without evidence.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Expected durable artifact surface: `accelerator/`, `algorithms/`,
-  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
-- Required evidence: CPU/reference differential results, device/resource
-  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
-- Prerequisite completion evidence:
-  `benchmark-and-statistical-evidence-protocol`,
-  `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Expected durable artifact surface: `accelerator/`, `algorithms/`, `optimizer/`,
+  `compiler/server/`, `benchmarks/accelerator/`, `benchmarks/compiler/`,
+  `tests/optimizer/`.
+- Required evidence: raw samples, cache-state identity, device/resource metadata,
+  cold/warm differential results, fallback tests, and latency decomposition.
+- Prerequisite completion evidence: `benchmark-and-statistical-evidence-protocol`,
+  `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`,
+  `resident-incremental-compiler-and-wal`,
+  `empirical-malbolge-synthesis-scaling-law`.

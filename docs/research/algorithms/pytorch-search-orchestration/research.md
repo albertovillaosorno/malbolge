@@ -51,6 +51,10 @@ verifier accepts the candidate under the declared target profile.
 - PyTorch is restricted to representation/orchestration/heuristic guidance where
   useful; exact semantic evaluation remains in deterministic implementations
   when tensor semantics are unsuitable.
+- Training corpora are verifier-labeled and versioned; model/checkpoint identity,
+  feature schema, and held-out challenge results are retained with every claim.
+- The CPU/reference path and independent verifier remain sufficient when PyTorch
+  or a trained model is absent.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 

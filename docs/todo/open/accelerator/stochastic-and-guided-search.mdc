@@ -35,6 +35,9 @@ search with deterministic final verification and reproducible research seeds.
 - Search variants run under identical budgets/seeds/corpora where applicable and
   report time-to-first-verified candidate plus quality distributions, not only
   the best lucky run.
+- Learned or trained heuristics use versioned training corpora derived from
+  verifier-labeled evidence and are evaluated on held-out challenge families;
+  training success never substitutes for final semantic verification.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 - The work states a falsifiable question or hypothesis, an explicit baseline,

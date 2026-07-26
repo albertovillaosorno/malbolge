@@ -1,4 +1,4 @@
-# malbolge-tidy clang-tidy plugin
+# tools/tidy lowerability contract
 
 ## Status
 
@@ -6,9 +6,9 @@ Proposed
 
 ## Purpose
 
-Build `tools/tidy/` as an out-of-tree clang-tidy plugin compiled against the
-pinned LLVM version. Add Malbolge checks without forking Clang or weakening the
-existing clang-tidy baseline.
+Partition checks into language, ABI, runtime, determinism, and resource families
+and enforce the promise that every accepted translation unit is supported by the
+compiler for its declared target profile.
 
 ## Scope
 
@@ -25,7 +25,7 @@ This document governs the following declared TODO scope:
 ### Proposed Model
 
 This record defines the contract that implementation must satisfy for
-`malbolge-tidy-clang-tidy-plugin`. The implementation may change internal
+`tools-tidy-lowerability-contract`. The implementation may change internal
 representation or language choices without changing the observable behavior,
 trust boundary, or ownership rules stated by its governing decisions.
 
@@ -35,9 +35,9 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
-- The out-of-tree plugin loads against the pinned LLVM version, registers only
-  documented `malbolge-*` checks, and emits deterministic source-located
-  diagnostics without weakening ordinary clang-tidy checks.
+- Every accepted fixture compiles successfully for its declared profile, and
+  every compiler rejection of a linter-clean supported program is treated as a
+  regression in the compiler/linter contract.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 
@@ -52,8 +52,8 @@ lowered through host-dependent behavior.
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
-- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`,
-  `jig-repository-governance`.
+- Prerequisite completion evidence: `tools-tidy-clang-tidy-plugin`,
+  `malbolge-layout-and-encoding-backend`, `supported-libc-contract`.
 ## References
 
 - [Deterministic C Surface And Clang

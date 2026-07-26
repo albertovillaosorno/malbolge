@@ -20,11 +20,11 @@ host-specific behavior that cannot be lowered deterministically.
 C is the primary human-authored application language.
 
 Pinned Clang parsing, preprocessing, type information, and AST tooling define
-the frontend evidence used by `c2malbolge` and `malbolge-tidy`. The accepted C
+the frontend evidence used by `c2malbolge` and `tools/tidy`. The accepted C
 surface is a deterministic profile with an explicit ABI and supported guest libc
 contract.
 
-`malbolge-tidy` is an out-of-tree clang-tidy plugin, not a fork. Its clean
+`tools/tidy` is an out-of-tree clang-tidy plugin, not a fork. Its clean
 verdict for a declared target profile means the compiler promises to lower the
 program. A clean program rejected later as unsupported is a tooling bug.
 

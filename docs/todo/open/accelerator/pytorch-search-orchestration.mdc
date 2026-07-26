@@ -35,6 +35,9 @@ retain exact semantic execution where tensor operations are a poor fit.
 - PyTorch is restricted to representation/orchestration/heuristic guidance where
   useful; exact semantic evaluation remains in deterministic implementations
   when tensor semantics are unsuitable.
+- Training data, model identity, checkpoints, feature schemas, and held-out
+  evaluation corpora are versioned as research evidence; no model is required
+  for correctness or deterministic fallback.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 - The declared scope contains no unresolved placeholder implementation or

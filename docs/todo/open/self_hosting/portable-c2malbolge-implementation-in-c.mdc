@@ -7,7 +7,7 @@ task: "TODO - Portable c2malbolge implementation in C"
 contract: "docs/technical/compiler/self-hosting/portable-c2malbolge-implementation-in-c.md"
 depends_on:
   - "malbolge-layout-and-encoding-backend"
-  - "malbolge-tidy-lowerability-contract"
+  - "tools-tidy-lowerability-contract"
   - "supported-libc-contract"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -48,4 +48,4 @@ other host-only capabilities. Native accelerators remain optional speedups.
 - Required evidence: compiler inputs/outputs, canonical comparison against
   native compilation, resource/profile requirements, and verifier acceptance.
 - Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
-  `malbolge-tidy-lowerability-contract`, `supported-libc-contract`.
+  `tools-tidy-lowerability-contract`, `supported-libc-contract`.

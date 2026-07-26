@@ -13,7 +13,7 @@ Verified; evidence verified.
 
 ## Repository Use
 
-`malbolge-tidy` is planned as an out-of-tree clang-tidy plugin that expresses
+`tools/tidy` is planned as an out-of-tree clang-tidy plugin that expresses
 the accepted C-to-Malbolge surface without forking Clang.
 
 ## Provenance

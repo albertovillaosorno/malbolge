@@ -18,6 +18,8 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `self-hosting/`
 - `clang-c-frontend-integration.md`
 - `malbolge-layout-and-encoding-backend.md`
+- `resident-incremental-compiler-and-wal.md`
+- `state-aware-malbolge-linker.md`
 - `source-mapping-debugging.md`
 - `ternary-machine-lowering.md`
 - `typed-compiler-ir.md`

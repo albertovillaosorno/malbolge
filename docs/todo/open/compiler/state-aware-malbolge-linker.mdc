@@ -1,0 +1,55 @@
+---
+id: "state-aware-malbolge-linker"
+status: "pending"
+lane: "12"
+area: "compiler"
+task: "TODO - State-aware Malbolge linker"
+contract: "docs/technical/compiler/state-aware-malbolge-linker.md"
+depends_on:
+  - "typed-compiler-ir"
+  - "malbolge-layout-and-encoding-backend"
+  - "translation-validation"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "compiler/linker/"
+  - "compiler/"
+  - "tests/compiler/"
+  - "math/specification/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - State-aware Malbolge linker
+
+## Objective
+
+Build a linker that composes independently compiled Malbolge blocks while
+resolving symbols, addresses, entry/exit machine-state contracts, positional
+decode phase, post-instruction encryption phase, and self-modification
+footprints. Treat linking as verified semantic composition rather than byte
+concatenation.
+
+## Acceptance
+
+- Every linkable block carries explicit imports/exports, target profile,
+  entry/exit state, layout assumptions, mutation footprint, and verifier
+  provenance.
+- Relocation and stitching preserve normative guest self-modification and
+  encryption semantics; global code immutability is not introduced as a shortcut.
+- The verifier independently accepts each linked artifact against the composed
+  source/IR semantics before it is admitted downstream.
+- Repeated linking from identical inputs yields deterministic normalized plans
+  and artifacts.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/linker/`, `compiler/`,
+  `tests/compiler/`, `math/specification/`.
+- Required evidence: positive/negative relocation fixtures, state/mutation
+  contracts, deterministic link-plan hashes, and translation-validation results.
+- Prerequisite completion evidence: `typed-compiler-ir`,
+  `malbolge-layout-and-encoding-backend`, `translation-validation`.

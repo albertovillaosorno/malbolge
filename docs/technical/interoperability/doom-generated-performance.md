@@ -60,7 +60,8 @@ demonstrations may not substitute host logic for guest behavior.
   `benchmarks/doom/`, `compiler/`, `execution/`, `accelerator/`.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
-- Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
+- Prerequisite completion evidence:
+  `user-supplied-doom-source-interoperability-generator`,
   `malbolge-layout-and-encoding-backend`,
   `explicit-native-tier-execution-controls`, `deterministic-cpu-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible

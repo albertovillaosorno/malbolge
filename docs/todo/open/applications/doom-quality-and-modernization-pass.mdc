@@ -6,19 +6,20 @@ area: "applications"
 task: "TODO - DOOM quality and modernization pass"
 contract: "docs/technical/interoperability/doom-modernization.md"
 depends_on:
-  - "user-supplied-doom-source-interoperability-generator"
-  - "malbolge-tidy-lowerability-contract"
+  - "clang-c-frontend-integration"
+  - "tools-tidy-lowerability-contract"
   - "supported-libc-contract"
+  - "reuse-shar-legal-and-interoperability-corpus"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
+  - "doom/"
   - "interop/algorithms/quality.rs"
   - "interop/adapters/"
-  - "interop/algorithms/out/"
-  - "tests/applications/doom/out/"
+  - "interop/algorithms/out/doom_fixed/"
   - "tools/tidy/"
 validation:
   - "jig validate --root ."
@@ -27,40 +28,34 @@ validation:
 
 ## Objective
 
-Use `interop/algorithms/quality.rs` to transform
-`interop/algorithms/out/doom_amalgamated.c` into the clean modern-host artifact
-`interop/algorithms/out/doom_fixed.c`, which must pass the complete `malbolge-
-tidy` contract without suppressions. Convert repeated linter failures into
-reusable AST transformations; replace unavailable legacy platform integration
-through explicit adapters for video, input, timing, audio, and game-data access;
-support scalable modern resolutions and a measured 60 FPS target where game
-semantics permit it; repair demonstrable source defects; remove nonessential
-inherited comments and stale notes while preserving required legal provenance;
-and regenerate concise project-quality comments where useful. After validation,
-copy `doom_fixed.c` byte-for-byte to `tests/applications/doom/out/doom.c` for
-the end-to-end test harness. Differential native tests follow every
-behavior-affecting rewrite. Regex is allowed only for transformations proven to
-be purely textual; user-owned DOOM data remains external.
+Consume the user-supplied source tree under ignored `doom/` and use
+`interop/algorithms/quality.rs` to produce a deterministic normalized source tree
+under `interop/algorithms/out/doom_fixed/`. Repair repeated `tools/tidy`
+diagnostic families through reusable AST transformations, modernize explicit
+platform adapters, and preserve behavior and required provenance before any
+translation units are amalgamated.
 
 ## Acceptance
 
-- `quality.rs` writes `doom_fixed.c`, obtains full linter/differential
-  acceptance, then copies it byte-for-byte to
-  `tests/applications/doom/out/doom.c`; no blanket lint suppression is allowed.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- The user-owned input tree is never modified; all generated normalized source
+  lives under `interop/algorithms/out/doom_fixed/`.
+- Repeated linter failures become reusable semantics-aware transformations; no
+  blanket suppression or source-specific hand patch remains necessary.
+- Video, input, timing, audio, game-data, resolution, and frame-rate support are
+  represented through explicit adapters and measured behavior rather than hidden
+  host substitutions.
+- Differential native tests compare admitted original behavior with each
+  behavior-affecting generated stage and record intentional fixes separately.
+- Legal/provenance comments required by upstream material survive comment cleanup.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Expected durable artifact surface: `interop/algorithms/quality.rs`,
-  `interop/adapters/`, `interop/algorithms/out/`,
-  `tests/applications/doom/out/`, `tools/tidy/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
-- Prerequisite completion evidence:
-  `user-supplied-doom-source-interoperability-generator`,
-  `malbolge-tidy-lowerability-contract`, `supported-libc-contract`.
+- Expected durable artifact surface: `doom/`, `interop/algorithms/quality.rs`,
+  `interop/adapters/`, `interop/algorithms/out/doom_fixed/`, `tools/tidy/`.
+- Required evidence: deterministic source manifests, linter reports,
+  transformation provenance, native differential traces, and adapter tests.
+- Prerequisite completion evidence: `clang-c-frontend-integration`,
+  `tools-tidy-lowerability-contract`, `supported-libc-contract`,
+  `reuse-shar-legal-and-interoperability-corpus`.

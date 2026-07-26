@@ -1,13 +1,14 @@
 ---
-id: "malbolge-tidy-clang-tidy-plugin"
+id: "tools-tidy-lowerability-contract"
 status: "pending"
-lane: "7"
+lane: "11"
 area: "c"
-task: "TODO - malbolge-tidy clang-tidy plugin"
-contract: "docs/technical/compiler/c-profile/malbolge-tidy-clang-tidy-plugin.md"
+task: "TODO - tools/tidy lowerability contract"
+contract: "docs/technical/compiler/c-profile/tools-tidy-lowerability-contract.md"
 depends_on:
-  - "deterministic-c-to-malbolge-abi"
-  - "jig-repository-governance"
+  - "tools-tidy-clang-tidy-plugin"
+  - "malbolge-layout-and-encoding-backend"
+  - "supported-libc-contract"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
@@ -21,19 +22,19 @@ scope:
 validation:
   - "jig validate --root ."
 ---
-# TODO - malbolge-tidy clang-tidy plugin
+# TODO - tools/tidy lowerability contract
 
 ## Objective
 
-Build `tools/tidy/` as an out-of-tree clang-tidy plugin compiled against the
-pinned LLVM version. Add Malbolge checks without forking Clang or weakening the
-existing clang-tidy baseline.
+Partition checks into language, ABI, runtime, determinism, and resource families
+and enforce the promise that every accepted translation unit is supported by the
+compiler for its declared target profile.
 
 ## Acceptance
 
-- The out-of-tree plugin loads against the pinned LLVM version, registers only
-  documented `malbolge-*` checks, and emits deterministic source-located
-  diagnostics without weakening ordinary clang-tidy checks.
+- Every accepted fixture compiles successfully for its declared profile, and
+  every compiler rejection of a linter-clean supported program is treated as a
+  regression in the compiler/linter contract.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - The declared scope contains no unresolved placeholder implementation or
@@ -47,5 +48,5 @@ existing clang-tidy baseline.
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
-- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`,
-  `jig-repository-governance`.
+- Prerequisite completion evidence: `tools-tidy-clang-tidy-plugin`,
+  `malbolge-layout-and-encoding-backend`, `supported-libc-contract`.

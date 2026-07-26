@@ -49,7 +49,7 @@ terms into the repository MIT license.
 
 ### Unresolved
 
-The exact C feature subset accepted by `malbolge-tidy` is a repository contract,
+The exact C feature subset accepted by `tools/tidy` is a repository contract,
 not something the ISO standard defines.
 
 ## Sources

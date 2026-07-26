@@ -53,7 +53,7 @@ The intended developer-facing path is:
 program.c
    |
    v
-malbolge-tidy
+tools/tidy
    |
    v
 c2malbolge
@@ -70,11 +70,11 @@ program.malbolge
 Malbolge VM / native execution tiers
 ```
 
-`malbolge-tidy` is planned as an out-of-tree clang-tidy plugin. Its central
+`tools/tidy` is planned as an out-of-tree clang-tidy plugin. Its central
 contract is stronger than ordinary linting:
 
 ```text
-malbolge-tidy accepts P
+tools/tidy accepts P
         =>
 c2malbolge(P) succeeds for the declared target profile
 ```
@@ -237,7 +237,7 @@ quality.rs
 interop/algorithms/out/doom_fixed.c
       |
       v
-malbolge-tidy + c2malbolge
+tools/tidy + c2malbolge
       |
       v
 doom.malbolge

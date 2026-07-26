@@ -1,0 +1,60 @@
+---
+id: "empirical-malbolge-synthesis-scaling-law"
+status: "pending"
+lane: "14"
+area: "research"
+task: "TODO - Empirical Malbolge synthesis scaling law"
+contract: "docs/research/studies/empirical-malbolge-synthesis-scaling-law.md"
+depends_on:
+  - "superoptimization-research-program"
+  - "benchmark-and-statistical-evidence-protocol"
+  - "parametric-compiler-challenge-generator"
+  - "reusable-block-catalogue"
+  - "stochastic-and-guided-search"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "docs/research/studies/"
+  - "benchmarks/research/"
+  - "benchmarks/challenges/"
+  - "algorithms/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Empirical Malbolge synthesis scaling law
+
+## Objective
+
+Measure how verified synthesis cost changes with challenge difficulty,
+self-modification footprint, layout coupling, target-state entropy, and reusable
+catalogue coverage. Compare multiple search/composition strategies under equal
+budgets and fit empirical models instead of assuming a complexity class.
+
+## Acceptance
+
+- Challenge families vary declared difficulty dimensions while preserving stable
+  semantic oracles and reproducible identities.
+- Blind/enumerative, structured deterministic, reusable-catalogue, stochastic or
+  learned, and available accelerator-backed strategies are compared under
+  equivalent budgets where applicable.
+- Cold search, warm reuse, verification, linking, cache, and invalidation costs
+  are reported separately.
+- Results include capacity curves, marginal-cost measurements, uncertainty, and
+  failed model fits; no preferred O-notation is chosen before evidence exists.
+- The verifier remains the correctness authority regardless of search strategy.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/research/studies/`,
+  `benchmarks/research/`, `benchmarks/challenges/`, `algorithms/`.
+- Required evidence: raw samples, model-fit artifacts, capacity curves,
+  catalogue/version provenance, verifier identity, and threats to validity.
+- Prerequisite completion evidence: `superoptimization-research-program`,
+  `benchmark-and-statistical-evidence-protocol`,
+  `parametric-compiler-challenge-generator`, `reusable-block-catalogue`,
+  `stochastic-and-guided-search`.

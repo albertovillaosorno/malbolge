@@ -51,7 +51,7 @@ failed conformance result.
 - Required evidence: compiler inputs/outputs, canonical comparison against
   native compilation, resource/profile requirements, and verifier acceptance.
 - Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
-  `malbolge-tidy-lowerability-contract`, `supported-libc-contract`.
+  `tools-tidy-lowerability-contract`, `supported-libc-contract`.
 ## References
 
 - [Self Hosting As Conformance

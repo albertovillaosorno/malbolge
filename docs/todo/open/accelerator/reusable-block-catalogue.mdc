@@ -9,6 +9,7 @@ depends_on:
   - "deterministic-cpu-optimizer"
   - "translation-validation"
   - "malbolge-layout-and-encoding-backend"
+  - "state-aware-malbolge-linker"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
@@ -28,25 +29,29 @@ validation:
 
 Build a deterministic catalogue of verified arithmetic, branch, memory, calling
 convention, and runtime blocks so common operations are solved once and reused
-instead of synthesized from scratch for every compilation.
+instead of synthesized from scratch for every compilation. Every reusable block
+must expose the state and layout contract required for safe linking.
 
 ## Acceptance
 
-- Every catalog entry binds semantic pre/postconditions, profile constraints,
-  cost metrics, provenance, and verifier identity; lookup never substitutes a
-  block whose contract does not match.
+- Every catalog entry binds semantic pre/postconditions, entry/exit machine state,
+  target profile, layout assumptions, mutation footprint, cost metrics,
+  provenance, and verifier identity.
+- Lookup never substitutes a block whose complete composition contract does not
+  match the requested operation and current linker assumptions.
+- Catalogue entries remain independently verifiable and reproducible across CPU,
+  CUDA, ROCm, and later search backends.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Expected durable artifact surface: `accelerator/`, `algorithms/`,
-  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
-- Required evidence: CPU/reference differential results, device/resource
-  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Expected durable artifact surface: `accelerator/`, `algorithms/`, `optimizer/`,
+  `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: block manifests, verifier results, deterministic catalogue
+  identity, link compatibility fixtures, and cross-backend differential tests.
 - Prerequisite completion evidence: `deterministic-cpu-optimizer`,
-  `translation-validation`, `malbolge-layout-and-encoding-backend`.
+  `translation-validation`, `malbolge-layout-and-encoding-backend`,
+  `state-aware-malbolge-linker`.

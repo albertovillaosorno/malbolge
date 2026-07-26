@@ -18,7 +18,7 @@
 // - Owns:
 //   - Deterministic modernization and lowerability rewrites for generated C.
 // - Must-Not:
-//   - Bypass malbolge-tidy or hide behavior changes behind lint suppressions.
+//   - Bypass tools/tidy or hide behavior changes behind lint suppressions.
 // - Allows:
 //   - Inputs: canonical amalgamated C plus explicit interoperability adapters.
 //   - Outputs: modern deterministic C accepted by the declared target profile.
@@ -48,7 +48,7 @@
 //! `amalgamate.rs` and turns it into C that is simultaneously:
 //!
 //! - semantically checked against the user-supplied native baseline;
-//! - accepted by the complete `malbolge-tidy` lowerability contract;
+//! - accepted by the complete `tools/tidy` lowerability contract;
 //! - portable to the project's supported modern host environment;
 //! - practical to execute for interoperability and performance testing; and
 //! - readable enough that generated deltas can be reviewed and reproduced.
@@ -70,7 +70,7 @@
 //!    not required for license/copyright/provenance obligations or tooling.
 //!    Generate concise project-quality comments only where they materially aid
 //!    maintenance of the transformed artifact.
-//! 8. Full `malbolge-tidy` iteration until no lowerability diagnostic remains.
+//! 8. Full `tools/tidy` iteration until no lowerability diagnostic remains.
 //! 9. Differential native testing after every behavior-affecting rewrite.
 //!
 //! The linter is never bypassed. A large diagnostic count is treated as a small
