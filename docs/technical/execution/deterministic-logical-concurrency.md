@@ -46,7 +46,9 @@ deterministically without changing guest-visible state silently.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against the applicable oracle/reference implementation.
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.

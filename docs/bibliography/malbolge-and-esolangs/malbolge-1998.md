@@ -14,8 +14,10 @@
 
 ## Repository Relevance
 
-These sources define the historical compatibility target and identify the
-untouched interpreter retained under `tools/malbolge/main.c`.
+These sources define the historical language specification and identify the
+untouched interpreter retained under `tools/malbolge/main.c`. The repository
+treats specification/interpreter disagreements as explicit implementation
+defects.
 
 ## Source Quality And Provenance
 

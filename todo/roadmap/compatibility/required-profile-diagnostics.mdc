@@ -10,7 +10,7 @@ depends_on:
   - "malbolge-2-extended-memory-model"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -31,8 +31,8 @@ execution is impossible.
 - Programs that require an unsupported target profile fail before unsafe
   execution with deterministic diagnostics naming required
   version/features/memory and the runtime capability that is missing.
-- Classic programs inside the original defined domain remain observationally
-  identical while extension-only behavior is gated by explicit profile identity.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `todo/completed/` and remove
@@ -40,9 +40,9 @@ execution is impossible.
 
 ## Evidence
 
-- Expected durable artifact surface: `compatibility/`, `docs/technical/specification/`,
-  `tests/compatibility/`.
-- Required evidence: classic compatibility corpus plus extension/profile
-  boundary fixtures and exact diagnostics.
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `malbolge-2-extended-memory-model`.

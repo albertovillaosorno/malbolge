@@ -8,7 +8,7 @@ contract: "docs/technical/specification/historical-undefined-behavior.md"
 depends_on:
   - "historical-malbolge-semantics-specification"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
   - "tools/malbolge/"
   - "docs/technical/specification/"
@@ -39,8 +39,8 @@ behavior separately from intended Malbolge semantics.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/malbolge/`, `docs/technical/specification/`,
-  `tests/compatibility/`.
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:

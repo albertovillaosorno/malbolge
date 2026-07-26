@@ -1,16 +1,16 @@
 ---
-id: "original-interpreter-compatibility-capsule"
+id: "historical-interpreter-fallback-capsule"
 status: "pending"
 lane: "8"
 area: "compatibility"
-roadmap: "TODO - Original-interpreter compatibility capsule"
-contract: "docs/technical/compatibility/original-interpreter-compatibility-capsule.md"
+roadmap: "TODO - Historical-interpreter fallback capsule"
+contract: "docs/technical/compatibility/historical-interpreter-fallback-capsule.md"
 depends_on:
   - "malbolge-2-extended-memory-model"
   - "required-profile-diagnostics"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -18,7 +18,7 @@ scope:
 validation:
   - "jig validate --root ."
 ---
-# TODO - Original-interpreter compatibility capsule
+# TODO - Historical-interpreter fallback capsule
 
 ## Objective
 
@@ -28,11 +28,13 @@ metadata that the original loader ignores.
 
 ## Acceptance
 
-- One `.malbolge` capsule makes the historical interpreter execute only the
-  classic fallback while the modern runtime recognizes and validates the
-  whitespace extension payload deterministically.
-- Classic programs inside the original defined domain remain observationally
-  identical while extension-only behavior is gated by explicit profile identity.
+- A modern runtime recognizes and validates the versioned whitespace sideband
+  deterministically while the historical interpreter sees only the intended
+  fallback program.
+- The fallback is communication for old tooling, not semantic compatibility
+  evidence for the extended payload.
+- Specification-conformant classic programs remain ordinary `.malbolge` when no
+  extension is required.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `todo/completed/` and remove
@@ -40,9 +42,9 @@ metadata that the original loader ignores.
 
 ## Evidence
 
-- Expected durable artifact surface: `compatibility/`, `docs/technical/specification/`,
-  `tests/compatibility/`.
-- Required evidence: classic compatibility corpus plus extension/profile
-  boundary fixtures and exact diagnostics.
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `malbolge-2-extended-memory-model`,
   `required-profile-diagnostics`.

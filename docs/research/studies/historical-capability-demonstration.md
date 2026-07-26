@@ -20,9 +20,9 @@ historical attribution and compatibility evidence explicit.
 
 ## Evidence Model
 
-- The final demonstration can be reproduced from the historical oracle through
-  modern compiler/execution/research artifacts to substantial programs and
-  self-hosting with provenance for every stage.
+- The final demonstration can be reproduced from the historical interpreter
+  evidence through modern compiler/execution/research artifacts to substantial
+  programs and self-hosting with provenance for every stage.
 - The research record separates observed evidence from interpretation and
   preserves negative/null outcomes that affect the conclusion.
 

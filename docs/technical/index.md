@@ -10,8 +10,8 @@ their implementation already exists.
 - [Compiler Pipeline And Guest Runtime](adr/compiler-pipeline-and-guest-runtime.md)
 - [Deterministic C Surface And Clang Tooling](adr/deterministic-c-surface-and-clang-tooling.md)
 - [Documentation Authority Taxonomy](adr/documentation-authority-taxonomy.md)
-- [Historical Compatibility And Malbolge
-  Evolution](adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](adr/specification-authority-and-malbolge-evolution.md)
 - [Replaceable Accelerator And Algorithm Ports](adr/replaceable-accelerator-and-algorithm-ports.md)
 - [Repository Responsibility Boundaries](adr/repository-responsibility-boundaries.md)
 - [Self-Hosting As Conformance Goal](adr/self-hosting-as-conformance-goal.md)
@@ -34,13 +34,14 @@ their implementation already exists.
 
 - [Custom target profile identity](compatibility/custom-target-profile-identity.md)
 - [Malbolge 2 extended memory model](compatibility/malbolge-2-extended-memory-model.md)
-- [Original-interpreter compatibility
-  capsule](compatibility/original-interpreter-compatibility-capsule.md)
+- [Historical-interpreter fallback
+  capsule](compatibility/historical-interpreter-fallback-capsule.md)
 - [Required-profile diagnostics](compatibility/required-profile-diagnostics.md)
 
 ## Virtual Machine
 
-- [Compatibility and strict execution modes](vm/compatibility-and-strict-execution-modes.md)
+- [Specification and legacy-interpreter execution
+  modes](vm/specification-and-legacy-interpreter-modes.md)
 - [CPU VM table optimization](vm/cpu-vm-table-optimization.md)
 - [Independent pure C Malbolge VM](vm/independent-pure-c-malbolge-vm.md)
 - [Safe Rust Malbolge VM](vm/safe-rust-malbolge-vm.md)

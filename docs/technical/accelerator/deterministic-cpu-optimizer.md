@@ -13,8 +13,8 @@
 ## Purpose
 
 Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the semantic baseline for accelerator
-implementations.
+a GPU, even when much slower, and acts as the specification-conformant CPU
+baseline for accelerator implementations.
 
 ## Proposed Model
 
@@ -26,8 +26,8 @@ trust boundary, or ownership rules stated by its governing decisions.
 ## Invariants
 
 - A CPU-only optimizer/search path can produce and verify candidates without GPU
-  availability and serves as the reproducible semantic baseline for accelerator
-  strategies.
+  availability and serves as the reproducible specification-conformant CPU
+  baseline for accelerator strategies.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 

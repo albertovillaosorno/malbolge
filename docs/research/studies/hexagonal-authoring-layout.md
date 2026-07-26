@@ -8,7 +8,7 @@
 ## Governing Decisions
 
 - [Historical Compatibility And Malbolge
-  Evolution](../../technical/adr/historical-compatibility-and-malbolge-evolution.md)
+  Evolution](../../technical/adr/specification-authority-and-malbolge-evolution.md)
 - [Research Evidence And Algorithm
   Mirror](../adr/research-evidence-and-algorithm-mirror.md)
 

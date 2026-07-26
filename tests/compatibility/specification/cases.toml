@@ -1,0 +1,37 @@
+[[case]]
+id = "spec-io-roundtrip"
+kind = "source"
+source = "spec-io-roundtrip.malbolge"
+input_hex = "41"
+spec_output_hex = "41"
+spec_termination = "halt"
+legacy_ben_output_hex = "00"
+legacy_ben_termination = "halt"
+issue = "H-001"
+
+[[case]]
+id = "non-graphical-current-cell"
+kind = "state"
+current_cell = 0
+code_pointer = 0
+data_pointer = 0
+accumulator = 0
+spec_termination = "immediate"
+legacy_ben_behavior = "non-progressing-loop"
+issue = "H-002"
+
+[[case]]
+id = "empty-source"
+kind = "source-boundary"
+source_hex = ""
+specification_policy = "reject-insufficient-recurrence-base"
+legacy_ben_behavior = "undefined-memory-read"
+issue = "H-003"
+
+[[case]]
+id = "one-word-source"
+kind = "source-boundary"
+source_hex = "44"
+specification_policy = "reject-insufficient-recurrence-base"
+legacy_ben_behavior = "undefined-memory-read"
+issue = "H-003"

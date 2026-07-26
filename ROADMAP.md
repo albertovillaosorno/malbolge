@@ -244,15 +244,15 @@ engineering work.
 ### TODO - Safe Rust Malbolge VM
 
 Implement the primary modern VM in safe Rust with explicit errors, deterministic
-state transitions, tracing hooks, and instruction-level parity with well-defined
-original behavior.
+state transitions, tracing hooks, and instruction-level conformance with the
+normative 1998 specification.
 
-### TODO - Compatibility and strict execution modes
+### TODO - Specification and legacy-interpreter execution modes
 
-Provide a compatibility mode that reproduces meaningful historical quirks and a
-strict mode that turns formerly undefined or pathological situations into
-explicit diagnostics without changing the compatibility target for well-defined
-programs.
+Make specification-conformant execution the default and only normal Malbolge
+semantics. Add an explicit `legacy-ben` mode only for archaeology, differential
+diagnosis, and historical-corpus study; it never becomes a compiler target or
+verification authority.
 
 ### TODO - Independent pure C Malbolge VM
 
@@ -272,7 +272,7 @@ and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
 verified state-graph mathematics, compile demonstrably stable regions to native
 machine code before execution, specialize hot or mutation-sensitive regions at
 runtime, and deoptimize safely to the interpreter whenever a code-version guard
-or speculative assumption fails. The interpreter remains the semantic baseline;
+or speculative assumption fails. The normative VM contract remains the semantic baseline;
 native tiers are accelerators of identical observable behavior.
 
 ### TODO - Ahead-of-execution native translation
@@ -323,11 +323,11 @@ AOT-only, JIT-only, and fully tiered execution.
 ### TODO - Malbolge 2 extended memory model
 
 Remove the practical 59,049-word ceiling through an explicit extension while
-preserving original behavior for programs inside the historical machine. Define
+preserving normative 1998 specification behavior for programs inside the classic machine. Define
 multiword or paged addressing without pretending a ten-trit word can directly
 address arbitrary memory.
 
-### TODO - Original-interpreter compatibility capsule
+### TODO - Historical-interpreter fallback capsule
 
 Design an extended `.malbolge` container recognized by modern runtimes while the
 1998 loader sees only a valid classic fallback, ideally using whitespace
@@ -424,9 +424,10 @@ for implementation and verification.
 
 ### TODO - Differential VM verification
 
-Run the original C oracle, modern Rust VM, modern C VM, and accelerator VM on
-the same valid programs and inputs and compare output, termination, state,
-mutation, and instruction traces where defined.
+Run specification fixtures through the Rust VM, independent C VM, and
+accelerator VM and compare output, termination, state, mutation, and instruction
+traces. Run the original C interpreter only on the documented agreement subset
+as historical differential evidence.
 
 ### TODO - Property, fuzz, and exhaustive testing
 
@@ -490,7 +491,7 @@ VM evidence.
 ### TODO - Deterministic CPU optimizer
 
 Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the semantic baseline for accelerator
+a GPU, even when much slower, and acts as the specification-conformant CPU baseline for accelerator
 implementations.
 
 ### TODO - Replaceable accelerator boundary

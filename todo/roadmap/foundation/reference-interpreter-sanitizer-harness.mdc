@@ -10,7 +10,7 @@ depends_on:
   - "historical-undefined-behavior-catalogue"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "tools/malbolge/"

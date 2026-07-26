@@ -9,7 +9,7 @@ depends_on:
   - "historical-malbolge-semantics-specification"
   - "historical-undefined-behavior-catalogue"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
   - "malbolge.json"
   - "docs/technical/specification/"
@@ -37,8 +37,8 @@ VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 
 ## Evidence
 
-- Expected durable artifact surface: `malbolge.json`, `docs/technical/specification/`,
-  `compatibility/`.
+- Expected durable artifact surface: `malbolge.json`,
+  `docs/technical/specification/`, `compatibility/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:

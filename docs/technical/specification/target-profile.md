@@ -6,8 +6,8 @@
 
 ## Governing Decisions
 
-- [Historical Compatibility And Malbolge
-  Evolution](../adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 ## Purpose
 

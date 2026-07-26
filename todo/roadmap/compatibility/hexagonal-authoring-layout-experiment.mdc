@@ -10,7 +10,7 @@ depends_on:
   - "compiler-algorithm-experimentation-platform"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "compatibility/"
@@ -32,8 +32,8 @@ execution engine for compatible programs.
 - The experiment measures whether alternate authoring/module layouts improve
   compiler/research ergonomics without creating language-based repository
   boundaries or changing emitted semantics.
-- Classic programs inside the original defined domain remain observationally
-  identical while extension-only behavior is gated by explicit profile identity.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
@@ -47,10 +47,10 @@ execution engine for compatible programs.
 
 ## Evidence
 
-- Expected durable artifact surface: `compatibility/`, `docs/technical/specification/`,
-  `tests/compatibility/`.
-- Required evidence: classic compatibility corpus plus extension/profile
-  boundary fixtures and exact diagnostics.
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
   `compiler-algorithm-experimentation-platform`.
 - Research evidence pending: bibliography-backed context, experiment identity,

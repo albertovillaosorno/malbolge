@@ -6,15 +6,15 @@
 
 ## Governing Decisions
 
-- [Historical Compatibility And Malbolge
-  Evolution](../adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 - [Verification Trust Boundary](../adr/verification-trust-boundary.md)
 
 ## Purpose
 
 Implement the primary modern VM in safe Rust with explicit errors, deterministic
-state transitions, tracing hooks, and instruction-level parity with well-defined
-original behavior.
+state transitions, tracing hooks, and instruction-level conformance with the
+normative 1998 specification.
 
 ## Proposed Model
 
@@ -27,7 +27,7 @@ ownership rules stated by its governing decisions.
 
 - The Rust VM implements the stabilized state machine without `unsafe`,
   arbitrary historical array assumptions, or host-dependent integer behavior and
-  passes the classic compatibility corpus.
+  passes the classic specification-conformance corpus.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 
@@ -41,7 +41,9 @@ deterministically without changing guest-visible state silently.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against the applicable oracle/reference implementation.
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
 
 ## Implementation Status
 

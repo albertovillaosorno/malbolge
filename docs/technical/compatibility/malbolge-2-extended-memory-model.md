@@ -6,15 +6,15 @@
 
 ## Governing Decisions
 
-- [Historical Compatibility And Malbolge
-  Evolution](../adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 ## Purpose
 
 Remove the practical 59,049-word ceiling through an explicit extension while
-preserving original behavior for programs inside the historical machine. Define
-multiword or paged addressing without pretending a ten-trit word can directly
-address arbitrary memory.
+preserving normative 1998 specification behavior for programs inside the classic
+machine. Define multiword or paged addressing without pretending a ten-trit word
+can directly address arbitrary memory.
 
 ## Proposed Model
 
@@ -28,8 +28,8 @@ trust boundary, or ownership rules stated by its governing decisions.
 - The extension permits logical addresses beyond 59048 while preserving classic
   10-trit arithmetic/crazy/rotate behavior and observational identity for
   programs that remain inside classic bounds.
-- Classic programs inside the original defined domain remain observationally
-  identical while extension-only behavior is gated by explicit profile identity.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
 
 ## Failure Behavior
 
@@ -40,8 +40,8 @@ diagnostic; classic behavior is never guessed.
 
 - Expected durable artifact surface: `compatibility/`,
   `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: classic compatibility corpus plus extension/profile
-  boundary fixtures and exact diagnostics.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
 
 ## Implementation Status
 

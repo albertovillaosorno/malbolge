@@ -16,8 +16,8 @@ and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
 verified state-graph mathematics, compile demonstrably stable regions to native
 machine code before execution, specialize hot or mutation-sensitive regions at
 runtime, and deoptimize safely to the interpreter whenever a code-version guard
-or speculative assumption fails. The interpreter remains the semantic baseline;
-native tiers are accelerators of identical observable behavior.
+or speculative assumption fails. The normative VM contract remains the semantic
+baseline; native tiers are accelerators of identical observable behavior.
 
 ## Proposed Model
 
@@ -43,7 +43,9 @@ deterministically without changing guest-visible state silently.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against the applicable oracle/reference implementation.
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
 
 ## Implementation Status
 

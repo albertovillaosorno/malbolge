@@ -6,8 +6,8 @@
 
 ## Governing Decisions
 
-- [Historical Compatibility And Malbolge
-  Evolution](../adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 ## Purpose
 
@@ -27,8 +27,8 @@ trust boundary, or ownership rules stated by its governing decisions.
 - Generated artifacts bind to a canonical profile fingerprint; supplying a
   nonmatching external configuration is detected rather than silently
   interpreted under different semantics.
-- Classic programs inside the original defined domain remain observationally
-  identical while extension-only behavior is gated by explicit profile identity.
+- Classic programs preserve normative 1998 specification behavior while
+  extension-only behavior is gated by explicit profile identity.
 
 ## Failure Behavior
 
@@ -39,8 +39,8 @@ diagnostic; classic behavior is never guessed.
 
 - Expected durable artifact surface: `compatibility/`,
   `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: classic compatibility corpus plus extension/profile
-  boundary fixtures and exact diagnostics.
+- Required evidence: classic specification-conformance corpus plus
+  extension/profile boundary fixtures and exact diagnostics.
 
 ## Implementation Status
 

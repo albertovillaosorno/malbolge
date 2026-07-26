@@ -7,7 +7,7 @@ roadmap: "TODO - Historical Malbolge semantics specification"
 contract: "docs/technical/specification/malbolge-1998.md"
 depends_on:
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
   - "tools/malbolge/"
   - "docs/technical/specification/"
@@ -37,7 +37,7 @@ and termination behavior.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/malbolge/`, `docs/technical/specification/`,
-  `docs/technical/specification/mathematics/`.
+- Expected durable artifact surface: `tools/malbolge/`,
+  `docs/technical/specification/`, `docs/technical/specification/mathematics/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

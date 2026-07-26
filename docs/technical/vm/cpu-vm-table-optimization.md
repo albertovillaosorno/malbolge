@@ -6,8 +6,8 @@
 
 ## Governing Decisions
 
-- [Historical Compatibility And Malbolge
-  Evolution](../adr/historical-compatibility-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 - [Verification Trust Boundary](../adr/verification-trust-boundary.md)
 
 ## Purpose
@@ -44,7 +44,9 @@ deterministically without changing guest-visible state silently.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against the applicable oracle/reference implementation.
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

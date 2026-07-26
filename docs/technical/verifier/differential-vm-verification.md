@@ -10,9 +10,10 @@
 
 ## Purpose
 
-Run the original C oracle, modern Rust VM, modern C VM, and accelerator VM on
-the same valid programs and inputs and compare output, termination, state,
-mutation, and instruction traces where defined.
+Run specification fixtures through the Rust VM, independent C VM, and
+accelerator VM and compare output, termination, state, mutation, and instruction
+traces. Run the original C interpreter only on the documented agreement subset
+as historical differential evidence.
 
 ## Proposed Model
 
@@ -23,9 +24,10 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ## Invariants
 
-- The historical oracle, independent C VM, and Rust VM agree on all admitted
-  classic fixtures; disagreements shrink to reproducible minimal cases and block
-  compatibility claims.
+- The Rust VM, independent C VM, and any accelerator VM agree with the normative
+  specification on all admitted classic fixtures. The historical interpreter
+  participates only for fixtures whose behavior is defined and documented to
+  agree with the specification.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
 

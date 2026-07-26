@@ -10,7 +10,7 @@ depends_on:
   - "historical-malbolge-semantics-specification"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
-  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
@@ -44,6 +44,8 @@ specification rather than mechanically translating the Rust implementation.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against the applicable oracle/reference implementation.
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
