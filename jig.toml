@@ -2,7 +2,7 @@
 schema_version = 2
 
 [header]
-adapters = ["c:slash-line", "rs:slash-line"]
+adapters = ["c:c:slash-line", "rs:rust:slash-line"]
 confidential = false
 copyright = "Copyright (c) 2026 Alberto Villa Osorno."
 exempt_paths = ["tools/malbolge/main.c"]

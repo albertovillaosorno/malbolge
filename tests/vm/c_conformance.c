@@ -43,6 +43,8 @@
 // Large file:
 //   - false
 
+//! Independent C conformance harness for classic Malbolge semantics.
+
 #include "malbolge_vm.h"
 
 static MalbolgeMachine g_machine;

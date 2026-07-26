@@ -43,6 +43,8 @@
 // Large file:
 //   - false
 
+//! Independent specification-derived classic Malbolge VM oracle.
+
 #include "malbolge_vm.h"
 
 #include <stdbool.h>
