@@ -1,0 +1,48 @@
+# Repository responsibility scaffold
+
+- Status: Proposed
+- Planning identity: `repository-responsibility-scaffold`
+- Last reviewed: 2026-07-26
+
+## Governing Decisions
+
+- [Repository Responsibility
+  Boundaries](../adr/repository-responsibility-boundaries.md)
+
+## Purpose
+
+Create the responsibility-oriented topology, mixing implementation languages
+inside components and retaining only the minimal root `src/` surface required by
+Cargo composition.
+
+## Proposed Model
+
+This record defines the contract that implementation must satisfy for
+`repository-responsibility-scaffold`. The implementation may change internal
+representation or language choices without changing the observable behavior,
+trust boundary, or ownership rules stated by its governing decisions.
+
+## Invariants
+
+- The root topology contains only responsibility boundaries that are justified
+  by the roadmap; implementation-language-only roots and accidental empty
+  directories are absent.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+
+## Failure Behavior
+
+Missing authority or contradictory configuration fails closed rather than
+selecting an implicit repository policy.
+
+## Verification
+
+- Expected durable artifact surface: `ROADMAP.md`, `todo/`, `docs/`,
+  `algorithms/`, `compiler/`, `vm/`, `execution/`, `accelerator/`, `interop/`,
+  `tests/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.
+
+## Implementation Status
+
+Not implemented. This proposed contract does not claim executable support yet.

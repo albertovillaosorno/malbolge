@@ -1,0 +1,80 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+
+\title{Classic Malbolge Word And Arithmetic Model}
+\author{Malbolge Project}
+\date{2026-07-26}
+
+\begin{document}
+\maketitle
+
+\section{Scope}
+
+This document records normative mathematics for the classic 1998 Malbolge word
+model. It does not define loader validation, instruction translation tables,
+I/O, or extended Malbolge profiles.
+
+\section{Word domain}
+
+A classic machine word contains ten ternary digits. Let
+\[
+  W = 3^{10} = 59049,
+  \qquad
+  \mathcal{W} = \{0,1,\ldots,W-1\}.
+\]
+Every $x\in\mathcal{W}$ has a unique ten-trit expansion
+\[
+  x = \sum_{i=0}^{9} x_i 3^i,
+  \qquad
+  x_i\in\{0,1,2\}.
+\]
+The least-significant trit is $x_0$.
+
+\section{Ternary rotation}
+
+The Malbolge rotate instruction moves the least-significant trit to the most
+significant position. Define
+\[
+  \rho(x)
+    = \left\lfloor\frac{x}{3}\right\rfloor
+      + (x\bmod 3)3^9.
+\]
+Equivalently, if $x$ has trits $(x_9,\ldots,x_1,x_0)$, then
+\[
+  \rho(x) = (x_0,x_9,\ldots,x_2,x_1)_3.
+\]
+The result remains in $\mathcal{W}$.
+
+\section{Crazy operation}
+
+Define the digitwise operation
+\[
+  \gamma : \{0,1,2\}\times\{0,1,2\}\to\{0,1,2\}
+\]
+by the table
+\[
+\begin{array}{c|ccc}
+\gamma(d,a) & a=0 & a=1 & a=2 \\
+\hline
+ d=0 & 1 & 0 & 0 \\
+ d=1 & 1 & 0 & 2 \\
+ d=2 & 2 & 2 & 1
+\end{array}
+\]
+where $d$ is the data-word trit and $a$ is the accumulator trit.
+
+For words $d,a\in\mathcal{W}$, the classic crazy operation is
+\[
+  \operatorname{crazy}(d,a)
+    = \sum_{i=0}^{9} \gamma(d_i,a_i)3^i.
+\]
+Because each output digit is ternary, the result is also in $\mathcal{W}$.
+
+\section{Correspondence obligation}
+
+An executable implementation may replace these definitions with lookup tables,
+vector operations, GPU kernels, native instructions, or other optimized forms
+only when the admitted domain is observably equivalent to these definitions.
+Optimization cost does not weaken this semantic obligation.
+
+\end{document}
