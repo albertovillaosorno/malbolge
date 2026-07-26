@@ -92,7 +92,7 @@ enough for the TODO heading to disappear without losing unfinished intent.
   remain with their owning responsibility and do not require artificial papers.
 - Generated experiment artifacts are local to the owning algorithm under
   `algorithms/<id>/out/`; engineering transformations use an analogous local
-  `out/`, such as `interop/algorithms/out/doom.c`. Every `out/` is reproducible
+  `out/`, such as `interop/algorithms/quality/out/doom_fixed/`. Every `out/` is reproducible
   and Git ignored rather than becoming an opaque evidence dump.
 - Research claims distinguish hypotheses, correctness evidence, performance
   evidence, negative/null results, and threats to validity. Primary or
@@ -674,7 +674,7 @@ owning `out/` directories.
 
 Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
 and use `interop/algorithms/quality.rs` to produce a deterministic normalized
-source tree under `interop/algorithms/out/doom_fixed/`. Repair repeated
+source tree under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated
 `tools/tidy` diagnostic families with reusable AST transformations, replace
 unavailable legacy platform integration through explicit video, input, timing,
 audio, and game-data adapters, support scalable modern resolutions and measured
@@ -688,7 +688,7 @@ Use `interop/algorithms/amalgamate.rs` only after the quality pass has produced
 the normalized source tree. Resolve translation-unit boundaries, internal-linkage
 collisions, preprocessing environments, includes, declarations, and provenance
 through pinned Clang, then emit one deterministic
-`interop/algorithms/out/doom_amalgamated.c`. Differentially compare the normalized
+`interop/algorithms/amalgamate/out/doom_amalgamated.c`. Differentially compare the normalized
 multi-file build with the amalgamated build before copying the accepted artifact
 byte-for-byte to `tests/applications/doom/out/doom.c`. Plain textual
 concatenation and source-specific hand patches are not accepted algorithms.

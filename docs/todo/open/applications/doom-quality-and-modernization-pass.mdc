@@ -19,7 +19,7 @@ scope:
   - "doom/"
   - "interop/algorithms/quality.rs"
   - "interop/adapters/"
-  - "interop/algorithms/out/doom_fixed/"
+  - "interop/algorithms/quality/out/doom_fixed/"
   - "tools/tidy/"
 validation:
   - "jig validate --root ."
@@ -30,7 +30,7 @@ validation:
 
 Consume the user-supplied source tree under ignored `doom/` and use
 `interop/algorithms/quality.rs` to produce a deterministic normalized source tree
-under `interop/algorithms/out/doom_fixed/`. Repair repeated `tools/tidy`
+under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated `tools/tidy`
 diagnostic families through reusable AST transformations, modernize explicit
 platform adapters, and preserve behavior and required provenance before any
 translation units are amalgamated.
@@ -38,7 +38,7 @@ translation units are amalgamated.
 ## Acceptance
 
 - The user-owned input tree is never modified; all generated normalized source
-  lives under `interop/algorithms/out/doom_fixed/`.
+  lives under `interop/algorithms/quality/out/doom_fixed/`.
 - Repeated linter failures become reusable semantics-aware transformations; no
   blanket suppression or source-specific hand patch remains necessary.
 - Video, input, timing, audio, game-data, resolution, and frame-rate support are
@@ -53,7 +53,7 @@ translation units are amalgamated.
 ## Evidence
 
 - Expected durable artifact surface: `doom/`, `interop/algorithms/quality.rs`,
-  `interop/adapters/`, `interop/algorithms/out/doom_fixed/`, `tools/tidy/`.
+  `interop/adapters/`, `interop/algorithms/quality/out/doom_fixed/`, `tools/tidy/`.
 - Required evidence: deterministic source manifests, linter reports,
   transformation provenance, native differential traces, and adapter tests.
 - Prerequisite completion evidence: `clang-c-frontend-integration`,

@@ -30,5 +30,8 @@ Thumbs.db
 # DOOM
 doom/
 
-# Reproducible algorithm outputs; inputs/configuration remain versioned.
+# Reproducible algorithm outputs are local. User-owned interoperability input
+# corpora are local too; other algorithm inputs/configuration remain versioned.
 **/out/
+interop/algorithms/quality/in/
+interop/algorithms/amalgamate/in/

@@ -17,8 +17,8 @@ behavior.
 This document governs the following declared TODO scope:
 
 - `interop/algorithms/amalgamate.rs`
-- `interop/algorithms/out/doom_fixed/`
-- `interop/algorithms/out/doom_amalgamated.c`
+- `interop/algorithms/quality/out/doom_fixed/`
+- `interop/algorithms/amalgamate/out/doom_amalgamated.c`
 - `tests/applications/doom/out/doom.c`
 
 ## Current Behavior

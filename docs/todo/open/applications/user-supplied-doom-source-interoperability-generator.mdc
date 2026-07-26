@@ -16,8 +16,8 @@ adr_paths:
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "interop/algorithms/amalgamate.rs"
-  - "interop/algorithms/out/doom_fixed/"
-  - "interop/algorithms/out/doom_amalgamated.c"
+  - "interop/algorithms/quality/out/doom_fixed/"
+  - "interop/algorithms/amalgamate/out/doom_amalgamated.c"
   - "tests/applications/doom/out/doom.c"
 validation:
   - "jig validate --root ."
@@ -28,7 +28,7 @@ validation:
 
 Consume the accepted normalized DOOM source tree produced by `quality.rs` and use
 `interop/algorithms/amalgamate.rs` to emit one deterministic
-`interop/algorithms/out/doom_amalgamated.c`. Resolve translation-unit boundaries,
+`interop/algorithms/amalgamate/out/doom_amalgamated.c`. Resolve translation-unit boundaries,
 internal-linkage collisions, preprocessing environments, includes, declarations,
 and provenance through pinned Clang before admitting the single-file artifact.
 
@@ -50,8 +50,8 @@ and provenance through pinned Clang before admitting the single-file artifact.
 ## Evidence
 
 - Expected durable artifact surface: `interop/algorithms/amalgamate.rs`,
-  `interop/algorithms/out/doom_fixed/`,
-  `interop/algorithms/out/doom_amalgamated.c`,
+  `interop/algorithms/quality/out/doom_fixed/`,
+  `interop/algorithms/amalgamate/out/doom_amalgamated.c`,
   `tests/applications/doom/out/doom.c`.
 - Required evidence: normalized/amalgamated manifests, deterministic hashes,
   native differential traces, and provenance mapping.

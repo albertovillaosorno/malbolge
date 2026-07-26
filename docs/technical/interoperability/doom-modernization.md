@@ -18,7 +18,7 @@ This document governs the following declared TODO scope:
 - `doom/`
 - `interop/algorithms/quality.rs`
 - `interop/adapters/`
-- `interop/algorithms/out/doom_fixed/`
+- `interop/algorithms/quality/out/doom_fixed/`
 - `tools/tidy/`
 
 ## Current Behavior
@@ -26,7 +26,7 @@ This document governs the following declared TODO scope:
 ### Proposed Model
 
 `quality.rs` reads the ignored user-owned source tree and emits a generated
-normalized tree under `interop/algorithms/out/doom_fixed/`. Rewrites are driven
+normalized tree under `interop/algorithms/quality/out/doom_fixed/`. Rewrites are driven
 by Clang/AST semantics and the complete `tools/tidy` contract. Regex or other
 textual rewriting is admitted only when the transformation is provably textual.
 
