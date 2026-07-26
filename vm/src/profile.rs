@@ -186,6 +186,7 @@ impl ProfileFeatureSet {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProfileDescriptor {
     eof_word: u32,
+    fingerprint: &'static str,
     id: &'static str,
     kind: ProfileKind,
     memory_words: u32,
@@ -199,6 +200,12 @@ impl ProfileDescriptor {
     #[must_use]
     pub const fn eof_word(self) -> u32 {
         self.eof_word
+    }
+
+    /// Returns the canonical immutable profile fingerprint.
+    #[must_use]
+    pub const fn fingerprint(self) -> &'static str {
+        self.fingerprint
     }
 
     /// Returns the stable canonical profile identity.

@@ -54,6 +54,10 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
+const CURRENT_FINGERPRINT: &str = concat!(
+    "malbolge-profile-v1:sha256:",
+    "e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50",
+);
 const CURRENT_ID: &str = "malbolge-2026.2";
 const HISTORICAL_ID: &str = "malbolge-1998";
 const HISTORICAL_WORDS: u32 = 59_049;
@@ -64,6 +68,11 @@ const TRANSITION_ID: &str = "malbolge-2026.1";
 #[test]
 fn canonical_projection_exposes_current_geometry() -> TestResult {
     let current = current_profile();
+    check_equal(
+        &current.fingerprint(),
+        &CURRENT_FINGERPRINT,
+        "current profile fingerprint",
+    )?;
     check_equal(&current.id(), &CURRENT_ID, "current profile id")?;
     check_equal(&current.version(), &"2026.2", "current version")?;
     check_equal(&current.kind(), &ProfileKind::Current, "current kind")?;

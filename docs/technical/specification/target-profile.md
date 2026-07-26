@@ -52,6 +52,13 @@ implements `malbolge-1998` constants directly and must not silently execute a
 consumers are not yet universally profile-driven, so this contract remains
 active.
 
+Published profile identity is additionally bound by `malbolge-profile-v1`
+fingerprints. The fingerprint includes profile ID/version, target schema,
+word/memory geometry, and semantics, but excludes the registry-only `kind` role
+so current-to-versioned lifecycle changes cannot mutate old artifact identity.
+Canonical fingerprints are generated into
+`compatibility/profile-fingerprints.json` and the Rust profile projection.
+
 ## Invariants
 
 - `malbolge.json` has a closed, versioned schema whose values are consumed

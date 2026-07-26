@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -13,6 +14,7 @@ from typing import cast
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "malbolge.json"
 RUST_PROJECTION = ROOT / "vm" / "src" / "profile_generated.rs"
+FINGERPRINT_MANIFEST = ROOT / "compatibility" / "profile-fingerprints.json"
 HISTORICAL_PROFILE = "malbolge-1998"
 SCHEMA_VERSION = 2
 CURRENT_KIND = "current"
@@ -27,6 +29,9 @@ HISTORICAL_WORDS = 59_049
 HISTORICAL_EOF = 59_048
 TERNARY_RADIX = 3
 HISTORICAL_VERSION = "1998"
+PROFILE_CANONICALIZATION = "malbolge-profile-v1"
+PROFILE_FINGERPRINT_PREFIX = f"{PROFILE_CANONICALIZATION}:sha256:"
+CUSTOM_PROFILE_SCHEMA_VERSION = 1
 ASCII_SPACE = 0x20
 ASCII_TILDE = 0x7E
 BACKSLASH = "\\"
@@ -34,6 +39,13 @@ DOUBLE_QUOTE = '"'
 
 TOP_LEVEL_KEYS = frozenset({"current_profile", "profiles", "schema_version"})
 PROFILE_KEYS = frozenset({"kind", "memory", "semantics", "version", "word"})
+PROFILE_DEFINITION_KEYS = frozenset({"memory", "semantics", "version", "word"})
+CUSTOM_PROFILE_KEYS = frozenset({
+    "profile",
+    "profile_id",
+    "schema_version",
+    "target_schema_version",
+})
 WORD_KEYS = frozenset({"modulus", "radix", "trits"})
 MEMORY_KEYS = frozenset({"model", "words"})
 SEMANTIC_KEYS = frozenset({
@@ -57,6 +69,20 @@ type JsonObject = dict[str, JsonValue]
 
 class ProfileValidationError(ValueError):
     """Deterministic target-profile schema or invariant failure."""
+
+
+class ProfileFingerprintMismatchError(ProfileValidationError):
+    """External profile fingerprint disagrees with artifact identity."""
+
+    def __init__(self, profile_id: str, expected: str, observed: str) -> None:
+        """Build one stable mismatch diagnostic."""
+        message = " ".join((
+            "MALBOLGE-PROFILE-ID-001",
+            f"profile={profile_id}",
+            f"expected={expected}",
+            f"observed={observed}",
+        ))
+        super().__init__(message)
 
 
 def _fail(message: str) -> Never:
@@ -321,6 +347,265 @@ def validate_document(document: JsonObject) -> None:
     _validate_profile_identities(current_profile, validated)
 
 
+def _profile_definition(profile: JsonObject, context: str) -> JsonObject:
+    return {
+        "memory": _expect_mapping(profile["memory"], f"{context}.memory"),
+        "semantics": _expect_mapping(
+            profile["semantics"],
+            f"{context}.semantics",
+        ),
+        "version": _expect_string(profile["version"], f"{context}.version"),
+        "word": _expect_mapping(profile["word"], f"{context}.word"),
+    }
+
+
+def _profile_identity_material(
+    profile_id: str,
+    profile: JsonObject,
+    target_schema_version: int,
+) -> JsonObject:
+    return {
+        "canonicalization": PROFILE_CANONICALIZATION,
+        "profile": _profile_definition(profile, f"profiles.{profile_id}"),
+        "profile_id": profile_id,
+        "target_schema_version": target_schema_version,
+    }
+
+
+def _canonical_identity_bytes(
+    profile_id: str,
+    profile: JsonObject,
+    target_schema_version: int,
+) -> bytes:
+    material = _profile_identity_material(
+        profile_id,
+        profile,
+        target_schema_version,
+    )
+    encoded = json.dumps(
+        material,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return encoded.encode("ascii")
+
+
+def _fingerprint_identity(
+    profile_id: str,
+    profile: JsonObject,
+    target_schema_version: int,
+) -> str:
+    digest = hashlib.sha256(
+        _canonical_identity_bytes(
+            profile_id,
+            profile,
+            target_schema_version,
+        ),
+        usedforsecurity=True,
+    ).hexdigest()
+    return PROFILE_FINGERPRINT_PREFIX + digest
+
+
+def _validate_profile_definition(
+    profile_id: str,
+    value: JsonValue,
+) -> JsonObject:
+    context = f"profile {profile_id}"
+    profile = _expect_mapping(value, context)
+    _expect_exact_keys(profile, PROFILE_DEFINITION_KEYS, context)
+    _ = _expect_string(profile["version"], f"{context}.version")
+    modulus = _validate_word(profile["word"], f"{context}.word")
+    words = _validate_memory(profile["memory"], f"{context}.memory")
+    if words != modulus:
+        _fail(f"{context}.memory.words must equal word modulus")
+    semantics = _validate_semantics(
+        profile["semantics"],
+        f"{context}.semantics",
+    )
+    eof_word = _expect_int(
+        semantics["eof_word"],
+        f"{context}.semantics.eof_word",
+    )
+    if eof_word != modulus - 1:
+        _fail(f"{context}.semantics.eof_word must equal word maximum")
+    return profile
+
+
+def _validate_custom_target_schema(
+    document: JsonObject,
+    canonical_document: JsonObject,
+) -> None:
+    schema_version = _expect_int(document["schema_version"], "schema_version")
+    if schema_version != CUSTOM_PROFILE_SCHEMA_VERSION:
+        _fail(f"unsupported custom profile schema_version: {schema_version}")
+    target_schema = _expect_int(
+        document["target_schema_version"],
+        "target_schema_version",
+    )
+    canonical_schema = _expect_int(
+        canonical_document["schema_version"],
+        "canonical schema_version",
+    )
+    if target_schema != canonical_schema:
+        _fail("custom profile target_schema_version does not match authority")
+
+
+def _validate_custom_against_canonical(
+    profile_id: str,
+    profile: JsonObject,
+    canonical_profiles: JsonObject,
+) -> None:
+    historical = _expect_mapping(
+        canonical_profiles[HISTORICAL_PROFILE],
+        f"profiles.{HISTORICAL_PROFILE}",
+    )
+    if _semantic_core(profile) != _semantic_core(historical):
+        _fail("custom profile changed the defining Malbolge semantic core")
+    if profile_id not in canonical_profiles:
+        return
+    canonical_profile = _expect_mapping(
+        canonical_profiles[profile_id],
+        f"profiles.{profile_id}",
+    )
+    canonical_definition = _profile_definition(
+        canonical_profile,
+        f"profiles.{profile_id}",
+    )
+    if profile != canonical_definition:
+        _fail(f"canonical profile identity redefined: {profile_id}")
+
+
+def validate_custom_profile_document(
+    document: JsonObject,
+    canonical_document: JsonObject,
+) -> tuple[str, JsonObject]:
+    """Validate one external custom-profile identity document.
+
+    Returns:
+        The exact profile ID and validated profile definition.
+
+    """
+    validate_document(canonical_document)
+    _expect_exact_keys(document, CUSTOM_PROFILE_KEYS, "custom profile document")
+    _validate_custom_target_schema(document, canonical_document)
+    profile_id = _expect_string(document["profile_id"], "profile_id")
+    profile = _validate_profile_definition(profile_id, document["profile"])
+    canonical_profiles = _expect_mapping(
+        canonical_document["profiles"],
+        "canonical profiles",
+    )
+    _validate_custom_against_canonical(
+        profile_id,
+        profile,
+        canonical_profiles,
+    )
+    return profile_id, profile
+
+
+def custom_profile_fingerprint(
+    document: JsonObject,
+    canonical_document: JsonObject,
+) -> str:
+    """Return one validated external profile's canonical fingerprint.
+
+    Returns:
+        The same fingerprint a canonical registry entry would receive.
+
+    """
+    profile_id, profile = validate_custom_profile_document(
+        document,
+        canonical_document,
+    )
+    target_schema = _expect_int(
+        document["target_schema_version"],
+        "target_schema_version",
+    )
+    return _fingerprint_identity(profile_id, profile, target_schema)
+
+
+def verify_custom_profile_fingerprint(
+    document: JsonObject,
+    canonical_document: JsonObject,
+    expected: str,
+) -> str:
+    """Verify external profile identity against an artifact fingerprint.
+
+    Returns:
+        The observed canonical fingerprint when it matches `expected`.
+
+    Raises:
+        ProfileFingerprintMismatchError: When canonical identity differs.
+
+    """
+    profile_id, _ = validate_custom_profile_document(
+        document,
+        canonical_document,
+    )
+    observed = custom_profile_fingerprint(document, canonical_document)
+    if observed != expected:
+        raise ProfileFingerprintMismatchError(profile_id, expected, observed)
+    return observed
+
+
+def canonical_profile_bytes(document: JsonObject, profile_id: str) -> bytes:
+    """Return canonical identity bytes for one validated registry profile.
+
+    Registry lifecycle metadata such as `kind` is intentionally excluded so a
+    published profile fingerprint remains stable when `current` later becomes
+    `versioned`.
+
+    Returns:
+        Compact sorted ASCII JSON bytes for the immutable profile identity.
+
+    """
+    validate_document(document)
+    profiles = _expect_mapping(document["profiles"], "profiles")
+    if profile_id not in profiles:
+        _fail(f"unknown profile identity: {profile_id}")
+    profile = _expect_mapping(profiles[profile_id], f"profiles.{profile_id}")
+    schema_version = _expect_int(document["schema_version"], "schema_version")
+    return _canonical_identity_bytes(profile_id, profile, schema_version)
+
+
+def profile_fingerprint(document: JsonObject, profile_id: str) -> str:
+    """Return the self-describing SHA-256 fingerprint for one profile.
+
+    Returns:
+        `malbolge-profile-v1:sha256:<hex>` over canonical profile bytes.
+
+    """
+    validate_document(document)
+    profiles = _expect_mapping(document["profiles"], "profiles")
+    if profile_id not in profiles:
+        _fail(f"unknown profile identity: {profile_id}")
+    profile = _expect_mapping(profiles[profile_id], f"profiles.{profile_id}")
+    schema_version = _expect_int(document["schema_version"], "schema_version")
+    return _fingerprint_identity(profile_id, profile, schema_version)
+
+
+def render_profile_fingerprint_manifest(document: JsonObject) -> str:
+    """Render the checked-in canonical-profile fingerprint manifest.
+
+    Returns:
+        Deterministic pretty JSON with one fingerprint per canonical profile.
+
+    """
+    validate_document(document)
+    profiles = _expect_mapping(document["profiles"], "profiles")
+    fingerprints: JsonObject = {}
+    for profile_id in sorted(profiles):
+        fingerprints[profile_id] = profile_fingerprint(document, profile_id)
+    payload: JsonObject = {
+        "canonicalization": PROFILE_CANONICALIZATION,
+        "profiles": fingerprints,
+        "schema_version": 1,
+        "target_schema_version": SCHEMA_VERSION,
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
 def _rust_string(value: str, context: str) -> str:
     escaped: list[str] = []
     for character in value:
@@ -349,10 +634,29 @@ def _rust_profile_kind(kind: str) -> str:
     return variants[kind]
 
 
+def _rust_fingerprint_lines(fingerprint: str) -> list[str]:
+    if not fingerprint.startswith(PROFILE_FINGERPRINT_PREFIX):
+        _fail("profile fingerprint uses unexpected canonicalization")
+    digest = fingerprint.removeprefix(PROFILE_FINGERPRINT_PREFIX)
+    prefix_literal = _rust_string(
+        PROFILE_FINGERPRINT_PREFIX,
+        "fingerprint prefix",
+    )
+    digest_literal = _rust_string(digest, "fingerprint digest")
+    return [
+        "    fingerprint: concat!(",
+        f"        {prefix_literal},",
+        f"        {digest_literal},",
+        "    ),",
+    ]
+
+
 def _profile_projection_lines(
     index: int,
     profile_id: str,
     profile: JsonObject,
+    *,
+    fingerprint: str,
 ) -> list[str]:
     word = _expect_mapping(profile["word"], f"profiles.{profile_id}.word")
     memory = _expect_mapping(
@@ -375,6 +679,7 @@ def _profile_projection_lines(
     return [
         declaration,
         f"    eof_word: {_rust_integer(semantics["eof_word"], "eof_word")},",
+        *_rust_fingerprint_lines(fingerprint),
         f"    id: {_rust_string(profile_id, "profile id")},",
         f"    kind: {_rust_profile_kind(kind)},",
         f"    memory_words: {_rust_integer(memory["words"], "memory.words")},",
@@ -467,7 +772,14 @@ def render_rust_projection(document: JsonObject) -> str:
         profile = _expect_mapping(
             profiles[profile_id], f"profiles.{profile_id}"
         )
-        lines.extend(_profile_projection_lines(index, profile_id, profile))
+        lines.extend(
+            _profile_projection_lines(
+                index,
+                profile_id,
+                profile,
+                fingerprint=profile_fingerprint(document, profile_id),
+            )
+        )
         lines.append("")
     references = ", ".join(
         f"&PROFILE_{index}" for index in range(len(profile_ids))

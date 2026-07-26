@@ -1,0 +1,10 @@
+{
+  "canonicalization": "malbolge-profile-v1",
+  "profiles": {
+    "malbolge-1998": "malbolge-profile-v1:sha256:f292eae8bc88cd084e9fbc5cacf65ccde53b02d33b597ae76cc07f4a4b0ebd26",
+    "malbolge-2026.1": "malbolge-profile-v1:sha256:e72da529edefea13c4855b83decf61593d3ad64e5231c4911a2391cbd7567204",
+    "malbolge-2026.2": "malbolge-profile-v1:sha256:e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50"
+  },
+  "schema_version": 1,
+  "target_schema_version": 2
+}

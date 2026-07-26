@@ -2,59 +2,190 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
-Allow user-supplied target profiles with canonical hashing and explicit artifact
-identity. Investigate profile-dependent encoding without making a false claim
-that reverse engineering can be made cryptographically impossible.
+Give canonical and user-supplied Malbolge target profiles stable content-bound
+identity so artifacts and external configuration can detect semantic mismatch
+instead of silently interpreting the same bytes under another profile.
+
+The fingerprint is an integrity and identity mechanism. It is not encryption,
+obfuscation, copy protection, or evidence that a profile-dependent encoding is
+hard to reverse engineer.
 
 ## Scope
 
-This document governs the following declared TODO scope:
+This document currently governs:
 
-- `compatibility/`
-- `docs/technical/specification/`
-- `tests/compatibility/`
+- `malbolge.json`
+- `compatibility/profile-fingerprints.json`
+- `compatibility/custom-profile.example.json`
+- `scripts/validate/target_profile.py`
+- `scripts/validate/profile_identity.py`
+- `vm/src/profile.rs`
+- `vm/src/profile_generated.rs`
+- `tests/test_target_profile.py`
+- `tests/compatibility/test_profile_identity.py`
 
 ## Current Behavior
 
-### Proposed Model
+### Canonicalization Identity
 
-This record defines the contract that implementation must satisfy for
-`custom-target-profile-identity`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+Malbolge Profile Canonicalization v1 has the stable label
+`malbolge-profile-v1`.
 
-### Implementation Status
+For one profile, canonical identity material is compact JSON containing exactly:
 
-Not implemented. This proposed contract does not claim executable support yet.
+- `canonicalization = "malbolge-profile-v1"`;
+- `target_schema_version`;
+- `profile_id`; and
+- `profile`, containing `version`, `word`, `memory`, and `semantics`.
+
+Objects are serialized with lexicographically sorted keys, no insignificant
+whitespace, JSON booleans/integers, and ASCII JSON escaping. The resulting ASCII
+bytes are hashed with SHA-256. The self-describing fingerprint is:
+
+`malbolge-profile-v1:sha256:<64 lowercase hexadecimal digits>`.
+
+Repository registry field `kind` is intentionally excluded. `kind` describes a
+profile's lifecycle role in the registry, not its immutable language meaning.
+For example, `malbolge-2026.1` changed from `current` to `versioned` when
+`malbolge-2026.2` became current; artifacts bound to 2026.1 must not acquire a
+new fingerprint because of that registry transition.
+
+Profile ID and version remain included. Therefore two profiles with identical
+geometry and semantics, such as `malbolge-1998` and the ten-trit transition
+profile `malbolge-2026.1`, still have distinct fingerprints.
+
+### Canonical Fingerprint Manifest
+
+`compatibility/profile-fingerprints.json` is a generated review artifact. It
+records one fingerprint for every canonical profile in `malbolge.json` together
+with the canonicalization and target-schema versions.
+
+`tests/test_target_profile.py` requires this manifest and the checked-in Rust
+profile projection to equal their deterministic renderers byte for byte.
+
+The Rust `ProfileDescriptor` exposes the same generated fingerprint through
+`fingerprint()`, so future artifact code does not need a handwritten profile
+hash table.
+
+### External Custom Profile Format
+
+A user-supplied profile identity document has closed schema version 1:
+
+```json
+{
+  "schema_version": 1,
+  "target_schema_version": 2,
+  "profile_id": "custom-14-example",
+  "profile": {
+    "version": "custom-14.1",
+    "word": {},
+    "memory": {},
+    "semantics": {}
+  }
+}
+```
+
+The nested `word`, `memory`, and `semantics` objects use exactly the same closed
+shape and invariants as canonical target profiles. `kind` is absent because an
+external identity is not allowed to claim registry lifecycle authority.
+
+A custom profile may choose another ternary word width/capacity while preserving
+the defining Malbolge semantic core. It may not switch guest order, remove
+self-modification, change byte-I/O meaning, or otherwise use the custom-profile
+mechanism to define an unrelated language.
+
+If `profile_id` already exists in canonical `malbolge.json`, the external
+profile definition must exactly match that canonical profile after excluding
+`kind`. This prevents a supplied file from rebinding `malbolge-2026.2` or any
+other published ID to different semantics or geometry.
+
+`compatibility/custom-profile.example.json` is a non-authoritative example of a
+new 14-trit custom identity using the current defining semantic core.
+
+### Fingerprint CLI
+
+Run:
+
+```text
+.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity PROFILE.json
+```
+
+to validate the external profile and print its canonical fingerprint.
+
+Run:
+
+```text
+.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity PROFILE.json EXPECTED-FINGERPRINT
+```
+
+to verify an artifact/profile binding. A mismatch fails with exit status 1 and
+stable diagnostic code `MALBOLGE-PROFILE-ID-001`, naming the profile plus the
+expected and observed fingerprints.
+
+The example profile currently fingerprints to:
+
+`malbolge-profile-v1:sha256:221015e0ac4cbde88444ad6d55c703a2e2cc96904bd65b81cb44e256aa1f3177`.
+
+### Security Boundary
+
+SHA-256 gives a compact collision-resistant identity for the exact canonical
+profile material. It does not hide the profile. Anyone who possesses the profile
+or artifact metadata can inspect or reproduce the fingerprint.
+
+Profile-dependent instruction encoding remains a separate research question. If
+pursued, it must be described as encoding/layout variation rather than a claim
+that reverse engineering can be made cryptographically impossible.
 
 ## Invariants
 
-- Generated artifacts bind to a canonical profile fingerprint; supplying a
-  nonmatching external configuration is detected rather than silently
-  interpreted under different semantics.
-- `malbolge-1998` preserves the written 1998 machine exactly; current-language
-  behavior and capacity are gated by explicit versioned profile identity.
+- Canonical profile fingerprints are derived from `malbolge.json`; they are not
+  maintained independently by hand.
+- `kind` never participates in immutable profile fingerprints.
+- Profile ID, version, target schema, word model, memory model, and semantics do
+  participate in the fingerprint.
+- JSON source formatting and object key order do not affect identity.
+- A canonical profile ID cannot be redefined by an external file.
+- Custom profiles preserve the defining Malbolge semantic core.
+- A supplied fingerprint mismatch is explicit and deterministic.
+- Fingerprints provide identity/integrity, not secrecy.
 
 ## Failure Behavior
 
-A profile mismatch or unsupported capability fails with an explicit requirement
-diagnostic; current and `malbolge-1998` behavior are never guessed.
+Malformed external schema, target-schema mismatch, invalid ternary geometry,
+semantic-core drift, or canonical-ID redefinition fails before a fingerprint is
+accepted.
+
+A structurally valid profile whose computed fingerprint differs from the
+artifact expectation fails with `MALBOLGE-PROFILE-ID-001`; the external profile
+is never silently substituted for the expected identity.
+
+Compiler artifacts do not yet universally carry this fingerprint, so this
+contract remains active. The identity primitive is implemented and ready for
+artifact/container integration.
 
 ## Verification
 
-- Expected durable artifact surface: `compatibility/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: `malbolge-1998` specification-conformance corpus plus
-  current/profile boundary fixtures and exact diagnostics.
-- Prerequisite completion evidence: `canonical-malbolge-target-profile`.
+- `tests/test_target_profile.py` locks canonical manifest and Rust projection
+  generation byte for byte.
+- `tests/compatibility/test_profile_identity.py` covers stable example identity,
+  key-order independence, canonical/external equivalence, profile-ID
+  participation, semantic drift, canonical-ID collision, and exact mismatch
+  diagnostics.
+- `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
+  the generated canonical fingerprint.
+- The CLI is smoke-tested with matching and mismatching expected fingerprints.
+- `jig validate --root .` remains the repository-wide closure gate.
+
 ## References
 
 - [Specification Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+- [Canonical Malbolge target profile](../specification/target-profile.md)
+- [Required-profile diagnostics](required-profile-diagnostics.md)
 
 ### Governing ADR Paths
 

@@ -50,6 +50,9 @@ The safe Rust VM remains classic-capability only. Profile-aware construction mus
 preflight against `safe-rust-classic`; do not silently execute `malbolge-2026.2`
 through the ten-trit loader. The checked-in Rust descriptors are generated from
 `malbolge.json` and must remain byte-exact with the validator renderer.
+Profile fingerprints use `malbolge-profile-v1`; profile ID/version/geometry and
+semantics are hashed, while registry `kind` is intentionally excluded so a
+current-to-versioned transition cannot rewrite historical artifact identity.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.

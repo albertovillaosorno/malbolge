@@ -126,3 +126,19 @@ def test_rust_projection_matches_canonical_profile() -> None:
     expected = validator.render_rust_projection(document)
     observed = validator.RUST_PROJECTION.read_text(encoding="utf-8")
     assert observed == expected
+
+
+def test_fingerprint_manifest_matches_canonical_profile() -> None:
+    """Checked-in fingerprints are a byte-exact canonical projection."""
+    document = validator.load_document(PROFILE_PATH)
+    expected = validator.render_profile_fingerprint_manifest(document)
+    observed = validator.FINGERPRINT_MANIFEST.read_text(encoding="utf-8")
+    assert observed == expected
+
+
+def test_transition_and_historical_fingerprints_are_distinct() -> None:
+    """Equal geometry does not collapse distinct published identities."""
+    document = validator.load_document(PROFILE_PATH)
+    historical = validator.profile_fingerprint(document, "malbolge-1998")
+    transition = validator.profile_fingerprint(document, "malbolge-2026.1")
+    assert historical != transition

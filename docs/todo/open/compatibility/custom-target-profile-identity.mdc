@@ -1,6 +1,6 @@
 ---
 id: "custom-target-profile-identity"
-status: "pending"
+status: "active"
 lane: "5"
 area: "compatibility"
 task: "TODO - Custom target profile identity"
@@ -11,10 +11,19 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
+  - "malbolge.json"
   - "compatibility/"
   - "docs/technical/specification/"
+  - "scripts/validate/target_profile.py"
+  - "scripts/validate/profile_identity.py"
+  - "vm/src/profile.rs"
+  - "vm/src/profile_generated.rs"
   - "tests/compatibility/"
+  - "tests/test_target_profile.py"
+  - "tests/vm/profile_requirements.rs"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_identity.py"
+  - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
 # TODO - Custom target profile identity
@@ -24,6 +33,26 @@ validation:
 Allow user-supplied target profiles with canonical hashing and explicit artifact
 identity. Investigate profile-dependent encoding without making a false claim
 that reverse engineering can be made cryptographically impossible.
+
+
+**Current implementation.**
+
+- `malbolge-profile-v1` canonicalizes profile ID, version, target schema,
+  word/memory geometry, and semantics to compact sorted ASCII JSON, then binds
+  those bytes with a self-describing SHA-256 fingerprint.
+- Registry `kind` is deliberately excluded so a published profile keeps the
+  same fingerprint when its lifecycle role changes from current to versioned.
+- `compatibility/profile-fingerprints.json` and `vm/src/profile_generated.rs`
+  are deterministic generated projections; tests require byte-exact renderer
+  equality, and Rust exposes the fingerprint through `ProfileDescriptor`.
+- External schema-v1 custom profiles omit registry `kind`, preserve the defining
+  Malbolge semantic core, and may not redefine an existing canonical profile ID
+  with different content.
+- `.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity` prints or verifies fingerprints.
+  Mismatch uses stable code `MALBOLGE-PROFILE-ID-001` with expected/observed
+  identities and never silently substitutes another configuration.
+- SHA-256 is used for identity/integrity only; no secrecy or anti-reverse-
+  engineering claim is made. Artifact-wide propagation remains open.
 
 ## Acceptance
 
@@ -39,8 +68,8 @@ that reverse engineering can be made cryptographically impossible.
 
 ## Evidence
 
-- Expected durable artifact surface: `compatibility/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
+- Current durable evidence includes the generated fingerprint manifest,
+  external example, identity CLI, Rust projection, and profile-identity tests.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`.

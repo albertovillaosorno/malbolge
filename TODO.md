@@ -381,8 +381,10 @@ compiler artifacts and other runtime consumers remains open.
 ### TODO - Custom target profile identity
 
 Allow user-supplied target profiles with canonical hashing and explicit artifact
-identity. Investigate profile-dependent encoding without making a false claim
-that reverse engineering can be made cryptographically impossible.
+identity. `malbolge-profile-v1` fingerprints and the verification CLI now detect
+external configuration mismatch; compiler/container propagation and any
+profile-dependent encoding research remain open without claiming cryptographic
+resistance to reverse engineering.
 
 ### TODO - Hexagonal authoring-layout experiment
 

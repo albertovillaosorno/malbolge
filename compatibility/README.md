@@ -19,5 +19,8 @@ profile and advance `current_profile`; they never mutate an existing identity.
 Historical interpreter quirks remain outside language profiles and require
 explicit `legacy-ben` execution.
 
-Profile fingerprints and user-supplied custom-profile identity are owned by the
-separate custom-target-profile TODO and are not invented here.
+Profile identity uses `malbolge-profile-v1` canonicalization and self-describing
+SHA-256 fingerprints. `profile-fingerprints.json` is the generated canonical
+manifest; `custom-profile.example.json` demonstrates the closed external format.
+Use `.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity` to fingerprint or verify an
+external profile. Fingerprints bind identity/integrity and do not provide secrecy.

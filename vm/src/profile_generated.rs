@@ -52,6 +52,10 @@ pub(super) static HISTORICAL_PROFILE: &ProfileDescriptor = &PROFILE_0;
 
 pub(super) static PROFILE_0: ProfileDescriptor = ProfileDescriptor {
     eof_word: 59_048,
+    fingerprint: concat!(
+        "malbolge-profile-v1:sha256:",
+        "f292eae8bc88cd084e9fbc5cacf65ccde53b02d33b597ae76cc07f4a4b0ebd26",
+    ),
     id: "malbolge-1998",
     kind: ProfileKind::HistoricalConformance,
     memory_words: 59_049,
@@ -62,6 +66,10 @@ pub(super) static PROFILE_0: ProfileDescriptor = ProfileDescriptor {
 
 pub(super) static PROFILE_1: ProfileDescriptor = ProfileDescriptor {
     eof_word: 59_048,
+    fingerprint: concat!(
+        "malbolge-profile-v1:sha256:",
+        "e72da529edefea13c4855b83decf61593d3ad64e5231c4911a2391cbd7567204",
+    ),
     id: "malbolge-2026.1",
     kind: ProfileKind::Versioned,
     memory_words: 59_049,
@@ -72,6 +80,10 @@ pub(super) static PROFILE_1: ProfileDescriptor = ProfileDescriptor {
 
 pub(super) static PROFILE_2: ProfileDescriptor = ProfileDescriptor {
     eof_word: 4_782_968,
+    fingerprint: concat!(
+        "malbolge-profile-v1:sha256:",
+        "e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50",
+    ),
     id: "malbolge-2026.2",
     kind: ProfileKind::Current,
     memory_words: 4_782_969,
