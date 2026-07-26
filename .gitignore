@@ -1,0 +1,34 @@
+# Mandatory repository-local infrastructure state.
+/.cache/
+/.temp/
+/.logs/
+/.dependencies/
+
+# Non-authoritative study material embedded beside rule contracts.
+**/cheap-reference/
+
+# Local editor and operating-system state.
+/.cursor/
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+
+# Local interpreter and tool caches.
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.eslintcache
+/node_modules/
+
+# Local temporary artifacts outside the mandatory infrastructure roots.
+*.log
+*.tmp
+*.temp
+
+# DOOM
+doom/
+
+# Reproducible algorithm outputs; inputs/configuration remain versioned.
+**/out/

@@ -1,0 +1,647 @@
+# Jig C/C++ validation authority.
+#
+# VERIFIED AGAINST: LLVM 24 (clang-tools-extra/clang-tidy), the checkout at
+# reference/llvm-project. 472 registered checks across 23 families. Every check
+# name, option name, and alias direction below was read out of that source, not
+# recalled. Re-verify on every clang-tidy version bump: families are renamed and
+# merged between releases, and a config that names a check which no longer
+# exists is silently inert, which is indistinguishable from passing.
+#
+# clang-tidy is not yet pinned in jig.toml. When it is added under [tool] and
+# [validation], this file becomes the executed contract; until then it is the
+# declared contract only. The native validator contract roadmap task owns that
+# wiring.
+#
+# This file is the single authority. A repository-local .clang-tidy must never
+# relax it.
+InheritParentConfig: false
+
+# ENABLED FAMILIES ('*' below turns everything on). Families with no surface in
+# the current sources stay enabled because they are inert until their APIs
+# appear (Abseil, Boost, MPI, ObjC) and activate automatically:
+#   abseil-*          correct use of Abseil APIs (inert without Abseil).
+#   altera-*          explicit struct packing/alignment (see conflicts section
+#                     for the two FPGA-only members removed).
+#   boost-*           Boost migration correctness (inert without Boost).
+#   bugprone-*        real bug patterns: swapped arguments, bad sizeof, unsafe
+#                     libc functions, use-after-move, narrowing, and the
+#                     signed-bitwise and exhaustive-if/else checks that used to
+#                     live in hicpp-*.
+#   cert-*            SEI CERT C/C++ secure-coding rules. Most members are now
+#                     aliases of bugprone/misc canonicals; the alias list below
+#                     is current as of LLVM 24.
+#   clang-analyzer-*  path-sensitive static analysis: null derefs, leaks,
+#                     double free, uninitialized reads, taint.
+#   clang-diagnostic-* compiler warnings surfaced as checks; combined with
+#                     ExtraArgs and WarningsAsErrors this makes every compiler
+#                     warning a hard failure.
+#   concurrency-*     thread-unsafe libc (strtok, localtime, ...) and
+#                     async-cancel safety.
+#   cppcoreguidelines-* full C++ Core Guidelines enforcement on every C++
+#                     translation unit (bounds, type, lifetime).
+#   darwin-*          macOS API misuse (inert off macOS APIs).
+#   fuchsia-*         hard restrictions kept as the strict side of style: no
+#                     default arguments, no virtual inheritance, no overloaded
+#                     operators, no statically constructed objects, no trailing
+#                     return types.
+#   google-*          non-alias members: no using-namespace in headers, no
+#                     global names in headers, fixed-width ints over
+#                     short/long (runtime-int), owned TODOs.
+#   linuxkernel-*     kernel err-return checking (inert outside kernel calls).
+#   llvm-*            path-derived header guards (llvm-header-guard is the
+#                     single header-guard authority), deterministic include
+#                     ordering (llvm-include-order), namespace closing comments
+#                     (llvm-namespace-comment is canonical).
+#   misc-*            include hygiene (misc-include-cleaner is the
+#                     include-what-you-use authority), no recursion
+#                     (misc-no-recursion: iterative rewrites are always
+#                     mechanically available), static assert, unused
+#                     parameters/aliases, const correctness.
+#   modernize-*       current-standard constructs (C++23 on C++ units; on C23
+#                     units this still covers nullptr adoption).
+#   mpi-*             MPI type/buffer mismatches (inert without MPI).
+#   objc-*            Objective-C rules (inert on C).
+#   openmp-*          OpenMP pragma hygiene (inert without OpenMP; if OpenMP
+#                     appears, default(none) becomes mandatory).
+#   performance-*     needless copies, inefficient patterns, no-int-to-ptr.
+#   portability-*     ISO conformance over vendor extensions: SIMD intrinsics,
+#                     inline assembly (portability-no-assembler), template
+#                     virtual member calls, header guards over #pragma once.
+#   readability-*     the deterministic style core: mandatory braces, naming,
+#                     magic numbers, cognitive complexity, function size,
+#                     implicit bool conversions.
+#   zircon-*          option-driven temporary-object bans (inert with the
+#                     default empty class list).
+#
+# NOT LISTED, BECAUSE IT NO LONGER EXISTS:
+#   hicpp-*           The High Integrity C++ module was removed from
+#                     clang-tools-extra before LLVM 24. Its unique checks were
+#                     absorbed elsewhere: signed-bitwise -> bugprone,
+#                     no-assembler -> portability, exception-baseclass ->
+#                     bugprone, multiway-paths-covered -> the new
+#                     bugprone-unhandled-code-paths. Every hicpp name is now
+#                     unknown, so disabling one is a no-op and configuring one
+#                     silently loses the strictness it was meant to add. All
+#                     hicpp entries were removed for that reason and their two
+#                     CheckOptions re-pointed at the surviving canonicals.
+#
+# DISABLED, GROUP 1 - ALIASES (canonical check kept -> alias removed).
+# Removing an alias never weakens validation: the identical check still runs
+# under its canonical name. Leaving one enabled is not a weakening either, but
+# it emits the same finding twice under two names, and a gate whose output
+# volume depends on alias bookkeeping is not byte-stable. Direction was taken
+# from the "Check aliases" table in clang-tidy's own docs/checks/list.rst.
+#   cert-arr39-c          = bugprone-sizeof-expression
+#   cert-con36-c          = bugprone-spuriously-wake-up-functions
+#   cert-con54-cpp        = bugprone-spuriously-wake-up-functions
+#   cert-ctr56-cpp        = bugprone-pointer-arithmetic-on-polymorphic-object
+#   cert-dcl03-c          = misc-static-assert
+#   cert-dcl16-c          = readability-uppercase-literal-suffix
+#   cert-dcl37-c          = bugprone-reserved-identifier
+#   cert-dcl50-cpp        = modernize-avoid-variadic-functions
+#   cert-dcl51-cpp        = bugprone-reserved-identifier
+#   cert-dcl54-cpp        = misc-new-delete-overloads
+#   cert-dcl58-cpp        = bugprone-std-namespace-modification
+#   cert-dcl59-cpp        = misc-anonymous-namespace-in-header
+#   cert-env33-c          = bugprone-command-processor
+#   cert-err09-cpp        = misc-throw-by-value-catch-by-reference
+#   cert-err33-c          = bugprone-unused-return-value
+#   cert-err34-c          = bugprone-unchecked-string-to-number-conversion
+#   cert-err52-cpp        = modernize-avoid-setjmp-longjmp
+#   cert-err58-cpp        = bugprone-throwing-static-initialization
+#   cert-err60-cpp        = bugprone-exception-copy-constructor-throws
+#   cert-err61-cpp        = misc-throw-by-value-catch-by-reference
+#   cert-exp42-c          = bugprone-suspicious-memory-comparison
+#   cert-exp45-c          = bugprone-assignment-in-selection-statement
+#   cert-fio38-c          = misc-non-copyable-objects
+#   cert-flp30-c          = bugprone-float-loop-counter
+#   cert-flp37-c          = bugprone-suspicious-memory-comparison
+#   cert-int09-c          = readability-enum-initial-value
+#   cert-mem57-cpp        = bugprone-default-operator-new-on-overaligned-type
+#   cert-msc24-c          = bugprone-unsafe-functions
+#   cert-msc30-c          = misc-predictable-rand
+#   cert-msc32-c          = bugprone-random-generator-seed
+#   cert-msc33-c          = bugprone-unsafe-functions
+#   cert-msc50-cpp        = misc-predictable-rand
+#   cert-msc51-cpp        = bugprone-random-generator-seed
+#   cert-msc54-cpp        = bugprone-signal-handler
+#   cert-oop11-cpp        = performance-move-constructor-init
+#   cert-oop54-cpp        = bugprone-unhandled-self-assignment
+#   cert-oop57-cpp        = bugprone-raw-memory-call-on-non-trivial-type
+#   cert-oop58-cpp        = bugprone-copy-constructor-mutates-argument
+#   cert-pos44-c          = bugprone-bad-signal-to-kill-thread
+#   cert-pos47-c          = concurrency-thread-canceltype-asynchronous
+#   cert-sig30-c          = bugprone-signal-handler
+#   cert-str34-c          = bugprone-signed-char-misuse
+#   cppcoreguidelines-avoid-c-arrays
+#                         = modernize-avoid-c-arrays
+#   cppcoreguidelines-avoid-magic-numbers
+#                         = readability-magic-numbers
+#   cppcoreguidelines-c-copy-assignment-signature
+#                         = misc-unconventional-assign-operator
+#   cppcoreguidelines-explicit-constructor
+#                         = misc-explicit-constructor
+#   cppcoreguidelines-explicit-virtual-functions
+#                         = modernize-use-override
+#   cppcoreguidelines-macro-to-enum
+#                         = modernize-macro-to-enum
+#   cppcoreguidelines-narrowing-conversions
+#                         = bugprone-narrowing-conversions
+#   cppcoreguidelines-noexcept-destructor
+#                         = performance-noexcept-destructor
+#   cppcoreguidelines-noexcept-move-operations
+#                         = performance-noexcept-move-constructor
+#   cppcoreguidelines-noexcept-swap
+#                         = performance-noexcept-swap
+#   cppcoreguidelines-non-private-member-variables-in-classes
+#                         = misc-non-private-member-variables-in-classes
+#                           (canonical kept at its stricter default: even
+#                           all-public aggregates are reported)
+#   cppcoreguidelines-use-default-member-init
+#                         = modernize-use-default-member-init
+#   fuchsia-header-anon-namespaces
+#                         = misc-anonymous-namespace-in-header
+#   fuchsia-multiple-inheritance
+#                         = misc-multiple-inheritance
+#   google-build-namespaces
+#                         = misc-anonymous-namespace-in-header
+#   google-explicit-constructor
+#                         = misc-explicit-constructor
+#   google-readability-braces-around-statements
+#                         = readability-braces-around-statements
+#   google-readability-casting
+#                         = modernize-avoid-c-style-cast
+#   google-readability-function-size
+#                         = readability-function-size
+#   google-readability-namespace-comments
+#                         = llvm-namespace-comment
+#   llvm-else-after-return
+#                         = readability-else-after-return
+#   llvm-qualified-auto   = readability-qualified-auto
+#   performance-faster-string-find
+#                         = performance-prefer-single-char-overloads
+#
+# DISABLED, GROUP 2 - CONFLICTS (strictest/conventional side kept).
+#   modernize-use-trailing-return-type
+#       Demands `auto f() -> T` everywhere; fuchsia-trailing-return forbids
+#       exactly that form. Both are absolute style mandates, so one must go.
+#       Leading return types are kept because every other enabled guideline
+#       family (LLVM, Google, CERT) writes them, and the fuchsia prohibition is
+#       the side that removes a construct rather than adding one.
+#   misc-use-anonymous-namespace
+#       Demands anonymous namespaces for file-local functions;
+#       llvm-prefer-static-over-anonymous-namespace demands `static` for
+#       exactly the same functions, so no compliant form exists with both
+#       enabled. `static` is kept because it is the one internal-linkage
+#       mechanism valid in both C and C++, giving the gate a single
+#       deterministic rule across languages; internal linkage itself is still
+#       mandatory via misc-use-internal-linkage.
+#   Note on a pair that looks conflicting but is not:
+#       readability-else-after-return (no else after return) and
+#       bugprone-unhandled-code-paths with WarnOnMissingElse (every if/else-if
+#       chain ends in else) share a fixed point: chains whose branches return
+#       are flattened into sequential early-return ifs, at which point no
+#       if/else-if chain remains and both checks are silent. Both stay enabled.
+#
+# DISABLED, GROUP 3 - FOREIGN-PROJECT RULES (unsatisfiable here).
+#   llvmlibc-*
+#       Conventions for compiling LLVM's own libc: bans system libc headers
+#       outright and requires the __llvm_libc namespace. Any normal
+#       `#include <stdio.h>` fails by design, so the family is a category error
+#       outside that tree.
+#   altera-id-dependent-backward-branch, altera-unroll-loops
+#       Intel FPGA OpenCL kernel scheduling rules: demand #pragma unroll on
+#       loops and forbid ID-dependent branches. Meaningless for host C.
+#       altera-struct-pack-align stays enabled: explicit packing and alignment
+#       attributes are strict, deterministic, and valid on any target.
+#   android-*
+#       Requires O_CLOEXEC / SOCK_CLOEXEC / "e" fopen modes that do not exist
+#       in the Windows-hosted C runtime this repository targets, so every fix
+#       it proposes is uncompilable here. Re-enable via a path-scoped overlay
+#       if a POSIX-targeted C tree appears.
+Checks: >
+  *,
+  -cert-arr39-c,
+  -cert-con36-c,
+  -cert-con54-cpp,
+  -cert-ctr56-cpp,
+  -cert-dcl03-c,
+  -cert-dcl16-c,
+  -cert-dcl37-c,
+  -cert-dcl50-cpp,
+  -cert-dcl51-cpp,
+  -cert-dcl54-cpp,
+  -cert-dcl58-cpp,
+  -cert-dcl59-cpp,
+  -cert-env33-c,
+  -cert-err09-cpp,
+  -cert-err33-c,
+  -cert-err34-c,
+  -cert-err52-cpp,
+  -cert-err58-cpp,
+  -cert-err60-cpp,
+  -cert-err61-cpp,
+  -cert-exp42-c,
+  -cert-exp45-c,
+  -cert-fio38-c,
+  -cert-flp30-c,
+  -cert-flp37-c,
+  -cert-int09-c,
+  -cert-mem57-cpp,
+  -cert-msc24-c,
+  -cert-msc30-c,
+  -cert-msc32-c,
+  -cert-msc33-c,
+  -cert-msc50-cpp,
+  -cert-msc51-cpp,
+  -cert-msc54-cpp,
+  -cert-oop11-cpp,
+  -cert-oop54-cpp,
+  -cert-oop57-cpp,
+  -cert-oop58-cpp,
+  -cert-pos44-c,
+  -cert-pos47-c,
+  -cert-sig30-c,
+  -cert-str34-c,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-c-copy-assignment-signature,
+  -cppcoreguidelines-explicit-constructor,
+  -cppcoreguidelines-explicit-virtual-functions,
+  -cppcoreguidelines-macro-to-enum,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-noexcept-destructor,
+  -cppcoreguidelines-noexcept-move-operations,
+  -cppcoreguidelines-noexcept-swap,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-use-default-member-init,
+  -fuchsia-header-anon-namespaces,
+  -fuchsia-multiple-inheritance,
+  -google-build-namespaces,
+  -google-explicit-constructor,
+  -google-readability-braces-around-statements,
+  -google-readability-casting,
+  -google-readability-function-size,
+  -google-readability-namespace-comments,
+  -llvm-else-after-return,
+  -llvm-qualified-auto,
+  -performance-faster-string-find,
+  -modernize-use-trailing-return-type,
+  -misc-use-anonymous-namespace,
+  -llvmlibc-*,
+  -altera-id-dependent-backward-branch,
+  -altera-unroll-loops,
+  -android-*
+
+# Every surviving diagnostic is a hard failure. Binary pass/fail; there is no
+# advisory tier.
+WarningsAsErrors: '*'
+
+# Lint every non-system header reachable from a validated translation unit.
+# This is how *.h files are covered without separate invocations.
+HeaderFilterRegex: '.*'
+
+# Pinned empty: nothing reachable is ever exempted from header diagnostics.
+# Left unset, a future toolchain default could exclude paths silently, and an
+# exclusion nobody wrote is the hardest kind of gap to notice.
+ExcludeHeaderFilterRegex: ''
+
+# System and toolchain headers are outside this repository's authority;
+# diagnosing them would make verdicts depend on the host SDK version.
+SystemHeaders: false
+
+# Pinned so "is this diagnostic in a header?" is answered by this file rather
+# than by a toolchain default. The two lists are disjoint and exhaustive for the
+# C and C++ surfaces this repository admits.
+HeaderFileExtensions:
+  - 'h'
+  - 'hh'
+  - 'hpp'
+  - 'hxx'
+ImplementationFileExtensions:
+  - 'c'
+  - 'cc'
+  - 'cpp'
+  - 'cxx'
+
+# clang-tidy never reformats fix-its here; layout (including the 80-column
+# limit) belongs to the formatter gate, keeping exactly one authority per
+# concern.
+FormatStyle: none
+
+# Machine-readable, byte-stable logs: no ANSI color in gate output.
+UseColor: false
+
+# Pinned because clang-tidy seeds this from the USER environment variable and
+# falls back to USERNAME. Left unset, google-readability-todo writes the host
+# account name into diagnostic text, so identical source produces different
+# gate output on different machines. That is a real determinism defect in a gate
+# whose purpose is reproducible verdicts. The value is deliberately not a
+# person: TODO ownership belongs in the tracked roadmap, not in a comment.
+User: 'jig'
+
+# Compiler flags appended AFTER any compile-database arguments so this operator
+# config always wins conflicts (ExtraArgs > ExtraArgsBefore). Because later
+# win in clang, this also neutralizes any -Wno-* a compile database tried to
+# apply to the warnings named here.
+#
+# RemovedArgs is deliberately NOT used to strip suppression flags. It takes a
+# literal argument list, so it could never cover the unbounded -Wno-* space, and
+# clang-tidy documents that removing arguments "might change the semantic of
+# the analyzed code, possibly leading to compiler errors, false positives or
+# false negatives". A mechanism that can manufacture either a false positive or
+# a false negative cannot be part of this gate.
+#
+# -Werror is intentionally absent: it would abort parsing at the first warning
+# and mask the remaining findings; WarningsAsErrors already makes the verdict
+# binary. -Wpadded is intentionally absent: its verdict depends on target ABI
+# padding, which breaks cross-target determinism.
+ExtraArgs:
+  # Baseline and extended warning sets; everything else builds on these.
+  - '-Wall'
+  - '-Wextra'
+  # Strict ISO C conformance; vendor extensions must be explicit.
+  - '-Wpedantic'
+  # A declaration may never shadow another; removes aliasing ambiguity.
+  - '-Wshadow'
+  # All value-changing implicit conversions are errors...
+  - '-Wconversion'
+  # ...including signedness changes, a classic silent-corruption source.
+  - '-Wsign-conversion'
+  # Implicit float -> double promotions must be spelled out.
+  - '-Wdouble-promotion'
+  # Floating-point == / != is never meaningful under rounding.
+  - '-Wfloat-equal'
+  # Maximum printf/scanf format-string checking, including security
+  # diagnostics for non-literal formats.
+  - '-Wformat=2'
+  # #if on an undefined macro is a silent 0; must be defined(x).
+  - '-Wundef'
+  # Casting away const/volatile is an error, not a shortcut.
+  - '-Wcast-qual'
+  # Casts that increase required alignment trap on strict targets.
+  - '-Wcast-align'
+  # Every switch over an enum must name every enumerator explicitly...
+  - '-Wswitch-enum'
+  # ...and still carry a default for out-of-range values.
+  - '-Wswitch-default'
+  # Variable-length arrays are banned: stack usage must be bounded and
+  # statically known.
+  - '-Wvla'
+  # Case fallthrough must be annotated with [[fallthrough]].
+  - '-Wimplicit-fallthrough'
+  # C-specific: () declares an unchecked signature; (void) is required.
+  - '-Wstrict-prototypes'
+  # Every external function needs a prototype in a header; this forces
+  # interfaces through headers instead of implicit contracts.
+  - '-Wmissing-prototypes'
+  # Every non-static global needs a visible extern declaration.
+  - '-Wmissing-variable-declarations'
+  # Statically provable null dereferences are errors at compile time.
+  - '-Wnull-dereference'
+
+# Options for enabled checks. Every key was verified to exist in LLVM 24, and
+# every value is either a strictness dial at its maximum useful setting or a
+# documented calibration. Options whose upstream default is already the
+# strictest value are still pinned, so a future default change cannot relax this
+# gate without editing this file.
+CheckOptions:
+  # --- shape limits (calibrated, never 0/1) ------------------------------
+  # Braces are mandatory on every if/else/for/while/do body. Zero here means
+  # "no unbraced short statements", which constrains punctuation only; it does
+  # NOT forbid short bodies or one-line logic.
+  readability-braces-around-statements.ShortStatementLines: '0'
+  # Cognitive complexity ceiling. Default is 25; 10 forces decomposition into
+  # single-purpose helpers while any real function remains implementable.
+  # Repair strategy is always "extract function".
+  readability-function-cognitive-complexity.Threshold: '10'
+  # Report which construct added each increment so a repair agent gets an
+  # actionable decomposition plan, not just a number.
+  readability-function-cognitive-complexity.DescribeBasicIncrements: 'true'
+  # Complexity hidden inside macro expansions still counts.
+  readability-function-cognitive-complexity.IgnoreMacros: 'false'
+  # Function length ceilings, calibrated for 80-column source: 80 lines, 60
+  # statements, 12 branches, 5 parameters (pack more into a struct), nesting
+  # depth 4, 15 local variables.
+  readability-function-size.LineThreshold: '80'
+  readability-function-size.StatementThreshold: '60'
+  readability-function-size.BranchThreshold: '12'
+  readability-function-size.ParameterThreshold: '5'
+  readability-function-size.NestingThreshold: '4'
+  readability-function-size.VariableThreshold: '15'
+  # --- macros are never an escape hatch -----------------------------------
+  # Sixteen checks default IgnoreMacros to true, which means code laundered
+  # through a macro silently escapes them. Every one is turned off. This is the
+  # single largest strictness gap in a default clang-tidy configuration.
+  cppcoreguidelines-special-member-functions.IgnoreMacros: 'false'
+  modernize-make-shared.IgnoreMacros: 'false'
+  modernize-make-unique.IgnoreMacros: 'false'
+  modernize-use-bool-literals.IgnoreMacros: 'false'
+  modernize-use-default-member-init.IgnoreMacros: 'false'
+  modernize-use-equals-default.IgnoreMacros: 'false'
+  modernize-use-equals-delete.IgnoreMacros: 'false'
+  modernize-use-using.IgnoreMacros: 'false'
+  readability-avoid-const-params-in-decls.IgnoreMacros: 'false'
+  readability-const-return-type.IgnoreMacros: 'false'
+  readability-inconsistent-declaration-parameter-name.IgnoreMacros: 'false'
+  readability-redundant-casting.IgnoreMacros: 'false'
+  readability-redundant-declaration.IgnoreMacros: 'false'
+  readability-redundant-smartptr-get.IgnoreMacros: 'false'
+  readability-trivial-switch.IgnoreMacros: 'false'
+  readability-uppercase-literal-suffix.IgnoreMacros: 'false'
+  # Command-line macro definitions are audited like any other macro.
+  cppcoreguidelines-macro-usage.IgnoreCommandLineMacros: 'false'
+  # Pinned false: true would restrict the check to ALL_CAPS macros only, which
+  # is the weaker reading. Every macro is checked.
+  cppcoreguidelines-macro-usage.CheckCapsOnly: 'false'
+  # --- other permissive defaults, all turned off --------------------------
+  # Anonymous namespaces are not a way around the static-linkage rule for
+  # member functions or variable declarations either.
+  llvm-prefer-static-over-anonymous-namespace.AllowMemberFunctionsInClass: 'false'
+  llvm-prefer-static-over-anonymous-namespace.AllowVariableDeclarations: 'false'
+  # Default-initialized smart pointers and non-trivial types are not exempt.
+  modernize-make-shared.IgnoreDefaultInitialization: 'false'
+  modernize-make-unique.IgnoreDefaultInitialization: 'false'
+  modernize-min-max-use-initializer-list.IgnoreNonTrivialTypes: 'false'
+  # A reference the check cannot see is still a reference.
+  modernize-use-default-member-init.IgnoreNonVisibleReferences: 'false'
+  # extern "C" blocks obey the same typedef/using rule as everything else.
+  modernize-use-using.IgnoreExternC: 'false'
+  # Coroutine parameters are copied like any other parameter.
+  performance-unnecessary-value-param.IgnoreCoroutines: 'false'
+  # Enumerator initialization is all-or-nothing: no partially explicit enums,
+  # and no lone explicit zero on the first enumerator.
+  readability-enum-initial-value.AllowExplicitSequentialInitialValues: 'false'
+  readability-enum-initial-value.AllowExplicitZeroFirstInitialValue: 'false'
+  # A pointer typedef does not hide the need for a qualified auto.
+  readability-qualified-auto.IgnoreAliasing: 'false'
+  # --- strictness dials that ship off, all turned on ----------------------
+  # Assertions may not hide side effects, including inside function calls: an
+  # assert compiled out in release must never change behavior.
+  bugprone-assert-side-effect.CheckFunctionCalls: 'true'
+  # Implicit widening casts are the dangerous form, not just explicit ones.
+  bugprone-misplaced-widening-cast.CheckImplicitCasts: 'true'
+  # Narrowing is flagged even where the check considers it pedantic, and inside
+  # template instantiations rather than only at the template text itself.
+  bugprone-narrowing-conversions.PedanticMode: 'true'
+  bugprone-narrowing-conversions.WarnWithinTemplateInstantiation: 'true'
+  # sizeof on a pointer and on an integer expression are both near-always the
+  # wrong measurement; neither is exempt.
+  bugprone-sizeof-expression.WarnOnSizeOfPointer: 'true'
+  bugprone-sizeof-expression.WarnOnSizeOfIntegerExpression: 'true'
+  # A logical-not applied to strcmp reads as inequality and means equality.
+  bugprone-suspicious-string-compare.WarnOnLogicalNotComparison: 'true'
+  # Every if / else-if chain must end with an else. This replaces the removed
+  # hicpp-multiway-paths-covered; upstream disables it by default as noisy,
+  # which is precisely the tradeoff this gate accepts. An intentionally empty
+  # else with a clarifying comment is the documented compliant form.
+  bugprone-unhandled-code-paths.WarnOnMissingElse: 'true'
+  # Enum arithmetic across unrelated enums is diagnosed under the strict set.
+  bugprone-suspicious-enum-usage.StrictMode: 'true'
+  # Existing argument comments must match the parameter name exactly; a stale
+  # comment is treated as a wrong comment.
+  bugprone-argument-comment.StrictMode: 'true'
+  # Bitwise operations on signed operands are errors with no literal exemption;
+  # use unsigned fixed-width types from stdint.h. This key moved here from
+  # hicpp-signed-bitwise when that module was removed.
+  bugprone-signed-bitwise.IgnorePositiveIntegerLiterals: 'false'
+  # const_cast is reported even in the cases the check treats as tolerable.
+  cppcoreguidelines-pro-type-const-cast.StrictMode: 'true'
+  # Pointers that could be const-qualified are reported, not only values.
+  misc-const-correctness.WarnPointersAsValues: 'true'
+  # Visibility changes on overrides are silent behavior changes at the call
+  # site; destructors and operators are the easiest places to hide one.
+  misc-override-with-different-visibility.CheckDestructors: 'true'
+  misc-override-with-different-visibility.CheckOperators: 'true'
+  # Throwing a large object by value is a copy on the exception path.
+  misc-throw-by-value-catch-by-reference.WarnOnLargeObject: 'true'
+  # Unused parameters are errors even in callback-shaped functions; the
+  # mechanical fix is an explicit void cast or removal.
+  misc-unused-parameters.StrictMode: 'true'
+  # Deprecated C headers are diagnosed in headers, not only in sources.
+  modernize-deprecated-headers.CheckHeaderFile: 'true'
+  # Format and print modernization applies even where the replacement is not
+  # exactly equivalent in corner cases, so no printf survives unexamined.
+  modernize-use-std-format.StrictMode: 'true'
+  modernize-use-std-print.StrictMode: 'true'
+  # Overloaded functions are included when proposing string_view parameters.
+  modernize-use-string-view.CheckOverloadedFunctions: 'true'
+  # A value_or that takes ownership is reported alongside the copying form.
+  performance-expensive-value-or.WarnOnOwnershipTaking: 'true'
+  # Every range-for auto copy is reported, not only expensive ones.
+  performance-for-range-copy.WarnOnAllAutoCopies: 'true'
+  # String concatenation in loops is flagged in strict mode.
+  performance-inefficient-string-concatenation.StrictMode: 'true'
+  # Anonymous struct/union fields are named by their parent for naming rules.
+  readability-identifier-naming.CheckAnonFieldInParent: 'true'
+  # Parameter names must match exactly between declaration and definition,
+  # including abbreviation differences.
+  readability-inconsistent-declaration-parameter-name.Strict: 'true'
+  # The first access specifier counts too: a leading private in a class is
+  # redundant and is reported.
+  readability-redundant-access-specifiers.CheckFirstDeclaration: 'true'
+  # Redundant inline specifiers are reported in every position.
+  readability-redundant-inline-specifier.StrictMode: 'true'
+  # Boolean expressions are simplified even across chained conditional returns
+  # and assignments; no partially-reduced boolean logic remains.
+  readability-simplify-boolean-expr.ChainedConditionalReturn: 'true'
+  readability-simplify-boolean-expr.ChainedConditionalAssignment: 'true'
+  # Adjacent parameters with interchangeable types are the canonical machine
+  # transposition bug. Two is the check default and floor; the remedies are
+  # distinct types or a single parameter struct.
+  bugprone-easily-swappable-parameters.MinimumLength: '2'
+  # --- magic numbers ------------------------------------------------------
+  # Only 0 and 1 may appear unnamed (identity/emptiness); every other integer
+  # must be a named constant. Default also exempts 2, 3, 4.
+  readability-magic-numbers.IgnoredIntegerValues: '0;1'
+  # Same policy for floating point: only exact 0.0 and 1.0.
+  readability-magic-numbers.IgnoredFloatingPointValues: '0.0;1.0'
+  # Powers of two are NOT exempt; 1024 needs a name like anything else.
+  readability-magic-numbers.IgnorePowersOf2IntegerValues: 'false'
+  # Bit-field widths must be named constants too (default exempts them).
+  readability-magic-numbers.IgnoreBitFieldsWidths: 'false'
+  # --- library discipline --------------------------------------------------
+  # Every function libc marks non-thread-safe is banned regardless of the
+  # declared threading model; 'any' covers both the posix and glibc function
+  # sets, because the threading model of future call sites is unknowable at
+  # validation time.
+  concurrency-mt-unsafe.FunctionSet: 'any'
+  # --- identifier length (explicit defaults, documented) ------------------
+  # Variables and parameters carry meaning: at least 3 characters. Loop counters
+  # may be 2 (the built-in single-letter exemption list still applies). These
+  # are the check defaults, pinned so a toolchain default change can never
+  # silently relax the gate.
+  readability-identifier-length.MinimumVariableNameLength: '3'
+  readability-identifier-length.MinimumParameterNameLength: '3'
+  readability-identifier-length.MinimumLoopCounterNameLength: '2'
+  readability-identifier-length.MinimumExceptionNameLength: '2'
+  # --- modernize calibration ----------------------------------------------
+  # auto is required only when the spelled type is at least 5 characters, the
+  # upstream default; a shorter setting would force auto even over int.
+  modernize-use-auto.MinTypeNameLength: '5'
+  # --- naming (single deterministic scheme, C-idiomatic) ------------------
+  # Types are CamelCase; callables and data are lower_case; compile-time
+  # constants and macros are UPPER_CASE. clang-tidy resolves the most specific
+  # style kind first and falls back to more general kinds, so the specific kinds
+  # below are pinned to remove any dependence on that fallback order.
+  readability-identifier-naming.TypedefCase: 'CamelCase'
+  readability-identifier-naming.TypeAliasCase: 'CamelCase'
+  readability-identifier-naming.StructCase: 'CamelCase'
+  readability-identifier-naming.UnionCase: 'CamelCase'
+  readability-identifier-naming.EnumCase: 'CamelCase'
+  readability-identifier-naming.ClassCase: 'CamelCase'
+  readability-identifier-naming.AbstractClassCase: 'CamelCase'
+  readability-identifier-naming.EnumConstantCase: 'UPPER_CASE'
+  readability-identifier-naming.ScopedEnumConstantCase: 'UPPER_CASE'
+  readability-identifier-naming.FunctionCase: 'lower_case'
+  readability-identifier-naming.GlobalFunctionCase: 'lower_case'
+  readability-identifier-naming.ConstexprFunctionCase: 'lower_case'
+  readability-identifier-naming.MethodCase: 'lower_case'
+  readability-identifier-naming.ClassMethodCase: 'lower_case'
+  readability-identifier-naming.VirtualMethodCase: 'lower_case'
+  readability-identifier-naming.PrivateMethodCase: 'lower_case'
+  readability-identifier-naming.ProtectedMethodCase: 'lower_case'
+  readability-identifier-naming.PublicMethodCase: 'lower_case'
+  readability-identifier-naming.ConstexprMethodCase: 'lower_case'
+  readability-identifier-naming.VariableCase: 'lower_case'
+  readability-identifier-naming.LocalVariableCase: 'lower_case'
+  readability-identifier-naming.LocalPointerCase: 'lower_case'
+  readability-identifier-naming.StaticVariableCase: 'lower_case'
+  readability-identifier-naming.ParameterCase: 'lower_case'
+  readability-identifier-naming.PointerParameterCase: 'lower_case'
+  readability-identifier-naming.ParameterPackCase: 'lower_case'
+  readability-identifier-naming.MemberCase: 'lower_case'
+  readability-identifier-naming.ClassMemberCase: 'lower_case'
+  readability-identifier-naming.PrivateMemberCase: 'lower_case'
+  readability-identifier-naming.ProtectedMemberCase: 'lower_case'
+  readability-identifier-naming.PublicMemberCase: 'lower_case'
+  # Mutable globals (where a check exception permits one at all) are marked g_
+  # so every read site is visibly non-local state.
+  readability-identifier-naming.GlobalVariableCase: 'lower_case'
+  readability-identifier-naming.GlobalVariablePrefix: 'g_'
+  readability-identifier-naming.GlobalPointerCase: 'lower_case'
+  readability-identifier-naming.GlobalPointerPrefix: 'g_'
+  # Program-wide constants are UPPER_CASE at every scope where the constant is a
+  # compile-time program fact rather than a flow-scoped value.
+  readability-identifier-naming.GlobalConstantCase: 'UPPER_CASE'
+  readability-identifier-naming.GlobalConstantPointerCase: 'UPPER_CASE'
+  readability-identifier-naming.GlobalConstexprVariableCase: 'UPPER_CASE'
+  readability-identifier-naming.StaticConstantCase: 'UPPER_CASE'
+  readability-identifier-naming.ClassConstantCase: 'UPPER_CASE'
+  readability-identifier-naming.ConstantMemberCase: 'UPPER_CASE'
+  readability-identifier-naming.MacroDefinitionCase: 'UPPER_CASE'
+  # Local consts stay lower_case: they are ordinary flow-scoped values, not
+  # program-wide constants, and UPPER_CASE would misstate scope.
+  readability-identifier-naming.LocalConstantCase: 'lower_case'
+  readability-identifier-naming.LocalConstantPointerCase: 'lower_case'
+  readability-identifier-naming.LocalConstexprVariableCase: 'lower_case'
+  readability-identifier-naming.ConstantParameterCase: 'lower_case'
+  readability-identifier-naming.ConstantPointerParameterCase: 'lower_case'
+  # C++ surfaces under the same authority (headers shared with C++).
+  readability-identifier-naming.NamespaceCase: 'lower_case'
+  readability-identifier-naming.InlineNamespaceCase: 'lower_case'
+  readability-identifier-naming.ConceptCase: 'CamelCase'
+  readability-identifier-naming.TemplateParameterCase: 'CamelCase'
+  readability-identifier-naming.TypeTemplateParameterCase: 'CamelCase'
+  readability-identifier-naming.TemplateTemplateParameterCase: 'CamelCase'
+  readability-identifier-naming.ValueTemplateParameterCase: 'CamelCase'

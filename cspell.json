@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en-US",
+  "readonly": true,
+  "useGitignore": true,
+  "enableGlobDot": true,
+  "validateDirectives": true,
+  "caseSensitive": true,
+  "allowCompoundWords": false,
+  "minWordLength": 3,
+  "usePnP": false,
+  "files": [
+    "**/*.{md,mdc,rs,toml,json,jsonc,yml,yaml}",
+    ".editorconfig",
+    ".editorignore",
+    ".gitattributes",
+    ".gitignore"
+  ],
+  "ignoreRegExpList": [
+    "/\\b[0-9a-f]{7,64}\\b/g"
+  ],
+  "ignoreWords": [],
+  "dictionaryDefinitions": [
+    {
+      "name": "jig-english",
+      "path": "./docs/cspell/english.txt",
+      "addWords": true
+    },
+    {
+      "name": "jig-named-entities",
+      "path": "./docs/cspell/named-entities.txt",
+      "addWords": true
+    },
+    {
+      "name": "jig-technical",
+      "path": "./docs/cspell/technical.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": [
+    "jig-english",
+    "jig-named-entities",
+    "jig-technical"
+  ],
+  "ignorePaths": [
+    ".cache/**",
+    ".dependencies/**",
+    ".git/**",
+    ".logs/**",
+    ".temp/**",
+    "Cargo.lock",
+    "engine/src/adapters/rust/generated/**",
+    "pnpm-lock.yaml",
+    "scraping/contracts/rust/generated/**",
+    "target/**"
+  ]
+}
