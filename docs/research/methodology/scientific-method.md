@@ -36,7 +36,11 @@ that evidence supports or rejects a technique.
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
-results. Source claims resolve through `docs/bibliography/`.
+results. Source claims resolve through `docs/bibliography/`. The
+[artifact-evaluation bibliography
+record](../../bibliography/research-methodology/acm-artifact-evaluation.md)
+provides external prior art for documented, exercisable, reproducible research
+artifacts; Malbolge defines its own acceptance rules.
 
 ## Verification And Review
 

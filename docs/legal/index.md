@@ -18,4 +18,5 @@
 Authority-specific legal research is added only when a bounded repository
 question requires it. Canonical source identity remains in `docs/bibliography/`.
 
-These records are repository research and boundaries, not legal advice.
+These records are repository research and boundaries, not legal advice. See
+[`disclaimer.md`](disclaimer.md) for the explicit legal-research boundary.

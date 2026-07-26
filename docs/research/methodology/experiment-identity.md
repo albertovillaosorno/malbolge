@@ -36,7 +36,9 @@ source constants.
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
-results. Source claims resolve through `docs/bibliography/`.
+results. Source claims resolve through `docs/bibliography/`. TOML is one
+[cataloged configuration format](../../bibliography/documentation-and-publication/toml.md),
+but the experiment schema owns semantics independently of its serialization.
 
 ## Verification And Review
 

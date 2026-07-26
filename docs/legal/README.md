@@ -13,3 +13,5 @@ from engineering intent.
 
 External legal sources are recorded in `docs/bibliography/` and cited from legal
 records rather than duplicated.
+
+See [disclaimer.md](disclaimer.md) for the legal-research boundary.

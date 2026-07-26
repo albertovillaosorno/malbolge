@@ -21,12 +21,15 @@ Records are organized by source subject, not by the document family that cites
 them. The initial taxonomy covers programming languages, compiler/runtime
 systems, Malbolge and esolangs, superoptimization/program synthesis,
 verification/formal methods, accelerator computing, protocols/standards,
-validation tooling, research methodology, AI/code generation, and relevant
-organizations/projects.
+validation tooling, documentation/publication systems, research methodology,
+AI/code generation, and relevant organizations/projects.
 
 Material claims prefer primary or authoritative sources. Records preserve stable
 identity, version or publication metadata when applicable, retrieval date,
-source quality, repository relevance, and unresolved evidence.
+source quality, repository relevance, verified claims, and unresolved evidence.
+A claim-level provenance ledger records important direct checks, contradictions,
+resolutions, and discarded evidence patterns without turning Git history into
+external authority.
 
 A bibliography citation never creates repository policy, establishes legal
 permission, or proves an experimental conclusion by itself.
@@ -55,3 +58,7 @@ and become inconsistent.
 
 `docs/bibliography/adr/` owns only bibliography-governance decisions. Subject
 records use `docs/bibliography/template.md` as the baseline shape.
+
+`docs/bibliography/provenance/` owns claim-level verification ledgers. Those
+ledgers may cite Git commits as internal decision provenance, but external facts
+still resolve to primary or authoritative bibliography records.

@@ -53,6 +53,13 @@ and makes version drift harder to reason about.
 - Compiler and tidy plugin share target-profile/ABI authority without sharing
   lowering implementation.
 
+## Evidence
+
+- [ISO/IEC C language bibliography record](../../bibliography/programming-languages/c.md)
+- [Clang LibTooling bibliography
+  record](../../bibliography/compiler-and-runtime/clang-libtooling.md)
+- [clang-tidy bibliography record](../../bibliography/validation-tooling/clang-tidy.md)
+
 ## Implementation Notes
 
 The plugin is pinned to the same LLVM revision used by frontend tooling. Profile

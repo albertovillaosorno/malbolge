@@ -36,7 +36,10 @@ engineering work.
 
 Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
-results. Source claims resolve through `docs/bibliography/`.
+results. Source claims resolve through `docs/bibliography/`. The
+[LaTeX bibliography record](../../bibliography/documentation-and-publication/latex.md)
+defines the publication tool family; a repository-local pinned TeX toolchain is
+still required before PDF regeneration can be called reproducible.
 
 ## Verification And Review
 

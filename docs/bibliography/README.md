@@ -7,8 +7,15 @@ external evidence.
 
 Bibliography records identify one source subject or a tightly related source
 family. They record stable identity, provenance, versions or publication dates,
-source quality, repository relevance, and unresolved evidence. Citing a record
-does not make it repository policy and does not grant legal permission.
+source quality, repository relevance, verified claims, and unresolved evidence.
+Citing a record does not make it repository policy and does not grant legal
+permission.
+
+The bibliography follows a claim-first hygiene rule: a record belongs here
+because a repository claim, experiment, legal question, publication mechanism,
+or tool identity actually consumes it. Sources that merely look relevant are
+not added for decoration. Contradictions and failed verification attempts stay
+visible in `provenance/` rather than being averaged away.
 
 ## Subject Taxonomy
 
@@ -20,8 +27,11 @@ does not make it repository policy and does not grant legal permission.
 - `accelerator-computing/`
 - `protocols-and-standards/`
 - `validation-tooling/`
+- `documentation-and-publication/`
 - `research-methodology/`
 - `ai-and-code-generation/`
 - `organizations-and-projects/`
 
-`adr/` contains only durable decisions about bibliography governance.
+`provenance/` records claim-level verification trails, contradictions, and open
+checks. `adr/` contains only durable decisions about bibliography governance.
+See [`disclaimer.md`](disclaimer.md) for the evidence boundary.

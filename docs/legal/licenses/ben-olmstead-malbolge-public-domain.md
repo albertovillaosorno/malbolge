@@ -21,8 +21,8 @@ The source evidence is cataloged in
 
 ## Repository Boundary
 
-`tools/malbolge/main.c` is retained as a historical compatibility oracle and is
-not relicensed under the repository MIT License. The repository may add
+`tools/malbolge/main.c` is retained as historical primary implementation
+evidence and is not relicensed under the repository MIT License. The repository may add
 project-authored wrappers, tests, documentation, and replacement
 implementations under MIT without rewriting the historical source notice.
 
@@ -49,7 +49,8 @@ boundary.
 
 ## Review Boundary
 
-Re-review if the oracle is replaced, modified, vendored from a different source,
-or included in a distribution with materially different license metadata.
+Re-review if the historical file is replaced, modified, vendored from a
+different source, or included in a distribution with materially different
+license metadata.
 
 [malbolge-bib]: ../../bibliography/malbolge-and-esolangs/malbolge-1998.md

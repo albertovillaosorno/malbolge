@@ -4,6 +4,11 @@ The bibliography is organized by source subject rather than by the document
 family that consumes the source. One source record may support technical,
 research, legal, and governance documents simultaneously.
 
+The catalog is claim-driven: records exist because a repository claim,
+experiment, legal question, publication mechanism, or tool identity consumes
+them. See the [evidence disclaimer](disclaimer.md) and the
+[verification ledger](provenance/repository-source-verification.md).
+
 ## Malbolge And Esolangs
 
 - [Original Malbolge language and interpreter](malbolge-and-esolangs/malbolge-1998.md)
@@ -15,11 +20,24 @@ research, legal, and governance documents simultaneously.
 
 ## Programming Languages
 
+- [C programming language](programming-languages/c.md)
 - [Rust language reference](programming-languages/rust.md)
 
 ## Validation Tooling
 
 - [clang-tidy extensible checks](validation-tooling/clang-tidy.md)
+- [Git](validation-tooling/git.md)
+
+## Documentation And Publication
+
+- [Citation File Format](documentation-and-publication/citation-file-format.md)
+- [CommonMark](documentation-and-publication/commonmark.md)
+- [LaTeX](documentation-and-publication/latex.md)
+- [TOML](documentation-and-publication/toml.md)
+
+## Research Methodology
+
+- [ACM artifact evaluation](research-methodology/acm-artifact-evaluation.md)
 
 ## Accelerator Computing
 

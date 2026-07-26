@@ -11,9 +11,10 @@ Rust, C, Python, CUDA, PyTorch, and Malbolge may coexist inside one component
 when they implement the same responsibility. Cargo is a build mechanism, not the
 architecture; artificial Rust crates must not become repository boundaries.
 
-The historical Ben Olmstead interpreter is an immutable compatibility oracle,
-not project-owned source. Project code is MIT licensed; the original interpreter
-keeps its own public-domain notice and is explicitly excluded from relicensing.
+The historical Ben Olmstead interpreter is immutable primary implementation
+evidence, not semantic authority and not project-owned source. Project code is
+MIT licensed; the original interpreter keeps its own public-domain notice and is
+explicitly excluded from relicensing.
 Planning is intentionally front-loaded. Before implementation begins, TODO
 work must be decomposed into typed TODOs with real dependencies, bounded scope,
 provable acceptance criteria, and named evidence. Once planning is stable, the
@@ -36,11 +37,12 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - The host may execute the VM and provide fundamental byte input/output, but it
   may not secretly implement guest algorithms such as PDF writing, hashing,
   allocation, parsing, formatting, or application logic.
-- Well-defined 1998 behavior is preserved by differential evidence against the
-  original interpreter. Historical C undefined behavior is specified explicitly
-  instead of being imitated accidentally.
-- There is one modern Malbolge product. The 1998 machine is a compatibility
-  target and oracle, not a separately maintained "Classic" product line.
+- The written 1998 specification defines classic Malbolge semantics. Modern
+  backends are verified against that specification; Ben's interpreter supplies
+  differential evidence only on the documented agreement subset.
+- There is one modern Malbolge product. The normative 1998 machine is the classic
+  target profile; `legacy-ben` behavior is historical evidence, not a separate
+  semantic product line.
 - CPU execution is always available. GPU acceleration is optional through a
   replaceable accelerator boundary; CUDA is the first adapter, not a semantic
   dependency.

@@ -22,7 +22,9 @@ that family; they do not replace the family's ordinary records.
 
 A global `docs/adr/` is forbidden. The repository intentionally avoids the
 single-ADR-monolith pattern even though individual ADRs use a disciplined,
-decision-oriented structure.
+decision-oriented structure. Markdown syntax uses CommonMark as an external
+baseline; repository formatting and governance may be stricter. See the
+[CommonMark bibliography record](bibliography/documentation-and-publication/commonmark.md).
 
 ## Editorial Support
 
