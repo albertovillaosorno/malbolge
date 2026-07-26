@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -29,7 +29,22 @@ ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The first CPU batch execution slice is implemented. Requests own either source
+construction inputs or an already constructed `ExecutionMachine`, plus an exact
+step budget. The sequential executor is the reference ordering. The parallel
+executor uses only host threads over disjoint owned requests, requires an
+explicit positive worker count, and reassembles results in original input order.
+
+A per-instance load or machine failure is represented in that instance's
+`BatchResult`; it does not terminate the whole batch. Runtime failures retain the
+constructed machine so atomic-state evidence remains inspectable. Host worker
+panic is a scheduler-level typed error and is never translated into guest
+semantics.
+
+Integration tests compare sequential results with worker counts 1, 2, and 8,
+including full-memory fingerprints, registers, I/O, termination, run outcome,
+and typed diagnostics. Performance/scaling evidence is still pending and no
+host-parallel speedup is claimed yet.
 
 ## Invariants
 

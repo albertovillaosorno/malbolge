@@ -1,6 +1,6 @@
 ---
 id: "batch-vm-execution"
-status: "pending"
+status: "active"
 lane: "6"
 area: "vm"
 task: "TODO - Batch VM execution"
@@ -25,6 +25,23 @@ validation:
 
 Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
+
+## Current implementation
+
+- `vm/src/batch.rs` defines owned `BatchRequest` and input-ordered `BatchResult`
+  values around the existing explicit `ExecutionMachine` trust boundary.
+- `execute_batch` is the deterministic sequential baseline.
+- `execute_batch_parallel` requires an explicit positive host worker count,
+  partitions only independently owned requests, and joins results in exact input
+  order. It does not introduce guest-visible threads or shared mutable VM state.
+- Source/load failures and runtime transition failures remain per-instance typed
+  results; one rejected candidate does not abort adjacent candidates.
+- Integration tests compare sequential execution with worker counts 1, 2, and 8
+  across final registers, I/O, termination, diagnostics, and a hash of all 59,049
+  final memory words. Tests also cover load rejection, atomic runtime rejection,
+  empty batches, and zero-worker failure.
+- CPU throughput/scaling measurements remain to be retained before making any
+  performance claim for host-parallel batching.
 
 ## Acceptance
 

@@ -46,6 +46,8 @@
 
 //! Cargo composition root for VM integration tests.
 
+#[path = "vm/batch.rs"]
+mod batch;
 #[path = "vm/conformance.rs"]
 mod conformance;
 #[path = "vm/differential.rs"]
