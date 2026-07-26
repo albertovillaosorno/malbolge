@@ -2,6 +2,7 @@
 schema_version = 2
 
 [header]
+adapters = ["c:slash-line", "rs:slash-line"]
 confidential = false
 copyright = "Copyright (c) 2026 Alberto Villa Osorno."
 exempt_paths = ["tools/malbolge/main.c"]
@@ -20,12 +21,24 @@ analyzed = ["rust"]
 present = ["c", "cpp", "cuda", "latex", "malbolge", "python", "rust"]
 
 [linters.applicability.clang-format]
-enabled = true
-reason = "Clang formatting governs the C, C++, and CUDA implementation surface."
+enabled = false
+reason = "Repository-wide execution cannot exclude immutable historical C with the current Jig selector model; authored C is formatted explicitly with pinned LLVM 22.1.8."
 
 [linters.applicability.clang-tidy]
-enabled = true
-reason = "Clang diagnostics govern host/native C and C++; Malbolge guest-C compatibility is an explicit tools/tidy validation."
+enabled = false
+reason = "Repository-wide execution would conflate immutable historical, host/native, and guest C; Malbolge guest compatibility is explicit tools/tidy validation until Jig supports path-scoped native targets."
+
+[linters.override.ruff_selector_names]
+linter = "ruff"
+key = "lint.ignore"
+value = "missing-trailing-comma\nincorrect-blank-line-before-class\nmulti-line-summary-second-line\nsingle-line-implicit-string-concatenation"
+reason = "Ruff 0.16 preview rejects the deprecated selector codes required by the reviewed profile; these long names are exact aliases and preserve the same ignored rules."
+
+[linters.override.ruff_test_assert_name]
+linter = "ruff"
+key = "lint.per-file-ignores.\"tests/**/*.py\""
+value = "assert"
+reason = "Ruff 0.16 preview rejects S101 in selector position; the long rule name `assert` is the exact alias and preserves the reviewed test-only exception."
 
 [linters.applicability.clippy-config]
 enabled = true
@@ -106,9 +119,21 @@ min_word_length = 3
 schema = "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json"
 version = "0.2"
 
+[tool.basedpyright]
+path = ".dependencies/python/3.14.6/Scripts/basedpyright.exe"
+version = "1.39.9"
+
 [tool.git]
 path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
 version = "2.54.0.windows.1"
+
+[tool.pytest]
+path = ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd"
+version = "9.1.1"
+
+[tool.ruff]
+path = ".dependencies/python/3.14.6/Scripts/ruff.exe"
+version = "0.16.0"
 
 [tool.rust_nightly_cargo_clippy]
 path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe"
@@ -121,6 +146,33 @@ version = "1.9.0-nightly"
 [tool.rust_stable_cargo]
 path = ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe"
 version = "1.97.1"
+
+[version.basedpyright]
+current = "1.39.9"
+latest = "1.39.9"
+
+[version.basedpyright.projection.tool]
+kind = "tool"
+target = "basedpyright"
+template = "{version}"
+
+[version.pytest]
+current = "9.1.1"
+latest = "9.1.1"
+
+[version.pytest.projection.tool]
+kind = "tool"
+target = "pytest"
+template = "{version}"
+
+[version.ruff]
+current = "0.16.0"
+latest = "0.16.0"
+
+[version.ruff.projection.tool]
+kind = "tool"
+target = "ruff"
+template = "{version}"
 
 [version.git]
 current = "2.54.0.windows.1"
@@ -169,6 +221,24 @@ latest = "1.9.0-nightly"
 kind = "tool"
 target = "rust_nightly_cargo_fmt"
 template = "{version}"
+
+[validation.pyright]
+capability = "pyright"
+tool = "basedpyright"
+config_files = ["pyrightconfig.json"]
+args = ["--project", "pyrightconfig.json"]
+
+[validation.pytest]
+capability = "pytest"
+tool = "pytest"
+config_files = ["pytest.ini"]
+args = ["-c", "pytest.ini"]
+
+[validation.ruff]
+capability = "ruff"
+tool = "ruff"
+config_files = ["ruff.toml"]
+args = ["check", "--config", "ruff.toml", "."]
 
 [validation.rust_nightly_clippy]
 capability = "rust-clippy"
@@ -220,7 +290,7 @@ paths = ["integrations/"]
 paths = ["accelerator/", "algorithms/", "benchmarks/", "compatibility/", "compiler/", "doom/", "examples/", "execution/", "interop/", "libc/", "math/", "optimizer/", "runtime/", "src/", "verifier/", "vm/"]
 
 [taxonomy.role.root_governance]
-paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]
+paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "malbolge.json", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]
 
 [taxonomy.role.tests]
 paths = ["tests/"]
@@ -229,7 +299,7 @@ paths = ["tests/"]
 paths = ["docs/todo/"]
 
 [taxonomy.role.tools]
-paths = ["tools/"]
+paths = ["scripts/", "tools/"]
 
 [architecture.component.malbolge]
 depends_on = []

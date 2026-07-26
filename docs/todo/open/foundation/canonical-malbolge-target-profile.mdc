@@ -1,6 +1,6 @@
 ---
 id: "canonical-malbolge-target-profile"
-status: "pending"
+status: "active"
 lane: "3"
 area: "foundation"
 task: "TODO - Canonical Malbolge target profile"
@@ -14,7 +14,11 @@ scope:
   - "malbolge.json"
   - "docs/technical/specification/"
   - "compatibility/"
+  - "scripts/validate/target_profile.py"
+  - "tests/test_target_profile.py"
 validation:
+  - "python scripts/validate/target_profile.py"
+  - "python -m unittest tests/test_target_profile.py"
   - "jig validate --root ."
 ---
 # TODO - Canonical Malbolge target profile
@@ -25,6 +29,25 @@ Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 The authority distinguishes frozen historical conformance from the versioned
 current Malbolge language.
+
+**Current implementation.**
+
+- `malbolge.json` now has closed schema version 1 and explicitly selects
+  `malbolge-2026.1` as the current profile while retaining `malbolge-1998` as a
+  distinct historical-conformance identity.
+- `malbolge-1998` is locked to radix 3, ten trits, 59,049 words, sequential
+  deterministic execution, self-modification/post-encryption, normative I/O,
+  EOF 59,048, and byte output modulo 256.
+- `malbolge-2026.1` deliberately materializes the same executable resource
+  envelope today because scalable memory remains unresolved. The distinct ID
+  prevents future larger profiles from silently changing old artifact meaning.
+- `scripts/validate/target_profile.py` is a dependency-free fail-closed schema
+  validator. It rejects duplicate JSON keys, unknown keys, unsupported schema
+  versions, inconsistent word/memory domains, historical drift, implicit current
+  profile selection, and schema-v1 semantic-core changes.
+- `tests/test_target_profile.py` provides standard-library regression coverage.
+- VM/compiler/tidy/runtime consumers do not yet all read this authority, so the
+  TODO remains active rather than claiming complete cross-component adoption.
 
 ## Acceptance
 
@@ -47,7 +70,10 @@ current Malbolge language.
 ## Evidence
 
 - Expected durable artifact surface: `malbolge.json`,
-  `docs/technical/specification/`, `compatibility/`.
+  `docs/technical/specification/`, `compatibility/`,
+  `scripts/validate/target_profile.py`, `tests/test_target_profile.py`.
+- Current executable schema evidence: `python scripts/validate/target_profile.py`
+  and `python -m unittest tests/test_target_profile.py`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:

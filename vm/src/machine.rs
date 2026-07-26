@@ -52,7 +52,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::loader::{LoadError, load};
 use crate::trace::{MachineObservation, StepTrace, TraceInput};
-use crate::{ExecutionMode, Memory, MemoryError, Word, decode, encrypt};
+use crate::{
+    ExecutionMode, Memory, MemoryError, Word, decode_instruction, encrypt,
+};
 
 /// Classic machine registers.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -440,7 +442,7 @@ impl Machine {
             self.termination = Some(Termination::NonGraphicalCell);
             return Ok(StepOutcome::Terminated(Termination::NonGraphicalCell));
         }
-        let decoded = decode(cell, self.registers.code_pointer)
+        let decoded = decode_instruction(cell, self.registers.code_pointer)
             .ok_or(MachineError::TranslationTableInvariant)?;
         let decoded_instruction = instruction(decoded, mode);
         if decoded_instruction == Instruction::Halt {
@@ -486,9 +488,12 @@ impl Machine {
         } else {
             None
         };
-        let decoded = fetched_cell
-            .filter(|cell| cell.is_graphical())
-            .and_then(|cell| decode(cell, before.registers.code_pointer));
+        let decoded =
+            fetched_cell
+                .filter(|cell| cell.is_graphical())
+                .and_then(|cell| {
+                    decode_instruction(cell, before.registers.code_pointer)
+                });
         let decoded_instruction = decoded.map(|byte| instruction(byte, mode));
         let result = self.step_in_mode(mode);
         let after = self.observation();

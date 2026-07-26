@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -18,6 +18,8 @@ This document governs the following declared TODO scope:
 - `malbolge.json`
 - `docs/technical/specification/`
 - `compatibility/`
+- `scripts/validate/target_profile.py`
+- `tests/test_target_profile.py`
 
 ## Current Behavior
 
@@ -30,7 +32,24 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+Schema version 1 is implemented in repository-root `malbolge.json`. It contains
+an immutable `malbolge-1998` historical-conformance profile and selects
+`malbolge-2026.1` as the first explicit current-language identity. The current
+profile intentionally has the same ten-trit/59,049-word executable envelope as
+the historical profile until the scalable-memory TODO resolves the larger
+addressing model. The separate identity is nevertheless mandatory: future
+profiles advance `current_profile` instead of mutating old artifact semantics.
+
+`scripts/validate/target_profile.py` provides a dependency-free closed-schema
+validator using duplicate-key-rejecting JSON parsing. It enforces exact schema
+keys, ternary word consistency, single-word memory consistency, the frozen 1998
+machine envelope, distinct current identity, and the schema-v1 sequential,
+deterministic, self-modifying semantic core. Standard-library tests exercise
+positive and fail-closed cases.
+
+Cross-component consumption is not complete. The existing VM still implements
+its 1998-profile constants directly and compiler/tidy/runtime consumers are not
+yet universally profile-driven, so this contract remains active.
 
 ## Invariants
 
@@ -54,7 +73,10 @@ selecting an implicit repository policy.
 ## Verification
 
 - Expected durable artifact surface: `malbolge.json`,
-  `docs/technical/specification/`, `compatibility/`.
+  `docs/technical/specification/`, `compatibility/`,
+  `scripts/validate/target_profile.py`, `tests/test_target_profile.py`.
+- Executable schema checks: `python scripts/validate/target_profile.py` and
+  `python -m unittest tests/test_target_profile.py`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:

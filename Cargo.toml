@@ -20,11 +20,6 @@ path = "vm/src/lib.rs"
 default = []
 legacy-ben = []
 
-[[bench]]
-name = "interpreter"
-path = "benchmarks/interpreter/main.rs"
-harness = false
-
 [workspace.lints.rust]
 # Compiler warnings are binary failures. Unsafe Rust is categorically outside
 # Jig's implementation contract.

@@ -27,7 +27,7 @@ Optimize scalar execution with precomputed rotate tables, position-dependent
 decode tables, efficient crazy-operation decomposition, cheap pointer updates,
 and benchmarked micro-optimizations without semantic drift.
 
-## Current implementation
+**Current implementation.**
 
 - `vm/build.rs` deterministically generates finite classic-profile rotate,
   five-trit crazy, positional-decode, and code-phase tables into Cargo-owned

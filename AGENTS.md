@@ -40,6 +40,11 @@ The written 1998 specification is the semantic authority for the frozen
 `malbolge-1998` historical/conformance profile. Current Malbolge may evolve
 through explicit versioned profiles; do not turn historical resource ceilings or
 Ben-interpreter defects into permanent current-language constraints.
+
+Repository-root `malbolge.json` is the target-profile identity authority. Schema
+v1 selects `malbolge-2026.1` as current while preserving `malbolge-1998` as a
+separate immutable identity. Validate profile edits with
+`python scripts/validate/target_profile.py` and its standard-library tests.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.
@@ -95,6 +100,10 @@ The roadmap intentionally records these decisions:
   does not by itself prove compilation will be cheap. Guest validation is
   explicit/manual, with `doom/` as the sole recursive directory convenience;
   Rust tidy tests are profile-conformance evidence rather than the validator.
+- Do not enable repository-wide native clang-format/clang-tidy execution until
+  Jig can select authored C independently from immutable historical C and from
+  the guest-C compatibility surface. LLVM 22.1.8 remains pinned; use explicit
+  formatting where appropriate and `scripts/validate/main.py` for guest C.
 - Reusable blocks must carry state, layout, mutation, target, provenance, cost,
   and verifier evidence before composition is trusted.
 - The state-aware linker must verify positional decode, encryption phase,

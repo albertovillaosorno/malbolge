@@ -1,16 +1,53 @@
-#!/usr/bin/env python3
+# Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier: MIT
 """Validate explicitly selected C files against the Malbolge guest profile."""
 
 from __future__ import annotations
 
 import argparse
-import subprocess
-import sys
+from dataclasses import dataclass
 from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed executable argv, never a shell command.
+import sys
+from typing import Never
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "tools" / "tidy" / "malbolge-clang-tidy.yaml"
 PINNED_LLVM = ROOT / ".dependencies" / "llvm" / "22.1.8" / "bin"
+DOOM_DIRECTORY = "doom"
+C_SUFFIX = ".c"
+CONFIGURATION_ERROR = 2
+
+
+class InputError(ValueError):
+    """Invalid explicit guest-C validator input or local tool configuration."""
+
+
+class _Arguments(argparse.Namespace):
+    files: list[str]
+    profile: Path
+    clang_tidy: Path
+    plugin: Path | None
+
+    def __init__(self) -> None:
+        """Initialize typed defaults before argparse mutates this namespace."""
+        super().__init__()
+        self.files = []
+        self.profile = DEFAULT_PROFILE
+        self.clang_tidy = _default_clang_tidy()
+        self.plugin = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Configuration:
+    clang_tidy: Path
+    files: tuple[Path, ...]
+    plugin: Path | None
+    profile: Path
+
+
+def _fail(message: str) -> Never:
+    raise InputError(message)
 
 
 def _default_clang_tidy() -> Path:
@@ -24,35 +61,32 @@ def _default_clang_tidy() -> Path:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Validate only the C translation units named on this command line "
-            "against the Malbolge guest-C compatibility profile."
+            "Validate only named C translation units against the Malbolge "
+            "guest-C compatibility profile."
         )
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "files",
         nargs="+",
         metavar="INPUT",
         help=(
-            "explicit .c translation units to validate; an explicitly named "
-            "directory is accepted only when its basename is doom"
+            "explicit .c units; a directory is accepted only when its "
+            "basename is doom"
         ),
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--profile",
         type=Path,
         default=DEFAULT_PROFILE,
-        help=(
-            "clang-tidy profile "
-            "(default: tools/tidy/malbolge-clang-tidy.yaml)"
-        ),
+        help="clang-tidy profile (default: tools/tidy profile)",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--clang-tidy",
         type=Path,
         default=_default_clang_tidy(),
-        help="clang-tidy executable (default: repository-pinned LLVM 22.1.8)",
+        help="clang-tidy executable (default: pinned LLVM 22.1.8)",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--plugin",
         type=Path,
         help="optional built tools/tidy clang-tidy plugin to load",
@@ -60,94 +94,145 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _validated_files(raw_files: list[str]) -> list[Path]:
-    files: list[Path] = []
-    for raw in raw_files:
-        path = Path(raw)
-        if not path.exists():
-            raise ValueError(f"input does not exist: {path}")
-        if path.is_dir():
-            if path.name.casefold() != "doom":
-                raise ValueError(
-                    "directories are accepted only for an explicitly named "
-                    f"doom directory: {path}"
-                )
-            doom_files = sorted(
-                candidate.resolve()
-                for candidate in path.rglob("*")
-                if candidate.is_file() and candidate.suffix.lower() == ".c"
-            )
-            if not doom_files:
-                raise ValueError(
-                    f"doom directory contains no C translation units: {path}"
-                )
-            files.extend(doom_files)
-            continue
-        if not path.is_file():
-            raise ValueError(f"input is not a regular file: {path}")
-        if path.suffix.lower() != ".c":
-            raise ValueError(
-                "Malbolge guest validation accepts C translation units only: "
-                f"{path}"
-            )
-        files.append(path.resolve())
+def _parse_arguments() -> _Arguments:
+    arguments = _Arguments()
+    _ = _parser().parse_args(namespace=arguments)
+    return arguments
 
-    # Preserve deterministic first-seen order while avoiding duplicate work when
-    # a file is named directly and is also contained in an explicitly passed
-    # doom/ directory.
-    return list(dict.fromkeys(files))
+
+def _doom_files(path: Path) -> tuple[Path, ...]:
+    files = tuple(
+        sorted(
+            candidate.resolve()
+            for candidate in path.rglob("*")
+            if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX
+        )
+    )
+    if not files:
+        _fail(f"doom directory contains no C translation units: {path}")
+    return files
+
+
+def _expand_directory(path: Path) -> tuple[Path, ...]:
+    if path.name.casefold() != DOOM_DIRECTORY:
+        _fail(f"only an explicitly named doom directory is accepted: {path}")
+    return _doom_files(path)
+
+
+def _expand_file(path: Path) -> tuple[Path, ...]:
+    if not path.is_file():
+        _fail(f"input is not a regular file: {path}")
+    if path.suffix.casefold() != C_SUFFIX:
+        _fail(f"guest validation accepts C translation units only: {path}")
+    return (path.resolve(),)
+
+
+def _expand_input(path: Path) -> tuple[Path, ...]:
+    if not path.exists():
+        _fail(f"input does not exist: {path}")
+    if path.is_dir():
+        return _expand_directory(path)
+    return _expand_file(path)
+
+
+def _validated_files(raw_files: list[str]) -> tuple[Path, ...]:
+    expanded = (
+        candidate for raw in raw_files for candidate in _expand_input(Path(raw))
+    )
+    return tuple(dict.fromkeys(expanded))
+
+
+def _require_file(path: Path, label: str) -> None:
+    if not path.is_file():
+        _fail(f"{label} not found: {path}")
+
+
+def _configuration(arguments: _Arguments) -> _Configuration:
+    clang_tidy = arguments.clang_tidy.resolve()
+    profile = arguments.profile.resolve()
+    plugin = (
+        arguments.plugin.resolve() if arguments.plugin is not None else None
+    )
+    _require_file(clang_tidy, "clang-tidy")
+    _require_file(profile, "Malbolge guest profile")
+    if plugin is not None:
+        _require_file(plugin, "clang-tidy plugin")
+    return _Configuration(
+        clang_tidy=clang_tidy,
+        files=_validated_files(arguments.files),
+        plugin=plugin,
+        profile=profile,
+    )
 
 
 def _run(command: list[str]) -> int:
-    completed = subprocess.run(command, cwd=ROOT, check=False)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - no shell; argv is explicit.
+        command,
+        cwd=ROOT,
+        check=False,
+        shell=False,
+    )
     return completed.returncode
 
 
-def main() -> int:
-    args = _parser().parse_args()
+def _verify_profile(configuration: _Configuration) -> bool:
+    command = [
+        str(configuration.clang_tidy),
+        "--verify-config",
+        f"--config-file={configuration.profile}",
+    ]
+    return _run(command) == 0
 
-    clang_tidy = args.clang_tidy.resolve()
-    profile = args.profile.resolve()
-    plugin = args.plugin.resolve() if args.plugin else None
 
-    if not clang_tidy.is_file():
-        print(f"error: clang-tidy not found: {clang_tidy}", file=sys.stderr)
-        return 2
-    if not profile.is_file():
-        print(
-            f"error: Malbolge guest profile not found: {profile}",
-            file=sys.stderr,
-        )
-        return 2
-    if plugin is not None and not plugin.is_file():
-        print(f"error: clang-tidy plugin not found: {plugin}", file=sys.stderr)
-        return 2
+def _source_command(
+    configuration: _Configuration,
+    source: Path,
+) -> list[str]:
+    plugin = (
+        []
+        if configuration.plugin is None
+        else [f"--load={configuration.plugin}"]
+    )
+    return [
+        str(configuration.clang_tidy),
+        f"--config-file={configuration.profile}",
+        *plugin,
+        str(source),
+        "--",
+        "-x",
+        "c",
+    ]
 
-    try:
-        files = _validated_files(args.files)
-    except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
 
-    verify = [str(clang_tidy), "--verify-config", f"--config-file={profile}"]
-    if _run(verify) != 0:
-        print(
-            "error: Malbolge clang-tidy profile failed self-verification",
-            file=sys.stderr,
-        )
-        return 2
-
+def _validate_sources(configuration: _Configuration) -> int:
     status = 0
-    for source in files:
-        command = [str(clang_tidy), f"--config-file={profile}"]
-        if plugin is not None:
-            command.append(f"--load={plugin}")
-        command.extend([str(source), "--", "-x", "c"])
-        result = _run(command)
+    for source in configuration.files:
+        result = _run(_source_command(configuration, source))
         if result != 0:
             status = result
-
     return status
+
+
+def _write_error(error: object) -> None:
+    _ = sys.stderr.write(f"error: {error}\n")
+
+
+def main() -> int:
+    """Validate explicitly selected guest C and return the tool exit status.
+
+    Returns:
+        Zero when every selected unit passes, otherwise a nonzero status.
+
+    """
+    try:
+        configuration = _configuration(_parse_arguments())
+    except InputError as error:
+        _write_error(error)
+        return CONFIGURATION_ERROR
+    if not _verify_profile(configuration):
+        _write_error("Malbolge clang-tidy profile failed self-verification")
+        return CONFIGURATION_ERROR
+    return _validate_sources(configuration)
 
 
 if __name__ == "__main__":

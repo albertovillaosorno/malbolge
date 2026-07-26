@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "current_profile": "malbolge-2026.1",
+  "profiles": {
+    "malbolge-1998": {
+      "kind": "historical-conformance",
+      "version": "1998",
+      "word": {
+        "radix": 3,
+        "trits": 10,
+        "modulus": 59049
+      },
+      "memory": {
+        "model": "single-word-modular",
+        "words": 59049
+      },
+      "semantics": {
+        "guest_order": "sequential",
+        "deterministic": true,
+        "crazy_operation": true,
+        "rotate": true,
+        "self_modification": true,
+        "post_instruction_encryption": true,
+        "input_instruction": "<",
+        "output_instruction": "/",
+        "eof_word": 59048,
+        "output_modulus": 256
+      }
+    },
+    "malbolge-2026.1": {
+      "kind": "current",
+      "version": "2026.1",
+      "word": {
+        "radix": 3,
+        "trits": 10,
+        "modulus": 59049
+      },
+      "memory": {
+        "model": "single-word-modular",
+        "words": 59049
+      },
+      "semantics": {
+        "guest_order": "sequential",
+        "deterministic": true,
+        "crazy_operation": true,
+        "rotate": true,
+        "self_modification": true,
+        "post_instruction_encryption": true,
+        "input_instruction": "<",
+        "output_instruction": "/",
+        "eof_word": 59048,
+        "output_modulus": 256
+      }
+    }
+  }
+}

@@ -132,6 +132,9 @@ The accepted result must:
   suitable for supported 64-bit architectures, including x86-64 and ARM64;
 - provide clean platform boundaries for current Windows, macOS, and Linux,
   without hardcoding one host into gameplay or rendering logic;
+- depend on host capabilities rather than a specific orchestrator identity: a
+  packaged result may be launched as `malbolge doom.malbolge`, but the game
+  core must remain usable with another conforming launcher/runtime;
 - run correctly on current 64-bit Windows, including working in-process audio;
 - support modern scalable/high-resolution presentation without forcing a single
   resolution, with borderless-window operation as a first-class mode;

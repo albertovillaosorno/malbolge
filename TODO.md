@@ -136,10 +136,10 @@ without weakening unrelated linter contracts.
 ### TODO - Canonical Malbolge target profile
 
 Define `malbolge.json` as the single target-profile authority consumed by the
-VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators. It
-must distinguish the frozen `malbolge-1998` conformance profile from the
-versioned current-language profile instead of modeling useful evolution as a
-separate "extended" language.
+VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators. Schema
+v1 now distinguishes frozen `malbolge-1998` from current `malbolge-2026.1` and
+has fail-closed validation; universal consumer adoption remains open. Useful
+evolution is versioned rather than modeled as a separate "extended" language.
 
 ### TODO - Historical interpreter legal boundary
 

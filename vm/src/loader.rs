@@ -51,7 +51,7 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::{MEMORY_WORDS, Memory, MemoryError, Word, decode};
+use crate::{MEMORY_WORDS, Memory, MemoryError, Word, decode_instruction};
 
 /// Deterministic failure while admitting classic Malbolge source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,7 +160,7 @@ fn validate_source(admitted: &[u8]) -> Result<(), LoadError> {
             .map_err(|_error| LoadError::InternalInvariant)?;
         let pointer = Word::new(pointer_value)
             .map_err(|_error| LoadError::InternalInvariant)?;
-        let decoded = decode(Word::from_byte(byte), pointer)
+        let decoded = decode_instruction(Word::from_byte(byte), pointer)
             .ok_or(LoadError::InternalInvariant)?;
         if !matches!(
             decoded,

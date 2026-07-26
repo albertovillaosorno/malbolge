@@ -53,15 +53,15 @@ task-tags = []
 # Only irreducible rule/formatter contradictions are disabled. The surviving
 # twin or Ruff formatter still enforces the underlying invariant.
 ignore = [
-  "COM812", # Formatter owns trailing-comma placement.
-  "D203",   # Contradicts D211; D211 is authoritative.
-  "D213",   # Contradicts D212; D212 is authoritative.
-  "ISC001", # Formatter owns single-line implicit-string normalization.
+  "missing-trailing-comma", # Formatter owns trailing-comma placement.
+  "incorrect-blank-line-before-class", # Contradicts D211; D211 is authoritative.
+  "multi-line-summary-second-line", # Contradicts D212; D212 is authoritative.
+  "single-line-implicit-string-concatenation", # Formatter owns single-line implicit-string normalization.
 ]
 
 [lint.per-file-ignores]
 # Pytest assertions are executable test semantics, not production assertions.
-"tests/**/*.py" = ["S101"]
+"tests/**/*.py" = ["assert"]
 
 [lint.flake8-annotations]
 mypy-init-return = false

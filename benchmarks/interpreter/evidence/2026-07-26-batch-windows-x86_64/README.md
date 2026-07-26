@@ -10,6 +10,9 @@
 - Rust: `rustc 1.97.1 (8bab26f4f 2026-07-14)`
 - Cargo: `cargo 1.97.1 (c980f4866 2026-06-30)`
 - Command: `cargo bench --bench interpreter`
+- Historical command note: this command is exact for the recorded commit;
+  current HEAD replays the same benchmark logic with
+  `cargo run --release --bin interpreter_benchmark`.
 - Independent jobs per sample: 96
 - Step budget per job: 16
 - Samples per implementation: 15

@@ -33,8 +33,8 @@
 // - Description:
 //   - Emits raw samples so performance conclusions can retain dispersion data.
 // - Usage:
-//   - Run with `cargo bench --bench interpreter` on an identified
-//     host/toolchain.
+//   - Run with `cargo run --release --bin interpreter_benchmark` on an
+//     identified host/toolchain.
 // - Defaults:
 //   - Uses fixed sample and repetition counts with black-boxed checksums.
 //
@@ -212,7 +212,12 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
     }
 }
 
-fn main() -> IoResult<()> {
+/// Runs the fixed benchmark matrix and emits raw CSV samples.
+///
+/// # Errors
+///
+/// Returns an I/O error if writing benchmark samples to stdout fails.
+pub fn run() -> IoResult<()> {
     let words = classic_words();
     let mut output = stdout().lock();
     writeln!(

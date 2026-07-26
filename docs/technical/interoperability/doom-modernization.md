@@ -49,7 +49,7 @@ with pinned LLVM 22.1.8 quality gates and emits aggregate versioned evidence. It
 records source and asset SHA-256 identities and re-measures each corpus after
 long-running validation, failing closed rather than publishing mixed-revision
 evidence when a live tree changes. The current coherent snapshot reduces unique
-quality findings from 143,662 to 41,162. This is development evidence only; the
+quality findings from 143,662 to 38,462. This is development evidence only; the
 normalized tree is not yet accepted by the full guest-C profile.
 
 ## Invariants

@@ -26,7 +26,7 @@ validation:
 Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 
-## Current implementation
+**Current implementation.**
 
 - `vm/src/batch.rs` defines owned `BatchRequest` and input-ordered `BatchResult`
   values around the existing explicit `ExecutionMachine` trust boundary.

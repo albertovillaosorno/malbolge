@@ -5,38 +5,38 @@
       "asset_files": 1,
       "asset_sha256": "4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711",
       "c_files": 62,
-      "files": 130,
-      "headers": 62,
-      "nonblank_source_lines": 44460,
-      "physical_source_lines": 51502,
-      "source_bytes": 1500904,
-      "source_sha256": "f341db4c7072e8ae9de99aec3caa374ddd01d58543d0179af9c1f005044d2312"
+      "files": 128,
+      "headers": 64,
+      "nonblank_source_lines": 44026,
+      "physical_source_lines": 50851,
+      "source_bytes": 1497009,
+      "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f"
     },
     "path": "interop/algorithms/quality/in/doom",
     "validation": {
       "by_gate": {
         "clang-format": 1,
         "clang-linux-arm64": 1,
-        "clang-linux-x86_64": 1563,
-        "clang-tidy": 39363,
-        "editorconfig": 214,
-        "interop": 20
+        "clang-linux-x86_64": 861,
+        "clang-tidy": 37373,
+        "editorconfig": 222,
+        "interop": 4
       },
       "by_rule_family": {
-        "analyzer": 311,
-        "bugprone": 447,
-        "compiler": 3127,
+        "analyzer": 321,
+        "bugprone": 381,
+        "compiler": 1723,
         "format": 1,
-        "hicpp": 1675,
-        "interop/other": 3100,
-        "misc": 2630,
-        "modernize": 899,
-        "performance": 25,
-        "readability": 28733,
-        "text": 214
+        "hicpp": 1553,
+        "interop/other": 2950,
+        "misc": 2350,
+        "modernize": 692,
+        "performance": 5,
+        "readability": 28264,
+        "text": 222
       },
-      "raw_findings": 97015,
-      "unique_findings": 41162
+      "raw_findings": 94085,
+      "unique_findings": 38462
     }
   },
   "before": {

@@ -35,7 +35,7 @@ diagnostic families through reusable AST transformations, modernize explicit
 platform adapters, and preserve behavior and required provenance before any
 translation units are amalgamated.
 
-## Current implementation
+**Current implementation.**
 
 - `interop/algorithms/quality/main.rs` owns the quality-first transformation
   boundary; automatic AST rewrite families remain incomplete.
@@ -46,7 +46,7 @@ translation units are amalgamated.
   pinned LLVM 22.1.8 quality gates, records source and asset hashes, and fails
   closed if either live corpus changes during a measurement.
 - The current coherent snapshot records 143,662 unique findings in the baseline
-  and 41,162 in the development oracle. This is progress evidence, not
+  and 38,462 in the development oracle. This is progress evidence, not
   acceptance: zero applicable findings and reproducible generation into
   `out/doom_fixed/` remain required.
 

@@ -21,7 +21,7 @@
 //   - Reuse generated table data or production scalar fallback helpers.
 // - Allows:
 //   - Inputs: public classic Word API and independent normative formulas.
-//   - Outputs: exhaustive rotate and five-trit crazy-table equivalence checks.
+//   - Outputs: exhaustive rotate, crazy, and positional-decode equivalence.
 //   - Side effects: test-process CPU and memory only.
 // - Split-When:
 //   - Split when another target profile requires independent table evidence.
@@ -31,7 +31,7 @@
 //   - Proves optimized word tables equal independent scalar ternary
 //     definitions.
 // - Description:
-//   - Covers every rotate entry and every crazy chunk entry in both positions.
+//   - Covers every rotate/crazy entry and every graphical decode position.
 // - Usage:
 //   - Runs under the Cargo VM integration-test composition target.
 // - Defaults:
@@ -47,11 +47,16 @@
 
 //! Independent scalar equivalence tests for optimized classic word operations.
 
-use malbolge::{MAX_WORD_VALUE, Word};
+use malbolge::{MAX_WORD_VALUE, Word, decode_instruction};
 
 use super::{TestResult, check_equal, normalize_result};
 
 const CHUNK_VALUES: u16 = 243;
+const DECODE_TABLE_LEN: usize = 94;
+const GRAPHICAL_START: u16 = 33;
+const TEST_XLAT1: &[u8; DECODE_TABLE_LEN] =
+    b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
+.v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 const TRIT_COUNT: u8 = 10;
 
@@ -89,6 +94,25 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
     }
 }
 
+fn check_decode(cell: Word, code_pointer: Word) -> TestResult {
+    let cell_offset = usize::from(cell.value().saturating_sub(GRAPHICAL_START));
+    let combined =
+        cell_offset.saturating_add(usize::from(code_pointer.value()));
+    let translation_index = combined.rem_euclid(DECODE_TABLE_LEN);
+    let expected = TEST_XLAT1
+        .get(translation_index)
+        .copied()
+        .ok_or_else(|| String::from("scalar decode index escaped XLAT1"))?;
+    let observed = decode_instruction(cell, code_pointer).ok_or_else(|| {
+        String::from("optimized decode rejected graphical cell")
+    })?;
+    check_equal(
+        &observed,
+        &expected,
+        "optimized decode equals independent scalar definition",
+    )
+}
+
 fn check_crazy_pair(data_value: u16, accumulator_value: u16) -> TestResult {
     let data = normalize_result(Word::new(data_value))?;
     let accumulator = normalize_result(Word::new(accumulator_value))?;
@@ -124,6 +148,25 @@ fn crazy_chunks_match_scalar_definition_in_both_positions() -> TestResult {
             accumulator_chunk = accumulator_chunk.saturating_add(1);
         }
         data_chunk = data_chunk.saturating_add(1);
+    }
+    Ok(())
+}
+
+#[test]
+fn decode_table_matches_scalar_definition_for_every_position() -> TestResult {
+    let mut pointer_raw = 0u16;
+    loop {
+        let code_pointer = normalize_result(Word::new(pointer_raw))?;
+        let mut cell_raw = GRAPHICAL_START;
+        while cell_raw <= 126 {
+            let cell = normalize_result(Word::new(cell_raw))?;
+            check_decode(cell, code_pointer)?;
+            cell_raw = cell_raw.saturating_add(1);
+        }
+        if pointer_raw == MAX_WORD_VALUE {
+            break;
+        }
+        pointer_raw = pointer_raw.saturating_add(1);
     }
     Ok(())
 }
