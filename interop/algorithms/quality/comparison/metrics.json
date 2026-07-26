@@ -1,0 +1,84 @@
+{
+  "after": {
+    "corpus": {
+      "asset_bytes": 28795076,
+      "asset_files": 1,
+      "asset_sha256": "4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711",
+      "c_files": 62,
+      "files": 130,
+      "headers": 62,
+      "nonblank_source_lines": 44460,
+      "physical_source_lines": 51502,
+      "source_bytes": 1500904,
+      "source_sha256": "f341db4c7072e8ae9de99aec3caa374ddd01d58543d0179af9c1f005044d2312"
+    },
+    "path": "interop/algorithms/quality/in/doom",
+    "validation": {
+      "by_gate": {
+        "clang-format": 1,
+        "clang-linux-arm64": 1,
+        "clang-linux-x86_64": 1563,
+        "clang-tidy": 39363,
+        "editorconfig": 214,
+        "interop": 20
+      },
+      "by_rule_family": {
+        "analyzer": 311,
+        "bugprone": 447,
+        "compiler": 3127,
+        "format": 1,
+        "hicpp": 1675,
+        "interop/other": 3100,
+        "misc": 2630,
+        "modernize": 899,
+        "performance": 25,
+        "readability": 28733,
+        "text": 214
+      },
+      "raw_findings": 97015,
+      "unique_findings": 41162
+    }
+  },
+  "before": {
+    "corpus": {
+      "asset_bytes": 28795076,
+      "asset_files": 1,
+      "asset_sha256": "4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711",
+      "c_files": 72,
+      "files": 166,
+      "headers": 74,
+      "nonblank_source_lines": 48963,
+      "physical_source_lines": 59110,
+      "source_bytes": 1333724,
+      "source_sha256": "a7c20cd5bcdad32c87a85d855b2a77c63be5591ebf8186550436e75587d72ec7"
+    },
+    "path": "doom",
+    "validation": {
+      "by_gate": {
+        "clang-format": 75797,
+        "clang-linux-arm64": 3,
+        "clang-linux-x86_64": 2497,
+        "clang-tidy": 43619,
+        "editorconfig": 21720,
+        "interop": 26
+      },
+      "by_rule_family": {
+        "analyzer": 1,
+        "bugprone": 540,
+        "compiler": 4992,
+        "format": 75797,
+        "hicpp": 1731,
+        "interop/other": 3488,
+        "misc": 2807,
+        "modernize": 1755,
+        "performance": 26,
+        "readability": 30805,
+        "text": 21720
+      },
+      "raw_findings": 201160,
+      "unique_findings": 143662
+    }
+  },
+  "generator": "interop/algorithms/quality/comparison/generate.py",
+  "llvm_version": "22.1.8"
+}

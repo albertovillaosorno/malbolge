@@ -12,6 +12,33 @@ not committed to this repository. Both `in/` and `out/` are ignored working
 areas. The durable artifact is the transformation logic in `main.rs`, together
 with tests, contracts, and reproducible evidence.
 
+## Scope: Interoperability Corpus, Not a DOOM Port
+
+This algorithm does not aim to become a general-purpose DOOM source port, a
+preservation project, or a replacement for projects that maintain DOOM as an
+end-user game. DOOM is used here because it is a demanding C interoperability
+corpus. The implementation only needs enough modern host support to exercise
+the quality and C-to-Malbolge pipeline meaningfully.
+
+The engine source and game data are separate inputs. Running the corpus requires
+a compatible IWAD, but no commercial id Software WAD is part of the algorithm
+or its versioned artifacts. Local tests use `in/doom/data/freedoom1.wad`. That
+WAD is a local test fixture, is not modified by the quality pass, and is not
+committed by this algorithm. A developer may supply another compatible IWAD
+that they are legally entitled to use. The engine must not depend specifically
+on Freedoom.
+
+The normal local fixture layout is:
+
+```text
+in/doom/data/
+`-- freedoom1.wad    # local test IWAD; ignored and not versioned
+```
+
+An explicit `-iwad <path>` selection takes precedence over automatic discovery
+under `doom/data`. Automatic discovery exists only to make local validation
+convenient.
+
 ## Local Development Layout
 
 ```text
@@ -97,7 +124,7 @@ tree is stable, reproducible, and accepted by all required gates.
 The quality stage is accepted only at zero findings across every applicable
 quality, compiler, portability, and interoperability gate. Passing lint alone is
 not sufficient: the generated tree must also be a deliberately modernized,
-fully playable DOOM implementation rather than a mechanically reformatted copy.
+runnable interoperability corpus rather than a mechanically reformatted copy.
 
 The accepted result must:
 
@@ -121,6 +148,15 @@ The accepted result must:
 Compatibility with obsolete operating systems, 32-bit targets, or historical
 platform APIs is explicitly outside this algorithm's scope. A downstream port
 may add such support, but this pass does not carry compatibility debt for it.
+
+## Separation from Amalgamation
+
+Quality and amalgamation are intentionally separate algorithms. Quality owns
+semantic cleanup and produces the canonical normalized multi-file C tree.
+Amalgamation is a later optional lowering experiment, not part of source
+quality. Keeping the boundary explicit also preserves a future design in which
+the Malbolge C frontend can accept a directory of translation units directly
+without forcing every program through a single generated C file.
 
 ## Pipeline Position
 

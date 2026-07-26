@@ -673,7 +673,7 @@ owning `out/` directories.
 ### TODO - DOOM quality and modernization pass
 
 Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
-and use `interop/algorithms/quality.rs` to produce a deterministic normalized
+and use `interop/algorithms/quality/main.rs` to produce a deterministic normalized
 source tree under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated
 `tools/tidy` diagnostic families with reusable AST transformations, replace
 unavailable legacy platform integration through explicit video, input, timing,
@@ -684,7 +684,7 @@ The user-owned input tree is never modified and remains external to the repo.
 
 ### TODO - User-supplied DOOM source interoperability generator
 
-Use `interop/algorithms/amalgamate.rs` only after the quality pass has produced
+Use `interop/algorithms/amalgamate/main.rs` only after the quality pass has produced
 the normalized source tree. Resolve translation-unit boundaries, internal-linkage
 collisions, preprocessing environments, includes, declarations, and provenance
 through pinned Clang, then emit one deterministic

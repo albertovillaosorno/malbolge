@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -16,7 +16,7 @@ a stable multi-translation-unit tree for later aggregation.
 This document governs the following declared TODO scope:
 
 - `doom/`
-- `interop/algorithms/quality.rs`
+- `interop/algorithms/quality/`
 - `interop/adapters/`
 - `interop/algorithms/quality/out/doom_fixed/`
 - `tools/tidy/`
@@ -25,7 +25,7 @@ This document governs the following declared TODO scope:
 
 ### Proposed Model
 
-`quality.rs` reads the ignored user-owned source tree and emits a generated
+`quality/main.rs` ultimately reads the admitted user-owned source tree and emits a generated
 normalized tree under `interop/algorithms/quality/out/doom_fixed/`. Rewrites are driven
 by Clang/AST semantics and the complete `tools/tidy` contract. Regex or other
 textual rewriting is admitted only when the transformation is provably textual.
@@ -37,8 +37,20 @@ normalization.
 
 ### Implementation Status
 
-Not implemented. The repository does not claim that user-supplied DOOM source is
-currently normalized or accepted by the target C profile.
+The quality boundary and local development/evidence workflow are active, but the
+reusable AST transformation engine is not complete. Repository-root `doom/` is
+the untouched local baseline. The ignored `interop/algorithms/quality/in/doom/`
+tree is currently a manually modernized development oracle used to discover
+transformations that must later be encoded in `quality/main.rs` and reproduced
+into `out/doom_fixed/`.
+
+`interop/algorithms/quality/comparison/generate.py` measures both local corpora
+with pinned LLVM 22.1.8 quality gates and emits aggregate versioned evidence. It
+records source and asset SHA-256 identities and re-measures each corpus after
+long-running validation, failing closed rather than publishing mixed-revision
+evidence when a live tree changes. The current coherent snapshot reduces unique
+quality findings from 143,662 to 41,162. This is development evidence only; the
+normalized tree is not yet accepted by the full guest-C profile.
 
 ## Invariants
 
@@ -48,8 +60,9 @@ currently normalized or accepted by the target C profile.
 - Blanket linter suppression is not an accepted modernization technique.
 - Required upstream legal/provenance material is preserved.
 - Native differential evidence follows every behavior-affecting rewrite.
-- Amalgamation happens only after this pass has produced an accepted normalized
-  multi-file tree.
+- Amalgamation, when requested, consumes only an accepted normalized multi-file
+  tree. It remains optional rather than becoming a prerequisite for multi-file
+  guest-C validation or compilation.
 
 ## Failure Behavior
 
@@ -64,6 +77,9 @@ publishing a partially transformed final artifact.
 - `tools/tidy` reports reach zero accepted diagnostics without blanket ignores.
 - Differential native fixtures distinguish semantics-preserving rewrites from
   deliberate bug fixes or platform modernization.
+- `interop/algorithms/quality/comparison/{report.tex,metrics.json}` retains a
+  compact aggregate progress snapshot with exact source/asset identities; its
+  generator refuses mixed-revision live-corpus measurements.
 - Adapter tests cover video, input, timing, audio, and game-data boundaries used
   by the normalized source tree.
 

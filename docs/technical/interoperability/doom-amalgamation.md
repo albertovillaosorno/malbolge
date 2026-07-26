@@ -16,7 +16,7 @@ behavior.
 
 This document governs the following declared TODO scope:
 
-- `interop/algorithms/amalgamate.rs`
+- `interop/algorithms/amalgamate/main.rs`
 - `interop/algorithms/quality/out/doom_fixed/`
 - `interop/algorithms/amalgamate/out/doom_amalgamated.c`
 - `tests/applications/doom/out/doom.c`
@@ -25,7 +25,7 @@ This document governs the following declared TODO scope:
 
 ### Proposed Model
 
-`amalgamate.rs` consumes the normalized multi-file tree produced by the quality
+`amalgamate/main.rs` consumes the normalized multi-file tree produced by the quality
 pass. Pinned Clang preprocessing/AST information provides translation-unit,
 linkage, macro, declaration, and provenance context. The algorithm deterministically
 renames or materializes only what is necessary to preserve semantics when the

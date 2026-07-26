@@ -28,7 +28,7 @@ Thumbs.db
 *.temp
 
 # DOOM
-doom/
+/doom/
 
 # Reproducible algorithm outputs are local. User-owned interoperability input
 # corpora are local too; other algorithm inputs/configuration remain versioned.

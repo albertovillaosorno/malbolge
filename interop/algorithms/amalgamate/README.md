@@ -100,9 +100,22 @@ A typical amalgamation pass conceptually performs these stages:
 Given the same normalized input and toolchain facts, repeated runs must produce
 byte-identical output.
 
+## Why This Remains a Separate Algorithm
+
+Amalgamation is deliberately not folded into `quality`. The normalized
+multi-file tree is a valid durable output in its own right, and the future
+Malbolge C frontend is expected to be able to evolve toward accepting a
+directory of translation units directly. A mandatory quality+amalgamation pass
+would erase that boundary and make single-file C an accidental architectural
+requirement.
+
+This algorithm therefore exists as an explicit, independently testable lowering
+step for pipelines that want one translation artifact. It must not become a
+prerequisite for validating or compiling multi-file guest C.
+
 ## Pipeline Position
 
-This algorithm runs **after** quality:
+This algorithm runs **after** quality when a single C artifact is desired:
 
 ```text
 user-supplied DOOM

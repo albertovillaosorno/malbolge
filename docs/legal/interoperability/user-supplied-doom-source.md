@@ -47,7 +47,7 @@ The public repository does not vendor DOOM source or game data. A user may place
 their own source checkout in the Git-ignored root `doom/` directory for local
 interoperability testing.
 
-Repository-authored `interop/algorithms/amalgamate.rs`, `quality.rs`, and host
+Repository-authored `interop/algorithms/amalgamate/main.rs`, `quality/main.rs`, and host
 adapters may inspect or transform that local input. Generated intermediate files
 remain under Git-ignored `out/` directories unless a later source-specific legal
 review approves another publication boundary.

@@ -1,6 +1,6 @@
 ---
 id: "doom-quality-and-modernization-pass"
-status: "pending"
+status: "active"
 lane: "12"
 area: "applications"
 task: "TODO - DOOM quality and modernization pass"
@@ -17,7 +17,7 @@ adr_paths:
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "doom/"
-  - "interop/algorithms/quality.rs"
+  - "interop/algorithms/quality/"
   - "interop/adapters/"
   - "interop/algorithms/quality/out/doom_fixed/"
   - "tools/tidy/"
@@ -29,11 +29,26 @@ validation:
 ## Objective
 
 Consume the user-supplied source tree under ignored `doom/` and use
-`interop/algorithms/quality.rs` to produce a deterministic normalized source tree
+`interop/algorithms/quality/main.rs` to produce a deterministic normalized source tree
 under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated `tools/tidy`
 diagnostic families through reusable AST transformations, modernize explicit
 platform adapters, and preserve behavior and required provenance before any
 translation units are amalgamated.
+
+## Current implementation
+
+- `interop/algorithms/quality/main.rs` owns the quality-first transformation
+  boundary; automatic AST rewrite families remain incomplete.
+- Repository-root `doom/` is the untouched local baseline. The ignored
+  `interop/algorithms/quality/in/doom/` tree is the manually modernized
+  development oracle used to discover reusable transformations.
+- `interop/algorithms/quality/comparison/generate.py` compares those corpora with
+  pinned LLVM 22.1.8 quality gates, records source and asset hashes, and fails
+  closed if either live corpus changes during a measurement.
+- The current coherent snapshot records 143,662 unique findings in the baseline
+  and 41,162 in the development oracle. This is progress evidence, not
+  acceptance: zero applicable findings and reproducible generation into
+  `out/doom_fixed/` remain required.
 
 ## Acceptance
 
@@ -52,8 +67,10 @@ translation units are amalgamated.
 
 ## Evidence
 
-- Expected durable artifact surface: `doom/`, `interop/algorithms/quality.rs`,
+- Expected durable artifact surface: `doom/`, `interop/algorithms/quality/`,
   `interop/adapters/`, `interop/algorithms/quality/out/doom_fixed/`, `tools/tidy/`.
+- Current comparison evidence: `interop/algorithms/quality/comparison/` contains
+  the deterministic generator, aggregate metrics, and compact LaTeX report.
 - Required evidence: deterministic source manifests, linter reports,
   transformation provenance, native differential traces, and adapter tests.
 - Prerequisite completion evidence: `clang-c-frontend-integration`,

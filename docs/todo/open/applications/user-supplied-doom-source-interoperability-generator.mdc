@@ -15,7 +15,7 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
-  - "interop/algorithms/amalgamate.rs"
+  - "interop/algorithms/amalgamate/main.rs"
   - "interop/algorithms/quality/out/doom_fixed/"
   - "interop/algorithms/amalgamate/out/doom_amalgamated.c"
   - "tests/applications/doom/out/doom.c"
@@ -26,15 +26,15 @@ validation:
 
 ## Objective
 
-Consume the accepted normalized DOOM source tree produced by `quality.rs` and use
-`interop/algorithms/amalgamate.rs` to emit one deterministic
+Consume the accepted normalized DOOM source tree produced by `quality/main.rs` and use
+`interop/algorithms/amalgamate/main.rs` to emit one deterministic
 `interop/algorithms/amalgamate/out/doom_amalgamated.c`. Resolve translation-unit boundaries,
 internal-linkage collisions, preprocessing environments, includes, declarations,
 and provenance through pinned Clang before admitting the single-file artifact.
 
 ## Acceptance
 
-- `amalgamate.rs` consumes only the normalized generated tree and never rewrites
+- `amalgamate/main.rs` consumes only the normalized generated tree and never rewrites
   the user-owned source tree directly.
 - Translation-unit semantics, internal linkage, macro environments, declaration
   ordering, and required provenance survive deterministic aggregation.
@@ -49,7 +49,7 @@ and provenance through pinned Clang before admitting the single-file artifact.
 
 ## Evidence
 
-- Expected durable artifact surface: `interop/algorithms/amalgamate.rs`,
+- Expected durable artifact surface: `interop/algorithms/amalgamate/main.rs`,
   `interop/algorithms/quality/out/doom_fixed/`,
   `interop/algorithms/amalgamate/out/doom_amalgamated.c`,
   `tests/applications/doom/out/doom.c`.
