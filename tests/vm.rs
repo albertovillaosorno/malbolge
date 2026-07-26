@@ -54,6 +54,8 @@ mod differential;
 mod execution;
 #[path = "vm/instructions.rs"]
 mod instructions;
+#[path = "vm/modes.rs"]
+mod modes;
 #[path = "vm/tracing.rs"]
 mod tracing;
 

@@ -46,8 +46,8 @@
 
 //! Deterministic in-memory trace records for classic VM execution.
 
-use crate::Word;
 use crate::machine::{MachineError, Registers, StepOutcome, Termination};
+use crate::{ExecutionMode, Word};
 
 /// Compact observable machine state at one trace boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,6 +84,8 @@ pub struct StepTrace {
     pub fetched_cell: Option<Word>,
     /// Input effect selected by a successfully planned input instruction.
     pub input: Option<TraceInput>,
+    /// Explicit execution-mode identity for this requested step.
+    pub mode: ExecutionMode,
     /// Output byte emitted by a successfully committed output instruction.
     pub output: Option<u8>,
     /// Exact public result returned by the requested step.

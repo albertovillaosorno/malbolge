@@ -1,6 +1,6 @@
 ---
 id: "specification-and-legacy-interpreter-modes"
-status: "pending"
+status: "active"
 lane: "6"
 area: "vm"
 task: "TODO - Specification and legacy-interpreter execution modes"
@@ -48,5 +48,13 @@ and historical-corpus study.
 - Required evidence: specification fixtures, explicit legacy discrepancy
   fixtures, and differential traces against independent implementations; Ben
   interpreter comparison is limited to its documented agreement domain.
+- Current implementation evidence is `vm/src/mode.rs`, `vm/src/execution.rs`,
+  mode-aware tracing in `vm/src/machine.rs`, and `tests/vm/modes.rs`.
+- Default builds reject `legacy-ben`; feature-enabled tests cover H-001 and
+  H-002 behavior while H-003 and H-004 remain explicit safe failures. Mode
+  identity is asserted in traces and diagnostics, and verifier eligibility is
+  normative-only.
+- Implementation evidence is present. Completion remains gated on the declared
+  repository-wide `jig validate --root .` command passing at retirement time.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `historical-undefined-behavior-catalogue`.

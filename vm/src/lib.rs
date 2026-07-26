@@ -18,7 +18,7 @@
 // - Owns:
 //   - Public classic Malbolge VM semantics and deterministic execution API.
 // - Must-Not:
-//   - Encode JIT, accelerator, compiler, or historical C defect behavior.
+//   - Encode JIT, accelerator, compiler, or implicit historical behavior.
 // - Allows:
 //   - Inputs: validated source bytes, classic words, memory, and byte input.
 //   - Outputs: deterministic state transitions, byte output, and diagnostics.
@@ -34,7 +34,7 @@
 // - Usage:
 //   - Used by interpreters, verification, compiler tests, and future executors.
 // - Defaults:
-//   - Implements normative 1998 semantics rather than historical C defects.
+//   - `Machine` is normative; legacy behavior requires explicit opt-in.
 //
 // Related documents:
 // - docs/technical/specification/malbolge-1998.md
@@ -46,17 +46,22 @@
 
 //! Safe deterministic implementation of the classic Malbolge virtual machine.
 
+mod execution;
 mod loader;
 mod machine;
 mod memory;
+mod mode;
 mod trace;
 mod word;
 
+pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use loader::{LoadError, load};
 pub use machine::{
-    Machine, MachineError, Registers, RunOutcome, StepOutcome, Termination,
+    LegacyBehavior, Machine, MachineError, Registers, RunOutcome, StepOutcome,
+    Termination,
 };
 pub use memory::{Memory, MemoryError};
+pub use mode::{ExecutionMode, ExecutionModeParseError};
 pub use trace::{MachineObservation, StepTrace, TraceInput};
 pub use word::{MAX_WORD_VALUE, MEMORY_WORDS, Word, WordError};
 const GRAPHICAL_START: u16 = 33;

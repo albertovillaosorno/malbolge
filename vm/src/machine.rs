@@ -52,7 +52,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::loader::{LoadError, load};
 use crate::trace::{MachineObservation, StepTrace, TraceInput};
-use crate::{Memory, MemoryError, Word, decode, encrypt};
+use crate::{ExecutionMode, Memory, MemoryError, Word, decode, encrypt};
 
 /// Classic machine registers.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -99,7 +99,19 @@ pub enum StepOutcome {
     Terminated(Termination),
 }
 
-/// Typed failure of a normative machine transition.
+/// Reproducible historical behavior that cannot be emulated safely.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LegacyBehavior {
+    /// Historical code would index the encryption table outside its domain.
+    InvalidSelfEncryptionTarget {
+        /// Resulting code pointer selected by the legacy transition.
+        pointer: Word,
+        /// Non-graphical value that would become the table index source.
+        value: Word,
+    },
+}
+
+/// Typed failure of a classic machine transition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineError {
     /// Self-encryption would access a non-graphical target cell.
@@ -113,6 +125,8 @@ pub enum MachineError {
     Memory(MemoryError),
     /// A translation-table lookup failed inside its admitted domain.
     TranslationTableInvariant,
+    /// Explicit legacy behavior cannot be reproduced without historical UB.
+    UnsupportedLegacyBehavior(LegacyBehavior),
 }
 
 impl Display for MachineError {
@@ -125,6 +139,17 @@ impl Display for MachineError {
                 value.value()
             ),
             Self::Memory(error) => Display::fmt(error, f),
+            Self::UnsupportedLegacyBehavior(
+                LegacyBehavior::InvalidSelfEncryptionTarget { pointer, value },
+            ) => write!(
+                f,
+                concat!(
+                    "legacy-ben cannot safely emulate self-encryption at {}",
+                    " with value {}",
+                ),
+                pointer.value(),
+                value.value()
+            ),
             Self::TranslationTableInvariant => {
                 f.write_str("classic translation-table invariant failed")
             },
@@ -321,12 +346,20 @@ impl Machine {
         &mut self,
         step_budget: usize,
     ) -> Result<RunOutcome, MachineError> {
+        self.run_in_mode(step_budget, ExecutionMode::Specification)
+    }
+
+    pub(crate) fn run_in_mode(
+        &mut self,
+        step_budget: usize,
+        mode: ExecutionMode,
+    ) -> Result<RunOutcome, MachineError> {
         if let Some(reason) = self.termination {
             return Ok(RunOutcome::Terminated { reason, steps: 0 });
         }
         let mut steps = 0usize;
         while steps < step_budget {
-            let outcome = self.step()?;
+            let outcome = self.step_in_mode(mode)?;
             steps = steps.saturating_add(1);
             if let StepOutcome::Terminated(reason) = outcome {
                 return Ok(RunOutcome::Terminated { reason, steps });
@@ -353,12 +386,28 @@ impl Machine {
     where
         Observer: FnMut(&StepTrace),
     {
+        self.run_traced_in_mode(
+            step_budget,
+            ExecutionMode::Specification,
+            observer,
+        )
+    }
+
+    pub(crate) fn run_traced_in_mode<Observer>(
+        &mut self,
+        step_budget: usize,
+        mode: ExecutionMode,
+        observer: &mut Observer,
+    ) -> Result<RunOutcome, MachineError>
+    where
+        Observer: FnMut(&StepTrace),
+    {
         if let Some(reason) = self.termination {
             return Ok(RunOutcome::Terminated { reason, steps: 0 });
         }
         let mut steps = 0usize;
         while steps < step_budget {
-            let outcome = self.step_traced(observer)?;
+            let outcome = self.step_traced_in_mode(mode, observer)?;
             steps = steps.saturating_add(1);
             if let StepOutcome::Terminated(reason) = outcome {
                 return Ok(RunOutcome::Terminated { reason, steps });
@@ -373,23 +422,33 @@ impl Machine {
     ///
     /// Returns [`MachineError`] when a transition cannot commit atomically.
     pub fn step(&mut self) -> Result<StepOutcome, MachineError> {
+        self.step_in_mode(ExecutionMode::Specification)
+    }
+
+    pub(crate) fn step_in_mode(
+        &mut self,
+        mode: ExecutionMode,
+    ) -> Result<StepOutcome, MachineError> {
         if let Some(reason) = self.termination {
             return Ok(StepOutcome::Terminated(reason));
         }
         let cell = self.memory.read(self.registers.code_pointer)?;
         if !cell.is_graphical() {
+            if mode == ExecutionMode::LegacyBen {
+                return Ok(StepOutcome::Continued);
+            }
             self.termination = Some(Termination::NonGraphicalCell);
             return Ok(StepOutcome::Terminated(Termination::NonGraphicalCell));
         }
         let decoded = decode(cell, self.registers.code_pointer)
             .ok_or(MachineError::TranslationTableInvariant)?;
-        let decoded_instruction = instruction(decoded);
+        let decoded_instruction = instruction(decoded, mode);
         if decoded_instruction == Instruction::Halt {
             self.termination = Some(Termination::HaltInstruction);
             return Ok(StepOutcome::Terminated(Termination::HaltInstruction));
         }
         let plan = self.plan(decoded_instruction)?;
-        let encrypted = self.validate_encryption(&plan)?;
+        let encrypted = self.validate_encryption(&plan, mode)?;
         self.commit(plan, encrypted)?;
         Ok(StepOutcome::Continued)
     }
@@ -410,6 +469,17 @@ impl Machine {
     where
         Observer: FnMut(&StepTrace),
     {
+        self.step_traced_in_mode(ExecutionMode::Specification, observer)
+    }
+
+    pub(crate) fn step_traced_in_mode<Observer>(
+        &mut self,
+        mode: ExecutionMode,
+        observer: &mut Observer,
+    ) -> Result<StepOutcome, MachineError>
+    where
+        Observer: FnMut(&StepTrace),
+    {
         let before = self.observation();
         let fetched_cell = if before.termination.is_none() {
             self.memory.read(before.registers.code_pointer).ok()
@@ -419,21 +489,23 @@ impl Machine {
         let decoded = fetched_cell
             .filter(|cell| cell.is_graphical())
             .and_then(|cell| decode(cell, before.registers.code_pointer));
-        let result = self.step();
+        let decoded_instruction = decoded.map(|byte| instruction(byte, mode));
+        let result = self.step_in_mode(mode);
         let after = self.observation();
-        let input =
-            if result == Ok(StepOutcome::Continued) && decoded == Some(b'<') {
-                if after.input_consumed > before.input_consumed {
-                    self.input
-                        .get(before.input_consumed)
-                        .copied()
-                        .map(TraceInput::Byte)
-                } else {
-                    Some(TraceInput::EndOfInput)
-                }
+        let input = if result == Ok(StepOutcome::Continued)
+            && decoded_instruction == Some(Instruction::Input)
+        {
+            if after.input_consumed > before.input_consumed {
+                self.input
+                    .get(before.input_consumed)
+                    .copied()
+                    .map(TraceInput::Byte)
             } else {
-                None
-            };
+                Some(TraceInput::EndOfInput)
+            }
+        } else {
+            None
+        };
         let output = if after.output_len > before.output_len {
             self.output.get(before.output_len).copied()
         } else {
@@ -445,6 +517,7 @@ impl Machine {
             decoded,
             fetched_cell,
             input,
+            mode,
             output,
             result,
         });
@@ -460,6 +533,7 @@ impl Machine {
     fn validate_encryption(
         &self,
         plan: &TransitionPlan,
+        mode: ExecutionMode,
     ) -> Result<Word, MachineError> {
         let pointer = plan.registers.code_pointer;
         let target = if let Some((write_pointer, value)) = plan.memory_write
@@ -470,10 +544,22 @@ impl Machine {
             self.memory.read(pointer)?
         };
         if !target.is_graphical() {
-            return Err(MachineError::InvalidEncryptionTarget {
-                pointer,
-                value: target,
-            });
+            return match mode {
+                ExecutionMode::LegacyBen => {
+                    Err(MachineError::UnsupportedLegacyBehavior(
+                        LegacyBehavior::InvalidSelfEncryptionTarget {
+                            pointer,
+                            value: target,
+                        },
+                    ))
+                },
+                ExecutionMode::Specification => {
+                    Err(MachineError::InvalidEncryptionTarget {
+                        pointer,
+                        value: target,
+                    })
+                },
+            };
         }
         encrypt(target).ok_or(MachineError::TranslationTableInvariant)
     }
@@ -496,7 +582,27 @@ impl Machine {
     }
 }
 
-const fn instruction(decoded: u8) -> Instruction {
+const fn instruction(decoded: u8, mode: ExecutionMode) -> Instruction {
+    match mode {
+        ExecutionMode::LegacyBen => legacy_instruction(decoded),
+        ExecutionMode::Specification => specification_instruction(decoded),
+    }
+}
+
+const fn legacy_instruction(decoded: u8) -> Instruction {
+    match decoded {
+        b'*' => Instruction::Rotate,
+        b'/' => Instruction::Input,
+        b'<' => Instruction::Output,
+        b'i' => Instruction::JumpCode,
+        b'j' => Instruction::JumpData,
+        b'p' => Instruction::Crazy,
+        b'v' => Instruction::Halt,
+        _ => Instruction::NoOperation,
+    }
+}
+
+const fn specification_instruction(decoded: u8) -> Instruction {
     match decoded {
         b'*' => Instruction::Rotate,
         b'/' => Instruction::Output,

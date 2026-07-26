@@ -15,6 +15,10 @@ members = ["."]
 [lib]
 path = "vm/src/lib.rs"
 
+[features]
+default = []
+legacy-ben = []
+
 [workspace.lints.rust]
 # Compiler warnings are binary failures. Unsafe Rust is categorically outside
 # Jig's implementation contract.
