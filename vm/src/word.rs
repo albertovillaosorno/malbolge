@@ -52,8 +52,13 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 pub const MEMORY_WORDS: usize = 59_049;
 /// Largest value representable by one classic ten-trit word.
 pub const MAX_WORD_VALUE: u16 = 59_048;
+
+const CHUNK_TRITS: u8 = 5;
+const CHUNK_VALUES: u16 = 243;
+const CHUNK_VALUES_USIZE: usize = 243;
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
-const TRIT_COUNT: u8 = 10;
+
+include!(concat!(env!("OUT_DIR"), "/classic_word_tables.rs"));
 
 /// Error returned when a value is outside the classic word domain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,18 +89,7 @@ impl Word {
     /// Applies the normative crazy operation using this word as data.
     #[must_use]
     pub fn crazy(self, accumulator: Self) -> Self {
-        let mut data = self.0;
-        let mut acc = accumulator.0;
-        let mut result = 0u16;
-        let mut place = 1u16;
-        for _trit in 0..TRIT_COUNT {
-            let output = crazy_trit(data.rem_euclid(3), acc.rem_euclid(3));
-            result = result.saturating_add(output.saturating_mul(place));
-            place = place.saturating_mul(3);
-            data = data.div_euclid(3);
-            acc = acc.div_euclid(3);
-        }
-        Self(result)
+        Self(crazy_lookup(self.0, accumulator.0))
     }
 
     /// Creates a classic word from one byte without loss.
@@ -131,11 +125,8 @@ impl Word {
 
     /// Rotates the least-significant trit into the most-significant position.
     #[must_use]
-    pub const fn rotate(self) -> Self {
-        let quotient = self.0.div_euclid(3);
-        let low_trit = self.0.rem_euclid(3);
-        let high_trit = low_trit.saturating_mul(ROTATE_HIGH_TRIT_WEIGHT);
-        Self(quotient.saturating_add(high_trit))
+    pub fn rotate(self) -> Self {
+        Self(rotate_lookup(self.0))
     }
 
     /// Advances one classic address with 59049-word wraparound.
@@ -154,6 +145,49 @@ impl Word {
         self.0
     }
 }
+
+fn crazy_lookup(data: u16, accumulator: u16) -> u16 {
+    let low_data = data.rem_euclid(CHUNK_VALUES);
+    let low_accumulator = accumulator.rem_euclid(CHUNK_VALUES);
+    let high_data = data.div_euclid(CHUNK_VALUES);
+    let high_accumulator = accumulator.div_euclid(CHUNK_VALUES);
+    let low_index = usize::from(low_data)
+        .saturating_mul(CHUNK_VALUES_USIZE)
+        .saturating_add(usize::from(low_accumulator));
+    let high_index = usize::from(high_data)
+        .saturating_mul(CHUNK_VALUES_USIZE)
+        .saturating_add(usize::from(high_accumulator));
+    let low = CRAZY_CHUNK_TABLE
+        .get(low_index)
+        .copied()
+        .unwrap_or_else(|| crazy_chunk_scalar(low_data, low_accumulator));
+    let high = CRAZY_CHUNK_TABLE
+        .get(high_index)
+        .copied()
+        .unwrap_or_else(|| crazy_chunk_scalar(high_data, high_accumulator));
+    low.saturating_add(high.saturating_mul(CHUNK_VALUES))
+}
+
+const fn crazy_chunk_scalar(data: u16, accumulator: u16) -> u16 {
+    let mut remaining_data = data;
+    let mut remaining_accumulator = accumulator;
+    let mut result = 0u16;
+    let mut place = 1u16;
+    let mut trit = 0u8;
+    while trit < CHUNK_TRITS {
+        let output = crazy_trit(
+            remaining_data.rem_euclid(3),
+            remaining_accumulator.rem_euclid(3),
+        );
+        result = result.saturating_add(output.saturating_mul(place));
+        place = place.saturating_mul(3);
+        remaining_data = remaining_data.div_euclid(3);
+        remaining_accumulator = remaining_accumulator.div_euclid(3);
+        trit = trit.saturating_add(1);
+    }
+    result
+}
+
 const fn crazy_trit(data: u16, accumulator: u16) -> u16 {
     if ((data == 0 || data == 1) && accumulator == 0)
         || (data == 2 && accumulator == 2)
@@ -166,4 +200,18 @@ const fn crazy_trit(data: u16, accumulator: u16) -> u16 {
     } else {
         0
     }
+}
+
+fn rotate_lookup(value: u16) -> u16 {
+    ROTATE_TABLE
+        .get(usize::from(value))
+        .copied()
+        .unwrap_or_else(|| rotate_scalar(value))
+}
+
+const fn rotate_scalar(value: u16) -> u16 {
+    let quotient = value.div_euclid(3);
+    let low_trit = value.rem_euclid(3);
+    let high_trit = low_trit.saturating_mul(ROTATE_HIGH_TRIT_WEIGHT);
+    quotient.saturating_add(high_trit)
 }

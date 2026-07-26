@@ -56,6 +56,8 @@ mod execution;
 mod instructions;
 #[path = "vm/modes.rs"]
 mod modes;
+#[path = "vm/tables.rs"]
+mod tables;
 #[path = "vm/tracing.rs"]
 mod tracing;
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
 publish = false
+build = "vm/build.rs"
 license = "MIT"
 description = "Modern deterministic Malbolge toolchain and execution engine"
 repository = "https://github.com/albertovillaosorno/malbolge"
@@ -18,6 +19,11 @@ path = "vm/src/lib.rs"
 [features]
 default = []
 legacy-ben = []
+
+[[bench]]
+name = "interpreter"
+path = "benchmarks/interpreter/main.rs"
+harness = false
 
 [workspace.lints.rust]
 # Compiler warnings are binary failures. Unsafe Rust is categorically outside

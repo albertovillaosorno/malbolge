@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -30,7 +30,16 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The first scalar-table optimization slice is executable. Build-time generation
+produces exact rotate, crazy-chunk, positional-decode, and code-phase tables.
+The runtime consumes those tables without dynamic initialization, and exhaustive
+independent tests cover the finite table domains. A custom release benchmark
+emits raw scalar/table timing samples with matching deterministic checksums.
+
+Initial local measurements before the implementation commit observed median
+speedups of about 10.5x for crazy and 1.5x for rotate. These numbers are
+provisional until rerun and retained with exact post-commit host/toolchain
+provenance; they are not portable performance claims.
 
 ## Invariants
 

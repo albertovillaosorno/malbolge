@@ -1,0 +1,226 @@
+// File:
+//   - main.rs
+// Path:
+//   - benchmarks/interpreter/main.rs
+//
+// Copyright:
+//   - Copyright (c) 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - MIT
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+// Path-Rule:
+//   - All paths in this header are repository-root relative.
+//
+// Boundary-Contract:
+// - Owns:
+//   - Reproducible scalar-versus-table CPU microbenchmark samples for the VM.
+// - Must-Not:
+//   - Claim semantic authority or hide slower optimized implementations.
+// - Allows:
+//   - Inputs: public classic Word API and independent scalar word formulas.
+//   - Outputs: raw nanosecond samples and deterministic checksums on stdout.
+//   - Side effects: benchmark-process CPU time and stdout only.
+// - Split-When:
+//   - Split when full-machine workloads require independent benchmark control.
+// - Merge-When:
+//   - Merge when another interpreter benchmark owns the same word operations.
+// - Summary:
+//   - Measures rotate and crazy table paths against independent scalar
+//     formulas.
+// - Description:
+//   - Emits raw samples so performance conclusions can retain dispersion data.
+// - Usage:
+//   - Run with `cargo bench --bench interpreter` on an identified
+//     host/toolchain.
+// - Defaults:
+//   - Uses fixed sample and repetition counts with black-boxed checksums.
+//
+// Related documents:
+// - docs/technical/runtime/vm/cpu-vm-table-optimization.md
+// - docs/todo/open/vm/cpu-vm-table-optimization.mdc
+//
+// Large file:
+//   - false
+//
+
+//! Raw scalar-versus-table microbenchmarks for classic VM word operations.
+
+use std::hint::black_box;
+use std::io::{Result as IoResult, Write, stdout};
+use std::time::Instant;
+
+use malbolge::{MAX_WORD_VALUE, Word};
+
+const CRAZY_REPETITIONS: u16 = 16;
+const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
+const ROTATE_REPETITIONS: u16 = 128;
+const SAMPLE_COUNT: u8 = 15;
+const TRIT_COUNT: u8 = 10;
+
+fn benchmark_crazy_optimized(words: &[Word]) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < CRAZY_REPETITIONS {
+        for (&data, &accumulator) in words.iter().zip(words.iter().rev()) {
+            checksum = checksum.saturating_add(u64::from(
+                black_box(data).crazy(black_box(accumulator)).value(),
+            ));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
+fn benchmark_crazy_scalar(words: &[Word]) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < CRAZY_REPETITIONS {
+        for (&data, &accumulator) in words.iter().zip(words.iter().rev()) {
+            checksum = checksum.saturating_add(u64::from(
+                crazy_scalar(black_box(data), black_box(accumulator)).value(),
+            ));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
+fn benchmark_rotate_optimized(words: &[Word]) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < ROTATE_REPETITIONS {
+        for &word in words {
+            checksum = checksum
+                .saturating_add(u64::from(black_box(word).rotate().value()));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
+fn benchmark_rotate_scalar(words: &[Word]) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < ROTATE_REPETITIONS {
+        for &word in words {
+            checksum = checksum.saturating_add(u64::from(
+                rotate_scalar(black_box(word)).value(),
+            ));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
+fn crazy_scalar(data: Word, accumulator: Word) -> Word {
+    let mut remaining_data = data.value();
+    let mut remaining_accumulator = accumulator.value();
+    let mut result = 0u16;
+    let mut place = 1u16;
+    let mut trit = 0u8;
+    while trit < TRIT_COUNT {
+        let output = crazy_trit_scalar(
+            remaining_data.rem_euclid(3),
+            remaining_accumulator.rem_euclid(3),
+        );
+        result = result.saturating_add(output.saturating_mul(place));
+        place = place.saturating_mul(3);
+        remaining_data = remaining_data.div_euclid(3);
+        remaining_accumulator = remaining_accumulator.div_euclid(3);
+        trit = trit.saturating_add(1);
+    }
+    Word::new(result).unwrap_or(Word::ZERO)
+}
+
+const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
+    if ((data == 0 || data == 1) && accumulator == 0)
+        || (data == 2 && accumulator == 2)
+    {
+        1
+    } else if (data == 1 && accumulator == 2)
+        || (data == 2 && (accumulator == 0 || accumulator == 1))
+    {
+        2
+    } else {
+        0
+    }
+}
+
+fn main() -> IoResult<()> {
+    let words = classic_words();
+    let mut output = stdout().lock();
+    writeln!(
+        output,
+        "benchmark,implementation,sample,nanoseconds,checksum"
+    )?;
+    emit_samples(&mut output, "crazy", "scalar", || {
+        benchmark_crazy_scalar(&words)
+    })?;
+    emit_samples(&mut output, "crazy", "table", || {
+        benchmark_crazy_optimized(&words)
+    })?;
+    emit_samples(&mut output, "rotate", "scalar", || {
+        benchmark_rotate_scalar(&words)
+    })?;
+    emit_samples(&mut output, "rotate", "table", || {
+        benchmark_rotate_optimized(&words)
+    })?;
+    Ok(())
+}
+
+fn classic_words() -> Vec<Word> {
+    let mut words =
+        Vec::with_capacity(usize::from(MAX_WORD_VALUE).saturating_add(1));
+    let mut raw = 0u16;
+    loop {
+        if let Ok(word) = Word::new(raw) {
+            words.push(word);
+        }
+        if raw == MAX_WORD_VALUE {
+            break;
+        }
+        raw = raw.saturating_add(1);
+    }
+    words
+}
+
+fn emit_samples<Run>(
+    output: &mut impl Write,
+    benchmark: &str,
+    implementation: &str,
+    mut run: Run,
+) -> IoResult<()>
+where
+    Run: FnMut() -> u64,
+{
+    let warmup_checksum = black_box(run());
+    let _warmup_sink = black_box(warmup_checksum);
+    let mut sample = 0u8;
+    while sample < SAMPLE_COUNT {
+        let start = Instant::now();
+        let checksum = black_box(run());
+        let elapsed = start.elapsed();
+        let nanoseconds = elapsed.as_nanos();
+        writeln!(
+            output,
+            "{benchmark},{implementation},{sample},{nanoseconds},{checksum}"
+        )?;
+        sample = sample.saturating_add(1);
+    }
+    Ok(())
+}
+
+const fn rotate_scalar(value: Word) -> Word {
+    let raw = value.value();
+    let quotient = raw.div_euclid(3);
+    let low_trit = raw.rem_euclid(3);
+    let rotated = quotient
+        .saturating_add(low_trit.saturating_mul(ROTATE_HIGH_TRIT_WEIGHT));
+    match Word::new(rotated) {
+        Ok(word) => word,
+        Err(_error) => Word::ZERO,
+    }
+}

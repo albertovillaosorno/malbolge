@@ -1,6 +1,6 @@
 ---
 id: "cpu-vm-table-optimization"
-status: "pending"
+status: "active"
 lane: "6"
 area: "vm"
 task: "TODO - CPU VM table optimization"
@@ -26,6 +26,24 @@ validation:
 Optimize scalar execution with precomputed rotate tables, position-dependent
 decode tables, efficient crazy-operation decomposition, cheap pointer updates,
 and benchmarked micro-optimizations without semantic drift.
+
+## Current implementation
+
+- `vm/build.rs` deterministically generates finite classic-profile rotate,
+  five-trit crazy, positional-decode, and code-phase tables into Cargo-owned
+  `OUT_DIR`; runtime initialization is not required.
+- `Word::crazy` decomposes each ten-trit word into two five-trit chunks and uses
+  one exact 243 by 243 table for each chunk position.
+- `Word::rotate` uses a complete 59,049-entry table.
+- Positional decode uses a 59,049-entry code-phase table plus a 94 by 94 decode
+  table, avoiding repeated modulo work in the transition hot path.
+- Exhaustive tests compare every rotate value, every five-trit crazy pair in
+  both word positions, and every graphical-cell/code-pointer decode against
+  independent scalar definitions.
+- `benchmarks/interpreter/main.rs` emits raw nanosecond samples and deterministic
+  checksums for scalar/table rotate and crazy paths. Initial local release-mode
+  measurements showed approximately 10.5x median speedup for crazy and 1.5x for
+  rotate; durable post-commit samples remain required before completion.
 
 ## Acceptance
 
