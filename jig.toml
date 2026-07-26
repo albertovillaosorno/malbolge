@@ -1,5 +1,5 @@
 [jig]
-schema_version = 1
+schema_version = 2
 
 [header]
 confidential = false
@@ -32,8 +32,8 @@ enabled = true
 reason = "clippy.toml governs repository-authored Rust utilities."
 
 [linters.applicability.clippy-lints]
-enabled = false
-reason = "No Cargo workspace manifest exists yet."
+enabled = true
+reason = "Workspace Clippy lint levels govern every Rust package."
 
 [linters.applicability.coverage-py]
 enabled = false
@@ -76,8 +76,8 @@ enabled = true
 reason = "The repository pins Rust for authored utilities and future product code."
 
 [linters.applicability.rustc-lints]
-enabled = false
-reason = "No Cargo workspace manifest exists yet."
+enabled = true
+reason = "Workspace rustc lint levels govern every Rust package."
 
 [linters.applicability.rustfmt]
 enabled = true
@@ -110,6 +110,18 @@ version = "0.2"
 path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
 version = "2.54.0.windows.1"
 
+[tool.rust_nightly_cargo_clippy]
+path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe"
+version = "0.1.99"
+
+[tool.rust_nightly_cargo_fmt]
+path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-fmt.exe"
+version = "1.9.0-nightly"
+
+[tool.rust_stable_cargo]
+path = ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe"
+version = "1.97.1"
+
 [version.git]
 current = "2.54.0.windows.1"
 latest = "2.54.0.windows.1"
@@ -118,6 +130,63 @@ latest = "2.54.0.windows.1"
 kind = "tool"
 target = "git"
 template = "{version}"
+
+[version.clippy-nightly]
+current = "0.1.99"
+latest = "0.1.99"
+
+[version.clippy-nightly.projection.cargo_clippy]
+kind = "tool"
+target = "rust_nightly_cargo_clippy"
+template = "{version}"
+
+[version.rust-stable]
+current = "1.97.1"
+latest = "1.97.1"
+
+[version.rust-stable.projection.cargo_rust_version]
+kind = "toml"
+path = "Cargo.toml"
+selector = "package.rust-version"
+template = "{version}"
+
+[version.rust-stable.projection.cargo_tool]
+kind = "tool"
+target = "rust_stable_cargo"
+template = "{version}"
+
+[version.rust-stable.projection.rust_toolchain]
+kind = "toml"
+path = "rust-toolchain.toml"
+selector = "toolchain.channel"
+template = "stable-{version}-x86_64-pc-windows-gnu"
+
+[version.rustfmt-nightly]
+current = "1.9.0-nightly"
+latest = "1.9.0-nightly"
+
+[version.rustfmt-nightly.projection.cargo_fmt]
+kind = "tool"
+target = "rust_nightly_cargo_fmt"
+template = "{version}"
+
+[validation.rust_nightly_clippy]
+capability = "rust-clippy"
+tool = "rust_nightly_cargo_clippy"
+config_files = ["Cargo.toml", "clippy.toml"]
+args = ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[validation.rust_nightly_format]
+capability = "rustfmt"
+tool = "rust_nightly_cargo_fmt"
+config_files = [".rustfmt.toml"]
+args = ["--all", "--", "--check"]
+
+[validation.rust_stable_check]
+capability = "rust-check"
+tool = "rust_stable_cargo"
+config_files = [".cargo/config.toml", "Cargo.toml"]
+args = ["check", "--workspace", "--all-features"]
 
 [portability]
 forbidden_roots = [".jig-cache", ".turbo", "cache", "dependencies", "logs", "target", "temp", "tmp"]
@@ -151,7 +220,7 @@ paths = ["integrations/"]
 paths = ["accelerator/", "algorithms/", "benchmarks/", "compatibility/", "compiler/", "doom/", "examples/", "execution/", "interop/", "libc/", "math/", "optimizer/", "runtime/", "src/", "verifier/", "vm/"]
 
 [taxonomy.role.root_governance]
-paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "CITATION.cff", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]
+paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]
 
 [taxonomy.role.tests]
 paths = ["tests/"]

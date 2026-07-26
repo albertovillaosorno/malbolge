@@ -30,7 +30,18 @@ ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The first safe-Rust classic VM baseline is implemented under `vm/` with exact
+ten-trit words, fixed memory, deterministic loading, byte I/O, atomic
+single-step transitions, bounded execution, and optional in-memory trace hooks.
+The public trace surface records before/after observations, decoded instruction
+bytes, committed I/O, termination, and rejected transition results without
+changing guest semantics. Memory-transition correctness remains directly covered
+by instruction and atomicity fixtures rather than duplicated by the trace layer.
+
+The TODO remains open while broader independent differential evidence and the
+rest of its declared durable evidence surface are completed. In particular, the
+future independent pure-C VM must provide an additional specification-derived
+oracle rather than inheriting Rust implementation decisions.
 
 ## Invariants
 
@@ -47,12 +58,18 @@ deterministically without changing guest-visible state silently.
 
 ## Verification
 
+- `tests/vm/` exercises all seven instruction families, no-op behavior, pointer
+  wrap, byte/EOF I/O, loader boundaries, bounded execution, self-encryption,
+  jump-target encryption, rejected-transition atomicity, and trace hooks.
+- `tests/compatibility/specification/` contains versioned specification fixtures
+  for historical disagreement edges and byte-I/O semantics.
+- Trace hooks are observational only: traced and untraced executions over the
+  same state and input must produce identical outcomes, output, and final state.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
-- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against independent specification-conformant
-  implementations; the historical interpreter is compared only on its documented
-  agreement domain.
+- Remaining evidence includes differential results against an independently
+  implemented specification-conformant VM; the historical interpreter is
+  compared only on its documented agreement domain.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
 ## References

@@ -53,9 +53,9 @@ independent deterministic verification decides whether that code is accepted.
 
 ## Current implementation handoff
 
-The current working tree contains the first real safe-Rust VM slice. It is still
-uncommitted work until its owning gates and acceptance criteria are satisfied.
-The root `Cargo.toml` points the library directly at `vm/src/lib.rs`.
+The repository contains the first real safe-Rust VM baseline. Its owning TODO
+remains open until the complete acceptance evidence is durable. The root
+`Cargo.toml` points the library directly at `vm/src/lib.rs`.
 
 Current VM modules include:
 
