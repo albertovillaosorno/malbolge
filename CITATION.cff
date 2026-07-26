@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use or refer to this software or research platform, please cite it as below."
+title: "Malbolge: C-to-Malbolge compiler and compiler-algorithm research platform"
+type: software
+authors:
+  - family-names: "Villa Osorno"
+    given-names: "Alberto"
+date-released: "2026-07-26"
+url: "https://github.com/albertovillaosorno/malbolge"
+repository-code: "https://github.com/albertovillaosorno/malbolge"
+license: MIT
+# The citation date is intentionally frozen. It is the stable publication epoch
+# for the living Git repository, not a moving last-modified timestamp. Future
+# commits do not rewrite citations already used by readers.
+abstract: >-
+  Malbolge is an experimental C-to-Malbolge compiler, execution, verification,
+  and reproducible compiler-research platform built around the 1998 Malbolge
+  machine. The written 1998 specification is normative when it disagrees with
+  the historical C interpreter. The project investigates deterministic C
+  lowering, exact virtual machines, translation validation, mathematical
+  optimization, stochastic and guided superoptimization, replaceable CPU/GPU
+  accelerator adapters, tiered native AOT/JIT execution, parametric compiler
+  challenge families, and eventual self-hosting.
+keywords:
+  - malbolge
+  - compilers
+  - compiler research
+  - superoptimization
+  - program synthesis
+  - translation validation
+  - self-modifying code
+  - ternary computing
+  - just-in-time compilation
+  - gpu computing
+  - reproducible research
