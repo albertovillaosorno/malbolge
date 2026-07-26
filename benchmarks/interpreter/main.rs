@@ -52,13 +52,76 @@ use std::hint::black_box;
 use std::io::{Result as IoResult, Write, stdout};
 use std::time::Instant;
 
-use malbolge::{MAX_WORD_VALUE, Word};
+use malbolge::{
+    BatchRequest, BatchResult, ExecutionMode, MAX_WORD_VALUE, RunOutcome, Word,
+    execute_batch, execute_batch_parallel,
+};
 
+const BATCH_JOBS: u8 = 96;
+const BATCH_STEP_BUDGET: usize = 16;
 const CRAZY_REPETITIONS: u16 = 16;
+const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+const FNV_PRIME: u64 = 1_099_511_628_211;
+const IO_ROUNDTRIP: &[u8] = include_bytes!(
+    "../../tests/compatibility/specification/spec-io-roundtrip.malbolge"
+);
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 const ROTATE_REPETITIONS: u16 = 128;
 const SAMPLE_COUNT: u8 = 15;
 const TRIT_COUNT: u8 = 10;
+
+fn batch_checksum(results: &[BatchResult]) -> u64 {
+    let mut hash = FNV_OFFSET;
+    for result in results {
+        hash = result.error().map_or_else(
+            || hash_byte(hash, 0),
+            |_error| hash_byte(hash, u8::MAX),
+        );
+        if let Some(machine) = result.machine() {
+            for byte in machine.output() {
+                hash = hash_byte(hash, *byte);
+            }
+            let registers = machine.registers();
+            hash = hash_word(hash, registers.accumulator);
+            hash = hash_word(hash, registers.code_pointer);
+            hash = hash_word(hash, registers.data_pointer);
+        }
+        hash = match result.outcome() {
+            Some(RunOutcome::BudgetExhausted { steps }) => {
+                hash_usize(hash_byte(hash, 1), steps)
+            },
+            Some(RunOutcome::Terminated { steps, .. }) => {
+                hash_usize(hash_byte(hash, 2), steps)
+            },
+            None => hash_byte(hash, 3),
+        };
+    }
+    hash
+}
+
+fn batch_requests() -> Vec<BatchRequest> {
+    (0u8..BATCH_JOBS)
+        .map(|byte| {
+            BatchRequest::from_source(
+                IO_ROUNDTRIP.to_vec(),
+                vec![byte],
+                ExecutionMode::Specification,
+                BATCH_STEP_BUDGET,
+            )
+        })
+        .collect()
+}
+
+fn benchmark_batch_parallel(worker_count: usize) -> u64 {
+    match execute_batch_parallel(batch_requests(), worker_count) {
+        Ok(results) => batch_checksum(&results),
+        Err(_error) => 0,
+    }
+}
+
+fn benchmark_batch_sequential() -> u64 {
+    batch_checksum(&execute_batch(batch_requests()))
+}
 
 fn benchmark_crazy_optimized(words: &[Word]) -> u64 {
     let mut checksum = 0u64;
@@ -156,6 +219,21 @@ fn main() -> IoResult<()> {
         output,
         "benchmark,implementation,sample,nanoseconds,checksum"
     )?;
+    emit_samples(&mut output, "batch-96", "sequential", || {
+        benchmark_batch_sequential()
+    })?;
+    emit_samples(&mut output, "batch-96", "parallel-1", || {
+        benchmark_batch_parallel(1)
+    })?;
+    emit_samples(&mut output, "batch-96", "parallel-2", || {
+        benchmark_batch_parallel(2)
+    })?;
+    emit_samples(&mut output, "batch-96", "parallel-4", || {
+        benchmark_batch_parallel(4)
+    })?;
+    emit_samples(&mut output, "batch-96", "parallel-8", || {
+        benchmark_batch_parallel(8)
+    })?;
     emit_samples(&mut output, "crazy", "scalar", || {
         benchmark_crazy_scalar(&words)
     })?;
@@ -211,6 +289,21 @@ where
         sample = sample.saturating_add(1);
     }
     Ok(())
+}
+
+fn hash_byte(hash: u64, value: u8) -> u64 {
+    (hash ^ u64::from(value)).wrapping_mul(FNV_PRIME)
+}
+
+fn hash_usize(hash: u64, value: usize) -> u64 {
+    value.to_le_bytes().into_iter().fold(hash, hash_byte)
+}
+
+fn hash_word(mut hash: u64, value: Word) -> u64 {
+    for byte in value.value().to_le_bytes() {
+        hash = hash_byte(hash, byte);
+    }
+    hash
 }
 
 const fn rotate_scalar(value: Word) -> Word {
