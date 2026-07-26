@@ -1,6 +1,6 @@
 ---
 id: "independent-pure-c-malbolge-vm"
-status: "pending"
+status: "active"
 lane: "5"
 area: "vm"
 task: "TODO - Independent pure C Malbolge VM"
@@ -47,5 +47,16 @@ specification rather than mechanically translating the Rust implementation.
   differential results against independent specification-conformant
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
+- Current implementation is `vm/c/malbolge_vm.c` with its public interface in
+  `vm/c/malbolge_vm.h`. `tests/vm/c_conformance.c` is an executable C harness
+  and
+  asserts semantic signature `0xa74cec75a875c85a`.
+- `tests/vm/differential.rs` independently recomputes the same signature through
+  the safe-Rust VM over word operations, the complete `ctO` loaded image, normal
+  byte I/O and halt, atomic jump rejection, and non-graphical termination.
+- The C harness executes successfully in development. Completion remains gated
+  on the declared repository-wide `jig validate --root .` command passing at
+  retirement time; executable C-family Jig orchestration is not yet declared by
+  this repository.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.

@@ -48,6 +48,8 @@
 
 #[path = "vm/conformance.rs"]
 mod conformance;
+#[path = "vm/differential.rs"]
+mod differential;
 #[path = "vm/execution.rs"]
 mod execution;
 #[path = "vm/instructions.rs"]

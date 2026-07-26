@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -20,16 +20,42 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Model
 
-This record defines the contract that implementation must satisfy for
-`independent-pure-c-malbolge-vm`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+The pure-C VM is a second specification-derived classic implementation and an
+independent differential oracle. It is not linked into the Rust VM and does not
+inherit Rust transition code, Rust value types, or Rust storage choices.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The implementation lives in `vm/c/malbolge_vm.c` with public interface
+`vm/c/malbolge_vm.h`. It uses fixed 59049-word storage, caller-owned input and
+output buffers, no heap allocation, a table-driven ternary crazy operation,
+explicit byte semantics, and optional step traces.
+
+Source loading validates the complete admitted source before initializing the
+machine. Non-halting execution computes instruction effects and validates the
+resulting self-encryption target before committing guest-visible state. A failed
+jump to a non-graphical encryption target therefore preserves registers, memory,
+input position, and output exactly.
+
+The C design intentionally differs from the Rust representation: classic words
+are explicit C integer values in caller-visible state, storage is fixed inside
+the machine object, I/O capacity is supplied by the caller, and the ternary
+operation is table-driven. The two VMs share only the written specification and
+versioned test expectations.
+
+`tests/vm/c_conformance.c` is an executable C harness with a normal `main` entry
+point. It also computes semantic signature `0xa74cec75a875c85a`. The Rust
+integration suite independently recomputes that signature through the Rust
+public
+API and requires an exact match.
+
+The repository does not yet declare an executable C-family Jig validation tool.
+The C harness has been compiled and executed successfully during development,
+but that development compiler path is not a repository toolchain authority. The
+typed TODO therefore remains active until its declared repository-wide
+validation command passes at retirement time.
 
 ## Invariants
 
@@ -38,22 +64,39 @@ Not implemented. This proposed contract does not claim executable support yet.
   or share semantic implementation code.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
+- Classic execution uses only words in `0..=59048` and exactly 59049 memory
+  cells after source admission.
+- Halt and non-graphical termination skip post-instruction encryption and
+  pointer
+  advancement.
+- Invalid post-jump self-encryption targets reject the transition atomically.
 
 ## Failure Behavior
 
-Invalid programs, unsupported profiles, or broken native assumptions fail
-deterministically without changing guest-visible state silently.
+Invalid source bytes, invalid source instructions, insufficient recurrence
+input,
+source overflow, invalid self-encryption targets, and exhausted caller output
+capacity return deterministic diagnostic categories. Rejected execution
+transitions do not silently commit partial guest-visible effects.
 
 ## Verification
 
+- `tests/vm/c_conformance.c` covers word primitives, loader boundaries, the
+  normative `ctO` byte-I/O fixture, non-graphical termination, low-byte output,
+  EOF, code jumps, post-jump encryption, atomic rejection, rotate, crazy, and
+  pointer wrap.
+- The C harness asserts semantic signature `0xa74cec75a875c85a` over every
+  classic word's rotate result, a deterministic 59049-pair crazy sample, the
+  complete loaded `ctO` image, and representative execution boundaries.
+- `tests/vm/differential.rs` independently computes the same signature through
+  the safe-Rust VM. No C implementation code is called by that Rust test.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
-- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against independent specification-conformant
-  implementations; the historical interpreter is compared only on its documented
-  agreement domain.
+- The historical interpreter is compared only on its documented agreement
+  domain.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
+
 ## References
 
 - [Specification Authority And Malbolge
