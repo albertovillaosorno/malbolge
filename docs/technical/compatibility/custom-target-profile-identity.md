@@ -36,20 +36,20 @@ Not implemented. This proposed contract does not claim executable support yet.
 - Generated artifacts bind to a canonical profile fingerprint; supplying a
   nonmatching external configuration is detected rather than silently
   interpreted under different semantics.
-- Classic programs preserve normative 1998 specification behavior while
-  extension-only behavior is gated by explicit profile identity.
+- `malbolge-1998` preserves the written 1998 machine exactly; current-language
+  behavior and capacity are gated by explicit versioned profile identity.
 
 ## Failure Behavior
 
-A profile mismatch or unsupported extension fails with an explicit requirement
-diagnostic; classic behavior is never guessed.
+A profile mismatch or unsupported capability fails with an explicit requirement
+diagnostic; current and `malbolge-1998` behavior are never guessed.
 
 ## Verification
 
 - Expected durable artifact surface: `compatibility/`,
   `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: classic specification-conformance corpus plus
-  extension/profile boundary fixtures and exact diagnostics.
+- Required evidence: `malbolge-1998` specification-conformance corpus plus
+  current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`.
 ## References
 

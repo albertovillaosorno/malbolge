@@ -36,6 +36,8 @@ existing clang-tidy baseline.
   diagnostics without weakening ordinary clang-tidy checks.
 - Guest-C validation is manual and opt-in for explicitly named translation
   units; arbitrary repository C is never enrolled by extension or source marker.
+  An explicitly passed directory named `doom` is the sole recursive convenience
+  and remains an explicit caller action.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust fixtures/tests develop and regress the profile; they are not the

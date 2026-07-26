@@ -57,7 +57,7 @@ communication, not a semantic recovery path.
   `docs/technical/specification/`, `tests/compatibility/`.
 - Required evidence: classic specification-conformance corpus plus
   extension/profile boundary fixtures and exact diagnostics.
-- Prerequisite completion evidence: `malbolge-2-extended-memory-model`,
+- Prerequisite completion evidence: `scalable-malbolge-memory-model`,
   `required-profile-diagnostics`.
 ## References
 

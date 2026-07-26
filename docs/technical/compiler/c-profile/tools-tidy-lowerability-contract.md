@@ -40,6 +40,10 @@ Not implemented. This proposed contract does not claim executable support yet.
   regression in the compiler/linter contract.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
+- Rust tests are conformance/regression evidence for creating the profile; they
+  do not replace manual `tools/tidy` validation of user-selected C.
+- A rejection corresponds to a documented lowerability/determinism/profile
+  requirement, not to arbitrary formatting or host-C style policy.
 
 ## Failure Behavior
 

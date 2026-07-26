@@ -94,14 +94,21 @@ accepted C -> tools/tidy clean -> c2malbolge succeeds
 A linter-clean supported program that the compiler later rejects is a
 compiler/tooling contract regression.
 
-## Classic Malbolge versus target evolution
+## Current Malbolge and the 1998 conformance profile
 
 The guest-C profile must not inherit accidental limitations or undefined
 behavior from Ben Olmstead's historical interpreter. Historical implementation
 bugs are evidence, not language authority.
 
-The written classic Malbolge specification remains a separate normative target.
-Changing its memory size, word model, or other language semantics would create
-an explicit extended target profile rather than silently redefining classic
-Malbolge. The compiler and `tools/tidy` may support such extensions later while
-keeping classic output independently verifiable.
+`malbolge-1998` remains a frozen conformance profile for the written 1998
+machine, including its ten-trit words and 59,049-word memory. Current Malbolge is
+a versioned evolution of the same language rather than a separately branded
+"extended" dialect. It may remove historical resource ceilings while preserving
+Malbolge's defining ternary arithmetic, crazy operation, rotate,
+self-modification, post-encryption, sequential execution, and deterministic
+semantics.
+
+`tools/tidy` therefore validates against an explicit target profile. A program
+may be valid current Malbolge C while exceeding `malbolge-1998` capacity; that is
+a profile requirement, not a generic C error. No profile inherits Ben
+interpreter bugs or undocumented host behavior.

@@ -42,7 +42,8 @@ does not yet claim complete C-to-Malbolge lowerability.
   diagnostics without weakening ordinary clang-tidy checks.
 - Guest-C validation is opt-in for explicitly selected translation units; arbitrary
   repository C is never enrolled by extension, inherited `.clang-tidy`, or magic
-  source comments.
+  source comments. An explicitly passed directory named `doom` is the sole
+  recursive convenience and remains an explicit caller action.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust fixtures/tests exist to develop and regress this profile; explicit

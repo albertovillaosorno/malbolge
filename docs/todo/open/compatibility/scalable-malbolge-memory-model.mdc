@@ -1,0 +1,55 @@
+---
+id: "scalable-malbolge-memory-model"
+status: "pending"
+lane: "6"
+area: "compatibility"
+task: "TODO - Scalable Malbolge memory model"
+contract: "docs/technical/compatibility/scalable-malbolge-memory-model.md"
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "safe-rust-malbolge-vm"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "compatibility/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Scalable Malbolge memory model
+
+## Objective
+
+Remove the practical 59,049-word ceiling from current Malbolge while retaining
+`malbolge-1998` as an exact historical conformance profile. Define a deterministic
+ternary scaling model for words, addressing, and memory that can support useful
+workloads without inheriting accidental limits from Ben's interpreter or the
+host architecture.
+
+## Acceptance
+
+- Current Malbolge permits logical addresses beyond 59048 under an explicit
+  versioned profile; `malbolge-1998` remains exactly ten-trit and 59,049 words.
+- The design evaluates ternary-native generalization (for example a larger trit
+  width with correspondingly defined rotate/crazy behavior) and/or explicit
+  multiword/paged addressing. It must not inherit host pointer width implicitly.
+- Scaling preserves Malbolge's defining ternary arithmetic, crazy operation,
+  rotate, self-modification, post-encryption, sequential execution, and
+  determinism unless a profile deliberately versions a semantic change.
+- Workload evidence, including normalized DOOM requirements, informs practical
+  capacities; arbitrary decimal or host-memory multipliers are not authority.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compatibility/`,
+  `docs/technical/specification/`, `tests/compatibility/`.
+- Required evidence: `malbolge-1998` specification-conformance corpus plus
+  current/profile capacity boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `safe-rust-malbolge-vm`.

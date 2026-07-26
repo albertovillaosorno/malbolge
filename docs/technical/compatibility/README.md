@@ -16,5 +16,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
 
 - `custom-target-profile-identity.md`
 - `historical-interpreter-fallback-capsule.md`
-- `malbolge-2-extended-memory-model.md`
+- `scalable-malbolge-memory-model.md`
 - `required-profile-diagnostics.md`

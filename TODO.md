@@ -31,7 +31,14 @@ enough for the TODO heading to disappear without losing unfinished intent.
 
 - Human-authored application code is C; generated target artifacts use the full
   `.malbolge` extension.
-- `tools/tidy` defines the C surface the compiler promises to lower.
+- `tools/tidy` defines the C surface the compiler promises to lower. Guest-C
+  validation is manual/opt-in: explicitly named `.c` files are checked, and an
+  explicitly named `doom` directory is the sole recursive directory shortcut.
+  Rust tests develop and regress the profile; they are not the user-facing
+  validator.
+- The guest-C profile rejects semantics that cannot be made deterministic on the
+  selected Malbolge target; it does not impose unrelated style restrictions or
+  inherit arbitrary host-C limitations.
 - A clean `tools/tidy` verdict must imply successful compilation for the
   declared target profile; otherwise the defect belongs to our tooling.
 - `tools/tidy` constrains source determinism and lowerability; it does not
@@ -41,12 +48,13 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - The host may execute the VM and provide fundamental byte input/output, but it
   may not secretly implement guest algorithms such as PDF writing, hashing,
   allocation, parsing, formatting, or application logic.
-- The written 1998 specification defines classic Malbolge semantics. Modern
-  backends are verified against that specification; Ben's interpreter supplies
-  differential evidence only on the documented agreement subset.
-- There is one modern Malbolge product. The normative 1998 machine is the
-  classic target profile; `legacy-ben` behavior is historical evidence, not a
-  separate semantic product line.
+- The written 1998 specification defines the frozen `malbolge-1998`
+  historical/conformance semantics. Modern historical-conformance backends are
+  verified against that specification; Ben's interpreter supplies differential
+  evidence only on the documented agreement subset.
+- There is one evolving modern Malbolge product. `malbolge-1998` is its frozen
+  historical/conformance profile, not the permanent default resource envelope;
+  `legacy-ben` behavior is historical evidence, not a semantic product line.
 - CPU execution is always available on the declared 64-bit host baseline:
   x86-64 and AArch64 are first-class architectures from the initial
   implementation slice.
@@ -55,11 +63,12 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - Optimizers, CUDA kernels, PyTorch models, stochastic search, and other large
   heuristic components may be untrusted. Deterministic verification decides
   whether emitted code is accepted.
-- Classic Malbolge execution remains deterministic and sequential. Performance
-  work must not invent a parallel or nonlinear guest profile merely to make the
-  compiler, VM, linker, or optimizer easier. Parallel host execution is legal
-  only when it is observationally equivalent to the normative logical order;
-  any future semantic extension requires independent motivation and authority.
+- Malbolge guest execution remains deterministic and sequential, including
+  both `malbolge-1998` and current profiles unless a future reviewed language
+  decision explicitly changes that semantic core. Performance work must not
+  invent parallel guest behavior merely to make the compiler, VM, linker, or
+  optimizer easier. Parallel host execution is legal only when observationally
+  equivalent to the normative logical order.
 - Self-modification and post-instruction encryption are fundamental guest
   semantics. Generated code must not become globally immutable merely to make
   linking, JIT, hot reload, or host parallelism easier. Immutable host caches are
@@ -127,7 +136,10 @@ without weakening unrelated linter contracts.
 ### TODO - Canonical Malbolge target profile
 
 Define `malbolge.json` as the single target-profile authority consumed by the
-VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
+VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators. It
+must distinguish the frozen `malbolge-1998` conformance profile from the
+versioned current-language profile instead of modeling useful evolution as a
+separate "extended" language.
 
 ### TODO - Historical interpreter legal boundary
 
@@ -341,24 +353,27 @@ modes for differential correctness checks and honest measurements of pure VM,
 AOT-only, JIT-only, and fully tiered execution.
 ## Malbolge evolution and compatibility
 
-### TODO - Malbolge 2 extended memory model
+### TODO - Scalable Malbolge memory model
 
-Remove the practical 59,049-word ceiling through an explicit extension while
-preserving normative 1998 specification behavior for programs inside the classic
-machine. Define multiword or paged addressing without pretending a ten-trit word
-can directly address arbitrary memory.
+Remove the practical 59,049-word ceiling from current Malbolge while retaining
+`malbolge-1998` as an exact historical conformance profile. Define a ternary
+scaling model for words/addressing/memory that remains recognizably Malbolge and
+supports useful workloads such as normalized DOOM without inheriting accidental
+limits from Ben's interpreter.
 
 ### TODO - Historical-interpreter fallback capsule
 
-Design an extended `.malbolge` container recognized by modern runtimes while the
+Design a versioned `.malbolge` container recognized by modern runtimes while the
 1998 loader sees only a valid classic fallback, ideally using whitespace
 metadata that the original loader ignores.
 
 ### TODO - Required-profile diagnostics
 
-Emit deterministic diagnostics such as `This program requires Malbolge >= 2`,
-the required memory size, and the original 59,049-word limit when historical
-execution is impossible.
+Emit deterministic diagnostics naming the required Malbolge profile/features,
+required memory or word/address capacity, and the selected runtime capability.
+When `malbolge-1998` is explicitly requested, report its 59,049-word limit as a
+historical-profile constraint rather than presenting it as the language's
+permanent maximum.
 
 ### TODO - Custom target profile identity
 

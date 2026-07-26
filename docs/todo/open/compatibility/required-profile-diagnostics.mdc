@@ -7,7 +7,7 @@ task: "TODO - Required-profile diagnostics"
 contract: "docs/technical/compatibility/required-profile-diagnostics.md"
 depends_on:
   - "canonical-malbolge-target-profile"
-  - "malbolge-2-extended-memory-model"
+  - "scalable-malbolge-memory-model"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
@@ -22,17 +22,18 @@ validation:
 
 ## Objective
 
-Emit deterministic diagnostics such as `This program requires Malbolge >= 2`,
-the required memory size, and the original 59,049-word limit when historical
-execution is impossible.
+Emit deterministic diagnostics naming the required Malbolge profile/features,
+required memory or address capacity, and missing runtime capability. When
+`malbolge-1998` is selected, report its 59,049-word ceiling explicitly as a
+historical-profile constraint.
 
 ## Acceptance
 
 - Programs that require an unsupported target profile fail before unsafe
   execution with deterministic diagnostics naming required
   version/features/memory and the runtime capability that is missing.
-- Classic programs preserve normative 1998 specification behavior while
-  extension-only behavior is gated by explicit profile identity.
+- `malbolge-1998` preserves the written 1998 machine exactly; current-language
+  behavior and capacity are gated by explicit versioned profile identity.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
@@ -42,7 +43,7 @@ execution is impossible.
 
 - Expected durable artifact surface: `compatibility/`,
   `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: classic specification-conformance corpus plus
-  extension/profile boundary fixtures and exact diagnostics.
+- Required evidence: `malbolge-1998` specification-conformance corpus plus
+  current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
-  `malbolge-2-extended-memory-model`.
+  `scalable-malbolge-memory-model`.

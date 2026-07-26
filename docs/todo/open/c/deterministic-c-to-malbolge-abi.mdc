@@ -36,6 +36,13 @@ policy for undefined or target-dependent C behavior.
   target-profile requirements without host ABI leakage.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
+- The admitted profile rejects C only for a documented semantic, ABI, runtime,
+  determinism, or target-resource reason. Style preferences and limitations of
+  unrelated host C implementations are not guest-language restrictions.
+- Source constructs such as recursion, allocation, aggregate types, or function
+  pointers are not forbidden merely because Malbolge is difficult; they are
+  accepted whenever the selected profile/runtime gives them deterministic
+  lowerable semantics.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and

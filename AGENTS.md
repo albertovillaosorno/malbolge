@@ -36,7 +36,10 @@ Cargo is a build mechanism and must not create artificial architecture. Keep the
 VM under `vm/`; do not move it into a language-shaped path such as
 `crates/malbolge-vm/` merely because it is Rust.
 
-The written 1998 specification is the semantic authority for classic Malbolge.
+The written 1998 specification is the semantic authority for the frozen
+`malbolge-1998` historical/conformance profile. Current Malbolge may evolve
+through explicit versioned profiles; do not turn historical resource ceilings or
+Ben-interpreter defects into permanent current-language constraints.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.
@@ -89,7 +92,9 @@ The roadmap intentionally records these decisions:
 - Synthesis scaling is an empirical research question. Do not assume the whole
   problem is exponential, linear, or amortized linear before measurements.
 - `tools/tidy` guarantees the admitted deterministic/lowerable C surface; it
-  does not by itself prove compilation will be cheap.
+  does not by itself prove compilation will be cheap. Guest validation is
+  explicit/manual, with `doom/` as the sole recursive directory convenience;
+  Rust tidy tests are profile-conformance evidence rather than the validator.
 - Reusable blocks must carry state, layout, mutation, target, provenance, cost,
   and verifier evidence before composition is trusted.
 - The state-aware linker must verify positional decode, encryption phase,

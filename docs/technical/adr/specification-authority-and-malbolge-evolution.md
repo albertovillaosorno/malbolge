@@ -23,8 +23,17 @@ outrank the written machine definition.
 
 ## Decision
 
-The 1998 prose specification is the normative authority for classic Malbolge
-semantics in this repository.
+The 1998 prose specification is the normative authority for the frozen
+`malbolge-1998` historical/conformance profile in this repository. It defines
+what the original language meant and remains the semantic oracle for historical
+conformance; it is not an eternal resource ceiling on current Malbolge.
+
+Current Malbolge is a versioned living language derived from that machine. Its
+defining ternary arithmetic, crazy operation, rotate behavior, self-modification,
+post-instruction encryption, sequential guest execution, and deterministic
+semantics are preserved as the language core unless a later reviewed profile
+explicitly changes them. Historical implementation defects and accidental host-C
+limits are not part of that core.
 
 Ben Olmstead's original C interpreter remains immutable historical evidence and
 a differential oracle only over the subset where its behavior is defined and
@@ -40,10 +49,14 @@ behavior for archaeology, differential diagnosis, or historical corpus study.
 That mode is not the compiler target, does not redefine the language, and cannot
 be used as verification authority for specification-conformant output.
 
-Extensions such as larger memory use versioned target profiles derived from the
-normative machine. Classic ten-trit arithmetic, crazy operation, rotate,
-decoding, self-modification, input/output meanings, termination, and pointer
-rules remain the base semantics unless a later profile explicitly changes them.
+Useful evolution such as larger memory uses versioned target profiles derived
+from the normative machine. The current language is not branded as a separate
+"extended" Malbolge merely because it removes a historical ceiling. The exact
+1998 ten-trit/59,049-word machine remains available by selecting
+`malbolge-1998`; current profiles may generalize word/address capacity while
+preserving the defining ternary operations and self-modifying execution model.
+The scaling mechanism must be explicit and deterministic rather than silently
+borrowing host pointer width or memory behavior.
 
 ## Advantages
 
@@ -57,7 +70,8 @@ rules remain the base semantics unless a later profile explicitly changes them.
 
 ## Consequences
 
-- `<` means input and `/` means output in the modern classic profile.
+- `<` means input and `/` means output in `malbolge-1998` and in current
+  profiles unless explicitly versioned otherwise.
 - Executing a non-graphical current cell terminates the classic machine as the
   specification states.
 - Historical programs that depended on interpreter bugs may behave differently
@@ -92,7 +106,9 @@ matches the written specification.
 
 ## Evidence
 
-The canonical classic profile should identify itself as
-specification-conformant. If a legacy Ben-interpreter mode is implemented, its
-identity and diagnostics must be explicit enough that generated artifacts are
-never accidentally verified against it as if it were the language specification.
+The canonical historical profile identifies itself as `malbolge-1998` and
+specification-conformant. The canonical current profile has a distinct versioned
+identity and must never be confused with historical conformance. If a legacy
+Ben-interpreter mode is implemented, its identity and diagnostics remain
+explicit enough that generated artifacts are never accidentally verified
+against it as if it were a language profile.
