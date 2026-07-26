@@ -342,7 +342,7 @@ observable results.
 Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 The CPU baseline now has deterministic sequential and explicit host-parallel
-execution; retained throughput/scaling evidence and future accelerator adapters
+execution plus retained worker-scaling evidence; future accelerator adapters
 remain open.
 
 ### TODO - Explicit native-tier execution controls

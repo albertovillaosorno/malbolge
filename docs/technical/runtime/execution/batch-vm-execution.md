@@ -43,8 +43,16 @@ semantics.
 
 Integration tests compare sequential results with worker counts 1, 2, and 8,
 including full-memory fingerprints, registers, I/O, termination, run outcome,
-and typed diagnostics. Performance/scaling evidence is still pending and no
-host-parallel speedup is claimed yet.
+and typed diagnostics.
+
+Post-commit release measurements on `5a01c9c` use 96 independent roundtrip jobs,
+a 16-step budget, and 15 raw samples per implementation. On the recorded
+12-core/24-thread Xeon E5-2690 v3 host, sequential median time was 55,575,400 ns.
+One explicit worker measured 55,930,200 ns (0.99x), exposing thread overhead;
+2 workers measured 29,656,900 ns (1.87x), 4 measured 16,569,700 ns (3.35x), and
+8 measured 9,839,800 ns (5.65x). Every implementation produced the same
+checksum. These data demonstrate this workload on this host only and are not a
+portable speedup guarantee.
 
 ## Invariants
 
@@ -67,6 +75,9 @@ deterministically without changing guest-visible state silently.
   differential results against independent specification-conformant
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
+- CPU performance evidence:
+  `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
+  raw samples and exact commit/workload/toolchain/host provenance.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
 ## References
 

@@ -1,0 +1,22 @@
+{
+  "date": "2026-07-26",
+  "git_commit": "5a01c9c49eff264176b35ef2c41a00b6c7a61802",
+  "benchmark_scope_clean": true,
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "physical_cores": 12,
+  "logical_processors": 24,
+  "os": "Microsoft Windows 11 Pro 10.0.26200",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "command": "cargo bench --bench interpreter",
+  "jobs": 96,
+  "step_budget": 16,
+  "samples_per_implementation": 15,
+  "implementations": [
+    "sequential",
+    "parallel-1",
+    "parallel-2",
+    "parallel-4",
+    "parallel-8"
+  ]
+}

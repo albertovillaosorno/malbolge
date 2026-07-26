@@ -40,8 +40,11 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   across final registers, I/O, termination, diagnostics, and a hash of all 59,049
   final memory words. Tests also cover load rejection, atomic runtime rejection,
   empty batches, and zero-worker failure.
-- CPU throughput/scaling measurements remain to be retained before making any
-  performance claim for host-parallel batching.
+- Post-commit CPU evidence on `5a01c9c` retains 15 samples each for the
+  sequential baseline and explicit worker counts 1, 2, 4, and 8 over 96
+  independent roundtrip jobs. On the identified host, median speedups versus
+  sequential were 0.99x, 1.87x, 3.35x, and 5.65x respectively, with identical
+  deterministic checksums.
 
 ## Acceptance
 
@@ -63,4 +66,8 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   differential results against independent specification-conformant
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
+- CPU performance evidence:
+  `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` retains 75
+  raw samples, checksums, exact commit/toolchain/host identity, workload size,
+  step budget, and benchmark-scope cleanliness.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
