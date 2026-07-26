@@ -1,0 +1,50 @@
+---
+id: "replaceable-accelerator-boundary"
+status: "pending"
+lane: "7"
+area: "accelerator"
+roadmap: "TODO - Replaceable accelerator boundary"
+contract: ""
+depends_on:
+  - "batch-vm-execution"
+  - "compiler-algorithm-experimentation-platform"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Replaceable accelerator boundary
+
+## Objective
+
+Define a hardware-neutral interface for candidate evaluation, batch VM
+execution, search, and verification. Compiler and verifier code must not depend
+directly on CUDA APIs.
+
+## Acceptance
+
+- Compiler/verifier code depends on a hardware-neutral capability contract;
+  CUDA/AMD/CPU adapters can be substituted without changing compiler semantics
+  or candidate validity rules.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `batch-vm-execution`,
+  `compiler-algorithm-experimentation-platform`.
+

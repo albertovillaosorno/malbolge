@@ -1,0 +1,50 @@
+---
+id: "differential-vm-verification"
+status: "pending"
+lane: "6"
+area: "verification"
+roadmap: "TODO - Differential VM verification"
+contract: ""
+depends_on:
+  - "safe-rust-malbolge-vm"
+  - "independent-pure-c-malbolge-vm"
+  - "reference-interpreter-sanitizer-harness"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "verifier/"
+  - "tests/differential/"
+  - "tests/exhaustive/"
+  - "tests/fuzz/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Differential VM verification
+
+## Objective
+
+Run the original C oracle, modern Rust VM, modern C VM, and accelerator VM on
+the same valid programs and inputs and compare output, termination, state,
+mutation, and instruction traces where defined.
+
+## Acceptance
+
+- The historical oracle, independent C VM, and Rust VM agree on all admitted
+  classic fixtures; disagreements shrink to reproducible minimal cases and block
+  compatibility claims.
+- The verifier is tested against valid cases and deliberately mutated invalid
+  cases so acceptance and rejection boundaries are evidenced independently.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `verifier/`, `tests/differential/`,
+  `tests/exhaustive/`, `tests/fuzz/`.
+- Required evidence: known-valid fixtures, seeded invalid mutations,
+  counterexamples for rejected candidates, and deterministic replay.
+- Prerequisite completion evidence: `safe-rust-malbolge-vm`,
+  `independent-pure-c-malbolge-vm`, `reference-interpreter-sanitizer-harness`.
+

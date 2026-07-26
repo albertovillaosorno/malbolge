@@ -1,0 +1,49 @@
+---
+id: "safe-rust-malbolge-vm"
+status: "pending"
+lane: "5"
+area: "vm"
+roadmap: "TODO - Safe Rust Malbolge VM"
+contract: ""
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "historical-malbolge-semantics-specification"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Safe Rust Malbolge VM
+
+## Objective
+
+Implement the primary modern VM in safe Rust with explicit errors, deterministic
+state transitions, tracing hooks, and instruction-level parity with well-defined
+original behavior.
+
+## Acceptance
+
+- The Rust VM implements the stabilized state machine without `unsafe`,
+  arbitrary historical array assumptions, or host-dependent integer behavior and
+  passes the classic compatibility corpus.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against the applicable oracle/reference implementation.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `historical-malbolge-semantics-specification`.
+

@@ -1,0 +1,49 @@
+---
+id: "portable-c2malbolge-implementation-in-c"
+status: "pending"
+lane: "12"
+area: "self_hosting"
+roadmap: "TODO - Portable c2malbolge implementation in C"
+contract: ""
+depends_on:
+  - "malbolge-layout-and-encoding-backend"
+  - "malbolge-tidy-lowerability-contract"
+  - "supported-libc-contract"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "examples/self_host/"
+  - "compiler/"
+  - "tests/self_hosting/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Portable c2malbolge implementation in C
+
+## Objective
+
+Keep a path for the essential compiler algorithm to exist in the admitted C
+profile without mandatory LLVM runtime, GPU, filesystem complexity, threads, or
+other host-only capabilities. Native accelerators remain optional speedups.
+
+## Acceptance
+
+- The essential compiler algorithm fits the admitted C profile and does not
+  require LLVM, GPU APIs, threads, filesystem conveniences, or other host-only
+  facilities that prevent eventual self-hosting.
+- The hosted stage performs the claimed compilation work inside the guest
+  execution model rather than delegating the essential operation to the host.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `examples/self_host/`, `compiler/`,
+  `tests/self_hosting/`.
+- Required evidence: compiler inputs/outputs, canonical comparison against
+  native compilation, resource/profile requirements, and verifier acceptance.
+- Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
+  `malbolge-tidy-lowerability-contract`, `supported-libc-contract`.
+

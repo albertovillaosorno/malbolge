@@ -1,0 +1,47 @@
+---
+id: "compile-c2malbolge-c-to-malbolge"
+status: "pending"
+lane: "13"
+area: "self_hosting"
+roadmap: "TODO - Compile c2malbolge.c to Malbolge"
+contract: ""
+depends_on:
+  - "portable-c2malbolge-implementation-in-c"
+  - "translation-validation"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "examples/self_host/"
+  - "compiler/"
+  - "tests/self_hosting/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Compile c2malbolge.c to Malbolge
+
+## Objective
+
+Compile the portable C compiler implementation with `c2malbolge` itself and run
+the resulting `c2malbolge.malbolge` under the modern VM.
+
+## Acceptance
+
+- The native compiler successfully compiles its admitted C implementation into a
+  verifier-accepted `c2malbolge.malbolge` with recorded profile/resource
+  requirements.
+- The hosted stage performs the claimed compilation work inside the guest
+  execution model rather than delegating the essential operation to the host.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `examples/self_host/`, `compiler/`,
+  `tests/self_hosting/`.
+- Required evidence: compiler inputs/outputs, canonical comparison against
+  native compilation, resource/profile requirements, and verifier acceptance.
+- Prerequisite completion evidence: `portable-c2malbolge-implementation-in-c`,
+  `translation-validation`.
+

@@ -1,0 +1,50 @@
+---
+id: "pytorch-search-orchestration"
+status: "pending"
+lane: "14"
+area: "accelerator"
+roadmap: "TODO - PyTorch search orchestration"
+contract: ""
+depends_on:
+  - "configurable-accelerator-algorithm-adapters"
+  - "stochastic-and-guided-search"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - PyTorch search orchestration
+
+## Objective
+
+Use PyTorch for batched candidate/state representation, experiment
+orchestration, and heuristic models where useful while purpose-built kernels
+retain exact semantic execution where tensor operations are a poor fit.
+
+## Acceptance
+
+- PyTorch is restricted to representation/orchestration/heuristic guidance where
+  useful; exact semantic evaluation remains in deterministic implementations
+  when tensor semantics are unsuitable.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence:
+  `configurable-accelerator-algorithm-adapters`, `stochastic-and-guided-search`.
+

@@ -1,0 +1,70 @@
+---
+id: "self-modification-state-graph-optimizer"
+status: "pending"
+lane: "8"
+area: "mathematics"
+roadmap: "TODO - Self-modification state-graph optimizer"
+contract: ""
+depends_on:
+  - "machine-checked-mathematical-correspondence"
+  - "malbolge-specific-optimization-mathematics"
+  - "safe-rust-malbolge-vm"
+  - "algorithm-research-mirror-and-local-output-contract"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "docs/technical/specification/mathematics/"
+  - "docs/research/algorithms/"
+  - "algorithms/"
+  - "tests/mathematics/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Self-modification state-graph optimizer
+
+## Objective
+
+Model executable Malbolge regions as versioned state-transition graphs whose
+nodes capture only semantically relevant code/data state. Derive mathematically
+verified reductions that collapse equivalent mutation histories, eliminate
+redundant encryption/update work, hoist invariant crazy/rotate computations, and
+identify regions safe for direct native execution. Express the equivalence and
+reduction rules in `.tex` and validate each admitted rewrite against executable
+VM evidence.
+
+## Acceptance
+
+- The research identifies the minimal future-relevant state and observational
+  equivalence relation, then proves/test-validates every graph merge or
+  mutation-history collapse before using it for native execution.
+- Definitions state domains and assumptions precisely; executable code cannot
+  claim a mathematical reduction outside those stated preconditions.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- Every correctness-relevant equation or equivalence used by implementation has
+  explicit domain assumptions and a traceable executable correspondence check.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/technical/specification/mathematics/`,
+  `docs/research/algorithms/`, `algorithms/`, `tests/mathematics/`.
+- Required evidence: `.tex` definitions/derivations plus exhaustive,
+  property-based, or machine-checked correspondence for the admitted domain.
+- Prerequisite completion evidence:
+  `machine-checked-mathematical-correspondence`,
+  `malbolge-specific-optimization-mathematics`, `safe-rust-malbolge-vm`,
+  `algorithm-research-mirror-and-local-output-contract`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+- Mathematical evidence pending: normative/research LaTeX source plus executable
+  or machine-checked correspondence for the claimed domain.
+

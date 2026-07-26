@@ -1,0 +1,11 @@
+[experiment]
+id = "replace-with-algorithm-id"
+seed = 0
+
+[challenge]
+family = "replace-with-family"
+difficulty = 1
+
+[budget]
+seconds = 1
+memory_mib = 128

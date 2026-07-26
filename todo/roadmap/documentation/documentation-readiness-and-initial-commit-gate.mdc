@@ -1,0 +1,63 @@
+---
+id: "documentation-readiness-and-initial-commit-gate"
+status: "pending"
+lane: "4"
+area: "documentation"
+roadmap: "TODO - Documentation readiness and initial commit gate"
+contract: ""
+depends_on:
+  - "planning-corpus-promotion-to-durable-documentation"
+  - "repository-bibliography-taxonomy-and-citation-provenance"
+adr_paths:
+scope:
+  - "docs/"
+  - "ROADMAP.md"
+  - "todo/roadmap/"
+  - ".gitignore"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Documentation readiness and initial commit gate
+
+## Objective
+
+Establish the documentation baseline that must pass before normal product
+implementation history begins. The gate requires the four documentation families
+and their local ADR roots, a usable repository bibliography baseline, all
+existing ROADMAP/TODO decisions routed to an owning durable document or an
+explicitly unresolved record, valid local links, and no accidental global
+`docs/adr/`. `docs/cspell/` remains intact as editorial support. Scaffolding,
+configuration, and concurrent Jig development may exist before this gate, but
+new product implementation work starts only after the documentation baseline is
+reviewable. Passing this gate authorizes the initial coherent repository commit
+and push; subsequent implementation proceeds TODO by TODO with its governing
+documents already available.
+
+## Acceptance
+
+- The four documentation families and their local ADR roots are present,
+  correctly owned, and free of an accidental global `docs/adr/` authority.
+- The repository bibliography baseline is sufficient to support all sources
+  cited by the initial promoted documentation.
+- Every active roadmap/TODO decision is routed to a real durable authority or an
+  explicit unresolved/proposed record, with valid local links and no fake
+  completion claims.
+- `docs/cspell/` remains intact as editorial support and is not reclassified as
+  a documentation authority family.
+- Product implementation work has not been used to bypass missing documentation
+  authority; scaffolding/configuration and concurrent Jig work are allowed
+  before this gate.
+- After review, this gate permits the initial coherent repository commit and
+  push; later implementation proceeds TODO by TODO under its governing
+  documents.
+
+## Evidence
+
+- Expected durable evidence: reviewed documentation tree, bibliography coverage
+  report/index, TODO-to-authority mapping, link/path audit, and clean
+  planning-registry audit.
+- Prerequisite completion evidence:
+  `planning-corpus-promotion-to-durable-documentation` and
+  `repository-bibliography-taxonomy-and-citation-provenance`.
+- The first commit/push occurs only after this gate is accepted; this TODO does
+  not itself create the commit.

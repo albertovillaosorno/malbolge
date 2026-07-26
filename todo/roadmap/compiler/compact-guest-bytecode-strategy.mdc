@@ -1,0 +1,59 @@
+---
+id: "compact-guest-bytecode-strategy"
+status: "pending"
+lane: "10"
+area: "compiler"
+roadmap: "TODO - Compact guest bytecode strategy"
+contract: ""
+depends_on:
+  - "ternary-machine-lowering"
+  - "guest-runtime-and-allocator"
+  - "algorithm-research-mirror-and-local-output-contract"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "compiler/"
+  - "src/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Compact guest bytecode strategy
+
+## Objective
+
+Evaluate a VM-inside-Malbolge strategy where large programs are represented as
+compact bytecode interpreted by a reusable Malbolge runtime when that reduces
+code-size explosion or compilation cost.
+
+## Acceptance
+
+- The research compares direct lowering with a reusable guest bytecode/runtime
+  design on code size, compile time, runtime cost, memory pressure, and verifier
+  complexity before adoption.
+- The stage has deterministic input/output form, rejects malformed or
+  unsupported input explicitly, and preserves source/profile provenance needed
+  downstream.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
+- Required evidence: golden/round-trip or normalized stage fixtures,
+  deterministic hashes where promised, and end-to-end lowering regression cases.
+- Prerequisite completion evidence: `ternary-machine-lowering`,
+  `guest-runtime-and-allocator`,
+  `algorithm-research-mirror-and-local-output-contract`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+

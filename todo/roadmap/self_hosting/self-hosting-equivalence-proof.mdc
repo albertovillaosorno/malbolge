@@ -1,0 +1,48 @@
+---
+id: "self-hosting-equivalence-proof"
+status: "pending"
+lane: "15"
+area: "self_hosting"
+roadmap: "TODO - Self-hosting equivalence proof"
+contract: ""
+depends_on:
+  - "malbolge-compiler-compiles-c-to-malbolge"
+  - "translation-validation"
+  - "proof-producing-lowering"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "examples/self_host/"
+  - "compiler/"
+  - "tests/self_hosting/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Self-hosting equivalence proof
+
+## Objective
+
+Compare native and Malbolge-hosted compiler outputs or normalized semantic
+artifacts and prove self-hosting does not silently change compilation meaning.
+
+## Acceptance
+
+- Native and Malbolge-hosted compiler outputs are compared by canonical artifact
+  identity or a proved semantic normalization across a representative and
+  adversarial compiler corpus.
+- The hosted stage performs the claimed compilation work inside the guest
+  execution model rather than delegating the essential operation to the host.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `examples/self_host/`, `compiler/`,
+  `tests/self_hosting/`.
+- Required evidence: compiler inputs/outputs, canonical comparison against
+  native compilation, resource/profile requirements, and verifier acceptance.
+- Prerequisite completion evidence: `malbolge-compiler-compiles-c-to-malbolge`,
+  `translation-validation`, `proof-producing-lowering`.
+

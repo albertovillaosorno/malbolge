@@ -1,0 +1,60 @@
+---
+id: "publication-grade-paper-pipeline"
+status: "pending"
+lane: "5"
+area: "research"
+roadmap: "TODO - Publication-grade paper pipeline"
+contract: "docs/research/README.md"
+depends_on:
+  - "repository-bibliography-taxonomy-and-citation-provenance"
+  - "reproducible-experiment-identity-and-manifest"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "docs/research/"
+  - "algorithms/"
+  - "benchmarks/research/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Publication-grade paper pipeline
+
+## Objective
+
+Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
+of turning mature investigations into publication-quality papers with canonical
+bibliography, equations, figures, tables, experiment provenance, limitations,
+and regenerated results without making publication a prerequisite for ordinary
+engineering work.
+
+## Acceptance
+
+- A mature research capsule can generate a reproducible paper with canonical
+  citations, equations, figures/tables derived from recorded experiments,
+  limitations, and artifact provenance.
+- The research record separates observed evidence from interpretation and
+  preserves negative/null outcomes that affect the conclusion.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/research/`, `algorithms/`,
+  `benchmarks/research/`.
+- Required evidence: research question, hypotheses/baselines, source trail,
+  experiment manifest, raw-output provenance, results, and threats to validity.
+- Prerequisite completion evidence:
+  `repository-bibliography-taxonomy-and-citation-provenance`,
+  `reproducible-experiment-identity-and-manifest`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+

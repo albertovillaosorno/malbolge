@@ -1,0 +1,48 @@
+---
+id: "original-interpreter-compatibility-capsule"
+status: "pending"
+lane: "8"
+area: "compatibility"
+roadmap: "TODO - Original-interpreter compatibility capsule"
+contract: ""
+depends_on:
+  - "malbolge-2-extended-memory-model"
+  - "required-profile-diagnostics"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "compatibility/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Original-interpreter compatibility capsule
+
+## Objective
+
+Design an extended `.malbolge` container recognized by modern runtimes while the
+1998 loader sees only a valid classic fallback, ideally using whitespace
+metadata that the original loader ignores.
+
+## Acceptance
+
+- One `.malbolge` capsule makes the historical interpreter execute only the
+  classic fallback while the modern runtime recognizes and validates the
+  whitespace extension payload deterministically.
+- Classic programs inside the original defined domain remain observationally
+  identical while extension-only behavior is gated by explicit profile identity.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compatibility/`, `docs/technical/specification/`,
+  `tests/compatibility/`.
+- Required evidence: classic compatibility corpus plus extension/profile
+  boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `malbolge-2-extended-memory-model`,
+  `required-profile-diagnostics`.
+

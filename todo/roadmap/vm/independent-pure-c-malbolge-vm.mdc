@@ -1,0 +1,48 @@
+---
+id: "independent-pure-c-malbolge-vm"
+status: "pending"
+lane: "5"
+area: "vm"
+roadmap: "TODO - Independent pure C Malbolge VM"
+contract: ""
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "historical-malbolge-semantics-specification"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Independent pure C Malbolge VM
+
+## Objective
+
+Implement a small auditable pure-C VM independently from the stabilized
+specification rather than mechanically translating the Rust implementation.
+
+## Acceptance
+
+- The C VM is independently implemented from the stabilized specification, is
+  small enough to audit, and does not mechanically mirror Rust control structure
+  or share semantic implementation code.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against the applicable oracle/reference implementation.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `historical-malbolge-semantics-specification`.
+

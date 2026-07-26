@@ -1,0 +1,58 @@
+---
+id: "documentation-authority-taxonomy"
+status: "pending"
+lane: "1"
+area: "documentation"
+roadmap: "TODO - Documentation authority taxonomy"
+contract: ""
+depends_on:
+adr_paths:
+scope:
+  - "docs/"
+  - "docs/technical/"
+  - "docs/research/"
+  - "docs/legal/"
+  - "docs/bibliography/"
+  - "docs/cspell/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Documentation authority taxonomy
+
+## Objective
+
+Define the exact documentation ownership model before the planning corpus is
+promoted into durable records. `docs/technical/`, `docs/research/`,
+`docs/legal/`, and `docs/bibliography/` are the four documentation authority
+families, and each family owns its own `adr/` directory for decisions local to
+that family. A global `docs/adr/` is forbidden so unrelated decisions cannot
+collapse into an STM-style ADR monolith. ADRs contain bounded decisions and
+tradeoffs; technical specifications, research findings, legal analysis, and
+bibliography records remain ordinary documentation under their owning family.
+`docs/cspell/` remains the editorial support surface used by CSpell and is not a
+fifth authority family. Jig will eventually validate this topology; Malbolge
+must not grow a parallel documentation linter to enforce it.
+
+## Acceptance
+
+- Exactly four documentation authority families exist: technical, research,
+  legal, and bibliography; each owns a local `adr/` directory.
+- No global `docs/adr/` exists, and ADRs are bounded decisions rather than a
+  catch-all location for specifications, findings, legal analysis, source
+  records, or chat history.
+- `docs/cspell/` remains inside `docs/` as editorial tooling support and is
+  explicitly not treated as a fifth authority family.
+- The family ownership rules distinguish decisions, current technical behavior,
+  research evidence, legal analysis, and external-source evidence without
+  duplicate authority.
+- The design is intended for later Jig validation; this repository does not
+  introduce a parallel documentation-linter implementation.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/` taxonomy plus the future
+  family-local ADR governance records.
+- Evidence must compare the selected model against the observed
+  strengths/weaknesses of STM-style global ADR organization and SHAR/Jig
+  family-separated documentation without copying their unrelated product
+  taxonomy.

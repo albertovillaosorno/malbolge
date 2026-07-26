@@ -1,0 +1,52 @@
+---
+id: "tiered-native-execution-engine"
+status: "pending"
+lane: "9"
+area: "vm"
+roadmap: "TODO - Tiered native execution engine"
+contract: ""
+depends_on:
+  - "safe-rust-malbolge-vm"
+  - "self-modification-state-graph-optimizer"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Tiered native execution engine
+
+## Objective
+
+Build a tiered execution engine instead of choosing between interpretation, AOT,
+and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
+verified state-graph mathematics, compile demonstrably stable regions to native
+machine code before execution, specialize hot or mutation-sensitive regions at
+runtime, and deoptimize safely to the interpreter whenever a code-version guard
+or speculative assumption fails. The interpreter remains the semantic baseline;
+native tiers are accelerators of identical observable behavior.
+
+## Acceptance
+
+- Interpreter, AOT, JIT, native cache, and deoptimization share one observable
+  VM contract; disabling every native tier produces the same guest behavior.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against the applicable oracle/reference implementation.
+- Prerequisite completion evidence: `safe-rust-malbolge-vm`,
+  `self-modification-state-graph-optimizer`.
+

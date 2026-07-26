@@ -1,0 +1,49 @@
+---
+id: "historical-capability-demonstration"
+status: "pending"
+lane: "16"
+area: "research"
+roadmap: "TODO - Historical capability demonstration"
+contract: ""
+depends_on:
+  - "self-hosting-equivalence-proof"
+  - "real-program-benchmark-suite"
+  - "publication-grade-paper-pipeline"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "docs/research/"
+  - "algorithms/"
+  - "benchmarks/research/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Historical capability demonstration
+
+## Objective
+
+Produce a reproducible demonstration from the 1998 interpreter through modern
+tooling to substantial generated programs and self-hosting while keeping
+historical attribution and compatibility evidence explicit.
+
+## Acceptance
+
+- The final demonstration can be reproduced from the historical oracle through
+  modern compiler/execution/research artifacts to substantial programs and
+  self-hosting with provenance for every stage.
+- The research record separates observed evidence from interpretation and
+  preserves negative/null outcomes that affect the conclusion.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/research/`, `algorithms/`,
+  `benchmarks/research/`.
+- Required evidence: research question, hypotheses/baselines, source trail,
+  experiment manifest, raw-output provenance, results, and threats to validity.
+- Prerequisite completion evidence: `self-hosting-equivalence-proof`,
+  `real-program-benchmark-suite`, `publication-grade-paper-pipeline`.
+

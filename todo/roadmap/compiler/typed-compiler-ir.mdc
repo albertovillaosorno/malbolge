@@ -1,0 +1,48 @@
+---
+id: "typed-compiler-ir"
+status: "pending"
+lane: "8"
+area: "compiler"
+roadmap: "TODO - Typed compiler IR"
+contract: ""
+depends_on:
+  - "clang-c-frontend-integration"
+  - "deterministic-c-to-malbolge-abi"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "compiler/"
+  - "src/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Typed compiler IR
+
+## Objective
+
+Define a small deterministic IR representing control flow, arithmetic, memory,
+calls, byte I/O, target-profile requirements, and proof obligations without
+inheriting unnecessary LLVM complexity.
+
+## Acceptance
+
+- The IR has a documented closed grammar/type system for control flow,
+  arithmetic, memory, calls, byte I/O, profile requirements, and proof
+  obligations plus deterministic serialization/debug printing.
+- The stage has deterministic input/output form, rejects malformed or
+  unsupported input explicitly, and preserves source/profile provenance needed
+  downstream.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
+- Required evidence: golden/round-trip or normalized stage fixtures,
+  deterministic hashes where promised, and end-to-end lowering regression cases.
+- Prerequisite completion evidence: `clang-c-frontend-integration`,
+  `deterministic-c-to-malbolge-abi`.
+

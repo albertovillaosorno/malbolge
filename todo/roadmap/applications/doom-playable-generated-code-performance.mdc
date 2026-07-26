@@ -1,0 +1,64 @@
+---
+id: "doom-playable-generated-code-performance"
+status: "pending"
+lane: "13"
+area: "applications"
+roadmap: "TODO - DOOM playable generated-code performance"
+contract: ""
+depends_on:
+  - "doom-quality-and-modernization-pass"
+  - "malbolge-layout-and-encoding-backend"
+  - "explicit-native-tier-execution-controls"
+  - "deterministic-cpu-optimizer"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "tests/applications/doom/"
+  - "benchmarks/doom/"
+  - "compiler/"
+  - "execution/"
+  - "accelerator/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - DOOM playable generated-code performance
+
+## Objective
+
+Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
+accelerator-assisted compilation until the user-supplied DOOM interoperability
+pipeline produces a `.malbolge` build that is genuinely interactive and playable
+under the modern runtime. Measure compile latency, frame pacing, input latency,
+VM instructions per game tick, memory footprint, and generated-code size rather
+than declaring success merely because the program eventually runs. Preserve the
+same game semantics while optimizing; performance-specific substitutions require
+explicit equivalence evidence.
+
+## Acceptance
+
+- Success requires an objectively documented interactive/playability budget for
+  the generated `.malbolge`, with native C behavior retained as the comparison
+  oracle and no host-side game logic substitution.
+- The end-to-end fixture demonstrates the intended behavior from admitted
+  source/input through the actual generated/executed Malbolge path.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `tests/applications/doom/`,
+  `benchmarks/doom/`, `compiler/`, `execution/`, `accelerator/`.
+- Required evidence: reproducible build/run commands, expected outputs or
+  interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
+  `malbolge-layout-and-encoding-backend`,
+  `explicit-native-tier-execution-controls`, `deterministic-cpu-optimizer`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.
+

@@ -1,0 +1,59 @@
+---
+id: "guarded-self-modification-jit"
+status: "pending"
+lane: "11"
+area: "vm"
+roadmap: "TODO - Guarded self-modification JIT"
+contract: ""
+depends_on:
+  - "tiered-native-execution-engine"
+  - "native-x86-64-and-aarch64-backends"
+  - "self-modification-state-graph-optimizer"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Guarded self-modification JIT
+
+## Objective
+
+Compile hot mutable regions after observing their concrete code-state versions.
+Attach explicit guards to assumptions about self-modifying cells, code/data
+aliasing, addressing, and control flow. A failed guard deoptimizes to the
+interpreter, updates the observed state graph, and may create a new
+specialization without changing observable Malbolge behavior.
+
+## Acceptance
+
+- Every speculative native specialization has explicit code-state guards and a
+  tested deoptimization path that reconstructs an equivalent interpreter state
+  on guard failure.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against the applicable oracle/reference implementation.
+- Prerequisite completion evidence: `tiered-native-execution-engine`,
+
+ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.
+

@@ -1,0 +1,68 @@
+---
+id: "compiler-algorithm-experimentation-platform"
+status: "pending"
+lane: "5"
+area: "foundation"
+roadmap: "TODO - Compiler algorithm experimentation platform"
+contract: "algorithms/README.md"
+depends_on:
+  - "algorithm-research-mirror-and-local-output-contract"
+  - "reproducible-experiment-identity-and-manifest"
+  - "benchmark-and-statistical-evidence-protocol"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "algorithms/"
+  - "docs/research/"
+  - "benchmarks/"
+  - "tests/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Compiler algorithm experimentation platform
+
+## Objective
+
+Make the repository a reproducible laboratory for compiler research, not merely
+an implementation of one fixed C-to-Malbolge pipeline. Experimental algorithms
+use the `docs/research/algorithms/<id>/` and `algorithms/<id>/` mirror, while
+ordinary product algorithms remain inside their owning responsibility. Provide
+stable experiment boundaries for alternate IRs, lowering passes, graph
+simplifiers, superoptimizers, search strategies, code generators, execution
+tiers, and cost models. Experiments must be selectable without editing trusted
+semantic code, record exact configuration/seeds/inputs, compare against common
+correctness oracles, and emit reproducible evidence so a new algorithm can be
+accepted, rejected, or retired without becoming architecture by accident.
+
+## Acceptance
+
+- A new experimental compiler algorithm can be added, configured, compared
+  against a baseline, verified, and removed without editing trusted VM/compiler
+  semantics.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `algorithms/`, `docs/research/`,
+  `benchmarks/`, `tests/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.
+- Prerequisite completion evidence:
+  `algorithm-research-mirror-and-local-output-contract`,
+  `reproducible-experiment-identity-and-manifest`,
+  `benchmark-and-statistical-evidence-protocol`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+

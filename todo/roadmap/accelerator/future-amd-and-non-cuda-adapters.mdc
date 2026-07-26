@@ -1,0 +1,49 @@
+---
+id: "future-amd-and-non-cuda-adapters"
+status: "pending"
+lane: "9"
+area: "accelerator"
+roadmap: "TODO - Future AMD and non-CUDA adapters"
+contract: ""
+depends_on:
+  - "replaceable-accelerator-boundary"
+  - "configurable-accelerator-algorithm-adapters"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Future AMD and non-CUDA adapters
+
+## Objective
+
+Add interchangeable AMD and other accelerator implementations without changing
+compiler semantics, target profiles, or verifier contracts.
+
+## Acceptance
+
+- At least one non-CUDA adapter can satisfy the same capability/algorithm
+  contracts without CUDA types, APIs, or configuration becoming required by
+  shared compiler code.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
+  `configurable-accelerator-algorithm-adapters`.
+

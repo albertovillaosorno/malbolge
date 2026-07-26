@@ -1,0 +1,70 @@
+---
+id: "multi-objective-compiler-algorithm-evaluation-arena"
+status: "pending"
+lane: "8"
+area: "applications"
+roadmap: "TODO - Multi-objective compiler algorithm evaluation arena"
+contract: ""
+depends_on:
+  - "parametric-compiler-challenge-generator"
+  - "benchmark-and-statistical-evidence-protocol"
+  - "reproducible-experiment-identity-and-manifest"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "benchmarks/arena/"
+  - "docs/research/methodology/"
+  - "algorithms/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Multi-objective compiler algorithm evaluation arena
+
+## Objective
+
+Evaluate compiler and execution algorithms over scalable challenge families and
+produce capacity curves and Pareto frontiers rather than one pass/fail score.
+Measure time-to-verified-solution, generated-code size, runtime instructions,
+peak memory/VRAM, verifier cost, energy or device utilization when available,
+success probability for stochastic methods, and maximum solved difficulty under
+fixed budgets. Preserve raw evidence so an algorithm that is faster at easy
+instances but scales worse than another remains distinguishable instead of both
+appearing equally "perfect" after crossing an arbitrary threshold.
+
+## Acceptance
+
+- Authoritative comparisons retain capacity curves and Pareto frontiers; an
+  aggregate score, if offered, is explicitly secondary and cannot hide
+  time/quality/memory/size/verifier trade-offs.
+- The end-to-end fixture demonstrates the intended behavior from admitted
+  source/input through the actual generated/executed Malbolge path.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `benchmarks/arena/`,
+  `docs/research/methodology/`, `algorithms/`.
+- Required evidence: reproducible build/run commands, expected outputs or
+  interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `parametric-compiler-challenge-generator`,
+  `benchmark-and-statistical-evidence-protocol`,
+  `reproducible-experiment-identity-and-manifest`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.
+

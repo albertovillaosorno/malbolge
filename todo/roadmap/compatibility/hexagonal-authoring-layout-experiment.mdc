@@ -1,0 +1,57 @@
+---
+id: "hexagonal-authoring-layout-experiment"
+status: "pending"
+lane: "11"
+area: "compatibility"
+roadmap: "TODO - Hexagonal authoring-layout experiment"
+contract: ""
+depends_on:
+  - "malbolge-layout-and-encoding-backend"
+  - "compiler-algorithm-experimentation-platform"
+  - "documentation-readiness-and-initial-commit-gate"
+adr_paths:
+scope:
+  - "compatibility/"
+  - "docs/technical/specification/"
+  - "tests/compatibility/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Hexagonal authoring-layout experiment
+
+## Objective
+
+Research an optional graph or hexagonal authoring representation that lowers to
+ordinary linear `.malbolge` output and therefore does not require a special
+execution engine for compatible programs.
+
+## Acceptance
+
+- The experiment measures whether alternate authoring/module layouts improve
+  compiler/research ergonomics without creating language-based repository
+  boundaries or changing emitted semantics.
+- Classic programs inside the original defined domain remain observationally
+  identical while extension-only behavior is gated by explicit profile identity.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact roadmap heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compatibility/`, `docs/technical/specification/`,
+  `tests/compatibility/`.
+- Required evidence: classic compatibility corpus plus extension/profile
+  boundary fixtures and exact diagnostics.
+- Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
+  `compiler-algorithm-experimentation-platform`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+
