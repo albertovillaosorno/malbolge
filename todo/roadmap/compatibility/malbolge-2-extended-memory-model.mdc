@@ -4,12 +4,13 @@ status: "pending"
 lane: "6"
 area: "compatibility"
 roadmap: "TODO - Malbolge 2 extended memory model"
-contract: ""
+contract: "docs/technical/compatibility/malbolge-2-extended-memory-model.md"
 depends_on:
   - "canonical-malbolge-target-profile"
   - "safe-rust-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -46,4 +47,3 @@ address arbitrary memory.
   boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`.
-

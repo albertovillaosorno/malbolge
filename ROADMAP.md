@@ -156,12 +156,12 @@ provenance authority, independent from `docs/research/`. Adopt a SHAR-style
 subject taxonomy for programming languages, compilers/runtimes, Malbolge and
 esolangs, superoptimization/program synthesis, verification/formal methods,
 accelerator computing, protocols/standards, validation tooling, research
-methodology, AI/code generation, and relevant organizations/projects. Populate
-a baseline sufficient to support the first technical, research, and legal
-records, preferring primary or authoritative sources and retaining stable
-identifiers, versions, publication metadata, retrieval dates, provenance, and
-explicit uncertainty. `docs/bibliography/adr/` owns only durable decisions about
-how bibliography itself is organized or interpreted; source records never become
+methodology, AI/code generation, and relevant organizations/projects. Populate a
+baseline sufficient to support the first technical, research, and legal records,
+preferring primary or authoritative sources and retaining stable identifiers,
+versions, publication metadata, retrieval dates, provenance, and explicit
+uncertainty. `docs/bibliography/adr/` owns only durable decisions about how
+bibliography itself is organized or interpreted; source records never become
 repository policy merely because they are cited.
 
 ### TODO - Planning corpus promotion to durable documentation
@@ -174,22 +174,23 @@ legal records for dated source-use/interoperability analysis, and bibliography
 records for external evidence. Populate each TODO's `contract` and `adr_paths`
 with real authorities as those records are created. Proposed or unresolved
 choices remain visibly proposed; implementation details remain in their owning
-technical documents. No global catch-all ADR, duplicate authority, or chat-history
-archive is created during promotion.
+technical documents. No global catch-all ADR, duplicate authority, or
+chat-history archive is created during promotion.
 
-### TODO - Documentation readiness and initial commit gate
+### TODO - Documentation readiness and implementation gate
 
 Establish the documentation baseline that must pass before normal product
-implementation history begins. The gate requires the four documentation
-families and their local ADR roots, a usable repository bibliography baseline,
-all existing ROADMAP/TODO decisions routed to an owning durable document or an
+implementation history begins. The gate requires the four documentation families
+and their local ADR roots, a usable repository bibliography baseline, all
+existing ROADMAP/TODO decisions routed to an owning durable document or an
 explicitly unresolved record, valid local links, and no accidental global
 `docs/adr/`. `docs/cspell/` remains intact as editorial support. Scaffolding,
 configuration, and concurrent Jig development may exist before this gate, but
 new product implementation work starts only after the documentation baseline is
-reviewable. Passing this gate authorizes the initial coherent repository commit
-and push; subsequent implementation proceeds TODO by TODO with its governing
-documents already available.
+reviewable. Documentation and planning commits may precede this gate. Passing it
+authorizes product implementation commits; subsequent implementation proceeds
+TODO by TODO with its governing documents already available.
+
 ## Research methodology and experiment infrastructure
 
 ### TODO - Academic research methodology and evidence model
@@ -208,7 +209,6 @@ implementation/test layout, experiment configuration, and Git-ignored local
 `out/`. Define the explicit exception for ordinary product algorithms such as
 DOOM interoperability transformations, which require engineering evidence but
 not artificial academic capsules.
-
 
 ### TODO - Reproducible experiment identity and manifest
 
@@ -604,13 +604,14 @@ of every admitted result.
 
 ### TODO - Versioned C and Malbolge example corpus
 
-Publish intentionally selected project-owned examples under `docs/technical/examples/`
-with paired `.c` and `.malbolge` artifacts. Include small teaching examples plus
-representative fixed instances drawn from the parametric challenge corpus. Each
-pair identifies challenge/source identity, target profile, compiler identity,
-input/output contract, reproducible build command, expected behavior, and
-verification evidence. Documentation examples are versioned deliberately; normal
-benchmark outputs remain local under their owning `out/` directories.
+Publish intentionally selected project-owned examples under
+`docs/technical/examples/` with paired `.c` and `.malbolge` artifacts. Include
+small teaching examples plus representative fixed instances drawn from the
+parametric challenge corpus. Each pair identifies challenge/source identity,
+target profile, compiler identity, input/output contract, reproducible build
+command, expected behavior, and verification evidence. Documentation examples
+are versioned deliberately; normal benchmark outputs remain local under their
+owning `out/` directories.
 
 ### TODO - User-supplied DOOM source interoperability generator
 
@@ -718,5 +719,3 @@ claims.
 Produce a reproducible demonstration from the 1998 interpreter through modern
 tooling to substantial generated programs and self-hosting while keeping
 historical attribution and compatibility evidence explicit.
-
-

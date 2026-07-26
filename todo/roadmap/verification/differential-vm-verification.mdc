@@ -4,13 +4,14 @@ status: "pending"
 lane: "6"
 area: "verification"
 roadmap: "TODO - Differential VM verification"
-contract: ""
+contract: "docs/technical/verifier/differential-vm-verification.md"
 depends_on:
   - "safe-rust-malbolge-vm"
   - "independent-pure-c-malbolge-vm"
   - "reference-interpreter-sanitizer-harness"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "verifier/"
   - "tests/differential/"
@@ -47,4 +48,3 @@ mutation, and instruction traces where defined.
   counterexamples for rejected candidates, and deterministic replay.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`, `reference-interpreter-sanitizer-harness`.
-

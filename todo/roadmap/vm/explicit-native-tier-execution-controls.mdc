@@ -4,12 +4,14 @@ status: "pending"
 lane: "12"
 area: "vm"
 roadmap: "TODO - Explicit native-tier execution controls"
-contract: ""
+contract: "docs/technical/execution/explicit-native-tier-execution-controls.md"
 depends_on:
   - "ahead-of-execution-native-translation"
   - "guarded-self-modification-jit"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -50,4 +52,3 @@ AOT-only, JIT-only, and fully tiered execution.
   differential results against the applicable oracle/reference implementation.
 - Prerequisite completion evidence: `ahead-of-execution-native-translation`,
   `guarded-self-modification-jit`.
-

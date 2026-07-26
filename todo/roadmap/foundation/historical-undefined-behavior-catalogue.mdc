@@ -4,10 +4,11 @@ status: "pending"
 lane: "2"
 area: "foundation"
 roadmap: "TODO - Historical undefined-behavior catalogue"
-contract: ""
+contract: "docs/technical/specification/historical-undefined-behavior.md"
 depends_on:
   - "historical-malbolge-semantics-specification"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "tools/malbolge/"
   - "docs/technical/specification/"
@@ -44,4 +45,3 @@ behavior separately from intended Malbolge semantics.
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`.
-

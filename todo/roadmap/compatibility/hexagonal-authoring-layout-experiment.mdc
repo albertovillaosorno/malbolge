@@ -4,12 +4,14 @@ status: "pending"
 lane: "11"
 area: "compatibility"
 roadmap: "TODO - Hexagonal authoring-layout experiment"
-contract: ""
+contract: "docs/research/studies/hexagonal-authoring-layout.md"
 depends_on:
   - "malbolge-layout-and-encoding-backend"
   - "compiler-algorithm-experimentation-platform"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -54,4 +56,3 @@ execution engine for compatible programs.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

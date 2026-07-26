@@ -4,13 +4,15 @@ status: "pending"
 lane: "7"
 area: "mathematics"
 roadmap: "TODO - Machine-checked mathematical correspondence"
-contract: ""
+contract: "docs/technical/specification/mathematics/correspondence.md"
 depends_on:
   - "latex-mathematical-specification-framework"
   - "safe-rust-malbolge-vm"
   - "property-fuzz-and-exhaustive-testing"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/technical/specification/mathematics/"
   - "docs/research/algorithms/"
@@ -51,4 +53,3 @@ Connect mathematical specifications to executable tests or proof tooling so the
   `property-fuzz-and-exhaustive-testing`.
 - Mathematical evidence pending: normative/research LaTeX source plus executable
   or machine-checked correspondence for the claimed domain.
-

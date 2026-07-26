@@ -4,12 +4,14 @@ status: "pending"
 lane: "5"
 area: "vm"
 roadmap: "TODO - Safe Rust Malbolge VM"
-contract: ""
+contract: "docs/technical/vm/safe-rust-malbolge-vm.md"
 depends_on:
   - "canonical-malbolge-target-profile"
   - "historical-malbolge-semantics-specification"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -46,4 +48,3 @@ original behavior.
   differential results against the applicable oracle/reference implementation.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
-

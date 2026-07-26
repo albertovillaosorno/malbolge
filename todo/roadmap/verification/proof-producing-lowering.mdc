@@ -4,12 +4,13 @@ status: "pending"
 lane: "12"
 area: "verification"
 roadmap: "TODO - Proof-producing lowering"
-contract: ""
+contract: "docs/technical/verifier/proof-producing-lowering.md"
 depends_on:
   - "translation-validation"
   - "machine-checked-mathematical-correspondence"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "verifier/"
   - "tests/differential/"
@@ -46,4 +47,3 @@ stochastic search, or superoptimization implementations.
   counterexamples for rejected candidates, and deterministic replay.
 - Prerequisite completion evidence: `translation-validation`,
   `machine-checked-mathematical-correspondence`.
-

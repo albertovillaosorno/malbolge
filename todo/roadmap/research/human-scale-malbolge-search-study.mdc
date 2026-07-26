@@ -4,12 +4,14 @@ status: "pending"
 lane: "6"
 area: "research"
 roadmap: "TODO - Human-scale Malbolge search study"
-contract: ""
+contract: "docs/research/studies/human-scale-malbolge-search.md"
 depends_on:
   - "benchmark-and-statistical-evidence-protocol"
   - "safe-rust-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -61,4 +63,3 @@ claims.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

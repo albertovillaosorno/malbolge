@@ -4,13 +4,15 @@ status: "pending"
 lane: "13"
 area: "accelerator"
 roadmap: "TODO - Reusable block catalogue"
-contract: ""
+contract: "docs/technical/accelerator/reusable-block-catalogue.md"
 depends_on:
   - "deterministic-cpu-optimizer"
   - "translation-validation"
   - "malbolge-layout-and-encoding-backend"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -48,4 +50,3 @@ instead of synthesized from scratch for every compilation.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `deterministic-cpu-optimizer`,
   `translation-validation`, `malbolge-layout-and-encoding-backend`.
-

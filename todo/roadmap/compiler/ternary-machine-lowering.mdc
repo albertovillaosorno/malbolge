@@ -4,13 +4,16 @@ status: "pending"
 lane: "9"
 area: "compiler"
 roadmap: "TODO - Ternary machine lowering"
-contract: ""
+contract: "docs/technical/compiler/ternary-machine-lowering.md"
 depends_on:
   - "typed-compiler-ir"
   - "guest-runtime-and-allocator"
   - "malbolge-specific-optimization-mathematics"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "compiler/"
   - "src/"
@@ -45,4 +48,3 @@ instruction.
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `typed-compiler-ir`,
   `guest-runtime-and-allocator`, `malbolge-specific-optimization-mathematics`.
-

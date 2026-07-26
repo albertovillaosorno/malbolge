@@ -4,12 +4,15 @@ status: "pending"
 lane: "14"
 area: "accelerator"
 roadmap: "TODO - PyTorch search orchestration"
-contract: ""
+contract: "docs/research/algorithms/pytorch-search-orchestration/README.md"
 depends_on:
   - "configurable-accelerator-algorithm-adapters"
   - "stochastic-and-guided-search"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -47,4 +50,3 @@ retain exact semantic execution where tensor operations are a poor fit.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence:
   `configurable-accelerator-algorithm-adapters`, `stochastic-and-guided-search`.
-

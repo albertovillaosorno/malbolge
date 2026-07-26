@@ -4,11 +4,13 @@ status: "pending"
 lane: "6"
 area: "mathematics"
 roadmap: "TODO - Malbolge-specific optimization mathematics"
-contract: ""
+contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
 depends_on:
   - "latex-mathematical-specification-framework"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/technical/specification/mathematics/"
   - "docs/research/algorithms/"
@@ -49,4 +51,3 @@ force or stochastic optimization begins.
   `latex-mathematical-specification-framework`.
 - Mathematical evidence pending: normative/research LaTeX source plus executable
   or machine-checked correspondence for the claimed domain.
-

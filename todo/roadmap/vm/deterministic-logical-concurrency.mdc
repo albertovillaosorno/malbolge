@@ -4,12 +4,14 @@ status: "pending"
 lane: "6"
 area: "vm"
 roadmap: "TODO - Deterministic logical concurrency"
-contract: ""
+contract: "docs/technical/execution/deterministic-logical-concurrency.md"
 depends_on:
   - "safe-rust-malbolge-vm"
   - "canonical-malbolge-target-profile"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -55,4 +57,3 @@ observable results.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

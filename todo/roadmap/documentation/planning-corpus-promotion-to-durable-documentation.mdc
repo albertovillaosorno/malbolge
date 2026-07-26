@@ -4,13 +4,14 @@ status: "pending"
 lane: "3"
 area: "documentation"
 roadmap: "TODO - Planning corpus promotion to durable documentation"
-contract: ""
+contract: "docs/technical/contracts/planning-corpus-promotion.md"
 depends_on:
   - "documentation-authority-taxonomy"
   - "repository-bibliography-taxonomy-and-citation-provenance"
   - "academic-research-methodology-and-evidence-model"
   - "reuse-shar-legal-and-interoperability-corpus"
 adr_paths:
+  - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - "ROADMAP.md"
   - "todo/roadmap/"

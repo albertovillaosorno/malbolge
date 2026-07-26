@@ -4,11 +4,12 @@ status: "pending"
 lane: "3"
 area: "research"
 roadmap: "TODO - Reproducible experiment identity and manifest"
-contract: "docs/research/README.md"
+contract: "docs/research/methodology/experiment-identity.md"
 depends_on:
   - "academic-research-methodology-and-evidence-model"
   - "algorithm-research-mirror-and-local-output-contract"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -56,4 +57,3 @@ source constants.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

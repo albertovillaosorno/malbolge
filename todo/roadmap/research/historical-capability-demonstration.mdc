@@ -4,13 +4,15 @@ status: "pending"
 lane: "16"
 area: "research"
 roadmap: "TODO - Historical capability demonstration"
-contract: ""
+contract: "docs/research/studies/historical-capability-demonstration.md"
 depends_on:
   - "self-hosting-equivalence-proof"
   - "real-program-benchmark-suite"
   - "publication-grade-paper-pipeline"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -46,4 +48,3 @@ historical attribution and compatibility evidence explicit.
   experiment manifest, raw-output provenance, results, and threats to validity.
 - Prerequisite completion evidence: `self-hosting-equivalence-proof`,
   `real-program-benchmark-suite`, `publication-grade-paper-pipeline`.
-

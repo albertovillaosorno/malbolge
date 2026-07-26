@@ -4,12 +4,15 @@ status: "pending"
 lane: "13"
 area: "accelerator"
 roadmap: "TODO - Search pruning and state canonicalization"
-contract: ""
+contract: "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md"
 depends_on:
   - "deterministic-cpu-optimizer"
   - "malbolge-specific-optimization-mathematics"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -56,4 +59,3 @@ raw hardware scale.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

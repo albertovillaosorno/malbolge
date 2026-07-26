@@ -4,13 +4,14 @@ status: "pending"
 lane: "5"
 area: "research"
 roadmap: "TODO - Superoptimization research program"
-contract: ""
+contract: "docs/research/studies/superoptimization-program.md"
 depends_on:
   - "academic-research-methodology-and-evidence-model"
   - "repository-bibliography-taxonomy-and-citation-provenance"
   - "algorithm-research-mirror-and-local-output-contract"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -62,4 +63,3 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

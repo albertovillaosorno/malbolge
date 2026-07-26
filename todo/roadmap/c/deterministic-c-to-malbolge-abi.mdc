@@ -4,12 +4,14 @@ status: "pending"
 lane: "6"
 area: "c"
 roadmap: "TODO - Deterministic C-to-Malbolge ABI"
-contract: ""
+contract: "docs/technical/compiler/c-profile/deterministic-c-to-malbolge-abi.md"
 depends_on:
   - "canonical-malbolge-target-profile"
   - "latex-mathematical-specification-framework"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
   - "libc/"
@@ -47,4 +49,3 @@ policy for undefined or target-dependent C behavior.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `latex-mathematical-specification-framework`.
-

@@ -4,9 +4,11 @@ status: "pending"
 lane: "1"
 area: "research"
 roadmap: "TODO - Reuse SHAR legal and interoperability corpus"
-contract: ""
+contract: "docs/technical/contracts/shar-documentation-reuse.md"
 depends_on:
 adr_paths:
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
+  - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - "docs/legal/"
   - "docs/bibliography/"
@@ -43,4 +45,3 @@ repository.
   `docs/bibliography/`, `docs/technical/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-

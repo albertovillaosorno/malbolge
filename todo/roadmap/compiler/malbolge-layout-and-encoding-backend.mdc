@@ -4,12 +4,15 @@ status: "pending"
 lane: "10"
 area: "compiler"
 roadmap: "TODO - Malbolge layout and encoding backend"
-contract: ""
+contract: "docs/technical/compiler/malbolge-layout-and-encoding-backend.md"
 depends_on:
   - "ternary-machine-lowering"
   - "canonical-malbolge-target-profile"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "compiler/"
   - "src/"
@@ -45,4 +48,3 @@ emission.
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `ternary-machine-lowering`,
   `canonical-malbolge-target-profile`.
-

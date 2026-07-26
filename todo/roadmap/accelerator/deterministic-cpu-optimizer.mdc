@@ -4,13 +4,15 @@ status: "pending"
 lane: "12"
 area: "accelerator"
 roadmap: "TODO - Deterministic CPU optimizer"
-contract: ""
+contract: "docs/technical/accelerator/deterministic-cpu-optimizer.md"
 depends_on:
   - "safe-rust-malbolge-vm"
   - "translation-validation"
   - "compiler-algorithm-experimentation-platform"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -48,4 +50,3 @@ implementations.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
-

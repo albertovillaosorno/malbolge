@@ -4,11 +4,12 @@ status: "pending"
 lane: "6"
 area: "verification"
 roadmap: "TODO - Exact and diagnostic cycle detection"
-contract: ""
+contract: "docs/technical/verifier/exact-and-diagnostic-cycle-detection.md"
 depends_on:
   - "safe-rust-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "verifier/"
   - "tests/differential/"
@@ -43,4 +44,3 @@ exact results and clearly label probabilistic hash-only diagnostics.
 - Required evidence: known-valid fixtures, seeded invalid mutations,
   counterexamples for rejected candidates, and deterministic replay.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-

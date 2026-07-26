@@ -4,12 +4,14 @@ status: "pending"
 lane: "7"
 area: "accelerator"
 roadmap: "TODO - Replaceable accelerator boundary"
-contract: ""
+contract: "docs/technical/accelerator/replaceable-accelerator-boundary.md"
 depends_on:
   - "batch-vm-execution"
   - "compiler-algorithm-experimentation-platform"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -47,4 +49,3 @@ directly on CUDA APIs.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
-

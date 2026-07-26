@@ -4,11 +4,13 @@ status: "pending"
 lane: "6"
 area: "vm"
 roadmap: "TODO - CPU VM table optimization"
-contract: ""
+contract: "docs/technical/vm/cpu-vm-table-optimization.md"
 depends_on:
   - "safe-rust-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -50,4 +52,3 @@ and benchmarked micro-optimizations without semantic drift.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

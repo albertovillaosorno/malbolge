@@ -4,11 +4,12 @@ status: "pending"
 lane: "3"
 area: "foundation"
 roadmap: "TODO - Canonical Malbolge target profile"
-contract: ""
+contract: "docs/technical/specification/target-profile.md"
 depends_on:
   - "historical-malbolge-semantics-specification"
   - "historical-undefined-behavior-catalogue"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "malbolge.json"
   - "docs/technical/specification/"
@@ -43,4 +44,3 @@ VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`,
   `historical-undefined-behavior-catalogue`.
-

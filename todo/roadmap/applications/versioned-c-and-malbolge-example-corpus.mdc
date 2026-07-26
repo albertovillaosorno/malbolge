@@ -4,14 +4,16 @@ status: "pending"
 lane: "12"
 area: "applications"
 roadmap: "TODO - Versioned C and Malbolge example corpus"
-contract: ""
+contract: "docs/technical/examples/versioned-c-malbolge-corpus.md"
 depends_on:
   - "parametric-compiler-challenge-generator"
   - "malbolge-layout-and-encoding-backend"
   - "translation-validation"
   - "deterministic-cross-backend-artifact-hashing"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "docs/technical/examples/"
   - "tests/golden/"
@@ -52,4 +54,3 @@ benchmark outputs remain local under their owning `out/` directories.
 - Prerequisite completion evidence: `parametric-compiler-challenge-generator`,
   `malbolge-layout-and-encoding-backend`, `translation-validation`,
   `deterministic-cross-backend-artifact-hashing`.
-

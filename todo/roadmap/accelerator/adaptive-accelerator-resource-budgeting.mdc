@@ -4,12 +4,15 @@ status: "pending"
 lane: "9"
 area: "accelerator"
 roadmap: "TODO - Adaptive accelerator resource budgeting"
-contract: ""
+contract: "docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md"
 depends_on:
   - "cuda-exact-vm-adapter"
   - "reproducible-experiment-identity-and-manifest"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -63,4 +66,3 @@ resources into measured throughput instead of hitting fixed artificial limits.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

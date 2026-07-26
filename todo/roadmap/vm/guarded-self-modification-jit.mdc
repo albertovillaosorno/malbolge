@@ -4,13 +4,15 @@ status: "pending"
 lane: "11"
 area: "vm"
 roadmap: "TODO - Guarded self-modification JIT"
-contract: ""
+contract: "docs/technical/execution/guarded-self-modification-jit.md"
 depends_on:
   - "tiered-native-execution-engine"
   - "native-x86-64-and-aarch64-backends"
   - "self-modification-state-graph-optimizer"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -56,4 +58,3 @@ ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

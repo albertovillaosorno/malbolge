@@ -4,12 +4,14 @@ status: "pending"
 lane: "7"
 area: "c"
 roadmap: "TODO - malbolge-tidy clang-tidy plugin"
-contract: ""
+contract: "docs/technical/compiler/c-profile/malbolge-tidy-clang-tidy-plugin.md"
 depends_on:
   - "deterministic-c-to-malbolge-abi"
   - "jig-repository-governance"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
   - "libc/"
@@ -47,4 +49,3 @@ existing clang-tidy baseline.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`,
   `jig-repository-governance`.
-

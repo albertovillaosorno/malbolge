@@ -4,12 +4,14 @@ status: "pending"
 lane: "5"
 area: "vm"
 roadmap: "TODO - Independent pure C Malbolge VM"
-contract: ""
+contract: "docs/technical/vm/independent-pure-c-malbolge-vm.md"
 depends_on:
   - "canonical-malbolge-target-profile"
   - "historical-malbolge-semantics-specification"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -45,4 +47,3 @@ specification rather than mechanically translating the Rust implementation.
   differential results against the applicable oracle/reference implementation.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
-

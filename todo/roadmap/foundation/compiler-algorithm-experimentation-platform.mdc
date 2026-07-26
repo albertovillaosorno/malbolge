@@ -4,13 +4,16 @@ status: "pending"
 lane: "5"
 area: "foundation"
 roadmap: "TODO - Compiler algorithm experimentation platform"
-contract: "algorithms/README.md"
+contract: "docs/research/methodology/compiler-algorithm-experimentation-platform.md"
 depends_on:
   - "algorithm-research-mirror-and-local-output-contract"
   - "reproducible-experiment-identity-and-manifest"
   - "benchmark-and-statistical-evidence-protocol"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/repository-responsibility-boundaries.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
 scope:
   - "algorithms/"
   - "docs/research/"
@@ -65,4 +68,3 @@ accepted, rejected, or retired without becoming architecture by accident.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

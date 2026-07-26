@@ -4,9 +4,10 @@ status: "pending"
 lane: "1"
 area: "foundation"
 roadmap: "TODO - Historical interpreter legal boundary"
-contract: ""
+contract: "docs/legal/licenses/ben-olmstead-malbolge-public-domain.md"
 depends_on:
 adr_paths:
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "tools/malbolge/"
   - "docs/legal/"
@@ -40,4 +41,3 @@ repository MIT license does not relicense that specific file.
   `README.md`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
-

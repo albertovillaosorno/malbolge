@@ -4,12 +4,13 @@ status: "pending"
 lane: "6"
 area: "verification"
 roadmap: "TODO - Property, fuzz, and exhaustive testing"
-contract: ""
+contract: "docs/technical/verifier/property-fuzz-and-exhaustive-testing.md"
 depends_on:
   - "safe-rust-malbolge-vm"
   - "independent-pure-c-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "verifier/"
   - "tests/differential/"
@@ -46,4 +47,3 @@ and crazy operations.
   counterexamples for rejected candidates, and deterministic replay.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`.
-

@@ -4,12 +4,14 @@ status: "pending"
 lane: "9"
 area: "accelerator"
 roadmap: "TODO - Future AMD and non-CUDA adapters"
-contract: ""
+contract: "docs/technical/accelerator/future-amd-and-non-cuda-adapters.md"
 depends_on:
   - "replaceable-accelerator-boundary"
   - "configurable-accelerator-algorithm-adapters"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -46,4 +48,3 @@ compiler semantics, target profiles, or verifier contracts.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `configurable-accelerator-algorithm-adapters`.
-

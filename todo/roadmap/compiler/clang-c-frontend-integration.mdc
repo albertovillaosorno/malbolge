@@ -4,11 +4,13 @@ status: "pending"
 lane: "7"
 area: "compiler"
 roadmap: "TODO - Clang C frontend integration"
-contract: ""
+contract: "docs/technical/compiler/clang-c-frontend-integration.md"
 depends_on:
   - "deterministic-c-to-malbolge-abi"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "compiler/"
   - "src/"
@@ -42,4 +44,3 @@ provider, and AST frontend instead of building another C parser.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
-

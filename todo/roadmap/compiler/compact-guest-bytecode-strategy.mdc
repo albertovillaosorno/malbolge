@@ -4,13 +4,16 @@ status: "pending"
 lane: "10"
 area: "compiler"
 roadmap: "TODO - Compact guest bytecode strategy"
-contract: ""
+contract: "docs/research/algorithms/compact-guest-bytecode-strategy/README.md"
 depends_on:
   - "ternary-machine-lowering"
   - "guest-runtime-and-allocator"
   - "algorithm-research-mirror-and-local-output-contract"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "compiler/"
   - "src/"
@@ -56,4 +59,3 @@ code-size explosion or compilation cost.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

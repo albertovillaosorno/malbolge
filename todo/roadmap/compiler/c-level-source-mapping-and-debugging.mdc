@@ -4,12 +4,14 @@ status: "pending"
 lane: "11"
 area: "compiler"
 roadmap: "TODO - C-level source mapping and debugging"
-contract: ""
+contract: "docs/technical/compiler/source-mapping-debugging.md"
 depends_on:
   - "typed-compiler-ir"
   - "malbolge-layout-and-encoding-backend"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/c-level-source-debugging.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "compiler/"
   - "src/"
@@ -45,4 +47,3 @@ for implementation and verification.
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `typed-compiler-ir`,
   `malbolge-layout-and-encoding-backend`.
-

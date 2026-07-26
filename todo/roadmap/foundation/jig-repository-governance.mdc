@@ -4,10 +4,11 @@ status: "pending"
 lane: "2"
 area: "foundation"
 roadmap: "TODO - Jig repository governance"
-contract: ""
+contract: "docs/technical/contracts/jig-repository-governance.md"
 depends_on:
   - "repository-responsibility-scaffold"
 adr_paths:
+  - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - "jig.toml"
   - ".dependencies/"
@@ -43,4 +44,3 @@ without weakening unrelated linter contracts.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
-

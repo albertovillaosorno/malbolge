@@ -4,10 +4,11 @@ status: "pending"
 lane: "2"
 area: "research"
 roadmap: "TODO - Algorithm research mirror and local output contract"
-contract: "docs/research/algorithms/README.md"
+contract: "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 depends_on:
   - "academic-research-methodology-and-evidence-model"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -55,4 +56,3 @@ not artificial academic capsules.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

@@ -4,11 +4,12 @@ status: "pending"
 lane: "5"
 area: "research"
 roadmap: "TODO - Algorithm promotion rejection and retirement lifecycle"
-contract: "docs/research/methodology/README.md"
+contract: "docs/research/methodology/algorithm-lifecycle.md"
 depends_on:
   - "algorithm-research-mirror-and-local-output-contract"
   - "benchmark-and-statistical-evidence-protocol"
 adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/research/"
   - "algorithms/"
@@ -55,4 +56,3 @@ reproducibility, complexity, portability, and measured benefit gate promotion.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

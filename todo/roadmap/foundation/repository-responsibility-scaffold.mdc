@@ -4,9 +4,10 @@ status: "pending"
 lane: "1"
 area: "foundation"
 roadmap: "TODO - Repository responsibility scaffold"
-contract: ""
+contract: "docs/technical/architecture/repository-responsibility-model.md"
 depends_on:
 adr_paths:
+  - "docs/technical/adr/repository-responsibility-boundaries.md"
 scope:
   - "ROADMAP.md"
   - "todo/"
@@ -48,4 +49,3 @@ Cargo composition.
   `tests/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
-

@@ -4,12 +4,13 @@ status: "pending"
 lane: "7"
 area: "compatibility"
 roadmap: "TODO - Required-profile diagnostics"
-contract: ""
+contract: "docs/technical/compatibility/required-profile-diagnostics.md"
 depends_on:
   - "canonical-malbolge-target-profile"
   - "malbolge-2-extended-memory-model"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -45,4 +46,3 @@ execution is impossible.
   boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `malbolge-2-extended-memory-model`.
-

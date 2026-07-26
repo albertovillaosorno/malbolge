@@ -4,13 +4,16 @@ status: "pending"
 lane: "13"
 area: "accelerator"
 roadmap: "TODO - Stochastic and guided search"
-contract: ""
+contract: "docs/research/algorithms/stochastic-and-guided-search/README.md"
 depends_on:
   - "deterministic-cpu-optimizer"
   - "configurable-accelerator-algorithm-adapters"
   - "benchmark-and-statistical-evidence-protocol"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -63,4 +66,3 @@ search with deterministic final verification and reproducible research seeds.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

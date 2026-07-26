@@ -4,14 +4,17 @@ status: "pending"
 lane: "13"
 area: "applications"
 roadmap: "TODO - DOOM playable generated-code performance"
-contract: ""
+contract: "docs/technical/interoperability/doom-generated-performance.md"
 depends_on:
   - "doom-quality-and-modernization-pass"
   - "malbolge-layout-and-encoding-backend"
   - "explicit-native-tier-execution-controls"
   - "deterministic-cpu-optimizer"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "tests/applications/doom/"
   - "benchmarks/doom/"
@@ -61,4 +64,3 @@ explicit equivalence evidence.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
-

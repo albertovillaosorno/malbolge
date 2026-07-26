@@ -4,12 +4,15 @@ status: "pending"
 lane: "13"
 area: "self_hosting"
 roadmap: "TODO - Compile c2malbolge.c to Malbolge"
-contract: ""
+contract: "docs/technical/compiler/self-hosting/compile-c2malbolge-c-to-malbolge.md"
 depends_on:
   - "portable-c2malbolge-implementation-in-c"
   - "translation-validation"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/self-hosting-as-conformance-goal.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "examples/self_host/"
   - "compiler/"
@@ -44,4 +47,3 @@ the resulting `c2malbolge.malbolge` under the modern VM.
   native compilation, resource/profile requirements, and verifier acceptance.
 - Prerequisite completion evidence: `portable-c2malbolge-implementation-in-c`,
   `translation-validation`.
-

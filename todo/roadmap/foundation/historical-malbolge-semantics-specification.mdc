@@ -4,9 +4,10 @@ status: "pending"
 lane: "1"
 area: "foundation"
 roadmap: "TODO - Historical Malbolge semantics specification"
-contract: ""
+contract: "docs/technical/specification/malbolge-1998.md"
 depends_on:
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "tools/malbolge/"
   - "docs/technical/specification/"
@@ -40,4 +41,3 @@ and termination behavior.
   `docs/technical/specification/mathematics/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
-

@@ -4,12 +4,15 @@ status: "pending"
 lane: "8"
 area: "applications"
 roadmap: "TODO - User-supplied DOOM source interoperability generator"
-contract: ""
+contract: "docs/technical/interoperability/doom-amalgamation.md"
 depends_on:
   - "clang-c-frontend-integration"
   - "reuse-shar-legal-and-interoperability-corpus"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "doom/"
   - "interop/algorithms/amalgamate.rs"
@@ -53,4 +56,3 @@ generated material keeps its applicable upstream license and provenance.
   interaction traces, artifact hashes, and end-to-end verification.
 - Prerequisite completion evidence: `clang-c-frontend-integration`,
   `reuse-shar-legal-and-interoperability-corpus`.
-

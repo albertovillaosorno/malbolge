@@ -4,11 +4,13 @@ status: "pending"
 lane: "5"
 area: "mathematics"
 roadmap: "TODO - LaTeX mathematical specification framework"
-contract: ""
+contract: "docs/technical/specification/mathematics/framework.md"
 depends_on:
   - "historical-malbolge-semantics-specification"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "docs/technical/specification/mathematics/"
   - "docs/research/algorithms/"
@@ -49,4 +51,3 @@ lowering, equivalence relations, and search cost functions.
   `historical-malbolge-semantics-specification`.
 - Mathematical evidence pending: normative/research LaTeX source plus executable
   or machine-checked correspondence for the claimed domain.
-

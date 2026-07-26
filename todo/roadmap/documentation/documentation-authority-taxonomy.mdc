@@ -4,9 +4,10 @@ status: "pending"
 lane: "1"
 area: "documentation"
 roadmap: "TODO - Documentation authority taxonomy"
-contract: ""
+contract: "docs/technical/adr/documentation-authority-taxonomy.md"
 depends_on:
 adr_paths:
+  - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - "docs/"
   - "docs/technical/"

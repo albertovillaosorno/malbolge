@@ -4,12 +4,14 @@ status: "pending"
 lane: "8"
 area: "accelerator"
 roadmap: "TODO - Configurable accelerator algorithm adapters"
-contract: ""
+contract: "docs/technical/accelerator/configurable-accelerator-algorithm-adapters.md"
 depends_on:
   - "replaceable-accelerator-boundary"
   - "algorithm-research-mirror-and-local-output-contract"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "accelerator/"
   - "algorithms/"
@@ -51,4 +53,3 @@ by-side comparison without recompiling or modifying compiler semantics.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
-

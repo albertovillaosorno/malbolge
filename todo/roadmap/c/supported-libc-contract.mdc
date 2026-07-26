@@ -4,11 +4,13 @@ status: "pending"
 lane: "7"
 area: "c"
 roadmap: "TODO - Supported libc contract"
-contract: ""
+contract: "docs/technical/compiler/c-profile/supported-libc-contract.md"
 depends_on:
   - "deterministic-c-to-malbolge-abi"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
   - "libc/"
@@ -45,4 +47,3 @@ without hidden host shortcuts.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
-

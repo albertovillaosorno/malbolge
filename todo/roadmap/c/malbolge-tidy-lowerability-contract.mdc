@@ -4,13 +4,15 @@ status: "pending"
 lane: "11"
 area: "c"
 roadmap: "TODO - malbolge-tidy lowerability contract"
-contract: ""
+contract: "docs/technical/compiler/c-profile/malbolge-tidy-lowerability-contract.md"
 depends_on:
   - "malbolge-tidy-clang-tidy-plugin"
   - "malbolge-layout-and-encoding-backend"
   - "supported-libc-contract"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
   - "libc/"
@@ -48,4 +50,3 @@ compiler for its declared target profile.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `malbolge-tidy-clang-tidy-plugin`,
   `malbolge-layout-and-encoding-backend`, `supported-libc-contract`.
-

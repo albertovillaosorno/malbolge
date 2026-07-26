@@ -4,12 +4,14 @@ status: "pending"
 lane: "11"
 area: "applications"
 roadmap: "TODO - Deterministic cross-backend artifact hashing"
-contract: ""
+contract: "docs/technical/contracts/deterministic-artifact-hashing.md"
 depends_on:
   - "malbolge-layout-and-encoding-backend"
   - "differential-vm-verification"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "docs/technical/examples/"
   - "tests/applications/"
@@ -46,4 +48,3 @@ produced `.malbolge` artifacts where deterministic builds are promised.
   interaction traces, artifact hashes, and end-to-end verification.
 - Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
   `differential-vm-verification`.
-

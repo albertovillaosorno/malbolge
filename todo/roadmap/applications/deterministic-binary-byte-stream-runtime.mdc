@@ -4,12 +4,14 @@ status: "pending"
 lane: "11"
 area: "applications"
 roadmap: "TODO - Deterministic binary byte-stream runtime"
-contract: ""
+contract: "docs/technical/runtime/binary-byte-stream.md"
 depends_on:
   - "guest-runtime-and-allocator"
   - "malbolge-layout-and-encoding-backend"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "docs/technical/examples/"
   - "tests/applications/"
@@ -46,4 +48,3 @@ file transformers.
   interaction traces, artifact hashes, and end-to-end verification.
 - Prerequisite completion evidence: `guest-runtime-and-allocator`,
   `malbolge-layout-and-encoding-backend`.
-

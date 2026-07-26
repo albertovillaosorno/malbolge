@@ -4,13 +4,16 @@ status: "pending"
 lane: "12"
 area: "applications"
 roadmap: "TODO - Machine-readable LLM and compiler challenge corpus"
-contract: ""
+contract: "docs/research/methodology/machine-readable-agent-challenges.md"
 depends_on:
   - "parametric-compiler-challenge-generator"
   - "multi-objective-compiler-algorithm-evaluation-arena"
   - "translation-validation"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "benchmarks/challenges/"
   - "docs/research/"
@@ -60,4 +63,3 @@ admitted result.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-

@@ -4,10 +4,11 @@ status: "pending"
 lane: "2"
 area: "documentation"
 roadmap: "TODO - Repository bibliography taxonomy and citation provenance"
-contract: "docs/bibliography/README.md"
+contract: "docs/bibliography/adr/source-taxonomy-and-citation-provenance.md"
 depends_on:
   - "documentation-authority-taxonomy"
 adr_paths:
+  - "docs/bibliography/adr/source-taxonomy-and-citation-provenance.md"
 scope:
   - "docs/bibliography/"
   - "docs/bibliography/adr/"

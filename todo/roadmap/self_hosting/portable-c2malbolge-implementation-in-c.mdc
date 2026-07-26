@@ -4,13 +4,16 @@ status: "pending"
 lane: "12"
 area: "self_hosting"
 roadmap: "TODO - Portable c2malbolge implementation in C"
-contract: ""
+contract: "docs/technical/compiler/self-hosting/portable-c2malbolge-implementation-in-c.md"
 depends_on:
   - "malbolge-layout-and-encoding-backend"
   - "malbolge-tidy-lowerability-contract"
   - "supported-libc-contract"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/self-hosting-as-conformance-goal.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "examples/self_host/"
   - "compiler/"
@@ -46,4 +49,3 @@ other host-only capabilities. Native accelerators remain optional speedups.
   native compilation, resource/profile requirements, and verifier acceptance.
 - Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
   `malbolge-tidy-lowerability-contract`, `supported-libc-contract`.
-

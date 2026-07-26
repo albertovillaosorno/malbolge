@@ -4,12 +4,13 @@ status: "pending"
 lane: "8"
 area: "compatibility"
 roadmap: "TODO - Original-interpreter compatibility capsule"
-contract: ""
+contract: "docs/technical/compatibility/original-interpreter-compatibility-capsule.md"
 depends_on:
   - "malbolge-2-extended-memory-model"
   - "required-profile-diagnostics"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/historical-compatibility-and-malbolge-evolution.md"
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
@@ -45,4 +46,3 @@ metadata that the original loader ignores.
   boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `malbolge-2-extended-memory-model`,
   `required-profile-diagnostics`.
-

@@ -4,11 +4,13 @@ status: "pending"
 lane: "6"
 area: "vm"
 roadmap: "TODO - Batch VM execution"
-contract: ""
+contract: "docs/technical/execution/batch-vm-execution.md"
 depends_on:
   - "safe-rust-malbolge-vm"
-  - "documentation-readiness-and-initial-commit-gate"
+  - "documentation-readiness-and-implementation-gate"
 adr_paths:
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "vm/"
   - "execution/"
@@ -43,4 +45,3 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
   differential results against the applicable oracle/reference implementation.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-
