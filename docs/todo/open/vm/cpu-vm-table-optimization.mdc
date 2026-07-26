@@ -41,9 +41,9 @@ and benchmarked micro-optimizations without semantic drift.
   both word positions, and every graphical-cell/code-pointer decode against
   independent scalar definitions.
 - `benchmarks/interpreter/main.rs` emits raw nanosecond samples and deterministic
-  checksums for scalar/table rotate and crazy paths. Initial local release-mode
-  measurements showed approximately 10.5x median speedup for crazy and 1.5x for
-  rotate; durable post-commit samples remain required before completion.
+  checksums for scalar/table rotate and crazy paths. Post-commit evidence on
+  `888b492` records 15 samples per implementation with 10.43x median speedup for
+  crazy and 1.50x for rotate on the identified benchmark host.
 
 ## Acceptance
 
@@ -69,6 +69,7 @@ and benchmarked micro-optimizations without semantic drift.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Performance evidence: `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
+  retains raw samples, exact workload repetitions, checksums, commit identity,
+  toolchain versions, host class, medians, dispersion summary, and scoped
+  cleanliness at measurement time.

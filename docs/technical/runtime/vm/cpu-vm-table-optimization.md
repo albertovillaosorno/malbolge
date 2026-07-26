@@ -36,10 +36,12 @@ The runtime consumes those tables without dynamic initialization, and exhaustive
 independent tests cover the finite table domains. A custom release benchmark
 emits raw scalar/table timing samples with matching deterministic checksums.
 
-Initial local measurements before the implementation commit observed median
-speedups of about 10.5x for crazy and 1.5x for rotate. These numbers are
-provisional until rerun and retained with exact post-commit host/toolchain
-provenance; they are not portable performance claims.
+Post-commit measurements on `888b492` retain 15 raw samples per
+implementation. On the recorded benchmark host, crazy improved from a
+77,456,700 ns scalar median to 7,423,600 ns with tables (10.43x), and rotate
+improved from 15,260,300 ns to 10,141,700 ns (1.50x). Checksums match between
+scalar and table paths. These are evidence for this implementation on the
+identified host, not portable hardware performance claims.
 
 ## Invariants
 
@@ -66,9 +68,8 @@ deterministically without changing guest-visible state silently.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Performance evidence: `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
+  contains raw samples and exact commit/workload/toolchain/host provenance.
 ## References
 
 - [Specification Authority And Malbolge
