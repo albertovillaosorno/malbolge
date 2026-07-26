@@ -15,6 +15,7 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
+  - "scripts/validate/"
   - "libc/"
   - "runtime/"
   - "docs/technical/specification/"
@@ -48,7 +49,8 @@ compiler for its declared target profile.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/tidy/`, `libc/`, `runtime/`,
+- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`, `libc/`,
+  `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.

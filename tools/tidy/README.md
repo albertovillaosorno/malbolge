@@ -16,13 +16,13 @@ therefore never constrained merely because they are C.
 From the repository root, name every candidate translation unit explicitly:
 
 ```text
-python validate-malbolge-c.py path/to/program.c
+python scripts/validate/main.py path/to/program.c
 ```
 
 Several explicitly selected units may be checked in one invocation:
 
 ```text
-python validate-malbolge-c.py first.c second.c
+python scripts/validate/main.py first.c second.c
 ```
 
 The one directory exception is an explicitly passed directory whose basename is
@@ -30,7 +30,7 @@ The one directory exception is an explicitly passed directory whose basename is
 translation units in deterministic path order:
 
 ```text
-python validate-malbolge-c.py path/to/doom
+python scripts/validate/main.py path/to/doom
 ```
 
 Other directories are rejected. This special case exists because DOOM is a
@@ -38,7 +38,7 @@ deliberate whole-program compatibility workload; it does not turn directory
 discovery into general repository policy. Selection therefore remains an
 explicit caller decision and cannot contaminate unrelated C/C++ validation.
 
-`validate-malbolge-c.py` uses the repository-pinned LLVM 22.1.8 clang-tidy and
+`scripts/validate/main.py` uses the repository-pinned LLVM 22.1.8 clang-tidy and
 `tools/tidy/malbolge-clang-tidy.yaml`. Once the out-of-tree plugin exists, pass
 its built shared library with `--plugin`; the durable CLI may later hide that
 implementation detail.

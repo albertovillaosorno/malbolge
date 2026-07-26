@@ -2,7 +2,7 @@
 #
 # This file is intentionally NOT named .clang-tidy. It must never be inherited
 # by arbitrary host/native C in this repository. It is used only when a caller
-# explicitly invokes validate-malbolge-c.py (or tools/tidy directly) for a C
+# explicitly invokes scripts/validate/main.py (or tools/tidy directly) for a C
 # translation unit that is intended to be lowered to Malbolge.
 #
 # This is the executable bootstrap envelope built from stock LLVM 22.1.8
