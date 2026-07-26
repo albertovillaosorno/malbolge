@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manually validate explicitly selected C files against the Malbolge guest profile."""
+"""Validate explicitly selected C files against the Malbolge guest profile."""
 
 from __future__ import annotations
 
@@ -33,15 +33,18 @@ def _parser() -> argparse.ArgumentParser:
         nargs="+",
         metavar="INPUT",
         help=(
-            "explicit .c translation units to validate; an explicitly named directory "
-            "is accepted only when its basename is doom"
+            "explicit .c translation units to validate; an explicitly named "
+            "directory is accepted only when its basename is doom"
         ),
     )
     parser.add_argument(
         "--profile",
         type=Path,
         default=DEFAULT_PROFILE,
-        help="clang-tidy profile (default: tools/tidy/malbolge-clang-tidy.yaml)",
+        help=(
+            "clang-tidy profile "
+            "(default: tools/tidy/malbolge-clang-tidy.yaml)"
+        ),
     )
     parser.add_argument(
         "--clang-tidy",
@@ -66,8 +69,8 @@ def _validated_files(raw_files: list[str]) -> list[Path]:
         if path.is_dir():
             if path.name.casefold() != "doom":
                 raise ValueError(
-                    "directories are accepted only for an explicitly named doom directory: "
-                    f"{path}"
+                    "directories are accepted only for an explicitly named "
+                    f"doom directory: {path}"
                 )
             doom_files = sorted(
                 candidate.resolve()
@@ -75,17 +78,23 @@ def _validated_files(raw_files: list[str]) -> list[Path]:
                 if candidate.is_file() and candidate.suffix.lower() == ".c"
             )
             if not doom_files:
-                raise ValueError(f"doom directory contains no C translation units: {path}")
+                raise ValueError(
+                    f"doom directory contains no C translation units: {path}"
+                )
             files.extend(doom_files)
             continue
         if not path.is_file():
             raise ValueError(f"input is not a regular file: {path}")
         if path.suffix.lower() != ".c":
-            raise ValueError(f"Malbolge guest validation accepts C translation units only: {path}")
+            raise ValueError(
+                "Malbolge guest validation accepts C translation units only: "
+                f"{path}"
+            )
         files.append(path.resolve())
 
     # Preserve deterministic first-seen order while avoiding duplicate work when
-    # a file is named directly and is also contained in an explicitly passed doom/.
+    # a file is named directly and is also contained in an explicitly passed
+    # doom/ directory.
     return list(dict.fromkeys(files))
 
 
@@ -105,7 +114,10 @@ def main() -> int:
         print(f"error: clang-tidy not found: {clang_tidy}", file=sys.stderr)
         return 2
     if not profile.is_file():
-        print(f"error: Malbolge guest profile not found: {profile}", file=sys.stderr)
+        print(
+            f"error: Malbolge guest profile not found: {profile}",
+            file=sys.stderr,
+        )
         return 2
     if plugin is not None and not plugin.is_file():
         print(f"error: clang-tidy plugin not found: {plugin}", file=sys.stderr)
@@ -119,7 +131,10 @@ def main() -> int:
 
     verify = [str(clang_tidy), "--verify-config", f"--config-file={profile}"]
     if _run(verify) != 0:
-        print("error: Malbolge clang-tidy profile failed self-verification", file=sys.stderr)
+        print(
+            "error: Malbolge clang-tidy profile failed self-verification",
+            file=sys.stderr,
+        )
         return 2
 
     status = 0
