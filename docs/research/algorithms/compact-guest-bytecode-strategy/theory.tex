@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\title{Guest Bytecode Semantic Equivalence Model}
+\begin{document}
+\maketitle
+Let $P$ be a typed compiler-IR program and $B(P)$ its proposed guest bytecode.
+Let $R$ be the guest runtime implemented under Malbolge semantics. The required
+correctness relation is observational equivalence,
+\[
+  \operatorname{Obs}(P,x)=\operatorname{Obs}(R(B(P)),x)
+\]
+for every admitted input $x$ in the proved profile domain. The optimization
+question compares code size, compile cost, runtime work, and memory only after
+this relation is independently verified.
+\end{document}

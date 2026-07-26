@@ -1,0 +1,18 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\title{Self-Modifying Malbolge State-Graph Reduction Model}
+\begin{document}
+\maketitle
+Let $S$ be the admitted VM state space, $T:S\to S$ one exact Malbolge step,
+and $O:S\to\Omega$ the observable projection required by the target profile.
+A proposed reduction may merge states only under a stated equivalence $\sim$.
+The research target is a relation satisfying, over its proved domain,
+\[
+  s_1 \sim s_2 \Longrightarrow
+  O(T^n(s_1)) = O(T^n(s_2))\quad\text{for every admitted }n.
+\]
+The implementation must state which code cells, data cells, registers, I/O
+history, and profile facts are future-relevant before using a reduced state key.
+This document records the mathematical model; executable correspondence and
+proof obligations are separate evidence.
+\end{document}

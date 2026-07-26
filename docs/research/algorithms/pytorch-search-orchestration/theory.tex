@@ -1,0 +1,16 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\title{PyTorch search orchestration Research Model}
+\begin{document}
+\maketitle
+Let $C$ be the candidate space, $V(c,p)\in\{0,1\}$ the independent verifier
+for candidate $c$ under profile $p$, and $\mathbf{K}(c)$ the measured cost
+vector. Search may rank or generate candidates arbitrarily, but only
+\[
+  C_V = \{c\in C\mid V(c,p)=1\}
+\]
+is eligible for comparison. Optimization therefore selects verified candidates
+under explicit resource budgets rather than treating the search heuristic as a
+correctness authority. This file will be refined with algorithm-specific
+equations before the first claimed result.
+\end{document}

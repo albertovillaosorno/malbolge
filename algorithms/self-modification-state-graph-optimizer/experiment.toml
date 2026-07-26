@@ -1,0 +1,14 @@
+[experiment]
+id = "self-modification-state-graph-optimizer"
+seed = 0
+
+[challenge]
+family = "unassigned"
+difficulty = 1
+
+[budget]
+seconds = 1
+memory_mib = 128
+
+[verification]
+required = true
