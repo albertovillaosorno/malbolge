@@ -1,0 +1,51 @@
+---
+id: "guest-runtime-and-allocator"
+status: "pending"
+lane: "8"
+area: "c"
+todo: "TODO - Guest runtime and allocator"
+contract: "docs/technical/compiler/c-profile/guest-runtime-and-allocator.md"
+depends_on:
+  - "supported-libc-contract"
+  - "safe-rust-malbolge-vm"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+scope:
+  - "tools/tidy/"
+  - "libc/"
+  - "runtime/"
+  - "docs/technical/specification/"
+  - "tests/tidy/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Guest runtime and allocator
+
+## Objective
+
+Implement startup, calling convention, frames, allocation, streams, integer
+helpers, strings, scheduling primitives, and other runtime facilities as code
+that ultimately executes under Malbolge semantics.
+
+## Acceptance
+
+- Allocation, streams, arithmetic helpers, calling convention support, and other
+  runtime facilities execute inside guest Malbolge semantics rather than hidden
+  host callbacks.
+- Accepted and rejected C fixtures exercise the boundary, and diagnostics
+  identify the unsupported construct/profile requirement at source level.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `tools/tidy/`, `libc/`, `runtime/`,
+  `docs/technical/specification/`, `tests/tidy/`.
+- Required evidence: accepted/rejected source fixtures, source-located
+  diagnostics, and compiler/linter contract regression tests.
+- Prerequisite completion evidence: `supported-libc-contract`,
+  `safe-rust-malbolge-vm`.

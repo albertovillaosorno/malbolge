@@ -1,0 +1,46 @@
+---
+id: "exact-and-diagnostic-cycle-detection"
+status: "pending"
+lane: "6"
+area: "verification"
+todo: "TODO - Exact and diagnostic cycle detection"
+contract: "docs/technical/verifier/exact-and-diagnostic-cycle-detection.md"
+depends_on:
+  - "safe-rust-malbolge-vm"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "verifier/"
+  - "tests/differential/"
+  - "tests/exhaustive/"
+  - "tests/fuzz/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Exact and diagnostic cycle detection
+
+## Objective
+
+Provide optional repeated-state detection using collision-safe confirmation for
+exact results and clearly label probabilistic hash-only diagnostics.
+
+## Acceptance
+
+- Exact detection proves repeated full semantic state when feasible, while
+  diagnostic approximations are clearly labeled and can never claim a proof from
+  a lossy state key.
+- The verifier is tested against valid cases and deliberately mutated invalid
+  cases so acceptance and rejection boundaries are evidenced independently.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `verifier/`, `tests/differential/`,
+  `tests/exhaustive/`, `tests/fuzz/`.
+- Required evidence: known-valid fixtures, seeded invalid mutations,
+  counterexamples for rejected candidates, and deterministic replay.
+- Prerequisite completion evidence: `safe-rust-malbolge-vm`.

@@ -1,0 +1,49 @@
+---
+id: "supported-libc-contract"
+status: "pending"
+lane: "7"
+area: "c"
+todo: "TODO - Supported libc contract"
+contract: "docs/technical/compiler/c-profile/supported-libc-contract.md"
+depends_on:
+  - "deterministic-c-to-malbolge-abi"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+scope:
+  - "tools/tidy/"
+  - "libc/"
+  - "runtime/"
+  - "docs/technical/specification/"
+  - "tests/tidy/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Supported libc contract
+
+## Objective
+
+Define the guest C library surface: fixed-width integers, memory primitives,
+byte streams, strings, allocation, formatting, and later higher-level routines
+without hidden host shortcuts.
+
+## Acceptance
+
+- The supported libc surface states exact C signatures and deterministic guest
+  semantics and separates unsupported-today functionality from constructs
+  forbidden by the language/ABI model.
+- Accepted and rejected C fixtures exercise the boundary, and diagnostics
+  identify the unsupported construct/profile requirement at source level.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `tools/tidy/`, `libc/`, `runtime/`,
+  `docs/technical/specification/`, `tests/tidy/`.
+- Required evidence: accepted/rejected source fixtures, source-located
+  diagnostics, and compiler/linter contract regression tests.
+- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.

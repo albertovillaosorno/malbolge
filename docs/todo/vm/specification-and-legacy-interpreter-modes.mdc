@@ -1,0 +1,52 @@
+---
+id: "specification-and-legacy-interpreter-modes"
+status: "pending"
+lane: "6"
+area: "vm"
+todo: "TODO - Specification and legacy-interpreter execution modes"
+contract: "docs/technical/vm/specification-and-legacy-interpreter-modes.md"
+depends_on:
+  - "safe-rust-malbolge-vm"
+  - "historical-undefined-behavior-catalogue"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Specification and legacy-interpreter execution modes
+
+## Objective
+
+Make specification-conformant execution the only normal Malbolge semantics while
+retaining an explicit `legacy-ben` mode for archaeology, differential diagnosis,
+and historical-corpus study.
+
+## Acceptance
+
+- Normal execution follows the normative target specification and never enables
+  historical interpreter defects implicitly.
+- `legacy-ben` is explicit, safe to disable completely, and cannot satisfy
+  normal compiler/verifier conformance obligations.
+- Observable state, I/O, termination, diagnostics, and mode identity are covered
+  by positive and discrepancy fixtures.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: specification fixtures, explicit legacy discrepancy
+  fixtures, and differential traces against independent implementations; Ben
+  interpreter comparison is limited to its documented agreement domain.
+- Prerequisite completion evidence: `safe-rust-malbolge-vm`,
+  `historical-undefined-behavior-catalogue`.

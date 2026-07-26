@@ -1,0 +1,51 @@
+---
+id: "independent-pure-c-malbolge-vm"
+status: "pending"
+lane: "5"
+area: "vm"
+todo: "TODO - Independent pure C Malbolge VM"
+contract: "docs/technical/vm/independent-pure-c-malbolge-vm.md"
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "historical-malbolge-semantics-specification"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Independent pure C Malbolge VM
+
+## Objective
+
+Implement a small auditable pure-C VM independently from the stabilized
+specification rather than mechanically translating the Rust implementation.
+
+## Acceptance
+
+- The C VM is independently implemented from the stabilized specification, is
+  small enough to audit, and does not mechanically mirror Rust control structure
+  or share semantic implementation code.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `historical-malbolge-semantics-specification`.

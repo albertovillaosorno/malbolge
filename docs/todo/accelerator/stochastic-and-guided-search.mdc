@@ -1,0 +1,68 @@
+---
+id: "stochastic-and-guided-search"
+status: "pending"
+lane: "13"
+area: "accelerator"
+todo: "TODO - Stochastic and guided search"
+contract: "docs/research/algorithms/stochastic-and-guided-search/README.md"
+depends_on:
+  - "deterministic-cpu-optimizer"
+  - "configurable-accelerator-algorithm-adapters"
+  - "benchmark-and-statistical-evidence-protocol"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Stochastic and guided search
+
+## Objective
+
+Evaluate Monte Carlo, evolutionary, STOKE-like stochastic, learned, and hybrid
+search with deterministic final verification and reproducible research seeds.
+
+## Acceptance
+
+- Search variants run under identical budgets/seeds/corpora where applicable and
+  report time-to-first-verified candidate plus quality distributions, not only
+  the best lucky run.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `deterministic-cpu-optimizer`,
+  `configurable-accelerator-algorithm-adapters`,
+  `benchmark-and-statistical-evidence-protocol`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.

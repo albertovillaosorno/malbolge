@@ -1,0 +1,60 @@
+---
+id: "compilation-latency-performance-budget"
+status: "pending"
+lane: "13"
+area: "accelerator"
+todo: "TODO - Compilation latency performance budget"
+contract: "docs/technical/accelerator/compilation-latency-performance-budget.md"
+depends_on:
+  - "benchmark-and-statistical-evidence-protocol"
+  - "malbolge-layout-and-encoding-backend"
+  - "deterministic-cpu-optimizer"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Compilation latency performance budget
+
+## Objective
+
+Establish measured compile-time budgets aimed at seconds for cached or common
+programs and bounded practical times for novel complex searches on capable GPUs.
+Treat "seconds, not hours" as an engineering target backed by benchmarks rather
+than an unverified promise.
+
+## Acceptance
+
+- Compile-time budgets are expressed per workload/difficulty/resource class and
+  report cold, warm-cache, synthesis, verification, and stitching costs rather
+  than one opaque total.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence:
+  `benchmark-and-statistical-evidence-protocol`,
+  `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.

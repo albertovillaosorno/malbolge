@@ -37,7 +37,7 @@ selecting an implicit repository policy.
 ## Verification
 
 - Expected durable artifact surface: `jig.toml`, `.dependencies/`, `todo/`,
-  `ROADMAP.md`.
+  `TODO.md`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 

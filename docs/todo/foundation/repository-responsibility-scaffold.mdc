@@ -1,0 +1,51 @@
+---
+id: "repository-responsibility-scaffold"
+status: "pending"
+lane: "1"
+area: "foundation"
+todo: "TODO - Repository responsibility scaffold"
+contract: "docs/technical/architecture/repository-responsibility-model.md"
+depends_on:
+adr_paths:
+  - "docs/technical/adr/repository-responsibility-boundaries.md"
+scope:
+  - "TODO.md"
+  - "todo/"
+  - "docs/"
+  - "algorithms/"
+  - "compiler/"
+  - "vm/"
+  - "execution/"
+  - "accelerator/"
+  - "interop/"
+  - "tests/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Repository responsibility scaffold
+
+## Objective
+
+Create the responsibility-oriented topology, mixing implementation languages
+inside components and retaining only the minimal root `src/` surface required by
+Cargo composition.
+
+## Acceptance
+
+- The root topology contains only responsibility boundaries that are justified
+  by `TODO.md` or accepted documentation; implementation-language-only roots and accidental empty
+  directories are absent.
+- The authoritative rule/specification is deterministic, versionable, and does
+  not depend on undocumented host behavior.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `TODO.md`, `todo/`, `docs/`,
+  `algorithms/`, `compiler/`, `vm/`, `execution/`, `accelerator/`, `interop/`,
+  `tests/`.
+- Required evidence: reviewed authority text plus deterministic
+  parser/schema/governance tests for the declared boundary.

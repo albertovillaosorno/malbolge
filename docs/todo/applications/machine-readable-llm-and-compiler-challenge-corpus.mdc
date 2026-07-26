@@ -1,0 +1,65 @@
+---
+id: "machine-readable-llm-and-compiler-challenge-corpus"
+status: "pending"
+lane: "12"
+area: "applications"
+todo: "TODO - Machine-readable LLM and compiler challenge corpus"
+contract: "docs/research/methodology/machine-readable-agent-challenges.md"
+depends_on:
+  - "parametric-compiler-challenge-generator"
+  - "multi-objective-compiler-algorithm-evaluation-arena"
+  - "translation-validation"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "benchmarks/challenges/"
+  - "docs/research/"
+  - "verifier/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Machine-readable LLM and compiler challenge corpus
+
+## Objective
+
+Expose challenge definitions, expected semantics, constraints, oracle behavior,
+inputs, difficulty parameters, and evaluation results in a stable machine-
+readable format so compiler researchers and LLM-based code/algorithm agents can
+generate candidate passes or algorithms and submit them to the same verifier and
+benchmark arena. The corpus must test generated ideas without granting an LLM
+authority over correctness and must support deterministic replay of every
+admitted result.
+
+## Acceptance
+
+- The corpus schema exposes constraints/oracles/difficulty/results for external
+  agents while the repository verifier, never an LLM self-assessment, decides
+  correctness and replayability.
+- The end-to-end fixture demonstrates the intended behavior from admitted
+  source/input through the actual generated/executed Malbolge path.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `benchmarks/challenges/`, `docs/research/`,
+  `verifier/`.
+- Required evidence: reproducible build/run commands, expected outputs or
+  interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `parametric-compiler-challenge-generator`,
+  `multi-objective-compiler-algorithm-evaluation-arena`,
+  `translation-validation`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.

@@ -1,0 +1,51 @@
+---
+id: "cuda-exact-vm-adapter"
+status: "pending"
+lane: "8"
+area: "accelerator"
+todo: "TODO - CUDA exact VM adapter"
+contract: "docs/technical/accelerator/cuda-exact-vm-adapter.md"
+depends_on:
+  - "replaceable-accelerator-boundary"
+  - "batch-vm-execution"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - CUDA exact VM adapter
+
+## Objective
+
+Implement the first GPU adapter with exact discrete Malbolge semantics and
+massively parallel independent VM execution for candidate evaluation and test
+batches.
+
+## Acceptance
+
+- CUDA kernels implement exact discrete VM semantics for independent batches and
+  are differentially checked against the CPU reference across randomized and
+  boundary-heavy corpora.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
+  `batch-vm-execution`.

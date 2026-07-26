@@ -1,0 +1,56 @@
+---
+id: "cpu-vm-table-optimization"
+status: "pending"
+lane: "6"
+area: "vm"
+todo: "TODO - CPU VM table optimization"
+contract: "docs/technical/vm/cpu-vm-table-optimization.md"
+depends_on:
+  - "safe-rust-malbolge-vm"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "vm/"
+  - "execution/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - CPU VM table optimization
+
+## Objective
+
+Optimize scalar execution with precomputed rotate tables, position-dependent
+decode tables, efficient crazy-operation decomposition, cheap pointer updates,
+and benchmarked micro-optimizations without semantic drift.
+
+## Acceptance
+
+- Lookup tables or predecoded forms measurably reduce CPU work while
+  exhaustive/property checks prove equality to the scalar rotate/crazy/decode
+  definitions.
+- Observable state, I/O, termination, and diagnostics match the declared
+  semantic profile across positive, boundary, and adversarial fixtures.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
+  `benchmarks/interpreter/`.
+- Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
+  differential results against independent specification-conformant
+  implementations; the historical interpreter is compared only on its documented
+  agreement domain.
+- Prerequisite completion evidence: `safe-rust-malbolge-vm`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.

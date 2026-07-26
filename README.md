@@ -30,7 +30,7 @@ not used.
 `docs/cspell/` is editorial tooling support and remains under `docs/` without
 becoming a fifth authority family.
 
-See [`ROADMAP.md`](ROADMAP.md) for unfinished work and [`todo/roadmap/`](todo/roadmap/)
+See [`TODO.md`](TODO.md) for unfinished work and [`docs/todo/`](docs/todo/)
 for typed execution records.
 
 ## Historical interpreter

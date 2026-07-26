@@ -1,0 +1,50 @@
+---
+id: "translation-validation"
+status: "pending"
+lane: "11"
+area: "verification"
+todo: "TODO - Translation validation"
+contract: "docs/technical/verifier/translation-validation.md"
+depends_on:
+  - "typed-compiler-ir"
+  - "malbolge-layout-and-encoding-backend"
+  - "differential-vm-verification"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "verifier/"
+  - "tests/differential/"
+  - "tests/exhaustive/"
+  - "tests/fuzz/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Translation validation
+
+## Objective
+
+Verify compiled programs and blocks against source IR so optimizer and search
+components may remain untrusted. Prefer a small deterministic verifier over
+trusting a large heuristic backend.
+
+## Acceptance
+
+- Each compiled block/program is checked against its source IR contract after
+  optimization; an untrusted optimizer cannot make an invalid candidate
+  acceptable by its own verdict.
+- The verifier is tested against valid cases and deliberately mutated invalid
+  cases so acceptance and rejection boundaries are evidenced independently.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `verifier/`, `tests/differential/`,
+  `tests/exhaustive/`, `tests/fuzz/`.
+- Required evidence: known-valid fixtures, seeded invalid mutations,
+  counterexamples for rejected candidates, and deterministic replay.
+- Prerequisite completion evidence: `typed-compiler-ir`,
+  `malbolge-layout-and-encoding-backend`, `differential-vm-verification`.

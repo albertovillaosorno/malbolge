@@ -1,0 +1,50 @@
+---
+id: "deterministic-cross-backend-artifact-hashing"
+status: "pending"
+lane: "11"
+area: "applications"
+todo: "TODO - Deterministic cross-backend artifact hashing"
+contract: "docs/technical/contracts/deterministic-artifact-hashing.md"
+depends_on:
+  - "malbolge-layout-and-encoding-backend"
+  - "differential-vm-verification"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "docs/technical/examples/"
+  - "tests/applications/"
+  - "benchmarks/applications/"
+  - "runtime/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Deterministic cross-backend artifact hashing
+
+## Objective
+
+Require byte-identical outputs and hashes across backends for declared
+deterministic workloads, including versioned example artifacts and compiler-
+produced `.malbolge` artifacts where deterministic builds are promised.
+
+## Acceptance
+
+- For builds promised deterministic, CPU/GPU/optimizer/execution choices yield
+  byte-identical committed artifacts or a documented normalization rule whose
+  canonical hash is identical.
+- The end-to-end fixture demonstrates the intended behavior from admitted
+  source/input through the actual generated/executed Malbolge path.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/technical/examples/`, `tests/applications/`,
+  `benchmarks/applications/`, `runtime/`.
+- Required evidence: reproducible build/run commands, expected outputs or
+  interaction traces, artifact hashes, and end-to-end verification.
+- Prerequisite completion evidence: `malbolge-layout-and-encoding-backend`,
+  `differential-vm-verification`.

@@ -48,5 +48,5 @@ interoperability, verifier, and research ownership ambiguous.
 ## Implementation Notes
 
 Top-level directories must correspond to durable responsibilities represented by
-roadmap or accepted documentation. Empty speculative roots should not
+`TODO.md` or accepted documentation. Empty speculative roots should not
 accumulate.

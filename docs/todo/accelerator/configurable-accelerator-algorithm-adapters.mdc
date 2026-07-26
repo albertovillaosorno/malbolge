@@ -1,0 +1,55 @@
+---
+id: "configurable-accelerator-algorithm-adapters"
+status: "pending"
+lane: "8"
+area: "accelerator"
+todo: "TODO - Configurable accelerator algorithm adapters"
+contract: "docs/technical/accelerator/configurable-accelerator-algorithm-adapters.md"
+depends_on:
+  - "replaceable-accelerator-boundary"
+  - "algorithm-research-mirror-and-local-output-contract"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Configurable accelerator algorithm adapters
+
+## Objective
+
+Separate optimization/search strategy from accelerator hardware. Define common
+algorithm ports for enumerative, stochastic, Monte Carlo, evolutionary, learned,
+hybrid, pruning, and future strategies, and let CPU, CUDA, AMD, or later
+hardware adapters provide execution capacity for those strategies. Select
+algorithms and hardware through deterministic configuration with optional CLI
+overrides, record the exact combination in benchmark evidence, and permit side-
+by-side comparison without recompiling or modifying compiler semantics.
+
+## Acceptance
+
+- Hardware backend and search/optimization strategy are independently selected;
+  unsupported combinations fail explicitly and benchmark identity records both
+  dimensions.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
+  `algorithm-research-mirror-and-local-output-contract`.

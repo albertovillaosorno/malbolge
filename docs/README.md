@@ -31,7 +31,7 @@ fifth authority family and does not own product knowledge.
 
 ## Planning Promotion
 
-`ROADMAP.md` and `todo/roadmap/` describe unfinished work. Before product
+`TODO.md` and `docs/todo/` describe unfinished work. Before product
 implementation begins, settled planning decisions are promoted into the owning
 documentation family. TODO text is not copied as history; durable decisions,
 contracts, research questions, evidence boundaries, and source records are

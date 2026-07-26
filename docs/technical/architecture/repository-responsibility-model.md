@@ -25,7 +25,7 @@ trust boundary, or ownership rules stated by its governing decisions.
 ## Invariants
 
 - The root topology contains only responsibility boundaries that are justified
-  by the roadmap; implementation-language-only roots and accidental empty
+  by `TODO.md` or accepted documentation; implementation-language-only roots and accidental empty
   directories are absent.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
@@ -37,7 +37,7 @@ selecting an implicit repository policy.
 
 ## Verification
 
-- Expected durable artifact surface: `ROADMAP.md`, `todo/`, `docs/`,
+- Expected durable artifact surface: `TODO.md`, `todo/`, `docs/`,
   `algorithms/`, `compiler/`, `vm/`, `execution/`, `accelerator/`, `interop/`,
   `tests/`.
 - Required evidence: reviewed authority text plus deterministic

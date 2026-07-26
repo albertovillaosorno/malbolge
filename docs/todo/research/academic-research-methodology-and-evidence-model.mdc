@@ -1,0 +1,54 @@
+---
+id: "academic-research-methodology-and-evidence-model"
+status: "pending"
+lane: "1"
+area: "research"
+todo: "TODO - Academic research methodology and evidence model"
+contract: "docs/research/methodology/scientific-method.md"
+depends_on:
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "docs/research/"
+  - "algorithms/"
+  - "benchmarks/research/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Academic research methodology and evidence model
+
+## Objective
+
+Define the repository-wide scientific method for compiler research: falsifiable
+questions, preregistered hypotheses where practical, correctness/performance
+separation, negative and null result retention, threats to validity,
+replication, source quality, experiment provenance, and criteria for claiming
+that evidence supports or rejects a technique.
+
+## Acceptance
+
+- The methodology distinguishes research question, hypothesis, baseline,
+  falsification condition, correctness evidence, performance evidence,
+  negative/null result, replication, and threat to validity.
+- The research record separates observed evidence from interpretation and
+  preserves negative/null outcomes that affect the conclusion.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/research/`, `algorithms/`,
+  `benchmarks/research/`.
+- Required evidence: research question, hypotheses/baselines, source trail,
+  experiment manifest, raw-output provenance, results, and threats to validity.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.

@@ -1,0 +1,58 @@
+---
+id: "algorithm-research-mirror-and-local-output-contract"
+status: "pending"
+lane: "2"
+area: "research"
+todo: "TODO - Algorithm research mirror and local output contract"
+contract: "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+depends_on:
+  - "academic-research-methodology-and-evidence-model"
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "docs/research/"
+  - "algorithms/"
+  - "benchmarks/research/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Algorithm research mirror and local output contract
+
+## Objective
+
+Standardize the semantic mirror between `docs/research/algorithms/<id>/` and
+`algorithms/<id>/`, including stable algorithm identity, optional `theory.tex`,
+implementation/test layout, experiment configuration, and Git-ignored local
+`out/`. Define the explicit exception for ordinary product algorithms such as
+DOOM interoperability transformations, which require engineering evidence but
+not artificial academic capsules.
+
+## Acceptance
+
+- A stable algorithm ID resolves unambiguously between
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`, while ordinary
+  product algorithms are explicitly exempt from artificial research capsules.
+- The research record separates observed evidence from interpretation and
+  preserves negative/null outcomes that affect the conclusion.
+- The work states a falsifiable question or hypothesis, an explicit baseline,
+  and an observation that would reject or materially weaken the proposed
+  technique before performance conclusions are accepted.
+- If executable algorithm research is required, the stable ID is mirrored under
+  `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
+  engineering is not forced into that mirror.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `docs/research/`, `algorithms/`,
+  `benchmarks/research/`.
+- Required evidence: research question, hypotheses/baselines, source trail,
+  experiment manifest, raw-output provenance, results, and threats to validity.
+- Prerequisite completion evidence:
+  `academic-research-methodology-and-evidence-model`.
+- Research evidence pending: bibliography-backed context, experiment identity,
+  reproducible configuration, retained negative/null results, and a reviewed
+  conclusion with threats to validity.

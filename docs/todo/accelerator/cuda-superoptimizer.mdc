@@ -1,0 +1,59 @@
+---
+id: "cuda-superoptimizer"
+status: "pending"
+lane: "14"
+area: "accelerator"
+todo: "TODO - CUDA superoptimizer"
+contract: "docs/technical/accelerator/cuda-superoptimizer.md"
+depends_on:
+  - "cuda-exact-vm-adapter"
+  - "stochastic-and-guided-search"
+  - "search-pruning-and-state-canonicalization"
+  - "translation-validation"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "accelerator/"
+  - "algorithms/"
+  - "optimizer/"
+  - "benchmarks/accelerator/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - CUDA superoptimizer
+
+## Objective
+
+Implement GPU-parallel candidate synthesis, pruning, equivalence testing, cost
+evaluation, and verified block stitching.
+
+## Acceptance
+
+- GPU candidate generation/evaluation can be disabled without changing
+  correctness, and every returned winning block is revalidated by the trusted
+  verifier before catalog or compiler admission.
+- A CPU/reference path remains sufficient for correctness, and accelerator
+  failure/unavailability changes performance rather than semantic acceptance.
+- Performance conclusions use equivalent workloads and report raw-sample
+  provenance, resource budgets, dispersion/uncertainty, and failure/success
+  behavior rather than only a best-case number.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `todo/completed/` and remove
+  the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
+- Required evidence: CPU/reference differential results, device/resource
+  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Prerequisite completion evidence: `cuda-exact-vm-adapter`,
+  `stochastic-and-guided-search`, `search-pruning-and-state-canonicalization`,
+  `translation-validation`.
+- Performance evidence pending: raw measurements plus a reproducible
+  scaling/statistical summary tied to exact workload and hardware/software
+  identity.
