@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-07-27T03:13:42.1349782-06:00",
+  "commit": "2c2365f143e9bb2335a416b417f00f6bfc97d324",
+  "short_commit": "2c2365f",
+  "benchmark_command": ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe run --release --bin state_graph_benchmark --quiet",
+  "sample_count": 15,
+  "profile": "malbolge-2026.2",
+  "memory_words": 4782969,
+  "word_trits": 14,
+  "benchmark_scope_matches_head": true,
+  "working_tree_note": "Unrelated .gitignore/DOOM interoperability edits were present and excluded from benchmark-owned/runtime scope.",
+  "cpu": {
+    "Name": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+    "Manufacturer": "GenuineIntel",
+    "NumberOfCores": 12,
+    "NumberOfLogicalProcessors": 24,
+    "MaxClockSpeed": 2601
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200",
+    "OSArchitecture": "64-bit"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "results": [
+    {
+      "implementation": "insert-exact",
+      "samples": 15,
+      "minimum_ns": 26095100,
+      "median_ns": 26241400,
+      "maximum_ns": 26473400,
+      "checksum": "4625247251222736821",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "replay-exact",
+      "samples": 15,
+      "minimum_ns": 30439600,
+      "median_ns": 30756600,
+      "maximum_ns": 32390900,
+      "checksum": "12549573586291003927",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "snapshot",
+      "samples": 15,
+      "minimum_ns": 6351000,
+      "median_ns": 7194700,
+      "maximum_ns": 9097100,
+      "checksum": "15378766449629180008",
+      "checksum_count": 1
+    }
+  ]
+}

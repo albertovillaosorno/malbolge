@@ -30,3 +30,10 @@ checkpoints, including the current 14-trit/4,782,969-word profile. It consumes t
 runtime checkpoint directly, hashes only for bucket selection, and confirms every
 merge with full checkpoint equality. This is a correctness/deoptimization oracle,
 not a claim that full-checkpoint graph storage is economical.
+
+The exact current-checkpoint cost is measured by `bench.rs`. Versioned evidence
+under `benchmarks/research/state-graph/evidence/2026-07-27-windows-x86_64/`
+records 15 samples per operation. The current host median is 7.19 ms to clone a
+checkpoint, 26.24 ms to digest/insert a prepared checkpoint, and 30.76 ms to
+digest/confirm an exact replay. These values reject full-checkpoint copying and
+hashing as the default per-step production graph representation on this host.

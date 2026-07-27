@@ -109,11 +109,20 @@ constant digest does not merge checkpoints with different input. This extends th
 correctness oracle to 4,782,969-word current states without duplicating checkpoint
 validation.
 
+The exact current checkpoint cost is now measured independently at commit
+`2c2365f`. Fifteen post-warmup samples per operation give medians of 7,194,700 ns
+for full `snapshot_state()` cloning, 26,241,400 ns for digest/insertion of a
+prepared checkpoint, and 30,756,600 ns for digest plus exact replay confirmation.
+Every operation retained one checksum across all samples. Raw samples, host,
+toolchain, command, and profile geometry are versioned under
+`benchmarks/research/state-graph/evidence/2026-07-27-windows-x86_64/`.
+
 These results do not justify removing the live input cursor, changing the
-remaining suffix, removing live output history, reducing live memory/registers,
-or claiming a performance improvement. Full current checkpoints are explicitly a
-correctness/deoptimization baseline; their copy/hash/storage cost must be measured
-before any production graph architecture adopts them.
+remaining suffix, removing live output history, or reducing live memory/registers
+without proof. They do reject repeated full-checkpoint copy/hash as the default
+per-step production graph representation on the measured host. The exact current
+checkpoint remains the correctness/reconstruction oracle against which a smaller
+representation must be validated.
 
 ## Threats to Validity
 

@@ -609,9 +609,11 @@ reductions: consumed input-prefix contents may be removed while cursor/suffix
 stay exact, and terminated states may retain only profile/output/termination.
 The input reduction exhausts all 256 first-byte values; terminal fixtures vary
 memory/register/input state. Exact identity also consumes validated current
-4,782,969-word checkpoints with collision confirmation. Live-state
-memory/register/output reductions, scalable checkpoint cost reduction, broader
-mutation-history collapse, and native-region shortcuts remain open.
+4,782,969-word checkpoints with collision confirmation; measured medians are
+7.19 ms snapshot, 26.24 ms insert, and 30.76 ms replay on the recorded host, so
+full copy/hash is rejected as the expected per-step representation. Live-state
+memory/register/output reductions, delta memory, broader mutation-history
+collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 
