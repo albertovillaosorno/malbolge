@@ -68,6 +68,9 @@ def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
 
     assert result.accumulator == INITIAL_ACCUMULATOR
     assert result.code_pointer == 1
+    assert isinstance(request.memory, array)
+    assert result.memory is not request.memory
+    assert request.memory[0] == NO_OP_CELL
     assert result.data_pointer == EXPECTED_DATA_POINTER
     assert result.error is RunError.NONE
     assert result.input_consumed == 0

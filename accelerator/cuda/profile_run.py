@@ -7,7 +7,6 @@ from __future__ import annotations
 from array import array
 import ctypes
 from dataclasses import dataclass
-import mmap
 from time import perf_counter_ns
 from typing import Final
 from typing import Self
@@ -112,14 +111,16 @@ class _WordBuffer:
 
 @dataclass(frozen=True, slots=True)
 class _MemoryBuffer:
-    owner: array[int] | mmap.mmap
+    owner: array[int]
     view: HostWords
 
 
 @dataclass(frozen=True, slots=True)
 class _HostBatch:
+    count: int
     states: _WordBuffer
-    memories: _MemoryBuffer
+    memories: _MemoryBuffer | None
+    memory_bytes: int
     shared_memory_source: _WordBuffer | None
     inputs: _WordBuffer
     outputs: _WordBuffer
@@ -376,13 +377,9 @@ class CudaProfileRunAdapter:
             start = perf_counter_ns()
             self._runtime.launch(self._kernel, tuple(pointers), len(requests))
             phase.kernel_ns += perf_counter_ns() - start
-            self._profile_downloads(hosts, pointers, phase)
+            memories = self._profile_downloads(hosts, pointers, phase)
             start = perf_counter_ns()
-            results = _decode_results(
-                self._geometry,
-                hosts,
-                count=len(requests),
-            )
+            results = _decode_results(hosts, memories)
             phase.decode_ns += perf_counter_ns() - start
             return results
         finally:
@@ -395,12 +392,21 @@ class CudaProfileRunAdapter:
         hosts: _HostBatch,
         pointers: list[int],
         phase: _PhaseCounter,
-    ) -> None:
+    ) -> tuple[array[int], ...]:
+        start = perf_counter_ns()
+        memories = _result_memories(self._geometry, hosts)
+        phase.decode_ns += perf_counter_ns() - start
         start = perf_counter_ns()
         self._runtime.copy_from_device(hosts.states.view, pointers[0])
-        self._runtime.copy_from_device(hosts.memories.view, pointers[1])
+        _download_result_memories(
+            self._runtime,
+            self._geometry,
+            device_pointer=pointers[1],
+            memories=memories,
+        )
         self._runtime.copy_from_device(hosts.outputs.view, pointers[3])
         phase.download_ns += perf_counter_ns() - start
+        return memories
 
     def _profile_upload(
         self,
@@ -425,7 +431,7 @@ class CudaProfileRunAdapter:
         phase: _PhaseCounter,
     ) -> int:
         start = perf_counter_ns()
-        pointer = self._runtime.allocate(ctypes.sizeof(hosts.memories.view))
+        pointer = self._runtime.allocate(hosts.memory_bytes)
         phase.allocate_ns += perf_counter_ns() - start
         try:
             start = perf_counter_ns()
@@ -464,14 +470,13 @@ class CudaProfileRunAdapter:
             pointers.extend((_copy_words(self._runtime, hosts.inputs),))
             pointers.extend((_copy_words(self._runtime, hosts.outputs),))
             self._runtime.launch(self._kernel, tuple(pointers), len(requests))
-            self._runtime.copy_from_device(hosts.states.view, pointers[0])
-            self._runtime.copy_from_device(hosts.memories.view, pointers[1])
-            self._runtime.copy_from_device(hosts.outputs.view, pointers[3])
-            return _decode_results(
+            memories = _download_complete_results(
+                self._runtime,
                 self._geometry,
-                hosts,
-                count=len(requests),
+                hosts=hosts,
+                pointers=pointers,
             )
+            return _decode_results(hosts, memories)
         finally:
             _free_all(self._runtime, pointers)
 
@@ -491,7 +496,6 @@ class CudaProfileRunAdapter:
                 hosts = _build_host_batch(
                     self._geometry,
                     chunk_requests,
-                    lazy_shared_memory=True,
                     output_budget_multiplier=max_runs,
                 )
                 pointers = _upload_host_batch(self._runtime, hosts)
@@ -656,25 +660,13 @@ class CudaProfileRunSession:
         self._ensure_usable()
         results: list[ProfileRunResult] = []
         for chunk in self._chunks:
-            self._context.runtime.copy_from_device(
-                chunk.hosts.states.view,
-                chunk.pointers[0],
+            memories = _download_complete_results(
+                self._context.runtime,
+                self._context.geometry,
+                hosts=chunk.hosts,
+                pointers=chunk.pointers,
             )
-            self._context.runtime.copy_from_device(
-                chunk.hosts.memories.view,
-                chunk.pointers[1],
-            )
-            self._context.runtime.copy_from_device(
-                chunk.hosts.outputs.view,
-                chunk.pointers[3],
-            )
-            results.extend(
-                _decode_results(
-                    self._context.geometry,
-                    chunk.hosts,
-                    count=chunk.count,
-                )
-            )
+            results.extend(_decode_results(chunk.hosts, memories))
         return tuple(results)
 
     def _ensure_usable(self) -> None:
@@ -797,16 +789,14 @@ def _build_host_batch(
     geometry: ProfileRunGeometry,
     requests: tuple[ProfileRunRequest, ...],
     *,
-    lazy_shared_memory: bool = False,
     output_budget_multiplier: int = 1,
 ) -> _HostBatch:
     states, inputs, outputs = _encode_variable_state(
         requests,
         output_budget_multiplier=output_budget_multiplier,
     )
-    memories, shared_memory_source = _build_memory_buffers(
-        requests,
-        lazy_shared_memory=lazy_shared_memory,
+    memories, shared_memory_source, memory_bytes = _build_memory_buffers(
+        requests
     )
     if not inputs:
         inputs.append(0)
@@ -815,12 +805,14 @@ def _build_host_batch(
     expected_memory_bytes = (
         geometry.memory_words * len(requests) * _DEVICE_WORD_BYTES
     )
-    if ctypes.sizeof(memories.view) != expected_memory_bytes:
+    if memory_bytes != expected_memory_bytes:
         message = "profile host memory assembly invariant failed"
         raise AcceleratorExecutionError(message)
     return _HostBatch(
+        count=len(requests),
         states=_word_buffer(states),
         memories=memories,
+        memory_bytes=memory_bytes,
         shared_memory_source=shared_memory_source,
         inputs=_word_buffer(inputs),
         outputs=_word_buffer(outputs),
@@ -829,16 +821,16 @@ def _build_host_batch(
 
 def _build_memory_buffers(
     requests: tuple[ProfileRunRequest, ...],
-    *,
-    lazy_shared_memory: bool,
-) -> tuple[_MemoryBuffer, _WordBuffer | None]:
+) -> tuple[_MemoryBuffer | None, _WordBuffer | None, int]:
     first = requests[0].memory
+    if len(requests) == 1:
+        owner = _owned_memory_source(first)
+        buffer = _memory_buffer(owner)
+        return buffer, None, ctypes.sizeof(buffer.view)
     if all(request.memory is first for request in requests):
-        return _build_shared_memory_buffers(
-            first,
-            len(requests),
-            lazy_shared_memory=lazy_shared_memory,
-        )
+        source = _memory_source(first)
+        memory_bytes = len(source) * len(requests) * _DEVICE_WORD_BYTES
+        return None, _word_buffer(source), memory_bytes
     memories = array("I")
     for request in requests:
         memory = request.memory
@@ -846,31 +838,20 @@ def _build_memory_buffers(
             memories.extend(memory.words())
         else:
             memories.extend(memory)
-    return _memory_buffer(memories), None
-
-
-def _build_shared_memory_buffers(
-    memory: array[int] | ProfileMemoryImage,
-    count: int,
-    *,
-    lazy_shared_memory: bool,
-) -> tuple[_MemoryBuffer, _WordBuffer]:
-    if lazy_shared_memory:
-        source = _memory_source(memory)
-        memories = _mapped_memory_buffer(len(source) * count)
-        return memories, _word_buffer(source)
-    if isinstance(memory, ProfileMemoryImage):
-        owner = memory.repeat_words(count)
-    else:
-        owner = memory * count
-    memories = _memory_buffer(owner)
-    return memories, _word_prefix_buffer(owner, len(memory))
+    buffer = _memory_buffer(memories)
+    return buffer, None, ctypes.sizeof(buffer.view)
 
 
 def _memory_source(memory: array[int] | ProfileMemoryImage) -> array[int]:
     if isinstance(memory, ProfileMemoryImage):
         return memory.copy_words()
     return memory
+
+
+def _owned_memory_source(memory: array[int] | ProfileMemoryImage) -> array[int]:
+    if isinstance(memory, ProfileMemoryImage):
+        return memory.copy_words()
+    return array("I", memory)
 
 
 def _upload_host_batch(
@@ -890,7 +871,7 @@ def _upload_host_batch(
 
 
 def _copy_memories(runtime: CudaRuntime, hosts: _HostBatch) -> int:
-    pointer = runtime.allocate(ctypes.sizeof(hosts.memories.view))
+    pointer = runtime.allocate(hosts.memory_bytes)
     try:
         _initialize_device_memories(runtime, pointer, hosts)
     except AcceleratorExecutionError:
@@ -906,10 +887,14 @@ def _initialize_device_memories(
 ) -> None:
     source = hosts.shared_memory_source
     if source is None:
-        runtime.copy_to_device(pointer, hosts.memories.view)
+        memories = hosts.memories
+        if memories is None:
+            message = "profile memory upload has no host source"
+            raise AcceleratorExecutionError(message)
+        runtime.copy_to_device(pointer, memories.view)
         return
     stride_bytes = ctypes.sizeof(source.view)
-    total_bytes = ctypes.sizeof(hosts.memories.view)
+    total_bytes = hosts.memory_bytes
     if stride_bytes == 0 or total_bytes % stride_bytes != 0:
         message = "profile shared-memory replication invariant failed"
         raise AcceleratorExecutionError(message)
@@ -929,6 +914,51 @@ def _copy_words(runtime: CudaRuntime, host: _WordBuffer) -> int:
         runtime.free(pointer)
         raise
     return pointer
+
+
+def _result_memories(
+    geometry: ProfileRunGeometry,
+    hosts: _HostBatch,
+) -> tuple[array[int], ...]:
+    if hosts.count == 1 and hosts.memories is not None:
+        return (hosts.memories.owner,)
+    return tuple(
+        array("I", [0]) * geometry.memory_words for _ in range(hosts.count)
+    )
+
+
+def _download_result_memories(
+    runtime: CudaRuntime,
+    geometry: ProfileRunGeometry,
+    *,
+    device_pointer: int,
+    memories: tuple[array[int], ...],
+) -> None:
+    stride_bytes = geometry.memory_words * _DEVICE_WORD_BYTES
+    for index, memory in enumerate(memories):
+        runtime.copy_from_device(
+            _word_buffer(memory).view,
+            device_pointer + (index * stride_bytes),
+        )
+
+
+def _download_complete_results(
+    runtime: CudaRuntime,
+    geometry: ProfileRunGeometry,
+    *,
+    hosts: _HostBatch,
+    pointers: Sequence[int],
+) -> tuple[array[int], ...]:
+    memories = _result_memories(geometry, hosts)
+    runtime.copy_from_device(hosts.states.view, pointers[0])
+    _download_result_memories(
+        runtime,
+        geometry,
+        device_pointer=pointers[1],
+        memories=memories,
+    )
+    runtime.copy_from_device(hosts.outputs.view, pointers[3])
+    return memories
 
 
 def _decode_observations(
@@ -957,58 +987,38 @@ def _decode_observations(
 
 
 def _decode_results(
-    geometry: ProfileRunGeometry,
     hosts: _HostBatch,
-    *,
-    count: int,
+    memories: tuple[array[int], ...],
 ) -> tuple[ProfileRunResult, ...]:
     states = hosts.states.owner
     outputs = hosts.outputs.owner
-    memory_bytes = memoryview(hosts.memories.view).cast("B")
+    if len(memories) != hosts.count:
+        message = "profile result memory count invariant failed"
+        raise AcceleratorExecutionError(message)
     results: list[ProfileRunResult] = []
-    try:
-        for index in range(count):
-            base = index * STATE_WORDS
-            memory_base = index * geometry.memory_words
-            output_offset = states[base + 6]
-            output_len = states[base + 7]
-            results.append(
-                ProfileRunResult(
-                    accumulator=states[base],
-                    code_pointer=states[base + 1],
-                    data_pointer=states[base + 2],
-                    error=RunError(states[base + _ERROR_INDEX]),
-                    error_pointer=states[base + _ERROR_POINTER_INDEX],
-                    error_value=states[base + _ERROR_VALUE_INDEX],
-                    input_consumed=states[base + 5],
-                    memory=_decode_memory(
-                        memory_bytes,
-                        memory_base,
-                        geometry.memory_words,
-                    ),
-                    output_bytes=tuple(
-                        outputs[output_offset : output_offset + output_len]
-                    ),
-                    status=RunStatus(states[base + _STATUS_INDEX]),
-                    steps=states[base + _STEPS_INDEX],
-                    termination=StepTermination(states[base + 10]),
-                )
+    for index, memory in enumerate(memories):
+        base = index * STATE_WORDS
+        output_offset = states[base + 6]
+        output_len = states[base + 7]
+        results.append(
+            ProfileRunResult(
+                accumulator=states[base],
+                code_pointer=states[base + 1],
+                data_pointer=states[base + 2],
+                error=RunError(states[base + _ERROR_INDEX]),
+                error_pointer=states[base + _ERROR_POINTER_INDEX],
+                error_value=states[base + _ERROR_VALUE_INDEX],
+                input_consumed=states[base + 5],
+                memory=memory,
+                output_bytes=tuple(
+                    outputs[output_offset : output_offset + output_len]
+                ),
+                status=RunStatus(states[base + _STATUS_INDEX]),
+                steps=states[base + _STEPS_INDEX],
+                termination=StepTermination(states[base + 10]),
             )
-    finally:
-        memory_bytes.release()
+        )
     return tuple(results)
-
-
-def _decode_memory(
-    memory_bytes: memoryview,
-    word_offset: int,
-    word_count: int,
-) -> array[int]:
-    byte_start = word_offset * _DEVICE_WORD_BYTES
-    byte_stop = byte_start + (word_count * _DEVICE_WORD_BYTES)
-    result = array("I")
-    result.frombytes(memory_bytes[byte_start:byte_stop])
-    return result
 
 
 def _free_resident_chunks(
@@ -1024,34 +1034,9 @@ def _free_all(runtime: CudaRuntime, pointers: list[int]) -> None:
         runtime.free(pointers.pop())
 
 
-def _mapped_memory_buffer(word_count: int) -> _MemoryBuffer:
-    byte_count = word_count * _DEVICE_WORD_BYTES
-    try:
-        owner = mmap.mmap(-1, byte_count)
-    except (MemoryError, OSError, OverflowError) as error:
-        message = f"profile host memory mapping failed: {error}"
-        raise AcceleratorExecutionError(message) from error
-    view_type = ctypes.c_uint32 * word_count
-    try:
-        view = view_type.from_buffer(owner)
-    except (BufferError, ValueError) as error:
-        owner.close()
-        message = f"profile host memory view failed: {error}"
-        raise AcceleratorExecutionError(message) from error
-    return _MemoryBuffer(owner=owner, view=view)
-
-
 def _memory_buffer(owner: array[int]) -> _MemoryBuffer:
     view_type = ctypes.c_uint32 * len(owner)
     return _MemoryBuffer(owner=owner, view=view_type.from_buffer(owner))
-
-
-def _word_prefix_buffer(
-    owner: array[int],
-    word_count: int,
-) -> _WordBuffer:
-    view_type = ctypes.c_uint32 * word_count
-    return _WordBuffer(owner=owner, view=view_type.from_buffer(owner))
 
 
 def _word_buffer(owner: array[int]) -> _WordBuffer:
