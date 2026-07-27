@@ -136,6 +136,15 @@ original phase baseline, batch 128 is now 7.39x faster and reaches about
 201.26 VMs/s. Host-buffer construction is again the dominant measured phase;
 shared immutable memory identity inside a batch is the next candidate.
 
+Batch-local shared-memory reuse is retained under
+`benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-shared-memory-rtx4060/`.
+The batch-128 median falls again from 636,002,300 ns to 118,917,500 ns and reaches
+about 1,076.38 VMs/s, roughly 39.5x lower wall time than the original phase
+baseline. Complete result decode is now the dominant phase (~75.1%), while the
+kernel remains ~0.10%. This selects an actually resident continuation/snapshot
+boundary: continue VM state on device and materialize all 59,049 words only when
+a host snapshot is explicitly requested.
+
 ## Threats to Validity
 
 Initial threats include challenge-family bias, hardware/toolchain sensitivity,

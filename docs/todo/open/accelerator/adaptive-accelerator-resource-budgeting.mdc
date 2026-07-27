@@ -105,6 +105,11 @@ example probe points, not supported-range endpoints.
   reduces batch-128 median wall time to 636,002,300 ns (7.39x faster than the
   original phase baseline) and reaches about 201.26 VMs/s. Host construction is
   again the largest phase.
-- Performance evidence remains incomplete: shared-memory batch preparation,
-  current-profile execution, and broader live-hardware measurements are still
-  required.
+- Shared-memory batch evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-shared-memory-rtx4060/`
+  reaches about 1,076.38 VMs/s at batch 128 and lowers wall time about 39.5x versus
+  the original phase baseline. Complete Python result materialization is now the
+  dominant phase (~75%).
+- Performance evidence remains incomplete: persistent resident continuation with
+  explicit snapshot materialization, current-profile execution, and broader
+  live-hardware measurements are still required.
