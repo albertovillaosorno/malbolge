@@ -51,8 +51,10 @@ normative 1998 specification.
 - Current differential evidence is `tests/vm/differential.rs`, which recomputes
   semantic signature `0xa74cec75a875c85a` independently from the Rust API. The
   same signature is produced and asserted by `tests/vm/c_conformance.c`.
-- Implementation, tracing, instruction coverage, and independent differential
-  evidence are present. Completion remains gated on the declared repository-wide
+- Classic and profile-driven implementation, tracing, instruction coverage, and
+  independent differential evidence are present. Current profile tracing records
+  exact profile identity/EOF and rejected-transition atomicity without duplicating
+  the transition engine. Completion remains gated on the declared repository-wide
   `jig validate --root .` command passing at retirement time.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.

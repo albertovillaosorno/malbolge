@@ -33,10 +33,14 @@ The safe-Rust classic VM is implemented under `vm/` with exact ten-trit words,
 fixed memory, deterministic loading, byte I/O, atomic single-step transitions,
 bounded execution, and optional in-memory trace hooks.
 
-The public trace surface records before/after observations, decoded instruction
-bytes, committed I/O, termination, and rejected transition results without
-changing guest semantics. Memory-transition correctness remains directly covered
-by instruction and atomicity fixtures rather than duplicated by the trace layer.
+The classic public trace surface records before/after observations, decoded
+instruction bytes, committed I/O, termination, and rejected transition results
+without changing guest semantics. `ProfileMachine` now exposes the parallel
+`ProfileStepTrace` surface with exact canonical profile identity and profile-width
+`u32` registers/cells. `TraceInput::EndOfInput` is profile-neutral: current traces
+record EOF accumulator 4,782,968 rather than inheriting the classic 59,048 value.
+Memory-transition correctness remains directly covered by instruction and
+atomicity fixtures rather than duplicated by either trace layer.
 
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
@@ -75,6 +79,8 @@ command passes at retirement time.
   of the Rust VM.
 - `ProfileMachine` generalizes only profile-width geometry and preserves the same
   sequential/self-modifying semantic core; it never changes classic `Machine`.
+- Classic and profiled trace hooks wrap their respective real step engines and
+  therefore cannot become an alternate transition implementation.
 
 ## Failure Behavior
 
@@ -95,10 +101,15 @@ memory, input consumption, or output.
   `0xa74cec75a875c85a` from the public Rust API.
 - `tests/vm/c_conformance.c` independently produces and asserts the same
   signature from the pure-C VM.
+- `tests/vm/profile_tracing.rs` traces current-profile EOF/output/halt, proves
+  traced and plain current execution agree on outcome, I/O, registers and sampled
+  memory, and exercises a real 14-trit recurrence jump whose rejected encryption
+  target remains observationally atomic.
 - `tests/compatibility/specification/` contains versioned specification fixtures
   for historical disagreement edges and byte-I/O semantics.
-- Trace hooks are observational only: traced and untraced executions over the
-  same state and input must produce identical outcomes, output, and final state.
+- Trace hooks are observational only: classic and profile-driven traced/untraced
+  executions over the same state and input must produce identical observable
+  outcomes, output, and final state.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - The historical interpreter is compared only on its documented agreement

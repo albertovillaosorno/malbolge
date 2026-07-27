@@ -56,6 +56,7 @@ mod memory;
 mod mode;
 mod profile;
 mod profile_machine;
+mod profile_trace;
 mod trace;
 mod word;
 
@@ -88,6 +89,7 @@ pub use profile::{
 pub use profile_machine::{
     ProfileLoadError, ProfileMachine, ProfileMachineError, ProfileRegisters,
 };
+pub use profile_trace::{ProfileMachineObservation, ProfileStepTrace};
 pub use trace::{MachineObservation, StepTrace, TraceInput};
 pub use word::{MAX_WORD_VALUE, MEMORY_WORDS, Word, WordError};
 const CRAZY_CHUNK_TRITS: u8 = 5;

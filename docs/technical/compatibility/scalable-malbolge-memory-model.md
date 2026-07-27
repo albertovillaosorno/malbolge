@@ -129,7 +129,7 @@ implicit fifteenth trit can enter the result.
 They still reject `malbolge-2026.2` through `safe-rust-classic` preflight rather
 than silently changing classic types or loader behavior. `ProfileMachine` is the
 explicit runtime surface for current scalable execution. Compiler, batch/logical
-orchestration, tracing, native tiers, and accelerators are not yet universally
+orchestration, native tiers, and accelerators are not yet universally
 profile-driven and remain downstream adoption work.
 
 ## Invariants
@@ -167,6 +167,8 @@ falls back to 59,049 words, or borrows host pointer behavior.
 - The same Rust suite executes `ProfileMachine` under `malbolge-1998` and compares
   all 59,049 final memory words, registers, I/O, EOF behavior, and termination
   against the classic `Machine`.
+- `tests/vm/profile_tracing.rs` locks current-profile trace identity, current EOF,
+  trace inertness, and atomic rejection from a real 14-trit recurrence target.
 
 ## References
 

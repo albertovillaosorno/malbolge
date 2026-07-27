@@ -364,8 +364,9 @@ Remove the practical 59,049-word ceiling from current Malbolge while retaining
 `malbolge-1998` as exact historical conformance. Schema v2 selects the 14-trit
 `malbolge-2026.2` geometry with 4,782,969 directly addressed words, and the new
 safe-Rust `ProfileMachine` executes that profile explicitly while the classic
-facade remains ten-trit. Compiler, tracing, batch/logical, native, and accelerator
-consumers still need profile-driven adoption rather than silent fallback.
+facade remains ten-trit. Current-profile tracing is also explicit and
+profile-aware; compiler, batch/logical, native, and accelerator consumers still
+need profile-driven adoption rather than silent fallback.
 
 ### TODO - Historical-interpreter fallback capsule
 

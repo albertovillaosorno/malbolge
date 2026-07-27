@@ -19,6 +19,8 @@ scope:
   - "vm/src/profile_machine.rs"
   - "vm/build.rs"
   - "tests/vm/profile_machine.rs"
+  - "vm/src/profile_trace.rs"
+  - "tests/vm/profile_tracing.rs"
 validation:
   - "python scripts/validate/target_profile.py"
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features profile_machine"
@@ -58,8 +60,10 @@ host architecture.
   continue to reject current artifacts rather than changing historical types.
 - Full 1998 differential fixtures compare every final memory word plus registers,
   I/O, EOF, and termination between classic and profile-driven interpreters.
-- Compiler, batch/logical orchestration, tracing, native tiers, and accelerators
-  remain downstream profile-consumer work rather than memory-model ambiguity.
+- Current profile tracing is now profile-driven and records exact profile/EOF plus
+  atomic rejection evidence. Compiler, batch/logical orchestration, native tiers,
+  and accelerators remain downstream profile-consumer work rather than
+  memory-model ambiguity.
 
 ## Acceptance
 

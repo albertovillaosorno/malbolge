@@ -53,7 +53,8 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
     CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileRequirementError, RunOutcome, StepOutcome, Termination, XLAT2,
+    ProfileMachineObservation, ProfileRequirementError, ProfileStepTrace,
+    RunOutcome, StepOutcome, Termination, TraceInput, XLAT2,
     crazy_chunk_lookup, preflight_profile, safe_rust_profiled_capability,
 };
 
@@ -296,6 +297,15 @@ impl ProfileMachine {
         self.read(address)
     }
 
+    const fn observation(&self) -> ProfileMachineObservation {
+        ProfileMachineObservation {
+            input_consumed: self.input_cursor,
+            output_len: self.output.len(),
+            registers: self.registers,
+            termination: self.termination,
+        }
+    }
+
     /// Returns all bytes emitted by committed output instructions.
     #[must_use]
     pub fn output(&self) -> &[u8] {
@@ -412,6 +422,39 @@ impl ProfileMachine {
         Ok(RunOutcome::BudgetExhausted { steps })
     }
 
+    /// Executes at most `step_budget` profile-driven steps with observation.
+    ///
+    /// The observer receives exactly one immutable [`ProfileStepTrace`] for
+    /// each requested step. Observation cannot mutate machine state or
+    /// profile choice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when any transition cannot commit. A
+    /// failing requested step is delivered to `observer` before the error
+    /// returns.
+    pub fn run_traced<Observer>(
+        &mut self,
+        step_budget: usize,
+        observer: &mut Observer,
+    ) -> Result<RunOutcome, ProfileMachineError>
+    where
+        Observer: FnMut(&ProfileStepTrace),
+    {
+        if let Some(reason) = self.termination {
+            return Ok(RunOutcome::Terminated { reason, steps: 0 });
+        }
+        let mut steps = 0usize;
+        while steps < step_budget {
+            let outcome = self.step_traced(observer)?;
+            steps = steps.saturating_add(1);
+            if let StepOutcome::Terminated(reason) = outcome {
+                return Ok(RunOutcome::Terminated { reason, steps });
+            }
+        }
+        Ok(RunOutcome::BudgetExhausted { steps })
+    }
+
     /// Executes one atomic normative profile-driven transition.
     ///
     /// # Errors
@@ -437,6 +480,69 @@ impl ProfileMachine {
         let encrypted = self.validate_encryption(&plan)?;
         self.commit(plan, encrypted)?;
         Ok(StepOutcome::Continued)
+    }
+
+    /// Executes one atomic profile-driven transition and emits trace evidence.
+    ///
+    /// The observer is called exactly once for this requested step, including
+    /// stable termination and rejected transitions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when the transition cannot commit. The
+    /// exact rejection is included in the emitted [`ProfileStepTrace`].
+    pub fn step_traced<Observer>(
+        &mut self,
+        observer: &mut Observer,
+    ) -> Result<StepOutcome, ProfileMachineError>
+    where
+        Observer: FnMut(&ProfileStepTrace),
+    {
+        let before = self.observation();
+        let fetched_cell = if before.termination.is_none() {
+            self.read(before.registers.code_pointer).ok()
+        } else {
+            None
+        };
+        let decoded =
+            fetched_cell
+                .filter(|cell| is_graphical(*cell))
+                .and_then(|cell| {
+                    profile_decode(cell, before.registers.code_pointer)
+                });
+        let decoded_instruction = decoded.map(profile_instruction);
+        let result = self.step();
+        let after = self.observation();
+        let input = if result == Ok(StepOutcome::Continued)
+            && decoded_instruction == Some(ProfileInstruction::Input)
+        {
+            if after.input_consumed > before.input_consumed {
+                self.input
+                    .get(before.input_consumed)
+                    .copied()
+                    .map(TraceInput::Byte)
+            } else {
+                Some(TraceInput::EndOfInput)
+            }
+        } else {
+            None
+        };
+        let output = if after.output_len > before.output_len {
+            self.output.get(before.output_len).copied()
+        } else {
+            None
+        };
+        observer(&ProfileStepTrace {
+            after,
+            before,
+            decoded,
+            fetched_cell,
+            input,
+            output,
+            profile: self.profile,
+            result,
+        });
+        result
     }
 
     /// Returns the current stable termination reason, if any.

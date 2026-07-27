@@ -67,7 +67,8 @@ pub struct MachineObservation {
 pub enum TraceInput {
     /// One concrete byte was consumed from the deterministic input stream.
     Byte(u8),
-    /// The input stream was exhausted and classic EOF value 59048 was used.
+    /// The input stream was exhausted and the selected machine EOF word was
+    /// used.
     EndOfInput,
 }
 
