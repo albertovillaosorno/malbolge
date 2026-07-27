@@ -15,11 +15,15 @@ from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.canonicalize import normalize_line_endings
+from algorithms.doom.generator.behavior_probes import behavior_programs
+from algorithms.doom.generator.behavior_probes import pinned_probe_context
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.admission import IdentityTree
+    from algorithms.diff.behavior_programs import BehaviorPrograms
+    from algorithms.diff.probe_exec import ProbeRunContext
 
 DOMAIN_ID = "doom-linux-source"
 DOOM_IDENTITY_SUBTREE = "linuxdoom-1.10"
@@ -376,3 +380,26 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
         for path in source_files
     }
     return identity_tree(canonical_files)
+
+
+def build_behavior_programs() -> BehaviorPrograms:
+    """Return the executable behavior programs for this DOOM domain profile.
+
+    Returns:
+        Domain-owned portable behavior programs consumed by the generic engine.
+
+    """
+    return behavior_programs()
+
+
+def build_behavior_probe_context(
+    source_root: Path,
+    repository_root: Path,
+) -> ProbeRunContext:
+    """Resolve pinned tools for the current DOOM behavior profile.
+
+    Returns:
+        Generic probe execution context bound to the candidate source tree.
+
+    """
+    return pinned_probe_context(source_root, repository_root)

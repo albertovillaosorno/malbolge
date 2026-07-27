@@ -13,9 +13,14 @@ oracle under `algorithms/doom/quality/in/doom/`. Its output is
 `linuxdoom-1.10` C/header subtree, excludes WAD/IPX surfaces from source identity,
 and emits a framed C preprocessing-token view that ignores comments and ordinary
 formatting without erasing token boundaries or preprocessor line termination.
-Future DOOM-specific probe construction and compatibility policy stay in the same
-domain module. Generic matching, source binding, reconstruction, and Rust emission
-remain under `algorithms/diff/`.
+The domain facade now also exposes the first executable behavior program.
+`behavior_probes.py` defines a Windows x86-64 / pinned LLVM 22.1.8 fixed-point
+identity probe. It compiles the candidate mirror's real `m_fixed.c` with a
+repository-owned freestanding harness, links a no-CRT PE, executes it, and records
+the exit code as behavior evidence. The harness and header shims contain no copied
+DOOM source. Additional compatibility/bug probes stay in the DOOM domain. Generic
+matching, probe execution, source binding, reconstruction, and Rust emission remain
+under `algorithms/diff/`.
 
 `amalgamate.py` reserves the second consumer. It remains intentionally
 unconfigured until normalized quality output and a semantically accepted local
@@ -29,6 +34,7 @@ python -m algorithms.doom.generator.quality
 ```
 
 `algorithms/diff` now implements exact authoring, source-span reuse, canonical
-identity primitives, stable anchors, and tree admission. `write_algorithm()` still
-fails closed without writing `quality/main.rs` until behavior admission, source
-binding, and Rust emission are implemented.
+identity primitives, stable anchors, tree admission, behavior evaluation, and a
+portable bounded process-probe executor. `write_algorithm()` still fails closed
+without writing `quality/main.rs` until source binding and Rust emission are
+implemented and the DOOM behavior suite has broader compatibility/bug coverage.

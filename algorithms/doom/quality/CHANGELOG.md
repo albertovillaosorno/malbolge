@@ -72,8 +72,18 @@ reconstruct the manual oracle byte-for-byte from local source using whole-file
 copies, source spans, and local authoring literals. Generic structural/anchor
 admission is also executable, while the DOOM domain module now supplies a C-aware
 identity view that excludes the WAD and IPX source family from Linux lineage
-scoring. `write_algorithm()` still fails closed because behavior admission,
-source-bound payload recovery, and Rust emission are intentionally unfinished.
+scoring. Generic behavior admission and portable process-probe execution now also
+exist. The DOOM domain has its first executable fixed-point identity probe, while
+`write_algorithm()` still fails closed because source-bound payload recovery and
+Rust emission are intentionally unfinished and the DOOM probe suite is not broad
+enough yet.
+
+The first executable behavior calibration uses `m_fixed.c` only. A small MIT
+freestanding harness is compiled with pinned LLVM 22.1.8 into a no-CRT Windows
+x86-64 PE, then the process exit code is hashed as behavior evidence. The ignored
+historical source and the local modernized oracle produced the same transcript
+digest without either tree being modified. Repository regression tests use
+synthetic fixed-point implementations rather than local DOOM source.
 
 As a local calibration stress test, the 124 selected Linux source C/header files
 were compared with their current normalized descendant paths. The current rolling

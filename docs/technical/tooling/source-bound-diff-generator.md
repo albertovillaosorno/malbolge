@@ -4,9 +4,10 @@
 
 Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
-adapter, generic behavior-evidence semantics, and a portable bounded process-probe
-executor are implemented. DOOM-specific probe programs, source binding, payload
-recovery, and Rust emission remain unfinished.
+adapter, generic behavior-evidence semantics, a portable bounded process-probe
+executor, and the first DOOM identity behavior program are implemented. Broader
+DOOM compatibility/bug probes, source binding, payload recovery, and Rust emission
+remain unfinished.
 
 ## Purpose
 
@@ -170,7 +171,9 @@ be reproducible by the future Rust emitter. Commands never use shell interpolati
 Executables are logical tool references or rooted artifacts; argv paths are
 structured beneath authorized source, repository, or scratch roots. Commands carry
 explicit timeouts, expected exit status, bounded stdout/stderr capture, optional
-stdin, and an explicit flag selecting stdout into the observation transcript.
+stdin, plus explicit flags selecting stdout and/or process exit code into the
+observation transcript. A command may instead require one exact exit code when its
+return value is a success precondition rather than behavior data.
 
 A probe batch copies the candidate source into an isolated temporary mirror before
 execution. Programs receive the mirror path rather than the user input path. Any
@@ -185,6 +188,31 @@ baselines. Candidate execution matching neither baseline produces `unknown` and
 fails closed. Compatibility programs contribute success/failure rather than an
 identity digest. Application-specific harnesses and logical tool resolution remain
 consumer policy; the generic engine only owns execution and transcript semantics.
+
+### First DOOM Executable Identity Probe
+
+The first consumer program is
+`windows-x86_64-clang22-v1:fixed-point-arithmetic`. It is intentionally an identity
+probe, not a bug probe. The DOOM domain asks pinned Clang 22.1.8 to compile the
+candidate mirror's `linuxdoom-1.10/m_fixed.c` together with a repository-owned MIT
+freestanding harness and minimal standard-header shims. `lld-link` produces a
+no-CRT x86-64 PE with a private entry point. The process exit code encodes selected
+`FixedMul`/`FixedDiv` results and becomes the transcript observation.
+
+A local read-only smoke over the historical ignored source and the local modernized
+oracle produced the same transcript digest for both trees:
+`f0b37d59c86384e4ee628ec0e637c60aaa7ca35e5ecdb826687fc35c37d133e2`.
+The value is calibration evidence for this versioned Windows profile, not a legal
+identifier and not a claim that one probe is sufficient for final 0.80 behavior
+admission. Repository tests use synthetic MIT `m_fixed` fixtures instead of local
+DOOM bytes and prove semantically equivalent implementations produce equal probe
+transcripts.
+
+The attempted `R_PointToDist(0, 0)` bug probe remains deliberately uncommitted. Its
+containing renderer translation unit retains many unrelated externally visible
+roots under the available COFF/LTO toolchain. Rather than introduce fake semantic
+stubs or force unresolved symbols, that bug stays pending until it has an honest
+isolation strategy or a different executable harness.
 
 ### Source Binding
 
