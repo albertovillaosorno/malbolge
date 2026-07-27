@@ -128,6 +128,14 @@ to 1,162,925,900 ns (4.04x). Batch-128 throughput rises from about 27.24 to
 110.07 VMs/s. Validation/planning is now the dominant measured phase, so the next
 candidate is safe reuse of validation for immutable requests.
 
+A second host-side optimization is retained under
+`benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-minmax-rtx4060/`.
+Aggregate `min`/`max` validation reduces batch-8 median wall time again from
+66,098,600 ns to 36,729,100 ns and batch-128 to 636,002,300 ns. Relative to the
+original phase baseline, batch 128 is now 7.39x faster and reaches about
+201.26 VMs/s. Host-buffer construction is again the dominant measured phase;
+shared immutable memory identity inside a batch is the next candidate.
+
 ## Threats to Validity
 
 Initial threats include challenge-family bias, hardware/toolchain sensitivity,

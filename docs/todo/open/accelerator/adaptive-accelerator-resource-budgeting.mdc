@@ -100,6 +100,11 @@ example probe points, not supported-range endpoints.
   Batch-8 median wall time falls 4.35x and batch-128 falls 4.04x versus the
   phase-profile baseline after contiguous host buffers and duplicate-validation
   removal. Validation/planning becomes the dominant measured phase.
-- Performance evidence remains incomplete: immutable-request validation reuse,
+- Aggregate-validation evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-minmax-rtx4060/`
+  reduces batch-128 median wall time to 636,002,300 ns (7.39x faster than the
+  original phase baseline) and reaches about 201.26 VMs/s. Host construction is
+  again the largest phase.
+- Performance evidence remains incomplete: shared-memory batch preparation,
   current-profile execution, and broader live-hardware measurements are still
   required.
