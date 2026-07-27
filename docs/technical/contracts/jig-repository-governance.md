@@ -35,6 +35,9 @@ trust boundary, or ownership rules stated by its governing decisions.
   its typed TODO document, lifecycle roots, record shape, acceptance requirements,
   validation-command requirement, strict dependency-lane policy, and all six
   closed change-class path policies explicitly.
+- Git governance declares `JIG_SHIT.md` as required local-only evidence and
+  binds that policy to the tracked root `.gitignore`; the ledger may exist
+  locally but must not become governed source.
 - Commit-message validation accepts compliant new commits with this configuration.
 - Full repository validation remains fail-closed. The source-linked Jig advanced
   from schema 7 to schema 8 during this migration. Malbolge adopts that contract

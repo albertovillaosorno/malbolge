@@ -47,6 +47,10 @@ without weakening unrelated linter contracts.
   evidence, validation commands, and strict dependency-lane ordering. It also
   declares closed change-class path policy for architecture, implementation,
   bugfix, tests, documentation, and dependency admission.
+- Schema 8 Git governance additionally declares `JIG_SHIT.md` as a required
+  local-only QA ledger. The tracked root `.gitignore` owns `/JIG_SHIT.md`, so
+  agents may record Jig integration defects without accidentally promoting that
+  scratch evidence into repository history.
 - The installed commit-message hook parses the schema-8 configuration and accepts
   new compliant commits fail-closed.
 - Full `jig validate --root .` remains fail-closed. The source-linked Jig moved
