@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier: MIT
-"""Raw resident classic CUDA throughput samples across batch sizes."""
+"""Phase-separated diagnostics for resident classic CUDA execution."""
 
 from __future__ import annotations
 
@@ -8,9 +8,7 @@ from dataclasses import asdict
 from dataclasses import dataclass
 import json
 from statistics import median
-from statistics import pstdev
 import sys
-from time import perf_counter_ns
 from typing import Final
 from typing import TYPE_CHECKING
 
@@ -24,29 +22,33 @@ from benchmarks.accelerator.classic_workload import (
 
 if TYPE_CHECKING:
     from accelerator.classic_run import ClassicRunRequest
+    from accelerator.cuda.classic_run import ClassicRunPhaseProfile
 
 BATCH_SIZES: Final = (1, 8, 32, 128)
 SAMPLE_COUNT: Final = 15
 
 
 @dataclass(frozen=True, slots=True)
-class ThroughputRow:
-    """Serializable raw and summary measurements for one batch size."""
+class PhaseSummary:
+    """Median phase costs for one batch size."""
 
+    allocate_ns: int
     batch_size: int
-    items_per_second_at_median: float
-    median_ns: int
-    ns_per_item_at_median: float
-    pstdev_ns: float
-    raw_ns: tuple[int, ...]
-    step_budget: int
+    decode_ns: int
+    download_ns: int
+    host_build_ns: int
+    kernel_ns: int
+    release_ns: int
+    total_ns: int
+    upload_ns: int
+    validation_plan_ns: int
 
 
 def main() -> int:
-    """Measure resident CUDA batch throughput for an exact 64-step workload.
+    """Measure exact classic CUDA phases using adapter diagnostics.
 
     Returns:
-        Zero after emitting JSON to stdout.
+        Zero after emitting raw and median phase evidence as JSON.
 
     """
     request = classic_noop_request()
@@ -56,7 +58,6 @@ def main() -> int:
         plan = adapter.plan((request,) * max(BATCH_SIZES))
     payload = {
         "backend": capability.backend_id,
-        "batch_sizes": BATCH_SIZES,
         "device": {
             "arch": capability.device_arch,
             "free_memory_bytes": plan.resources.free_memory_bytes,
@@ -65,7 +66,14 @@ def main() -> int:
             "name": capability.device_name,
             "total_memory_bytes": plan.resources.total_memory_bytes,
         },
-        "rows": [asdict(row) for row in rows],
+        "rows": [
+            {
+                "batch_size": summary.batch_size,
+                "median": asdict(summary),
+                "samples": [asdict(sample) for sample in samples],
+            }
+            for summary, samples in rows
+        ],
         "sample_count": SAMPLE_COUNT,
         "step_budget": STEP_BUDGET,
         "workload": WORKLOAD_DESCRIPTION,
@@ -78,26 +86,48 @@ def _measure(
     adapter: CudaClassicRunAdapter,
     request: ClassicRunRequest,
     batch_size: int,
-) -> ThroughputRow:
+) -> tuple[PhaseSummary, tuple[ClassicRunPhaseProfile, ...]]:
     requests = (request,) * batch_size
     validate_classic_noop_results(adapter.evaluate(requests), batch_size)
-    raw: list[int] = []
+    samples: list[ClassicRunPhaseProfile] = []
     for _ in range(SAMPLE_COUNT):
-        start = perf_counter_ns()
-        results = adapter.evaluate(requests)
-        elapsed = perf_counter_ns() - start
+        results, profile = adapter.profile_evaluate(requests)
         validate_classic_noop_results(results, batch_size)
-        raw.append(elapsed)
-    median_ns = int(median(raw))
-    return ThroughputRow(
+        samples.append(profile)
+    frozen = tuple(samples)
+    return _summarize(batch_size, frozen), frozen
+
+
+def _summarize(
+    batch_size: int,
+    samples: tuple[ClassicRunPhaseProfile, ...],
+) -> PhaseSummary:
+    return PhaseSummary(
+        allocate_ns=_median_values(
+            tuple(sample.allocate_ns for sample in samples)
+        ),
         batch_size=batch_size,
-        items_per_second_at_median=(batch_size * 1_000_000_000) / median_ns,
-        median_ns=median_ns,
-        ns_per_item_at_median=median_ns / batch_size,
-        pstdev_ns=pstdev(raw),
-        raw_ns=tuple(raw),
-        step_budget=STEP_BUDGET,
+        decode_ns=_median_values(tuple(sample.decode_ns for sample in samples)),
+        download_ns=_median_values(
+            tuple(sample.download_ns for sample in samples)
+        ),
+        host_build_ns=_median_values(
+            tuple(sample.host_build_ns for sample in samples)
+        ),
+        kernel_ns=_median_values(tuple(sample.kernel_ns for sample in samples)),
+        release_ns=_median_values(
+            tuple(sample.release_ns for sample in samples)
+        ),
+        total_ns=_median_values(tuple(sample.total_ns for sample in samples)),
+        upload_ns=_median_values(tuple(sample.upload_ns for sample in samples)),
+        validation_plan_ns=_median_values(
+            tuple(sample.validation_plan_ns for sample in samples)
+        ),
     )
+
+
+def _median_values(values: tuple[int, ...]) -> int:
+    return int(median(values))
 
 
 if __name__ == "__main__":

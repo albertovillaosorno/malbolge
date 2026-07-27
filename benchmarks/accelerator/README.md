@@ -30,3 +30,16 @@ Run with:
 .dependencies/python/3.14.6/Scripts/python-jig.cmd `
   -m benchmarks.accelerator.classic_run_throughput
 ```
+
+`classic_run_phase_profile.py` uses the adapter's diagnostic
+`profile_evaluate()` path to retain wall-clock totals for validation/planning,
+host batch construction, device allocation, upload, kernel+sync, download,
+result decode, and release. The ordinary `evaluate()` path does not collect these
+timings.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.classic_run_phase_profile
+```
