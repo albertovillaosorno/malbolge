@@ -31,6 +31,18 @@ enough for the TODO heading to disappear without losing unfinished intent.
 
 - Human-authored application code is C; generated target artifacts use the full
   `.malbolge` extension.
+- The canonical executable guest artifact is `.malbolge`. Compiler IR, compact
+  bytecode, JIT IR, and native translations are transient or rebuildable
+  implementation state, not required published sidecar formats; in particular,
+  a DOOM pipeline does not introduce a persistent `doom.bytecode` artifact.
+- Guest C code may not escape the Malbolge semantics by linking to the host's
+  native libc. Supported memory/string/library operations and allocation are
+  guest-runtime semantics that ultimately lower to Malbolge. Compiler intrinsics
+  are legal only when they preserve those semantics without hidden host calls.
+- An already generated `.malbolge` program must not require Clang or LLVM at
+  execution time. LLVM may participate in compilation, research, or an optional
+  native acceleration implementation, but the interpreter-only runtime remains a
+  standalone supported execution path.
 - `tools/tidy` defines the C surface the compiler promises to lower. Guest-C
   validation is manual/opt-in: explicitly named `.c` files are checked, and an
   explicitly named `doom` directory is the sole recursive directory shortcut.
@@ -424,21 +436,32 @@ compiler for its declared target profile.
 ### TODO - Supported libc contract
 
 Define the guest C library surface: fixed-width integers, memory primitives,
-byte streams, strings, allocation, formatting, and later higher-level routines
-without hidden host shortcuts.
+byte streams, strings, allocation, formatting, and later higher-level routines.
+The contract is deliberately not the host libc ABI: accepted routines either
+compile into ordinary guest code or into verified compiler intrinsics with the
+same guest-visible semantics. No accepted C program may become dependent on
+`msvcrt`, glibc, musl, libSystem, or another native libc merely because the VM
+happens to run on that host.
 
 ### TODO - Guest runtime and allocator
 
 Implement startup, calling convention, frames, allocation, streams, integer
 helpers, strings, scheduling primitives, and other runtime facilities as code
-that ultimately executes under Malbolge semantics.
+that ultimately executes under Malbolge semantics. Bootstrap host allocation may
+be used while bringing up large interoperability workloads, but it is not the
+end-state ABI: migrate such bootstrap calls to the guest allocator before a
+self-contained `.malbolge` build is accepted. Raw external effects remain behind
+a narrow host-capability boundary rather than growing into a shadow libc.
 
 ## Compiler
 
 ### TODO - Clang C frontend integration
 
-Use Clang as the C parser, type system, constant evaluator, source-location
-provider, and AST frontend instead of building another C parser.
+Use Clang as the build-time C parser, type system, constant evaluator,
+source-location provider, and AST frontend instead of building another C parser.
+Do not make Clang or LLVM a runtime dependency of already generated `.malbolge`
+programs; execution must remain possible with the standalone interpreter and
+guest runtime alone.
 
 ### TODO - Typed compiler IR
 
@@ -469,8 +492,11 @@ blocks preserves the same guest-visible transition semantics.
 ### TODO - Compact guest bytecode strategy
 
 Evaluate a VM-inside-Malbolge strategy where large programs are represented as
-compact bytecode interpreted by a reusable Malbolge runtime when that reduces
-code-size explosion or compilation cost.
+compact internal bytecode interpreted by a reusable Malbolge runtime when that
+reduces code-size explosion or compilation cost. If adopted, the bytecode is
+embedded inside the final `.malbolge` program or exists transiently during
+compilation/execution; it does not create a required published `*.bytecode`
+sidecar and never replaces `.malbolge` as the canonical guest artifact.
 
 ### TODO - C-level source mapping and debugging
 
@@ -529,9 +555,11 @@ exact results and clearly label probabilistic hash-only diagnostics.
 
 ### TODO - LaTeX mathematical specification framework
 
-Create a `math/` surface of `.tex` specifications for ternary words,
-rotation, crazy operation, decoding, self-modification, memory models, compiler
-lowering, equivalence relations, and search cost functions.
+Create a buildable `math/` specification surface with one shared notation
+include. The active framework now covers generic profile-width word/memory,
+rotate/crazy, decode/self-modification, I/O/EOF, loading, execution equivalence,
+lowering, verification, and cost notation; all nine standalone documents compile
+into `.cache/latex/`. Machine-checked correspondence remains a separate task.
 
 ### TODO - Machine-checked mathematical correspondence
 
@@ -711,11 +739,18 @@ concatenation and source-specific hand patches are not accepted algorithms.
 Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
 accelerator-assisted compilation until the user-supplied DOOM interoperability
 pipeline produces a `.malbolge` build that is genuinely interactive and playable
-under the modern runtime. Measure compile latency, frame pacing, input latency,
-VM instructions per game tick, memory footprint, and generated-code size rather
-than declaring success merely because the program eventually runs. Preserve the
-same game semantics while optimizing; performance-specific substitutions require
-explicit equivalence evidence.
+under the modern runtime. The same `.malbolge` payload must be portable across
+supported x86-64/AArch64 Windows, macOS, and Linux runners; it must not require
+LLVM or the host libc at execution time. A redistributable self-contained test
+mode may embed Freedoom asset bytes into the guest/data image, while user-owned
+commercial IWADs remain external host-provided data. Any compact bytecode or
+native translation used for acceleration is transient/rebuildable execution
+state rather than a second required DOOM artifact. Measure compile latency, frame
+pacing, input latency, VM instructions per game tick, memory footprint, generated
+code/data size, and interpreter/AOT/JIT speedups rather than declaring success
+merely because the program eventually runs. Preserve the same game semantics
+while optimizing; performance-specific substitutions require explicit
+equivalence evidence.
 ### TODO - Real-program benchmark suite
 
 Benchmark hello world, byte copying, arithmetic kernels, hashing, parsers,

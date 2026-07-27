@@ -1,0 +1,172 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\input{../malbolge-notation.tex}
+
+\title{Versioned Malbolge Profile Mathematics}
+\author{Malbolge Project}
+\date{2026-07-26}
+
+\begin{document}
+\maketitle
+
+\section{Scope}
+
+This document fixes mathematical notation shared by versioned Malbolge target
+profiles. A profile chooses a positive ternary word width $N$ and therefore the
+word modulus
+\[
+  W_N = \WordModulus{N}.
+\]
+The profile-specific implementation contract supplies finite translation tables
+and the remaining non-mathematical source-admission details.
+
+\section{Word and memory domains}
+
+Define
+\[
+  \WordDomain{N} = \{0,1,\ldots,W_N-1\}.
+\]
+Every word $x\in\WordDomain{N}$ has the unique expansion
+\[
+  x = \sum_{i=0}^{N-1} x_i3^i,
+  \qquad x_i\in\TritSet.
+\]
+For the single-word-modular memory model, memory is a total function
+\[
+  M : \WordDomain{N}\to\WordDomain{N},
+\]
+and registers satisfy
+\[
+  A,C,D\in\WordDomain{N}.
+\]
+Pointer succession is
+\[
+  \operatorname{succ}_N(x)=(x+1)\bmod W_N.
+\]
+
+\section{Rotation}
+
+The profile-width ternary right rotation is
+\[
+  \RotateN{N}{x}
+    = \left\lfloor\frac{x}{3}\right\rfloor
+      + (x\bmod 3)3^{N-1}.
+\]
+It maps $\WordDomain{N}$ to itself and moves the least-significant trit to the
+most-significant position.
+
+\section{Crazy operation}
+
+Define the digit operation
+\[
+  \CrazyDigit : \TritSet\times\TritSet\to\TritSet
+\]
+by
+\[
+\begin{array}{c|ccc}
+\CrazyDigit(d,a) & a=0 & a=1 & a=2 \\
+\hline
+ d=0 & 1 & 0 & 0 \\
+ d=1 & 1 & 0 & 2 \\
+ d=2 & 2 & 2 & 1
+\end{array}
+\]
+with data trit $d$ first and accumulator trit $a$ second. The word operation is
+\[
+  \CrazyN{N}{d}{a}
+    = \sum_{i=0}^{N-1}\CrazyDigit(d_i,a_i)3^i.
+\]
+This orientation is repository-wide notation; optimized tables may not silently
+transpose the two operands.
+
+\section{Decode and self-modification}
+
+Let $X_1$ and $X_2$ denote the immutable 94-entry decode and encryption tables.
+For graphical cells $m\in\{33,\ldots,126\}$,
+\[
+  \DecodeOp(m,c)
+    = X_1\!\left[(m-33+c)\bmod 94\right],
+\]
+and
+\[
+  \EncryptOp(m)=X_2[m-33].
+\]
+A non-halting transition first applies its instruction-specific effect, then
+requires the resulting encryption target $M[C]$ to remain graphical, applies
+$M[C]\leftarrow\EncryptOp(M[C])$, and only then advances code and data pointers
+with $\operatorname{succ}_N$. A jump that changes $C$ therefore also changes the
+encryption target. Rejected encryption is atomic.
+
+\section{I/O and termination}
+
+Byte input maps an available byte $b\in\{0,\ldots,255\}$ to $A\leftarrow b$.
+End of input maps to the all-two-trit sentinel
+\[
+  A\leftarrow W_N-1.
+\]
+Byte output emits $A\bmod256$. The halt instruction terminates before encryption
+or pointer advancement. Fetching a non-graphical current code cell terminates
+immediately under the normative profile semantics.
+
+\section{Loading notation}
+
+For a profile $p$ with width $N$, write
+\[
+  \LoadOp_p(s)=M_0
+\]
+when source bytes $s$ satisfy the profile source-admission rules and determine an
+exact initial memory image $M_0\in\MemoryState{N}$. Remaining cells are generated
+by the profile-width crazy recurrence from the previous two loaded/generated
+words. Loader rejection is outside the execution transition relation.
+
+\section{Execution and observable equivalence}
+
+Let one complete guest state be
+\[
+  S=(A,C,D,M,I,O),
+\]
+where $I$ is the remaining byte-input stream and $O$ is committed byte output.
+Write
+\[
+  S \Transition{p} S'
+\]
+for one committed normative step under profile $p$.
+
+For programs $P$ and $Q$, write
+\[
+  P\ObservedEquivalent{p}Q
+\]
+when, for the declared input domain, both executions have identical observable
+byte I/O, termination, and all verifier-required state observations under the
+same profile. An optimization or native tier may use another representation but
+must discharge this equivalence obligation over its admitted domain.
+
+\section{Compiler and research notation}
+
+Compiler lowering under profile $p$ is written
+\[
+  C \Transition{\LowerOp_p} P,
+\]
+while independent acceptance of candidate $P$ is written
+\[
+  \VerifyOp(P,p)=1.
+\]
+Research cost vectors use
+\[
+  \CostVector{P}
+    = (K_{\mathrm{size}},K_{\mathrm{time}},K_{\mathrm{memory}},\ldots).
+\]
+Cost ordering never implies semantic correctness; candidates enter comparative
+optimization only after the declared verifier/equivalence obligation succeeds.
+
+\section{Canonical specializations}
+
+The written historical profile uses $N=10$, giving $W_{10}=59049$. The current
+`malbolge-2026.2` profile uses $N=14$, giving
+\[
+  W_{14}=4782969.
+\]
+These are specializations of one mathematical profile model, not permission to
+reinterpret historical resource limits as current-language constants.
+
+\end{document}

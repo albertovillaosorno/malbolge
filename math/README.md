@@ -10,3 +10,10 @@ obligations.
 
 - `specification/` owns normative machine and compiler mathematics.
 - `algorithms/` owns opt-in mathematical contracts for research algorithms.
+
+Shared notation lives in `malbolge-notation.tex`. Every standalone mathematical
+document imports it. Validate source layout and compile every document with:
+
+`python scripts/validate/math_specifications.py`
+
+Generated LaTeX artifacts belong only under `.cache/latex/`.

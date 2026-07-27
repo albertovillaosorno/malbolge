@@ -1,6 +1,6 @@
 ---
 id: "latex-mathematical-specification-framework"
-status: "pending"
+status: "active"
 lane: "5"
 area: "mathematics"
 task: "TODO - LaTeX mathematical specification framework"
@@ -12,11 +12,16 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
+  - "math/malbolge-notation.tex"
   - "math/specification/"
+  - "math/algorithms/"
   - "docs/research/algorithms/"
   - "algorithms/"
+  - "scripts/validate/math_specifications.py"
   - "tests/mathematics/"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/mathematics/test_math_framework.py"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/math_specifications.py"
   - "jig validate --root ."
 ---
 # TODO - LaTeX mathematical specification framework
@@ -26,6 +31,27 @@ validation:
 Create a `math/` surface of `.tex` specifications for ternary words,
 rotation, crazy operation, decoding, self-modification, memory models, compiler
 lowering, equivalence relations, and search cost functions.
+
+
+**Current implementation.**
+
+- `math/malbolge-notation.tex` defines one shared notation authority consumed by
+  every standalone mathematical document.
+- `math/specification/profile-model.tex` defines profile-width word/memory
+  domains, rotate/crazy, decode/self-encryption order, byte I/O/EOF, loading,
+  execution transitions, observable equivalence, lowering, verification, and
+  cost-vector notation for arbitrary positive trit width.
+- The generic model explicitly specializes historical `N=10`/59,049 words and
+  current `N=14`/4,782,969 words; `malbolge-1998.tex` remains the classic
+  specialization rather than becoming a mutable current-language document.
+- All seven research-algorithm math documents import the same notation include.
+- `scripts/validate/math_specifications.py` discovers and builds all nine
+  standalone documents with `pdflatex`, package auto-install disabled, TeX shell
+  escape disabled, and all generated output beneath `.cache/latex/`.
+- `tests/mathematics/test_math_framework.py` locks the nine-document set, shared
+  notation, cache-only output mapping, and canonical width specializations.
+- A successful LaTeX build is not semantic proof. Executable/machine-checked
+  correspondence remains the downstream correspondence task.
 
 ## Acceptance
 
@@ -49,5 +75,6 @@ lowering, equivalence relations, and search cost functions.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`.
-- Mathematical evidence pending: normative/research LaTeX source plus executable
-  or machine-checked correspondence for the claimed domain.
+- Framework/build evidence is executable and retained in the validator/tests.
+  Mathematical correspondence between equations and implementation remains the
+  separate downstream `machine-checked-mathematical-correspondence` obligation.
