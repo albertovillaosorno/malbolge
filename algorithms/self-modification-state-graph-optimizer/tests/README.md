@@ -1,5 +1,8 @@
 # Research Tests
 
-Keep deterministic semantic, regression, and experiment-harness tests for this
-algorithm here. Research output is not accepted as correctness evidence by
-itself.
+`exact.rs` owns the first correctness baseline: identical execution replays must
+deduplicate exact nodes/edges, a forced constant digest must not merge distinct
+input states, and the research graph admits specification mode only.
+
+Future reduced-state tests belong here only after they state a falsifiable domain
+and compare against the exact baseline.

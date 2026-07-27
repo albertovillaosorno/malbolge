@@ -45,7 +45,8 @@ Connect mathematical specifications to executable tests or proof tooling so the
 - The manifest records each equation's explicit admitted domain/coverage and the
   concrete Rust/Python test functions that supply semantic evidence.
 - `scripts/validate/math_correspondence.py` rejects duplicate IDs/labels,
-  non-repository paths, evidence outside `tests/`, missing test functions,
+  non-repository paths, evidence outside repository or research-mirror test
+  surfaces, missing test functions,
   missing/duplicated source labels, and any difference between the manifest and
   the complete set of `eq:*` labels under `math/specification/`.
 - Current semantic evidence spans exhaustive classic word-domain/successor,

@@ -1,6 +1,6 @@
 ---
 id: "self-modification-state-graph-optimizer"
-status: "pending"
+status: "active"
 lane: "8"
 area: "mathematics"
 task: "TODO - Self-modification state-graph optimizer"
@@ -34,6 +34,23 @@ identify regions safe for direct native execution. Express the equivalence and
 reduction rules in `.tex` and validate each admitted rewrite against executable
 VM evidence.
 
+
+**Current implementation.**
+
+- `state_graph.rs` establishes a conservative exact-state baseline for classic
+  specification-mode execution before any state reduction is trusted.
+- Exact identity confirms profile, registers, full deterministic input and
+  cursor, committed output, termination, and all 59,049 memory words. A
+  deterministic FNV digest only selects a bucket; it never authorizes a merge.
+- The forced-collision fixture replaces the digest with constant zero and proves
+  unequal input states remain separate. Identical replays deduplicate exact
+  nodes/edges, and legacy mode is outside the admitted baseline.
+- Two labelled equations define the exact projection and collision-safe merge
+  criterion and are registered in the machine-checked correspondence manifest.
+- No reduced future-relevant key, mutation-history collapse, native-region
+  shortcut, or performance claim is accepted yet. Those remain the active
+  research objective and must be falsified against this baseline.
+
 ## Acceptance
 
 - The research identifies the minimal future-relevant state and observational
@@ -64,8 +81,9 @@ VM evidence.
   `machine-checked-mathematical-correspondence`,
   `malbolge-specific-optimization-mathematics`, `safe-rust-malbolge-vm`,
   `algorithm-research-mirror-and-local-output-contract`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
-- Mathematical evidence pending: normative/research LaTeX source plus executable
-  or machine-checked correspondence for the claimed domain.
+- Exact-state baseline evidence is reproducible and machine-linked. Research
+  evidence for reduced keys, merge rules, native-region safety, and performance
+  remains open and must retain negative/null outcomes.
+- Mathematical evidence currently covers exact identity and collision-safe
+  merging. Any reduced equivalence must add its own labelled equation and
+  executable correspondence before use.

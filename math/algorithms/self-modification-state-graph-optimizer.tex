@@ -2,18 +2,73 @@
 \usepackage{amsmath,amssymb}
 \input{../malbolge-notation.tex}
 \title{Self-Modifying Malbolge State-Graph Reduction Model}
+\author{Malbolge Project}
+\date{2026-07-27}
 \begin{document}
 \maketitle
-Let $S$ be the admitted VM state space, $T:S\to S$ one exact Malbolge step,
-and $O:S\to\Omega$ the observable projection required by the target profile.
-A proposed reduction may merge states only under a stated equivalence $\sim$.
-The research target is a relation satisfying, over its proved domain,
+
+\section{Scope}
+
+Let $S_{1998}$ be the exact classic specification-mode VM state space and
+$T:S_{1998}\to S_{1998}$ one requested normative step when the request returns a
+committed/terminated state. Rejected self-encryption is represented as an edge
+whose destination is the unchanged source state.
+
+This first research slice defines only the conservative exact-state baseline.
+It does not claim that any register, memory cell, I/O component, or profile fact
+can yet be removed from the graph key.
+
+\section{Exact state projection}
+
+For one execution with complete deterministic input byte string $I$, define
+\begin{equation}
+  E(s)=\left(
+    p,A,C,D,I,i,O,\tau,M[0],\ldots,M[W_{10}-1]
+  \right),
+  \label{eq:state-graph-exact-key}
+\end{equation}
+where $p=\texttt{malbolge-1998}$ is the profile identity, $i$ is the committed
+input cursor, $O$ is the complete committed output prefix, $\tau$ is termination
+state, and $M$ is the complete 59,049-word memory image. This projection is
+intentionally larger than a future-relevant minimal state: it is the baseline
+against which reductions must be falsified.
+
+Two observations have exact graph identity precisely when
+$E(s_1)=E(s_2)$. Replaying the same execution may therefore reuse an existing
+node without changing semantics.
+
+\section{Collision-safe indexing}
+
+Let $H$ be any deterministic bucket function, including a deliberately
+colliding function. Hash equality is never semantic evidence. The implementation
+may merge observations only under
+\begin{equation}
+  \operatorname{merge}(s_1,s_2)
+    \Longleftrightarrow
+    H(E(s_1))=H(E(s_2))\;\land\;E(s_1)=E(s_2).
+  \label{eq:state-graph-collision-safe-merge}
+\end{equation}
+Consequently, a collision can increase comparison cost but cannot change graph
+identity. The executable test forces $H(E(s))=0$ for every state and verifies
+that distinct input strings still create distinct nodes.
+
+\section{Edges}
+
+Each observed request contributes a deterministic edge from its exact before
+node to its exact after node, labelled with decoded instruction (when available)
+and normalized result: continued, normative termination, or atomic invalid
+self-encryption rejection. Duplicate exact edges are retained only once.
+
+\section{Reduction research boundary}
+
+A proposed reduced key $R(s)$ is not trusted merely because it hashes or groups
+states efficiently. Any rule
 \[
-  s_1 \sim s_2 \Longrightarrow
-  O(T^n(s_1)) = O(T^n(s_2))\quad\text{for every admitted }n.
+  R(s_1)=R(s_2)\Longrightarrow s_1\sim s_2
 \]
-The implementation must state which code cells, data cells, registers, I/O
-history, and profile facts are future-relevant before using a reduced state key.
-This document records the mathematical model; executable correspondence and
-proof obligations are separate evidence.
+must declare its domain and be rejected whenever the exact baseline finds a pair
+with different future observable behavior under that domain. Until such a rule
+has correspondence evidence, native execution may use only exact-state identity
+for graph merging.
+
 \end{document}

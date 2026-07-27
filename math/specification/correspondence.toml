@@ -169,3 +169,19 @@ label = "eq:optimization-rotate-table"
 domain = "all 59049 classic words"
 mechanism = "exhaustive"
 evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word"]
+
+[[correspondence]]
+id = "state-graph-collision-safe-merge"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-collision-safe-merge"
+domain = "classic exact-state snapshots under an adversarial constant digest"
+mechanism = "forced-collision"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::forced_digest_collision_keeps_distinct_inputs"]
+
+[[correspondence]]
+id = "state-graph-exact-key"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-exact-key"
+domain = "bounded classic specification-mode executions with full 59049-word snapshots"
+mechanism = "exact-replay"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::exact_replay_deduplicates_nodes_and_edges"]

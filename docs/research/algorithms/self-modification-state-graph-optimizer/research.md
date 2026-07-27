@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Research Question
 
@@ -20,7 +20,7 @@ identify regions safe for direct native execution. Express the equivalence and
 reduction rules in `.tex` and validate each admitted rewrite against executable
 VM evidence.
 
-- Status: Proposed
+- Status: Active
 - Research ID: `self-modification-state-graph-optimizer`
 - Last reviewed: 2026-07-26
 
@@ -30,12 +30,15 @@ VM evidence.
 
 ## Hypothesis
 
-- H1: the proposed technique improves at least one preregistered objective under
-  an equivalent resource budget while all accepted outputs pass the independent
-  verifier.
-- H0/rejection condition: the technique is unsound, cannot reproduce its result,
-  or provides no meaningful advantage over the declared baseline on the admitted
-  challenge distribution.
+- Baseline hypothesis: exact-state deduplication can reuse identical classic VM
+  observations without changing graph edges or execution semantics even when the
+  digest function collides adversarially.
+- Reduction hypothesis (future): a smaller future-relevant key can merge more
+  states than the exact baseline while preserving every admitted future
+  observation on its declared domain.
+- H0/rejection condition: any hash-only merge, any unequal exact snapshots merged
+  by the baseline, or any reduced-key pair whose future observations diverge
+  rejects the corresponding technique immediately.
 
 ## Method
 
@@ -67,7 +70,26 @@ verifier accepts the candidate under the declared target profile.
 
 ## Results
 
-No experiment result is recorded yet.
+The exact-state baseline is executable in
+`algorithms/self-modification-state-graph-optimizer/state_graph.rs`. A node is
+confirmed by complete classic profile identity, registers, deterministic input
+and cursor, committed output prefix, termination state, and all 59,049 memory
+words. FNV-1a is used only to select a comparison bucket.
+
+Three deterministic fixtures currently pass:
+
+- replaying the same bounded execution reuses nodes and edges;
+- forcing every snapshot to digest `0` still keeps distinct input states in
+  separate nodes because complete snapshots are compared;
+- only normative specification mode is admitted by this baseline.
+
+`math/algorithms/self-modification-state-graph-optimizer.tex` formalizes the
+exact projection and collision-safe merge rule. Both equations are registered in
+`math/specification/correspondence.toml` and mapped directly to the algorithm's
+owned tests.
+
+No reduced-state key or performance improvement is accepted yet. This result is
+the correctness baseline against which future reductions will be falsified.
 
 ## Threats to Validity
 
@@ -77,7 +99,10 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-No conclusion is accepted before reproducible evidence exists.
+Accept exact-state deduplication as the conservative graph baseline. Do not yet
+promote a state reduction or native-execution shortcut. The next research slice
+must propose a smaller key and demonstrate, against this baseline, that every
+merged pair has equivalent future observations on an explicit bounded domain.
 
 ## References
 

@@ -24,8 +24,9 @@ manifest that maps each promoted equation to its exact mathematical source,
 claimed domain/coverage class, and one or more executable test functions.
 
 `scripts/validate/math_correspondence.py` validates the graph fail-closed. It
-requires unique manifest IDs/labels, repository-relative sources, evidence only
-under `tests/`, exact existence of every referenced `fn`/`def`, and exact set
+requires unique manifest IDs/labels, repository-relative sources, evidence under
+repository `tests/` or an algorithm mirror's `algorithms/<id>/tests/`, exact
+existence of every referenced `fn`/`def`, and exact set
 equality between all `eq:*` labels under `math/specification/` and the manifest.
 Renaming/removing an equation or a test therefore breaks correspondence instead
 of silently leaving stale documentation.

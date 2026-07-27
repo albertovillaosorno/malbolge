@@ -17,6 +17,9 @@ MANIFEST = ROOT / "math" / "specification" / "correspondence.toml"
 MATH_ROOT = ROOT / "math"
 SCHEMA_VERSION = 1
 PARENT_SEGMENT = ".."
+ALGORITHMS_SEGMENT = "algorithms"
+TESTS_SEGMENT = "tests"
+RESEARCH_TEST_PATH_PARTS = 4
 LABEL_PATTERN = re.compile(r"\\label\{(eq:[^}]+)\}")
 ENTRY_KEYS = frozenset({
     "domain",
@@ -113,13 +116,30 @@ def _repository_path(raw: str, context: str) -> Path:
     return resolved
 
 
+def evidence_path_allowed(path: str) -> bool:
+    """Return whether an evidence path belongs to an executable test owner.
+
+    Returns:
+        True for repository integration tests or research-mirror test files.
+
+    """
+    if path.startswith(f"{TESTS_SEGMENT}/"):
+        return True
+    parts = Path(path).parts
+    return (
+        len(parts) >= RESEARCH_TEST_PATH_PARTS
+        and parts[0] == ALGORITHMS_SEGMENT
+        and parts[2] == TESTS_SEGMENT
+    )
+
+
 def _evidence(raw: object, context: str) -> Evidence:
     reference = _string(raw, context)
     path, separator, test = reference.partition("::")
     if not separator or not path or not test:
         _fail(f"{context} must use tests/path::test_name")
-    if not path.startswith("tests/"):
-        _fail(f"{context} must reference tests/: {path}")
+    if not evidence_path_allowed(path):
+        _fail(f"{context} must reference a repository test surface: {path}")
     return Evidence(path=path, test=test)
 
 

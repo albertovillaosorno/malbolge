@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from scripts.validate import math_correspondence as validator
 
-EXPECTED_EQUATIONS = 21
+EXPECTED_EQUATIONS = 23
 
 
 def _expect_invalid(text: str) -> None:
@@ -55,3 +55,15 @@ def test_duplicate_toml_key_fails_closed() -> None:
         1,
     )
     _expect_invalid(changed)
+
+
+def test_research_mirror_test_surface_is_admitted() -> None:
+    """Algorithm-owned research tests are valid correspondence evidence."""
+    path = "algorithms/example-research/tests/evidence.rs"
+    assert validator.evidence_path_allowed(path)
+
+
+def test_non_test_algorithm_surface_is_rejected() -> None:
+    """Research implementation files cannot masquerade as test evidence."""
+    path = "algorithms/example-research/state_graph.rs"
+    assert not validator.evidence_path_allowed(path)

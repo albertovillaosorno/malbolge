@@ -433,6 +433,18 @@ Partition checks into language, ABI, runtime, determinism, and resource families
 and enforce the promise that every accepted translation unit is supported by the
 compiler for its declared target profile.
 
+### TODO - Versioned host-capability call ABI
+
+Generalize the semantic capability-ID pattern proven by the DOOM corpus into the
+VM ABI. Keep capability identity separate from transport: define versioning,
+argument/result types, pointer/range validation, blocking rules, failure
+semantics, capability discovery, and a deterministic call-frame representation
+without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
+runners may lower the same call frame differently, but guest-visible behavior and
+validation must agree. The DOOM source ABI currently exercises 24 version-1
+external capabilities spanning guest-memory provisioning, diagnostics/exit,
+video/input, PCM audio, raw file I/O, UDP transport, and monotonic time.
+
 ### TODO - Supported libc contract
 
 Define the guest C library surface: fixed-width integers, memory primitives,
@@ -456,10 +468,12 @@ The DOOM quality corpus now also carries its deterministic memory/string
 runtime, including compiler-synthesized standard memory symbols, and passes the
 real guest-C validator without a libc shim. Generalize those primitives into the
 reusable guest runtime rather than treating the DOOM-local implementation as the
-final shared library. Next, move strict self-contained media paths toward
-guest-produced PCM rather than a host music decoder. Raw external effects remain
-behind a narrow host-capability boundary rather than growing into a shadow libc
-or hidden application runtime.
+final shared library. The DOOM corpus now also parses/sequences MIDI and MUS and
+synthesizes music into guest-owned PCM, so its host ABI no longer contains a
+music decoder/player service. Improve guest synthesis fidelity separately without
+weakening that boundary. Raw external effects remain behind a narrow
+host-capability boundary rather than growing into a shadow libc or hidden
+application runtime.
 
 ## Compiler
 
@@ -589,13 +603,11 @@ and 1.50x rotate median speedups on the recorded host with matching checksums.
 Canonical forms, lower bounds, and search-space reductions remain open.
 ### TODO - Self-modification state-graph optimizer
 
-Model executable Malbolge regions as versioned state-transition graphs whose
-nodes capture only semantically relevant code/data state. Derive mathematically
-verified reductions that collapse equivalent mutation histories, eliminate
-redundant encryption/update work, hoist invariant crazy/rotate computations, and
-identify regions safe for direct native execution. Express the equivalence and
-reduction rules in `.tex` and validate each admitted rewrite against executable
-VM evidence.
+Model self-modifying execution as verified state graphs. The active first slice
+now provides a collision-safe exact classic-state baseline: full input/output,
+registers, termination, and all 59,049 memory words are compared before a merge,
+even under a deliberately constant hash. Reduced future-relevant keys,
+mutation-history collapse, and native-region shortcuts remain research work.
 
 ## Optimization and accelerator architecture
 
