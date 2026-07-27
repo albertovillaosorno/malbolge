@@ -56,8 +56,8 @@ use std::sync::Arc;
 
 use malbolge::{
     ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineState, ProfileMemoryDelta, ProfileRegisters,
-    ProfileStepTrace, Termination, TraceInput,
+    ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
+    ProfileRegisters, ProfileStepTrace, Termination, TraceInput,
 };
 
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
@@ -81,6 +81,30 @@ pub struct IndexedMachineState {
     profile_digest: u64,
     registers: ProfileRegisters,
     termination: Option<Termination>,
+}
+
+/// Compact verified state-transition effect derived from one normative trace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IndexedStateEffect {
+    after: ProfileMachineObservation,
+    before: ProfileMachineObservation,
+    input: Option<TraceInput>,
+    memory_delta: ProfileMemoryDelta,
+    output: Option<u8>,
+}
+
+impl IndexedStateEffect {
+    /// Projects one full normative trace into the state-changing effect subset.
+    #[must_use]
+    pub const fn from_trace(trace: &ProfileStepTrace) -> Self {
+        Self {
+            after: trace.after,
+            before: trace.before,
+            input: trace.input,
+            memory_delta: trace.memory_delta,
+            output: trace.output,
+        }
+    }
 }
 
 /// Stable node identifier inside one indexed state graph.
@@ -186,14 +210,24 @@ impl IndexedMachineState {
         })
     }
 
-    pub(crate) fn apply_verified_trace_effect(
+    /// Applies one verifier-admitted compact effect to this exact lineage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexedStateError`] when the before observation, deterministic
+    /// input/output evolution, or indexed memory invariant disagrees.
+    pub(crate) fn apply_verified_effect(
         &self,
-        trace: &ProfileStepTrace,
+        effect: &IndexedStateEffect,
     ) -> Result<Self, IndexedStateError> {
-        self.validate_before(trace)?;
-        let input_cursor = self.next_input_cursor(trace)?;
-        let output = self.next_output(trace)?;
-        let memory = self.memory.apply_verified(trace.memory_delta)?;
+        self.validate_before_observation(effect.before)?;
+        let input_cursor = self.next_input_cursor_effect(
+            effect.input,
+            effect.after.input_consumed,
+        )?;
+        let output =
+            self.next_output_effect(effect.output, effect.after.output_len)?;
+        let memory = self.memory.apply_verified(effect.memory_delta)?;
         Ok(Self {
             input: Arc::clone(&self.input),
             input_cursor,
@@ -202,9 +236,19 @@ impl IndexedMachineState {
             output,
             profile: self.profile,
             profile_digest: self.profile_digest,
-            registers: trace.after.registers,
-            termination: trace.after.termination,
+            registers: effect.after.registers,
+            termination: effect.after.termination,
         })
+    }
+
+    pub(crate) fn apply_verified_trace_effect(
+        &self,
+        trace: &ProfileStepTrace,
+    ) -> Result<Self, IndexedStateError> {
+        if !ptr::eq(self.profile, trace.profile) {
+            return Err(IndexedStateError::ProfileMismatch);
+        }
+        self.apply_verified_effect(&IndexedStateEffect::from_trace(trace))
     }
 
     /// Returns exact equality for all state except mutable memory overrides.
@@ -294,9 +338,17 @@ impl IndexedMachineState {
         &self,
         trace: &ProfileStepTrace,
     ) -> Result<usize, IndexedStateError> {
-        match trace.input {
+        self.next_input_cursor_effect(trace.input, trace.after.input_consumed)
+    }
+
+    fn next_input_cursor_effect(
+        &self,
+        input: Option<TraceInput>,
+        after_input_consumed: usize,
+    ) -> Result<usize, IndexedStateError> {
+        match input {
             None => {
-                if trace.after.input_consumed == self.input_cursor {
+                if after_input_consumed == self.input_cursor {
                     Ok(self.input_cursor)
                 } else {
                     Err(IndexedStateError::InputTraceMismatch)
@@ -305,8 +357,7 @@ impl IndexedMachineState {
             Some(TraceInput::Byte(byte)) => {
                 let expected = self.input.get(self.input_cursor).copied();
                 let next = self.input_cursor.saturating_add(1);
-                if expected == Some(byte) && trace.after.input_consumed == next
-                {
+                if expected == Some(byte) && after_input_consumed == next {
                     Ok(next)
                 } else {
                     Err(IndexedStateError::InputTraceMismatch)
@@ -314,7 +365,7 @@ impl IndexedMachineState {
             },
             Some(TraceInput::EndOfInput) => {
                 if self.input_cursor == self.input.len()
-                    && trace.after.input_consumed == self.input_cursor
+                    && after_input_consumed == self.input_cursor
                 {
                     Ok(self.input_cursor)
                 } else {
@@ -325,9 +376,17 @@ impl IndexedMachineState {
     }
 
     fn next_output(&self, trace: &ProfileStepTrace) -> OutputTransition {
-        trace.output.map_or_else(
+        self.next_output_effect(trace.output, trace.after.output_len)
+    }
+
+    fn next_output_effect(
+        &self,
+        output: Option<u8>,
+        after_output_len: usize,
+    ) -> OutputTransition {
+        output.map_or_else(
             || {
-                if trace.after.output_len == self.output.len() {
+                if after_output_len == self.output.len() {
                     Ok(self.output.clone())
                 } else {
                     Err(IndexedStateError::OutputTraceMismatch)
@@ -335,13 +394,19 @@ impl IndexedMachineState {
             },
             |byte| {
                 let expected_len = self.output.len().saturating_add(1);
-                if trace.after.output_len == expected_len {
+                if after_output_len == expected_len {
                     Ok(self.output.append(byte))
                 } else {
                     Err(IndexedStateError::OutputTraceMismatch)
                 }
             },
         )
+    }
+
+    /// Returns the canonical profile fingerprint bound to this state lineage.
+    #[must_use]
+    pub const fn profile_fingerprint(&self) -> &'static str {
+        self.profile.fingerprint()
     }
 
     fn shares_lineage(&self, other: &Self) -> bool {
@@ -375,10 +440,17 @@ impl IndexedMachineState {
         if !ptr::eq(self.profile, trace.profile) {
             return Err(IndexedStateError::ProfileMismatch);
         }
-        if trace.before.input_consumed != self.input_cursor
-            || trace.before.output_len != self.output.len()
-            || trace.before.registers != self.registers
-            || trace.before.termination != self.termination
+        self.validate_before_observation(trace.before)
+    }
+
+    fn validate_before_observation(
+        &self,
+        before: ProfileMachineObservation,
+    ) -> Result<(), IndexedStateError> {
+        if before.input_consumed != self.input_cursor
+            || before.output_len != self.output.len()
+            || before.registers != self.registers
+            || before.termination != self.termination
         {
             return Err(IndexedStateError::BeforeObservationMismatch);
         }

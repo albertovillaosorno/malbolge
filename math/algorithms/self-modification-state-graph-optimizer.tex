@@ -325,6 +325,30 @@ the guard and produces exactly the normative fallback state/outcome, and a
 live-in mutation that makes the next transition invalid propagates the same typed
 VM rejection rather than forcing the verified effects.
 
+Let $\pi(\tau_i)$ project a verified normative trace to only its state-changing
+fields: before/after observation, deterministic input effect, output byte, and
+final memory delta. A portable effect artifact claim
+$A=(v,f,D,b,o,[\pi(\tau_0),\ldots])$ is admitted for verified region $V$ only
+when every field equals the verifier-produced projection:
+\begin{equation}
+  \operatorname{verifyArtifact}(A,V)
+  \Longleftrightarrow
+  A=\left(v_1,f_V,D_V,b_V,o_V,
+    [\pi(\tau)\mid\tau\in\operatorname{traces}(V)]\right).
+  \label{eq:state-graph-verified-effect-artifact}
+\end{equation}
+Here $v_1$ is the first portable effect-IR schema version, $f_V$ is the canonical
+profile fingerprint, and $D_V$ is the verifier-derived live-in set. Decoded
+opcodes and semantic read records remain verifier evidence and are not duplicated
+into the state-changing artifact payload.
+
+Only the verified artifact type can apply these compact effects. Effect execution
+still validates exact before observations and deterministic input/output
+progression; memory writes use the already verified region authority. Guard miss
+uses the same normative deoptimization equation above. Executable fixtures mutate
+profile identity, version, dependency set, outcome, budget, and effect sequence
+and require admission failure for every changed field.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

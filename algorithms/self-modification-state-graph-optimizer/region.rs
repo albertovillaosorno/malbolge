@@ -321,6 +321,12 @@ impl VerifiedExactRegion {
         Ok(state)
     }
 
+    /// Returns the exact verifier-admitted region entry state.
+    #[must_use]
+    pub const fn entry(&self) -> &IndexedMachineState {
+        &self.entry
+    }
+
     /// Executes the verified shortcut or deoptimizes to normative
     /// interpretation.
     ///

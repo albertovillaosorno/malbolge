@@ -45,6 +45,8 @@
 
 //! Cargo composition root for self-modification state-graph research.
 
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/a.rs"]
+mod artifact_safety;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/exact.rs"]
 mod exact_state;
 #[path = "../algorithms/self-modification-state-graph-optimizer/index.rs"]
@@ -65,6 +67,8 @@ pub mod persistent_output;
 pub mod profile_graph;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/c.rs"]
 mod profile_state;
+#[path = "../algorithms/self-modification-state-graph-optimizer/artifact.rs"]
+pub mod region_artifact;
 #[path = "../algorithms/self-modification-state-graph-optimizer/region.rs"]
 pub mod region_certificate;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/r.rs"]

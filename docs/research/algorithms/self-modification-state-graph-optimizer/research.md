@@ -372,3 +372,23 @@ live-in that makes execution invalid propagates the same typed VM rejection.
 This freezes tier selection before native code exists: a future backend may
 replace only the verified-shortcut implementation, never the deoptimization
 semantics.
+
+
+A first portable artifact boundary now freezes what that future backend is
+allowed to consume. `IndexedStateEffect` projects each verified trace to only the
+state-changing subset: exact before/after observations, deterministic input/output
+effects, and final memory delta. `UntrustedRegionArtifact` additionally carries
+IR version, canonical profile fingerprint, verifier-derived live-ins, region
+budget, and outcome. `verify_against()` independently reprojects the verified
+region and requires exact equality of every field before producing
+`VerifiedRegionArtifact`.
+
+The verified artifact executes compact effects directly on guard hit while still
+checking before-state and deterministic I/O progression. On guard miss it uses
+the already proved normative deoptimization path. Fixtures tamper effect count,
+profile fingerprint, format version, dependency set, budget, and outcome and
+require verifier rejection; admitted shortcut/deopt results equal the existing
+verified-region baselines. This is a portable effect-IR research precursor, not
+yet x86-64/AArch64 bytes or a stable serialized native cache format. The next
+boundary is production ownership under `execution/ir/`, followed by independently
+validated host-code artifacts.

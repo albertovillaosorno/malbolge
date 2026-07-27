@@ -313,3 +313,11 @@ label = "eq:state-graph-tiered-region-deopt"
 domain = "verifier-produced current-profile bounded region under dependency-guard hit or miss"
 mechanism = "shortcut-on-guard-hit-otherwise-normative-traced-reexecution"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_uses_shortcut_for_irrelevant_memory_variant", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_deoptimizes_advanced_state_to_normative_vm", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_deopt_propagates_normative_rejection"]
+
+[[correspondence]]
+id = "state-graph-verified-effect-artifact"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-verified-effect-artifact"
+domain = "portable effect artifact projected from one verifier-produced current-profile region"
+mechanism = "exact-field-reprojection-and-tamper-rejection"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/a.rs::artifact_shortcut_matches_verified_region_on_reduced_guard", "algorithms/self-modification-state-graph-optimizer/tests/a.rs::artifact_deoptimizes_advanced_state_identically_to_region", "algorithms/self-modification-state-graph-optimizer/tests/a.rs::artifact_verifier_rejects_effect_tampering", "algorithms/self-modification-state-graph-optimizer/tests/a.rs::artifact_verifier_rejects_profile_tampering", "algorithms/self-modification-state-graph-optimizer/tests/a.rs::artifact_verifier_rejects_metadata_tampering"]

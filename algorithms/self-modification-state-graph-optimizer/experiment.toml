@@ -150,3 +150,12 @@ guard_miss = "normative-profile-vm-same-region-budget"
 lineage_reconstruction = "real-fallback-traces"
 rejection_behavior = "propagate-normative-typed-error"
 next_risk = "native-code-artifact-integration"
+
+[reduction.verified_effect_artifact]
+baseline = "verified-full-trace-region-shortcut"
+candidate = "portable-compact-effect-ir-v1"
+artifact_trust = "untrusted-until-exact-reprojection"
+payload = "before-after-input-output-memory-delta"
+verifier_evidence_not_payload = "decoded-instruction-and-semantic-read-set"
+deopt = "same-normative-region-fallback"
+next_risk = "production-execution-ir-and-native-code-artifact"

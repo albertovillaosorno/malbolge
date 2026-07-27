@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from scripts.validate import math_correspondence as validator
 
-EXPECTED_EQUATIONS = 39
+EXPECTED_EQUATIONS = 40
 
 
 def _expect_invalid(text: str) -> None:

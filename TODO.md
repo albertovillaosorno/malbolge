@@ -652,9 +652,13 @@ microseconds versus 889.60 microseconds for the prepared direct VM
 region, about 129.36x. Tier selection now also has an executable deoptimization
 boundary: guard hits use verified effects, while guard misses run the normative VM
 for the same region budget and reconstruct the incremental lineage from real
-traces; normative rejection is propagated unchanged. Native code artifact
-integration, wider-profile geometry, broader mutation-history collapse, and
-end-to-end tier performance remain open.
+traces; normative rejection is propagated unchanged. A portable effect-IR v1
+research artifact now admits only exact verifier reprojections of profile,
+live-ins, budget, outcome, and compact state-changing effects; tampering any
+field fails and admitted shortcut/deopt results match the existing region
+baseline. Production `execution/ir/`, host-code artifacts, wider-profile
+geometry, broader mutation-history collapse, and end-to-end tier performance
+remain open.
 
 ## Optimization and accelerator architecture
 
