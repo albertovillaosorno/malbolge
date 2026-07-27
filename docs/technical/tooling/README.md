@@ -16,4 +16,5 @@ semantics implemented by the VM/compiler.
 
 ## Contents
 
+- `annotated-malbolge-source-format.md`
 - `malbolge-decompiler.md`
