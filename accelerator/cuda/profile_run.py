@@ -25,6 +25,7 @@ from accelerator.cuda.runtime import CudaRuntime
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
+from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunObservation
 from accelerator.profile_run import ProfileRunResult
 from accelerator.profile_run import validate_profile_run_requests
@@ -833,16 +834,43 @@ def _build_memory_buffers(
 ) -> tuple[_MemoryBuffer, _WordBuffer | None]:
     first = requests[0].memory
     if all(request.memory is first for request in requests):
-        if lazy_shared_memory:
-            word_count = len(first) * len(requests)
-            memories = _mapped_memory_buffer(word_count)
-        else:
-            memories = _memory_buffer(array("I", first) * len(requests))
-        return memories, _word_buffer(first)
+        return _build_shared_memory_buffers(
+            first,
+            len(requests),
+            lazy_shared_memory=lazy_shared_memory,
+        )
     memories = array("I")
     for request in requests:
-        memories.extend(request.memory)
+        memory = request.memory
+        if isinstance(memory, ProfileMemoryImage):
+            memories.extend(memory.words())
+        else:
+            memories.extend(memory)
     return _memory_buffer(memories), None
+
+
+def _build_shared_memory_buffers(
+    memory: array[int] | ProfileMemoryImage,
+    count: int,
+    *,
+    lazy_shared_memory: bool,
+) -> tuple[_MemoryBuffer, _WordBuffer]:
+    if lazy_shared_memory:
+        source = _memory_source(memory)
+        memories = _mapped_memory_buffer(len(source) * count)
+        return memories, _word_buffer(source)
+    if isinstance(memory, ProfileMemoryImage):
+        owner = memory.repeat_words(count)
+    else:
+        owner = memory * count
+    memories = _memory_buffer(owner)
+    return memories, _word_prefix_buffer(owner, len(memory))
+
+
+def _memory_source(memory: array[int] | ProfileMemoryImage) -> array[int]:
+    if isinstance(memory, ProfileMemoryImage):
+        return memory.copy_words()
+    return memory
 
 
 def _upload_host_batch(
@@ -1016,6 +1044,14 @@ def _mapped_memory_buffer(word_count: int) -> _MemoryBuffer:
 def _memory_buffer(owner: array[int]) -> _MemoryBuffer:
     view_type = ctypes.c_uint32 * len(owner)
     return _MemoryBuffer(owner=owner, view=view_type.from_buffer(owner))
+
+
+def _word_prefix_buffer(
+    owner: array[int],
+    word_count: int,
+) -> _WordBuffer:
+    view_type = ctypes.c_uint32 * word_count
+    return _WordBuffer(owner=owner, view=view_type.from_buffer(owner))
 
 
 def _word_buffer(owner: array[int]) -> _WordBuffer:

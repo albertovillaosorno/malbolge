@@ -15,6 +15,7 @@ from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 from accelerator.exact_primitives import AcceleratorUnavailableError
+from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 
@@ -71,6 +72,7 @@ def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
     assert result.error is RunError.NONE
     assert result.input_consumed == 0
     assert result.memory[0] == ENCRYPTED_NO_OP_CELL
+    assert isinstance(request.memory, array)
     assert result.memory[1:] == request.memory[1:]
     assert result.output_bytes == ()
     assert result.status is RunStatus.BUDGET_EXHAUSTED
@@ -148,3 +150,18 @@ def test_cuda_profile_session_matches_contiguous_execution() -> None:
     assert all(
         item.status is RunStatus.BUDGET_EXHAUSTED for item in observations
     )
+
+
+def test_cuda_profile_accepts_validated_memory_image() -> None:
+    """Immutable validated memory images preserve exact CUDA execution."""
+    request = _request()
+    assert isinstance(request.memory, array)
+    image_request = replace(
+        request,
+        memory=ProfileMemoryImage(GEOMETRY, request.memory),
+    )
+    with _cuda() as adapter:
+        expected = adapter.evaluate((request,))
+        observed = adapter.evaluate((image_request,))
+
+    assert observed == expected

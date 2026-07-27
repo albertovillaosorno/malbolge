@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from accelerator.classic_step import StepTermination
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
+from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import validate_profile_run_requests
@@ -26,6 +27,7 @@ TOO_SMALL_ERROR: Final = "cannot represent graphical encryption values"
 MEMORY_LENGTH_ERROR: Final = "requires 243 words"
 REGISTER_ERROR: Final = "code pointer outside"
 TERMINATION_ERROR: Final = "invalid resident termination"
+IMAGE_GEOMETRY_ERROR: Final = "memory image geometry mismatch"
 GEOMETRY = ProfileRunGeometry(
     eof_word=SMALL_WORDS - 1,
     memory_words=SMALL_WORDS,
@@ -63,7 +65,40 @@ def test_profile_request_uses_compact_u32_memory() -> None:
     request = _request()
     observed = validate_profile_run_requests(GEOMETRY, (request,))
     assert observed == (request,)
+    assert isinstance(request.memory, array)
     assert request.memory.itemsize == WORD_BYTES
+
+
+def test_profile_memory_image_isolated_read_only_and_reusable() -> None:
+    """Validated images isolate storage from caller mutation."""
+    source = array("I", [0]) * SMALL_WORDS
+    image = ProfileMemoryImage(GEOMETRY, source)
+    source[0] = 1
+
+    assert image.geometry == GEOMETRY
+    assert len(image) == SMALL_WORDS
+    assert image.words().readonly
+    assert image.words()[0] == 0
+    assert image.copy_words()[0] == 0
+
+    request = replace(_request(), memory=image)
+    assert validate_profile_run_requests(GEOMETRY, (request,)) == (request,)
+
+
+def test_profile_memory_image_rejects_geometry_drift() -> None:
+    """Validated proof cannot be reused under a different ternary geometry."""
+    other_words = 3**6
+    other = ProfileRunGeometry(
+        eof_word=other_words - 1,
+        memory_words=other_words,
+        word_modulus=other_words,
+        word_trits=6,
+    )
+    image = ProfileMemoryImage(other, array("I", [0]) * other_words)
+    request = replace(_request(), memory=image)
+    assert IMAGE_GEOMETRY_ERROR in _invalid(
+        lambda: validate_profile_run_requests(GEOMETRY, (request,))
+    )
 
 
 def test_profile_request_rejects_memory_and_register_drift() -> None:

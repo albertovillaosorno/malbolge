@@ -4,17 +4,17 @@
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 from typing import Final
 from typing import TYPE_CHECKING
+from typing import final
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_step import StepTermination
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
 
 if TYPE_CHECKING:
-    from array import array
-
     from accelerator.classic_run import RunError
     from accelerator.classic_run import RunStatus
 
@@ -47,6 +47,73 @@ class ProfileRunGeometry:
         return self
 
 
+@final
+class ProfileMemoryImage:
+    """Owned immutable-by-contract profile memory validated for one geometry."""
+
+    __slots__ = ("__geometry", "__storage")
+
+    def __init__(
+        self,
+        geometry: ProfileRunGeometry,
+        memory: array[int],
+    ) -> None:
+        """Validate and own an isolated copy of one complete memory image."""
+        admitted = geometry.validated()
+        _validate_memory(admitted, memory)
+        self.__geometry = admitted
+        self.__storage = array(WORD_TYPECODE, memory)
+
+    def __len__(self) -> int:
+        """Return the exact number of profile words in this image.
+
+        Returns:
+            Exact geometry-bound word count.
+
+        """
+        return self.__geometry.memory_words
+
+    @property
+    def geometry(self) -> ProfileRunGeometry:
+        """Geometry whose word-domain validation this image carries."""
+        return self.__geometry
+
+    def copy_words(self) -> array[int]:
+        """Materialize one independent compact 32-bit mutable word array.
+
+        Returns:
+            Fresh compact words with no mutable alias to this image.
+
+        """
+        return array(WORD_TYPECODE, self.__storage)
+
+    def repeat_words(self, count: int) -> array[int]:
+        """Materialize independent repeated copies of this validated image.
+
+        Returns:
+            Fresh compact repeated words with no alias to this image.
+
+        Raises:
+            ValueError: If `count` is negative.
+
+        """
+        if count < 0:
+            message = (
+                f"profile memory repeat count must be nonnegative: {count}"
+            )
+            raise ValueError(message)
+        return self.__storage * count
+
+    def words(self) -> memoryview:
+        """Return a read-only zero-copy view for inspection and bulk copying.
+
+        Returns:
+            Read-only native 32-bit view over the validated owned storage.
+
+        """
+        return memoryview(self.__storage).toreadonly()
+
+
 @dataclass(frozen=True, slots=True)
 class ProfileRunRequest:
     """One complete scalable profile VM state plus a bounded step budget."""
@@ -56,7 +123,7 @@ class ProfileRunRequest:
     data_pointer: int
     input_bytes: tuple[int, ...]
     input_consumed: int
-    memory: array[int]
+    memory: array[int] | ProfileMemoryImage
     output_bytes: tuple[int, ...]
     step_budget: int
     termination: StepTermination | int = StepTermination.NONE
@@ -112,6 +179,9 @@ def validate_profile_run_requests(
     for request in requests:
         _validate_request_metadata(admitted, request)
         memory = request.memory
+        if isinstance(memory, ProfileMemoryImage):
+            _validate_memory_image(admitted, memory)
+            continue
         identity = id(memory)
         known = validated_memories.get(identity)
         if known is memory:
@@ -213,6 +283,18 @@ def _validate_io_metadata(request: ProfileRunRequest) -> None:
         if value > MAX_U32:
             message = f"{label} outside unsigned 32-bit domain: {value}"
             raise InvalidPrimitiveBatchError(message)
+
+
+def _validate_memory_image(
+    geometry: ProfileRunGeometry,
+    memory: ProfileMemoryImage,
+) -> None:
+    if memory.geometry != geometry:
+        message = (
+            "resident profile memory image geometry mismatch: "
+            f"{memory.geometry!r} != {geometry!r}"
+        )
+        raise InvalidPrimitiveBatchError(message)
 
 
 def _validate_memory(

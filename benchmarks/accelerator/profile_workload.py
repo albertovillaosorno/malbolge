@@ -12,6 +12,7 @@ from accelerator.classic_run import RunError
 from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
+from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import validate_profile_run_requests
@@ -61,7 +62,7 @@ def profile_noop_request(
         data_pointer=0,
         input_bytes=(),
         input_consumed=0,
-        memory=_noop_memory(prepared_steps),
+        memory=ProfileMemoryImage(GEOMETRY, _noop_memory(prepared_steps)),
         output_bytes=(),
         step_budget=step_budget,
         termination=StepTermination.NONE,
