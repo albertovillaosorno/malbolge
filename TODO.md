@@ -323,9 +323,12 @@ Portable effect IR v1 is now product-owned under `execution/ir/`, and the
 verifier/deoptimization research boundary exercises it directly. The first
 host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
 atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
-Windows COFF objects for both x86-64 and AArch64. Architecture-specific direct
-emitters, machine-code admission, cache/orchestration, and end-to-end tier
-selection remain open.
+Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
+checks target ISA, executable/non-writable `.text`, exact entry identity,
+self-contained relocations, and absence of undefined host dependencies. This is
+structural admission only; semantic machine-code equivalence, architecture-
+specific direct emitters, cache/orchestration, and end-to-end tier selection
+remain open.
 
 Current implementation foundation: portable effect IR v1, verifier admission,
 deterministic deoptimization, canonical native cache identity, and an untrusted
@@ -700,9 +703,11 @@ field fails and admitted shortcut/deopt results match the existing region
 baseline. Product `execution/ir/` now owns effect IR v1, and
 `execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
 revisions, and required features with full equality after bucket collisions.
-`execution/native/` now lowers those effects into atomic C23 host-code candidates
-and pinned Clang emits untrusted x86-64/AArch64 COFF objects. Independent native
-admission/execution, wider-profile geometry, broader mutation-history collapse,
+`execution/native/` now lowers those effects into atomic C23 host-code candidates,
+pinned Clang emits untrusted x86-64/AArch64 COFF objects, and safe-Rust COFF
+parsing closes their object-format dependencies before semantic admission.
+Independent native semantic admission/execution, wider-profile geometry,
+broader mutation-history collapse,
 and end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture

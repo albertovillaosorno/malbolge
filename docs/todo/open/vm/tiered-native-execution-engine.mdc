@@ -67,7 +67,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
   entry/memory/input/output guards precede a collapsed final commit. Pinned
   Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
-  x86-64 and AArch64, and the tiered test suite checks their machine identities.
-- Independent machine-code admission, direct ISA emitters, AOT/JIT orchestration,
+  x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
+  identity, and relocation/symbol closure without trusting LLVM inspection.
+- Independent semantic machine-code admission, direct ISA emitters, AOT/JIT
+  orchestration,
   durable cache storage/eviction, executable-memory policy, and end-to-end tier
   performance remain unimplemented.

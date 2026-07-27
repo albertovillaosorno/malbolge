@@ -38,10 +38,18 @@ binds the candidate to the same collision-safe `NativeArtifactKey` used by the
 cache identity layer. Pinned Clang 22.1.8 compiles that source into real Windows
 COFF object candidates for both x86-64 and AArch64.
 
+A safe-Rust COFF parser now structurally admits those compiler outputs without
+invoking LLVM inspection tools. Admission binds the COFF machine to the target
+ISA, requires the exact callable entry in executable/non-writable `.text`, and
+rejects unresolved external dependencies. Internal ARM64 relocations to defined
+`.rdata` constants are allowed. Structural admission deliberately stops before
+semantic equivalence or execution authority.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
-`UntrustedNativeObjectArtifact`. Direct x86-64/AArch64 emitters, independent
-semantic admission of machine code, executable-memory handling, calling/runtime
+`UntrustedNativeObjectArtifact`. Structurally admitted COFF remains
+semantically untrusted. Direct x86-64/AArch64 emitters, independent semantic
+admission of machine code, executable-memory handling, calling/runtime
 integration, and instruction-cache synchronization remain unimplemented.
 
 ## Invariants
@@ -78,8 +86,9 @@ deterministically without changing guest-visible state silently.
 - Prerequisite completion evidence: `tiered-native-execution-engine`.
 - Bootstrap evidence: `tests/tiered_execution.rs` verifies deterministic source,
   exact cache-key binding, collapsed repeated writes, preflight-before-commit,
-  target/backend rejection, and real x86-64/AArch64 COFF generation using pinned
-  Clang 22.1.8.
+  target/backend rejection, real x86-64/AArch64 COFF generation using pinned
+  Clang 22.1.8, direct safe-Rust COFF parsing, ARM64 internal relocation closure,
+  and fail-closed mutation rejection.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

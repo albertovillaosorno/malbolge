@@ -67,13 +67,19 @@ use execution_ir::{
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    UntrustedNativeObjectArtifact, lower_clang_c23,
+    CoffAdmissionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    UntrustedNativeObjectArtifact, lower_clang_c23, structurally_admit_coff,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisters, RunOutcome, Termination, TraceInput,
 };
+
+#[derive(Clone, Copy)]
+struct CoffCompileCase {
+    expected_machine: [u8; 2],
+    isa: HostIsa,
+}
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
     let text = include_str!("execution/fixtures/region-effect-v1.hex");
@@ -599,43 +605,124 @@ fn native_bootstrap_compiles_real_x86_64_and_aarch64_coff_objects()
 
     let program = native_program();
     let cases = [
-        (HostIsa::X86_64, [0x64u8, 0x86u8]),
-        (HostIsa::AArch64, [0x64u8, 0xaau8]),
+        CoffCompileCase {
+            expected_machine: [0x64u8, 0x86u8],
+            isa: HostIsa::X86_64,
+        },
+        CoffCompileCase {
+            expected_machine: [0x64u8, 0xaau8],
+            isa: HostIsa::AArch64,
+        },
     ];
-    for (isa, expected_machine) in cases {
-        let candidate = lower_clang_c23(&program, native_target(isa))
-            .map_err(|error| error.to_string())?;
-        let stem = match isa {
-            HostIsa::X86_64 => "x86_64",
-            HostIsa::AArch64 => "aarch64",
-        };
-        let source_path = temporary.join(format!("{stem}.c"));
-        let object_path = temporary.join(format!("{stem}.obj"));
-        write(&source_path, candidate.source().as_bytes())
-            .map_err(|error| format!("native source write: {error}"))?;
-        compile_native_object(
-            &clang,
-            candidate.target_triple(),
-            &source_path,
-            &object_path,
-        )?;
-        let object = read(&object_path)
-            .map_err(|error| format!("native object read: {error}"))?;
-        let artifact = UntrustedNativeObjectArtifact::from_compiler_output(
-            &candidate, object,
-        )
-        .map_err(|error| error.to_string())?;
-        if artifact.key() != candidate.key()
-            || artifact.target_triple() != candidate.target_triple()
-        {
-            return Err(String::from("native object lost source identity"));
-        }
-        if artifact.object().get(..2) != Some(expected_machine.as_slice()) {
-            return Err(format!("unexpected COFF machine for {stem}"));
-        }
+    for case in cases {
+        check_compiled_coff_case(&clang, &temporary, &program, case)?;
     }
     remove_dir_all(&temporary)
         .map_err(|error| format!("native temp final cleanup: {error}"))?;
+    Ok(())
+}
+
+fn check_compiled_coff_case(
+    clang: &Path,
+    temporary: &Path,
+    program: &RegionEffectProgram,
+    case: CoffCompileCase,
+) -> Result<(), String> {
+    let candidate = lower_clang_c23(program, native_target(case.isa))
+        .map_err(|error| error.to_string())?;
+    let stem = match case.isa {
+        HostIsa::X86_64 => "x86_64",
+        HostIsa::AArch64 => "aarch64",
+    };
+    let source_path = temporary.join(format!("{stem}.c"));
+    let object_path = temporary.join(format!("{stem}.obj"));
+    write(&source_path, candidate.source().as_bytes())
+        .map_err(|error| format!("native source write: {error}"))?;
+    compile_native_object(
+        clang,
+        candidate.target_triple(),
+        &source_path,
+        &object_path,
+    )?;
+    let object = read(&object_path)
+        .map_err(|error| format!("native object read: {error}"))?;
+    let artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(&candidate, object)
+            .map_err(|error| error.to_string())?;
+    if artifact.key() != candidate.key()
+        || artifact.target_triple() != candidate.target_triple()
+    {
+        return Err(String::from("native object lost source identity"));
+    }
+    if artifact.object().get(..2) != Some(case.expected_machine.as_slice()) {
+        return Err(format!("unexpected COFF machine for {stem}"));
+    }
+    let admitted = structurally_admit_coff(&artifact)
+        .map_err(|error| format!("COFF structural admission: {error}"))?;
+    if admitted.key() != artifact.key()
+        || admitted.object() != artifact.object()
+        || admitted.target_triple() != artifact.target_triple()
+    {
+        return Err(String::from("COFF admission changed artifact identity"));
+    }
+    if case.isa == HostIsa::X86_64 {
+        check_rejected_coff_mutations(&candidate, &artifact)?;
+    }
+    Ok(())
+}
+
+fn check_rejected_coff_mutations(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let truncated = artifact.object().iter().copied().take(16).collect();
+    let truncated_artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, truncated)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&truncated_artifact)
+        != Err(CoffAdmissionError::Bounds)
+    {
+        return Err(String::from("truncated COFF object was admitted"));
+    }
+
+    let mut wrong_machine = artifact.object().to_vec();
+    let machine = wrong_machine
+        .get_mut(..2)
+        .ok_or_else(|| String::from("COFF fixture has no machine field"))?;
+    machine.copy_from_slice(&0xaa64u16.to_le_bytes());
+    let wrong_machine_artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(
+            source,
+            wrong_machine,
+        )
+        .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&wrong_machine_artifact)
+        != Err(CoffAdmissionError::Machine)
+    {
+        return Err(String::from("wrong COFF machine was admitted"));
+    }
+
+    let mut wrong_entry = artifact.object().to_vec();
+    let entry = b"malbolge_native_region_apply";
+    let offset = wrong_entry
+        .windows(entry.len())
+        .position(|window| window == entry)
+        .ok_or_else(|| String::from("COFF fixture has no native entry name"))?;
+    let first = wrong_entry
+        .get_mut(offset)
+        .ok_or_else(|| String::from("COFF entry name offset is invalid"))?;
+    *first = b'X';
+    let wrong_entry_artifact =
+        UntrustedNativeObjectArtifact::from_compiler_output(
+            source,
+            wrong_entry,
+        )
+        .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&wrong_entry_artifact)
+        != Err(CoffAdmissionError::ExtraExternalFunction)
+    {
+        return Err(String::from("renamed native entry was admitted"));
+    }
     Ok(())
 }
 

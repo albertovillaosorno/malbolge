@@ -62,10 +62,22 @@ compilation. Source and object containers remain explicitly `Untrusted*`:
 matching IR/target identity proves provenance of the claim, not semantic
 correctness of compiler-produced machine code.
 
+`execution/native/coff.rs` now provides a second, independent structural gate for
+those Windows objects. It parses COFF bytes directly in safe Rust rather than
+trusting Clang/LLVM diagnostics, requires machine identity to match the native
+key, requires exactly one executable/non-writable `.text` section and the exact
+`malbolge_native_region_apply` external function, rejects unexpected external
+functions or undefined external symbols, and admits relocations only when their
+targets are defined inside the same object. ARM64's compiler-generated `.rdata`
+constant relocations therefore remain valid while host-library dependencies fail
+closed. The result is named `StructurallyAdmittedNativeObjectArtifact`; it still
+has no semantic execution authority.
+
 ### Remaining Implementation
 
-Independent native semantic admission, direct x86-64/AArch64 instruction
-selection, executable-memory policy/invocation, durable native cache
+Independent native semantic admission after structural COFF validation, direct
+x86-64/AArch64 instruction selection, executable-memory policy/invocation,
+durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
 selector remain open. The interpreter remains the only normative execution
 authority and the guaranteed fallback.
@@ -98,8 +110,12 @@ deterministically without changing guest-visible state silently.
   byte-exact independent fixture, forced bucket collisions never authorize
   native-cache reuse, bootstrap source is deterministic/atomic/key-bound, and
   pinned Clang emits real x86-64 and AArch64 COFF object candidates.
-- Native object candidates are not executed or admitted as verified artifacts by
-  this evidence; that trust-boundary step remains explicit follow-on work.
+- Safe-Rust COFF tests admit both real objects, including ARM64 internal
+  relocations, while rejecting truncated bytes, mismatched machine identity, and
+  a renamed callable entry. Structural admission remains non-semantic.
+- Native object candidates are not executed or admitted as semantically verified
+  artifacts by this evidence; that trust-boundary step remains explicit
+  follow-on work.
 ## References
 
 ### Host Architecture Baseline

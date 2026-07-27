@@ -49,9 +49,15 @@
 
 //! First untrusted native-artifact lowering boundary for portable effect IR.
 
+mod coff;
+
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
 
+pub use coff::{
+    CoffAdmissionError, StructurallyAdmittedNativeObjectArtifact,
+    structurally_admit_coff,
+};
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,
     TraceInput,

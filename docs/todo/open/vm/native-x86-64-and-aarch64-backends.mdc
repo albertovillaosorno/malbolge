@@ -58,9 +58,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   exact canonical IR even under forced bucket-digest collisions.
 - A Clang C23 bootstrap backend now emits real untrusted x86-64/AArch64 Windows
   COFF object candidates from the same portable IR. This proves the shared
-  host-code boundary and target split; direct ISA instruction selection,
-  independent machine-code admission, executable-memory integration, and
-  instruction-cache behavior remain pending for this TODO.
+  host-code boundary and target split. Safe-Rust COFF admission now verifies
+  machine/entry/section identity and rejects unresolved external dependencies;
+  direct ISA instruction selection, semantic machine-code admission,
+  executable-memory integration, and instruction-cache behavior remain pending
+  for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

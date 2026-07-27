@@ -11,6 +11,7 @@ explicitly untrusted native compilation artifacts.
 - deterministic C23 bootstrap lowering from `RegionEffectProgram`;
 - exact binding to `NativeArtifactKey` target assumptions;
 - untrusted native source/object artifact containers;
+- fail-closed structural admission of self-contained Windows COFF objects;
 - target triples for the pinned Clang bootstrap backend.
 
 ## Does Not Own
@@ -38,7 +39,15 @@ Those local checks are defense in depth, not verifier authority.
 by `VerifiedExactRegion::accepts_dependency_entry`; the host must cross that
 verifier-owned guard before any future native runner can invoke this artifact.
 
-Both source and object wrappers are named `Untrusted*`. Attaching bytes to the
-correct cache key does not prove that those bytes implement the IR. A later
-independent native validator must establish that boundary before executable
+Both source and compiler-output wrappers are named `Untrusted*`. Attaching bytes
+to the correct cache key does not prove that those bytes implement the IR.
+
+`coff.rs` adds a narrower structural gate for Windows bootstrap objects. It
+parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine
+identity against the native target key, requires one executable/non-writable
+`.text`, requires the exact `malbolge_native_region_apply` entry, rejects other
+external functions and undefined external dependencies, and permits relocations
+only when they resolve to symbols defined inside the same object. The resulting
+`StructurallyAdmittedNativeObjectArtifact` is still not semantic authority. An
+independent semantic validator must establish that boundary before executable
 promotion exists.
