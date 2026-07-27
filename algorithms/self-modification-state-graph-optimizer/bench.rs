@@ -98,12 +98,17 @@ type DeltaFixture = (ProfileMachineState, ProfileMemoryDelta, u32);
 type IndexedFixture = (IndexedProfileMemory, ProfileMemoryDelta, u32);
 type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
 type RegionGuardFixture = (Arc<VerifiedExactRegion>, IndexedMachineState);
-type RegionFixture = (
-    ExactRegionCertificate,
-    Arc<VerifiedExactRegion>,
-    IndexedMachineState,
-    IndexedMachineState,
-);
+
+#[derive(Clone, Debug)]
+struct RegionFixture {
+    certificate: ExactRegionCertificate,
+    direct_irrelevant: ProfileMachine,
+    entry: IndexedMachineState,
+    irrelevant: IndexedMachineState,
+    live_in_changed: IndexedMachineState,
+    mutated: IndexedMachineState,
+    verified: Arc<VerifiedExactRegion>,
+}
 type StateFixture =
     (IndexedMachineState, ProfileStepTrace, IndexedMachineState);
 type VecOutputFixture = (Arc<[u8]>, u8);
@@ -165,6 +170,23 @@ fn hash_usize(mut hash: u64, value: usize) -> u64 {
         hash = hash_byte(hash, byte);
     }
     hash
+}
+
+fn hash_run_outcome(hash: u64, outcome: malbolge::RunOutcome) -> u64 {
+    match outcome {
+        malbolge::RunOutcome::BudgetExhausted { steps } => {
+            let tagged = hash_byte(hash, 0);
+            hash_usize(tagged, steps)
+        },
+        malbolge::RunOutcome::Terminated { reason, steps } => {
+            let reason_tag = match reason {
+                malbolge::Termination::HaltInstruction => 1,
+                malbolge::Termination::NonGraphicalCell => 2,
+            };
+            let tagged = hash_byte(hash, reason_tag);
+            hash_usize(tagged, steps)
+        },
+    }
 }
 
 fn incremental_graph_checksum(graph: &IndexedStateGraph, node: u32) -> u64 {
@@ -368,6 +390,69 @@ fn indexed_fixture() -> IoResult<IndexedFixture> {
     Ok((indexed, delta, address))
 }
 
+fn region_irrelevant_state(
+    entry: &IndexedMachineState,
+    verified: &VerifiedExactRegion,
+) -> IoResult<IndexedMachineState> {
+    let address = (1_024..1_280u32)
+        .find(|candidate| {
+            let dependency = verified
+                .memory_dependencies()
+                .iter()
+                .any(|item| item.address == *candidate);
+            let written = verified.traces().iter().any(|trace| {
+                [trace.memory_delta.data, trace.memory_delta.encryption]
+                    .into_iter()
+                    .flatten()
+                    .any(|write| write.address == *candidate)
+            });
+            !dependency && !written
+        })
+        .ok_or_else(|| {
+            IoError::other("region fixture has no irrelevant address")
+        })?;
+    let before = entry.memory_word(address).map_err(|error| {
+        IoError::other(format!("region irrelevant read: {error:?}"))
+    })?;
+    entry
+        .apply_memory_delta(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address,
+                after: changed_profile_word(before),
+                before,
+            }),
+            encryption: None,
+        })
+        .map_err(|error| {
+            IoError::other(format!("region irrelevant state: {error:?}"))
+        })
+}
+
+fn region_live_in_changed_state(
+    entry: &IndexedMachineState,
+    verified: &VerifiedExactRegion,
+) -> IoResult<IndexedMachineState> {
+    let dependency = verified
+        .memory_dependencies()
+        .first()
+        .copied()
+        .ok_or_else(|| {
+            IoError::other("region fixture has no memory dependency")
+        })?;
+    entry
+        .apply_memory_delta(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address: dependency.address,
+                after: changed_profile_word(dependency.value),
+                before: dependency.value,
+            }),
+            encryption: None,
+        })
+        .map_err(|error| {
+            IoError::other(format!("region live-in state: {error:?}"))
+        })
+}
+
 fn region_fixture() -> IoResult<RegionFixture> {
     let machine =
         ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
@@ -391,7 +476,22 @@ fn region_fixture() -> IoResult<RegionFixture> {
     let mutated = entry.apply_trace(&first_trace).map_err(|error| {
         IoError::other(format!("region mutation: {error:?}"))
     })?;
-    Ok((certificate, verified, entry, mutated))
+    let irrelevant = region_irrelevant_state(&entry, &verified)?;
+    let live_in_changed = region_live_in_changed_state(&entry, &verified)?;
+    let direct_irrelevant = ProfileMachine::from_snapshot(
+        irrelevant.materialize_checkpoint().map_err(|error| {
+            IoError::other(format!("region direct state: {error:?}"))
+        })?,
+    );
+    Ok(RegionFixture {
+        certificate,
+        direct_irrelevant,
+        entry,
+        irrelevant,
+        live_in_changed,
+        mutated,
+        verified,
+    })
 }
 
 fn state_fixture() -> IoResult<StateFixture> {
@@ -551,6 +651,44 @@ fn run_indexed_samples(output: &mut impl Write) -> IoResult<()> {
     Ok(())
 }
 
+fn changed_profile_word(value: u32) -> u32 {
+    let incremented = value.saturating_add(1);
+    if incremented == current_profile().word_modulus() {
+        0
+    } else {
+        incremented
+    }
+}
+
+fn direct_region_run(mut machine: ProfileMachine) -> u64 {
+    let outcome = match machine.run(8) {
+        Ok(value) => value,
+        Err(_error) => return u64::MAX,
+    };
+    let mut hash = FNV_OFFSET;
+    hash = hash_usize(hash, machine.input_consumed());
+    hash = hash_usize(hash, machine.output().len());
+    let registers = machine.registers();
+    hash = hash_u32(hash, registers.accumulator);
+    hash = hash_u32(hash, registers.code_pointer);
+    hash = hash_u32(hash, registers.data_pointer);
+    hash_run_outcome(hash, outcome)
+}
+
+fn region_dependency_guard((region, candidate): RegionGuardFixture) -> u64 {
+    match region.accepts_dependency_entry(&candidate) {
+        Ok(accepted) => hash_byte(FNV_OFFSET, u8::from(accepted)),
+        Err(_error) => u64::MAX,
+    }
+}
+
+fn region_dependency_shortcut((region, candidate): RegionGuardFixture) -> u64 {
+    match region.apply_dependency_shortcut(&candidate) {
+        Ok(exit) => exit.state_digest(),
+        Err(_error) => u64::MAX,
+    }
+}
+
 fn region_guard((region, candidate): RegionGuardFixture) -> u64 {
     hash_byte(FNV_OFFSET, u8::from(region.accepts_entry(&candidate)))
 }
@@ -609,33 +747,81 @@ fn run_output_samples(output: &mut impl Write) -> IoResult<()> {
     Ok(())
 }
 
-fn run_region_samples(output: &mut impl Write) -> IoResult<()> {
-    let (certificate, verified, entry, mutated) = region_fixture()?;
+fn run_region_execution_samples(
+    output: &mut impl Write,
+    fixture: &RegionFixture,
+) -> IoResult<()> {
     emit_repeated_samples(
         output,
         RepeatedSampleConfig {
-            implementation: "region-exact-guard-hit",
-            operations: PERSISTENT_OPERATIONS,
+            implementation: "region-dependency-shortcut",
+            operations: STATE_OPERATIONS,
         },
-        || (Arc::clone(&verified), entry.clone()),
-        region_guard,
+        || (Arc::clone(&fixture.verified), fixture.irrelevant.clone()),
+        region_dependency_shortcut,
     )?;
-    emit_repeated_samples(
+    emit_samples(
         output,
-        RepeatedSampleConfig {
-            implementation: "region-exact-guard-miss",
-            operations: PERSISTENT_OPERATIONS,
-        },
-        || (Arc::clone(&verified), mutated.clone()),
-        region_guard,
+        "region-direct-vm-run",
+        || fixture.direct_irrelevant.clone(),
+        direct_region_run,
     )?;
     emit_samples(
         output,
         "region-certificate-verify",
-        || certificate.clone(),
+        || fixture.certificate.clone(),
         |claim| region_verify(&claim),
-    )?;
+    )
+}
+
+fn run_region_guard_samples(
+    output: &mut impl Write,
+    fixture: &RegionFixture,
+) -> IoResult<()> {
+    let exact_guard: fn(RegionGuardFixture) -> u64 = region_guard;
+    let dependency_guard: fn(RegionGuardFixture) -> u64 =
+        region_dependency_guard;
+    let cases = [
+        ("region-exact-guard-hit", fixture.entry.clone(), exact_guard),
+        (
+            "region-exact-guard-miss",
+            fixture.mutated.clone(),
+            exact_guard,
+        ),
+        (
+            "region-exact-guard-irrelevant-miss",
+            fixture.irrelevant.clone(),
+            exact_guard,
+        ),
+        (
+            "region-dependency-guard-hit",
+            fixture.irrelevant.clone(),
+            dependency_guard,
+        ),
+        (
+            "region-dependency-guard-miss",
+            fixture.live_in_changed.clone(),
+            dependency_guard,
+        ),
+    ];
+    for (implementation, candidate, run) in cases {
+        emit_repeated_samples(
+            output,
+            RepeatedSampleConfig {
+                implementation,
+                operations: PERSISTENT_OPERATIONS,
+            },
+            || (Arc::clone(&fixture.verified), candidate.clone()),
+            run,
+        )?;
+    }
     Ok(())
+}
+
+fn run_region_samples(output: &mut impl Write) -> IoResult<()> {
+    let fixture = region_fixture()?;
+    run_region_guard_samples(output, &fixture)?;
+    run_region_execution_samples(output, &fixture)
 }
 
 fn run_state_identity_samples(output: &mut impl Write) -> IoResult<()> {
