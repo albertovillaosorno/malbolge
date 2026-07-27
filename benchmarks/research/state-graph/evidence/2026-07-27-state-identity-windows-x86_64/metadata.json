@@ -1,0 +1,386 @@
+{
+  "captured_at": "2026-07-27T04:27:49.1549209-06:00",
+  "commit": "f317f3eede9783fdaea7e84c2b5463b1663e9cc1",
+  "short_commit": "f317f3e",
+  "benchmark_command": ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe run --release --bin state_graph_benchmark --quiet",
+  "sample_count": 15,
+  "profile": "malbolge-2026.2",
+  "memory_words": 4782969,
+  "word_trits": 14,
+  "state_operations_per_sample": 4096,
+  "benchmark_scope_matches_head": true,
+  "working_tree_note": "Unrelated .gitignore/DOOM interoperability edits were present and excluded from benchmark-owned/runtime scope.",
+  "cpu": {
+    "Name": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+    "Manufacturer": "GenuineIntel",
+    "NumberOfCores": 12,
+    "NumberOfLogicalProcessors": 24,
+    "MaxClockSpeed": 2601
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200",
+    "OSArchitecture": "64-bit"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "results": [
+    {
+      "implementation": "indexed-apply-depth-1",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 920.8984375,
+      "median_ns_per_op": 927.587890625,
+      "maximum_ns_per_op": 948.0712890625,
+      "checksum": "16928533803608187685",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1616.2841796875,
+      "median_ns_per_op": 1634.5703125,
+      "maximum_ns_per_op": 1721.875,
+      "checksum": "10392220539554710309",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-512",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1009.130859375,
+      "median_ns_per_op": 1016.40625,
+      "maximum_ns_per_op": 1033.69140625,
+      "checksum": "13279449747975267109",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-64",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 924.462890625,
+      "median_ns_per_op": 930.419921875,
+      "maximum_ns_per_op": 1107.080078125,
+      "checksum": "17062710960419316517",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-8",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 923.974609375,
+      "median_ns_per_op": 926.025390625,
+      "maximum_ns_per_op": 948.681640625,
+      "checksum": "6296289106748244773",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1673.8525390625,
+      "median_ns_per_op": 1719.43359375,
+      "maximum_ns_per_op": 1863.232421875,
+      "checksum": "17793303670962922277",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.41015625,
+      "median_ns_per_op": 20.904541015625,
+      "maximum_ns_per_op": 32.196044921875,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.379638671875,
+      "median_ns_per_op": 20.489501953125,
+      "maximum_ns_per_op": 21.533203125,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 23.828125,
+      "median_ns_per_op": 24.21875,
+      "maximum_ns_per_op": 642.1875,
+      "checksum": "11130583311107593509",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 20.654296875,
+      "median_ns_per_op": 20.703125,
+      "maximum_ns_per_op": 24.12109375,
+      "checksum": "3361148569019855653",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 20.44677734375,
+      "median_ns_per_op": 20.849609375,
+      "maximum_ns_per_op": 25.390625,
+      "checksum": "18181643104867607333",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.391845703125,
+      "median_ns_per_op": 20.697021484375,
+      "maximum_ns_per_op": 22.2900390625,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.439697265625,
+      "median_ns_per_op": 19.464111328125,
+      "maximum_ns_per_op": 20.73974609375,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 19.921875,
+      "median_ns_per_op": 20.3125,
+      "maximum_ns_per_op": 20.703125,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 19.580078125,
+      "median_ns_per_op": 19.677734375,
+      "maximum_ns_per_op": 19.775390625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 19.5068359375,
+      "median_ns_per_op": 19.54345703125,
+      "maximum_ns_per_op": 20.49560546875,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.439697265625,
+      "median_ns_per_op": 19.671630859375,
+      "maximum_ns_per_op": 20.69091796875,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "insert-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 26131700.0,
+      "median_ns_per_op": 26292300.0,
+      "maximum_ns_per_op": 26374900.0,
+      "checksum": "4625247251222736821",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 138.861083984375,
+      "median_ns_per_op": 139.4287109375,
+      "maximum_ns_per_op": 145.263671875,
+      "checksum": "4167613253049000741",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.950439453125,
+      "median_ns_per_op": 18.1396484375,
+      "maximum_ns_per_op": 19.830322265625,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.90771484375,
+      "median_ns_per_op": 17.926025390625,
+      "maximum_ns_per_op": 19.671630859375,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 18.359375,
+      "median_ns_per_op": 18.75,
+      "maximum_ns_per_op": 19.921875,
+      "checksum": "17165412970885540645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 18.017578125,
+      "median_ns_per_op": 18.06640625,
+      "maximum_ns_per_op": 54.345703125,
+      "checksum": "13040278181342372645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 17.98095703125,
+      "median_ns_per_op": 17.9931640625,
+      "maximum_ns_per_op": 18.71337890625,
+      "checksum": "217943758197170981",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.901611328125,
+      "median_ns_per_op": 18.0908203125,
+      "maximum_ns_per_op": 18.34716796875,
+      "checksum": "8321053844470768421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 18.2373046875,
+      "median_ns_per_op": 18.255615234375,
+      "maximum_ns_per_op": 18.85986328125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 21832.8125,
+      "median_ns_per_op": 22013.28125,
+      "maximum_ns_per_op": 22971.875,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 1527.5390625,
+      "median_ns_per_op": 1530.712890625,
+      "maximum_ns_per_op": 1563.916015625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 144.88525390625,
+      "median_ns_per_op": 145.6298828125,
+      "maximum_ns_per_op": 151.52587890625,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 22.9736328125,
+      "median_ns_per_op": 23.065185546875,
+      "maximum_ns_per_op": 24.658203125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "replay-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 30164500.0,
+      "median_ns_per_op": 30482800.0,
+      "maximum_ns_per_op": 30811200.0,
+      "checksum": "12549573586291003927",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "snapshot",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 6260000.0,
+      "median_ns_per_op": 6592800.0,
+      "maximum_ns_per_op": 7406600.0,
+      "checksum": "15378766449629180008",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-apply-trace",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 893.115234375,
+      "median_ns_per_op": 923.779296875,
+      "maximum_ns_per_op": 948.583984375,
+      "checksum": "2806732789937808165",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-observe-new",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 525.3662109375,
+      "median_ns_per_op": 535.8154296875,
+      "maximum_ns_per_op": 622.3388671875,
+      "checksum": "15542364202839024421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-replay",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 396.4599609375,
+      "median_ns_per_op": 406.6650390625,
+      "maximum_ns_per_op": 433.1787109375,
+      "checksum": "11735635569798456101",
+      "checksum_count": 1
+    }
+  ],
+  "analysis": {
+    "full_insert_to_incremental_observe_ratio": 49069.695539253655,
+    "full_replay_to_incremental_replay_ratio": 74958.00492285525,
+    "full_insert_to_apply_trace_ratio": 28461.668375706962,
+    "note": "Representation microbenchmark only; excludes VM execution outside apply-trace, graph-edge policy, native tiers, and verifier cost."
+  }
+}

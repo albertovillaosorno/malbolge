@@ -627,9 +627,13 @@ about 1165x faster than the linked chain.
 The radix is promoted as the current-profile memory candidate. A lineage-bound
 incremental state graph now reconstructs every current checkpoint exactly,
 deduplicates replay, rejects foreign roots, and keeps forced digest collisions
-separate without full-memory hashing per observation. Post-commit state-graph
-performance, wider-profile geometry, output storage reduction, broader
-mutation-history collapse, and native-region shortcuts remain open.
+separate without full-memory hashing per observation. Post-commit identity
+measurement is 535.82 ns new-observe and
+406.67 ns replay versus
+26.29/30.48 ms for
+complete checkpoints in the same run. Append-only output storage, wider-profile
+geometry, broader mutation-history collapse, and native-region shortcuts remain
+open.
 
 ## Optimization and accelerator architecture
 

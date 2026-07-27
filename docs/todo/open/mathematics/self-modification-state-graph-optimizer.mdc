@@ -103,6 +103,13 @@ VM evidence.
   is bucket-only: forced constant collisions keep distinct states separate and
   exact replay deduplicates. Independently allocated roots fail closed instead
   of triggering complete-root comparison. Post-commit performance is next.
+- Post-commit identity evidence at `f317f3e` measures incremental trace apply at
+  923.78 ns/op, new-state observation at
+  535.82 ns/op, and exact replay at
+  406.67 ns/op. Complete-checkpoint insert/replay
+  are 26.29/30.48 ms
+  in the same run. Incremental identity is promoted; append-only output storage
+  is now the remaining obvious history-sized state update.
 
 ## Acceptance
 

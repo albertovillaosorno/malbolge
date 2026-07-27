@@ -83,3 +83,11 @@ foreign_lineage = "fail-closed"
 digest_role = "bucket-only"
 collision_confirmation = "exact-state-equality"
 materialization_role = "oracle-only"
+
+[incremental_state_identity.benchmark]
+commit = "f317f3e"
+evidence = "benchmarks/research/state-graph/evidence/2026-07-27-state-identity-windows-x86_64"
+samples_per_case = 15
+operations_per_incremental_sample = 4096
+verdict = "promote-lineage-bound-incremental-identity"
+next_risk = "append-only-output-storage"

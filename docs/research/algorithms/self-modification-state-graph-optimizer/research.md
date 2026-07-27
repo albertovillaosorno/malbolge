@@ -236,3 +236,19 @@ digests in constant-size work. Exact state equality remains the merge authority:
 a forced constant digest does not merge distinct states, while exact replay
 returns the same node ID. Performance remains unclaimed until this graph is
 benchmarked directly against `ProfileStateGraph` full-checkpoint insert/replay.
+
+Post-commit state-identity measurement at `f317f3e` removes complete checkpoint
+hash/equality from the expected graph fast path. Incremental trace application is
+923.78 ns/op, new-state observation is
+535.82 ns/op, and exact replay is
+406.67 ns/op. The complete-checkpoint baselines in
+the same run are 26.29 ms insert and
+30.48 ms replay, giving measured representation
+ratios of approximately 49070x and
+74958x.
+
+This does not establish VM or native-tier throughput. It does promote
+lineage-bound incremental identity as the current graph candidate. The remaining
+obvious history-sized update is committed output: `state.rs` still clones the
+entire output `Vec<u8>` whenever one byte is emitted. Output persistence is the
+next falsifiable representation slice before native-region work.

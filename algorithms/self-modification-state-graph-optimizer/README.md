@@ -89,3 +89,13 @@ bucket selection. Exact output/scalar/radix equality still confirms every merge.
 Foreign roots fail closed instead of triggering a complete memory comparison.
 `tests/s.rs` reconstructs every current checkpoint exactly, forces digest
 collisions, and verifies exact replay deduplication.
+
+Post-commit identity evidence at `f317f3e` promotes the lineage-bound incremental
+graph. New-state observation measures 535.82
+ns/op and exact replay 406.67 ns/op, versus
+26.29 ms and
+30.48 ms for complete-checkpoint insert/replay. The
+measured representation ratios are about
+49070x and
+74958x respectively. The remaining
+history-sized field is committed output, currently cloned as `Vec<u8>` on append.
