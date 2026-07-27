@@ -70,10 +70,10 @@ comments at C/IR region boundaries. For example, an annotated generated view may
 look conceptually like:
 
 ```text
-# C function: update_player
+    # C function: update_player
 <canonical Malbolge bytes for region A>
 
-# C block: collision branch
+    # C block: collision branch
 <canonical Malbolge bytes for region B>
 ```
 
