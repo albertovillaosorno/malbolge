@@ -19,6 +19,7 @@ scope:
   - "optimizer/"
   - "benchmarks/accelerator/"
   - "tests/optimizer/"
+  - "tests/vm/"
 validation:
   - "jig validate --root ."
 ---
@@ -48,13 +49,19 @@ batches.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
-- Active foundation: integer-only CUDA kernels now implement exact classic
+- Active foundation: integer-only CUDA kernels implement exact classic
   rotate/crazy batches through NVRTC + Driver API behind the shared accelerator
   port. CUDA 13.3 Update 1 redistributables are reproducibly pinned by component
-  path/version/SHA-256; Python binding versions are pinned separately.
-- RTX 4060 (`sm_89`) development evidence matches CPU reference results for
-  boundary-heavy and deterministic 4,096-element batches. Full VM state/I/O/
-  mutation execution, adaptive resource sizing, and performance evidence remain
+  path/version/SHA-256; the active Python adapter uses standard-library `ctypes`
+  only.
+- Compact classic one-step VM execution is now active. A fixed-width request
+  declares registers/counters/input plus at most four keyed memory cells; CUDA
+  returns the full `StepTrace`-equivalent projection. Rust integration compares
+  fourteen instruction/edge fixtures directly with normative
+  `Machine::step_traced()`, including atomic rejection and write aliasing.
+- RTX 4060 (`sm_89`) development evidence matches CPU primitive results and Rust
+  classic-step traces. Resident full-memory multi-step VM execution, adaptive
+  resource sizing, current-profile coverage, and performance evidence remain
   open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

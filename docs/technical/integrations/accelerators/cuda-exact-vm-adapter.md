@@ -48,8 +48,25 @@ kernel-parameter owners remain alive through synchronized launch completion.
 
 Development execution on an NVIDIA GeForce RTX 4060 reports `sm_89` and matches
 the independent CPU scalar implementation for boundary-heavy and deterministic
-4,096-element `rotate`/`crazy` batches. This does not yet implement complete VM
-state execution or establish a performance advantage.
+4,096-element `rotate`/`crazy` batches.
+
+A compact classic-step adapter is now active as the first VM-semantic CUDA slice.
+`ClassicStepRequest` supplies registers, I/O counters, optional next input byte,
+and at most four explicitly keyed memory cells. One CUDA thread evaluates one
+specification-mode classic transition and returns status/termination/error,
+fetched/decoded bytes, committed I/O, final registers/counters, and at most two
+actual memory writes. Missing required cells fail as an invalid compact request;
+there is no implicit read from undeclared guest memory.
+
+`tests/vm/cuda_step.rs` does not trust a Python CPU clone. It runs the normative
+safe-Rust `Machine::step_traced()` first, projects the resulting `StepTrace` to a
+fixed-width versioned process protocol, invokes the CUDA worker externally, and
+requires exact equality for fourteen fixtures spanning all seven instructions,
+no-op, EOF, non-graphical termination, rejected jump atomicity, pointer wrap,
+data/self-encryption aliasing, and already-terminated state. CUDA unavailability
+keeps this optional path unavailable rather than changing VM correctness. This
+still does not provide resident full-memory/multi-step GPU VM execution or a
+performance claim.
 
 ## Invariants
 
@@ -75,9 +92,10 @@ fails explicitly without changing correctness rules.
 - The current workstation evidence is RTX 4060 / `sm_89`; toolchain smoke also
   verifies NVRTC -> PTX -> Driver API execution with the pinned CUDA 13.3 Update
   1 redistributables.
-- Complete VM state/I/O/mutation traces, adaptive resource limits, throughput
-  benchmarks, and independent-profile coverage remain required before this TODO
-  can complete.
+- Compact classic-step differential evidence now covers VM state/I/O/mutation
+  trace projections and atomic rejection. Resident full-memory multi-step batches,
+  adaptive resource limits, throughput benchmarks, and current-profile coverage
+  remain required before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

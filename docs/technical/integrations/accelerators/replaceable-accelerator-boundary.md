@@ -28,7 +28,9 @@ The shared accelerator surface is capability-oriented and hardware-neutral.
 `accelerator/exact_primitives.py` defines immutable request/result/capability
 types plus the `ExactPrimitiveAdapter` protocol. The first admitted operation
 family batches classic ten-trit `rotate` and `crazy`; malformed shape or word
-domain is rejected before any backend executes.
+domain is rejected before any backend executes. `accelerator/classic_step.py`
+adds a hardware-neutral fixed-width contract for one classic specification-mode
+transition over an explicitly bounded memory snapshot.
 
 ### Implementation Status
 
@@ -40,9 +42,11 @@ hardware-neutral.
 
 Backend capability records expose stable backend ID plus device name/architecture
 for evidence. Accelerator unavailability and execution failure have distinct
-typed errors; neither changes candidate validity or CPU-reference semantics. Full
-VM batching, candidate evaluation/search/verification ports, and ROCm remain
-open.
+typed errors; neither changes candidate validity or CPU-reference semantics. The
+CUDA compact-step implementation is checked directly against Rust
+`Machine::step_traced()` rather than promoted to semantic authority. Resident
+full-memory VM batching, candidate evaluation/search/verification ports, and ROCm
+remain open.
 
 ## Invariants
 
@@ -66,9 +70,11 @@ fails explicitly without changing correctness rules.
   equality over boundary values plus deterministic 4,096-element corpora.
 - Current development GPU evidence identifies an NVIDIA GeForce RTX 4060 as
   `sm_89`; no performance claim is made from this correctness slice.
-- Remaining evidence includes full VM/candidate ports, unavailable-device
-  orchestration at product call sites, ROCm substitution, resource metadata, and
-  benchmark samples for any future speedup claim.
+- `tests/vm/cuda_step.rs` checks compact transition results against normative
+  Rust traces across every instruction family and adversarial transition edges.
+- Remaining evidence includes resident/full-memory VM and candidate ports,
+  unavailable-device orchestration at product call sites, ROCm substitution,
+  resource metadata, and benchmark samples for any future speedup claim.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

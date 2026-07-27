@@ -46,6 +46,11 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   sequential were 0.99x, 1.87x, 3.35x, and 5.65x respectively, with identical
   deterministic checksums. No profile-driven speedup is claimed from that classic
   evidence; current-profile batching remains correctness-measured only.
+- Optional CUDA now has a compact specification-mode classic one-step batch as
+  a semantic proving layer. Rust `Machine::step_traced()` is the oracle for
+  fourteen instruction/adversarial fixtures; each GPU work item remains an
+  independent transition with no guest-visible parallel behavior. Resident full
+  memory/multi-step GPU batching remains open.
 
 ## Acceptance
 
@@ -67,6 +72,9 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   differential results against independent specification-conformant
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
+- CUDA compact-step evidence: `tests/vm/cuda_step.rs` compares the complete
+  transition projection with normative Rust traces for all classic instruction
+  families plus EOF, termination, rejection, pointer wrap, and write aliasing.
 - CPU performance evidence:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` retains 75
   raw samples, checksums, exact commit/toolchain/host identity, workload size,

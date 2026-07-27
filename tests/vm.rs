@@ -54,6 +54,8 @@ mod batch;
 mod capsule;
 #[path = "vm/conformance.rs"]
 mod conformance;
+#[path = "vm/cuda_step.rs"]
+mod cuda_step;
 #[path = "vm/differential.rs"]
 mod differential;
 #[path = "vm/execution.rs"]

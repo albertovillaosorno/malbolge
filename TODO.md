@@ -756,7 +756,10 @@ massively parallel independent VM execution for candidate evaluation and test
 batches. The active CUDA foundation now runs integer-only classic `rotate` and
 `crazy` batches through NVRTC/Driver API and differentially matches the CPU
 reference; CUDA 13.3 Update 1 is reproducibly pinned under `.dependencies/cuda/`
-from a tracked component/hash manifest. Full VM state execution, adaptive resource
+from a tracked component/hash manifest. A compact one-step classic VM kernel now
+returns `StepTrace`-equivalent state/I/O/write/error projections and is checked by
+Rust against all instruction families plus rejection/wrap/alias edges. Resident
+full-memory multi-step execution, current-profile coverage, adaptive resource
 policy, and measured throughput remain open.
 
 ### TODO - CUDA superoptimizer

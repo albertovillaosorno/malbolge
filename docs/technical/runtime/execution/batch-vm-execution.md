@@ -63,6 +63,13 @@ checksum. These data demonstrate this classic workload on this host only and are
 portable speedup guarantee. They do not establish a current-profile speedup;
 profile-driven batching has correctness evidence only until separately measured.
 
+The optional accelerator boundary now has a compact one-step classic batch as a
+semantic proving layer before resident GPU state. Each CUDA work item is an
+independent machine transition over explicitly declared memory cells; there is no
+guest-visible parallelism or shared guest state. `tests/vm/cuda_step.rs` compares
+CUDA transition projections directly to normative Rust traces. This does not yet
+replace `execute_batch` or persist complete 59,049-word machine memories on GPU.
+
 ## Invariants
 
 - Batch execution preserves per-instance exact semantics, canonical profile when
@@ -86,6 +93,9 @@ deterministically without changing guest-visible state silently.
   agreement domain.
 - `tests/vm/profile_batch.rs` verifies current 14-trit sequential/parallel batch
   equality, per-item profile identity, errors, I/O, registers, and sampled memory.
+- `tests/vm/cuda_step.rs` verifies optional CUDA compact-step equality against
+  normative classic `StepTrace` results across every instruction family,
+  termination/rejection edges, pointer wrap, and data/encryption aliasing.
 - CPU performance evidence for the classic batch path only:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
   raw samples and exact commit/workload/toolchain/host provenance.
