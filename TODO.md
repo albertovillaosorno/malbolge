@@ -326,8 +326,11 @@ atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
 Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
 checks target ISA, executable/non-writable `.text`, exact entry identity,
 self-contained relocations, and absence of undefined host dependencies. This is
-structural admission only; semantic machine-code equivalence, architecture-
-specific direct emitters, cache/orchestration, and end-to-end tier selection
+structural admission only for Clang output. A separate direct deopt backend now
+emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
+verified: they return guard miss without touching state, providing the first
+semantically admitted native artifact and deterministic fallback floor. Direct
+region-effect fast paths, cache/orchestration, and end-to-end tier selection
 remain open.
 
 Current implementation foundation: portable effect IR v1, verifier admission,
@@ -706,8 +709,9 @@ revisions, and required features with full equality after bucket collisions.
 `execution/native/` now lowers those effects into atomic C23 host-code candidates,
 pinned Clang emits untrusted x86-64/AArch64 COFF objects, and safe-Rust COFF
 parsing closes their object-format dependencies before semantic admission.
-Independent native semantic admission/execution, wider-profile geometry,
-broader mutation-history collapse,
+Semantic admission now exists only for the canonical direct deopt stub;
+accelerated native effect execution, wider-profile geometry, broader
+mutation-history collapse,
 and end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture

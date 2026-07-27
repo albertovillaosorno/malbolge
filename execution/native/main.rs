@@ -50,6 +50,7 @@
 //! First untrusted native-artifact lowering boundary for portable effect IR.
 
 mod coff;
+mod direct;
 
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
@@ -57,6 +58,11 @@ use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
 pub use coff::{
     CoffAdmissionError, StructurallyAdmittedNativeObjectArtifact,
     structurally_admit_coff,
+};
+pub use direct::{
+    DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION, DirectDeoptError,
+    VerifiedDeoptNativeObjectArtifact, emit_direct_deopt_coff,
+    verify_direct_deopt_stub,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,
@@ -256,6 +262,24 @@ impl UntrustedNativeObjectArtifact {
             object,
             target_triple: source.target_triple,
         })
+    }
+
+    /// Attaches arbitrary emitter bytes to one claimed native identity.
+    ///
+    /// No structural or semantic admission occurs here. This constructor exists
+    /// so independent emitters can cross the same explicitly untrusted
+    /// boundary.
+    #[must_use]
+    pub const fn from_emitter_output(
+        key: NativeArtifactKey,
+        object: Vec<u8>,
+        target_triple: &'static str,
+    ) -> Self {
+        Self {
+            key,
+            object,
+            target_triple,
+        }
     }
 
     /// Returns the full claimed native artifact key.

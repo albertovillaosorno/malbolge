@@ -12,6 +12,8 @@ explicitly untrusted native compilation artifacts.
 - exact binding to `NativeArtifactKey` target assumptions;
 - untrusted native source/object artifact containers;
 - fail-closed structural admission of self-contained Windows COFF objects;
+- canonical direct x86-64/AArch64 deopt-only objects with byte-exact semantic
+  verification;
 - target triples for the pinned Clang bootstrap backend.
 
 ## Does Not Own
@@ -51,3 +53,13 @@ only when they resolve to symbols defined inside the same object. The resulting
 `StructurallyAdmittedNativeObjectArtifact` is still not semantic authority. An
 independent semantic validator must establish that boundary before executable
 promotion exists.
+
+The first direct backend is intentionally a deoptimization floor rather than a
+fast path. `direct.rs` emits one deterministic Windows COFF object per ISA whose
+only callable function returns native status `1` (`guard miss`) without reading
+or writing the supplied state pointer. The exact x86-64 and AArch64 objects are
+frozen by independently rendered hex fixtures. Semantic promotion requires
+structural COFF admission plus byte-for-byte equality with the canonical object;
+a one-byte opcode mutation remains structurally valid but fails semantic
+admission. This establishes an executable native tier that is correct by always
+falling back, before any direct region-effect instruction selection is trusted.

@@ -67,8 +67,10 @@ use execution_ir::{
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    CoffAdmissionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    UntrustedNativeObjectArtifact, lower_clang_c23, structurally_admit_coff,
+    CoffAdmissionError, DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DirectDeoptError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    UntrustedNativeObjectArtifact, emit_direct_deopt_coff, lower_clang_c23,
+    structurally_admit_coff, verify_direct_deopt_stub,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -82,11 +84,14 @@ struct CoffCompileCase {
 }
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
-    let text = include_str!("execution/fixtures/region-effect-v1.hex");
+    decode_hex_fixture(include_str!("execution/fixtures/region-effect-v1.hex"))
+}
+
+fn decode_hex_fixture(text: &str) -> Result<Vec<u8>, String> {
     let compact = text.split_whitespace().collect::<String>();
     let (pairs, remainder) = compact.as_bytes().as_chunks::<2>();
     if !remainder.is_empty() {
-        return Err(String::from("canonical IR fixture has odd hex length"));
+        return Err(String::from("canonical fixture has odd hex length"));
     }
     let mut bytes = Vec::new();
     for pair in pairs {
@@ -474,6 +479,98 @@ fn native_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_DEOPT_BACKEND_ID),
+        backend_revision: DIRECT_DEOPT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+#[test]
+fn direct_deopt_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-deopt-x86_64-coff.hex"),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!("execution/fixtures/native-deopt-aarch64-coff.hex"),
+        ),
+    ];
+    for (isa, fixture) in cases {
+        let artifact =
+            emit_direct_deopt_coff(&native_program(), direct_deopt_target(isa))
+                .map_err(|error| error.to_string())?;
+        let expected = decode_hex_fixture(fixture)?;
+        if artifact.object() != expected {
+            return Err(format!("direct deopt fixture mismatch for {isa:?}"));
+        }
+        let verified = verify_direct_deopt_stub(&artifact)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified direct deopt identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_deopt_semantic_admission_rejects_byte_and_target_tampering()
+-> Result<(), String> {
+    let artifact = emit_direct_deopt_coff(
+        &native_program(),
+        direct_deopt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated = artifact.object().to_vec();
+    let opcode = [0xb8u8, 0x01, 0x00, 0x00, 0x00, 0xc3];
+    let offset = mutated
+        .windows(opcode.len())
+        .position(|window| window == opcode)
+        .ok_or_else(|| {
+            String::from("direct x86 deopt opcode fixture missing")
+        })?;
+    let first = mutated
+        .get_mut(offset)
+        .ok_or_else(|| String::from("direct deopt opcode offset invalid"))?;
+    *first = 0x90;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated,
+        artifact.target_triple(),
+    );
+    let _structurally_admitted =
+        structurally_admit_coff(&tampered).map_err(|error| {
+            format!("tampered structure unexpectedly rejected: {error}")
+        })?;
+    if verify_direct_deopt_stub(&tampered) != Err(DirectDeoptError::ObjectBytes)
+    {
+        return Err(String::from("tampered direct deopt opcode was admitted"));
+    }
+
+    let mut wrong_backend = base_target_config();
+    wrong_backend.backend_id = String::from("not-direct-deopt");
+    wrong_backend.backend_revision = DIRECT_DEOPT_BACKEND_REVISION;
+    wrong_backend.native_abi_revision = NATIVE_REGION_ABI_REVISION;
+    if emit_direct_deopt_coff(
+        &native_program(),
+        NativeTargetIdentity::new(wrong_backend),
+    ) != Err(DirectDeoptError::TargetBackend)
+    {
+        return Err(String::from("wrong direct-deopt backend was admitted"));
+    }
+    Ok(())
 }
 
 #[test]

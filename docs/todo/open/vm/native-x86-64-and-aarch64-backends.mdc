@@ -60,9 +60,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   COFF object candidates from the same portable IR. This proves the shared
   host-code boundary and target split. Safe-Rust COFF admission now verifies
   machine/entry/section identity and rejects unresolved external dependencies;
-  direct ISA instruction selection, semantic machine-code admission,
-  executable-memory integration, and instruction-cache behavior remain pending
-  for this TODO.
+  a minimal direct emitter/verifier now owns the deopt-only x86-64/AArch64
+  stubs with byte-exact semantic admission. Accelerated region-effect instruction
+  selection, general semantic machine-code admission, executable-memory
+  integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

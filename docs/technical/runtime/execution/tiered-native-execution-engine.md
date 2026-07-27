@@ -73,11 +73,28 @@ constant relocations therefore remain valid while host-library dependencies fail
 closed. The result is named `StructurallyAdmittedNativeObjectArtifact`; it still
 has no semantic execution authority.
 
+`execution/native/direct.rs` now crosses that semantic boundary for one minimal
+native program only: a direct deoptimization stub. The x86-64 sequence is
+`mov eax, 1; ret`; the AArch64 sequence is `mov w0, #1; ret`. Both are wrapped in
+a deterministic minimal COFF object with timestamp zero, one executable `.text`,
+one external entry symbol, and no relocations. Independent hex fixtures freeze
+the complete 117-byte x86-64 and 119-byte AArch64 objects. Promotion to
+`VerifiedDeoptNativeObjectArtifact` first requires structural COFF admission and
+then exact equality with the canonical object bytes. A changed opcode can remain
+structurally valid but is rejected semantically.
+
+This verified stub never reads the state argument, never commits guest-visible
+state, and always returns native guard-miss status `1`, forcing deterministic
+deoptimization to the normative interpreter. It is therefore the first
+semantically admitted native artifact but intentionally provides no acceleration.
+Development evidence links both ISA objects and executes the x86-64 DLL with a
+null state pointer, returning `1`; direct region-effect fast paths remain open.
+
 ### Remaining Implementation
 
-Independent native semantic admission after structural COFF validation, direct
-x86-64/AArch64 instruction selection, executable-memory policy/invocation,
-durable native cache
+Semantic admission beyond the deopt-only stub, direct accelerated
+x86-64/AArch64 region-effect instruction selection, executable-memory
+policy/invocation, durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
 selector remain open. The interpreter remains the only normative execution
 authority and the guaranteed fallback.
@@ -113,9 +130,12 @@ deterministically without changing guest-visible state silently.
 - Safe-Rust COFF tests admit both real objects, including ARM64 internal
   relocations, while rejecting truncated bytes, mismatched machine identity, and
   a renamed callable entry. Structural admission remains non-semantic.
-- Native object candidates are not executed or admitted as semantically verified
-  artifacts by this evidence; that trust-boundary step remains explicit
-  follow-on work.
+- Clang bootstrap objects remain structurally admitted but semantically
+  untrusted. The direct deopt-only objects are the sole current semantically
+  admitted machine-code artifacts; their complete bytes match independent
+  fixtures and opcode tampering fails after structural admission.
+- Development execution evidence links both direct ISA objects and runs the
+  x86-64 function with a null state pointer, observing guard-miss status `1`.
 ## References
 
 ### Host Architecture Baseline

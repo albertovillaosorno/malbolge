@@ -69,7 +69,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
   x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
   identity, and relocation/symbol closure without trusting LLVM inspection.
-- Independent semantic machine-code admission, direct ISA emitters, AOT/JIT
+- A direct deopt-only backend now emits canonical x86-64/AArch64 COFF without
+  Clang. Complete byte fixtures plus structural validation admit only the exact
+  `return guard-miss` programs; opcode mutation fails semantic admission. This is
+  the first semantically admitted native artifact and intentionally never applies
+  effects.
+- Accelerated semantic machine-code admission/direct effect emitters, AOT/JIT
   orchestration,
   durable cache storage/eviction, executable-memory policy, and end-to-end tier
   performance remain unimplemented.
