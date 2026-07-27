@@ -90,5 +90,11 @@ example probe points, not supported-range endpoints.
   128 (~4.73% slower), rejecting a current claim that larger batches alone
   improve throughput. Phase-separated timing is required before selecting an
   optimization.
-- Performance evidence remains incomplete: current-profile execution, phase
-  attribution, and broader live-hardware measurements are still required.
+- Phase attribution is retained under
+  `benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-rtx4060/`.
+  At batch 128, kernel+sync is about 0.0097% of total wall time while
+  validation/planning + host construction + decode account for about 97.75%.
+  This selects host representation/validation as the next measured bottleneck.
+- Performance evidence remains incomplete: current-profile execution,
+  post-optimization comparison, and broader live-hardware measurements are still
+  required.

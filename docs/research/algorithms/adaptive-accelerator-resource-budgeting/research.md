@@ -111,6 +111,14 @@ Therefore larger resident batches are not yet converting capacity into measured
 throughput. The evidence does not assign causality; phase-separated timing is the
 next experiment.
 
+Phase-separated post-commit evidence under
+`benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-rtx4060/`
+locates that failure. At batch 128, median kernel+sync time is 458,100 ns out of
+4,698,614,500 ns total (about 0.0097%). Validation/planning, host-buffer
+construction, and result decode account for about 97.75% combined. The evidence
+therefore rejects CUDA-kernel tuning as the next bottleneck-directed action and
+selects host representation/validation work for optimization first.
+
 ## Threats to Validity
 
 Initial threats include challenge-family bias, hardware/toolchain sensitivity,
