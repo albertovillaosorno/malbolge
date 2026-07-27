@@ -98,6 +98,7 @@ type IndexedFixture = (IndexedProfileMemory, ProfileMemoryDelta, u32);
 type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
 type StateFixture =
     (IndexedMachineState, ProfileStepTrace, IndexedMachineState);
+type VecOutputFixture = (Arc<[u8]>, u8);
 
 #[derive(Clone, Copy)]
 struct RepeatedSampleConfig<'config> {
