@@ -44,6 +44,22 @@ material into source-bound recovery data before `emit_rust.py` is allowed to
 serialize a public transform. This separation lets exact diff correctness be
 tested without weakening the final source-binding invariant.
 
+## Implemented Identity Primitives
+
+`canonicalize.py` now provides deterministic line-ending normalization and an
+explicit opt-in ASCII-whitespace canonicalizer. The whitespace helper is generic
+and syntax-agnostic; it must not be used to claim C equivalence because literals,
+preprocessor structure, and token boundaries require a language-aware consumer
+canonicalizer. DOOM-specific lexical identity therefore remains outside the
+generic engine.
+
+`fingerprints.py` now selects stable anchors from sliding SHA-256 content windows.
+Selection depends on the window digest rather than its absolute offset, so source
+insertions can shift later bytes without invalidating unchanged anchor content. A
+deterministic minimum-digest fallback covers small/sparse inputs, and coverage is
+measured over unique reference digests. These fingerprints are lineage evidence;
+they are not encryption keys or a completed source-binding construction.
+
 ## Core Contract
 
 A consumer supplies two local trees while generating an algorithm:

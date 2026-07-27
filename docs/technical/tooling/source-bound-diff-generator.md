@@ -2,9 +2,10 @@
 
 ## Status
 
-Active. The exact authoring planner/materializer and source-span reuse are
-implemented. Canonical compatibility matching, stable admission anchors, behavior
-probes, source binding, payload recovery, and Rust emission remain unfinished.
+Active. Exact authoring/materialization, generic text-identity helpers, and the
+content-defined stable-anchor primitive are implemented. Language-aware canonical
+matching, tree-level admission, behavior probes, source binding, payload recovery,
+and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -77,6 +78,21 @@ transformation rules.
 Stable anchors should be token- or content-defined so harmless insertions do not
 shift every anchor in a file. Aggregate similarity alone never authorizes
 materialization.
+
+### Implemented Stable-Anchor Primitive
+
+The generic anchor primitive scans sliding byte windows, hashes them with SHA-256,
+and selects windows using a digest-derived sampling predicate. Because selection
+depends on content rather than absolute position, unchanged windows remain
+recognizable after insertions shift their offsets. Duplicate digests are counted
+once for coverage, and a deterministic minimum-digest fallback prevents a
+non-empty small/sparse input from accidentally producing no evidence.
+
+This primitive does not by itself admit a tree. Tree-level distribution rules,
+minimum anchor counts, canonical language-aware views, ambiguous-match handling,
+and the configured coverage threshold still belong to the unfinished admission
+layer. Anchor digests are evidence only and must not be treated as source-binding
+secrets.
 
 ### Behavioral Identity
 

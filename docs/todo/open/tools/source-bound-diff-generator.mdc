@@ -38,12 +38,15 @@ format.
   verification.
 - Synthetic tests cover exact reconstruction, deterministic planning, binary data,
   moves, modifications, creations, deletions, source mutation, and symlink failure.
+- Generic identity helpers normalize line endings/optional whitespace, while the
+  stable-anchor primitive uses digest-selected sliding windows that survive offset
+  shifts from insertions.
 - `algorithms/doom/generator/quality.py` records the first consumer recipe.
 - The planned admission model combines structural similarity, stable anchors,
   behavior probes, and threshold source binding.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds; those
   values are not frozen until synthetic calibration evidence exists.
-- No canonical compatibility matcher, stable admission-anchor engine, source-bound
+- No language-aware canonical matcher, tree-level admission engine, source-bound
   payload format, cryptographic construction, or Rust emitter is implemented yet.
 
 ## Acceptance
