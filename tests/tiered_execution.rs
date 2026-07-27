@@ -68,9 +68,11 @@ use execution_ir::{
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
     CoffAdmissionError, DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
-    DirectDeoptError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    UntrustedNativeObjectArtifact, emit_direct_deopt_coff, lower_clang_c23,
-    structurally_admit_coff, verify_direct_deopt_stub,
+    DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
+    DirectDeoptError, DirectInitialHaltError, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactError, UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
+    emit_direct_initial_halt_coff, lower_clang_c23, structurally_admit_coff,
+    verify_direct_deopt_stub, verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -490,6 +492,149 @@ fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+fn direct_initial_halt_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0,
+        output_len: 0,
+        registers: ProfileRegisters::default(),
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta::default(),
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: Vec::new(),
+        outcome: RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
+        ),
+        step_budget: 1,
+    }
+}
+
+fn direct_initial_halt_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_INITIAL_HALT_BACKEND_ID),
+        backend_revision: DIRECT_INITIAL_HALT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+#[test]
+fn direct_initial_halt_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!(
+                "execution/fixtures/native-initial-halt-x86_64-coff.hex"
+            ),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-initial-halt-aarch64-coff.hex"
+            ),
+        ),
+    ];
+    let program = direct_initial_halt_program();
+    for (isa, fixture) in cases {
+        let artifact = emit_direct_initial_halt_coff(
+            &program,
+            direct_initial_halt_target(isa),
+        )
+        .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!(
+                "direct initial-halt fixture mismatch for {isa:?}"
+            ));
+        }
+        let verified = verify_direct_initial_halt(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified initial-halt identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_initial_halt_rejects_ir_and_opcode_tampering() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let artifact = emit_direct_initial_halt_coff(
+        &program,
+        direct_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0xc6u8, 0x41, 0x4c, 0x01];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("initial-halt commit opcode missing"))?;
+    let immediate = mutated_object
+        .get_mut(offset.saturating_add(3))
+        .ok_or_else(|| String::from("initial-halt commit immediate missing"))?;
+    *immediate = 2;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered initial-halt structure: {error}"))?;
+    if verify_direct_initial_halt(&tampered, &program)
+        != Err(DirectInitialHaltError::ObjectBytes)
+    {
+        return Err(String::from("tampered initial-halt object was admitted"));
+    }
+
+    let mut with_live_in = program.clone();
+    with_live_in
+        .memory_live_ins
+        .push(MemoryLiveIn { address: 7, value: 8 });
+    if emit_direct_initial_halt_coff(
+        &with_live_in,
+        direct_initial_halt_target(HostIsa::X86_64),
+    ) != Err(DirectInitialHaltError::ProgramShape)
+    {
+        return Err(String::from("initial-halt live-in mutation was admitted"));
+    }
+
+    let mut with_input = program;
+    let first = with_input.effects.first_mut().ok_or_else(|| {
+        String::from("initial-halt fixture lost first effect")
+    })?;
+    first.input = Some(TraceInput::EndOfInput);
+    if emit_direct_initial_halt_coff(
+        &with_input,
+        direct_initial_halt_target(HostIsa::X86_64),
+    ) != Err(DirectInitialHaltError::ProgramShape)
+    {
+        return Err(String::from("initial-halt input mutation was admitted"));
+    }
+    Ok(())
 }
 
 #[test]

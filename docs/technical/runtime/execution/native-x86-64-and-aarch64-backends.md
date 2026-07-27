@@ -52,6 +52,14 @@ semantic admission requires exact object equality after structural COFF checks.
 The direct stub therefore cannot mutate guest state and always deoptimizes. It is
 not the region-effect fast-path backend required to complete this TODO.
 
+A second direct template now admits the exact initial-halt subset and is the first
+state-applying fast path. It verifies zero entry registers/counters and live
+termination before writing only the halt termination byte. Any mismatch returns
+guard miss without mutation. Complete independently rendered COFF fixtures bind
+both ISA implementations; x86-64 execution evidence covers hit, miss, and null
+state, while ARM64 object linkage is verified on the development host. This
+remains a deliberately tiny subset rather than general instruction selection.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF remains semantically untrusted. A

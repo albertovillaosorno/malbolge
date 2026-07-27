@@ -16,27 +16,27 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Canonical direct native deoptimization stubs and byte-exact admission.
+//   - Canonical direct deopt/initial-halt objects and byte-exact admission.
 // - Must-Not:
-//   - Apply region effects, bypass verifier guards, or trust compiler output.
+//   - Lower unsupported effects, bypass verifier guards, or trust compiler
+//     output.
 // - Allows:
 //   - Inputs: portable region IR and exact Windows native target identity.
 //   - Outputs: canonical COFF candidates and verified deopt-only artifacts.
 //   - Side effects: process-local allocation only.
 // - Split-When:
-//   - Split when direct fast-path instruction selection gains its own backend.
+//   - Split when general region-effect instruction selection outgrows
+//     templates.
 // - Merge-When:
 //   - Merge when all direct emitters share one reviewed instruction template.
 // - Summary:
-//   - Establishes the first semantically admitted native artifact as
-//     deopt-only.
+//   - Owns byte-canonical deopt and first state-applying native templates.
 // - Description:
-//   - Emits tiny canonical x86-64/AArch64 stubs that return guard miss
-//     unchanged.
+//   - Emits reviewed x86-64/AArch64 objects for exact verified IR subsets.
 // - Usage:
-//   - Used as a safe native-tier floor before any accelerated direct fast path.
+//   - Provides a safe deopt floor plus the first initial-halt fast path.
 // - Defaults:
-//   - Every invocation returns guard miss and commits no guest-visible state.
+//   - Unsupported IR is rejected; no direct template is selected implicitly.
 //
 // Related documents:
 // - docs/technical/adr/tiered-native-execution.md
@@ -45,9 +45,14 @@
 // Large file:
 //   - false
 
-//! Canonical direct native deoptimization stubs with byte-exact verification.
+//! Canonical direct native templates with byte-exact semantic verification.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+
+use malbolge::{
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileRegisters,
+    RunOutcome, Termination,
+};
 
 use super::{
     CoffAdmissionError, NATIVE_REGION_ABI_REVISION,
@@ -57,10 +62,21 @@ use super::{
 use crate::execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetIdentity,
 };
-use crate::execution_ir::{IrEncodingError, RegionEffectProgram};
+use crate::execution_ir::{
+    EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
+};
 
 const AARCH64_DEOPT_CODE: &[u8] =
     &[0x20, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
+const AARCH64_INITIAL_HALT_CODE: &[u8] = &[
+    0x60, 0x01, 0x00, 0xb4, 0x08, 0x10, 0x40, 0xf9, 0x28, 0x01, 0x00, 0xb5,
+    0x08, 0x1c, 0x40, 0xf9, 0xe8, 0x00, 0x00, 0xb5, 0x08, 0x40, 0x40, 0xb9,
+    0xa8, 0x00, 0x00, 0x35, 0x08, 0x44, 0x40, 0xb9, 0x68, 0x00, 0x00, 0x35,
+    0x08, 0x48, 0x40, 0xb9, 0x68, 0x00, 0x00, 0x34, 0x20, 0x00, 0x80, 0x52,
+    0xc0, 0x03, 0x5f, 0xd6, 0x09, 0x30, 0x41, 0x39, 0xe8, 0x03, 0x00, 0xaa,
+    0x20, 0x00, 0x80, 0x52, 0x69, 0x00, 0x00, 0x35, 0x00, 0x31, 0x01, 0x39,
+    0xe0, 0x03, 0x1f, 0x2a, 0xc0, 0x03, 0x5f, 0xd6,
+];
 const COFF_HEADER_BYTES: usize = 20;
 const COFF_SECTION_BYTES: usize = 40;
 const COFF_SYMBOL_BYTES: usize = 18;
@@ -72,11 +88,22 @@ const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 const X86_64_DEOPT_CODE: &[u8] = &[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3];
+const X86_64_INITIAL_HALT_CODE: &[u8] = &[
+    0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9, 0x74, 0x07, 0x48, 0x83,
+    0x79, 0x20, 0x00, 0x74, 0x01, 0xc3, 0x48, 0x83, 0x79, 0x38, 0x00, 0x75,
+    0xf8, 0x83, 0x79, 0x40, 0x00, 0x75, 0xf2, 0x83, 0x79, 0x44, 0x00, 0x75,
+    0xec, 0x83, 0x79, 0x48, 0x00, 0x75, 0xe6, 0x80, 0x79, 0x4c, 0x00, 0x75,
+    0xe0, 0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3,
+];
 
 /// Backend identity for the first direct, semantically admitted native tier.
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
 pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for the first state-applying direct native fast path.
+pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
+/// Direct initial-halt code-generation revision.
+pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -130,6 +157,65 @@ impl From<IrEncodingError> for DirectDeoptError {
     }
 }
 
+/// Failure while emitting or verifying the direct initial-halt fast path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectInitialHaltError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity could not encode the portable program.
+    Identity(IrEncodingError),
+    /// Object bytes differ from the canonical direct initial-halt object.
+    ObjectBytes,
+    /// Portable IR is outside the exact initial-halt subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not the initial-halt contract.
+    TargetBackend,
+    /// Direct initial-halt v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct initial-halt v1 emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectInitialHaltError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "direct initial-halt COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "direct initial-halt identity encoding failed"
+            },
+            Self::ObjectBytes => {
+                "direct initial-halt object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "portable IR is outside direct initial-halt subset"
+            },
+            Self::TargetBackend => {
+                "target does not select direct initial-halt backend"
+            },
+            Self::TargetFeatures => {
+                "direct initial-halt backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "direct initial-halt backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectInitialHaltError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<IrEncodingError> for DirectInitialHaltError {
+    fn from(error: IrEncodingError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Native object proven to be the canonical no-write guard-miss stub.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedDeoptNativeObjectArtifact {
@@ -138,6 +224,33 @@ pub struct VerifiedDeoptNativeObjectArtifact {
 
 impl VerifiedDeoptNativeObjectArtifact {
     /// Returns the exact native artifact identity associated with the stub.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+/// Native object proven to implement the exact initial-halt fast path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedInitialHaltNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedInitialHaltNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
     #[must_use]
     pub const fn key(&self) -> &NativeArtifactKey {
         self.artifact.key()
@@ -178,6 +291,26 @@ pub fn emit_direct_deopt_coff(
     ))
 }
 
+/// Emits a direct native fast path for the exact initial-halt IR subset.
+///
+/// # Errors
+///
+/// Returns [`DirectInitialHaltError`] when the program/target is outside the
+/// reviewed subset or native identity cannot be represented.
+pub fn emit_direct_initial_halt_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectInitialHaltError> {
+    validate_initial_halt_program(program)?;
+    validate_initial_halt_target(&target)?;
+    let triple = target_triple(target.host_isa());
+    let key = NativeArtifactKey::new(program, target)?;
+    let object = initial_halt_coff(key.target().host_isa())?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 /// Promotes only the exact canonical deopt-only object to semantic authority.
 ///
 /// Byte equality here is semantic validation because v1 admits exactly two
@@ -200,38 +333,57 @@ pub fn verify_direct_deopt_stub(
     Ok(VerifiedDeoptNativeObjectArtifact { artifact: admitted })
 }
 
-fn canonical_coff(isa: HostIsa) -> Result<Vec<u8>, DirectDeoptError> {
-    let (machine, text, characteristics) = match isa {
-        HostIsa::AArch64 => (
-            IMAGE_FILE_MACHINE_ARM64,
-            AARCH64_DEOPT_CODE,
-            IMAGE_SCN_ARM64_TEXT,
-        ),
-        HostIsa::X86_64 => (
-            IMAGE_FILE_MACHINE_AMD64,
-            X86_64_DEOPT_CODE,
-            IMAGE_SCN_X86_TEXT,
-        ),
-    };
-    let raw_start = COFF_HEADER_BYTES.saturating_add(COFF_SECTION_BYTES);
-    let symbol_start = raw_start.saturating_add(text.len());
-    let symbol_start_u32 = u32::try_from(symbol_start)
-        .map_err(|_error| DirectDeoptError::ObjectBytes)?;
-    let raw_start_u32 = u32::try_from(raw_start)
-        .map_err(|_error| DirectDeoptError::ObjectBytes)?;
-    let text_len = u32::try_from(text.len())
-        .map_err(|_error| DirectDeoptError::ObjectBytes)?;
-    let string_length = 4usize
-        .saturating_add(REQUIRED_ENTRY.len())
-        .saturating_add(1);
-    let string_length_u32 = u32::try_from(string_length)
-        .map_err(|_error| DirectDeoptError::ObjectBytes)?;
+/// Promotes only the exact canonical initial-halt object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectInitialHaltError`] when IR shape, identity, COFF structure,
+/// or any object byte differs from the reviewed initial-halt contract.
+pub fn verify_direct_initial_halt(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedInitialHaltNativeObjectArtifact, DirectInitialHaltError> {
+    validate_initial_halt_program(program)?;
+    validate_initial_halt_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectInitialHaltError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = initial_halt_coff(artifact.key().target().host_isa())?;
+    if admitted.object() != expected {
+        return Err(DirectInitialHaltError::ObjectBytes);
+    }
+    Ok(VerifiedInitialHaltNativeObjectArtifact { artifact: admitted })
+}
 
-    let mut object = Vec::with_capacity(
-        symbol_start
-            .saturating_add(COFF_SYMBOL_BYTES)
-            .saturating_add(string_length),
-    );
+fn canonical_coff(isa: HostIsa) -> Result<Vec<u8>, DirectDeoptError> {
+    let text = match isa {
+        HostIsa::AArch64 => AARCH64_DEOPT_CODE,
+        HostIsa::X86_64 => X86_64_DEOPT_CODE,
+    };
+    build_minimal_coff(isa, text).ok_or(DirectDeoptError::ObjectBytes)
+}
+
+fn build_minimal_coff(isa: HostIsa, text: &[u8]) -> Option<Vec<u8>> {
+    let (machine, characteristics) = match isa {
+        HostIsa::AArch64 => (IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT),
+        HostIsa::X86_64 => (IMAGE_FILE_MACHINE_AMD64, IMAGE_SCN_X86_TEXT),
+    };
+    let raw_start = COFF_HEADER_BYTES.checked_add(COFF_SECTION_BYTES)?;
+    let symbol_start = raw_start.checked_add(text.len())?;
+    let symbol_start_u32 = u32::try_from(symbol_start).ok()?;
+    let raw_start_u32 = u32::try_from(raw_start).ok()?;
+    let text_len = u32::try_from(text.len()).ok()?;
+    let string_length =
+        4usize.checked_add(REQUIRED_ENTRY.len())?.checked_add(1)?;
+    let string_length_u32 = u32::try_from(string_length).ok()?;
+    let capacity = symbol_start
+        .checked_add(COFF_SYMBOL_BYTES)?
+        .checked_add(string_length)?;
+
+    let mut object = Vec::with_capacity(capacity);
     push_u16(&mut object, machine);
     push_u16(&mut object, 1);
     push_u32(&mut object, 0);
@@ -263,7 +415,22 @@ fn canonical_coff(isa: HostIsa) -> Result<Vec<u8>, DirectDeoptError> {
     push_u32(&mut object, string_length_u32);
     object.extend_from_slice(REQUIRED_ENTRY.as_bytes());
     object.push(0);
-    Ok(object)
+    Some(object)
+}
+
+fn initial_halt_coff(isa: HostIsa) -> Result<Vec<u8>, DirectInitialHaltError> {
+    let text = match isa {
+        HostIsa::AArch64 => AARCH64_INITIAL_HALT_CODE,
+        HostIsa::X86_64 => X86_64_INITIAL_HALT_CODE,
+    };
+    build_minimal_coff(isa, text).ok_or(DirectInitialHaltError::ObjectBytes)
+}
+
+fn is_zero_observation(observation: ProfileMachineObservation) -> bool {
+    observation.input_consumed == 0
+        && observation.output_len == 0
+        && observation.registers == ProfileRegisters::default()
+        && observation.termination.is_none()
 }
 
 fn push_u16(output: &mut Vec<u8>, value: u16) {
@@ -279,6 +446,58 @@ const fn target_triple(isa: HostIsa) -> &'static str {
         HostIsa::AArch64 => "aarch64-pc-windows-msvc",
         HostIsa::X86_64 => "x86_64-pc-windows-msvc",
     }
+}
+
+fn validate_initial_halt_program(
+    program: &RegionEffectProgram,
+) -> Result<(), DirectInitialHaltError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || program.step_budget != 1
+        || !program.memory_live_ins.is_empty()
+        || program.effects.len() != 1
+        || program.outcome
+            != (RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 1,
+            })
+    {
+        return Err(DirectInitialHaltError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .ok_or(DirectInitialHaltError::ProgramShape)?;
+    let expected_after = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..effect.before
+    };
+    if !is_zero_observation(effect.before)
+        || effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta != ProfileMemoryDelta::default()
+    {
+        return Err(DirectInitialHaltError::ProgramShape);
+    }
+    Ok(())
+}
+
+fn validate_initial_halt_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectInitialHaltError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectInitialHaltError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_INITIAL_HALT_BACKEND_ID
+        || target.backend_revision() != DIRECT_INITIAL_HALT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectInitialHaltError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectInitialHaltError::TargetFeatures);
+    }
+    Ok(())
 }
 
 fn validate_target(

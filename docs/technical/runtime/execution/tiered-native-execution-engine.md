@@ -90,10 +90,22 @@ semantically admitted native artifact but intentionally provides no acceleration
 Development evidence links both ISA objects and executes the x86-64 DLL with a
 null state pointer, returning `1`; direct region-effect fast paths remain open.
 
+The next reviewed template is `direct-initial-halt`. Admission requires an exact
+one-effect IR: zero entry registers/input/output counters, no input/output
+effect, no memory live-ins or writes, no prior termination, unchanged exit
+observation except `HaltInstruction`, terminated one-step outcome, and budget
+one. Both ISAs preflight the ABI state before committing only the termination
+byte. Complete COFF fixtures freeze the generated objects and object-byte
+tampering fails semantic admission after structural COFF acceptance. Development
+evidence links both ISA objects; x86-64 execution proves valid state returns
+`applied=0` with only termination changed, while accumulator mismatch and null
+state return guard miss without mutation. This is the first accelerated
+state-applying native subset; all other IR still requires deopt/bootstrap/VM.
+
 ### Remaining Implementation
 
-Semantic admission beyond the deopt-only stub, direct accelerated
-x86-64/AArch64 region-effect instruction selection, executable-memory
+Semantic admission beyond the deopt and exact initial-halt templates, general
+direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
 policy/invocation, durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
 selector remain open. The interpreter remains the only normative execution

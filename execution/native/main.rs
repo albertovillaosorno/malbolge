@@ -60,9 +60,12 @@ pub use coff::{
     structurally_admit_coff,
 };
 pub use direct::{
-    DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION, DirectDeoptError,
-    VerifiedDeoptNativeObjectArtifact, emit_direct_deopt_coff,
-    verify_direct_deopt_stub,
+    DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
+    DirectDeoptError, DirectInitialHaltError,
+    VerifiedDeoptNativeObjectArtifact, VerifiedInitialHaltNativeObjectArtifact,
+    emit_direct_deopt_coff, emit_direct_initial_halt_coff,
+    verify_direct_deopt_stub, verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,

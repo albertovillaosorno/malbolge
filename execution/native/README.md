@@ -63,3 +63,16 @@ structural COFF admission plus byte-for-byte equality with the canonical object;
 a one-byte opcode mutation remains structurally valid but fails semantic
 admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
+
+The second direct template is the first state-applying fast path. The
+`direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
+from zero registers/counters with no I/O, no memory live-ins/writes, and no prior
+termination to the same observation with `HaltInstruction`, one-step terminated
+outcome, and budget one. Its machine code preflights those ABI fields before the
+first write, sets only the termination byte to halt, and returns `applied=0`; any
+mismatch or null state returns `guard-miss=1` without mutation. Complete x86-64
+and AArch64 COFF bytes are independently frozen. A changed commit immediate may
+remain structurally valid but fails semantic admission. Development evidence
+links both ISA objects and executes x86-64 hit/miss/null cases, with miss state
+byte-identical before and after. General region-effect code generation remains
+outside this reviewed subset.
