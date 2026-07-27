@@ -115,3 +115,11 @@ entry_guard = "exact-incremental-state-equality"
 digest_guard_allowed = false
 rejected_transition = "never-promote"
 next_risk = "dependency-read-set-guard-reduction"
+
+[exact_region.benchmark]
+commit = "f16785d"
+evidence = "benchmarks/research/state-graph/evidence/2026-07-27-region-windows-x86_64"
+samples_per_case = 15
+guard_operations_per_sample = 16384
+verdict = "retain-exact-guard-baseline"
+reduced_guard_motivation = "increase-safe-reuse-not-guard-latency"

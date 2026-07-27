@@ -125,3 +125,10 @@ identity is never a guard. Mutated entries deopt/reject, tampered claims fail
 reverification, and normative transition errors never produce verified regions.
 This is deliberately an exact-state specialization baseline; broader dependency
 guards remain research.
+
+Post-commit region evidence at `f16785d` measures exact guard hit/miss at
+55.51/59.09 ns/op and full normative
+certificate verification at 9.09 ms. This is the
+intended trust split: expensive cold verification, cheap hot exact guards. Future
+read-set guards are therefore motivated by safe reuse across memory variants,
+not by a need to reduce the ~55 ns exact guard itself.

@@ -297,3 +297,17 @@ VM error before any verified region exists. This establishes a safe exact-state
 specialization/deoptimization baseline for future AOT/JIT code. It does **not**
 yet establish a reduced stable-region guard: that requires explicit future read
 and dependency evidence so irrelevant state can be omitted from the guard.
+
+Post-commit region timing at `f16785d` confirms the desired verifier/hot-guard
+asymmetry. Exact entry-state guard hits measure 55.51 ns/op and
+misses 59.09 ns/op, while normative certificate verification
+measures 9.09 ms. The verifier is roughly
+163799 times the guard-hit latency because it
+materializes and re-executes normative state deliberately.
+
+This result changes the motivation for guard reduction. Exact guards are already
+cheap enough to remain the correctness baseline; dependency/read-set guards are
+valuable because they may admit the same verified region from states that differ
+only in memory the region cannot observe. The next slice therefore records
+semantic memory reads from the real profile transition engine before attempting a
+broader guard.

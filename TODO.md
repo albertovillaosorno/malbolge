@@ -638,7 +638,10 @@ while the prior vector clone reaches 20.83 microseconds. Persistent output is
 promoted. Exact-state region certificates now cross the verifier boundary only
 after normative replay confirms exact outcome/traces/exit, and runtime reuse
 requires exact entry equality; tampered, mutated, or rejected cases fail closed.
-Reduced dependency/read-set guards, wider-profile geometry, broader
+Exact guard hit/miss is 55.51/59.09 ns in
+post-commit evidence versus 9.09 ms normative
+verification, so reduced guards target broader safe reuse rather than guard
+latency. Semantic read-set guards, wider-profile geometry, broader
 mutation-history collapse, and native codegen integration remain open.
 
 ## Optimization and accelerator architecture

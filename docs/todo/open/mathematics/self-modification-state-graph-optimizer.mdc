@@ -125,6 +125,11 @@ VM evidence.
   equality; one real entry mutation invalidates the guard, tampered claims fail,
   and rejected transitions never promote. Dependency/read-set guard reduction is
   the next native-region research boundary.
+- Post-commit region evidence at `f16785d` measures exact guard hit/miss at
+  55.51/59.09 ns and normative verifier
+  replay at 9.09 ms. Exact guard latency is already
+  cheap; dependency/read-set reduction is pursued to broaden safe reuse across
+  future-irrelevant memory differences.
 
 ## Acceptance
 
