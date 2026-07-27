@@ -154,13 +154,17 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Accept the measured-memory planner as a correctness-preserving allocation guard
-for resident classic and current-profile CUDA execution. Retained RTX 4060
-current-profile measurements now reach about 40.08 VMs/s at batch 32 for the
-64-step complete-snapshot workload, with kernel+sync only about 0.014% of profiled
-wall time. This selects host validation, state copying/transfers, and full result
-materialization as the next optimization boundary. The measurement is not a
-CPU-relative or cross-device speedup claim; broader hardware evidence remains
-open.
+for resident classic and current-profile CUDA execution. The first retained RTX
+4060 current-profile matrix reached about 40.08 VMs/s at batch 32 and showed that
+state movement dominated its 64-step complete-snapshot workload. Device-side
+replication now raises the retained batch-32 result to about 51.67 VMs/s and cuts
+median upload time about 6.93x. Persistent scalable sessions separately reach
+about 2.00 million 64-step VM segments/s at batch 128 when complete state remains
+resident and setup/observation/snapshots are outside the timed region. This
+confirms transfer avoidance as a high-leverage continuation boundary while
+leaving reusable-input validation and complete snapshot materialization as
+measured host costs. None of these values is a CPU-relative or cross-device
+speedup claim; broader hardware evidence remains open.
 
 ## References
 

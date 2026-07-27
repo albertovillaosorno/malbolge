@@ -63,7 +63,8 @@ directly on CUDA APIs.
   proves the generated resident kernel is not fixed to canonical 10/14-trit
   geometry. Hardware-neutral Rust batch ports now route both real resident CUDA
   workers while safe Rust owns admission and fallback. RTX 4060 current-profile
-  throughput/phase evidence is also retained. Search/verification ports, ROCm,
-  broader hardware, and further host-state optimization remain open.
+  baseline, shared-initialization, and persistent-session evidence is also
+  retained. Search/verification ports, ROCm, broader hardware, reusable-input
+  validation, and complete-snapshot materialization remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

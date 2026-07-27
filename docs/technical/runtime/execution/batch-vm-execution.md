@@ -80,9 +80,14 @@ whole batch. Unavailability, malformed result counts, deferred items, or
 inconsistent completion metadata execute from the untouched CPU state instead.
 Live integration tests route both classic and current-profile batches through the
 real CUDA workers and compare complete results with the sequential CPU baseline.
-The retained current-profile CUDA performance matrix reaches about 40.08 VMs/s at
-batch 32 for a 64-step complete-snapshot workload; no CPU-relative or
-cross-device speedup is claimed from that backend-only measurement.
+The original retained current-profile CUDA matrix reached about 40.08 VMs/s at
+batch 32 for a 64-step complete-snapshot workload. Shared-memory device
+replication now raises the retained batch-32 result to about 51.67 VMs/s while
+preserving private mutable memory per VM. A separate resident-session matrix
+keeps complete state on-device across repeated segments and reaches about
+2.00 million 64-step segments/s at batch 128, but its timed region excludes
+setup, observation, and snapshots. No CPU-relative or cross-device speedup is
+claimed from either backend-only measurement.
 
 ## Invariants
 

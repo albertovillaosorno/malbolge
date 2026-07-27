@@ -50,9 +50,13 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   and current-profile bounded execution. Current geometry comes from canonical
   Rust profile identity, and full-state differential evidence compares every
   4,782,969 current memory word. Hardware-neutral Rust product ports now route
-  both resident workers with per-item/whole-batch safe-Rust fallback. RTX 4060
-  current-profile CUDA performance is now measured through a retained 15-sample
-  matrix; a matched CPU-relative speedup claim remains intentionally absent.
+  both resident workers with per-item/whole-batch safe-Rust fallback. The retained
+  RTX 4060 current-profile baseline reached about 40.08 VMs/s at complete-snapshot
+  batch 32; device-side shared initialization now reaches about 51.67 VMs/s. A
+  persistent current-profile session separately reaches about 2.00 million
+  64-step segments/s at batch 128 when setup, observation, and snapshots are
+  outside the timed region. A matched CPU-relative speedup claim remains
+  intentionally absent.
 
 ## Acceptance
 

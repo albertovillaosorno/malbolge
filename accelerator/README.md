@@ -24,8 +24,11 @@ runtime failures are explicit and never silently change acceptance rules.
 snapshots and deterministic resident chunk planning; it does not know CUDA APIs.
 
 Rust product batches now route through hardware-neutral optional backends with
-safe-Rust fallback. RTX 4060 current-profile throughput and phase evidence is
-retained; it selects host-state validation/copy/materialization rather than kernel
-execution as the next measured performance boundary. Candidate evaluation,
+safe-Rust fallback. RTX 4060 current-profile evidence now includes device-side
+shared-state replication and persistent scalable sessions. Complete-snapshot
+batch 32 reaches about 51.67 VMs/s, while resident batch 128 reaches about
+2.00 million 64-step segments/s when setup and snapshots are outside the timed
+region. Reusable-input validation and unavoidable complete-snapshot
+materialization remain measured host-side costs. Candidate evaluation,
 search/verification ports, ROCm, broader hardware evidence, and further
 performance orchestration remain follow-on work.

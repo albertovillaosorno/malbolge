@@ -1,0 +1,120 @@
+{
+  "backend": "cuda-profile-run",
+  "batch_sizes": [
+    1,
+    8,
+    32,
+    128
+  ],
+  "device": {
+    "arch": "sm_89",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "geometry": {
+    "memory_bytes_per_vm": 19131876,
+    "memory_words": 4782969,
+    "word_trits": 14
+  },
+  "prepared_steps": 960,
+  "rows": [
+    {
+      "batch_size": 1,
+      "median_ns": 47400,
+      "pstdev_ns": 27921.018765240085,
+      "raw_ns": [
+        159500,
+        65300,
+        52500,
+        48900,
+        47500,
+        47000,
+        47400,
+        47000,
+        47400,
+        47000,
+        47100,
+        47300,
+        47900,
+        47200,
+        47400
+      ],
+      "vm_segments_per_second": 21097.04641350211,
+      "vm_steps_per_second": 1350210.970464135
+    },
+    {
+      "batch_size": 8,
+      "median_ns": 59500,
+      "pstdev_ns": 8160.348576432804,
+      "raw_ns": [
+        90600,
+        65900,
+        61300,
+        59500,
+        58000,
+        58200,
+        57700,
+        58000,
+        59300,
+        64000,
+        60400,
+        59000,
+        60500,
+        53700,
+        61300
+      ],
+      "vm_segments_per_second": 134453.78151260506,
+      "vm_steps_per_second": 8605042.016806724
+    },
+    {
+      "batch_size": 32,
+      "median_ns": 55700,
+      "pstdev_ns": 9140.420607876253,
+      "raw_ns": [
+        90800,
+        68500,
+        62300,
+        57400,
+        56100,
+        56000,
+        56000,
+        55200,
+        55600,
+        55200,
+        55000,
+        55100,
+        55200,
+        55700,
+        55000
+      ],
+      "vm_segments_per_second": 574506.2836624775,
+      "vm_steps_per_second": 36768402.15439856
+    },
+    {
+      "batch_size": 128,
+      "median_ns": 63900,
+      "pstdev_ns": 15547.967355538436,
+      "raw_ns": [
+        125100,
+        74300,
+        68000,
+        67200,
+        63900,
+        62900,
+        58900,
+        57400,
+        66300,
+        66500,
+        67300,
+        63400,
+        63700,
+        63000,
+        63000
+      ],
+      "vm_segments_per_second": 2003129.890453834,
+      "vm_steps_per_second": 128200312.98904538
+    }
+  ],
+  "sample_count": 15,
+  "segment_steps": 64,
+  "timed_region": "CudaProfileRunSession.advance only"
+}

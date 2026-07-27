@@ -112,10 +112,15 @@ example probe points, not supported-range endpoints.
   reaches about 1,076.38 VMs/s at batch 128 and lowers wall time about 39.5x versus
   the original phase baseline. Complete Python result materialization is now the
   dominant phase (~75%).
-- Current-profile evidence under
+- The original current-profile baseline under
   `benchmarks/accelerator/evidence/2026-07-27-current-profile-throughput-rtx4060/`
-  contains 15-sample end-to-end batches 1/2/4/8/16/32 plus phase batches 1/8/32.
-  Batch 32 reaches about 40.08 VMs/s; kernel+sync is about 0.014% of profiled wall
-  time, selecting host validation/copy/materialization as the next optimization
-  boundary. Broader live-hardware measurements remain required. Persistent
-  classic continuation is tracked by its own retained session evidence.
+  selected host-state movement as the next optimization boundary. Post-change
+  evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`
+  raises complete-snapshot batch 32 from about 40.08 to 51.67 VMs/s and cuts
+  median upload time about 6.93x through device-side shared initialization. A
+  persistent scalable session reaches about 2.00 million 64-step VM segments/s
+  at batch 128 when setup/observation/snapshots are excluded from `advance()`.
+  Reusable-input validation, complete-snapshot materialization, and broader
+  live-hardware measurements remain required. Persistent classic continuation is
+  tracked by its own retained session evidence.

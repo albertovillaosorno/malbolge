@@ -111,11 +111,15 @@ already-terminated execution. CUDA remains optional and is not profile
 authority. Rust product-batch integration additionally exercises the real classic
 and current workers through hardware-neutral backend traits; unavailable,
 deferred, or structurally invalid attempts fall back to untouched safe-Rust
-states. RTX 4060 current-profile performance evidence now measures 15 samples per
-batch point: batch 32 reaches about 40.08 VMs/s for the 64-step complete-snapshot
-workload, while phase attribution places kernel+sync at about 0.014% of wall
-time. This is a backend baseline, not a CPU-relative or cross-device speedup
-claim.
+states. The retained RTX 4060 baseline measures 15 samples per complete-snapshot
+batch point and originally reached about 40.08 VMs/s at batch 32. Device-side
+replication now copies one shared initial image from host and expands it into
+private per-VM regions in VRAM; post-change batch 32 reaches about 51.67 VMs/s
+with median upload time about 6.93x lower. Persistent profile sessions keep those
+private states resident across bounded launches and reach about 2.00 million
+64-step VM segments/s at batch 128 when setup, observation, and snapshots are
+outside the timed region. These are backend measurements, not CPU-relative or
+cross-device speedup claims.
 
 ## Invariants
 
@@ -144,10 +148,11 @@ fails explicitly without changing correctness rules.
 - Compact classic-step differential evidence covers VM state/I/O/mutation trace
   projections and atomic rejection. Resident classic evidence compares complete
   59,049-word states; scalable resident evidence compares complete 4,782,969-word
-  current-profile states against normative Rust. Product-level batch routing and
-  an RTX 4060 current-profile throughput/phase baseline are now retained. Broader
-  live-hardware evidence and the remaining search/verification ports are still
-  required before this TODO can complete.
+  current-profile states against normative Rust. Product-level batch routing, an
+  RTX 4060 current-profile baseline, device-side shared initialization, and
+  persistent scalable-session evidence are now retained. Broader live-hardware
+  evidence and the remaining search/verification ports are still required before
+  this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

@@ -45,9 +45,15 @@ overflow. Very large VRAM therefore expands total capacity without requiring one
 unsafe monolithic launch. Scalable profile execution uses the same live resource
 planner and compact contiguous 32-bit host memory representation. Rust product
 batch ports now route both classic and current-profile requests through the real
-CUDA workers while retaining safe-Rust fallback. Current-profile RTX 4060
-throughput/phase evidence is retained under
-`benchmarks/accelerator/evidence/2026-07-27-current-profile-throughput-rtx4060/`;
-batch 32 reaches about 40.08 VMs/s while kernel+sync is only about 0.014% of
-profiled wall time. Host-state handling, asynchronous transfer/stream tuning,
-broader hardware evidence, and CUDA superoptimization remain open.
+CUDA workers while retaining safe-Rust fallback. The original current-profile
+RTX 4060 baseline remains under
+`benchmarks/accelerator/evidence/2026-07-27-current-profile-throughput-rtx4060/`.
+Post-optimization evidence under
+`benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`
+uses device-to-device replication for shared initial memory: complete-snapshot
+batch 32 reaches about 51.67 VMs/s, about 1.289x the retained baseline, and
+median upload time falls about 6.93x. Persistent profile sessions separately
+reach about 2.00 million 64-step VM segments/s at batch 128 when setup, compact
+observation, and snapshots are outside the timed `advance()` region. Reusable
+validation, complete-snapshot materialization, asynchronous transfer/stream
+tuning, broader hardware evidence, and CUDA superoptimization remain open.

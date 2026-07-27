@@ -52,8 +52,11 @@ CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
 classic and current-profile bounded execution are likewise checked against
 complete normative Rust states. Rust product batch routing now uses replaceable
-backend traits with safe-Rust fallback and live CUDA-worker integration. Candidate
-evaluation/search/verification ports and ROCm remain open.
+backend traits with safe-Rust fallback and live CUDA-worker integration. Retained
+current-profile performance evidence additionally covers the original complete
+snapshot baseline, device-side shared initialization, and persistent resident
+sessions; none changes semantic authority or establishes a CPU-relative speedup.
+Candidate evaluation/search/verification ports and ROCm remain open.
 
 ## Invariants
 
@@ -76,7 +79,8 @@ fails explicitly without changing correctness rules.
   malformed shared requests, CUDA lifecycle failure, and CPU/CUDA differential
   equality over boundary values plus deterministic 4,096-element corpora.
 - Current development GPU evidence identifies an NVIDIA GeForce RTX 4060 as
-  `sm_89`; no performance claim is made from this correctness slice.
+  `sm_89`. Performance matrices are retained separately from correctness evidence
+  and do not establish a CPU-relative or cross-device speedup.
 - `tests/vm/cuda_step.rs` checks compact transition results against normative
   Rust traces across every instruction family and adversarial transition edges.
 - `tests/vm/cuda_run.rs` checks complete resident classic bounded-run results,
@@ -89,9 +93,11 @@ fails explicitly without changing correctness rules.
   backend shape, per-item deferral, and complete checkpoint restoration all fall
   back deterministically to safe Rust. CUDA integration tests exercise the same
   product ports against the real resident workers.
+- Current-profile post-optimization evidence is retained under
+  `benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`.
 - Remaining evidence includes candidate/search/verification ports, ROCm
-  substitution, broader hardware evidence, and benchmark samples for future
-  speedup claims.
+  substitution, broader hardware evidence, and matched measurements for any
+  future CPU-relative speedup claim.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References
