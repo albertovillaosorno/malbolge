@@ -13,6 +13,7 @@ from typing import Self
 from typing import TYPE_CHECKING
 from typing import final
 
+from accelerator.classic_run import ClassicRunObservation
 from accelerator.classic_run import ClassicRunResult
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import MEMORY_WORDS
@@ -350,6 +351,15 @@ extern "C" __global__ void malbolge_classic_run_batch(
 """
 
 
+@dataclass(frozen=True, slots=True)
+class _ResidentChunk:
+    """One device-resident independently launchable classic batch chunk."""
+
+    count: int
+    hosts: _HostBatch
+    pointers: tuple[int, int, int, int]
+
+
 @final
 class CudaClassicRunAdapter:
     """Specification-only resident classic full-memory CUDA adapter."""
@@ -444,6 +454,59 @@ class CudaClassicRunAdapter:
             )
         return tuple(results)
 
+    def open_session(
+        self,
+        requests: Sequence[ClassicRunRequest],
+        *,
+        max_runs: int,
+    ) -> CudaClassicRunSession:
+        """Upload complete classic states once for repeated resident launches.
+
+        Returns:
+            Scoped session that retains all chunk state in device memory.
+
+        Raises:
+            AcceleratorExecutionError: If the adapter is closed or allocation
+                fails.
+            InvalidPrimitiveBatchError: If `max_runs` or output capacity is
+                outside the supported unsigned domain.
+
+        """
+        if self._closed:
+            message = "CUDA classic-run adapter is closed"
+            raise AcceleratorExecutionError(message)
+        if max_runs <= 0:
+            message = f"resident max runs must be positive: {max_runs}"
+            raise InvalidPrimitiveBatchError(message)
+        validated = _validate_session_requests(
+            tuple(requests),
+            max_runs=max_runs,
+        )
+        plan = self._plan_session_validated(validated, max_runs=max_runs)
+        chunks: list[_ResidentChunk] = []
+        try:
+            for chunk in plan.chunks:
+                chunk_requests = validated[chunk.start : chunk.stop]
+                hosts = _build_host_batch(
+                    chunk_requests,
+                    output_budget_multiplier=max_runs,
+                )
+                pointers = _upload_host_batch(self._runtime, hosts)
+                chunks.append(_ResidentChunk(
+                    count=len(chunk_requests),
+                    hosts=hosts,
+                    pointers=pointers,
+                ))
+        except (AcceleratorExecutionError, InvalidPrimitiveBatchError):
+            _free_resident_chunks(self._runtime, chunks)
+            raise
+        return CudaClassicRunSession(
+            runtime=self._runtime,
+            kernel=self._kernel,
+            chunks=tuple(chunks),
+            max_runs=max_runs,
+        )
+
     def profile_evaluate(
         self,
         requests: Sequence[ClassicRunRequest],
@@ -524,6 +587,27 @@ class CudaClassicRunAdapter:
             )
         except ResourceBudgetError as error:
             message = f"CUDA resident resource budget rejected batch: {error}"
+            raise AcceleratorExecutionError(message) from error
+
+    def _plan_session_validated(
+        self,
+        requests: tuple[ClassicRunRequest, ...],
+        *,
+        max_runs: int,
+    ) -> ResourcePlan:
+        item_bytes = tuple(
+            _resident_item_bytes(request, output_budget_multiplier=max_runs)
+            for request in requests
+        )
+        try:
+            return plan_resident_batches(
+                item_bytes,
+                self._runtime.resources.snapshot(),
+                fixed_chunk_bytes=_FIXED_CHUNK_BYTES,
+                max_items_per_chunk=_MAX_CLASSIC_CHUNK_ITEMS,
+            )
+        except ResourceBudgetError as error:
+            message = f"CUDA resident resource budget rejected session: {error}"
             raise AcceleratorExecutionError(message) from error
 
     def _profile_chunk(
@@ -624,8 +708,174 @@ class CudaClassicRunAdapter:
             _free_all(self._runtime, pointers)
 
 
-def _resident_item_bytes(request: ClassicRunRequest) -> int:
-    output_capacity = len(request.output_bytes) + request.step_budget
+@final
+class CudaClassicRunSession:
+    """Scoped classic CUDA state that remains allocated across launches."""
+
+    def __init__(
+        self,
+        *,
+        runtime: CudaRuntime,
+        kernel: ctypes.c_void_p,
+        chunks: tuple[_ResidentChunk, ...],
+        max_runs: int,
+    ) -> None:
+        """Adopt already-uploaded resident chunks owned by one live adapter."""
+        self._chunks = chunks
+        self._closed = False
+        self._failed = False
+        self._kernel = kernel
+        self._max_runs = max_runs
+        self._runs_executed = 0
+        self._runtime = runtime
+
+    def __enter__(self) -> Self:
+        """Return this live resident session for scoped use.
+
+        Returns:
+            This session.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Release all resident device allocations at scope exit."""
+        self.close()
+
+    @property
+    def runs_executed(self) -> int:
+        """Number of complete resident launches committed by this session."""
+        return self._runs_executed
+
+    def advance(self) -> None:
+        """Execute one declared step-budget segment without a host snapshot.
+
+        Raises:
+            AcceleratorExecutionError: If the session is unavailable, poisoned,
+                exhausted, or a CUDA launch fails.
+
+        """
+        self._ensure_usable()
+        if self._runs_executed >= self._max_runs:
+            message = "resident CUDA session run budget exhausted"
+            raise AcceleratorExecutionError(message)
+        try:
+            for chunk in self._chunks:
+                self._runtime.launch(
+                    self._kernel,
+                    chunk.pointers,
+                    chunk.count,
+                )
+        except AcceleratorExecutionError:
+            self._failed = True
+            raise
+        self._runs_executed += 1
+
+    def close(self) -> None:
+        """Release all device allocations exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        _free_resident_chunks(self._runtime, self._chunks)
+
+    def observe(self) -> tuple[ClassicRunObservation, ...]:
+        """Download compact scalar/I/O-length outcomes without full memory.
+
+        Returns:
+            Compact observations in original request order.
+
+        """
+        self._ensure_usable()
+        observations: list[ClassicRunObservation] = []
+        for chunk in self._chunks:
+            self._runtime.copy_from_device(
+                chunk.hosts.states.view,
+                chunk.pointers[0],
+            )
+            observations.extend(
+                _decode_observations(chunk.hosts.states.owner, chunk.count)
+            )
+        return tuple(observations)
+
+    def snapshot(self) -> tuple[ClassicRunResult, ...]:
+        """Materialize complete resident states on the host on explicit demand.
+
+        Returns:
+            Complete classic results in original request order.
+
+        """
+        self._ensure_usable()
+        results: list[ClassicRunResult] = []
+        for chunk in self._chunks:
+            self._runtime.copy_from_device(
+                chunk.hosts.states.view,
+                chunk.pointers[0],
+            )
+            self._runtime.copy_from_device(
+                chunk.hosts.memories.view,
+                chunk.pointers[1],
+            )
+            self._runtime.copy_from_device(
+                chunk.hosts.outputs.view,
+                chunk.pointers[3],
+            )
+            results.extend(_decode_results(chunk.hosts, count=chunk.count))
+        return tuple(results)
+
+    def _ensure_usable(self) -> None:
+        if self._closed:
+            message = "resident CUDA session is closed"
+            raise AcceleratorExecutionError(message)
+        if self._failed:
+            message = (
+                "resident CUDA session is poisoned after execution failure"
+            )
+            raise AcceleratorExecutionError(message)
+
+
+def _validate_session_requests(
+    requests: tuple[ClassicRunRequest, ...],
+    *,
+    max_runs: int,
+) -> tuple[ClassicRunRequest, ...]:
+    validated = validate_classic_run_requests(requests)
+    for request in validated:
+        _ = _session_output_capacity(request, max_runs=max_runs)
+    return validated
+
+
+def _session_output_capacity(
+    request: ClassicRunRequest,
+    *,
+    max_runs: int,
+) -> int:
+    output_capacity = (
+        len(request.output_bytes)
+        + (request.step_budget * max_runs)
+    )
+    if output_capacity > MAX_U32:
+        message = (
+            "resident session output capacity exceeds unsigned 32-bit domain: "
+            f"{output_capacity}"
+        )
+        raise InvalidPrimitiveBatchError(message)
+    return output_capacity
+
+
+def _resident_item_bytes(
+    request: ClassicRunRequest,
+    *,
+    output_budget_multiplier: int = 1,
+) -> int:
+    output_capacity = _session_output_capacity(
+        request,
+        max_runs=output_budget_multiplier,
+    )
     words = (
         STATE_WORDS
         + MEMORY_WORDS
@@ -637,6 +887,8 @@ def _resident_item_bytes(request: ClassicRunRequest) -> int:
 
 def _encode_variable_state(
     requests: tuple[ClassicRunRequest, ...],
+    *,
+    output_budget_multiplier: int = 1,
 ) -> tuple[array[int], array[int], array[int]]:
     states = array("I")
     inputs = array("I")
@@ -645,9 +897,13 @@ def _encode_variable_state(
         input_offset = len(inputs)
         inputs.extend(request.input_bytes)
         output_offset = len(outputs)
-        output_capacity = len(request.output_bytes) + request.step_budget
+        output_capacity = _session_output_capacity(
+            request,
+            max_runs=output_budget_multiplier,
+        )
+        additional_output = output_capacity - len(request.output_bytes)
         outputs.extend(request.output_bytes)
-        outputs.extend(0 for _slot in range(request.step_budget))
+        outputs.extend(0 for _slot in range(additional_output))
         for value, label in (
             (input_offset, "resident input offset"),
             (output_offset, "resident output offset"),
@@ -691,8 +947,13 @@ def _build_memory_owner(
 
 def _build_host_batch(
     requests: tuple[ClassicRunRequest, ...],
+    *,
+    output_budget_multiplier: int = 1,
 ) -> _HostBatch:
-    states, inputs, outputs = _encode_variable_state(requests)
+    states, inputs, outputs = _encode_variable_state(
+        requests,
+        output_budget_multiplier=output_budget_multiplier,
+    )
     memories = _build_memory_owner(requests)
     if not inputs:
         inputs.append(0)
@@ -704,6 +965,58 @@ def _build_host_batch(
         inputs=_word_buffer(inputs),
         outputs=_word_buffer(outputs),
     )
+
+
+def _decode_observations(
+    states: array[int],
+    count: int,
+) -> tuple[ClassicRunObservation, ...]:
+    observations: list[ClassicRunObservation] = []
+    for index in range(count):
+        base = index * STATE_WORDS
+        observations.append(ClassicRunObservation(
+            accumulator=states[base],
+            code_pointer=states[base + 1],
+            data_pointer=states[base + 2],
+            error=RunError(states[base + _ERROR_INDEX]),
+            error_pointer=states[base + _ERROR_POINTER_INDEX],
+            error_value=states[base + _ERROR_VALUE_INDEX],
+            input_consumed=states[base + 5],
+            output_length=states[base + 7],
+            status=RunStatus(states[base + _STATUS_INDEX]),
+            steps=states[base + _STEPS_INDEX],
+            termination=StepTermination(states[base + 10]),
+        ))
+    return tuple(observations)
+
+
+def _free_resident_chunks(
+    runtime: CudaRuntime,
+    chunks: list[_ResidentChunk] | tuple[_ResidentChunk, ...],
+) -> None:
+    for chunk in reversed(chunks):
+        _free_all(runtime, list(chunk.pointers))
+
+
+def _upload_host_batch(
+    runtime: CudaRuntime,
+    hosts: _HostBatch,
+) -> tuple[int, int, int, int]:
+    pointers: list[int] = []
+    try:
+        pointers.extend(
+            _copy_words(runtime, host)
+            for host in (
+                hosts.states,
+                hosts.memories,
+                hosts.inputs,
+                hosts.outputs,
+            )
+        )
+    except AcceleratorExecutionError:
+        _free_all(runtime, pointers)
+        raise
+    return pointers[0], pointers[1], pointers[2], pointers[3]
 
 
 def _copy_words(

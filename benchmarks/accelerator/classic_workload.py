@@ -21,22 +21,36 @@ STEP_BUDGET: Final = 64
 WORKLOAD_DESCRIPTION: Final = "64 committed no-op transitions per classic VM"
 
 
-def classic_noop_request() -> ClassicRunRequest:
-    """Build the canonical exact 64-step classic benchmark request.
+def classic_noop_request(
+    *,
+    step_budget: int = STEP_BUDGET,
+    prepared_steps: int | None = None,
+) -> ClassicRunRequest:
+    """Build one exact classic no-op benchmark request.
 
     Returns:
-        Validated resident classic request with 64 committed no-op transitions.
+        Validated request with enough encoded no-op cells for the declared run.
+
+    Raises:
+        ValueError: If fewer no-op cells are prepared than the step budget.
 
     """
+    available_steps = step_budget if prepared_steps is None else prepared_steps
+    if available_steps < step_budget:
+        message = (
+            "prepared no-op steps cannot be smaller than the step budget: "
+            f"{available_steps} < {step_budget}"
+        )
+        raise ValueError(message)
     return ClassicRunRequest(
         accumulator=0,
         code_pointer=0,
         data_pointer=0,
         input_bytes=(),
         input_consumed=0,
-        memory=_noop_memory(),
+        memory=_noop_memory(available_steps),
         output_bytes=(),
-        step_budget=STEP_BUDGET,
+        step_budget=step_budget,
         termination=StepTermination.NONE,
     ).validated()
 
@@ -58,14 +72,14 @@ def validate_classic_noop_results(
         _validate_result(result)
 
 
-def _noop_memory() -> tuple[int, ...]:
+def _noop_memory(steps: int) -> tuple[int, ...]:
     try:
         target_index = XLAT1.index(NOOP_DECODED)
     except ValueError as error:
         message = "reviewed XLAT1 table has no benchmark no-op decode"
         raise RuntimeError(message) from error
     words = [0] * MEMORY_WORDS
-    for code_pointer in range(STEP_BUDGET):
+    for code_pointer in range(steps):
         encoded_index = (target_index - code_pointer) % len(XLAT1)
         words[code_pointer] = 33 + encoded_index
     return tuple(words)

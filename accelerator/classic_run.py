@@ -83,6 +83,23 @@ def validate_classic_run_requests(
 
 
 @dataclass(frozen=True, slots=True)
+class ClassicRunObservation:
+    """Compact host observation of one resident classic VM."""
+
+    accumulator: int
+    code_pointer: int
+    data_pointer: int
+    error: RunError
+    error_pointer: int
+    error_value: int
+    input_consumed: int
+    output_length: int
+    status: RunStatus
+    steps: int
+    termination: StepTermination
+
+
+@dataclass(frozen=True, slots=True)
 class ClassicRunResult:
     """Complete resident classic VM result after one bounded GPU run."""
 
