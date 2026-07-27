@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Malbolge",
+  "scopeName": "source.malbolge",
+  "comment": "Malbolge instruction identity is position-dependent. This grammar scopes only lexical facts that can be represented without the VM loader's global non-whitespace position state.",
+  "patterns": [
+    {
+      "include": "#invalid-control-character"
+    },
+    {
+      "include": "#invalid-non-ascii"
+    },
+    {
+      "include": "#encoded-source-unit"
+    }
+  ],
+  "repository": {
+    "invalid-control-character": {
+      "name": "invalid.illegal.control-character.malbolge",
+      "match": "[\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]"
+    },
+    "invalid-non-ascii": {
+      "name": "invalid.illegal.non-ascii.malbolge",
+      "match": "[^\\x00-\\x7F]"
+    },
+    "encoded-source-unit": {
+      "name": "meta.encoded-source-unit.malbolge",
+      "match": "[\\x21-\\x7E]"
+    }
+  }
+}
