@@ -63,6 +63,23 @@ class ProfileRunRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfileRunObservation:
+    """Compact host observation of one resident scalable profile VM."""
+
+    accumulator: int
+    code_pointer: int
+    data_pointer: int
+    error: RunError
+    error_pointer: int
+    error_value: int
+    input_consumed: int
+    output_length: int
+    status: RunStatus
+    steps: int
+    termination: StepTermination
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileRunResult:
     """Complete scalable resident profile result after one GPU run."""
 

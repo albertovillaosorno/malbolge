@@ -98,6 +98,7 @@ class CudaRuntime:
     _cu_mem_alloc: _CudaFn
     _cu_mem_get_info: _CudaFn
     _cu_mem_free: _CudaFn
+    _cu_memcpy_dtod: _CudaFn
     _cu_memcpy_dtoh: _CudaFn
     _cu_memcpy_htod: _CudaFn
     _cu_module_get_function: _CudaFn
@@ -236,17 +237,44 @@ class CudaRuntime:
             "cuMemcpyDtoH_v2",
         )
 
-    def copy_to_device(self, device_pointer: int, host: HostWords) -> None:
-        """Copy one exact host buffer to device memory synchronously."""
+    def copy_to_device(
+        self,
+        device_pointer: int,
+        host: HostWords,
+        *,
+        repeat_count: int = 1,
+    ) -> None:
+        """Copy one host buffer and optionally replicate it contiguously.
+
+        Raises:
+            AcceleratorExecutionError: If the count is invalid or CUDA fails.
+
+        """
         self._ensure_open()
+        if repeat_count < 1:
+            message = (
+                "CUDA host-to-device repeat count must be positive: "
+                f"{repeat_count}"
+            )
+            raise AcceleratorExecutionError(message)
+        byte_count = ctypes.sizeof(host)
         _check_execution(
             self._cu_memcpy_htod(
                 ctypes.c_uint64(device_pointer),
                 host,
-                ctypes.sizeof(host),
+                byte_count,
             ),
             "cuMemcpyHtoD_v2",
         )
+        for index in range(1, repeat_count):
+            _check_execution(
+                self._cu_memcpy_dtod(
+                    ctypes.c_uint64(device_pointer + (index * byte_count)),
+                    ctypes.c_uint64(device_pointer),
+                    byte_count,
+                ),
+                "cuMemcpyDtoD_v2",
+            )
 
     def free(self, device_pointer: int) -> None:
         """Release one device allocation."""
@@ -356,6 +384,7 @@ class CudaRuntime:
             self._cu_mem_free,
             self._cu_memcpy_htod,
             self._cu_memcpy_dtoh,
+            self._cu_memcpy_dtod,
         ) = memory
         (
             self._cu_module_load_data,
@@ -531,9 +560,19 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_dtoh = dll.cuMemcpyDtoH_v2
     raw_dtoh.argtypes = [ctypes.c_void_p, ctypes.c_uint64, ctypes.c_size_t]
     raw_dtoh.restype = ctypes.c_int
+    raw_dtod = dll.cuMemcpyDtoD_v2
+    raw_dtod.argtypes = [ctypes.c_uint64, ctypes.c_uint64, ctypes.c_size_t]
+    raw_dtod.restype = ctypes.c_int
     return tuple(
         cast("_CudaFn", raw)
-        for raw in (raw_alloc, raw_info, raw_free, raw_htod, raw_dtoh)
+        for raw in (
+            raw_alloc,
+            raw_info,
+            raw_free,
+            raw_htod,
+            raw_dtoh,
+            raw_dtod,
+        )
     )
 
 

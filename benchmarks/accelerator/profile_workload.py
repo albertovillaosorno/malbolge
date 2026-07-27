@@ -35,22 +35,35 @@ GEOMETRY: Final = ProfileRunGeometry(
 )
 
 
-def profile_noop_request() -> ProfileRunRequest:
+def profile_noop_request(
+    *,
+    step_budget: int = STEP_BUDGET,
+    prepared_steps: int = STEP_BUDGET,
+) -> ProfileRunRequest:
     """Build one exact 14-trit no-op benchmark request.
 
     Returns:
-        Validated request with 64 encoded no-op cells in current geometry.
+        Validated request with the requested prepared no-op code span.
+
+    Raises:
+        ValueError: If the prepared span cannot cover the execution budget.
 
     """
+    if not step_budget <= prepared_steps <= PROFILE_WORDS:
+        message = (
+            "profile benchmark prepared span must cover the step budget within "
+            f"memory: {step_budget} <= {prepared_steps} <= {PROFILE_WORDS}"
+        )
+        raise ValueError(message)
     request = ProfileRunRequest(
         accumulator=0,
         code_pointer=0,
         data_pointer=0,
         input_bytes=(),
         input_consumed=0,
-        memory=_noop_memory(),
+        memory=_noop_memory(prepared_steps),
         output_bytes=(),
-        step_budget=STEP_BUDGET,
+        step_budget=step_budget,
         termination=StepTermination.NONE,
     )
     return validate_profile_run_requests(GEOMETRY, (request,))[0]
@@ -73,14 +86,14 @@ def validate_profile_noop_results(
         _validate_result(result)
 
 
-def _noop_memory() -> array[int]:
+def _noop_memory(prepared_steps: int) -> array[int]:
     try:
         target_index = XLAT1.index(NOOP_DECODED)
     except ValueError as error:
         message = "reviewed XLAT1 table has no benchmark no-op decode"
         raise RuntimeError(message) from error
     words = array("I", [0]) * PROFILE_WORDS
-    for code_pointer in range(STEP_BUDGET):
+    for code_pointer in range(prepared_steps):
         encoded_index = (target_index - code_pointer) % len(XLAT1)
         words[code_pointer] = 33 + encoded_index
     return words

@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from array import array
+from dataclasses import replace
 from typing import Final
 from unittest import SkipTest
 
 from accelerator.classic_run import RunError
 from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
+from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.profile_run import ProfileRunGeometry
@@ -20,6 +22,8 @@ SYNTHETIC_TRITS: Final = 5
 SYNTHETIC_WORDS: Final = 243
 INITIAL_ACCUMULATOR: Final = 7
 EXPECTED_DATA_POINTER: Final = 2
+SESSION_BATCH_SIZE: Final = 2
+SESSION_RUNS: Final = 3
 NO_OP_CELL: Final = 33
 ENCRYPTED_NO_OP_CELL: Final = 53
 GEOMETRY = ProfileRunGeometry(
@@ -87,3 +91,60 @@ def test_cuda_profile_diagnostics_preserve_exact_results() -> None:
     assert profile.host_build_ns >= 0
     assert profile.kernel_ns >= 0
     assert profile.decode_ns >= 0
+
+
+def test_cuda_shared_profile_memory_is_replicated_per_vm() -> None:
+    """Initialize private device memories from one shared host image."""
+    request = _request()
+    with _cuda() as adapter:
+        first, second = adapter.evaluate((request, request))
+
+    assert first == second
+    assert first.memory == second.memory
+    first.memory[1] = 1
+    assert second.memory[1] == 0
+
+
+def _resident_session_request() -> ProfileRunRequest:
+    memory = array("I", [0]) * SYNTHETIC_WORDS
+    target_index = XLAT1.index(ord("+"))
+    for code_pointer in range(SESSION_RUNS):
+        encoded_index = (target_index - code_pointer) % len(XLAT1)
+        memory[code_pointer] = 33 + encoded_index
+    return ProfileRunRequest(
+        accumulator=INITIAL_ACCUMULATOR,
+        code_pointer=0,
+        data_pointer=1,
+        input_bytes=(),
+        input_consumed=0,
+        memory=memory,
+        output_bytes=(),
+        step_budget=1,
+        termination=StepTermination.NONE,
+    )
+
+
+def test_cuda_profile_session_matches_contiguous_execution() -> None:
+    """Repeated resident segments preserve exact scalable VM state."""
+    request = _resident_session_request()
+    contiguous = replace(request, step_budget=SESSION_RUNS)
+    with _cuda() as adapter:
+        expected = adapter.evaluate((contiguous, contiguous))
+        with adapter.open_session(
+            (request, request), max_runs=SESSION_RUNS
+        ) as session:
+            for _ in range(SESSION_RUNS):
+                session.advance()
+            observations = session.observe()
+            observed = session.snapshot()
+            runs_executed = session.runs_executed
+
+    expected_segmented = tuple(replace(result, steps=1) for result in expected)
+    assert observed == expected_segmented
+    assert runs_executed == SESSION_RUNS
+    assert len(observations) == SESSION_BATCH_SIZE
+    assert all(item.code_pointer == SESSION_RUNS for item in observations)
+    assert all(item.steps == 1 for item in observations)
+    assert all(
+        item.status is RunStatus.BUDGET_EXHAUSTED for item in observations
+    )

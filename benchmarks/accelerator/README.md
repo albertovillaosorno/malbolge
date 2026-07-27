@@ -70,3 +70,22 @@ Run with:
 .dependencies/python/3.14.6/Scripts/python-jig.cmd `
   -m benchmarks.accelerator.profile_run_phase_profile
 ```
+
+`profile_resident_session_throughput.py` measures the steady-state launch boundary
+for current-profile states that remain in device memory across repeated bounded
+segments. Session setup, final compact observation, and optional full snapshots
+are outside the timed `advance()` region by design. The benchmark prepares 960
+no-op cells, executes fifteen 64-step resident segments, and records batch sizes
+1, 8, 32, and 128.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_resident_session_throughput
+```
+
+This session benchmark answers a different question from
+`profile_run_throughput.py`: it measures continuation when a caller can keep
+complete VM state resident, not end-to-end complete-snapshot latency. Do not use
+its launch-only rate as a direct CPU-relative or complete-run speedup claim.
