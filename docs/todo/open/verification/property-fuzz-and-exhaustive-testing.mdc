@@ -1,6 +1,6 @@
 ---
 id: "property-fuzz-and-exhaustive-testing"
-status: "pending"
+status: "active"
 lane: "6"
 area: "verification"
 task: "TODO - Property, fuzz, and exhaustive testing"
@@ -13,10 +13,13 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "verifier/"
+  - "tests/property_verification.rs"
   - "tests/differential/"
   - "tests/exhaustive/"
   - "tests/fuzz/"
+  - "tests/vm/tables.rs"
 validation:
+  - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --test property_verification --all-features"
   - "jig validate --root ."
 ---
 # TODO - Property, fuzz, and exhaustive testing
@@ -26,6 +29,28 @@ validation:
 Use property testing, fuzzing, sanitizers, regression corpora, and exhaustive
 finite-domain verification for small functions and VM primitives such as rotate
 and crazy operations.
+
+
+**Current implementation.**
+
+- `tests/fuzz/cases.rs` generates valid classic source by position-dependent
+  decode admission from a fixed seed/ordinal; no host entropy or retry-based
+  validity filter is used.
+- The generator has deterministic replay and shrink candidates that reduce valid
+  source prefixes, input, and step budget. Differential failures retest smaller
+  candidates and report the minimized replay identity.
+- `tests/differential/classic_profile.rs` executes 24 generated programs through
+  classic `Machine` and explicit profiled `malbolge-1998`, comparing every
+  requested step, registers, I/O, termination, normalized encryption rejection,
+  and all 59,049 final memory cells.
+- `tests/exhaustive/loader_boundaries.rs` exhausts non-whitespace/non-graphical
+  bytes, all 94 decode phases with valid and mutated-invalid source, recurrence
+  bases, and the classic source-capacity edge.
+- Existing `tests/vm/tables.rs` remains the nonduplicated exhaustive arithmetic
+  baseline for rotate, crazy chunks, and positional decode tables.
+- Sanitizer campaigns and deliberate verifier valid/invalid mutations remain
+  open until the corresponding verifier surface exists. This TODO therefore
+  remains active rather than claiming full verification closure.
 
 ## Acceptance
 
@@ -43,7 +68,10 @@ and crazy operations.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.
-- Required evidence: known-valid fixtures, seeded invalid mutations,
-  counterexamples for rejected candidates, and deterministic replay.
+- Current evidence includes exact replay/shrink identity, seeded generated
+  differential cases, exhaustive loader mutations, and existing exhaustive
+  arithmetic/table checks.
+- Future closure still requires sanitizer evidence and known-valid plus seeded
+  invalid verifier mutations/counterexamples once the verifier exists.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`.

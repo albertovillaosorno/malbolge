@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -21,16 +21,46 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Deterministic generated differential cases
 
-This record defines the contract that implementation must satisfy for
-`property-fuzz-and-exhaustive-testing`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+`tests/fuzz/cases.rs` generates valid classic source by construction: at each
+loaded position it chooses only graphical bytes whose public
+`decode_instruction` result is one of the eight load-admitted instructions. No
+ambient entropy is used. The fixed seed plus ordinal fully reconstructs source,
+input bytes, and step budget.
 
-### Implementation Status
+The same module defines deterministic shrink candidates. Shrinking reduces
+source length while preserving the already-valid prefix, then input length and
+step budget. A differential failure repeatedly tests smaller candidates and
+reports the minimized replay identity rather than discarding the original case.
 
-Not implemented. This proposed contract does not claim executable support yet.
+`tests/differential/classic_profile.rs` currently replays 24 generated cases
+through the public classic `Machine` and `ProfileMachine` selected explicitly for
+`malbolge-1998`. Each requested step compares normalized continuation,
+termination, or invalid-self-encryption rejection plus registers, input cursor,
+output, and termination state. Final comparison checks all 59,049 memory words.
+The two runtime APIs do not share private transition helpers in this test.
+
+### Exhaustive finite domains
+
+`tests/exhaustive/loader_boundaries.rs` exhausts every byte value that is neither
+ASCII whitespace nor graphical source, checks all 94 position-dependent decode
+phases have both admitted and rejected graphical bytes, mutates one valid
+94-word source at every phase to require exact `InvalidInstruction` identity,
+and fixes recurrence-base and source-capacity boundaries.
+
+The earlier `tests/vm/tables.rs` remains exhaustive arithmetic evidence: every
+classic rotate word, every graphical decode position, and both five-trit crazy
+chunk positions are checked against independent scalar formulas. This work is
+referenced rather than duplicated under a second test implementation.
+
+### Remaining scope
+
+This slice establishes deterministic replay/shrink and finite VM/loader domains.
+Sanitizer campaigns and verifier-valid-versus-mutated-invalid testing remain open
+because the general translation verifier is not yet implemented. Those future
+checks must preserve stable seeds/counterexamples rather than turning this task
+into nondeterministic CI fuzzing.
 
 ## Invariants
 
@@ -49,8 +79,12 @@ never implicit acceptance.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.
-- Required evidence: known-valid fixtures, seeded invalid mutations,
-  counterexamples for rejected candidates, and deterministic replay.
+- `cargo test --test property_verification --all-features` executes generated
+  replay/shrink, classic/profile differential, and loader exhaustive evidence.
+- `tests/vm/tables.rs` supplies the existing exhaustive rotate/crazy/decode table
+  equivalence evidence under the full VM integration target.
+- Required future evidence still includes sanitizer campaigns and deliberate
+  valid/invalid verifier mutations once that verifier surface exists.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`.
 ## References

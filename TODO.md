@@ -447,11 +447,15 @@ happens to run on that host.
 
 Implement startup, calling convention, frames, allocation, streams, integer
 helpers, strings, scheduling primitives, and other runtime facilities as code
-that ultimately executes under Malbolge semantics. Bootstrap host allocation may
-be used while bringing up large interoperability workloads, but it is not the
-end-state ABI: migrate such bootstrap calls to the guest allocator before a
-self-contained `.malbolge` build is accepted. Raw external effects remain behind
-a narrow host-capability boundary rather than growing into a shadow libc.
+that ultimately executes under Malbolge semantics. The DOOM interoperability
+bootstrap already uses the intended memory shape: the host exposes one stable
+guest-memory region and the guest zone allocator owns object allocation inside
+it; no host malloc-like service remains. Guest-side formatting likewise owns
+fatal-message construction before raw diagnostic bytes cross the host boundary.
+Generalize these properties into the reusable guest runtime, and move strict
+self-contained media paths toward guest-produced PCM rather than a host music
+decoder. Raw external effects remain behind a narrow host-capability boundary
+rather than growing into a shadow libc or hidden application runtime.
 
 ## Compiler
 
@@ -524,9 +528,12 @@ as historical differential evidence.
 
 ### TODO - Property, fuzz, and exhaustive testing
 
-Use property testing, fuzzing, sanitizers, regression corpora, and exhaustive
-finite-domain verification for small functions and VM primitives such as rotate
-and crazy operations.
+Use deterministic property, fuzz/replay, sanitizer, regression, and exhaustive
+verification. The active Rust harness now has seed+ordinal replay/shrink, 24
+classic-versus-profiled-1998 generated differential cases with full final memory
+comparison, exhaustive loader byte/94-phase mutation boundaries, and the existing
+exhaustive arithmetic tables. Sanitizers and verifier valid/invalid mutation
+campaigns remain open.
 
 ### TODO - Translation validation
 
