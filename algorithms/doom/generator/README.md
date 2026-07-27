@@ -37,6 +37,7 @@ python -m algorithms.doom.generator.quality
 identity primitives, stable anchors, tree admission, behavior evaluation, portable
 process probes, threshold key unlock, RFC 8439 payload protection, and protected
 exact-plan materialization, and deterministic std-only Rust emission for the exact
-baseline. `write_algorithm()` still fails closed without replacing `quality/main.rs`
-because the public recipe must explicitly choose exact-versus-compatible emission and
-the DOOM behavior suite still needs broader compatibility/bug coverage.
+baseline. `write_algorithm()` still fails closed without replacing `quality/main.rs` because the DOOM recipe now explicitly requests
+`TransformMode.COMPATIBLE`; that runtime still needs consumer identity/admission and
+broader compatibility/bug coverage. The generic public API can already emit
+`EXACT_BASELINE` transforms without changing this product-level choice.

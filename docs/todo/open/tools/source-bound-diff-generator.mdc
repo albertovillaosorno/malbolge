@@ -32,7 +32,9 @@ format.
 
 **Current implementation.**
 
-- The public `DiffRecipe` and fail-closed `write_algorithm()` scaffold exist.
+- The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
+  mode. `write_algorithm()` generates exact standalone Rust today; compatible mode
+  remains fail-closed before output.
 - The exact authoring planner/materializer reconstructs deterministic byte trees,
   reuses whole source files and source spans, and publishes only after full target
   verification.

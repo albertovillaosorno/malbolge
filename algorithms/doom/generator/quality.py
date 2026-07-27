@@ -5,6 +5,7 @@
 from pathlib import Path
 
 from algorithms.diff import DiffRecipe
+from algorithms.diff import TransformMode
 from algorithms.diff import write_algorithm
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -13,20 +14,25 @@ RECIPE = DiffRecipe(
     oracle_root=REPOSITORY_ROOT / "algorithms/doom/quality/in/doom",
     output_algorithm=REPOSITORY_ROOT / "algorithms/doom/quality/main.rs",
     profile="doom-quality-v1",
+    mode=TransformMode.COMPATIBLE,
     domain_module=Path(__file__).with_name("doom.py"),
     minimum_source_similarity=0.50,
     minimum_anchor_coverage=0.66,
     minimum_behavior_similarity=0.80,
+    source_binding_threshold=0.66,
+    source_binding_maximum_anchors=127,
+    source_binding_minimum_files=32,
     ignore_comments_for_identity=True,
     ignore_formatting_for_identity=True,
 )
 
 
 def main() -> int:
-    """Write the generated quality algorithm or fail closed.
+    """Write the compatible quality algorithm or fail closed.
 
     Returns:
-        Zero after successful generation. The current scaffold raises first.
+        Zero after successful compatible generation. The current implementation
+        raises before replacing the checked-in scaffold.
 
     """
     write_algorithm(RECIPE)

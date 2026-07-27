@@ -251,6 +251,13 @@ Required negative tests include:
 
 ## Exact and Compatible Modes
 
+`DiffRecipe` now requires an explicit `TransformMode`. `EXACT_BASELINE` is a
+complete public generation path: `write_algorithm()` authors, protects, and writes
+the standalone Rust transform. `COMPATIBLE` remains fail-closed and never writes
+output until the compatible runtime gates are implemented. Source-binding threshold,
+maximum shares, and minimum distinct files are separate recipe fields rather than
+being implicitly borrowed from structural/anchor admission thresholds.
+
 For the exact baseline used to generate an algorithm:
 
 ```text
@@ -273,7 +280,7 @@ DOOM quality recipe records exploratory starting values of:
 - stable anchor coverage: `0.66`;
 - behavior similarity: `0.80`.
 
-These numbers are not legal thresholds and are not frozen by this scaffold.
+These numbers are not legal thresholds and are not frozen by the current recipe.
 Tests must justify any values eventually admitted by a product recipe.
 
 ## Required Tests

@@ -60,6 +60,10 @@ and transform emission remain application-agnostic.
   findings snapshot. It is historical progress evidence and must not be refreshed
   as final acceptance evidence until generated `out/doom_fixed/` exists.
 
+- `algorithms/doom/generator/quality.py` now explicitly requests compatible emission;
+  the generic exact generation path is implemented but is not substituted for the
+  broader DOOM product contract.
+
 ## Acceptance
 
 - The user-owned root `doom/` tree is never modified.

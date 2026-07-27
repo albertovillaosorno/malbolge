@@ -76,9 +76,11 @@ scoring. Generic behavior admission and portable process-probe execution now als
 exist. The DOOM domain has its first executable fixed-point identity probe, while
 `algorithms/diff` now also protects exact-plan oracle literals behind source-bound
 authenticated payload recovery and emits the exact plan as standalone std-only Rust.
-`write_algorithm()` remains fail-closed at the public recipe boundary because exact
-versus compatible emission still needs to be explicit and the DOOM probe suite is not
-broad enough yet.
+`write_algorithm()` now exposes explicit exact and compatible modes. Exact mode is a
+working public generation path; the DOOM `quality.py` recipe deliberately selects
+`COMPATIBLE`, which remains fail-closed until the emitted runtime owns canonical
+identity, admission, and broader behavior/bug evidence. This prevents a working exact
+baseline from silently narrowing the product contract.
 
 The standalone Rust exact-transform smoke is now end to end. The generated source
 was 4,655,376 bytes, compiled warning-free with Rust 1.97.1, ran directly against
