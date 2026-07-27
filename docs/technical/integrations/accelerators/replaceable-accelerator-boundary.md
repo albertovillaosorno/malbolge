@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Purpose
 
@@ -22,16 +22,27 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Active Model
 
-This record defines the contract that implementation must satisfy for
-`replaceable-accelerator-boundary`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+The shared accelerator surface is capability-oriented and hardware-neutral.
+`accelerator/exact_primitives.py` defines immutable request/result/capability
+types plus the `ExactPrimitiveAdapter` protocol. The first admitted operation
+family batches classic ten-trit `rotate` and `crazy`; malformed shape or word
+domain is rejected before any backend executes.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The first replaceable slice is implemented. `accelerator/cpu/` supplies the
+mandatory scalar reference and `accelerator/cuda/` supplies an optional NVIDIA
+adapter behind the same request/result contract. CUDA APIs occur only inside the
+CUDA adapter. Compiler, verifier, VM, and shared accelerator code remain
+hardware-neutral.
+
+Backend capability records expose stable backend ID plus device name/architecture
+for evidence. Accelerator unavailability and execution failure have distinct
+typed errors; neither changes candidate validity or CPU-reference semantics. Full
+VM batching, candidate evaluation/search/verification ports, and ROCm remain
+open.
 
 ## Invariants
 
@@ -50,8 +61,14 @@ fails explicitly without changing correctness rules.
 
 - Expected durable artifact surface: `accelerator/`, `algorithms/`,
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
-- Required evidence: CPU/reference differential results, device/resource
-  metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- `tests/optimizer/test_exact_accelerator_primitives.py` checks CPU known edges,
+  malformed shared requests, CUDA lifecycle failure, and CPU/CUDA differential
+  equality over boundary values plus deterministic 4,096-element corpora.
+- Current development GPU evidence identifies an NVIDIA GeForce RTX 4060 as
+  `sm_89`; no performance claim is made from this correctness slice.
+- Remaining evidence includes full VM/candidate ports, unavailable-device
+  orchestration at product call sites, ROCm substitution, resource metadata, and
+  benchmark samples for any future speedup claim.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "cuda_release": "13.3 Update 1",
+  "redistrib_manifest": "redistrib_13.3.1.json",
+  "release_date": "2026-06-29",
+  "platform": "windows-x86_64",
+  "toolkit_root": ".dependencies/cuda/13.3.1/toolkit",
+  "packages": [
+    {
+      "name": "cuda_nvcc",
+      "version": "13.3.73",
+      "relative_path": "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-13.3.73-archive.zip",
+      "sha256": "270214eaee58e49f8fca52a910a46afbfab227858e70897cba8afae10826280b",
+      "size": 31777777
+    },
+    {
+      "name": "cuda_crt",
+      "version": "13.3.73",
+      "relative_path": "cuda_crt/windows-x86_64/cuda_crt-windows-x86_64-13.3.73-archive.zip",
+      "sha256": "9227ec7c80db10b7cb0d4ee71ed62ec7ae36e67890216413ab6f9afa35d577f0",
+      "size": 163110
+    },
+    {
+      "name": "cuda_cudart",
+      "version": "13.3.29",
+      "relative_path": "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-13.3.29-archive.zip",
+      "sha256": "1feb7dd266813ffe8dbc24e115183a5ac35a4795c8d34aca0df85ab616b64d9c",
+      "size": 2589792
+    },
+    {
+      "name": "cccl",
+      "version": "13.3.3.4.1",
+      "relative_path": "cccl/windows-x86_64/cccl-windows-x86_64-13.3.3.4.1-archive.zip",
+      "sha256": "48fab83097a636c4119da28bd3c9c9af9327e34c1efed17a14449cc2956ca6d1",
+      "size": 3544904
+    },
+    {
+      "name": "libnvvm",
+      "version": "13.3.73",
+      "relative_path": "libnvvm/windows-x86_64/libnvvm-windows-x86_64-13.3.73-archive.zip",
+      "sha256": "ca8f11d5173ac16a166be8fafefbf9676542a097de1fce61b3f17696dffc1f27",
+      "size": 58380918
+    },
+    {
+      "name": "cuda_cuobjdump",
+      "version": "13.3.73",
+      "relative_path": "cuda_cuobjdump/windows-x86_64/cuda_cuobjdump-windows-x86_64-13.3.73-archive.zip",
+      "sha256": "02712a1fad9be784aa5b6e930ee22381678f1f1b96e83302bd171489b7dfbb38",
+      "size": 6264965
+    },
+    {
+      "name": "cuda_nvdisasm",
+      "version": "13.3.73",
+      "relative_path": "cuda_nvdisasm/windows-x86_64/cuda_nvdisasm-windows-x86_64-13.3.73-archive.zip",
+      "sha256": "351374795b61428a85bfb7026f05ce0b2a82b2e4264cafdf08739645ca3d0632",
+      "size": 4999270
+    },
+    {
+      "name": "cuda_nvrtc",
+      "version": "13.3.33",
+      "relative_path": "cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-13.3.33-archive.zip",
+      "sha256": "8519f678588610bf380ccaac130729aa1a624c407183e7ad9c319c19ecc63d2f",
+      "size": 312126196
+    }
+  ],
+  "redistrib_base_url": "https://developer.download.nvidia.com/compute/cuda/redist/"
+}

@@ -1,6 +1,6 @@
 ---
 id: "cuda-exact-vm-adapter"
-status: "pending"
+status: "active"
 lane: "8"
 area: "accelerator"
 task: "TODO - CUDA exact VM adapter"
@@ -48,5 +48,13 @@ batches.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Active foundation: integer-only CUDA kernels now implement exact classic
+  rotate/crazy batches through NVRTC + Driver API behind the shared accelerator
+  port. CUDA 13.3 Update 1 redistributables are reproducibly pinned by component
+  path/version/SHA-256; Python binding versions are pinned separately.
+- RTX 4060 (`sm_89`) development evidence matches CPU reference results for
+  boundary-heavy and deterministic 4,096-element batches. Full VM state/I/O/
+  mutation execution, adaptive resource sizing, and performance evidence remain
+  open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

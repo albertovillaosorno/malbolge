@@ -734,7 +734,11 @@ baseline on both x86-64 and AArch64 hosts for accelerator implementations.
 
 Define a hardware-neutral interface for candidate evaluation, batch VM
 execution, search, and verification. Compiler and verifier code must not depend
-directly on CUDA APIs.
+directly on CUDA APIs. The active first slice now provides an immutable exact
+primitive request/result protocol with a mandatory scalar CPU implementation and
+optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
+fail before backend execution. Full VM/search/verification ports and ROCm remain
+open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -749,7 +753,11 @@ side-by-side comparison without recompiling or modifying compiler semantics.
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
 massively parallel independent VM execution for candidate evaluation and test
-batches.
+batches. The active CUDA foundation now runs integer-only classic `rotate` and
+`crazy` batches through NVRTC/Driver API and differentially matches the CPU
+reference; CUDA 13.3 Update 1 is reproducibly pinned under `.dependencies/cuda/`
+from a tracked component/hash manifest. Full VM state execution, adaptive resource
+policy, and measured throughput remain open.
 
 ### TODO - CUDA superoptimizer
 

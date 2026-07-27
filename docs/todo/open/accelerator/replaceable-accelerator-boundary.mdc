@@ -1,6 +1,6 @@
 ---
 id: "replaceable-accelerator-boundary"
-status: "pending"
+status: "active"
 lane: "7"
 area: "accelerator"
 task: "TODO - Replaceable accelerator boundary"
@@ -48,5 +48,12 @@ directly on CUDA APIs.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Active foundation: `ExactPrimitiveAdapter` now owns hardware-neutral classic
+  rotate/crazy batches; CPU scalar and optional CUDA adapters implement the same
+  request/result contract. Shared validation rejects malformed batches before
+  backend execution.
+- Current differential evidence executes CUDA on available hardware over boundary
+  values plus deterministic 4,096-element corpora; full VM/search/verification
+  ports, ROCm, resource policy, and benchmark claims remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

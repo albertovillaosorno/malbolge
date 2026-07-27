@@ -1,0 +1,86 @@
+# Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier: MIT
+"""Deterministic CPU reference for exact classic ternary primitives."""
+
+from __future__ import annotations
+
+from itertools import starmap
+from typing import TYPE_CHECKING
+from typing import final
+from typing import override
+
+from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.exact_primitives import ExactPrimitiveAdapter
+from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import PrimitiveResult
+from accelerator.exact_primitives import ROTATE_HIGH_TRIT_WEIGHT
+from accelerator.exact_primitives import TRIT_COUNT
+
+if TYPE_CHECKING:
+    from accelerator.exact_primitives import PrimitiveBatch
+
+CPU_CAPABILITY = AcceleratorCapability(
+    backend_id="cpu-reference",
+    device_arch="scalar",
+    device_name="portable-cpu",
+)
+CRAZY_TRIT_TABLE = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
+
+
+@final
+class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
+    """Mandatory exact scalar reference implementation."""
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        """Return the portable CPU reference identity.
+
+        Returns:
+            Stable scalar CPU capability identity.
+
+        """
+        return CPU_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        """Evaluate exact primitives with independent scalar ternary formulas.
+
+        Returns:
+            Exact classic-word results in input order.
+
+        """
+        validated = batch.validated()
+        if validated.kind is PrimitiveKind.ROTATE:
+            values = tuple(_rotate(value) for value in validated.data)
+        else:
+            pairs = zip(
+                validated.data,
+                validated.accumulators,
+                strict=True,
+            )
+            values = tuple(starmap(_crazy, pairs))
+        return PrimitiveResult(capability=CPU_CAPABILITY, values=values)
+
+
+def _crazy(data: int, accumulator: int) -> int:
+    result = 0
+    place = 1
+    for _ in range(TRIT_COUNT):
+        output = _crazy_trit(data % 3, accumulator % 3)
+        result += output * place
+        place *= 3
+        data //= 3
+        accumulator //= 3
+    return result
+
+
+def _crazy_trit(data: int, accumulator: int) -> int:
+    return CRAZY_TRIT_TABLE[data][accumulator]
+
+
+def _rotate(value: int) -> int:
+    return (value // 3) + ((value % 3) * ROTATE_HIGH_TRIT_WEIGHT)
