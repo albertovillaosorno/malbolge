@@ -141,3 +141,12 @@ dependency_guard_operations_per_sample = 16384
 shortcut_operations_per_sample = 4096
 verdict = "promote-dependency-guard-and-shortcut-baseline"
 next_risk = "native-code-artifact-integration"
+
+[reduction.tiered_region_deopt]
+baseline = "dependency-guard-shortcut-or-explicit-error"
+candidate = "verified-shortcut-or-normative-interpreter-fallback"
+guard_hit = "verified-effects"
+guard_miss = "normative-profile-vm-same-region-budget"
+lineage_reconstruction = "real-fallback-traces"
+rejection_behavior = "propagate-normative-typed-error"
+next_risk = "native-code-artifact-integration"

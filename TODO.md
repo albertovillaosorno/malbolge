@@ -649,9 +649,12 @@ preserves its irrelevant value, and matches direct VM exit exactly; live-in
 changes fail closed. Post-commit evidence measures dependency-guard hit at
 106.88 ns and verified shortcut application at 6.88
 microseconds versus 889.60 microseconds for the prepared direct VM
-region, about 129.36x. Native code artifact integration, wider-profile
-geometry, broader mutation-history collapse, and end-to-end tier performance
-remain open.
+region, about 129.36x. Tier selection now also has an executable deoptimization
+boundary: guard hits use verified effects, while guard misses run the normative VM
+for the same region budget and reconstruct the incremental lineage from real
+traces; normative rejection is propagated unchanged. Native code artifact
+integration, wider-profile geometry, broader mutation-history collapse, and
+end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture
 

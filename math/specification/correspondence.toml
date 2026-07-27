@@ -305,3 +305,11 @@ label = "eq:state-graph-region-dependency-guard"
 domain = "verified exact-state region reused inside the same immutable lineage with identical non-memory state"
 mechanism = "irrelevant-memory-variation-direct-vm-equivalence-and-live-in-rejection"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_rejects_live_in_memory_change"]
+
+[[correspondence]]
+id = "state-graph-tiered-region-deopt"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-tiered-region-deopt"
+domain = "verifier-produced current-profile bounded region under dependency-guard hit or miss"
+mechanism = "shortcut-on-guard-hit-otherwise-normative-traced-reexecution"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_uses_shortcut_for_irrelevant_memory_variant", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_deoptimizes_advanced_state_to_normative_vm", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::tiered_region_deopt_propagates_normative_rejection"]

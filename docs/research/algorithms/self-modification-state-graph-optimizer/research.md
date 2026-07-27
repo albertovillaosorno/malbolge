@@ -360,3 +360,15 @@ native-tier claim. Dependency guards and verified effects are promoted as the
 correctness/performance baseline; the next research risk is replacing the
 interpreted verified-effect application with a real native code artifact while
 retaining the same verifier and deoptimization boundary.
+
+
+The deoptimization boundary is now executable as well. `execute_or_deopt()` does
+not treat a dependency-guard miss as an error: it reconstructs the candidate
+checkpoint, runs the normative profile VM for the verified region budget, records
+real traces, and reapplies those traces to the original incremental lineage. An
+irrelevant-memory variant takes the verified shortcut; a valid advanced state
+misses the guard and produces exactly the direct normative exit; and a changed
+live-in that makes execution invalid propagates the same typed VM rejection.
+This freezes tier selection before native code exists: a future backend may
+replace only the verified-shortcut implementation, never the deoptimization
+semantics.

@@ -51,13 +51,13 @@
 
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMemoryDelta,
-    ProfileMemoryWrite, RunOutcome, current_profile,
+    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, current_profile,
 };
 
 use crate::indexed_state::IndexedMachineState;
 use crate::region_certificate::{
-    ExactRegionCertificate, ExactRegionError, UntrustedExactRegionClaim,
-    VerifiedExactRegion,
+    ExactRegionCertificate, ExactRegionError, RegionExecutionTier,
+    UntrustedExactRegionClaim, VerifiedExactRegion,
 };
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
@@ -316,5 +316,143 @@ fn dependency_guard_rejects_live_in_memory_change() -> Result<(), String> {
     match verified.apply_dependency_shortcut(&candidate) {
         Err(ExactRegionError::DependencyGuardMismatch) => Ok(()),
         other => Err(format!("changed live-in shortcut result: {other:?}")),
+    }
+}
+
+#[test]
+fn tiered_region_uses_shortcut_for_irrelevant_memory_variant()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| format!("tier shortcut load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("tier shortcut entry failed: {error:?}"))?;
+    let verified = ExactRegionCertificate::record(&entry, REGION_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("tier shortcut verify failed: {error:?}"))?;
+    let address = irrelevant_address(&verified)?;
+    let before = entry
+        .memory_word(address)
+        .map_err(|error| format!("tier shortcut read failed: {error:?}"))?;
+    let after = changed_word(before);
+    let candidate = entry
+        .apply_memory_delta(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite { address, after, before }),
+            encryption: None,
+        })
+        .map_err(|error| format!("tier shortcut variant failed: {error:?}"))?;
+    let execution = verified.execute_or_deopt(&candidate).map_err(|error| {
+        format!("tier shortcut execution failed: {error:?}")
+    })?;
+    if execution.tier() != RegionExecutionTier::VerifiedShortcut {
+        return Err(String::from("tier shortcut unexpectedly deoptimized"));
+    }
+    if execution.outcome() != verified.outcome() {
+        return Err(String::from("tier shortcut outcome changed"));
+    }
+    validate_dependency_shortcut(&verified, &candidate, address, after)?;
+    let expected = verified
+        .apply_dependency_shortcut(&candidate)
+        .map_err(|error| format!("tier shortcut baseline failed: {error:?}"))?;
+    if !execution.state().exact_state_eq(&expected) {
+        return Err(String::from("tier shortcut state differs from baseline"));
+    }
+    Ok(())
+}
+
+#[test]
+fn tiered_region_deoptimizes_advanced_state_to_normative_vm()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| format!("tier deopt load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("tier deopt entry failed: {error:?}"))?;
+    let verified = ExactRegionCertificate::record(&entry, REGION_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("tier deopt verify failed: {error:?}"))?;
+    let first_trace = verified
+        .traces()
+        .first()
+        .ok_or_else(|| String::from("tier deopt region has no first trace"))?;
+    let candidate = entry
+        .apply_trace(first_trace)
+        .map_err(|error| format!("tier deopt advance failed: {error:?}"))?;
+    let execution = verified
+        .execute_or_deopt(&candidate)
+        .map_err(|error| format!("tier deopt execution failed: {error:?}"))?;
+    if execution.tier() != RegionExecutionTier::InterpreterFallback {
+        return Err(String::from("advanced state did not deoptimize"));
+    }
+    let mut direct = ProfileMachine::from_snapshot(
+        candidate.materialize_checkpoint().map_err(|error| {
+            format!("tier direct checkpoint failed: {error:?}")
+        })?,
+    );
+    let mut traces = Vec::new();
+    let outcome = direct
+        .run_traced(verified.step_budget(), &mut |trace: &ProfileStepTrace| {
+            traces.push(*trace);
+        })
+        .map_err(|error| format!("tier direct run failed: {error}"))?;
+    let mut expected = candidate;
+    for trace in &traces {
+        expected = expected
+            .apply_trace(trace)
+            .map_err(|error| format!("tier direct trace failed: {error:?}"))?;
+    }
+    if execution.outcome() != outcome {
+        return Err(String::from("deopt outcome differs from normative VM"));
+    }
+    if !execution.state().exact_state_eq(&expected) {
+        return Err(String::from("deopt state differs from normative VM"));
+    }
+    Ok(())
+}
+
+#[test]
+fn tiered_region_deopt_propagates_normative_rejection() -> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| format!("tier reject load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("tier reject entry failed: {error:?}"))?;
+    let verified = ExactRegionCertificate::record(&entry, REGION_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("tier reject verify failed: {error:?}"))?;
+    let dependency = verified
+        .memory_dependencies()
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("tier reject has no live-in dependency"))?;
+    let candidate = entry
+        .apply_memory_delta(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address: dependency.address,
+                after: changed_word(dependency.value),
+                before: dependency.value,
+            }),
+            encryption: None,
+        })
+        .map_err(|error| format!("tier reject variant failed: {error:?}"))?;
+    let mut direct = ProfileMachine::from_snapshot(
+        candidate.materialize_checkpoint().map_err(|error| {
+            format!("tier reject checkpoint failed: {error:?}")
+        })?,
+    );
+    let expected = direct.run(verified.step_budget());
+    let observed = verified.execute_or_deopt(&candidate);
+    match (expected, observed) {
+        (
+            Err(expected_error),
+            Err(ExactRegionError::Machine(observed_error)),
+        ) if expected_error == observed_error => Ok(()),
+        other => Err(format!("tier rejection mismatch: {other:?}")),
     }
 }

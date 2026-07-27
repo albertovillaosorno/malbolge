@@ -98,7 +98,25 @@ pub struct VerifiedExactRegion {
     exit: IndexedMachineState,
     memory_dependencies: Vec<RegionMemoryDependency>,
     outcome: RunOutcome,
+    step_budget: usize,
     traces: Vec<ProfileStepTrace>,
+}
+
+/// Execution tier selected for one verified bounded region request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegionExecutionTier {
+    /// The verified dependency guard failed and normative interpretation ran.
+    InterpreterFallback,
+    /// The verified dependency guard passed and trusted effects were applied.
+    VerifiedShortcut,
+}
+
+/// Result of one guarded region execution request.
+#[derive(Clone, Debug)]
+pub struct RegionExecutionResult {
+    outcome: RunOutcome,
+    state: IndexedMachineState,
+    tier: RegionExecutionTier,
 }
 
 /// Failure while recording or verifying one exact-state region.
@@ -226,8 +244,29 @@ impl ExactRegionCertificate {
             exit: self.exit.clone(),
             memory_dependencies,
             outcome: self.outcome,
+            step_budget: self.step_budget,
             traces: self.traces.clone(),
         })
+    }
+}
+
+impl RegionExecutionResult {
+    /// Returns the bounded execution outcome produced by the selected tier.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+
+    /// Returns the exact incremental exit state produced by the selected tier.
+    #[must_use]
+    pub const fn state(&self) -> &IndexedMachineState {
+        &self.state
+    }
+
+    /// Returns the tier that actually executed this request.
+    #[must_use]
+    pub const fn tier(&self) -> RegionExecutionTier {
+        self.tier
     }
 }
 
@@ -282,6 +321,49 @@ impl VerifiedExactRegion {
         Ok(state)
     }
 
+    /// Executes the verified shortcut or deoptimizes to normative
+    /// interpretation.
+    ///
+    /// A dependency-guard miss is not an error. The fallback replays the same
+    /// bounded region from `candidate`, records normative traces, and applies
+    /// those traces to the original incremental lineage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExactRegionError`] when dependency inspection, checkpoint
+    /// reconstruction, normative execution, or incremental trace application
+    /// fails.
+    pub fn execute_or_deopt(
+        &self,
+        candidate: &IndexedMachineState,
+    ) -> Result<RegionExecutionResult, ExactRegionError> {
+        if self.accepts_dependency_entry(candidate)? {
+            return Ok(RegionExecutionResult {
+                outcome: self.outcome,
+                state: self.apply_dependency_shortcut(candidate)?,
+                tier: RegionExecutionTier::VerifiedShortcut,
+            });
+        }
+        let mut machine =
+            ProfileMachine::from_snapshot(candidate.materialize_checkpoint()?);
+        let mut traces = Vec::new();
+        let outcome = machine.run_traced(
+            self.step_budget,
+            &mut |trace: &ProfileStepTrace| {
+                traces.push(*trace);
+            },
+        )?;
+        let mut state = candidate.clone();
+        for trace in &traces {
+            state = state.apply_trace(trace)?;
+        }
+        Ok(RegionExecutionResult {
+            outcome,
+            state,
+            tier: RegionExecutionTier::InterpreterFallback,
+        })
+    }
+
     /// Returns the exact verified exit state produced by normative execution.
     #[must_use]
     pub const fn exit(&self) -> &IndexedMachineState {
@@ -298,6 +380,12 @@ impl VerifiedExactRegion {
     #[must_use]
     pub const fn outcome(&self) -> RunOutcome {
         self.outcome
+    }
+
+    /// Returns the verifier-recorded semantic step budget for this region.
+    #[must_use]
+    pub const fn step_budget(&self) -> usize {
+        self.step_budget
     }
 
     /// Returns the normative trace sequence a shortcut must preserve.

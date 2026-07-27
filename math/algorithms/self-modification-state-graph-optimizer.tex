@@ -304,6 +304,27 @@ and requires guard failure, tampers with an otherwise valid certificate and
 requires verifier rejection, and confirms a rejected encryption transition never
 produces a verified region.
 
+For a verified region $V$ with dependency guard $G_V$, let $b_V$ be the exact
+recorded semantic-step budget. Tier selection is deterministic:
+\begin{equation}
+  \operatorname{tier}_V(s)=
+  \begin{cases}
+    \operatorname{shortcut}_V(s), & G_V(s),\\
+    T^{\leq b_V}(s), & \neg G_V(s).
+  \end{cases}
+  \label{eq:state-graph-tiered-region-deopt}
+\end{equation}
+A guard miss is therefore not a verifier failure. The interpreter fallback owns
+all normative outcomes from the candidate state, including a different valid
+exit or a typed transition rejection. The shortcut side remains available only
+after verifier admission and a passing guard.
+
+The executable correspondence exercises all three cases: an irrelevant-memory
+variant takes the verified shortcut, an already-advanced but valid state misses
+the guard and produces exactly the normative fallback state/outcome, and a
+live-in mutation that makes the next transition invalid propagates the same typed
+VM rejection rather than forcing the verified effects.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection
