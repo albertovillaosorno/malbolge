@@ -48,6 +48,8 @@
 
 #[path = "vm/batch.rs"]
 mod batch;
+#[path = "vm/capsule.rs"]
+mod capsule;
 #[path = "vm/conformance.rs"]
 mod conformance;
 #[path = "vm/differential.rs"]

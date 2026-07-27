@@ -2,65 +2,200 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
-Design an extended `.malbolge` container recognized by modern runtimes while the
-1998 interpreter sees only a small historical fallback program, ideally by using
-whitespace metadata that the original loader ignores.
+Define a versioned `.malbolge` container that modern runtimes can recognize and
+validate while the historical Ben Olmstead loader sees only a small, deliberate
+classic fallback program.
+
+The fallback is containment and communication for old tooling. It is not
+semantic compatibility evidence for the modern payload.
 
 ## Scope
 
-This document governs the following declared TODO scope:
+This contract currently governs:
 
-- `compatibility/`
-- `docs/technical/specification/`
-- `tests/compatibility/`
+- `vm/src/capsule.rs`
+- `tests/vm/capsule.rs`
+- `tests/compatibility/test_capsule.py`
+- `tests/compatibility/capsule/current-profile-capsule.hex`
+- `tests/compatibility/capsule/README.md`
+
+The raw capsule contains intentional tabs and trailing whitespace, so the
+versioned fixture is stored as a text-hygienic hexadecimal byte vector. Tests
+decode that vector and require `build_capsule()` to reproduce it exactly. This
+changes fixture storage only, never the `.malbolge` wire format.
+
+The canonical profile authority remains repository-root `malbolge.json` and
+profile fingerprints remain governed by
+`custom-target-profile-identity.md`.
 
 ## Current Behavior
 
-### Proposed Model
+### File Shape
 
-The modern runtime recognizes a versioned whitespace sideband containing target
-profile identity and extended payload information. A historical interpreter,
-which ignores that sideband, sees only an ordinary legacy fallback program.
+Version one has exactly two physical regions:
 
-The fallback exists to explain that the artifact requires a newer runtime. It is
-not evidence that the extended program is semantically compatible with Ben
-Olmstead's implementation.
+```text
+historical fallback bytes
+space/tab sideband suffix
+```
 
-### Implementation Status
+The fixed version-one fallback is the seven graphical ASCII bytes:
 
-Not implemented.
+```text
+(C<;_"K
+```
+
+No whitespace may occur inside this fallback. Every following byte in a
+recognized version-one sideband is either ASCII space (`0x20`) or horizontal tab
+(`0x09`). No CR, LF, vertical-tab, or form-feed symbol is used to encode data.
+This avoids relying on C text-mode newline translation in the historical
+interpreter.
+
+The historical loader calls `isspace(x)` before storing source bytes, so both
+space and tab disappear from its memory image. Therefore the checked-in capsule
+fixture is seen historically as exactly `(C<;_"K`.
+
+### Historical Sentinel
+
+At loaded positions zero through six, `(C<;_"K` decodes as:
+
+```text
+j o p p < * v
+```
+
+The initial `j` moves `D` away from the current code pointer before either `p`
+instruction mutates data. This keeps every subsequent historical xlat2 target in
+graphical ASCII and avoids H-004 out-of-bounds self-encryption.
+
+The fallback intentionally relies on the documented H-001 Ben-interpreter I/O
+reversal only inside this isolated historical surface: decoded `<` emits the
+accumulator in Ben's implementation. The fixed sequence emits one ASCII `!`,
+consumes no input, then halts.
+
+Modern specification execution never uses this fallback as payload semantics.
+
+### Sideband Bit Encoding
+
+Each decoded frame byte expands to eight whitespace symbols, most-significant bit
+first:
+
+- bit `0` -> ASCII space (`0x20`);
+- bit `1` -> horizontal tab (`0x09`).
+
+The exact magic `MALBCAP1` must decode immediately after the fallback. A file is
+not treated as a capsule merely because it begins with the fallback or ends in
+ordinary whitespace. Before the magic is recognized, recognition returns
+"ordinary source" rather than an error. After exact magic recognition, malformed
+framing fails closed.
+
+### Version-One Frame
+
+The decoded binary frame is:
+
+```text
+8 bytes   magic               = "MALBCAP1"
+1 byte    version             = 1
+1 byte    flags               = 0
+2 bytes   profile_id_length   unsigned big-endian
+2 bytes   fingerprint_length  unsigned big-endian
+4 bytes   payload_length      unsigned big-endian
+N bytes   profile_id          UTF-8 canonical profile ID
+M bytes   fingerprint         UTF-8 malbolge-profile-v1 fingerprint
+P bytes   payload             raw modern payload bytes
+8 bytes   checksum            FNV-1a-64, unsigned big-endian
+```
+
+The checksum covers every decoded frame byte before the checksum field. FNV-1a
+is used only as a deterministic transport-corruption check. It is not a security
+boundary and is not a substitute for the SHA-256 canonical profile fingerprint.
+
+Version-one flags are closed at zero. Unknown versions or nonzero flags fail
+explicitly.
+
+### Modern Runtime Boundary
+
+`build_capsule()` emits the fixed fallback plus a deterministic sideband for one
+canonical `ProfileDescriptor` and arbitrary payload bytes.
+
+`parse_capsule()` returns `Ok(None)` for ordinary source. Once exact magic is
+recognized, it validates framing, lengths, checksum, canonical profile lookup,
+and exact profile fingerprint before returning payload bytes and the selected
+canonical descriptor.
+
+The checked-in fixture selects `malbolge-2026.2` and carries `ctO` plus LF as its
+small payload. Parsing succeeds. Passing that extracted payload/profile into
+`ExecutionMachine::from_source_for_profile()` fails with the existing profile
+capability diagnostic before the classic loader runs, because the safe Rust VM
+is still ten-trit/classic-capability only. Capsule recognition therefore does
+not create a silent scalable-runtime fallback.
+
+### Ordinary Classic Programs
+
+Classic source remains ordinary `.malbolge`. In particular:
+
+- `ctO` with ordinary whitespace is not a capsule;
+- the fixed fallback followed by ordinary whitespace is not a capsule unless the
+  exact whitespace-encoded magic is present;
+- no existing source is reinterpreted merely because whitespace exists.
 
 ## Invariants
 
-- Modern runtimes validate the capsule deterministically before executing its
-  extended payload.
-- The old interpreter sees only the deliberately authored fallback surface.
-- The extended payload follows the normative modern target specification.
-- Any fallback instruction behavior that depends on a Ben-interpreter defect is
-  isolated to that fallback and never leaks into normal VM semantics.
-- The artifact keeps the `.malbolge` extension and identifies the required
-  target profile unambiguously.
+- The version-one sideband alphabet is exactly space and horizontal tab.
+- The historical visible source is exactly `(C<;_"K`.
+- The historical fallback emits `!`, consumes no input, halts, and does not rely
+  on H-004 or another undefined xlat2 access.
+- H-001 reliance is isolated to the fallback and never becomes normative guest
+  semantics.
+- Modern payload selection uses canonical profile ID plus exact
+  `malbolge-profile-v1` fingerprint.
+- FNV-1a-64 detects accidental frame corruption only; it makes no
+  cryptographic-security claim.
+- Unsupported current profiles still fail through explicit runtime capability
+  preflight rather than executing through the historical fallback.
+- Ordinary classic source remains ordinary source when capsule magic is absent.
 
 ## Failure Behavior
 
-Malformed sideband data, unsupported profile identity, or integrity failure is a
-deterministic modern-runtime error. Historical fallback behavior is best-effort
-communication, not a semantic recovery path.
+After exact magic recognition:
+
+- malformed framing -> `MALBOLGE-CAPSULE-001`;
+- unsupported version -> `MALBOLGE-CAPSULE-002`;
+- checksum mismatch -> `MALBOLGE-CAPSULE-003`;
+- unknown canonical profile -> `MALBOLGE-CAPSULE-004`;
+- profile fingerprint mismatch -> `MALBOLGE-CAPSULE-005`;
+- unsupported flags -> `MALBOLGE-CAPSULE-006`.
+
+Build-time length overflow uses `MALBOLGE-CAPSULE-BUILD-001`.
+
+A failure never executes either the sideband payload or the historical fallback
+through the modern capsule path.
 
 ## Verification
 
-- Expected durable artifact surface: `compatibility/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: classic specification-conformance corpus plus
-  extension/profile boundary fixtures and exact diagnostics.
-- Prerequisite completion evidence: `scalable-malbolge-memory-model`,
-  `required-profile-diagnostics`.
+- `tests/vm/capsule.rs` locks the Rust builder against the checked-in fixture,
+  validates recognition and checksum tampering, proves ordinary-source
+  non-recognition, verifies the historical visible bytes, runs the fixed fallback
+  under explicit `legacy-ben`, and proves current-profile execution reaches
+  capability preflight before payload loading.
+- `tests/compatibility/test_capsule.py` independently decodes the whitespace
+  frame, recomputes FNV-1a-64, checks the immutable historical C loader's
+  `fopen(..., "r")` plus `isspace` behavior, and reconstructs the seven fixed
+  historical transitions including every xlat2 safety boundary.
+- The repo-local LLVM 22 bundle is a frontend/tooling bundle and does not ship C
+  runtime headers such as `stdio.h`, so direct native execution of the immutable
+  historical C interpreter is not a repository validation gate. No such native
+  execution claim is made here.
+- `jig validate --root .` remains the repository-wide closure gate.
+
 ## References
 
+- [Custom target profile identity](custom-target-profile-identity.md)
+- [Required-profile diagnostics](required-profile-diagnostics.md)
+- [Historical undefined behavior](../specification/historical-undefined-behavior.md)
 - [Specification Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 

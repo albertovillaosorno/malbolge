@@ -56,6 +56,10 @@ current-to-versioned transition cannot rewrite historical artifact identity.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.
+Version-one extended `.malbolge` capsules use a fixed seven-byte historical
+fallback plus a space/tab-only `MALBCAP1` sideband. Modern code must parse and
+validate the sideband before payload loading; old tooling sees only the fallback.
+Do not treat the fallback or its isolated H-001 behavior as modern semantics.
 
 Classic self-modification and post-instruction encryption are fundamental guest
 semantics. Do not make generated code globally immutable, and do not invent a

@@ -366,9 +366,12 @@ open rather than silently falling back to the classic machine.
 
 ### TODO - Historical-interpreter fallback capsule
 
-Design a versioned `.malbolge` container recognized by modern runtimes while the
-1998 loader sees only a valid classic fallback, ideally using whitespace
-metadata that the original loader ignores.
+Define a versioned `.malbolge` capsule recognized by modern runtimes while the
+1998 loader sees only a safe classic fallback. Version one now uses a fixed
+`!`-emitting historical sentinel plus a space/tab `MALBCAP1` sideband carrying
+profile ID/fingerprint, payload, lengths, flags, and deterministic checksum;
+current scalable payloads still fail capability preflight until runtime support
+exists.
 
 ### TODO - Required-profile diagnostics
 

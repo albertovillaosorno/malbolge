@@ -47,6 +47,7 @@
 //! Safe deterministic implementation of the classic Malbolge virtual machine.
 
 mod batch;
+mod capsule;
 mod execution;
 mod loader;
 mod machine;
@@ -59,6 +60,9 @@ mod word;
 pub use batch::{
     BatchError, BatchRequest, BatchResult, execute_batch,
     execute_batch_parallel,
+};
+pub use capsule::{
+    Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use loader::{LoadError, load};
