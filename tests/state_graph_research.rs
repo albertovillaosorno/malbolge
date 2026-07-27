@@ -47,5 +47,9 @@
 
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/exact.rs"]
 mod exact_state;
+#[path = "../algorithms/self-modification-state-graph-optimizer/profile.rs"]
+pub mod profile_graph;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/c.rs"]
+mod profile_state;
 #[path = "../algorithms/self-modification-state-graph-optimizer/state_graph.rs"]
 pub mod state_graph;

@@ -52,6 +52,34 @@ Consequently, a collision can increase comparison cost but cannot change graph
 identity. The executable test forces $H(E(s))=0$ for every state and verifies
 that distinct input strings still create distinct nodes.
 
+\section{Versioned profile checkpoint baseline}
+
+For a validated profile checkpoint $q$, define the complete checkpoint projection
+\begin{equation}
+  E_p(q)=\left(
+    f_p,I,i,O,\tau,A,C,D,M[0],\ldots,M[W_p-1]
+  \right),
+  \label{eq:state-graph-profile-checkpoint}
+\end{equation}
+where $f_p$ is the canonical profile fingerprint and $W_p$ is the exact memory
+size declared by that profile. The runtime's `ProfileMachineState` validation is
+the authority for whether the checkpoint belongs to this domain; graph research
+does not reconstruct or weaken those invariants.
+
+For any deterministic checkpoint digest $H_p$, exact profile nodes may merge only
+when
+\begin{equation}
+  \operatorname{merge}_p(q_1,q_2)
+    \Longleftrightarrow
+    H_p(E_p(q_1))=H_p(E_p(q_2))\;\land\;q_1=q_2.
+  \label{eq:state-graph-profile-collision-safe-merge}
+\end{equation}
+The current-profile fixture exercises complete 14-trit checkpoints containing
+4,782,969 words. Exact replay deduplicates, while a deliberately constant digest
+still keeps checkpoints with different input distinct. This establishes a
+correctness baseline only; copying/hashing complete current checkpoints is not a
+claimed production-performance strategy.
+
 \section{Edges}
 
 Each observed request contributes a deterministic edge from its exact before

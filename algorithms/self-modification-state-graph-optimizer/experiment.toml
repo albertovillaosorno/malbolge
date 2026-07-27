@@ -26,3 +26,9 @@ first_byte_domain = 256
 baseline = "exact-state"
 candidate = "drop-dead-state-after-termination"
 domain = "terminated state with exact profile, output prefix, and termination reason"
+
+[profile_baseline]
+profile = "malbolge-2026.2"
+memory_words = 4782969
+identity = "validated-complete-checkpoint"
+performance_claim = false

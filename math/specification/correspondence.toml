@@ -201,3 +201,19 @@ label = "eq:state-graph-terminal-state"
 domain = "already-terminated classic states with equal profile, output prefix, and termination reason"
 mechanism = "structural-reduction-with-diverse-terminal-fixtures"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::terminal_state_drops_dead_details", "algorithms/self-modification-state-graph-optimizer/tests/exact.rs::terminal_projection_rejects_live_machine"]
+
+[[correspondence]]
+id = "state-graph-profile-checkpoint"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-checkpoint"
+domain = "validated canonical current checkpoints including all 4782969 memory words"
+mechanism = "exact-current-checkpoint-replay"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/c.rs::current_checkpoint_replay_deduplicates_exactly"]
+
+[[correspondence]]
+id = "state-graph-profile-collision-safe-merge"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-collision-safe-merge"
+domain = "validated current checkpoints under an adversarial constant digest"
+mechanism = "forced-current-checkpoint-collision"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/c.rs::current_forced_collision_keeps_distinct_checkpoints"]

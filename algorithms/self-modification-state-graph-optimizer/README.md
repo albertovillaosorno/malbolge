@@ -24,3 +24,9 @@ The second admitted reduction is `terminal_future_snapshot`. For an already
 terminated classic machine it retains only profile identity, committed output,
 and termination reason; memory/register/input state is dead for future requests.
 The projection rejects live machines fail-closed.
+
+`profile.rs` extends the exact baseline to validated `ProfileMachineState`
+checkpoints, including the current 14-trit/4,782,969-word profile. It consumes the
+runtime checkpoint directly, hashes only for bucket selection, and confirms every
+merge with full checkpoint equality. This is a correctness/deoptimization oracle,
+not a claim that full-checkpoint graph storage is economical.

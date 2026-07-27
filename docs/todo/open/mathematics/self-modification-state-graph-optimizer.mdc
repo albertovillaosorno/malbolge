@@ -45,6 +45,11 @@ VM evidence.
 - The forced-collision fixture replaces the digest with constant zero and proves
   unequal input states remain separate. Identical replays deduplicate exact
   nodes/edges, and legacy mode is outside the admitted baseline.
+- `profile.rs` consumes validated `ProfileMachineState` values directly and
+  extends exact collision-safe identity to current 14-trit checkpoints. Full
+  4,782,969-word replay deduplicates, and forced digest collision keeps unequal
+  current checkpoints separate. This is correctness evidence, not a storage or
+  throughput claim.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while
@@ -91,7 +96,7 @@ VM evidence.
 - Exact-state baseline evidence is reproducible and machine-linked. Research
   evidence for reduced keys, merge rules, native-region safety, and performance
   remains open and must retain negative/null outcomes.
-- Mathematical evidence currently covers exact identity, collision-safe merging,
-  consumed-input-prefix reduction, and terminal dead-state reduction. Any
-  further reduced equivalence must add
+- Mathematical evidence currently covers classic/current exact identity,
+  collision-safe merging, consumed-input-prefix reduction, and terminal
+  dead-state reduction. Any further reduced equivalence must add
   its own labelled equation and executable correspondence before use.

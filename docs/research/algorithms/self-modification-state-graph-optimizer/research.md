@@ -101,10 +101,19 @@ termination reason while dropping memory, registers, and input state. Fixtures
 vary valid halt-source memory, `A/D`, and input and still produce one future key;
 a live machine is rejected from this domain.
 
+The exact baseline now also consumes the runtime-owned
+`ProfileMachineState` checkpoint directly. `profile.rs` indexes the complete
+validated checkpoint by profile fingerprint, I/O state, registers, and every
+profile memory word; a current `malbolge-2026.2` replay deduplicates and a forced
+constant digest does not merge checkpoints with different input. This extends the
+correctness oracle to 4,782,969-word current states without duplicating checkpoint
+validation.
+
 These results do not justify removing the live input cursor, changing the
 remaining suffix, removing live output history, reducing live memory/registers,
-or claiming a performance improvement. Those remain separate falsifiable
-hypotheses.
+or claiming a performance improvement. Full current checkpoints are explicitly a
+correctness/deoptimization baseline; their copy/hash/storage cost must be measured
+before any production graph architecture adopts them.
 
 ## Threats to Validity
 
@@ -115,11 +124,13 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Accept exact-state deduplication as the conservative graph baseline and admit
-two structural reductions: consumed input-prefix contents are future-irrelevant
-when cursor/suffix stay exact, and already-terminated states may drop dead
-memory/register/input state while retaining profile/output/termination. Do not
-yet promote live memory/register/output reductions or a native-execution
-shortcut. Each further reduction must independently defeat the exact baseline.
+the exact baseline for both classic and validated current-profile checkpoints,
+plus two structural reductions: consumed input-prefix contents are
+future-irrelevant when cursor/suffix stay exact, and already-terminated states
+may drop dead memory/register/input state while retaining
+profile/output/termination. Do not yet promote live memory/register/output
+reductions or a native-execution shortcut. Each further reduction must
+independently defeat the exact baseline.
 
 ## References
 

@@ -14,3 +14,7 @@ domain and compare against the exact baseline.
 Terminal-state fixtures vary halt-source memory, registers, and input while
 requiring one terminal future key; a separate fixture proves live machines are
 not admitted to that reduction.
+
+`c.rs` owns current-profile exact-checkpoint evidence: one full current checkpoint
+replay must deduplicate, while two unequal current checkpoints remain distinct
+under a forced constant digest.

@@ -608,8 +608,10 @@ now provides a collision-safe exact classic-state baseline and the first proved
 reductions: consumed input-prefix contents may be removed while cursor/suffix
 stay exact, and terminated states may retain only profile/output/termination.
 The input reduction exhausts all 256 first-byte values; terminal fixtures vary
-memory/register/input state. Live-state memory/register/output reductions,
-broader mutation-history collapse, and native-region shortcuts remain open.
+memory/register/input state. Exact identity also consumes validated current
+4,782,969-word checkpoints with collision confirmation. Live-state
+memory/register/output reductions, scalable checkpoint cost reduction, broader
+mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 
@@ -764,6 +766,12 @@ through pinned Clang, then emit one deterministic
 multi-file build with the amalgamated build before copying the accepted artifact
 byte-for-byte to `tests/applications/doom/out/doom.c`. Plain textual
 concatenation and source-specific hand patches are not accepted algorithms.
+The DOOM corpus now has a freestanding headless Windows integration smoke that
+boots Freedoom through the complete guest/host boundary and reaches live rendered
+frames plus PCM. It also passes at 1x through 4x integer internal render scale.
+Preserve this as a runtime regression target when the generic runner replaces the
+temporary harness; do not treat compile-only portability as sufficient.
+
 ### TODO - Cross-platform native capability runners
 
 Implement the version-1 host-capability contract for supported 64-bit Windows,
