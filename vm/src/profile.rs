@@ -79,6 +79,12 @@ static SAFE_RUST_CLASSIC: RuntimeCapability = RuntimeCapability {
     max_memory_words: 59_049,
     max_word_trits: 10,
 };
+static SAFE_RUST_PROFILED: RuntimeCapability = RuntimeCapability {
+    features: ProfileFeatureSet::NORMATIVE,
+    id: "safe-rust-profiled",
+    max_memory_words: 4_782_969,
+    max_word_trits: 14,
+};
 
 /// One immutable target-profile classification from `malbolge.json`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -402,6 +408,12 @@ pub const fn preflight_profile(
 #[must_use]
 pub const fn safe_rust_classic_capability() -> &'static RuntimeCapability {
     &SAFE_RUST_CLASSIC
+}
+
+/// Returns the safe Rust profile-driven VM capability envelope.
+#[must_use]
+pub const fn safe_rust_profiled_capability() -> &'static RuntimeCapability {
+    &SAFE_RUST_PROFILED
 }
 
 /// Looks up one exact canonical profile identity without fallback.

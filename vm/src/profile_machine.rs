@@ -1,0 +1,642 @@
+// File:
+//   - profile_machine.rs
+// Path:
+//   - vm/src/profile_machine.rs
+//
+// Copyright:
+//   - Copyright (c) 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - MIT
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+// Path-Rule:
+//   - All paths in this header are repository-root relative.
+//
+// Boundary-Contract:
+// - Owns:
+//   - Safe Rust execution for canonical schema-v2 ternary target profiles.
+// - Must-Not:
+//   - Reinterpret classic `Word`, emulate Ben defects, or borrow host width.
+// - Allows:
+//   - Inputs: canonical profile descriptor, validated source bytes, byte input.
+//   - Outputs: deterministic profile-width state, I/O, termination,
+//     diagnostics.
+//   - Side effects: caller-owned allocation and in-memory guest state only.
+// - Split-When:
+//   - Split when a later profile schema requires a different memory model.
+// - Merge-When:
+//   - Merge when the classic machine becomes a zero-cost specialization of this
+//     profile-driven transition engine without weakening classic type safety.
+// - Summary:
+//   - Executes N-trit single-word-modular Malbolge profiles in safe Rust.
+// - Description:
+//   - Generalizes word/address width while preserving normative sequential
+//     decode, crazy, rotate, self-modification, encryption, and byte I/O.
+// - Usage:
+//   - Use for canonical current/versioned profiles after explicit selection.
+// - Defaults:
+//   - Supports profiles within the explicit `safe-rust-profiled` capability.
+//
+// Related documents:
+// - docs/technical/compatibility/scalable-malbolge-memory-model.md
+// - docs/technical/compatibility/required-profile-diagnostics.md
+// - docs/technical/specification/malbolge-1998.md
+//
+// Large file:
+//   - false
+
+//! Profile-driven safe Rust execution for scalable ternary Malbolge machines.
+
+use std::fmt::{Display, Formatter, Result as FormatResult};
+
+use crate::{
+    CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
+    ProfileRequirementError, RunOutcome, StepOutcome, Termination, XLAT2,
+    crazy_chunk_lookup, preflight_profile, safe_rust_profiled_capability,
+};
+
+const GRAPHICAL_MAX: u32 = 126;
+const GRAPHICAL_MIN: u32 = 33;
+const OUTPUT_MODULUS: u32 = 256;
+const TERNARY_RADIX: u32 = 3;
+
+/// Registers for one profile-driven Malbolge machine.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileRegisters {
+    /// Accumulator register `A` in the selected profile word domain.
+    pub accumulator: u32,
+    /// Code pointer register `C` in the selected profile address domain.
+    pub code_pointer: u32,
+    /// Data pointer register `D` in the selected profile address domain.
+    pub data_pointer: u32,
+}
+
+/// Deterministic source-admission failure for a profile-driven machine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileLoadError {
+    /// The source lacks the two words required by the fill recurrence.
+    InsufficientRecurrenceBase,
+    /// A graphical byte decodes to an instruction forbidden at load time.
+    InvalidInstruction {
+        /// Loaded word position after whitespace removal.
+        position: u32,
+        /// Original graphical source byte.
+        byte: u8,
+    },
+    /// A non-whitespace source byte is outside graphical ASCII.
+    InvalidSourceByte {
+        /// Byte offset in the original source stream.
+        offset: usize,
+        /// Rejected raw byte value.
+        byte: u8,
+    },
+    /// The exact profile memory image could not be reserved.
+    MemoryAllocation,
+    /// More non-whitespace words were supplied than profile memory can hold.
+    SourceTooLong,
+}
+
+/// Typed failure of profile-driven construction or one machine transition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileMachineError {
+    /// A public address is outside the selected profile domain.
+    AddressOutOfRange {
+        /// Rejected raw address.
+        address: u32,
+    },
+    /// Self-encryption would access a non-graphical target cell.
+    InvalidEncryptionTarget {
+        /// Resulting profile-width code pointer selected for encryption.
+        pointer: u32,
+        /// Cell value observed after instruction-specific effects.
+        value: u32,
+    },
+    /// Source loading failed before machine construction.
+    Load(ProfileLoadError),
+    /// Exact memory-domain indexing unexpectedly failed internally.
+    MemoryInvariant,
+    /// The selected profile exceeds this runtime's explicit capability.
+    Profile(ProfileRequirementError),
+    /// A translation-table lookup failed inside its admitted domain.
+    TranslationTableInvariant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProfileInstruction {
+    Crazy,
+    Halt,
+    Input,
+    JumpCode,
+    JumpData,
+    NoOperation,
+    Output,
+    Rotate,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProfileTransitionPlan {
+    input_advance: bool,
+    memory_write: Option<(u32, u32)>,
+    output: Option<u8>,
+    registers: ProfileRegisters,
+}
+
+/// Owned safe Rust machine for one explicitly selected canonical profile.
+#[derive(Clone, Debug)]
+pub struct ProfileMachine {
+    input: Vec<u8>,
+    input_cursor: usize,
+    memory: Vec<u32>,
+    output: Vec<u8>,
+    profile: &'static ProfileDescriptor,
+    registers: ProfileRegisters,
+    termination: Option<Termination>,
+}
+
+impl Display for ProfileLoadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::InsufficientRecurrenceBase => f.write_str(
+                "profile source requires at least two non-whitespace words",
+            ),
+            Self::InvalidInstruction { position, byte } => write!(
+                f,
+                "source byte {byte} at loaded position {position} is invalid"
+            ),
+            Self::InvalidSourceByte { offset, byte } => write!(
+                f,
+                "source byte {byte} at offset {offset} is not graphical ASCII"
+            ),
+            Self::MemoryAllocation => {
+                f.write_str("profile memory allocation failed")
+            },
+            Self::SourceTooLong => {
+                f.write_str("source exceeds selected profile memory image")
+            },
+        }
+    }
+}
+
+impl Display for ProfileMachineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::AddressOutOfRange { address } => {
+                write!(f, "profile address {address} is outside memory")
+            },
+            Self::InvalidEncryptionTarget { pointer, value } => {
+                write!(f, "self-encryption target {pointer} contains ")?;
+                write!(f, "non-graphical value {value}")
+            },
+            Self::Load(error) => Display::fmt(error, f),
+            Self::MemoryInvariant => {
+                f.write_str("profile memory invariant failed")
+            },
+            Self::Profile(error) => Display::fmt(error, f),
+            Self::TranslationTableInvariant => {
+                f.write_str("profile translation-table invariant failed")
+            },
+        }
+    }
+}
+
+impl From<ProfileLoadError> for ProfileMachineError {
+    fn from(error: ProfileLoadError) -> Self {
+        Self::Load(error)
+    }
+}
+
+impl From<ProfileRequirementError> for ProfileMachineError {
+    fn from(error: ProfileRequirementError) -> Self {
+        Self::Profile(error)
+    }
+}
+
+impl ProfileMachine {
+    fn commit(
+        &mut self,
+        plan: ProfileTransitionPlan,
+        encrypted: u32,
+    ) -> Result<(), ProfileMachineError> {
+        let encryption_pointer = plan.registers.code_pointer;
+        if let Some((write_pointer, value)) = plan.memory_write
+            && write_pointer != encryption_pointer
+        {
+            self.write(write_pointer, value)?;
+        }
+        self.write(encryption_pointer, encrypted)?;
+        self.registers = ProfileRegisters {
+            accumulator: plan.registers.accumulator,
+            code_pointer: successor(
+                plan.registers.code_pointer,
+                self.profile.word_modulus(),
+            ),
+            data_pointer: successor(
+                plan.registers.data_pointer,
+                self.profile.word_modulus(),
+            ),
+        };
+        if plan.input_advance {
+            self.input_cursor = self.input_cursor.saturating_add(1);
+        }
+        if let Some(byte) = plan.output {
+            self.output.push(byte);
+        }
+        Ok(())
+    }
+
+    /// Loads source and constructs a machine for one canonical target profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when the profile exceeds runtime
+    /// capability or source cannot initialize the exact profile memory image.
+    pub fn from_source(
+        profile: &'static ProfileDescriptor,
+        source: &[u8],
+        input: Vec<u8>,
+    ) -> Result<Self, ProfileMachineError> {
+        preflight_profile(
+            profile,
+            profile.memory_words(),
+            safe_rust_profiled_capability(),
+        )?;
+        let memory = load_profile(profile, source)?;
+        Ok(Self {
+            input,
+            input_cursor: 0,
+            memory,
+            output: Vec::new(),
+            profile,
+            registers: ProfileRegisters::default(),
+            termination: None,
+        })
+    }
+
+    /// Returns the number of input bytes consumed by committed transitions.
+    #[must_use]
+    pub const fn input_consumed(&self) -> usize {
+        self.input_cursor
+    }
+
+    /// Reads one guest memory word by exact profile-width address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError::AddressOutOfRange`] outside the selected
+    /// profile domain, or an invariant error if exact memory indexing fails.
+    pub fn memory_word(
+        &self,
+        address: u32,
+    ) -> Result<u32, ProfileMachineError> {
+        if address >= self.profile.memory_words() {
+            return Err(ProfileMachineError::AddressOutOfRange { address });
+        }
+        self.read(address)
+    }
+
+    /// Returns all bytes emitted by committed output instructions.
+    #[must_use]
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    fn plan(
+        &self,
+        decoded: ProfileInstruction,
+    ) -> Result<ProfileTransitionPlan, ProfileMachineError> {
+        let mut plan = ProfileTransitionPlan {
+            input_advance: false,
+            memory_write: None,
+            output: None,
+            registers: self.registers,
+        };
+        match decoded {
+            ProfileInstruction::Crazy => self.plan_crazy(&mut plan)?,
+            ProfileInstruction::Halt | ProfileInstruction::NoOperation => {},
+            ProfileInstruction::Input => self.plan_input(&mut plan),
+            ProfileInstruction::JumpCode => {
+                plan.registers.code_pointer =
+                    self.read(self.registers.data_pointer)?;
+            },
+            ProfileInstruction::JumpData => {
+                plan.registers.data_pointer =
+                    self.read(self.registers.data_pointer)?;
+            },
+            ProfileInstruction::Output => {
+                plan.output = Some(low_byte(self.registers.accumulator));
+            },
+            ProfileInstruction::Rotate => self.plan_rotate(&mut plan)?,
+        }
+        Ok(plan)
+    }
+
+    fn plan_crazy(
+        &self,
+        plan: &mut ProfileTransitionPlan,
+    ) -> Result<(), ProfileMachineError> {
+        let data = self.read(self.registers.data_pointer)?;
+        let value = profile_crazy(
+            data,
+            self.registers.accumulator,
+            self.profile.word_trits(),
+        );
+        plan.registers.accumulator = value;
+        plan.memory_write = Some((self.registers.data_pointer, value));
+        Ok(())
+    }
+
+    fn plan_input(&self, plan: &mut ProfileTransitionPlan) {
+        if let Some(byte) = self.input.get(self.input_cursor).copied() {
+            plan.registers.accumulator = u32::from(byte);
+            plan.input_advance = true;
+        } else {
+            plan.registers.accumulator = self.profile.eof_word();
+        }
+    }
+
+    fn plan_rotate(
+        &self,
+        plan: &mut ProfileTransitionPlan,
+    ) -> Result<(), ProfileMachineError> {
+        let data = self.read(self.registers.data_pointer)?;
+        let value = profile_rotate(data, self.profile.word_modulus());
+        plan.registers.accumulator = value;
+        plan.memory_write = Some((self.registers.data_pointer, value));
+        Ok(())
+    }
+
+    /// Returns the exact canonical profile selected for this machine.
+    #[must_use]
+    pub const fn profile(&self) -> &'static ProfileDescriptor {
+        self.profile
+    }
+
+    fn read(&self, address: u32) -> Result<u32, ProfileMachineError> {
+        let index = usize::try_from(address)
+            .ok()
+            .ok_or(ProfileMachineError::MemoryInvariant)?;
+        self.memory
+            .get(index)
+            .copied()
+            .ok_or(ProfileMachineError::MemoryInvariant)
+    }
+
+    /// Returns the current profile-width register values.
+    #[must_use]
+    pub const fn registers(&self) -> ProfileRegisters {
+        self.registers
+    }
+
+    /// Executes at most `step_budget` normative profile-driven steps.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when any transition cannot commit.
+    pub fn run(
+        &mut self,
+        step_budget: usize,
+    ) -> Result<RunOutcome, ProfileMachineError> {
+        if let Some(reason) = self.termination {
+            return Ok(RunOutcome::Terminated { reason, steps: 0 });
+        }
+        let mut steps = 0usize;
+        while steps < step_budget {
+            let outcome = self.step()?;
+            steps = steps.saturating_add(1);
+            if let StepOutcome::Terminated(reason) = outcome {
+                return Ok(RunOutcome::Terminated { reason, steps });
+            }
+        }
+        Ok(RunOutcome::BudgetExhausted { steps })
+    }
+
+    /// Executes one atomic normative profile-driven transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when a transition cannot commit exactly.
+    pub fn step(&mut self) -> Result<StepOutcome, ProfileMachineError> {
+        if let Some(reason) = self.termination {
+            return Ok(StepOutcome::Terminated(reason));
+        }
+        let cell = self.read(self.registers.code_pointer)?;
+        if !is_graphical(cell) {
+            self.termination = Some(Termination::NonGraphicalCell);
+            return Ok(StepOutcome::Terminated(Termination::NonGraphicalCell));
+        }
+        let decoded = profile_decode(cell, self.registers.code_pointer)
+            .ok_or(ProfileMachineError::TranslationTableInvariant)?;
+        let decoded_instruction = profile_instruction(decoded);
+        if decoded_instruction == ProfileInstruction::Halt {
+            self.termination = Some(Termination::HaltInstruction);
+            return Ok(StepOutcome::Terminated(Termination::HaltInstruction));
+        }
+        let plan = self.plan(decoded_instruction)?;
+        let encrypted = self.validate_encryption(&plan)?;
+        self.commit(plan, encrypted)?;
+        Ok(StepOutcome::Continued)
+    }
+
+    /// Returns the current stable termination reason, if any.
+    #[must_use]
+    pub const fn termination(&self) -> Option<Termination> {
+        self.termination
+    }
+
+    fn validate_encryption(
+        &self,
+        plan: &ProfileTransitionPlan,
+    ) -> Result<u32, ProfileMachineError> {
+        let pointer = plan.registers.code_pointer;
+        let target = if let Some((write_pointer, value)) = plan.memory_write
+            && write_pointer == pointer
+        {
+            value
+        } else {
+            self.read(pointer)?
+        };
+        if !is_graphical(target) {
+            return Err(ProfileMachineError::InvalidEncryptionTarget {
+                pointer,
+                value: target,
+            });
+        }
+        profile_encrypt(target)
+            .ok_or(ProfileMachineError::TranslationTableInvariant)
+    }
+
+    fn write(
+        &mut self,
+        address: u32,
+        value: u32,
+    ) -> Result<(), ProfileMachineError> {
+        if value >= self.profile.word_modulus() {
+            return Err(ProfileMachineError::MemoryInvariant);
+        }
+        let index = usize::try_from(address)
+            .ok()
+            .ok_or(ProfileMachineError::MemoryInvariant)?;
+        let cell = self
+            .memory
+            .get_mut(index)
+            .ok_or(ProfileMachineError::MemoryInvariant)?;
+        *cell = value;
+        Ok(())
+    }
+}
+
+fn is_graphical(value: u32) -> bool {
+    (GRAPHICAL_MIN..=GRAPHICAL_MAX).contains(&value)
+}
+
+fn load_profile(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<Vec<u32>, ProfileLoadError> {
+    let memory_words = usize::try_from(profile.memory_words())
+        .ok()
+        .ok_or(ProfileLoadError::MemoryAllocation)?;
+    let mut words = Vec::new();
+    for (offset, byte) in source.iter().copied().enumerate() {
+        if byte.is_ascii_whitespace() {
+            continue;
+        }
+        if !(33..=126).contains(&byte) {
+            return Err(ProfileLoadError::InvalidSourceByte { offset, byte });
+        }
+        if words.len() >= memory_words {
+            return Err(ProfileLoadError::SourceTooLong);
+        }
+        let position = u32::try_from(words.len())
+            .ok()
+            .ok_or(ProfileLoadError::MemoryAllocation)?;
+        let cell = u32::from(byte);
+        let decoded = profile_decode(cell, position)
+            .ok_or(ProfileLoadError::InvalidInstruction { position, byte })?;
+        if !matches!(
+            decoded,
+            b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o'
+        ) {
+            return Err(ProfileLoadError::InvalidInstruction {
+                position,
+                byte,
+            });
+        }
+        words.push(cell);
+    }
+    if words.len() < 2 {
+        return Err(ProfileLoadError::InsufficientRecurrenceBase);
+    }
+    let additional = memory_words.saturating_sub(words.len());
+    words
+        .try_reserve_exact(additional)
+        .map_err(|_error| ProfileLoadError::MemoryAllocation)?;
+    while words.len() < memory_words {
+        let previous = words
+            .last()
+            .copied()
+            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
+        let older_index = words.len().saturating_sub(2);
+        let older = words
+            .get(older_index)
+            .copied()
+            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
+        words.push(profile_crazy(older, previous, profile.word_trits()));
+    }
+    Ok(words)
+}
+
+fn low_byte(value: u32) -> u8 {
+    let reduced = value.rem_euclid(OUTPUT_MODULUS);
+    u8::try_from(reduced).ok().unwrap_or(0)
+}
+
+fn profile_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
+    let mut place = 1u32;
+    let mut remaining_trits = trits;
+    let mut result = 0u32;
+    while remaining_trits > 0 {
+        let chunk_trits = remaining_trits.min(CRAZY_CHUNK_TRITS);
+        let chunk_modulus = ternary_modulus(chunk_trits);
+        let data_chunk = u16::try_from(data.rem_euclid(chunk_modulus))
+            .ok()
+            .unwrap_or(0);
+        let accumulator_chunk =
+            u16::try_from(accumulator.rem_euclid(chunk_modulus))
+                .ok()
+                .unwrap_or(0);
+        let chunk =
+            u32::from(crazy_chunk_lookup(data_chunk, accumulator_chunk))
+                .rem_euclid(chunk_modulus);
+        result = result.saturating_add(chunk.saturating_mul(place));
+        data = data.div_euclid(chunk_modulus);
+        accumulator = accumulator.div_euclid(chunk_modulus);
+        place = place.saturating_mul(chunk_modulus);
+        remaining_trits = remaining_trits.saturating_sub(chunk_trits);
+    }
+    result
+}
+
+fn profile_decode(cell: u32, code_pointer: u32) -> Option<u8> {
+    if !is_graphical(cell) {
+        return None;
+    }
+    let cell_offset =
+        usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;
+    let phase = usize::try_from(
+        code_pointer.rem_euclid(u32::try_from(DECODE_TABLE_LEN).ok()?),
+    )
+    .ok()?;
+    let index = cell_offset
+        .saturating_mul(DECODE_TABLE_LEN)
+        .saturating_add(phase);
+    DECODE_TABLE.get(index).copied()
+}
+
+fn profile_encrypt(cell: u32) -> Option<u32> {
+    if !is_graphical(cell) {
+        return None;
+    }
+    let index = usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;
+    XLAT2.get(index).copied().map(u32::from)
+}
+
+const fn profile_instruction(decoded: u8) -> ProfileInstruction {
+    match decoded {
+        b'*' => ProfileInstruction::Rotate,
+        b'/' => ProfileInstruction::Output,
+        b'<' => ProfileInstruction::Input,
+        b'i' => ProfileInstruction::JumpCode,
+        b'j' => ProfileInstruction::JumpData,
+        b'p' => ProfileInstruction::Crazy,
+        b'v' => ProfileInstruction::Halt,
+        _ => ProfileInstruction::NoOperation,
+    }
+}
+
+const fn profile_rotate(value: u32, modulus: u32) -> u32 {
+    let quotient = value.div_euclid(TERNARY_RADIX);
+    let low_trit = value.rem_euclid(TERNARY_RADIX);
+    let high_weight = modulus.div_euclid(TERNARY_RADIX);
+    quotient.saturating_add(low_trit.saturating_mul(high_weight))
+}
+
+const fn successor(value: u32, modulus: u32) -> u32 {
+    if value == modulus.saturating_sub(1) {
+        0
+    } else {
+        value.saturating_add(1)
+    }
+}
+
+const fn ternary_modulus(trits: u8) -> u32 {
+    let mut value = 1u32;
+    let mut index = 0u8;
+    while index < trits {
+        value = value.saturating_mul(TERNARY_RADIX);
+        index = index.saturating_add(1);
+    }
+    value
+}

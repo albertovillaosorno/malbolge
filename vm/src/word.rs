@@ -53,9 +53,7 @@ pub const MEMORY_WORDS: usize = 59_049;
 /// Largest value representable by one classic ten-trit word.
 pub const MAX_WORD_VALUE: u16 = 59_048;
 
-const CHUNK_TRITS: u8 = 5;
 const CHUNK_VALUES: u16 = 243;
-const CHUNK_VALUES_USIZE: usize = 243;
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 
 include!(concat!(env!("OUT_DIR"), "/classic_word_tables.rs"));
@@ -151,55 +149,9 @@ fn crazy_lookup(data: u16, accumulator: u16) -> u16 {
     let low_accumulator = accumulator.rem_euclid(CHUNK_VALUES);
     let high_data = data.div_euclid(CHUNK_VALUES);
     let high_accumulator = accumulator.div_euclid(CHUNK_VALUES);
-    let low_index = usize::from(low_data)
-        .saturating_mul(CHUNK_VALUES_USIZE)
-        .saturating_add(usize::from(low_accumulator));
-    let high_index = usize::from(high_data)
-        .saturating_mul(CHUNK_VALUES_USIZE)
-        .saturating_add(usize::from(high_accumulator));
-    let low = CRAZY_CHUNK_TABLE
-        .get(low_index)
-        .copied()
-        .unwrap_or_else(|| crazy_chunk_scalar(low_data, low_accumulator));
-    let high = CRAZY_CHUNK_TABLE
-        .get(high_index)
-        .copied()
-        .unwrap_or_else(|| crazy_chunk_scalar(high_data, high_accumulator));
+    let low = crate::crazy_chunk_lookup(low_data, low_accumulator);
+    let high = crate::crazy_chunk_lookup(high_data, high_accumulator);
     low.saturating_add(high.saturating_mul(CHUNK_VALUES))
-}
-
-const fn crazy_chunk_scalar(data: u16, accumulator: u16) -> u16 {
-    let mut remaining_data = data;
-    let mut remaining_accumulator = accumulator;
-    let mut result = 0u16;
-    let mut place = 1u16;
-    let mut trit = 0u8;
-    while trit < CHUNK_TRITS {
-        let output = crazy_trit(
-            remaining_data.rem_euclid(3),
-            remaining_accumulator.rem_euclid(3),
-        );
-        result = result.saturating_add(output.saturating_mul(place));
-        place = place.saturating_mul(3);
-        remaining_data = remaining_data.div_euclid(3);
-        remaining_accumulator = remaining_accumulator.div_euclid(3);
-        trit = trit.saturating_add(1);
-    }
-    result
-}
-
-const fn crazy_trit(data: u16, accumulator: u16) -> u16 {
-    if ((data == 0 || data == 1) && accumulator == 0)
-        || (data == 2 && accumulator == 2)
-    {
-        1
-    } else if (data == 1 && accumulator == 2)
-        || (data == 2 && (accumulator == 0 || accumulator == 1))
-    {
-        2
-    } else {
-        0
-    }
 }
 
 fn rotate_lookup(value: u16) -> u16 {

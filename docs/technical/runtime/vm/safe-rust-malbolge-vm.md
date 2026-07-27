@@ -38,13 +38,21 @@ bytes, committed I/O, termination, and rejected transition results without
 changing guest semantics. Memory-transition correctness remains directly covered
 by instruction and atomicity fixtures rather than duplicated by the trace layer.
 
-The classic execution facade now carries an explicit canonical target-profile
+The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
 classic compatibility, while `from_source_for_profile()` performs a typed
-runtime-capability preflight before source loading. The present safe Rust engine
-advertises only ten trits/59,049 words, so the current 14-trit
-`malbolge-2026.2` profile fails before reaching the classic loader rather than
-being truncated or silently reinterpreted.
+`safe-rust-classic` capability preflight before source loading. The current
+14-trit `malbolge-2026.2` profile therefore still fails before reaching this
+classic loader rather than being truncated or silently reinterpreted.
+
+A separate safe-Rust `ProfileMachine` now implements the canonical schema-v2
+single-word-modular profile model through 14 trits/4,782,969 words under runtime
+identity `safe-rust-profiled`. It deliberately does not replace classic `Word`,
+`Memory`, tracing, or legacy-mode APIs. Historical differential fixtures run the
+same 1998 program through both engines and compare all 59,049 final memory words,
+registers, byte I/O/EOF, and termination. Current-profile fixtures additionally
+exercise addresses above 59,048 and independent scalar expectations for 14-trit
+crazy and rotate.
 
 Independent differential evidence now exists against the separately implemented
 pure-C VM. Both implementations compute semantic signature
@@ -65,6 +73,8 @@ command passes at retirement time.
 - Tracing is observational and cannot alter guest state or execution results.
 - The independent C implementation is evidence, not an implementation dependency
   of the Rust VM.
+- `ProfileMachine` generalizes only profile-width geometry and preserves the same
+  sequential/self-modifying semantic core; it never changes classic `Machine`.
 
 ## Failure Behavior
 

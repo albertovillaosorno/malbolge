@@ -16,8 +16,12 @@ scope:
   - "compatibility/"
   - "docs/technical/specification/"
   - "tests/compatibility/"
+  - "vm/src/profile_machine.rs"
+  - "vm/build.rs"
+  - "tests/vm/profile_machine.rs"
 validation:
   - "python scripts/validate/target_profile.py"
+  - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features profile_machine"
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
   - "jig validate --root ."
 ---
@@ -46,8 +50,16 @@ host architecture.
 - The source-size measurement is explicitly a lower-bound capacity proxy, not a
   promise that compiled DOOM fits. Future compiler measurements may require a
   new larger profile.
-- The current Rust VM remains 1998-only; profile-aware runtime/compiler adoption
-  and required-profile diagnostics remain open.
+- `ProfileMachine` now executes canonical schema-v2 profiles through 14 trits and
+  4,782,969 words under explicit `safe-rust-profiled` capability. Current-profile
+  fixtures exercise 14-trit crazy/rotate, byte I/O, halt, self-modification, and
+  addresses above the historical ceiling.
+- The classic `Machine`/`ExecutionMachine` remain intentionally ten-trit and
+  continue to reject current artifacts rather than changing historical types.
+- Full 1998 differential fixtures compare every final memory word plus registers,
+  I/O, EOF, and termination between classic and profile-driven interpreters.
+- Compiler, batch/logical orchestration, tracing, native tiers, and accelerators
+  remain downstream profile-consumer work rather than memory-model ambiguity.
 
 ## Acceptance
 

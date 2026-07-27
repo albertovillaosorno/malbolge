@@ -54,7 +54,8 @@ use std::str::from_utf8;
 
 use malbolge::{
     CapsuleError, ExecutionErrorKind, ExecutionMachine, ExecutionMode,
-    RunOutcome, Termination, build_capsule, current_profile, parse_capsule,
+    ProfileMachine, RunOutcome, Termination, build_capsule, current_profile,
+    parse_capsule,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -95,8 +96,7 @@ fn builder_matches_checked_in_fixture() -> TestResult {
 }
 
 #[test]
-fn current_capsule_execution_fails_profile_preflight_before_loader()
--> TestResult {
+fn classic_facade_rejects_current_capsule_before_loader() -> TestResult {
     let parsed = normalize_result(parse_capsule(&capsule_fixture()?))?
         .ok_or_else(|| String::from("current fixture was not recognized"))?;
     let Err(error) = ExecutionMachine::from_source_for_profile(
@@ -115,6 +115,28 @@ fn current_capsule_execution_fails_profile_preflight_before_loader()
 }
 
 #[cfg(feature = "legacy-ben")]
+#[test]
+fn current_capsule_executes_on_profiled_runtime() -> TestResult {
+    let fixture = capsule_fixture()?;
+    let parsed = normalize_result(parse_capsule(&fixture))?
+        .ok_or_else(|| String::from("current fixture was not recognized"))?;
+    let mut machine = normalize_result(ProfileMachine::from_source(
+        parsed.profile(),
+        parsed.payload(),
+        vec![0x41],
+    ))?;
+    let outcome = normalize_result(machine.run(8))?;
+    check_equal(
+        &outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "profiled capsule halt",
+    )?;
+    check_equal(machine.output(), b"A".as_slice(), "profiled capsule output")
+}
+
 #[test]
 fn fallback_emits_bang_and_halts_in_legacy_mode() -> TestResult {
     let mut machine = normalize_result(ExecutionMachine::from_source(

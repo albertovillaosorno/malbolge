@@ -108,9 +108,12 @@ fn main() -> Result<(), Error> {
     write_code_phase(&mut decode_file)?;
     write_decode_table(&mut decode_file)?;
 
+    let ternary_output = out_dir.join("ternary_tables.rs");
+    let mut ternary_file = File::create(ternary_output)?;
+    write_crazy_table(&mut ternary_file)?;
+
     let word_output = out_dir.join("classic_word_tables.rs");
     let mut word_file = File::create(word_output)?;
-    write_crazy_table(&mut word_file)?;
     write_rotate_table(&mut word_file)?;
     Ok(())
 }

@@ -20,6 +20,9 @@ This document governs the following declared TODO scope:
 - `compatibility/`
 - `docs/technical/specification/`
 - `tests/compatibility/`
+- `vm/src/profile_machine.rs`
+- `vm/build.rs`
+- `tests/vm/profile_machine.rs`
 
 ## Current Behavior
 
@@ -110,10 +113,24 @@ The exact source snapshot and candidate arithmetic are retained in
 geometry, N-trit rotate, digitwise crazy, EOF, wraparound, and the link to the
 tracked DOOM evidence snapshot.
 
-The existing safe Rust `Machine` still implements the frozen 1998 machine only.
-It must not silently execute a `malbolge-2026.2` artifact as if it were
-`malbolge-1998`. Runtime/compiler adoption and deterministic required-profile
-diagnostics remain separate open work.
+Safe Rust now has an explicit profile-driven interpreter in
+`vm/src/profile_machine.rs`. `ProfileMachine` owns `u32` profile-width registers
+and an exact `profile.memory_words()` image, preflights against runtime identity
+`safe-rust-profiled`, and executes the same normative sequential decode, crazy,
+rotate, byte I/O, self-modification, post-instruction encryption, and pointer
+wrap rules for canonical schema-v2 profiles up to 14 trits/4,782,969 words.
+
+The five-trit crazy lookup table is generated once as profile-neutral ternary
+math and shared by both classic and profile-driven engines. A 14-trit crazy
+operation composes 5+5+4 trit chunks; the final chunk is reduced to `3^4`, so no
+implicit fifteenth trit can enter the result.
+
+`Machine` and `ExecutionMachine` intentionally remain the frozen/classic surface.
+They still reject `malbolge-2026.2` through `safe-rust-classic` preflight rather
+than silently changing classic types or loader behavior. `ProfileMachine` is the
+explicit runtime surface for current scalable execution. Compiler, batch/logical
+orchestration, tracing, native tiers, and accelerators are not yet universally
+profile-driven and remain downstream adoption work.
 
 ## Invariants
 
@@ -126,6 +143,8 @@ diagnostics remain separate open work.
 - Exactly one profile has `kind = "current"`, and it is named by
   `current_profile`.
 - Larger capacity always receives a new immutable profile identity.
+- `Machine` remains exact classic conformance; scalable execution is selected
+  explicitly through `ProfileMachine` rather than changing classic word types.
 
 ## Failure Behavior
 
@@ -142,6 +161,12 @@ falls back to 59,049 words, or borrows host pointer behavior.
   ternary geometry and the workload-evidence link.
 - `compatibility/scalable-memory-evidence.json` retains the exact tracked source
   hash, source-byte proxy, candidate capacities, and selected profile.
+- `tests/vm/profile_machine.rs` executes the full 4,782,969-word current profile,
+  verifies addresses above 59,048, and checks 14-trit crazy/rotate effects against
+  independent scalar formulas.
+- The same Rust suite executes `ProfileMachine` under `malbolge-1998` and compares
+  all 59,049 final memory words, registers, I/O, EOF behavior, and termination
+  against the classic `Machine`.
 
 ## References
 

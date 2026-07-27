@@ -361,19 +361,20 @@ AOT-only, JIT-only, and fully tiered execution.
 ### TODO - Scalable Malbolge memory model
 
 Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as exact historical conformance. Schema v2 now selects the
-14-trit `malbolge-2026.2` geometry with 4,782,969 directly addressed words;
-profile-aware consumer/runtime adoption and exact capability diagnostics remain
-open rather than silently falling back to the classic machine.
+`malbolge-1998` as exact historical conformance. Schema v2 selects the 14-trit
+`malbolge-2026.2` geometry with 4,782,969 directly addressed words, and the new
+safe-Rust `ProfileMachine` executes that profile explicitly while the classic
+facade remains ten-trit. Compiler, tracing, batch/logical, native, and accelerator
+consumers still need profile-driven adoption rather than silent fallback.
 
 ### TODO - Historical-interpreter fallback capsule
 
 Define a versioned `.malbolge` capsule recognized by modern runtimes while the
 1998 loader sees only a safe classic fallback. Version one now uses a fixed
 `!`-emitting historical sentinel plus a space/tab `MALBCAP1` sideband carrying
-profile ID/fingerprint, payload, lengths, flags, and deterministic checksum;
-current scalable payloads still fail capability preflight until runtime support
-exists.
+profile ID/fingerprint, payload, lengths, flags, and deterministic checksum.
+Current scalable payloads execute through `ProfileMachine`; the classic facade
+still rejects them before its ten-trit loader, so runtime choice remains explicit.
 
 ### TODO - Required-profile diagnostics
 

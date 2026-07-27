@@ -46,11 +46,13 @@ maximum profile word, the frozen 1998 machine envelope, exactly one selected
 current identity, and preservation of the sequential deterministic
 self-modifying semantic core across schema-v2 profiles.
 
-Cross-component consumption is not complete. The existing safe Rust VM still
-implements `malbolge-1998` constants directly and must not silently execute a
-`malbolge-2026.2` artifact. Compiler, tidy, verifier, runtime, and accelerator
-consumers are not yet universally profile-driven, so this contract remains
-active.
+Cross-component consumption is not complete. The classic safe Rust `Machine`
+still implements `malbolge-1998` constants directly and must not silently execute
+a `malbolge-2026.2` artifact. The separate `ProfileMachine` now consumes the
+canonical descriptor and executes schema-v2 profiles through 14 trits under
+explicit `safe-rust-profiled` capability. Compiler, tidy, verifier, batch/logical
+orchestration, tracing, native, and accelerator consumers are not yet universally
+profile-driven, so this contract remains active.
 
 Published profile identity is additionally bound by `malbolge-profile-v1`
 fingerprints. The fingerprint includes profile ID/version, target schema,

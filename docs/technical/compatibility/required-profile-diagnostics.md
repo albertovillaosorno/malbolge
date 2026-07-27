@@ -48,20 +48,21 @@ as independent semantic authority.
 
 ### Runtime Capability Envelope
 
-The current safe Rust execution engine advertises one explicit capability:
+Safe Rust advertises two explicit interpreter capabilities:
 
-- runtime ID: `safe-rust-classic`
-- maximum word width: 10 trits
-- maximum directly addressed memory: 59,049 words
-- semantic features: byte input, byte output, crazy operation, deterministic
-  execution, post-instruction encryption, rotate, self-modification, and
-  sequential guest execution.
+- `safe-rust-classic`: maximum 10 trits and 59,049 directly addressed words;
+- `safe-rust-profiled`: maximum 14 trits and 4,782,969 directly addressed words.
 
-The current language profile `malbolge-2026.2` requires 14 trits and 4,782,969
-words. The safe Rust classic runtime therefore rejects it before source loading.
-The retained `malbolge-2026.1` transition profile has the same ten-trit geometry
-and semantic core as the classic runtime and is admitted while retaining its
-exact profile identity.
+Both advertise the same defining semantic features: byte input/output, crazy,
+deterministic sequential execution, post-instruction encryption, rotate, and
+self-modification. Capability identity describes implementation capacity, not a
+new language semantic profile.
+
+The current `malbolge-2026.2` profile therefore fails preflight when explicitly
+sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by
+`ProfileMachine`/`safe-rust-profiled`. The retained `malbolge-2026.1` transition
+profile is admitted by both normative interpreters while retaining its exact
+profile identity.
 
 ### Execution Preflight
 
@@ -91,8 +92,9 @@ selected profile. Its deterministic text names:
 - runtime capability ID and its maximum word/memory capacity; and
 - the exact missing dimensions.
 
-For the current safe Rust runtime and `malbolge-2026.2`, the missing dimensions
-are `word-trits,memory-words`.
+For `safe-rust-classic` and `malbolge-2026.2`, the missing dimensions are
+`word-trits,memory-words`. `safe-rust-profiled` has no missing dimension for that
+profile.
 
 `MALBOLGE-PROFILE-002` means that a program requirement exceeds the capacity of
 the explicitly selected profile itself. For `malbolge-1998`, the diagnostic
@@ -115,17 +117,20 @@ a valid profile may still be unsupported by a particular runtime.
 - `malbolge-2026.1` and `malbolge-2026.2` retain their immutable identities even
   when two profiles happen to share an implementation capability.
 - Unsupported profiles never execute through silent classic fallback.
-- The default safe Rust constructor remains explicitly classic until a separate
-  profile-aware top-level runtime owns current-profile selection.
+- The default `ExecutionMachine` constructor remains explicitly classic;
+  scalable execution requires explicit `ProfileMachine` selection rather than
+  implicit runtime substitution.
 
 ## Failure Behavior
 
 Profile requirement failures are deterministic typed errors and leave no machine
 state because construction has not yet reached the loader.
 
-An unsupported current profile reports `MALBOLGE-PROFILE-001`. A request beyond
-the selected profile's own capacity reports `MALBOLGE-PROFILE-002`. Unknown
-profile identities fail lookup instead of selecting another profile.
+A profile unsupported by the selected runtime reports `MALBOLGE-PROFILE-001`.
+For example, current Malbolge is unsupported by `safe-rust-classic` but supported
+by `safe-rust-profiled`. A request beyond the selected profile's own capacity
+reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead of
+selecting another profile.
 
 Compiler artifact metadata, top-level runtime profile selection, and other
 non-VM consumers do not yet universally carry this requirement object. This
@@ -136,9 +141,11 @@ diagnostic completion.
 
 - `tests/test_target_profile.py` proves the checked-in Rust projection is
   byte-exactly generated from canonical `malbolge.json`.
-- `tests/vm/profile_requirements.rs` verifies current-profile rejection before
-  loading, transition-profile acceptance, classic default identity, exact
-  historical-ceiling diagnostics, and no-fallback profile lookup.
+- `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
+  classic facade before loading, transition-profile acceptance, classic default
+  identity, exact historical-ceiling diagnostics, and no-fallback lookup.
+- `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
+  the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the
   scalable geometry used by the requirement descriptors.
 - Strict Clippy and the full Rust suite cover the profile-aware execution facade.

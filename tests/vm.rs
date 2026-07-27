@@ -62,6 +62,8 @@ mod instructions;
 mod logical;
 #[path = "vm/modes.rs"]
 mod modes;
+#[path = "vm/profile_machine.rs"]
+mod profile_machine;
 #[path = "vm/profile_requirements.rs"]
 mod profile_requirements;
 #[path = "vm/tables.rs"]

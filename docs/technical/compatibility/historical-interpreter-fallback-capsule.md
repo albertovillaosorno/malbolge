@@ -127,11 +127,14 @@ and exact profile fingerprint before returning payload bytes and the selected
 canonical descriptor.
 
 The checked-in fixture selects `malbolge-2026.2` and carries `ctO` plus LF as its
-small payload. Parsing succeeds. Passing that extracted payload/profile into
-`ExecutionMachine::from_source_for_profile()` fails with the existing profile
-capability diagnostic before the classic loader runs, because the safe Rust VM
-is still ten-trit/classic-capability only. Capsule recognition therefore does
-not create a silent scalable-runtime fallback.
+small payload. Parsing succeeds. Passing that extracted payload/profile into the
+classic `ExecutionMachine::from_source_for_profile()` still fails
+`safe-rust-classic` capability preflight before the ten-trit loader. Passing the
+same explicit descriptor/payload to `ProfileMachine` succeeds under
+`safe-rust-profiled`, consumes one input byte, emits it, and halts normatively.
+Capsule recognition therefore never chooses a runtime implicitly: classic and
+profile-driven consumers remain distinct and fail/execute according to their
+advertised capacities.
 
 ### Ordinary Classic Programs
 
@@ -154,8 +157,10 @@ Classic source remains ordinary `.malbolge`. In particular:
   `malbolge-profile-v1` fingerprint.
 - FNV-1a-64 detects accidental frame corruption only; it makes no
   cryptographic-security claim.
-- Unsupported current profiles still fail through explicit runtime capability
-  preflight rather than executing through the historical fallback.
+- A runtime that does not support the selected profile still fails capability
+  preflight; the historical fallback is never used as semantic recovery.
+- The profile-driven safe Rust runtime can execute the current capsule, while the
+  classic facade continues to reject the same profile explicitly.
 - Ordinary classic source remains ordinary source when capsule magic is absent.
 
 ## Failure Behavior

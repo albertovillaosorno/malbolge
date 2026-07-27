@@ -46,9 +46,12 @@ v2 selects the 14-trit `malbolge-2026.2` profile as current, retains
 `malbolge-2026.1` as an immutable ten-trit transition identity, and preserves
 `malbolge-1998` as frozen historical conformance. Validate profile edits with
 `python scripts/validate/target_profile.py` and the Python compatibility tests.
-The safe Rust VM remains classic-capability only. Profile-aware construction must
-preflight against `safe-rust-classic`; do not silently execute `malbolge-2026.2`
-through the ten-trit loader. The checked-in Rust descriptors are generated from
+The safe Rust runtime has two explicit interpreters. `Machine` and
+`ExecutionMachine` remain classic-capability and preflight against
+`safe-rust-classic`; they must never silently execute `malbolge-2026.2` through
+the ten-trit loader. `ProfileMachine` is the normative profile-driven interpreter
+and preflights against `safe-rust-profiled`, currently up to 14 trits and
+4,782,969 words. The checked-in Rust descriptors are generated from
 `malbolge.json` and must remain byte-exact with the validator renderer.
 Profile fingerprints use `malbolge-profile-v1`; profile ID/version/geometry and
 semantics are hashed, while registry `kind` is intentionally excluded so a
