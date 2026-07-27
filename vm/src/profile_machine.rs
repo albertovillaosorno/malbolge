@@ -74,6 +74,124 @@ pub struct ProfileRegisters {
     pub data_pointer: u32,
 }
 
+/// Complete validated I/O portion of one profile-machine checkpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileMachineIoState {
+    input: Vec<u8>,
+    input_cursor: usize,
+    output: Vec<u8>,
+    termination: Option<Termination>,
+}
+
+impl ProfileMachineIoState {
+    /// Returns the immutable full input stream carried by this checkpoint.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
+    }
+
+    /// Returns the number of input bytes already consumed at the checkpoint.
+    #[must_use]
+    pub const fn input_consumed(&self) -> usize {
+        self.input_cursor
+    }
+
+    /// Constructs one validated I/O checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError::InputCursorOutOfRange`] when the cursor
+    /// is beyond the supplied input stream.
+    pub fn new(
+        input: Vec<u8>,
+        input_cursor: usize,
+        output: Vec<u8>,
+        termination: Option<Termination>,
+    ) -> Result<Self, ProfileMachineError> {
+        validate_input_cursor(input.len(), input_cursor)?;
+        Ok(Self {
+            input,
+            input_cursor,
+            output,
+            termination,
+        })
+    }
+
+    /// Returns bytes already committed to guest output at the checkpoint.
+    #[must_use]
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    /// Returns the stable termination reason recorded by the checkpoint.
+    #[must_use]
+    pub const fn termination(&self) -> Option<Termination> {
+        self.termination
+    }
+}
+
+/// Complete validated checkpoint of one profile-driven machine.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileMachineState {
+    io: ProfileMachineIoState,
+    memory: Vec<u32>,
+    profile: &'static ProfileDescriptor,
+    registers: ProfileRegisters,
+}
+
+impl ProfileMachineState {
+    /// Returns the validated I/O checkpoint carried by this complete state.
+    #[must_use]
+    pub const fn io(&self) -> &ProfileMachineIoState {
+        &self.io
+    }
+
+    /// Returns the exact profile-width memory image carried by the checkpoint.
+    #[must_use]
+    pub fn memory(&self) -> &[u32] {
+        &self.memory
+    }
+
+    /// Constructs one complete validated profile-machine checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when the profile exceeds runtime
+    /// capability or memory shape/words or registers are invalid.
+    pub fn new(
+        profile: &'static ProfileDescriptor,
+        memory: Vec<u32>,
+        registers: ProfileRegisters,
+        io: ProfileMachineIoState,
+    ) -> Result<Self, ProfileMachineError> {
+        preflight_profile(
+            profile,
+            profile.memory_words(),
+            safe_rust_profiled_capability(),
+        )?;
+        validate_state_memory(profile, &memory)?;
+        validate_state_registers(profile, registers)?;
+        Ok(Self {
+            io,
+            memory,
+            profile,
+            registers,
+        })
+    }
+
+    /// Returns the exact canonical profile bound to this checkpoint.
+    #[must_use]
+    pub const fn profile(&self) -> &'static ProfileDescriptor {
+        self.profile
+    }
+
+    /// Returns the profile-width register values at the checkpoint.
+    #[must_use]
+    pub const fn registers(&self) -> ProfileRegisters {
+        self.registers
+    }
+}
+
 /// Deterministic source-admission failure for a profile-driven machine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileLoadError {
@@ -127,6 +245,13 @@ pub enum ProfileMachineError {
     AddressOutOfRange {
         /// Rejected raw address.
         address: u32,
+    },
+    /// Supplied checkpoint cursor is beyond its input stream.
+    InputCursorOutOfRange {
+        /// Exact supplied input length.
+        input_len: usize,
+        /// Rejected cursor value.
+        observed: usize,
     },
     /// Self-encryption would access a non-graphical target cell.
     InvalidEncryptionTarget {
@@ -228,6 +353,10 @@ impl Display for ProfileMachineError {
             Self::AddressOutOfRange { address } => {
                 write!(f, "profile address {address} is outside memory")
             },
+            Self::InputCursorOutOfRange { input_len, observed } => write!(
+                f,
+                "profile input cursor {observed} exceeds length {input_len}"
+            ),
             Self::InvalidEncryptionTarget { pointer, value } => {
                 write!(f, "self-encryption target {pointer} contains ")?;
                 write!(f, "non-graphical value {value}")
@@ -302,6 +431,20 @@ impl ProfileMachine {
         Ok(())
     }
 
+    /// Restores a machine from one already validated complete checkpoint.
+    #[must_use]
+    pub fn from_snapshot(state: ProfileMachineState) -> Self {
+        Self {
+            input: state.io.input,
+            input_cursor: state.io.input_cursor,
+            memory: state.memory,
+            output: state.io.output,
+            profile: state.profile,
+            registers: state.registers,
+            termination: state.io.termination,
+        }
+    }
+
     /// Loads source and constructs a machine for one canonical target profile.
     ///
     /// # Errors
@@ -347,22 +490,9 @@ impl ProfileMachine {
         input: Vec<u8>,
         registers: ProfileRegisters,
     ) -> Result<Self, ProfileMachineError> {
-        preflight_profile(
-            profile,
-            profile.memory_words(),
-            safe_rust_profiled_capability(),
-        )?;
-        validate_state_memory(profile, &memory)?;
-        validate_state_registers(profile, registers)?;
-        Ok(Self {
-            input,
-            input_cursor: 0,
-            memory,
-            output: Vec::new(),
-            profile,
-            registers,
-            termination: None,
-        })
+        let io = ProfileMachineIoState::new(input, 0, Vec::new(), None)?;
+        let state = ProfileMachineState::new(profile, memory, registers, io)?;
+        Ok(Self::from_snapshot(state))
     }
 
     /// Returns the number of input bytes consumed by committed transitions.
@@ -545,6 +675,25 @@ impl ProfileMachine {
         Ok(RunOutcome::BudgetExhausted { steps })
     }
 
+    /// Clones the complete machine state into a validated checkpoint value.
+    ///
+    /// The memory image is copied deliberately so the checkpoint owns an exact
+    /// restoration point independent from later interpreter mutation.
+    #[must_use]
+    pub fn snapshot_state(&self) -> ProfileMachineState {
+        ProfileMachineState {
+            io: ProfileMachineIoState {
+                input: self.input.clone(),
+                input_cursor: self.input_cursor,
+                output: self.output.clone(),
+                termination: self.termination,
+            },
+            memory: self.memory.clone(),
+            profile: self.profile,
+            registers: self.registers,
+        }
+    }
+
     /// Executes one atomic normative profile-driven transition.
     ///
     /// # Errors
@@ -681,6 +830,19 @@ impl ProfileMachine {
         *cell = value;
         Ok(())
     }
+}
+
+const fn validate_input_cursor(
+    input_len: usize,
+    observed: usize,
+) -> Result<(), ProfileMachineError> {
+    if observed > input_len {
+        return Err(ProfileMachineError::InputCursorOutOfRange {
+            input_len,
+            observed,
+        });
+    }
+    Ok(())
 }
 
 fn validate_state_memory(

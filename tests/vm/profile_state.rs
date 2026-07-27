@@ -49,8 +49,9 @@
 //! Validated state reconstruction and scalable pointer-wrap conformance.
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileRegisterName, ProfileRegisters,
-    StepOutcome, current_profile, historical_profile,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineState, ProfileRegisterName, ProfileRegisters, RunOutcome,
+    StepOutcome, Termination, current_profile, historical_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -64,6 +65,9 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
 const TEST_XLAT2: &[u8; TABLE_LEN] =
     b"5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1C\
 B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
+
+const IO_ROUNDTRIP: &[u8] =
+    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
 fn exact_memory_words() -> TestResult<usize> {
     usize::try_from(historical_profile().memory_words()).map_err(|error| {
@@ -84,6 +88,113 @@ fn noop_cell(pointer: u32) -> TestResult<u8> {
         }
     }
     Err(format!("no independent no-op byte at pointer {pointer}"))
+}
+
+fn check_live_checkpoint(
+    checkpoint: &ProfileMachineState,
+    machine: &ProfileMachine,
+    input: &[u8],
+) -> TestResult {
+    check_equal(checkpoint.io().input(), input, "checkpoint input")?;
+    check_equal(
+        &checkpoint.io().input_consumed(),
+        &1usize,
+        "checkpoint consumed input",
+    )?;
+    check_equal(
+        checkpoint.io().output(),
+        &[0x6b],
+        "checkpoint committed output",
+    )?;
+    check_equal(
+        &checkpoint.io().termination(),
+        &None,
+        "checkpoint live termination",
+    )?;
+    check_equal(
+        &checkpoint.profile().id(),
+        &historical_profile().id(),
+        "checkpoint profile identity",
+    )?;
+    check_equal(
+        &checkpoint.registers(),
+        &machine.registers(),
+        "checkpoint registers",
+    )
+}
+
+fn restore_and_halt(
+    checkpoint: ProfileMachineState,
+    machine: &ProfileMachine,
+) -> TestResult<ProfileMachine> {
+    let mut restored = ProfileMachine::from_snapshot(checkpoint);
+    check_equal(
+        &restored.input_consumed(),
+        &machine.input_consumed(),
+        "restored input cursor",
+    )?;
+    check_equal(restored.output(), machine.output(), "restored output")?;
+    check_equal(
+        &restored.registers(),
+        &machine.registers(),
+        "restored registers",
+    )?;
+    check_equal(
+        &normalize_result(restored.run(1))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        "restored halt continuation",
+    )?;
+    Ok(restored)
+}
+
+#[test]
+fn checkpoint_rejects_input_cursor_beyond_stream() -> TestResult {
+    let observed = ProfileMachineIoState::new(vec![0x11], 2, Vec::new(), None);
+    check_equal(
+        &observed.map(|_state| ()),
+        &Err(ProfileMachineError::InputCursorOutOfRange {
+            input_len: 1,
+            observed: 2,
+        }),
+        "checkpoint input cursor rejection",
+    )
+}
+
+#[test]
+fn checkpoint_roundtrip_preserves_complete_execution_state() -> TestResult {
+    let input = vec![0x6b];
+    let mut machine = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        IO_ROUNDTRIP,
+        input.clone(),
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(2))?,
+        &RunOutcome::BudgetExhausted { steps: 2 },
+        "checkpoint pre-run budget",
+    )?;
+    let checkpoint = machine.snapshot_state();
+    check_live_checkpoint(&checkpoint, &machine, &input)?;
+    let restored = restore_and_halt(checkpoint, &machine)?;
+
+    let terminated = restored.snapshot_state();
+    check_equal(
+        &terminated.io().termination(),
+        &Some(Termination::HaltInstruction),
+        "terminated checkpoint reason",
+    )?;
+    let mut restored_terminated = ProfileMachine::from_snapshot(terminated);
+    check_equal(
+        &normalize_result(restored_terminated.run(8))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 0,
+        },
+        "terminated checkpoint remains stable",
+    )
 }
 
 #[test]
