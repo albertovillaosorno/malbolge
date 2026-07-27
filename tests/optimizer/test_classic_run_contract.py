@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from accelerator.classic_run import ClassicRunRequest
 from accelerator.classic_run import MEMORY_WORDS
+from accelerator.classic_run import validate_classic_run_requests
 from accelerator.classic_step import StepTermination
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
 
@@ -61,6 +62,29 @@ def test_resident_request_rejects_negative_memory() -> None:
     memory[0] = -1
     request = replace(_base_request(), memory=tuple(memory))
     assert MEMORY_WORD_ERROR in _invalid(request.validated)
+
+
+def test_batch_validation_preserves_shared_memory_identity() -> None:
+    """Shared immutable memory is admitted without changing request identity."""
+    first = _base_request()
+    second = replace(first, accumulator=1)
+    requests = (first, second)
+    assert first.memory is second.memory
+    assert validate_classic_run_requests(requests) is requests
+
+
+def test_batch_validation_rejects_shared_invalid_memory() -> None:
+    """Aliased memory still fails closed when the shared image is invalid."""
+    memory = list(ZERO_MEMORY)
+    memory[-1] = INVALID_WORD
+    shared = tuple(memory)
+    requests = (
+        replace(_base_request(), memory=shared),
+        replace(_base_request(), accumulator=1, memory=shared),
+    )
+    assert MEMORY_WORD_ERROR in _invalid(
+        lambda: validate_classic_run_requests(requests)
+    )
 
 
 def test_resident_request_rejects_invalid_io_and_cursor() -> None:

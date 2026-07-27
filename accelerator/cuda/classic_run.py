@@ -19,6 +19,7 @@ from accelerator.classic_run import MEMORY_WORDS
 from accelerator.classic_run import RunError
 from accelerator.classic_run import RunStatus
 from accelerator.classic_run import STATE_WORDS
+from accelerator.classic_run import validate_classic_run_requests
 from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.classic_step import XLAT2
@@ -434,7 +435,7 @@ class CudaClassicRunAdapter:
             raise AcceleratorExecutionError(message)
         if not requests:
             return ()
-        validated = tuple(request.validated() for request in requests)
+        validated = validate_classic_run_requests(tuple(requests))
         plan = self._plan_validated(validated)
         results: list[ClassicRunResult] = []
         for chunk in plan.chunks:
@@ -463,7 +464,7 @@ class CudaClassicRunAdapter:
             raise AcceleratorExecutionError(message)
         phase = _PhaseCounter()
         plan_start = perf_counter_ns()
-        validated = tuple(request.validated() for request in requests)
+        validated = validate_classic_run_requests(tuple(requests))
         plan = self._plan_validated(validated) if validated else None
         validation_plan_ns = perf_counter_ns() - plan_start
         if plan is None:
@@ -504,7 +505,7 @@ class CudaClassicRunAdapter:
         if self._closed:
             message = "CUDA classic-run adapter is closed"
             raise AcceleratorExecutionError(message)
-        validated = tuple(request.validated() for request in requests)
+        validated = validate_classic_run_requests(tuple(requests))
         return self._plan_validated(validated)
 
     def _plan_validated(
@@ -676,13 +677,23 @@ def _encode_variable_state(
     return states, inputs, outputs
 
 
+def _build_memory_owner(
+    requests: tuple[ClassicRunRequest, ...],
+) -> array[int]:
+    first = requests[0].memory
+    if all(request.memory is first for request in requests):
+        return array("I", first) * len(requests)
+    memories = array("I")
+    for request in requests:
+        memories.extend(request.memory)
+    return memories
+
+
 def _build_host_batch(
     requests: tuple[ClassicRunRequest, ...],
 ) -> _HostBatch:
     states, inputs, outputs = _encode_variable_state(requests)
-    memories = array("I")
-    for request in requests:
-        memories.extend(request.memory)
+    memories = _build_memory_owner(requests)
     if not inputs:
         inputs.append(0)
     if not outputs:

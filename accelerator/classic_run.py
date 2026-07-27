@@ -54,37 +54,32 @@ class ClassicRunRequest:
         Returns:
             The unchanged request after validation succeeds.
 
-        Raises:
-            InvalidPrimitiveBatchError: If any state invariant is invalid.
-
         """
-        _check_word(self.accumulator, "accumulator")
-        _check_word(self.code_pointer, "code pointer")
-        _check_word(self.data_pointer, "data pointer")
-        _check_u32(self.step_budget, "step budget")
-        _validate_termination(self.termination)
-        if len(self.memory) != MEMORY_WORDS:
-            message = (
-                f"resident classic memory requires {MEMORY_WORDS} words, "
-                f"got {len(self.memory)}"
-            )
-            raise InvalidPrimitiveBatchError(message)
-        _validate_words(self.memory, "memory value")
-        _validate_bytes(self.input_bytes, "input")
-        _validate_bytes(self.output_bytes, "output")
-        if not 0 <= self.input_consumed <= len(self.input_bytes):
-            message = (
-                "input consumed exceeds resident input length: "
-                f"{self.input_consumed} > {len(self.input_bytes)}"
-            )
-            raise InvalidPrimitiveBatchError(message)
-        _check_u32(len(self.input_bytes), "input length")
-        _check_u32(len(self.output_bytes), "output length")
-        _check_u32(
-            len(self.output_bytes) + self.step_budget,
-            "maximum output capacity",
-        )
+        _validate_request_metadata(self)
+        _validate_memory(self.memory)
         return self
+
+
+def validate_classic_run_requests(
+    requests: tuple[ClassicRunRequest, ...],
+) -> tuple[ClassicRunRequest, ...]:
+    """Validate one batch while scanning shared immutable memory only once.
+
+    Returns:
+        The unchanged request tuple after complete validation.
+
+    """
+    validated_memories: dict[int, tuple[int, ...]] = {}
+    for request in requests:
+        _validate_request_metadata(request)
+        memory = request.memory
+        identity = id(memory)
+        known = validated_memories.get(identity)
+        if known is memory:
+            continue
+        _validate_memory(memory)
+        validated_memories[identity] = memory
+    return requests
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +98,38 @@ class ClassicRunResult:
     status: RunStatus
     steps: int
     termination: StepTermination
+
+
+def _validate_memory(memory: tuple[int, ...]) -> None:
+    if len(memory) != MEMORY_WORDS:
+        message = (
+            f"resident classic memory requires {MEMORY_WORDS} words, "
+            f"got {len(memory)}"
+        )
+        raise InvalidPrimitiveBatchError(message)
+    _validate_words(memory, "memory value")
+
+
+def _validate_request_metadata(request: ClassicRunRequest) -> None:
+    _check_word(request.accumulator, "accumulator")
+    _check_word(request.code_pointer, "code pointer")
+    _check_word(request.data_pointer, "data pointer")
+    _check_u32(request.step_budget, "step budget")
+    _validate_termination(request.termination)
+    _validate_bytes(request.input_bytes, "input")
+    _validate_bytes(request.output_bytes, "output")
+    if not 0 <= request.input_consumed <= len(request.input_bytes):
+        message = (
+            "input consumed exceeds resident input length: "
+            f"{request.input_consumed} > {len(request.input_bytes)}"
+        )
+        raise InvalidPrimitiveBatchError(message)
+    _check_u32(len(request.input_bytes), "input length")
+    _check_u32(len(request.output_bytes), "output length")
+    _check_u32(
+        len(request.output_bytes) + request.step_budget,
+        "maximum output capacity",
+    )
 
 
 def _check_u32(value: int, label: str) -> None:
