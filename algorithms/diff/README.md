@@ -21,15 +21,17 @@ algorithms/diff/
 |-- probe_exec.py     # bounded no-shell portable probe programs
 |-- behavior_programs.py # source/oracle probe authoring and observation
 |-- gate.py           # conjunctive lineage + behavior admission
-|-- source_binding.py # threshold-bound reconstruction material
+|-- source_binding.py # threshold-bound reconstruction key material
+|-- payload.py        # RFC 8439 authenticated payload primitive
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
 
 Exact authoring, generic identity primitives, tree-level structural/anchor
 admission, behavior-evidence semantics, the portable process-probe executor, and
-the threshold source-bound key-unlock primitive are implemented. Broader DOOM
-probes, target-payload protection/recovery, and Rust emission remain active work
+the threshold source-bound key-unlock primitive and RFC 8439 payload crypto are
+implemented. Broader DOOM probes, protected-plan integration, and Rust emission
+remain active work
 under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
@@ -188,6 +190,13 @@ commitment rejects malformed or incorrectly reconstructed keys. Selected anchors
 are sampled by content digest and round-robin across files rather than by leading
 file offset, so insertions can move surviving windows without changing their
 binding identity.
+
+`payload.py` now provides the isolated RFC 8439 ChaCha20-Poly1305 primitive that
+will protect the eventual literal stream. Its Python Poly1305 implementation uses
+arbitrary-precision arithmetic and is intentionally authoring/test-only; the future
+generated Rust runtime must use a constant-time fixed-limb implementation. The
+primitive is locked to the RFC Section 2.8.2 AEAD vector and was independently
+cross-checked byte-for-byte against Node crypto during development.
 
 This is deliberately **not** the payload format yet. Polynomial coefficients are
 derived deterministically from the secret so repeated generation is byte-stable;

@@ -82,7 +82,10 @@ format.
   covered by RFC/synthetic negative tests. Deterministic coefficient derivation is
   explicitly computational rather than information-theoretic and still requires
   independent cryptographic review.
-- No authenticated source-bound payload format or Rust emitter exists yet.
+- RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD vector;
+  protected-plan framing/key integration and the constant-time Rust runtime remain
+  unfinished.
+- No emitted source-bound payload format or Rust emitter exists yet.
 
 ## Acceptance
 

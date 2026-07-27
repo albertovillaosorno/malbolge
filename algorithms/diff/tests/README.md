@@ -12,5 +12,5 @@ rejection, bounded no-shell process execution, source-mirror isolation,
 source/oracle-authored bug transcript classification, HKDF-SHA-256 vectors,
 T-of-N source-bound key recovery, below-threshold/no-source rejection, tamper
 rejection, insufficient-file-distribution rejection, and offset-shifted anchor
-recovery. Payload encryption and Rust
-emission remain unfinished.
+recovery, plus the RFC 8439 ChaCha20-Poly1305 AEAD vector and ciphertext/tag/AAD
+tamper rejection. Protected-plan integration and Rust emission remain unfinished.

@@ -6,8 +6,9 @@ Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
 adapter, generic behavior-evidence semantics, a portable bounded process-probe
 executor, the first DOOM identity behavior program, and threshold source-bound key
-unlock are implemented. Broader DOOM compatibility/bug probes, authenticated
-target-payload recovery, and Rust emission remain unfinished.
+unlock and the isolated RFC 8439 ChaCha20-Poly1305 payload primitive are
+implemented. Broader DOOM compatibility/bug probes, protected-plan integration,
+and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -239,6 +240,12 @@ Repository-owned synthetic tests cover the RFC 5869 SHA-256 vector, every exact
 T-of-N combination in the fixture, T-1 failure, empty/unrelated source rejection,
 metadata tampering, deterministic generation, multi-file distribution, and source
 insertions that shift anchor offsets.
+
+The authenticated-encryption primitive itself is now implemented separately using
+RFC 8439 ChaCha20-Poly1305. Its Section 2.8.2 test vector matches exactly, including
+ciphertext and Poly1305 tag; a development cross-check against Node crypto produced
+the same bytes. The Python implementation is a deterministic authoring/reference
+implementation rather than the eventual constant-time Rust runtime.
 
 This does **not** yet make target literals distributable. Shamir coefficients are
 derived deterministically from the high-entropy secret to preserve byte-identical
