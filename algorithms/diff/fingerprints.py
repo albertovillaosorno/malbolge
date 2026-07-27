@@ -1,3 +1,3 @@
 # Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier: MIT
-"""Interoperability implementation package."""
+"""Stable structural fingerprint and distributed-anchor scaffold."""

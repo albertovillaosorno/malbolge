@@ -89,5 +89,5 @@ Executable evidence:
 - `tests/test_research_mirror.py` covers the current repository plus
   documentation-only, executable-only, empty-mirror, and product-algorithm
   exception boundaries;
-- product-owned `interop/algorithms/` is deliberately outside both research
-  roots and is not forced into an academic mirror.
+- the explicit non-research suites `algorithms/diff/` and `algorithms/doom/`
+  share the executable algorithms root but are not forced into academic mirrors.

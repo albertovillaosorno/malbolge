@@ -173,9 +173,11 @@ model, experiment design, evidence, limitations, and conclusion. The executable
 side contains the implementation, verifier boundary, experiment manifest, tests,
 and a Git-ignored local `out/` directory.
 
-Ordinary engineering algorithms are not forced into fake papers. For example,
-DOOM amalgamation and modernization remain under `interop/algorithms/` because
-they are interoperability engineering, not research claims.
+Ordinary engineering algorithms are not forced into fake papers. Reusable
+generator infrastructure and application suites may share `algorithms/` with
+research implementations while remaining explicitly outside the academic mirror.
+For example, `algorithms/diff/` is generic generation infrastructure and
+`algorithms/doom/` is the DOOM application suite.
 
 Research comparison uses scalable parametric challenge families and
 multi-objective evidence instead of one magic score. The intended outputs are
@@ -227,19 +229,19 @@ ignored `doom/` input directory. Planned tooling then produces:
 user DOOM source
       |
       v
-amalgamate.rs
+quality recipe + source-bound diff
       |
       v
-interop/algorithms/out/doom_amalgamated.c
+algorithms/doom/quality/out/doom_fixed/
       |
       v
-quality.rs
+optional amalgamation recipe + source-bound diff
       |
       v
-interop/algorithms/out/doom_fixed.c
+algorithms/doom/amalgamate/out/doom_amalgamated.c
       |
       v
-tools/tidy + c2malbolge
+c2malbolge
       |
       v
 doom.malbolge

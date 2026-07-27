@@ -1,5 +1,11 @@
 # Quality Comparison Report
 
+> **Historical development snapshot.** The checked-in `metrics.json` and
+> `report.tex` predate the current zero-finding manual oracle and the new
+> source-bound generation architecture. They remain progress evidence only. Final
+> comparison evidence will be regenerated after `quality/main.rs` materializes
+> accepted `out/doom_fixed/` from the lawful root source.
+
 `generate.py` creates the compact, reproducible before/after report for the
 DOOM quality experiment.
 
@@ -29,7 +35,7 @@ local tree.
 Run from the repository root:
 
 ```text
-python interop/algorithms/quality/comparison/generate.py
+python algorithms/doom/quality/comparison/generate.py
 ```
 
 Optional `--before`, `--after`, `--tex`, and `--json` arguments make the input

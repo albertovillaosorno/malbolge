@@ -1,0 +1,75 @@
+---
+id: "source-bound-diff-generator"
+status: "active"
+lane: "11"
+area: "tools"
+task: "TODO - Source-bound diff generator"
+contract: "docs/technical/tooling/source-bound-diff-generator.md"
+depends_on:
+  - "jig-repository-governance"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/legal/adr/legal-research-and-repository-boundary.md"
+scope:
+  - "algorithms/diff/"
+  - "algorithms/doom/generator/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Source-bound diff generator
+
+## Objective
+
+Implement `algorithms/diff/` as a generic deterministic generator that learns a
+source-tree transformation from a local source/oracle pair and emits a
+distributable transform whose target material remains bound to sufficiently
+compatible source input.
+
+The generic engine must remain agnostic to DOOM, C, Malbolge, and licensing
+policy. Thin product recipes select paths, thresholds, domain probes, and output
+format.
+
+**Current implementation.**
+
+- The public `DiffRecipe` and fail-closed `write_algorithm()` scaffold exist.
+- `algorithms/doom/generator/quality.py` records the first consumer recipe.
+- The planned admission model combines structural similarity, stable anchors,
+  behavior probes, and threshold source binding.
+- The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds; those
+  values are not frozen until synthetic calibration evidence exists.
+- No source-bound payload format, matching engine, cryptographic construction, or
+  Rust emitter is implemented yet.
+
+## Acceptance
+
+- Exact baseline source plus emitted transform reproduces the local oracle
+  byte-for-byte.
+- Comments and formatting may be ignored for source identity without being
+  silently discarded from preserved output/provenance.
+- Content/token anchors tolerate non-semantic insertions better than absolute byte
+  offsets.
+- Identity, compatibility, and bug probes have separate semantics.
+- An upstream source that already satisfies a bug-fix postcondition can remain
+  compatible without reproducing the original bug.
+- Generated transform without enough admitted source cannot materialize the
+  target.
+- Unrelated source and behavior-only clones fail closed.
+- Source-binding failure occurs before accepted target files are published.
+- Generic tests contain no third-party DOOM source.
+- Generation and exact-baseline materialization are deterministic and
+  byte-identical across repeated runs.
+- Threshold values are justified by calibration evidence and documented as
+  technical policy rather than legal conclusions.
+- Jig repository validation passes without weakening project governance.
+
+## Evidence
+
+- Expected durable artifact surface: `algorithms/diff/`,
+  `docs/technical/tooling/source-bound-diff-generator.md`, and synthetic tests.
+- First integration consumer: `algorithms/doom/generator/quality.py`.
+- Future second consumer: the DOOM amalgamation recipe that emits the canonical
+  single-file C transformation.
+- Required evidence: exact reconstruction hashes, threshold-boundary fixtures,
+  wrong/no-source rejection, behavior-probe fixtures, deterministic generation,
+  source-binding negative tests, and `jig validate --root .`.

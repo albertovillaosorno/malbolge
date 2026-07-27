@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DOCUMENT_ROOT = ROOT / "docs" / "research" / "algorithms"
 EXECUTABLE_ROOT = ROOT / "algorithms"
 GIT = "git"
+NON_RESEARCH_ALGORITHM_IDS = frozenset({"diff", "doom"})
 
 
 class ResearchMirrorError(ValueError):
@@ -70,10 +71,20 @@ def validate_id_sets(
     return tuple(sorted(document_ids))
 
 
+def executable_research_ids(executable_ids: frozenset[str]) -> frozenset[str]:
+    """Remove explicitly classified non-research algorithm-suite IDs.
+
+    Returns:
+        Executable IDs that remain subject to the academic mirror contract.
+
+    """
+    return executable_ids - NON_RESEARCH_ALGORITHM_IDS
+
+
 def _entries() -> tuple[MirrorEntry, ...]:
     research_ids = validate_id_sets(
         _directory_ids(DOCUMENT_ROOT),
-        _directory_ids(EXECUTABLE_ROOT),
+        executable_research_ids(_directory_ids(EXECUTABLE_ROOT)),
     )
     return tuple(
         MirrorEntry(

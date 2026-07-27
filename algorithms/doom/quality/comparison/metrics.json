@@ -12,7 +12,7 @@
       "source_bytes": 1497009,
       "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f"
     },
-    "path": "interop/algorithms/quality/in/doom",
+    "path": "algorithms/doom/quality/in/doom",
     "validation": {
       "by_gate": {
         "clang-format": 1,
@@ -79,6 +79,6 @@
       "unique_findings": 143662
     }
   },
-  "generator": "interop/algorithms/quality/comparison/generate.py",
+  "generator": "algorithms/doom/quality/comparison/generate.py",
   "llvm_version": "22.1.8"
 }

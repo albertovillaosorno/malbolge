@@ -2,98 +2,156 @@
 
 ## Status
 
-Active implementation
+Active implementation. The manual oracle is accepted as generator input; the
+source-bound generator and emitted transform remain incomplete.
 
 ## Purpose
 
-Normalize a user-supplied DOOM source tree before amalgamation. The quality pass
-owns deterministic AST-level rewrites needed to satisfy the supported C profile,
-repair demonstrable defects, modernize explicit platform boundaries, and produce
-a stable multi-translation-unit tree for later aggregation.
+Normalize a lawful user-supplied DOOM source tree before optional amalgamation.
+The quality stage owns the target behavior, guest/runtime boundary, deterministic
+C profile, and validation postconditions. Generic source-tree matching and
+source-bound reconstruction are delegated to `algorithms/diff/`.
 
 ## Scope
 
-This document governs the following declared TODO scope:
-
 - `doom/`
-- `interop/algorithms/quality/`
-- `interop/adapters/`
-- `interop/algorithms/quality/out/doom_fixed/`
+- `algorithms/diff/`
+- `algorithms/doom/generator/`
+- `algorithms/doom/quality/`
+- `algorithms/doom/adapters/`
+- `algorithms/doom/quality/out/doom_fixed/`
 - `tools/tidy/`
 
 ## Current Behavior
 
-### Proposed Model
+### Generation Model
 
-`quality/main.rs` ultimately reads the admitted user-owned source tree and emits a generated
-normalized tree under `interop/algorithms/quality/out/doom_fixed/`. Rewrites are driven
-by Clang/AST semantics and the complete `tools/tidy` contract. Regex or other
-textual rewriting is admitted only when the transformation is provably textual.
+The repository intentionally separates recipe, generic generator, domain policy,
+and emitted transform.
 
-The pass may modernize video, input, timing, audio, game-data access, resolution,
-frame pacing, and obvious source defects through explicit adapters while keeping
-intentional behavior changes separately reviewable from semantics-preserving
-normalization.
+```text
+root doom/ -----------------------------+
+                                        |
+local quality/in/doom oracle --------+  |
+                                     |  |
+                                     v  v
+                         generator/quality.py
+                                  + doom.py
+                                     |
+                                     v
+                              algorithms/diff
+                                     |
+                                     v
+                            quality/main.rs
+                                     |
+                                     v
+                         quality/out/doom_fixed/
+```
 
-### Implementation Status
+`quality.py` is a thin recipe. It declares paths, a profile identity, the DOOM
+domain module, and provisional admission thresholds. It must not grow a parallel
+diff implementation.
 
-The quality boundary and local development/evidence workflow are active, but the
-reusable AST transformation engine is not complete. Repository-root `doom/` is
-the untouched local baseline. The ignored `interop/algorithms/quality/in/doom/`
-tree is currently a manually modernized development oracle used to discover
-transformations that must later be encoded in `quality/main.rs` and reproduced
-into `out/doom_fixed/`.
+`doom.py` is the allowed home for DOOM-specific source lineage, compatibility,
+behavior, and bug probes that cannot remain declarative.
 
-`interop/algorithms/quality/comparison/generate.py` measures both local corpora
-with pinned LLVM 22.1.8 quality gates and emits aggregate versioned evidence. It
-records source and asset SHA-256 identities and re-measures each corpus after
-long-running validation, failing closed rather than publishing mixed-revision
-evidence when a live tree changes. The current coherent snapshot reduces unique
-quality findings from 143,662 to 38,462. This is development evidence only; the
-normalized tree is not yet accepted by the full guest-C profile.
+`algorithms/diff/` remains generic and is governed by
+`docs/technical/tooling/source-bound-diff-generator.md`.
+
+`quality/main.rs` is ultimately generated output from the authoring step. It is
+then versioned as the distributable transformation logic. The local oracle is not
+required to run it.
+
+### Current Oracle State
+
+Repository-root `doom/` is the untouched local baseline. The ignored
+`algorithms/doom/quality/in/doom/` tree is the manually modernized oracle.
+
+The current oracle contains 65 C translation units and passes:
+
+- the real guest quality validator;
+- 390/390 strict syntax checks across Windows, macOS, and Linux on x86-64 and
+  AArch64;
+- the runtime/manual-play evidence recorded by the quality README/changelog.
+
+This means the oracle is ready to drive generator development. It does **not**
+mean the quality stage is complete: generated `out/doom_fixed/` must still
+reproduce and validate that oracle.
+
+The checked-in comparison report is an older progress snapshot that recorded
+143,662 unique findings in the baseline and 38,462 in an earlier oracle state. It
+must be regenerated only after accepted generated output exists.
+
+### Source Admission
+
+Exact whole-tree hashing is insufficient as the only admission mechanism because
+harmless source changes would make the transformation needlessly fragile. The
+DOOM recipe therefore intends to combine:
+
+- canonical structural similarity;
+- distributed stable source anchors;
+- identity and compatibility behavior probes;
+- conditional bug probes;
+- threshold source binding for target-only transformation material.
+
+The initial recipe records exploratory thresholds of 0.50 structural similarity,
+0.66 anchor coverage, and 0.80 behavior similarity. These are technical starting
+points for calibration, not legal thresholds.
+
+Comments and formatting may be ignored when measuring lineage identity, but
+required legal/provenance comments remain part of output correctness.
+
+A source revision that already fixes a known original bug may remain compatible
+when the generated postcondition is already true. Bug presence is not an identity
+requirement.
 
 ## Invariants
 
-- The input source tree under ignored `doom/` is never modified.
-- Every required manual repair is converted into deterministic reusable logic or
-  remains an explicit blocker.
+- The ignored root source is never modified.
+- The ignored manual oracle is authoring evidence, not a runtime dependency.
+- Possessing generated `main.rs` without enough admitted source cannot
+  materialize the normalized source tree.
+- The exact authoring baseline materializes byte-identically to the oracle.
+- Compatible later variants preserve legitimate upstream differences only when
+  all transformation postconditions and validation gates pass.
 - Blanket linter suppression is not an accepted modernization technique.
 - Required upstream legal/provenance material is preserved.
-- Native differential evidence follows every behavior-affecting rewrite.
-- Amalgamation, when requested, consumes only an accepted normalized multi-file
-  tree. It remains optional rather than becoming a prerequisite for multi-file
-  guest-C validation or compilation.
+- Platform effects remain behind explicit guest/host capabilities.
+- Behavior-affecting fixes retain explicit differential/runtime evidence.
+- Amalgamation consumes only an accepted generated multi-file tree.
 
 ## Failure Behavior
 
-Unsupported language constructs, unresolved platform assumptions, failed
-behavior comparisons, or missing legal/provenance requirements fail explicitly.
-The pass leaves prior accepted generated stages inspectable rather than silently
-publishing a partially transformed final artifact.
+Unsupported source lineage, insufficient anchors, failed mandatory probes,
+failed source binding, unresolved platform assumptions, malformed transform
+material, provenance loss, or failed postconditions reject materialization.
+Partially written output is not published as accepted quality output.
 
 ## Verification
 
-- Deterministic source manifests identify every input/output translation unit.
-- `tools/tidy` reports reach zero accepted diagnostics without blanket ignores.
-- Differential native fixtures distinguish semantics-preserving rewrites from
-  deliberate bug fixes or platform modernization.
-- `interop/algorithms/quality/comparison/{report.tex,metrics.json}` retains a
-  compact aggregate progress snapshot with exact source/asset identities; its
-  generator refuses mixed-revision live-corpus measurements.
-- Adapter tests cover video, input, timing, audio, and game-data boundaries used
-  by the normalized source tree.
+Acceptance requires:
+
+- exact baseline reconstruction against the manual oracle;
+- deterministic repeated generator output;
+- deterministic repeated materialization;
+- the real guest validator at zero findings;
+- the six-target 64-bit strict compile matrix;
+- source-binding wrong/no-source rejection;
+- identity/compatibility/bug-probe fixtures;
+- native/runtime differential evidence for behavior-affecting fixes;
+- adapter/capability tests;
+- legal/provenance preservation checks;
+- `jig validate --root .`.
+
+Only after generated output is accepted should the compact comparison report be
+refreshed to describe the baseline versus generated tree.
 
 ## References
 
+- [Source-Bound Diff Generator](../tooling/source-bound-diff-generator.md)
 - [Deterministic C Surface And Clang
   Tooling](../adr/deterministic-c-surface-and-clang-tooling.md)
 - [Compiler Pipeline And Guest
   Runtime](../adr/compiler-pipeline-and-guest-runtime.md)
 - [Legal Research And Repository
   Boundary](../../legal/adr/legal-research-and-repository-boundary.md)
-
-### Governing ADR Paths
-
-- `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
-- `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
-- `docs/legal/adr/legal-research-and-repository-boundary.md`

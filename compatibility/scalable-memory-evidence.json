@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "workload_proxy": {
-    "artifact": "interop/algorithms/quality/comparison/metrics.json",
+    "artifact": "algorithms/doom/quality/comparison/metrics.json",
     "corpus": "after",
     "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f",
     "source_bytes": 1497009,

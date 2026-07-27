@@ -7,6 +7,7 @@ task: "TODO - User-supplied DOOM source interoperability generator"
 contract: "docs/technical/interoperability/doom-amalgamation.md"
 depends_on:
   - "doom-quality-and-modernization-pass"
+  - "source-bound-diff-generator"
   - "clang-c-frontend-integration"
   - "reuse-shar-legal-and-interoperability-corpus"
   - "documentation-readiness-and-implementation-gate"
@@ -15,9 +16,11 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
-  - "interop/algorithms/amalgamate/main.rs"
-  - "interop/algorithms/quality/out/doom_fixed/"
-  - "interop/algorithms/amalgamate/out/doom_amalgamated.c"
+  - "algorithms/diff/"
+  - "algorithms/doom/generator/"
+  - "algorithms/doom/amalgamate/main.rs"
+  - "algorithms/doom/quality/out/doom_fixed/"
+  - "algorithms/doom/amalgamate/out/doom_amalgamated.c"
   - "tests/applications/doom/out/doom.c"
 validation:
   - "jig validate --root ."
@@ -26,34 +29,51 @@ validation:
 
 ## Objective
 
-Consume the accepted normalized DOOM source tree produced by `quality/main.rs` and use
-`interop/algorithms/amalgamate/main.rs` to emit one deterministic
-`interop/algorithms/amalgamate/out/doom_amalgamated.c`. Resolve translation-unit boundaries,
-internal-linkage collisions, preprocessing environments, includes, declarations,
-and provenance through pinned Clang before admitting the single-file artifact.
+After quality output is accepted, use `algorithms/diff/` a second time to learn a
+source-bound deterministic amalgamation transform from the normalized multi-file
+DOOM tree and a local accepted single-file oracle. A thin DOOM recipe will emit
+`algorithms/doom/amalgamate/main.rs`; that transform will materialize one
+canonical `algorithms/doom/amalgamate/out/doom_amalgamated.c`.
+
+The generic diff engine does not replace semantic amalgamation validation. DOOM
+and C-specific policy must still use pinned Clang evidence to resolve
+translation-unit boundaries, internal linkage, preprocessing environments,
+includes, declarations, and required provenance.
+
+This stage is the planned second consumer of the source-bound diff generator. It
+is also the source-level precursor to the later goal of compiling one portable
+DOOM C artifact through the Malbolge pipeline.
 
 ## Acceptance
 
-- `amalgamate/main.rs` consumes only the normalized generated tree and never rewrites
-  the user-owned source tree directly.
+- Amalgamation consumes only accepted generated quality output and never rewrites
+  the user-owned root source directly.
+- The local single-file oracle is authoring evidence only and is not required by
+  the emitted transform.
+- Exact normalized baseline plus generated transform reproduces the accepted
+  single-file oracle byte-for-byte.
 - Translation-unit semantics, internal linkage, macro environments, declaration
   ordering, and required provenance survive deterministic aggregation.
 - Plain textual concatenation and source-specific hand patches are not accepted
-  implementations of amalgamation.
-- The normalized multi-file build and the amalgamated native build are compared
-  differentially before admission.
+  implementations.
+- The generated transform remains source-bound; transform bytes alone cannot
+  materialize the single-file target.
+- The normalized multi-file native build and the generated single-file native
+  build are compared differentially before admission.
 - The accepted `doom_amalgamated.c` is copied byte-for-byte to
   `tests/applications/doom/out/doom.c` for the end-to-end pipeline fixture.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Repeated recipe generation and materialization are deterministic.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/`.
 
 ## Evidence
 
-- Expected durable artifact surface: `interop/algorithms/amalgamate/main.rs`,
-  `interop/algorithms/quality/out/doom_fixed/`,
-  `interop/algorithms/amalgamate/out/doom_amalgamated.c`,
-  `tests/applications/doom/out/doom.c`.
-- Required evidence: normalized/amalgamated manifests, deterministic hashes,
-  native differential traces, and provenance mapping.
+- Expected durable artifact surface: `algorithms/diff/`, the DOOM generator
+  recipe, `algorithms/doom/amalgamate/main.rs`, and relevant contracts/tests.
+- Local ignored evidence: accepted `quality/out/doom_fixed/`, the single-file
+  oracle, `amalgamate/out/doom_amalgamated.c`, and application runtime outputs.
+- Required evidence: exact reconstruction hashes, normalized/amalgamated
+  manifests, Clang semantic/provenance mapping, native differential traces,
+  source-binding rejection tests, and Jig.
 - Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
-  `clang-c-frontend-integration`, `reuse-shar-legal-and-interoperability-corpus`.
+  `source-bound-diff-generator`, `clang-c-frontend-integration`, and the
+  legal/provenance corpus.

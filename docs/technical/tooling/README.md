@@ -18,3 +18,4 @@ semantics implemented by the VM/compiler.
 
 - `annotated-malbolge-source-format.md`
 - `malbolge-decompiler.md`
+- `source-bound-diff-generator.md`

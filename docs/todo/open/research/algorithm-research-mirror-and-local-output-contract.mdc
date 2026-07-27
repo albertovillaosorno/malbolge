@@ -46,7 +46,7 @@ require engineering evidence but not artificial academic capsules.
   an absent generated `out/` directory is still checked against real Git policy.
 - `tests/test_research_mirror.py` locks the current eight IDs and deliberately
   proves documentation-only/executable-only/empty failures plus the explicit
-  exclusion of product-owned `interop/algorithms/`.
+  exclusion of the non-research `diff` and `doom` suites.
 - The academic record remains responsible for question/hypothesis/evidence and
   the executable mirror for implementations/config/tests. Negative/null results
   remain governed by the repository methodology committed under the prerequisite

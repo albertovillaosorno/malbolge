@@ -61,10 +61,18 @@ def test_empty_research_mirror_fails_closed() -> None:
     _expect_id_failure(frozenset(), frozenset())
 
 
-def test_product_algorithm_surface_is_outside_research_roots() -> None:
-    """Keep product interoperability algorithms outside the research mirror."""
-    assert validator.DOCUMENT_ROOT.name == ALGORITHMS_DIRECTORY
-    assert validator.EXECUTABLE_ROOT == validator.ROOT / ALGORITHMS_DIRECTORY
-    assert (
-        validator.EXECUTABLE_ROOT != validator.ROOT / "interop" / "algorithms"
+def test_non_research_algorithm_suites_are_explicitly_excluded() -> None:
+    """Keep reusable/product suites in algorithms without academic mirroring."""
+    executable_ids = frozenset((*EXPECTED_IDS, "diff", "doom"))
+    assert validator.executable_research_ids(executable_ids) == frozenset(
+        EXPECTED_IDS
     )
+    assert frozenset({"diff", "doom"}) == validator.NON_RESEARCH_ALGORITHM_IDS
+
+
+def test_unknown_executable_algorithm_still_fails_closed() -> None:
+    """Do not silently classify unknown algorithm directories as product."""
+    executable_ids = validator.executable_research_ids(
+        frozenset((*EXPECTED_IDS, "diff", "doom", "mystery"))
+    )
+    _expect_id_failure(frozenset(EXPECTED_IDS), executable_ids)

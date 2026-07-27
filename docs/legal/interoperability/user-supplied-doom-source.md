@@ -47,10 +47,16 @@ The public repository does not vendor DOOM source or game data. A user may place
 their own source checkout in the Git-ignored root `doom/` directory for local
 interoperability testing.
 
-Repository-authored `interop/algorithms/amalgamate/main.rs`, `quality/main.rs`, and host
-adapters may inspect or transform that local input. Generated intermediate files
-remain under Git-ignored `out/` directories unless a later source-specific legal
-review approves another publication boundary.
+Repository-authored generator infrastructure and generated transforms such as
+`algorithms/doom/quality/main.rs` and `algorithms/doom/amalgamate/main.rs` may
+inspect or transform that local input. Generated intermediate files remain under
+Git-ignored `out/` directories unless a later source-specific legal review
+approves another publication boundary.
+
+Source similarity thresholds, behavior probes, stable anchors, and threshold
+source binding are engineering controls only. They do not establish that a
+particular input/output distribution is lawful or that a percentage has legal
+significance.
 
 The tooling must preserve provenance and required notices and must not label a
 transformed third-party source file as MIT merely because the transformation

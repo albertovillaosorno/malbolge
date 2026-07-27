@@ -970,7 +970,7 @@ def _emit_tex(path: Path, comparison: _Comparison) -> None:
         (
             "Machine-readable aggregate metrics: "
             + metrics.latex
-            + "texttt{interop/algorithms/quality/comparison/metrics.json}."
+            + "texttt{algorithms/doom/quality/comparison/metrics.json}."
         ),
         "The generator intentionally stores no per-finding ledger.",
         metrics.latex + "end{document}",

@@ -104,7 +104,7 @@ enough for the TODO heading to disappear without losing unfinished intent.
   remain with their owning responsibility and do not require artificial papers.
 - Generated experiment artifacts are local to the owning algorithm under
   `algorithms/<id>/out/`; engineering transformations use an analogous local
-  `out/`, such as `interop/algorithms/quality/out/doom_fixed/`. Every `out/` is reproducible
+  `out/`, such as `algorithms/doom/quality/out/doom_fixed/`. Every `out/` is reproducible
   and Git ignored rather than becoming an opaque evidence dump.
 - Research claims distinguish hypotheses, correctness evidence, performance
   evidence, negative/null results, and threats to validity. Primary or
@@ -864,33 +864,49 @@ command, expected behavior, and verification evidence. Documentation examples
 are versioned deliberately; normal benchmark outputs remain local under their
 owning `out/` directories.
 
+### TODO - Source-bound diff generator
+
+Implement `algorithms/diff/` as a generic deterministic generator that learns a
+source-tree transformation from a local source/oracle pair. Canonical structural
+similarity, distributed stable anchors, behavior/compatibility probes, and
+threshold source binding admit compatible lineage without reducing identity to a
+fragile whole-tree hash. The emitted transformation alone must not be sufficient
+to materialize target-only source; wrong/no-source and behavior-only clones fail
+closed before target publication. Consumer thresholds are calibrated technical
+policy, not legal rules. Generic tests use only repository-owned synthetic trees.
+The first consumer is `algorithms/doom/generator/quality.py`; the future DOOM
+amalgamation stage is the second consumer.
+
 ### TODO - DOOM quality and modernization pass
 
-Consume a user-supplied lawful DOOM source tree from the ignored root `doom/`
-and use `interop/algorithms/quality/main.rs` to produce a deterministic normalized
-source tree under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated
-`tools/tidy` diagnostic families with reusable AST transformations, replace
-unavailable legacy platform integration through explicit video, input, timing,
-audio, and game-data adapters, support scalable modern resolutions and measured
-frame-rate targets, and remove stale comments without discarding required legal
-provenance. Differential native tests follow every behavior-affecting rewrite.
-The user-owned input tree is never modified and remains external to the repo.
+Treat the ignored manually modernized
+`algorithms/doom/quality/in/doom/` tree as the accepted local oracle and use the
+thin `algorithms/doom/generator/quality.py` recipe plus `algorithms/diff/` to
+generate `algorithms/doom/quality/main.rs`. The root `doom/` tree remains the
+lawful source input and is never modified. On the exact authoring baseline,
+materialization into `algorithms/doom/quality/out/doom_fixed/` must reproduce the
+oracle byte-for-byte; compatible later variants may preserve legitimate upstream
+changes only when all postconditions and validation gates pass. The current oracle
+has 65 C translation units, passes the real validator and 390/390 six-target
+strict checks, and has runtime/manual-play evidence. Quality remains open because
+the generic diff engine and generated materialization are not implemented yet.
+Do not regenerate the stale comparison snapshot as final evidence until generated
+`out/doom_fixed/` exists.
 
 ### TODO - User-supplied DOOM source interoperability generator
 
-Use `interop/algorithms/amalgamate/main.rs` only after the quality pass has produced
-the normalized source tree. Resolve translation-unit boundaries, internal-linkage
-collisions, preprocessing environments, includes, declarations, and provenance
-through pinned Clang, then emit one deterministic
-`interop/algorithms/amalgamate/out/doom_amalgamated.c`. Differentially compare the normalized
-multi-file build with the amalgamated build before copying the accepted artifact
-byte-for-byte to `tests/applications/doom/out/doom.c`. Plain textual
-concatenation and source-specific hand patches are not accepted algorithms.
-The DOOM corpus now has a freestanding headless Windows integration smoke that
-boots Freedoom through the complete guest/host boundary and reaches live rendered
-frames plus PCM. It also passes at 1x through 4x integer internal render scale.
-Preserve this as a runtime regression target when the generic runner replaces the
-temporary harness; do not treat compile-only portability as sufficient.
+After generated quality output is accepted, reuse `algorithms/diff/` with a thin
+DOOM amalgamation recipe to generate source-bound
+`algorithms/doom/amalgamate/main.rs` from the normalized multi-file tree and a
+local accepted single-file oracle. Pinned Clang remains the semantic authority for
+translation-unit boundaries, internal-linkage collisions, preprocessing
+environments, declarations, includes, and provenance. The generated transform
+materializes one deterministic
+`algorithms/doom/amalgamate/out/doom_amalgamated.c`; the normalized multi-file and
+single-file native builds are compared differentially before the accepted artifact
+is copied byte-for-byte to `tests/applications/doom/out/doom.c`. This is the
+planned second source-bound diff consumer and the source-level handoff toward the
+later single-file C-to-Malbolge pipeline.
 
 ### TODO - Cross-platform native capability runners
 

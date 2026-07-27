@@ -1,3 +1,3 @@
 # Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier: MIT
-"""Interoperability algorithm package."""
+"""Thin DOOM recipes for generic algorithm generators."""

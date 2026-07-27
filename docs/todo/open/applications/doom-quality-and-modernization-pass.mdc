@@ -6,6 +6,7 @@ area: "applications"
 task: "TODO - DOOM quality and modernization pass"
 contract: "docs/technical/interoperability/doom-modernization.md"
 depends_on:
+  - "source-bound-diff-generator"
   - "clang-c-frontend-integration"
   - "tools-tidy-lowerability-contract"
   - "supported-libc-contract"
@@ -17,9 +18,11 @@ adr_paths:
   - "docs/legal/adr/legal-research-and-repository-boundary.md"
 scope:
   - "doom/"
-  - "interop/algorithms/quality/"
-  - "interop/adapters/"
-  - "interop/algorithms/quality/out/doom_fixed/"
+  - "algorithms/diff/"
+  - "algorithms/doom/generator/"
+  - "algorithms/doom/quality/"
+  - "algorithms/doom/adapters/"
+  - "algorithms/doom/quality/out/doom_fixed/"
   - "tools/tidy/"
 validation:
   - "jig validate --root ."
@@ -28,51 +31,71 @@ validation:
 
 ## Objective
 
-Consume the user-supplied source tree under ignored `doom/` and use
-`interop/algorithms/quality/main.rs` to produce a deterministic normalized source tree
-under `interop/algorithms/quality/out/doom_fixed/`. Repair repeated `tools/tidy`
-diagnostic families through reusable AST transformations, modernize explicit
-platform adapters, and preserve behavior and required provenance before any
-translation units are amalgamated.
+Generate `algorithms/doom/quality/main.rs` from the lawful ignored root `doom/`
+source and the ignored manually modernized oracle using the generic
+`algorithms/diff/` engine configured by
+`algorithms/doom/generator/quality.py`. The generated transform must then
+materialize a deterministic normalized tree under
+`algorithms/doom/quality/out/doom_fixed/` without requiring the local oracle.
+
+DOOM-specific behavior probes and compatibility policy stay under
+`algorithms/doom/generator/`; generic matching, source binding, reconstruction,
+and transform emission remain application-agnostic.
 
 **Current implementation.**
 
-- `interop/algorithms/quality/main.rs` owns the quality-first transformation
-  boundary; automatic AST rewrite families remain incomplete.
-- Repository-root `doom/` is the untouched local baseline. The ignored
-  `interop/algorithms/quality/in/doom/` tree is the manually modernized
-  development oracle used to discover reusable transformations.
-- `interop/algorithms/quality/comparison/generate.py` compares those corpora with
-  pinned LLVM 22.1.8 quality gates, records source and asset hashes, and fails
-  closed if either live corpus changes during a measurement.
-- The current coherent snapshot records 143,662 unique findings in the baseline
-  and 38,462 in the development oracle. This is progress evidence, not
-  acceptance: zero applicable findings and reproducible generation into
-  `out/doom_fixed/` remain required.
+- The manual oracle under `algorithms/doom/quality/in/doom/` is the accepted
+  development target for generator work.
+- The oracle currently contains 65 C translation units, passes the real guest
+  validator, and passes 390/390 strict syntax checks across x86-64/AArch64 on
+  Windows, macOS, and Linux. Runtime/manual-play evidence is recorded in the
+  quality README and changelog.
+- `algorithms/doom/generator/quality.py` now records the source/oracle/output
+  recipe and exploratory 0.50/0.66/0.80 admission values.
+- `algorithms/diff/` and the generated quality transform are scaffolded but the
+  matching/source-binding/emission engine is not implemented.
+- The checked-in comparison report still describes an older 143,662 to 38,462
+  findings snapshot. It is historical progress evidence and must not be refreshed
+  as final acceptance evidence until generated `out/doom_fixed/` exists.
 
 ## Acceptance
 
-- The user-owned input tree is never modified; all generated normalized source
-  lives under `interop/algorithms/quality/out/doom_fixed/`.
-- Repeated linter failures become reusable semantics-aware transformations; no
-  blanket suppression or source-specific hand patch remains necessary.
-- Video, input, timing, audio, game-data, resolution, and frame-rate support are
-  represented through explicit adapters and measured behavior rather than hidden
-  host substitutions.
-- Differential native tests compare admitted original behavior with each
-  behavior-affecting generated stage and record intentional fixes separately.
-- Legal/provenance comments required by upstream material survive comment cleanup.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- The user-owned root `doom/` tree is never modified.
+- The manual oracle remains local/ignored and is not required to run the generated
+  transformation.
+- For the exact baseline used to author the transform, generated
+  `out/doom_fixed/` is byte-identical to the manual oracle.
+- A compatible source variant may preserve legitimate upstream changes only when
+  all transformation postconditions and downstream gates pass.
+- Comments/formatting may be ignored for lineage admission but required
+  legal/provenance comments survive output construction.
+- Identity probes, compatibility probes, and bug probes remain separate; an
+  upstream source that already fixed a known defect is not rejected merely for
+  lacking the historical bug.
+- The generated transform alone cannot materialize the normalized source without
+  sufficient admitted source evidence.
+- Structural similarity, stable-anchor, and behavior thresholds are calibrated by
+  evidence rather than treated as legal rules.
+- Video, input, timing, audio, game-data, resolution, and frame-rate behavior
+  remain represented through explicit guest/host capabilities and measured
+  behavior rather than hidden host substitutions.
+- Generated output passes the real validator, the six-target compile matrix,
+  runtime/differential fixtures, provenance checks, and Jig governance.
+- Repeated generator and materializer runs are deterministic and byte-identical
+  on the exact baseline.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` without
+  losing unfinished intent.
 
 ## Evidence
 
-- Expected durable artifact surface: `doom/`, `interop/algorithms/quality/`,
-  `interop/adapters/`, `interop/algorithms/quality/out/doom_fixed/`, `tools/tidy/`.
-- Current comparison evidence: `interop/algorithms/quality/comparison/` contains
-  the deterministic generator, aggregate metrics, and compact LaTeX report.
-- Required evidence: deterministic source manifests, linter reports,
-  transformation provenance, native differential traces, and adapter tests.
-- Prerequisite completion evidence: `clang-c-frontend-integration`,
-  `tools-tidy-lowerability-contract`, `supported-libc-contract`,
-  `reuse-shar-legal-and-interoperability-corpus`.
+- Expected durable artifact surface: `algorithms/diff/`,
+  `algorithms/doom/generator/`, `algorithms/doom/quality/`,
+  `algorithms/doom/adapters/`, and `tools/tidy/`.
+- Local ignored evidence: root `doom/`, the manual quality oracle, generated
+  `out/doom_fixed/`, and runtime fixtures.
+- Required evidence: deterministic source manifests, exact oracle reconstruction,
+  source-binding rejection tests, linter/compiler reports, transformation
+  provenance, behavior/native differential traces, adapter tests, and Jig.
+- Prerequisite completion evidence includes `source-bound-diff-generator`,
+  `clang-c-frontend-integration`, `tools-tidy-lowerability-contract`,
+  `supported-libc-contract`, and the legal/provenance corpus.
