@@ -233,3 +233,11 @@ label = "eq:state-graph-trace-memory-delta"
 domain = "one normative classic or current-profile step across every instruction family, halt, and atomic rejection"
 mechanism = "trace-versus-complete-memory-difference"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/d.rs::classic_instruction_families_obey_two_cell_memory_delta", "algorithms/self-modification-state-graph-optimizer/tests/d.rs::current_instruction_families_obey_two_cell_memory_delta"]
+
+[[correspondence]]
+id = "state-graph-persistent-memory"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-persistent-memory"
+domain = "current-profile checkpoint root plus exact traced deltas for bounded execution"
+mechanism = "stepwise-full-materialization-and-fail-closed-before-validation"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/p.rs::current_trace_patches_reconstruct_every_checkpoint", "algorithms/self-modification-state-graph-optimizer/tests/p.rs::mismatched_before_value_fails_closed", "algorithms/self-modification-state-graph-optimizer/tests/p.rs::empty_delta_reuses_patch_depth"]

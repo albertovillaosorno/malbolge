@@ -22,3 +22,7 @@ under a forced constant digest.
 `d.rs` compares complete before/after memory for all eight instruction families
 in classic and current profiles. It proves the per-step memory delta never
 exceeds two cells and demonstrates both the two-cell and zero-cell boundaries.
+
+`p.rs` proves persistent current memory reconstruction from one complete root and
+trace deltas, verifies empty deltas do not add patch depth, and rejects a forged
+`before` value before it can enter the persistent chain.

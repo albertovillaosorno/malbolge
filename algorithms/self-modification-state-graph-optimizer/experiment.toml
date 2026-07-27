@@ -43,3 +43,10 @@ baseline = "complete-before-after-memory"
 candidate = "at-most-two-changed-cells-per-step"
 domain = "all instruction families in classic and current profiles"
 maximum_changed_cells = 2
+
+[reduction.persistent_memory]
+baseline = "full-current-checkpoint-per-state"
+candidate = "shared-root-plus-exact-trace-patches"
+maximum_patch_cells = 2
+materialization_role = "oracle-only"
+before_value_validation = true

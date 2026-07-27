@@ -63,6 +63,10 @@ VM evidence.
   contain only actual final changed cells. The same full-memory fixtures require
   exact `(address,before,after)` equality between trace deltas and independently
   reconstructed memory differences for all classic/current instruction families.
+- `persistent.rs` now represents current memory as one shared complete root plus
+  exact trace patches. Every patch validates `before`, empty deltas add no depth,
+  and stepwise materialization matches the runtime's complete 4,782,969-word
+  checkpoint after every traced step. Performance/compaction remains open.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while
@@ -72,7 +76,7 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Persistent/delta memory representation, live register/output reductions,
+- Persistent-memory performance/compaction, live register/output reductions,
   broader mutation-history collapse, native-region shortcuts, and performance
   claims remain active research and
   must be falsified independently against the exact baseline.

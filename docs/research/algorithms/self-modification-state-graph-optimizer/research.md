@@ -134,13 +134,21 @@ to one final change and halt/rejection remain empty. This makes the trace a
 validated O(1)-sized input for persistent-memory research while the full scan
 remains the independent oracle.
 
+The first persistent-memory candidate is now executable in `persistent.rs`. It
+stores one shared complete root plus immutable exact trace patches. Applying a
+patch validates every `before` word against the current persistent view; empty
+deltas reuse the current node. In the current-profile fixture, every traced step
+is applied to the persistent chain and `materialize()` is compared to the full
+runtime checkpoint after that same step. All complete memories match. A forged
+`before` value is rejected before insertion.
+
 These results do not justify removing the live input cursor, changing the
 remaining suffix, removing live output history, or dropping arbitrary live
-memory/register state without proof. They do reject repeated full-checkpoint
-copy/hash as the default per-step production graph representation and justify
-researching persistent/delta memory whose per-step patch contains at most two
-cells. The exact current checkpoint remains the correctness/reconstruction oracle
-for that next representation.
+memory/register state without proof. They do establish shared-root plus bounded
+patches as a correctness-preserving alternative to repeated full-checkpoint
+memory copies. The exact current checkpoint remains the reconstruction oracle;
+performance of patch application/read/compaction must be measured separately
+before production promotion.
 
 ## Threats to Validity
 

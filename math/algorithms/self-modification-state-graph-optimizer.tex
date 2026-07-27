@@ -91,6 +91,31 @@ $\Delta_M$ independently by complete before/after memory comparison and requires
 exact equality with the trace records for every classic/current instruction
 family fixture.
 
+\section{Persistent memory reconstruction}
+
+Let $M_0$ be one validated complete profile memory root and let $D_k$ be the
+exact trace memory delta for committed request $k$. Define a persistent view
+$P_0=M_0$ and
+\begin{equation}
+  P_k = \operatorname{patch}(P_{k-1},D_k),
+  \qquad
+  \operatorname{materialize}(P_k)=M_k.
+  \label{eq:state-graph-persistent-memory}
+\end{equation}
+A patch is admitted only when every record's `before` value equals the value read
+through $P_{k-1}$ at that address; otherwise construction rejects. Empty deltas
+reuse $P_{k-1}$ without increasing depth. By the two-cell bound, each admitted
+step contributes at most two changed address/value records independent of the
+size of $M_0$.
+
+The current-profile executable correspondence starts from one complete
+4,782,969-word checkpoint, applies only `ProfileMemoryDelta` values emitted by
+real traced execution, and after every step materializes the persistent view and
+requires exact equality with the runtime's complete checkpoint memory. A
+separate fixture corrupts a `before` value and requires fail-closed rejection.
+Materialization remains an oracle operation; the proposed fast path is shared
+root plus bounded patches and exact indexed reads.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection
