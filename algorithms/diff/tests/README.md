@@ -8,6 +8,9 @@ identity primitives, insertion-stable anchors, structural/anchor threshold
 boundaries, distributed multi-file evidence, wrong-source rejection, opaque asset
 non-dominance, behavior threshold boundaries, mandatory compatibility,
 already-fixed bug routing, unavailable-probe failure, behavior-only clone
-rejection, bounded no-shell process execution, source-mirror isolation, and
-source/oracle-authored bug transcript classification. Threshold source binding
-and Rust emission remain unfinished.
+rejection, bounded no-shell process execution, source-mirror isolation,
+source/oracle-authored bug transcript classification, HKDF-SHA-256 vectors,
+T-of-N source-bound key recovery, below-threshold/no-source rejection, tamper
+rejection, insufficient-file-distribution rejection, and offset-shifted anchor
+recovery. Payload encryption and Rust
+emission remain unfinished.

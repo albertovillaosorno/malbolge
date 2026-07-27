@@ -5,9 +5,9 @@
 Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
 adapter, generic behavior-evidence semantics, a portable bounded process-probe
-executor, and the first DOOM identity behavior program are implemented. Broader
-DOOM compatibility/bug probes, source binding, payload recovery, and Rust emission
-remain unfinished.
+executor, the first DOOM identity behavior program, and threshold source-bound key
+unlock are implemented. Broader DOOM compatibility/bug probes, authenticated
+target-payload recovery, and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -216,14 +216,36 @@ isolation strategy or a different executable harness.
 
 ### Source Binding
 
-Target-only material must be source-bound before distribution. The intended
-construction derives or unlocks reconstruction material only after a configured
-threshold of distributed source anchors is available.
+The first source-binding layer is now implemented for high-entropy reconstruction
+key material. The generator selects canonical stable-anchor windows across source
+files by content digest, round-robins them across files, and computes
+`T = ceil(N * configured_fraction)`. The secret is split T-of-N over GF(256). Each
+share is XOR-masked with HKDF-SHA-256 output whose input key material is the exact
+canonical anchor window and whose context also binds the source path, anchor digest,
+share coordinate, and transform context. A SHA-256 commitment rejects incorrect
+reconstruction. Recovery independently enforces the configured minimum number of
+distinct source files, so many surviving anchors from one large file cannot satisfy
+the distributed-evidence requirement by themselves.
 
-The exact cryptographic primitive is intentionally unspecified at scaffold time.
-Before implementation, the selected construction requires independent review and
-negative tests. Threshold secret sharing is one candidate, not a pre-approved
-choice.
+The anchor sample is deliberately content-ranked rather than offset-ranked. In a
+local read-only DOOM calibration with 127 bound shares and the provisional 0.66
+threshold, the modernized oracle retained 105 recoverable shares; 84 were required,
+and the synthetic 32-byte key recovered successfully. The earlier offset-ranked
+sample retained only 59, demonstrating why positional sampling was rejected rather
+than weakening the threshold. This smoke is engineering calibration, not a legal
+criterion.
+
+Repository-owned synthetic tests cover the RFC 5869 SHA-256 vector, every exact
+T-of-N combination in the fixture, T-1 failure, empty/unrelated source rejection,
+metadata tampering, deterministic generation, multi-file distribution, and source
+insertions that shift anchor offsets.
+
+This does **not** yet make target literals distributable. Shamir coefficients are
+derived deterministically from the high-entropy secret to preserve byte-identical
+generation, so the current layer claims computational source binding rather than
+information-theoretic secrecy. The authenticated payload cipher/serialization
+format remains intentionally blocked pending independent review; `emit_rust.py`
+must not serialize oracle literals until that layer exists.
 
 ### Exact Baseline and Compatible Variants
 

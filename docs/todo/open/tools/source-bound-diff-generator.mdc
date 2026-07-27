@@ -61,11 +61,16 @@ format.
   against an MIT freestanding harness on an isolated mirror and digests its no-CRT
   PE exit code. Source and oracle matched in local calibration; synthetic fixtures
   provide repository-safe regression coverage.
+- Source-binding calibration over the read-only DOOM source selected 127 content-
+  ranked distributed anchors. The modernized oracle recovered 105 shares against an
+  84-share threshold at 0.66; the same experiment exposed and rejected an earlier
+  offset-ranked sampler that recovered only 59.
 - `algorithms/doom/generator/quality.py` records the first consumer recipe, and
   `doom.py` now supplies its C-aware Linux source identity view while excluding WAD
   and IPX surfaces from lineage scoring.
-- The admission model now combines structural similarity, stable anchors, and
-  normalized behavior evidence; threshold source binding remains unfinished.
+- The admission model combines structural similarity, stable anchors, and normalized
+  behavior evidence. Threshold source-bound key unlock is now implemented; payload
+  authenticated encryption/recovery remains unfinished.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds. Synthetic
   threshold tests exist, and a local source-to-normalized-descendant stress smoke
   measured 0.780928 structural similarity and 0.766396 anchor coverage; broader
@@ -73,8 +78,11 @@ format.
 - Generic process-probe execution and behavior authoring are implemented. DOOM now
   has one executable fixed-point identity probe for Windows x86-64 / LLVM 22.1.8;
   broader identity, compatibility, and bug coverage is still required.
-- No source-bound payload format, cryptographic construction, or Rust emitter exists
-  yet.
+- T-of-N GF(256) key splitting plus HKDF-SHA-256 anchor masking is implemented and
+  covered by RFC/synthetic negative tests. Deterministic coefficient derivation is
+  explicitly computational rather than information-theoretic and still requires
+  independent cryptographic review.
+- No authenticated source-bound payload format or Rust emitter exists yet.
 
 ## Acceptance
 

@@ -27,9 +27,10 @@ algorithms/diff/
 ```
 
 Exact authoring, generic identity primitives, tree-level structural/anchor
-admission, behavior-evidence semantics, and the portable process-probe executor
-are implemented. DOOM-specific probe programs, source binding, and Rust emission
-remain active work under the owning TODO.
+admission, behavior-evidence semantics, the portable process-probe executor, and
+the threshold source-bound key-unlock primitive are implemented. Broader DOOM
+probes, target-payload protection/recovery, and Rust emission remain active work
+under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -180,9 +181,20 @@ should already hold and the correction can be skipped.
 ## Threshold Source Binding
 
 Target-only bytes must not simply be stored as an unobfuscated recoverable blob
-in the generated transform. The planned design binds recovery material to
-distributed source anchors and reconstructs the materialization key only after a
-configured threshold of source evidence is present.
+in the generated transform. `source_binding.py` now implements the key-unlock
+layer: a high-entropy secret is split T-of-N over GF(256), each share is masked
+with HKDF-SHA-256 material derived from one canonical stable-anchor window, and a
+commitment rejects malformed or incorrectly reconstructed keys. Selected anchors
+are sampled by content digest and round-robin across files rather than by leading
+file offset, so insertions can move surviving windows without changing their
+binding identity.
+
+This is deliberately **not** the payload format yet. Polynomial coefficients are
+derived deterministically from the secret so repeated generation is byte-stable;
+the construction therefore makes a computational source-binding claim, not an
+information-theoretic perfect-secret-sharing claim. Target literals remain local
+authoring state until an independently reviewed authenticated-encryption payload
+construction is selected and integrated.
 
 The exact cryptographic construction is intentionally not selected by this
 scaffold. It must be reviewed independently before implementation. A threshold
