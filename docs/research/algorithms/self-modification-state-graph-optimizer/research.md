@@ -204,3 +204,19 @@ latest override and an untouched root cell correctly. A forged `before` value
 fails before path copying. Performance is deliberately unclaimed until a
 post-commit benchmark compares indexed apply/root/latest reads to the linked
 baseline.
+
+Post-commit measurement at `ec459d0` promotes the bounded radix from correctness
+candidate to the current-profile state-graph memory candidate. With 4096 distinct
+overrides, latest reads remain 24.61 ns/op,
+root fallbacks remain 20.70 ns/op, and applying
+a new override is 1159.62 ns/op. The corresponding
+linked root miss is 24118.75 ns/op, about
+1165.0 times the radix latency. A real
+two-cell radix apply measures 1665.06 ns/op versus a
+6.79 ms full snapshot clone.
+
+This is still a representation microbenchmark, not end-to-end VM throughput.
+The next correctness/performance boundary is exact state identity. Current
+`ProfileStateGraph` hashes and compares complete checkpoints; the radix candidate
+must gain deterministic incremental identity and collision-confirming equality
+without re-materializing all 4,782,969 words per observation.

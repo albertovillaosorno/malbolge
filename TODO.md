@@ -621,9 +621,12 @@ chain as a general index: latest hits stay near 18 ns but root misses reach
 20751.17 ns at depth 4096, and compaction-only remains multi-microsecond
 in the recorded lower-bound model. A four-level 64-way persistent radix now
 reconstructs current checkpoints exactly and preserves 4096 distinct overrides
-with bounded lookup depth. Post-commit indexed performance, wider-profile
-geometry, live register/output reductions, broader mutation-history collapse,
-and native-region shortcuts remain open.
+with bounded lookup depth. Post-commit evidence keeps indexed reads near
+20--25 ns through 4096 distinct overrides and makes the depth-4096 root fallback
+about 1165x faster than the linked chain.
+The radix is promoted as the current-profile memory candidate; exact incremental
+identity/dedup, wider-profile geometry, live register/output reductions, broader
+mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 

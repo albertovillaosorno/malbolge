@@ -71,3 +71,12 @@ inspect at most four radix levels before either finding an override or falling
 back to the root; writes validate trace `before` values and path-copy only the
 affected radix nodes. `tests/i.rs` reconstructs real current checkpoints and
 exercises 4096 distinct overrides.
+
+Post-commit evidence at `ec459d0` promotes the radix as the current-profile
+memory candidate. Through 4096 distinct overrides, indexed latest/root reads stay
+near 20--25 ns while indexed apply stays around 0.9--1.2 microseconds for one new
+override. At depth 4096 the linked root miss is
+24.12 microseconds versus
+20.70 ns for the radix (~1165x ratio).
+The remaining blocker is exact indexed-memory identity/dedup without full
+materialization.

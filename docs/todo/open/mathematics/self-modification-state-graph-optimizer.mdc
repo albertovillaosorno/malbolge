@@ -86,10 +86,17 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Indexed-memory post-commit performance, wider-profile radix geometry, live
+- Exact indexed-memory identity/dedup, wider-profile radix geometry, live
   register/output reductions, broader mutation-history collapse, native-region
   shortcuts, and end-to-end performance claims remain active research and
   must be falsified independently against the exact baseline.
+- Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
+  ns through 4096 distinct overrides; depth-4096 root fallback is
+  20.70 ns versus
+  24118.75 ns for the linked chain. One new
+  indexed override remains near 1.16
+  microseconds at depth 4096. The radix is promoted as the current-profile memory
+  candidate; exact incremental identity/dedup is now the blocker.
 
 ## Acceptance
 

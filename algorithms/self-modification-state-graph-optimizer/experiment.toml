@@ -67,3 +67,11 @@ radix_bits_per_level = 6
 radix_levels = 4
 current_profile_supported = true
 full_materialization_role = "oracle-only"
+
+[indexed_memory.benchmark]
+commit = "ec459d0"
+evidence = "benchmarks/research/state-graph/evidence/2026-07-27-indexed-windows-x86_64"
+depths = [1, 8, 64, 512, 4096]
+samples_per_case = 15
+verdict = "promote-current-profile-memory-candidate"
+next_risk = "exact-state-identity-without-full-materialization"
