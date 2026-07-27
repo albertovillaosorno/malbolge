@@ -58,6 +58,7 @@ use malbolge::{
     current_profile,
 };
 
+use crate::indexed::IndexedProfileMemory;
 use crate::persistent::PersistentProfileMemory;
 use crate::profile_graph::ProfileStateGraph;
 
@@ -70,6 +71,9 @@ const DELTA_GRAPHICAL_TARGET: u8 = b'D';
 const DELTA_INSTRUCTION: u8 = b'>';
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
+const INDEXED_APPLY_OPERATIONS: usize = 4_096;
+const INDEXED_PATCH_BASE: u32 = 1_024;
+const INDEXED_ROOT_ADDRESS: u32 = 17;
 const PERSISTENT_DEPTH_CASES: &[(usize, usize)] = &[
     (1, 16_384),
     (8, 16_384),
@@ -83,6 +87,8 @@ const PERSISTENT_ROOT_ADDRESS: u32 = 3;
 const PROFILE_BENCHMARK: &str = "profile-checkpoint";
 const SAMPLE_COUNT: u8 = 15;
 
+type DeltaFixture = (ProfileMachineState, ProfileMemoryDelta, u32);
+type IndexedFixture = (IndexedProfileMemory, ProfileMemoryDelta, u32);
 type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
 
 #[derive(Clone, Copy)]
@@ -153,6 +159,19 @@ fn insert_checkpoint(
     }
 }
 
+fn apply_indexed((memory, delta, address): IndexedFixture) -> u64 {
+    match memory.apply(delta) {
+        Ok(updated) => match updated.read(address) {
+            Ok(value) => {
+                let hash = hash_usize(FNV_OFFSET, updated.patch_count());
+                hash_u32(hash, value)
+            },
+            Err(_error) => u64::MAX,
+        },
+        Err(_error) => u64::MAX,
+    }
+}
+
 fn apply_persistent(
     (memory, delta, address): (
         PersistentProfileMemory,
@@ -199,7 +218,7 @@ fn persistent_chain(
     Ok(memory)
 }
 
-fn persistent_fixture() -> IoResult<PersistentFixture> {
+fn delta_fixture() -> IoResult<DeltaFixture> {
     let base_machine = ProfileMachine::from_source(
         current_profile(),
         DELTA_BASE_SOURCE,
@@ -233,8 +252,7 @@ fn persistent_fixture() -> IoResult<PersistentFixture> {
         )?,
     )
     .map_err(|error| IoError::other(format!("delta state: {error}")))?;
-    let root = PersistentProfileMemory::from_state(&state);
-    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut machine = ProfileMachine::from_snapshot(state.clone());
     let mut delta = None;
     let _outcome = machine
         .step_traced(&mut |trace: &ProfileStepTrace| {
@@ -254,7 +272,54 @@ fn persistent_fixture() -> IoResult<PersistentFixture> {
         .data
         .map(|write| write.address)
         .ok_or_else(|| IoError::other("benchmark delta has no data write"))?;
-    Ok((root, memory_delta, address))
+    Ok((state, memory_delta, address))
+}
+
+fn indexed_chain(
+    root: &IndexedProfileMemory,
+    depth: usize,
+) -> IoResult<(IndexedProfileMemory, u32)> {
+    let mut memory = root.clone();
+    let mut latest = INDEXED_PATCH_BASE;
+    for offset in 0..depth {
+        let raw_offset = u32::try_from(offset).map_err(|error| {
+            IoError::other(format!("indexed offset: {error}"))
+        })?;
+        let address = INDEXED_PATCH_BASE.saturating_add(raw_offset);
+        let before = memory.read(address).map_err(|error| {
+            IoError::other(format!("indexed read: {error:?}"))
+        })?;
+        let after = u32::from(before == 0);
+        memory = memory
+            .apply(ProfileMemoryDelta {
+                data: Some(ProfileMemoryWrite { address, after, before }),
+                encryption: None,
+            })
+            .map_err(|error| {
+                IoError::other(format!("indexed patch: {error:?}"))
+            })?;
+        latest = address;
+    }
+    Ok((memory, latest))
+}
+
+fn indexed_fixture() -> IoResult<IndexedFixture> {
+    let (state, delta, address) = delta_fixture()?;
+    let indexed = IndexedProfileMemory::from_state(&state)
+        .map_err(|error| IoError::other(format!("indexed root: {error:?}")))?;
+    Ok((indexed, delta, address))
+}
+
+fn persistent_fixture() -> IoResult<PersistentFixture> {
+    let (state, delta, address) = delta_fixture()?;
+    Ok((PersistentProfileMemory::from_state(&state), delta, address))
+}
+
+fn read_indexed((memory, address): (IndexedProfileMemory, u32)) -> u64 {
+    match memory.read(address) {
+        Ok(value) => hash_u32(FNV_OFFSET, value),
+        Err(_error) => u64::MAX,
+    }
 }
 
 fn read_persistent((memory, address): (PersistentProfileMemory, u32)) -> u64 {
@@ -290,6 +355,88 @@ fn run_depth_samples(
             || (chain.clone(), PERSISTENT_ROOT_ADDRESS),
             read_persistent,
         )?;
+    }
+    Ok(())
+}
+
+fn run_indexed_depth_case(
+    output: &mut impl Write,
+    indexed: &IndexedProfileMemory,
+    depth: usize,
+    operations: usize,
+) -> IoResult<()> {
+    let (chain, latest_address) = indexed_chain(indexed, depth)?;
+    let latest = format!("indexed-read-latest-depth-{depth}");
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: &latest,
+            operations,
+        },
+        || (chain.clone(), latest_address),
+        read_indexed,
+    )?;
+    let root = format!("indexed-read-root-depth-{depth}");
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: &root,
+            operations,
+        },
+        || (chain.clone(), INDEXED_ROOT_ADDRESS),
+        read_indexed,
+    )?;
+    let next_offset = u32::try_from(depth)
+        .map_err(|error| IoError::other(format!("indexed depth: {error}")))?;
+    let next_address = INDEXED_PATCH_BASE.saturating_add(next_offset);
+    let before = chain.read(next_address).map_err(|error| {
+        IoError::other(format!("indexed next read: {error:?}"))
+    })?;
+    let next_delta = ProfileMemoryDelta {
+        data: Some(ProfileMemoryWrite {
+            address: next_address,
+            after: u32::from(before == 0),
+            before,
+        }),
+        encryption: None,
+    };
+    let apply = format!("indexed-apply-depth-{depth}");
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: &apply,
+            operations: INDEXED_APPLY_OPERATIONS,
+        },
+        || (chain.clone(), next_delta, next_address),
+        apply_indexed,
+    )
+}
+
+fn run_indexed_samples(output: &mut impl Write) -> IoResult<()> {
+    let (indexed, delta, address) = indexed_fixture()?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "indexed-apply-two-cell",
+            operations: INDEXED_APPLY_OPERATIONS,
+        },
+        || (indexed.clone(), delta, address),
+        apply_indexed,
+    )?;
+    let patched = indexed
+        .apply(delta)
+        .map_err(|error| IoError::other(format!("indexed seed: {error:?}")))?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "indexed-read-latest",
+            operations: PERSISTENT_OPERATIONS,
+        },
+        || (patched.clone(), address),
+        read_indexed,
+    )?;
+    for &(depth, operations) in PERSISTENT_DEPTH_CASES {
+        run_indexed_depth_case(output, &indexed, depth, operations)?;
     }
     Ok(())
 }
@@ -365,6 +512,7 @@ pub fn run() -> IoResult<()> {
         read_persistent,
     )?;
     run_depth_samples(&mut output, &persistent)?;
+    run_indexed_samples(&mut output)?;
     Ok(())
 }
 
