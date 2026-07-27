@@ -47,3 +47,13 @@ The planned professional Malbolge decompiler is a general product tool and is
 not museum-specific. A small museum helper may invoke that decompiler to create
 local C or other readable views, but generated views must remain outside the
 committed museum unless their authorship/licensing is independently clear.
+
+A locally acquired classic specimen may be rendered without adding it to the
+museum:
+
+```text
+cargo run --bin museum_convert -- INPUT.malbolge OUTPUT.c
+```
+
+The helper never downloads a specimen and always selects frozen
+`malbolge-1998`.

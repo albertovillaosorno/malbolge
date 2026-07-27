@@ -535,6 +535,18 @@ Generate source maps from Malbolge addresses through lowered IR back to C source
 locations. Expose debugging at the C level; keep low-level VM tracing primarily
 for implementation and verification.
 
+### TODO - Malbolge decompiler and reverse engineering
+
+Build a profile-explicit reverse-engineering tool that turns valid Malbolge into
+readable executable representations without pretending arbitrary self-modifying
+programs preserve their original C source. The first active backend emits C23
+with caller-owned state/I/O and exact profile metadata; `ctO` currently compiles
+warning-clean with pinned Clang 22.1.8 for x86-64 and AArch64, and the x86-64
+artifact executes with the same input/output/register/step result as the normative
+VM. The general CLI requires an explicit representation, while `museum_convert`
+is a separate local-only helper pinned to `malbolge-1998`. A richer reverse-
+engineering IR and control-flow/state annotations remain open.
+
 ### TODO - Resident incremental compiler and WAL
 
 Build a native long-lived compiler service that keeps parsed source, normalized

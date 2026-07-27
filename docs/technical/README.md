@@ -25,4 +25,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `interoperability/`
 - `runtime/`
 - `specification/`
+- `tooling/`
 - `verification/`
