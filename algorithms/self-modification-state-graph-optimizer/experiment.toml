@@ -50,3 +50,11 @@ candidate = "shared-root-plus-exact-trace-patches"
 maximum_patch_cells = 2
 materialization_role = "oracle-only"
 before_value_validation = true
+
+[persistent_depth.benchmark]
+commit = "51fb0b6"
+evidence = "benchmarks/research/state-graph/evidence/2026-07-27-depth-windows-x86_64"
+depths = [1, 8, 64, 512, 4096]
+samples_per_case = 15
+latest_hit_expectation = "depth-independent"
+root_miss_hypothesis = "linear-in-patch-depth"

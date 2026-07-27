@@ -173,3 +173,20 @@ independently defeat the exact baseline.
   Boundary](../../../technical/adr/verification-trust-boundary.md)
 - [Research Evidence And Algorithm
   Mirror](../../adr/research-evidence-and-algorithm-mirror.md)
+
+A post-commit read-depth matrix at `51fb0b6` now isolates the linked-chain risk.
+Latest-patch reads remain approximately 18 ns/op from depth 1 through 4096, but
+an address absent from every patch rises from 18.27 ns/op at depth 1
+to 20751.17 ns/op at depth 4096. A fit over depths 64/512/4096 is about
+5.20 ns per traversed patch. Raw 15-sample evidence and operation counts
+are versioned under
+`benchmarks/research/state-graph/evidence/2026-07-27-depth-windows-x86_64/`.
+
+Periodic full compaction alone is not promoted. Using the measured
+11.47 ms snapshot cost as a lower bound and one average
+root-miss per step, the simple `S/N + alpha*N/2` model has its optimum near
+2099 patches and still costs about
+10.93 microseconds per step before VM
+work. The model is explicitly illustrative, not a throughput claim. The next
+candidate therefore requires persistent sharing **and** read cost bounded
+independently of patch-history depth.

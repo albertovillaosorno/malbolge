@@ -616,7 +616,10 @@ classic/current instruction-family witnesses now prove each step changes at most
 two memory cells. The real trace engine exposes those exact final deltas and
 full-memory scans cross-check every address/before/after record. A shared-root
 persistent memory now reconstructs every current checkpoint exactly from those
-patches and rejects forged `before` values. Patch performance/compaction, live
+patches and rejects forged `before` values. Depth evidence rejects the linked
+chain as a general index: latest hits stay near 18 ns but root misses reach
+20751.17 ns at depth 4096, and compaction-only remains multi-microsecond
+in the recorded lower-bound model. A bounded-read persistent memory index, live
 register/output reductions, broader mutation-history collapse, and native-region
 shortcuts remain open.
 

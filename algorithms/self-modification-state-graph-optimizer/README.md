@@ -56,3 +56,9 @@ Every patch validates its trace `before` values against the current persistent
 view, empty deltas reuse depth, reads search newest patches before the root, and
 `materialize()` exists as an oracle. Current traced execution reconstructs every
 full runtime checkpoint exactly in `tests/p.rs`.
+
+The linked patch chain is now rejected as a general lookup structure. Post-commit
+depth measurements keep newest-patch hits near 18 ns, but root misses grow to
+20751.17 ns at depth 4096. Periodic full compaction also retains a
+multi-microsecond modeled lower bound on the measured host. The next memory
+candidate must keep structural sharing while bounding arbitrary read depth.

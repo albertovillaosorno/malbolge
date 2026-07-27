@@ -67,6 +67,11 @@ VM evidence.
   exact trace patches. Every patch validates `before`, empty deltas add no depth,
   and stepwise materialization matches the runtime's complete 4,782,969-word
   checkpoint after every traced step. Performance/compaction remains open.
+- Post-commit depth evidence keeps latest-hit reads near 18 ns through depth
+  4096, while root misses rise to 20751.17 ns/op. A high-depth fit is
+  about 5.20 ns per traversed patch. A compaction-only lower-bound model
+  still costs about 10.93 microseconds
+  per step at its one-miss optimum, so a bounded-read persistent index is next.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while
@@ -76,9 +81,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Persistent-memory performance/compaction, live register/output reductions,
-  broader mutation-history collapse, native-region shortcuts, and performance
-  claims remain active research and
+- A bounded-read persistent memory index, live register/output reductions,
+  broader mutation-history collapse, native-region shortcuts, and end-to-end
+  performance claims remain active research and
   must be falsified independently against the exact baseline.
 
 ## Acceptance

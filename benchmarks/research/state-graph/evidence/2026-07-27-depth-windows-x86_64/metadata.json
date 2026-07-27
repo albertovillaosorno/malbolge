@@ -1,0 +1,254 @@
+{
+  "captured_at": "2026-07-27T03:59:12.4807205-06:00",
+  "commit": "51fb0b619fdf377146f616a4792eb2f7455c6f4e",
+  "short_commit": "51fb0b6",
+  "benchmark_command": ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe run --release --bin state_graph_benchmark --quiet",
+  "sample_count": 15,
+  "profile": "malbolge-2026.2",
+  "memory_words": 4782969,
+  "word_trits": 14,
+  "depth_cases": [
+    1,
+    8,
+    64,
+    512,
+    4096
+  ],
+  "benchmark_scope_matches_head": true,
+  "working_tree_note": "Unrelated .gitignore/DOOM interoperability edits were present and excluded from benchmark-owned/runtime scope.",
+  "cpu": {
+    "Name": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+    "Manufacturer": "GenuineIntel",
+    "NumberOfCores": 12,
+    "NumberOfLogicalProcessors": 24,
+    "MaxClockSpeed": 2601
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200",
+    "OSArchitecture": "64-bit"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "results": [
+    {
+      "implementation": "insert-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_total_ns": 27112500,
+      "median_total_ns": 27613200,
+      "maximum_total_ns": 34177800,
+      "minimum_ns_per_op": 27112500.0,
+      "median_ns_per_op": 27613200.0,
+      "maximum_ns_per_op": 34177800.0,
+      "checksum": "4625247251222736821",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 2253600,
+      "median_total_ns": 2260700,
+      "maximum_total_ns": 2383800,
+      "minimum_ns_per_op": 137.548828125,
+      "median_ns_per_op": 137.982177734375,
+      "maximum_ns_per_op": 145.49560546875,
+      "checksum": "4167613253049000741",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 294600,
+      "median_total_ns": 295600,
+      "maximum_total_ns": 322000,
+      "minimum_ns_per_op": 17.98095703125,
+      "median_ns_per_op": 18.0419921875,
+      "maximum_ns_per_op": 19.6533203125,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 293200,
+      "median_total_ns": 294000,
+      "maximum_total_ns": 324400,
+      "minimum_ns_per_op": 17.8955078125,
+      "median_ns_per_op": 17.9443359375,
+      "maximum_ns_per_op": 19.7998046875,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_total_ns": 4700,
+      "median_total_ns": 4800,
+      "maximum_total_ns": 5300,
+      "minimum_ns_per_op": 18.359375,
+      "median_ns_per_op": 18.75,
+      "maximum_ns_per_op": 20.703125,
+      "checksum": "17165412970885540645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_total_ns": 36900,
+      "median_total_ns": 37000,
+      "maximum_total_ns": 117000,
+      "minimum_ns_per_op": 18.017578125,
+      "median_ns_per_op": 18.06640625,
+      "maximum_ns_per_op": 57.12890625,
+      "checksum": "13040278181342372645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_total_ns": 147300,
+      "median_total_ns": 147600,
+      "maximum_total_ns": 160200,
+      "minimum_ns_per_op": 17.98095703125,
+      "median_ns_per_op": 18.017578125,
+      "maximum_ns_per_op": 19.5556640625,
+      "checksum": "217943758197170981",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 293400,
+      "median_total_ns": 294100,
+      "maximum_total_ns": 338000,
+      "minimum_ns_per_op": 17.90771484375,
+      "median_ns_per_op": 17.950439453125,
+      "maximum_ns_per_op": 20.6298828125,
+      "checksum": "8321053844470768421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 298900,
+      "median_total_ns": 299400,
+      "maximum_total_ns": 345800,
+      "minimum_ns_per_op": 18.243408203125,
+      "median_ns_per_op": 18.27392578125,
+      "maximum_ns_per_op": 21.10595703125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_total_ns": 5255300,
+      "median_total_ns": 5312300,
+      "maximum_total_ns": 5480200,
+      "minimum_ns_per_op": 20528.515625,
+      "median_ns_per_op": 20751.171875,
+      "maximum_ns_per_op": 21407.03125,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_total_ns": 3141700,
+      "median_total_ns": 3179300,
+      "maximum_total_ns": 3626400,
+      "minimum_ns_per_op": 1534.033203125,
+      "median_ns_per_op": 1552.392578125,
+      "maximum_ns_per_op": 1770.703125,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_total_ns": 1186300,
+      "median_total_ns": 1191700,
+      "maximum_total_ns": 1275400,
+      "minimum_ns_per_op": 144.81201171875,
+      "median_ns_per_op": 145.47119140625,
+      "maximum_ns_per_op": 155.6884765625,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_total_ns": 374000,
+      "median_total_ns": 380400,
+      "maximum_total_ns": 566000,
+      "minimum_ns_per_op": 22.8271484375,
+      "median_ns_per_op": 23.2177734375,
+      "maximum_ns_per_op": 34.5458984375,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "replay-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_total_ns": 30579500,
+      "median_total_ns": 33273300,
+      "maximum_total_ns": 39021700,
+      "minimum_ns_per_op": 30579500.0,
+      "median_ns_per_op": 33273300.0,
+      "maximum_ns_per_op": 39021700.0,
+      "checksum": "12549573586291003927",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "snapshot",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_total_ns": 10115900,
+      "median_total_ns": 11467100,
+      "maximum_total_ns": 12832500,
+      "minimum_ns_per_op": 10115900.0,
+      "median_ns_per_op": 11467100.0,
+      "maximum_ns_per_op": 12832500.0,
+      "checksum": "15378766449629180008",
+      "checksum_count": 1
+    }
+  ],
+  "analysis": {
+    "root_miss_linear_fit_depths": [
+      64,
+      512,
+      4096
+    ],
+    "root_miss_slope_ns_per_patch": 5.204997277306484,
+    "root_miss_intercept_ns": -622.903878348215,
+    "compaction_model": "snapshot_ns/N + misses*(slope_ns_per_patch*N/2)",
+    "compaction_model_note": "Illustrative lower-bound model only; assumes average miss depth N/2 and excludes patch/application/runtime costs.",
+    "compaction_models": [
+      {
+        "root_misses_per_step": 1,
+        "optimal_interval_patches": 2099.092342921502,
+        "lower_bound_ns_per_step": 10925.769929721308
+      },
+      {
+        "root_misses_per_step": 2,
+        "optimal_interval_patches": 1484.282430016552,
+        "lower_bound_ns_per_step": 15451.372013980013
+      }
+    ]
+  }
+}
