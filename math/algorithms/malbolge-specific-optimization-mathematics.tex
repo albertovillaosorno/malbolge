@@ -1,17 +1,100 @@
 \documentclass{article}
 \usepackage{amsmath,amssymb}
 \input{../malbolge-notation.tex}
-\title{Malbolge-specific optimization mathematics Research Model}
+\title{Malbolge-Specific Optimization Mathematics}
+\author{Malbolge Project}
+\date{2026-07-27}
 \begin{document}
 \maketitle
-Let $C$ be the candidate space, $V(c,p)\in\{0,1\}$ the independent verifier
-for candidate $c$ under profile $p$, and $\mathbf{K}(c)$ the measured cost
-vector. Search may rank or generate candidates arbitrarily, but only
+
+\section{Scope}
+
+This document records algebraic reductions that are already consumed by the
+Malbolge runtime. A reduction is admitted only on its stated finite/profile
+domain and only while its correspondence evidence remains valid.
+
+\section{Classic crazy chunk factorization}
+
+Let $B=3^5=243$. For classic ten-trit words write
 \[
-  C_V = \{c\in C\mid V(c,p)=1\}
+  d=d_0+B d_1,\qquad a=a_0+B a_1,
 \]
-is eligible for comparison. Optimization therefore selects verified candidates
-under explicit resource budgets rather than treating the search heuristic as a
-correctness authority. This file will be refined with algorithm-specific
-equations before the first claimed result.
+with $d_0,d_1,a_0,a_1\in\{0,\ldots,B-1\}$. Because crazy is digitwise,
+\begin{equation}
+  \CrazyN{10}{d}{a}
+    = \CrazyN{5}{d_0}{a_0}
+      + B\CrazyN{5}{d_1}{a_1}.
+  \label{eq:optimization-crazy-chunk}
+\end{equation}
+Therefore one exact $243\times243=59049$ five-trit table is sufficient for both
+halves of every classic crazy operation; a $59049^2$ word-pair table is neither
+required nor justified.
+
+\section{Profile-width crazy chunk factorization}
+
+For profile width $N$, let chunk width $k=5$, chunk index $j\geq0$, and
+\[
+  r_j=\min(k,N-jk).
+\]
+For every admitted chunk with $r_j>0$, define
+\[
+  d_j=\left\lfloor\frac{d}{3^{jk}}\right\rfloor\bmod3^{r_j},
+  \qquad
+  a_j=\left\lfloor\frac{a}{3^{jk}}\right\rfloor\bmod3^{r_j}.
+\]
+Digit independence gives
+\begin{equation}
+  \CrazyN{N}{d}{a}
+    = \sum_{j=0}^{\lceil N/k\rceil-1}
+      3^{jk}\left(\CrazyN{5}{d_j}{a_j}\bmod3^{r_j}\right).
+  \label{eq:optimization-crazy-profile-chunks}
+\end{equation}
+The current 14-trit runtime therefore uses chunks $5+5+4$ while reusing the same
+five-trit table. The final four-trit result is reduced modulo $3^4$; no phantom
+fifteenth trit is admitted.
+
+\section{Decode phase reduction}
+
+For graphical cell $m$, decode depends on the code pointer only through its
+residue modulo 94:
+\begin{equation}
+  \DecodeOp(m,c)=\DecodeOp(m,c\bmod94).
+  \label{eq:optimization-decode-phase}
+\end{equation}
+The runtime may therefore precompute one 94-value code phase and a
+$94\times94$ graphical-cell/phase table without changing decode semantics.
+
+\section{Classic rotate lookup}
+
+The classic word domain is finite, so define a table $R$ by
+\begin{equation}
+  R[x]=\RotateN{10}{x}
+  \qquad\text{for every }x\in\WordDomain{10}.
+  \label{eq:optimization-rotate-table}
+\end{equation}
+Replacing scalar rotation by $R[x]$ is an exact finite-domain substitution, not
+an approximation or heuristic.
+
+\section{Verified candidate boundary}
+
+Let $C$ be a candidate set, $V(c,p)\in\{0,1\}$ the independent verifier under
+profile $p$, and $\CostVector{c}$ the measured cost vector. Search may rank or
+generate candidates arbitrarily, but only
+\[
+  C_V=\{c\in C\mid V(c,p)=1\}
+\]
+is eligible for cost comparison. A speedup cannot repair failed semantic
+correspondence.
+
+\section{Measured implementation result}
+
+The versioned CPU VM benchmark evidence at
+\texttt{benchmarks/interpreter/evidence/2026-07-26-windows-x86\_64/} contains 15 raw
+samples per scalar/table implementation and identical checksums. On that
+identified host, the classic crazy factorization reduced the median from
+77,456,700 ns to 7,423,600 ns (10.43x), while rotate lookup reduced the median
+from 15,260,300 ns to 10,141,700 ns (1.50x). These measurements justify the
+current CPU implementation on that recorded workload; they are not universal
+hardware performance claims.
+
 \end{document}

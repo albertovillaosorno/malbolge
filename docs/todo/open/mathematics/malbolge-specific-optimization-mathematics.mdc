@@ -1,6 +1,6 @@
 ---
 id: "malbolge-specific-optimization-mathematics"
-status: "pending"
+status: "active"
 lane: "6"
 area: "mathematics"
 task: "TODO - Malbolge-specific optimization mathematics"
@@ -27,6 +27,22 @@ Derive algebraic decompositions, lookup-table factorizations, state reductions,
 canonical forms, and lower bounds that reduce synthesis search before brute
 force or stochastic optimization begins.
 
+
+**Current implementation.**
+
+- The first proved slice formalizes four reductions already consumed by the CPU
+  VM: classic five-trit crazy factorization, profile-width crazy chunking,
+  decode phase reduction, and exact classic rotate lookup.
+- Four research equations are registered in
+  `math/specification/correspondence.toml`; exhaustive classic table tests and
+  current-profile scalar/runtime fixtures provide the declared correspondence.
+- Existing benchmark evidence retains 15 raw samples per scalar/table path with
+  matching checksums. On the recorded host, crazy is 10.43x and rotate 1.50x
+  faster by median for the admitted workload.
+- This result promotes only those reductions. Canonical forms, lower bounds,
+  and synthesis/search-space reductions remain open and receive no inherited
+  correctness or performance claim.
+
 ## Acceptance
 
 - Derived canonical forms, factorizations, bounds, and algebraic reductions
@@ -49,5 +65,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Mathematical evidence pending: normative/research LaTeX source plus executable
-  or machine-checked correspondence for the claimed domain.
+- Current mathematical evidence includes four labelled optimization equations,
+  executable correspondence, raw CPU benchmark samples, identical checksums,
+  and explicit bounded conclusions. Broader canonical-form/lower-bound/search
+  mathematics remains open.

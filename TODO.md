@@ -582,9 +582,11 @@ Future implementation-relevant compiler/research equations remain open.
 
 ### TODO - Malbolge-specific optimization mathematics
 
-Derive algebraic decompositions, lookup-table factorizations, state reductions,
-canonical forms, and lower bounds that reduce synthesis search before brute
-force or stochastic optimization begins.
+Derive Malbolge-specific optimization mathematics. The active first slice now
+formalizes and machine-links classic/profile crazy chunking, decode phase
+reduction, and classic rotate lookup; versioned CPU evidence shows 10.43x crazy
+and 1.50x rotate median speedups on the recorded host with matching checksums.
+Canonical forms, lower bounds, and search-space reductions remain open.
 ### TODO - Self-modification state-graph optimizer
 
 Model executable Malbolge regions as versioned state-transition graphs whose

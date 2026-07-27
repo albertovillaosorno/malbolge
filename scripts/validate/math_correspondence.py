@@ -14,7 +14,7 @@ from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "math" / "specification" / "correspondence.toml"
-SPECIFICATION_ROOT = ROOT / "math" / "specification"
+MATH_ROOT = ROOT / "math"
 SCHEMA_VERSION = 1
 PARENT_SEGMENT = ".."
 LABEL_PATTERN = re.compile(r"\\label\{(eq:[^}]+)\}")
@@ -161,7 +161,7 @@ def _parse(text: str) -> tuple[Correspondence, ...]:
 
 def _equation_labels() -> frozenset[str]:
     labels: set[str] = set()
-    for source in sorted(SPECIFICATION_ROOT.rglob("*.tex")):
+    for source in sorted(MATH_ROOT.rglob("*.tex")):
         text = source.read_text(encoding="utf-8")
         for match in LABEL_PATTERN.finditer(text):
             label = match.group(1)

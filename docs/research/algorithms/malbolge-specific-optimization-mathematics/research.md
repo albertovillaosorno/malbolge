@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Research Question
 
@@ -16,7 +16,7 @@ Derive algebraic decompositions, lookup-table factorizations, state reductions,
 canonical forms, and lower bounds that reduce synthesis search before brute
 force or stochastic optimization begins.
 
-- Status: Proposed
+- Status: Active
 - Research ID: `malbolge-specific-optimization-mathematics`
 - Last reviewed: 2026-07-26
 
@@ -57,7 +57,26 @@ verifier accepts the candidate under the declared target profile.
 
 ## Results
 
-No experiment result is recorded yet.
+The first verified reduction slice is positive for the existing CPU VM table
+implementation. `math/algorithms/malbolge-specific-optimization-mathematics.tex`
+formalizes four implementation-relevant reductions: classic five-trit crazy
+factorization, general profile-width crazy chunking, decode phase reduction, and
+classic rotate lookup.
+
+`math/specification/correspondence.toml` binds those equations to exhaustive or
+composite executable evidence. The classic crazy/rotate finite domains are
+checked exhaustively; decode is checked across every classic code pointer and
+all 94 graphical cells; current 14-trit crazy chunking is checked against scalar
+fixtures and real profile execution.
+
+The existing versioned benchmark at
+`benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/` supplies 15 raw
+samples per scalar/table implementation with matching checksums. On that recorded
+host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
+(10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
+These results support H1 only for this admitted CPU table-factorization slice.
+They do not establish a universal speedup or prove broader synthesis/search
+reductions.
 
 ## Threats to Validity
 
@@ -67,7 +86,10 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-No conclusion is accepted before reproducible evidence exists.
+Promote the four proved table/factorization reductions as valid optimization
+building blocks. Continue the research for canonical forms, lower bounds, and
+search-space reductions; those remain unproved and receive no performance claim
+from this result.
 
 ## References
 

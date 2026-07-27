@@ -1,14 +1,18 @@
 [experiment]
 id = "malbolge-specific-optimization-mathematics"
 seed = 0
+method_class = "optimization"
 
 [challenge]
-family = "unassigned"
-difficulty = 1
+family = "classic-vm-table-factorization"
+difficulty = 59049
 
 [budget]
-seconds = 1
-memory_mib = 128
+samples_per_implementation = 15
+crazy_full_domain_repetitions = 16
+rotate_full_domain_repetitions = 128
 
 [verification]
 required = true
+correspondence = "math/specification/correspondence.toml"
+raw_evidence = "benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/raw.csv"

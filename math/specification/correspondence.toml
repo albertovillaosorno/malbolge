@@ -137,3 +137,35 @@ label = "eq:profile-word-modulus"
 domain = "canonical historical and current profile descriptors"
 mechanism = "projection"
 evidence = ["tests/exhaustive/math_correspondence.rs::canonical_profile_domains_match_power_of_three"]
+
+[[correspondence]]
+id = "optimization-crazy-chunk"
+tex = "math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-chunk"
+domain = "all 243x243 five-trit pairs in both classic ten-trit positions"
+mechanism = "exhaustive"
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-chunks"
+tex = "math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-chunks"
+domain = "current 14-trit 5+5+4 decomposition plus scalar profile fixtures"
+mechanism = "composite"
+evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes_digitwise_without_new_truth_table", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "optimization-decode-phase"
+tex = "math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-decode-phase"
+domain = "all classic code pointers and all 94 graphical cell values"
+mechanism = "exhaustive"
+evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position"]
+
+[[correspondence]]
+id = "optimization-rotate-table"
+tex = "math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-rotate-table"
+domain = "all 59049 classic words"
+mechanism = "exhaustive"
+evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word"]
