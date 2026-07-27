@@ -31,5 +31,8 @@ Coarse compute-wave evidence is recorded independently as
 where $N_{\mathrm{SM}}$ is the measured multiprocessor count and $T_{\max}$
 is the measured maximum threads per block. $W$ is capacity metadata, not a
 semantic bound and not a throughput claim. Increasing $U$ while holding
-$\{b_i\}$ and $h$ fixed cannot reduce the maximal first-chunk item count.
+$\{b_i\}$ and $h$ fixed cannot reduce the maximal first-chunk item count. No
+finite constant $U_{\max}$ is imposed by this planner: when a backend has a
+finite per-launch representation bound, additional work is partitioned into more
+chunks rather than rejected because device memory exceeds an example size.
 \end{document}

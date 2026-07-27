@@ -14,8 +14,10 @@ problem without weakening semantic correctness?
 
 Discover available memory and compute resources at runtime and choose batch
 size, state layout, caches, and search breadth accordingly. Tiny devices around
-128 MiB must remain usable; devices around 80 GiB should turn additional
-resources into measured throughput instead of hitting fixed artificial limits.
+Small-memory devices must remain usable while additional addressable
+resources on arbitrarily larger devices must increase available work rather than
+hitting a fixed artificial VRAM ceiling. The 128 MiB and 80 GiB values are only
+example probe points, not supported-range endpoints.
 
 - Status: Active
 - Research ID: `adaptive-accelerator-resource-budgeting`

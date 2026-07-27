@@ -783,8 +783,10 @@ size, state layout, caches, and search breadth accordingly. The first active
 slice now measures CUDA free/total memory, SM count, and maximum threads/block,
 then partitions exact resident classic item bytes below a deterministic reserve
 without a fixed device-specific batch ceiling. Synthetic 128 MiB/80 GiB capacity
-models are correctness evidence only; retained throughput and broader live-device
-evidence remain open.
+models are example correctness probes only, not supported-range endpoints. No
+artificial VRAM maximum is declared; larger addressable devices increase resident
+capacity and are automatically split only at backend representation boundaries.
+Retained throughput and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

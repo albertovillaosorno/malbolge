@@ -87,8 +87,10 @@ fixed batch constant. `cuMemGetInfo_v2` supplies current free/total bytes and
 `cuDeviceGetAttribute` supplies multiprocessor count and maximum threads per
 block. The hardware-neutral planner reserves the larger of 8 MiB or 1/16 of total
 memory, preserves request order across automatically split chunks, and rejects
-any request that cannot fit alone before allocation. Current-profile resident
-execution and performance claims remain open.
+any request that cannot fit alone before allocation. There is no configured VRAM
+ceiling: backend-specific integer/addressing limits cause additional chunks rather
+than rejection or truncation. Current-profile resident execution and performance
+claims remain open.
 
 ## Invariants
 

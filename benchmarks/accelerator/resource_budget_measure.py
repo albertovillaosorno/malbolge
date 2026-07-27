@@ -19,7 +19,21 @@ GIB: Final = 1024 * MIB
 CURRENT_STATE_BYTES: Final = (4_782_969 * 4) + 64
 CLASSIC_STATE_BYTES: Final = (59_049 * 4) + 64
 SCENARIO_ITEMS: Final = 10_000
+HUGE_GIB: Final = 100_000
+HUGE_ITEMS: Final = 100_000
+CLASSIC_PROTOCOL_ITEMS: Final = 72_736
 CUDA_FLAG: Final = "--cuda"
+
+
+@dataclass(frozen=True, slots=True)
+class ScenarioSpec:
+    """Static inputs for one reproducible planning scenario."""
+
+    item_bytes: int
+    label: str
+    max_items_per_chunk: int | None = None
+    requested_items: int = SCENARIO_ITEMS
+    synthetic: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +43,7 @@ class ScenarioResult:
     first_chunk_items: int
     item_bytes: int
     label: str
+    requested_items: int
     reserve_bytes: int
     synthetic: bool
     total_chunks: int
@@ -80,16 +95,20 @@ def _cuda_results() -> tuple[dict[str, str | int], tuple[ScenarioResult, ...]]:
         }
         results = (
             _scenario(
-                "live-classic",
-                CLASSIC_STATE_BYTES,
+                ScenarioSpec(
+                    item_bytes=CLASSIC_STATE_BYTES,
+                    label="live-classic",
+                    synthetic=False,
+                ),
                 resources,
-                synthetic=False,
             ),
             _scenario(
-                "live-current-model",
-                CURRENT_STATE_BYTES,
+                ScenarioSpec(
+                    item_bytes=CURRENT_STATE_BYTES,
+                    label="live-current-model",
+                    synthetic=False,
+                ),
                 resources,
-                synthetic=False,
             ),
         )
         return device, results
@@ -110,37 +129,56 @@ def _synthetic_results() -> tuple[ScenarioResult, ...]:
         multiprocessor_count=1,
         total_memory_bytes=80 * GIB,
     )
+    huge = AcceleratorResources(
+        free_memory_bytes=HUGE_GIB * GIB,
+        max_threads_per_block=1024,
+        multiprocessor_count=1000,
+        total_memory_bytes=HUGE_GIB * GIB,
+    )
     return (
         _scenario(
-            "synthetic-128m-current",
-            CURRENT_STATE_BYTES,
+            ScenarioSpec(
+                item_bytes=CURRENT_STATE_BYTES,
+                label="synthetic-128m-current",
+            ),
             tiny,
-            synthetic=True,
         ),
         _scenario(
-            "synthetic-80g-current",
-            CURRENT_STATE_BYTES,
+            ScenarioSpec(
+                item_bytes=CURRENT_STATE_BYTES,
+                label="synthetic-80g-current",
+            ),
             large,
-            synthetic=True,
+        ),
+        _scenario(
+            ScenarioSpec(
+                item_bytes=CLASSIC_STATE_BYTES,
+                label="synthetic-100000g-classic-protocol",
+                max_items_per_chunk=CLASSIC_PROTOCOL_ITEMS,
+                requested_items=HUGE_ITEMS,
+            ),
+            huge,
         ),
     )
 
 
 def _scenario(
-    label: str,
-    item_bytes: int,
+    spec: ScenarioSpec,
     resources: AcceleratorResources,
-    *,
-    synthetic: bool,
 ) -> ScenarioResult:
-    plan = plan_resident_batches((item_bytes,) * SCENARIO_ITEMS, resources)
+    plan = plan_resident_batches(
+        (spec.item_bytes,) * spec.requested_items,
+        resources,
+        max_items_per_chunk=spec.max_items_per_chunk,
+    )
     first = plan.chunks[0]
     return ScenarioResult(
         first_chunk_items=first.item_count,
-        item_bytes=item_bytes,
-        label=label,
+        item_bytes=spec.item_bytes,
+        label=spec.label,
+        requested_items=spec.requested_items,
         reserve_bytes=plan.reserve_bytes,
-        synthetic=synthetic,
+        synthetic=spec.synthetic,
         total_chunks=len(plan.chunks),
         usable_memory_bytes=plan.usable_memory_bytes,
     )

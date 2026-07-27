@@ -41,6 +41,7 @@ _ERROR_VALUE_INDEX: Final = 14
 _STEPS_INDEX: Final = 15
 _DEVICE_WORD_BYTES: Final = 4
 _FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
+_MAX_CLASSIC_CHUNK_ITEMS: Final = (MAX_U32 // MEMORY_WORDS) + 1
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
@@ -405,6 +406,7 @@ class CudaClassicRunAdapter:
                 item_bytes,
                 self._runtime.resources.snapshot(),
                 fixed_chunk_bytes=_FIXED_CHUNK_BYTES,
+                max_items_per_chunk=_MAX_CLASSIC_CHUNK_ITEMS,
             )
         except ResourceBudgetError as error:
             message = f"CUDA resident resource budget rejected batch: {error}"

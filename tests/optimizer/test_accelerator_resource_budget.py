@@ -23,6 +23,10 @@ OVERSIZED_ITEM = "resident item 0 requires"
 TOTAL_MEMORY_ERROR = "total accelerator memory must be positive"
 TINY_CURRENT_CAPACITY = 6
 LARGE_CURRENT_CAPACITY = 4209
+HUGE_GIB = 100_000
+PROTOCOL_CHUNK_ITEMS = 72_736
+HUGE_REQUEST_ITEMS = 100_000
+HUGE_EXPECTED_CHUNKS = 2
 
 
 def test_tiny_device_still_admits_resident_current_state() -> None:
@@ -58,6 +62,23 @@ def test_large_memory_expands_search_breadth_without_fixed_cap() -> None:
     assert large_first == LARGE_CURRENT_CAPACITY
     assert large_first > tiny_first
     assert large.compute_wave_items > tiny.compute_wave_items
+
+
+def test_huge_memory_has_no_artificial_vram_ceiling() -> None:
+    """Huge memory increases capacity; protocol bounds only split launches."""
+    resources = _resources(
+        HUGE_GIB * GIB,
+        multiprocessors=1000,
+        threads=1024,
+    )
+    plan = plan_resident_batches(
+        (CLASSIC_STATE_BYTES,) * HUGE_REQUEST_ITEMS,
+        resources,
+        max_items_per_chunk=PROTOCOL_CHUNK_ITEMS,
+    )
+    assert plan.chunks[0].item_count == PROTOCOL_CHUNK_ITEMS
+    assert sum(chunk.item_count for chunk in plan.chunks) == HUGE_REQUEST_ITEMS
+    assert len(plan.chunks) == HUGE_EXPECTED_CHUNKS
 
 
 def test_mixed_layout_preserves_order_and_budget() -> None:

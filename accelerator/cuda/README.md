@@ -35,6 +35,8 @@ evidence, not a speedup claim.
 The classic resident path now measures free/total device memory with
 `cuMemGetInfo_v2` and SM/thread capacity with `cuDeviceGetAttribute`, then applies
 the hardware-neutral resource planner before allocation. There is no fixed
-RTX-specific batch ceiling. Current-profile resident execution, product-level
-batch routing, asynchronous transfer/stream tuning, broader hardware evidence,
+RTX-specific batch ceiling. Classic launches also split before their 32-bit memory-index product can
+overflow. Very large VRAM therefore expands total capacity without requiring one
+unsafe monolithic launch. Current-profile resident execution, product-level batch
+routing, asynchronous transfer/stream tuning, broader hardware evidence,
 throughput evidence, and CUDA superoptimization remain open.

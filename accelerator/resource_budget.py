@@ -79,11 +79,14 @@ def plan_resident_batches(
     resources: AcceleratorResources,
     *,
     fixed_chunk_bytes: int = 0,
+    max_items_per_chunk: int | None = None,
 ) -> ResourcePlan:
     """Partition resident items under measured memory without a fixed batch cap.
 
     Returns:
         Stable input-order chunks whose requested bytes fit the measured budget.
+        An optional per-chunk item bound represents backend integer/layout limits,
+        never an accelerator-memory ceiling.
 
     Raises:
         ResourceBudgetError: If the snapshot, layout, or one item cannot fit.
@@ -96,6 +99,9 @@ def plan_resident_batches(
     if any(value <= 0 for value in item_bytes):
         message = "resident item bytes must all be positive"
         raise ResourceBudgetError(message)
+    if max_items_per_chunk is not None and max_items_per_chunk <= 0:
+        message = "maximum items per chunk must be positive when declared"
+        raise ResourceBudgetError(message)
     reserve = max(
         MINIMUM_RESERVE_BYTES,
         snapshot.total_memory_bytes // RESERVE_DIVISOR,
@@ -106,7 +112,12 @@ def plan_resident_batches(
     )
     if not item_bytes:
         return ResourcePlan((), compute_wave, reserve, snapshot, usable)
-    chunks = _greedy_chunks(item_bytes, usable, fixed_chunk_bytes)
+    chunks = _greedy_chunks(
+        item_bytes,
+        usable,
+        fixed_chunk_bytes,
+        max_items_per_chunk=max_items_per_chunk,
+    )
     return ResourcePlan(tuple(chunks), compute_wave, reserve, snapshot, usable)
 
 
@@ -114,6 +125,8 @@ def _greedy_chunks(
     item_bytes: tuple[int, ...],
     usable_bytes: int,
     fixed_chunk_bytes: int,
+    *,
+    max_items_per_chunk: int | None,
 ) -> list[BatchChunk]:
     chunks: list[BatchChunk] = []
     start = 0
@@ -126,7 +139,12 @@ def _greedy_chunks(
                 f"{usable_bytes} bytes are budgeted"
             )
             raise ResourceBudgetError(message)
-        if index > start and required + byte_count > usable_bytes:
+        memory_full = required + byte_count > usable_bytes
+        count_full = (
+            max_items_per_chunk is not None
+            and index - start >= max_items_per_chunk
+        )
+        if index > start and (memory_full or count_full):
             chunks.append(BatchChunk(required, start, index))
             start = index
             required = fixed_chunk_bytes

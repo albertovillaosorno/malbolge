@@ -28,8 +28,10 @@ validation:
 
 Discover available memory and compute resources at runtime and choose batch
 size, state layout, caches, and search breadth accordingly. Tiny devices around
-128 MiB must remain usable; devices around 80 GiB should turn additional
-resources into measured throughput instead of hitting fixed artificial limits.
+Small-memory devices must remain usable while additional addressable
+resources on arbitrarily larger devices must increase available work rather than
+hitting a fixed artificial VRAM ceiling. The 128 MiB and 80 GiB values are only
+example probe points, not supported-range endpoints.
 
 ## Acceptance
 
@@ -67,8 +69,10 @@ resources into measured throughput instead of hitting fixed artificial limits.
   allocation. Oversized single items fail before `cuMemAlloc`.
 - Synthetic boundary evidence is explicitly labeled: the declared current-state
   byte model admits 6 first-chunk states at 128 MiB and 4,209 at 80 GiB. These
-  values prove absence of one fixed batch ceiling; they are not hardware
-  throughput measurements.
+  are example probes rather than minimum/maximum supported sizes. A separate
+  100,000 GiB synthetic fixture proves that additional addressable memory is not
+  clamped; classic CUDA splits only at its 32-bit memory-index boundary. None of
+  these synthetic rows are hardware throughput measurements.
 - Retained post-commit resource evidence under
   `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
   records the RTX 4060 Driver API snapshot and synthetic boundary rows with exact
