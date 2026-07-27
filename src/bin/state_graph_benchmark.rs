@@ -46,6 +46,8 @@
 
 #[path = "../../algorithms/self-modification-state-graph-optimizer/bench.rs"]
 pub mod benchmark;
+#[path = "../../execution/ir/main.rs"]
+pub mod execution_ir;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/index.rs"]
 pub mod indexed;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/state.rs"]

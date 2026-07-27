@@ -49,6 +49,8 @@
 mod artifact_safety;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/exact.rs"]
 mod exact_state;
+#[path = "../execution/ir/main.rs"]
+pub mod execution_ir;
 #[path = "../algorithms/self-modification-state-graph-optimizer/index.rs"]
 pub mod indexed;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/i.rs"]

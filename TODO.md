@@ -319,6 +319,10 @@ machine code before execution, specialize hot or mutation-sensitive regions at
 runtime, and deoptimize safely to the interpreter whenever a code-version guard
 or speculative assumption fails. The normative VM contract remains the semantic
 baseline; native tiers are accelerators of identical observable behavior.
+Portable effect IR v1 is now product-owned under `execution/ir/`, and the
+verifier/deoptimization research boundary exercises it directly. Native code
+artifacts, architecture backends, cache/orchestration, and end-to-end tier
+selection remain open.
 
 ### TODO - Ahead-of-execution native translation
 
@@ -649,16 +653,17 @@ preserves its irrelevant value, and matches direct VM exit exactly; live-in
 changes fail closed. Post-commit evidence measures dependency-guard hit at
 106.88 ns and verified shortcut application at 6.88
 microseconds versus 889.60 microseconds for the prepared direct VM
-region, about 129.36x. Tier selection now also has an executable deoptimization
-boundary: guard hits use verified effects, while guard misses run the normative VM
-for the same region budget and reconstruct the incremental lineage from real
+region, about 129.36x. Tier selection now also has an executable
+deoptimization boundary: guard hits use verified effects, while guard misses run
+the normative VM for the same region budget and reconstruct the incremental
+lineage from real
 traces; normative rejection is propagated unchanged. A portable effect-IR v1
 research artifact now admits only exact verifier reprojections of profile,
 live-ins, budget, outcome, and compact state-changing effects; tampering any
 field fails and admitted shortcut/deopt results match the existing region
-baseline. Production `execution/ir/`, host-code artifacts, wider-profile
-geometry, broader mutation-history collapse, and end-to-end tier performance
-remain open.
+baseline. Product `execution/ir/` now owns effect IR v1. Host-code
+artifacts, wider-profile geometry, broader mutation-history collapse, and
+end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture
 

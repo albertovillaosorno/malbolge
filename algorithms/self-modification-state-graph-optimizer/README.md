@@ -150,10 +150,11 @@ preserved. `tests/r.rs` proves an irrelevant-memory variant fails the exact guar
 but safely reuses the region and matches direct VM execution exactly; changing a
 live-in dependency fails closed.
 
-`artifact.rs` is the portable effect-IR trust-boundary precursor. An untrusted
-claim carries only schema version, profile fingerprint, verifier-derived live-ins,
-step budget, outcome, and compact state-changing effects. Admission independently
-reprojects every effect from `VerifiedExactRegion` traces and compares every
-field exactly. Only the verified artifact type may execute; guard miss retains the
-same normative deoptimization path. This is not yet architecture machine code or
-a stable cross-process cache format.
+`artifact.rs` is the portable effect-IR trust-boundary bridge. Its untrusted
+`RegionEffectProgram` is product-owned by `execution/ir/main.rs` and carries
+schema version, profile fingerprint, verifier-derived live-ins, step budget,
+outcome, and compact state-changing effects. Admission independently reprojects
+every effect from `VerifiedExactRegion` traces and compares every field exactly.
+Only the verified artifact type may execute; guard miss retains the same
+normative deoptimization path. Research remains the verifier/oracle bridge. This
+is not yet architecture machine code or a stable cross-process cache format.

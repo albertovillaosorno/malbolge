@@ -48,10 +48,10 @@ use malbolge::{
     ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite, current_profile,
 };
 
+use crate::execution_ir::RegionEffectProgram;
 use crate::indexed_state::IndexedMachineState;
 use crate::region_artifact::{
     RegionArtifactVerificationError, UntrustedRegionArtifact,
-    UntrustedRegionArtifactClaim,
 };
 use crate::region_certificate::{
     ExactRegionCertificate, RegionExecutionTier, VerifiedExactRegion,
@@ -186,9 +186,9 @@ fn artifact_shortcut_matches_verified_region_on_reduced_guard()
 fn artifact_verifier_rejects_effect_tampering() -> Result<(), String> {
     let (_entry, region) = verified_fixture()?;
     let source = UntrustedRegionArtifact::from_verified_region(&region);
-    let mut claim = source.claim().clone();
-    let _removed = claim.effects.pop();
-    let tampered = UntrustedRegionArtifact::from_untrusted_parts(claim);
+    let mut program = source.program().clone();
+    let _removed = program.effects.pop();
+    let tampered = UntrustedRegionArtifact::from_untrusted_parts(program);
     match tampered.verify_against(&region) {
         Err(RegionArtifactVerificationError::VerificationMismatch) => Ok(()),
         other => Err(format!("tampered effects artifact result: {other:?}")),
@@ -199,38 +199,25 @@ fn artifact_verifier_rejects_effect_tampering() -> Result<(), String> {
 fn artifact_verifier_rejects_profile_tampering() -> Result<(), String> {
     let (_entry, region) = verified_fixture()?;
     let source = UntrustedRegionArtifact::from_verified_region(&region);
-    let claim = source.claim();
-    let tampered = UntrustedRegionArtifact::from_untrusted_parts(
-        UntrustedRegionArtifactClaim {
-            effects: claim.effects.clone(),
-            format_version: claim.format_version,
-            memory_dependencies: claim.memory_dependencies.clone(),
-            outcome: claim.outcome,
-            profile_fingerprint: String::from(
-                "malbolge-profile-v1:sha256:tampered",
-            ),
-            step_budget: claim.step_budget,
-        },
-    );
-    match tampered.verify_against(&region) {
-        Err(RegionArtifactVerificationError::VerificationMismatch) => Ok(()),
-        other => Err(format!("tampered profile artifact result: {other:?}")),
-    }
+    let mut program = source.program().clone();
+    program.profile_fingerprint =
+        String::from("malbolge-profile-v1:sha256:tampered");
+    check_rejected(program, &region, "profile fingerprint")
 }
 
 #[test]
 fn artifact_verifier_rejects_metadata_tampering() -> Result<(), String> {
     let (_entry, region) = verified_fixture()?;
     let source = UntrustedRegionArtifact::from_verified_region(&region);
-    let original = source.claim();
+    let original = source.program();
 
     let mut version = original.clone();
     version.format_version = version.format_version.saturating_add(1);
     check_rejected(version, &region, "format version")?;
 
     let mut dependencies = original.clone();
-    let _removed = dependencies.memory_dependencies.pop();
-    check_rejected(dependencies, &region, "memory dependencies")?;
+    let _removed = dependencies.memory_live_ins.pop();
+    check_rejected(dependencies, &region, "memory live-ins")?;
 
     let mut budget = original.clone();
     budget.step_budget = budget.step_budget.saturating_add(1);
@@ -242,11 +229,11 @@ fn artifact_verifier_rejects_metadata_tampering() -> Result<(), String> {
 }
 
 fn check_rejected(
-    claim: UntrustedRegionArtifactClaim,
+    program: RegionEffectProgram,
     region: &VerifiedExactRegion,
     field: &str,
 ) -> Result<(), String> {
-    let artifact = UntrustedRegionArtifact::from_untrusted_parts(claim);
+    let artifact = UntrustedRegionArtifact::from_untrusted_parts(program);
     match artifact.verify_against(region) {
         Err(RegionArtifactVerificationError::VerificationMismatch) => Ok(()),
         other => Err(format!("tampered {field} artifact result: {other:?}")),

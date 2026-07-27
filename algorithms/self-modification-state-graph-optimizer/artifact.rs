@@ -50,41 +50,24 @@
 
 use malbolge::RunOutcome;
 
-use crate::indexed_state::{IndexedMachineState, IndexedStateEffect};
-use crate::region_certificate::{
-    ExactRegionError, RegionExecutionTier, RegionMemoryDependency,
-    VerifiedExactRegion,
+use crate::execution_ir::{
+    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
 };
-
-const EFFECT_IR_VERSION: u16 = 1;
-
-/// Explicit caller-supplied portable region claim with no verifier authority.
-#[derive(Clone, Debug)]
-pub struct UntrustedRegionArtifactClaim {
-    /// Compact state effects claimed for the verified region.
-    pub effects: Vec<IndexedStateEffect>,
-    /// Portable effect-IR schema version.
-    pub format_version: u16,
-    /// Claimed verifier-derived live-in memory dependencies.
-    pub memory_dependencies: Vec<RegionMemoryDependency>,
-    /// Claimed bounded-run outcome.
-    pub outcome: RunOutcome,
-    /// Canonical target-profile fingerprint claimed by the artifact.
-    pub profile_fingerprint: String,
-    /// Claimed semantic-step budget.
-    pub step_budget: usize,
-}
+use crate::indexed_state::IndexedMachineState;
+use crate::region_certificate::{
+    ExactRegionError, RegionExecutionTier, VerifiedExactRegion,
+};
 
 /// Untrusted portable region artifact requiring verifier comparison.
 #[derive(Clone, Debug)]
 pub struct UntrustedRegionArtifact {
-    claim: UntrustedRegionArtifactClaim,
+    program: RegionEffectProgram,
 }
 
 /// Verified portable effect artifact bound to one verifier-produced region.
 #[derive(Clone, Debug)]
 pub struct VerifiedRegionArtifact {
-    effects: Vec<IndexedStateEffect>,
+    program: RegionEffectProgram,
     region: VerifiedExactRegion,
 }
 
@@ -125,18 +108,10 @@ impl RegionArtifactExecutionResult {
 }
 
 impl UntrustedRegionArtifact {
-    /// Returns the untrusted claim for mutation, transport, or inspection.
+    /// Builds an explicitly untrusted artifact from caller-supplied IR.
     #[must_use]
-    pub const fn claim(&self) -> &UntrustedRegionArtifactClaim {
-        &self.claim
-    }
-
-    /// Builds an explicitly untrusted artifact from caller-supplied fields.
-    #[must_use]
-    pub const fn from_untrusted_parts(
-        claim: UntrustedRegionArtifactClaim,
-    ) -> Self {
-        Self { claim }
+    pub const fn from_untrusted_parts(program: RegionEffectProgram) -> Self {
+        Self { program }
     }
 
     /// Builds a candidate artifact by projecting one already verified region.
@@ -146,14 +121,21 @@ impl UntrustedRegionArtifact {
     #[must_use]
     pub fn from_verified_region(region: &VerifiedExactRegion) -> Self {
         Self {
-            claim: UntrustedRegionArtifactClaim {
+            program: RegionEffectProgram {
                 effects: region
                     .traces()
                     .iter()
-                    .map(IndexedStateEffect::from_trace)
+                    .map(EffectOp::from_trace)
                     .collect(),
                 format_version: EFFECT_IR_VERSION,
-                memory_dependencies: region.memory_dependencies().to_vec(),
+                memory_live_ins: region
+                    .memory_dependencies()
+                    .iter()
+                    .map(|dependency| MemoryLiveIn {
+                        address: dependency.address,
+                        value: dependency.value,
+                    })
+                    .collect(),
                 outcome: region.outcome(),
                 profile_fingerprint: String::from(
                     region.entry().profile_fingerprint(),
@@ -161,6 +143,12 @@ impl UntrustedRegionArtifact {
                 step_budget: region.step_budget(),
             },
         }
+    }
+
+    /// Returns the untrusted product-owned IR for transport or mutation.
+    #[must_use]
+    pub const fn program(&self) -> &RegionEffectProgram {
+        &self.program
     }
 
     /// Verifies every portable field against independent region evidence.
@@ -173,23 +161,28 @@ impl UntrustedRegionArtifact {
         &self,
         region: &VerifiedExactRegion,
     ) -> Result<VerifiedRegionArtifact, RegionArtifactVerificationError> {
-        let expected_effects = region
-            .traces()
-            .iter()
-            .map(IndexedStateEffect::from_trace)
-            .collect::<Vec<_>>();
-        if self.claim.format_version != EFFECT_IR_VERSION
-            || self.claim.profile_fingerprint
-                != region.entry().profile_fingerprint()
-            || self.claim.memory_dependencies != region.memory_dependencies()
-            || self.claim.outcome != region.outcome()
-            || self.claim.step_budget != region.step_budget()
-            || self.claim.effects != expected_effects
-        {
+        let expected = RegionEffectProgram {
+            effects: region.traces().iter().map(EffectOp::from_trace).collect(),
+            format_version: EFFECT_IR_VERSION,
+            memory_live_ins: region
+                .memory_dependencies()
+                .iter()
+                .map(|dependency| MemoryLiveIn {
+                    address: dependency.address,
+                    value: dependency.value,
+                })
+                .collect(),
+            outcome: region.outcome(),
+            profile_fingerprint: String::from(
+                region.entry().profile_fingerprint(),
+            ),
+            step_budget: region.step_budget(),
+        };
+        if self.program != expected {
             return Err(RegionArtifactVerificationError::VerificationMismatch);
         }
         Ok(VerifiedRegionArtifact {
-            effects: expected_effects,
+            program: expected,
             region: region.clone(),
         })
     }
@@ -216,7 +209,7 @@ impl VerifiedRegionArtifact {
             });
         }
         let mut state = candidate.clone();
-        for effect in &self.effects {
+        for effect in &self.program.effects {
             state = state.apply_verified_effect(effect)?;
         }
         Ok(RegionArtifactExecutionResult {

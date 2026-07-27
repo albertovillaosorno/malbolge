@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -25,16 +25,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Implemented Foundation
 
-This record defines the contract that implementation must satisfy for
-`tiered-native-execution-engine`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+`execution/ir/main.rs` now owns portable effect IR v1 as product code. It
+defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram` under the existing
+responsibility-oriented topology; Cargo composition uses explicit paths rather
+than introducing a language-shaped crate boundary.
 
-### Implementation Status
+State-graph verification projects normative `ProfileStepTrace` records into that
+IR only after exact region verification. An untrusted portable artifact must
+match IR version, canonical profile fingerprint, verifier-derived live-ins,
+semantic-step budget, bounded outcome, and every state-changing effect before a
+verified artifact exists. Guard hits apply only admitted effects. Guard misses
+run the normative `ProfileMachine` for the same verified budget and reconstruct
+the incremental lineage from real traces; typed VM rejection propagates
+unchanged.
 
-Not implemented. This proposed contract does not claim executable support yet.
+### Remaining Implementation
+
+No host machine-code artifact is emitted yet. x86-64/AArch64 backends, native
+cache identity/serialization, executable-memory policy, AOT/JIT orchestration,
+and the end-to-end tier selector remain open. The interpreter remains the only
+normative execution authority and the guaranteed fallback.
 
 ## Invariants
 
@@ -58,6 +70,10 @@ deterministically without changing guest-visible state silently.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
+- Current executable foundation is covered by
+  `tests/state_graph_research.rs`: portable IR artifact tampering fails closed,
+  verified effects match the region shortcut, and guard misses match normative
+  deoptimization exactly.
 ## References
 
 ### Host Architecture Baseline

@@ -1,6 +1,6 @@
 ---
 id: "tiered-native-execution-engine"
-status: "pending"
+status: "active"
 lane: "9"
 area: "vm"
 task: "TODO - Tiered native execution engine"
@@ -54,3 +54,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
+- Active foundation: `execution/ir/main.rs` owns portable effect IR v1
+  (`EffectOp`, `MemoryLiveIn`, `RegionEffectProgram`) without creating a Rust
+  crate boundary. State-graph research reprojects verifier traces into this IR,
+  rejects tampered profile/live-in/budget/outcome/effect fields, and preserves
+  deterministic interpreter deoptimization on guard miss.
+- Native x86-64/AArch64 code artifacts, AOT/JIT orchestration, cache identity,
+  executable-memory policy, and end-to-end tier performance remain
+  unimplemented.

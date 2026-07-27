@@ -60,6 +60,7 @@ use malbolge::{
     ProfileRegisters, ProfileStepTrace, Termination, TraceInput,
 };
 
+use crate::execution_ir::EffectOp;
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
 use crate::persistent_output::PersistentOutput;
 
@@ -81,30 +82,6 @@ pub struct IndexedMachineState {
     profile_digest: u64,
     registers: ProfileRegisters,
     termination: Option<Termination>,
-}
-
-/// Compact verified state-transition effect derived from one normative trace.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct IndexedStateEffect {
-    after: ProfileMachineObservation,
-    before: ProfileMachineObservation,
-    input: Option<TraceInput>,
-    memory_delta: ProfileMemoryDelta,
-    output: Option<u8>,
-}
-
-impl IndexedStateEffect {
-    /// Projects one full normative trace into the state-changing effect subset.
-    #[must_use]
-    pub const fn from_trace(trace: &ProfileStepTrace) -> Self {
-        Self {
-            after: trace.after,
-            before: trace.before,
-            input: trace.input,
-            memory_delta: trace.memory_delta,
-            output: trace.output,
-        }
-    }
 }
 
 /// Stable node identifier inside one indexed state graph.
@@ -218,7 +195,7 @@ impl IndexedMachineState {
     /// input/output evolution, or indexed memory invariant disagrees.
     pub(crate) fn apply_verified_effect(
         &self,
-        effect: &IndexedStateEffect,
+        effect: &EffectOp,
     ) -> Result<Self, IndexedStateError> {
         self.validate_before_observation(effect.before)?;
         let input_cursor = self.next_input_cursor_effect(
@@ -248,7 +225,7 @@ impl IndexedMachineState {
         if !ptr::eq(self.profile, trace.profile) {
             return Err(IndexedStateError::ProfileMismatch);
         }
-        self.apply_verified_effect(&IndexedStateEffect::from_trace(trace))
+        self.apply_verified_effect(&EffectOp::from_trace(trace))
     }
 
     /// Returns exact equality for all state except mutable memory overrides.
