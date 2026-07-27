@@ -48,6 +48,8 @@
 pub mod benchmark;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/index.rs"]
 pub mod indexed;
+#[path = "../../algorithms/self-modification-state-graph-optimizer/state.rs"]
+pub mod indexed_state;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/memory.rs"]
 pub mod persistent;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/profile.rs"]

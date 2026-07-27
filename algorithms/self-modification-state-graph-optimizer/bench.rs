@@ -59,6 +59,7 @@ use malbolge::{
 };
 
 use crate::indexed::IndexedProfileMemory;
+use crate::indexed_state::{IndexedMachineState, IndexedStateGraph};
 use crate::persistent::PersistentProfileMemory;
 use crate::profile_graph::ProfileStateGraph;
 
@@ -86,10 +87,13 @@ const PERSISTENT_PATCH_ADDRESS: u32 = 1;
 const PERSISTENT_ROOT_ADDRESS: u32 = 3;
 const PROFILE_BENCHMARK: &str = "profile-checkpoint";
 const SAMPLE_COUNT: u8 = 15;
+const STATE_OPERATIONS: usize = 4_096;
 
 type DeltaFixture = (ProfileMachineState, ProfileMemoryDelta, u32);
 type IndexedFixture = (IndexedProfileMemory, ProfileMemoryDelta, u32);
 type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
+type StateFixture =
+    (IndexedMachineState, ProfileStepTrace, IndexedMachineState);
 
 #[derive(Clone, Copy)]
 struct RepeatedSampleConfig<'config> {
@@ -148,6 +152,31 @@ fn hash_usize(mut hash: u64, value: usize) -> u64 {
         hash = hash_byte(hash, byte);
     }
     hash
+}
+
+fn incremental_graph_checksum(graph: &IndexedStateGraph, node: u32) -> u64 {
+    let mut hash = hash_u32(FNV_OFFSET, node);
+    hash = hash_usize(hash, graph.node_count());
+    hash = hash_usize(hash, graph.observations());
+    hash_usize(hash, graph.deduplicated_observations())
+}
+
+fn incremental_state_apply(
+    (state, trace): (IndexedMachineState, ProfileStepTrace),
+) -> u64 {
+    match state.apply_trace(&trace) {
+        Ok(updated) => updated.state_digest(),
+        Err(_error) => u64::MAX,
+    }
+}
+
+fn incremental_state_observe(
+    (mut graph, state): (IndexedStateGraph, IndexedMachineState),
+) -> u64 {
+    match graph.observe(state) {
+        Ok(node) => incremental_graph_checksum(&graph, node.value()),
+        Err(_error) => u64::MAX,
+    }
 }
 
 fn insert_checkpoint(
@@ -310,6 +339,32 @@ fn indexed_fixture() -> IoResult<IndexedFixture> {
     Ok((indexed, delta, address))
 }
 
+fn state_fixture() -> IoResult<StateFixture> {
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| {
+            IoError::other(format!("state fixture load: {error}"))
+        })?;
+    let seed = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| IoError::other(format!("state root: {error:?}")))?;
+    let mut observed_trace = None;
+    let _outcome = machine
+        .step_traced(&mut |record: &ProfileStepTrace| {
+            observed_trace = Some(*record);
+        })
+        .map_err(|error| {
+            IoError::other(format!("state fixture step: {error}"))
+        })?;
+    let trace = observed_trace
+        .ok_or_else(|| IoError::other("state fixture trace missing"))?;
+    let next = seed.apply_trace(&trace).map_err(|error| {
+        IoError::other(format!("state fixture apply: {error:?}"))
+    })?;
+    Ok((seed, trace, next))
+}
+
 fn persistent_fixture() -> IoResult<PersistentFixture> {
     let (state, delta, address) = delta_fixture()?;
     Ok((PersistentProfileMemory::from_state(&state), delta, address))
@@ -450,6 +505,42 @@ fn replay_checkpoint(
     }
 }
 
+fn run_state_identity_samples(output: &mut impl Write) -> IoResult<()> {
+    let (seed, trace, next) = state_fixture()?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "state-incremental-apply-trace",
+            operations: STATE_OPERATIONS,
+        },
+        || (seed.clone(), trace),
+        incremental_state_apply,
+    )?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "state-incremental-observe-new",
+            operations: STATE_OPERATIONS,
+        },
+        || (IndexedStateGraph::new(seed.clone()), next.clone()),
+        incremental_state_observe,
+    )?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "state-incremental-replay",
+            operations: STATE_OPERATIONS,
+        },
+        || {
+            let mut graph = IndexedStateGraph::new(seed.clone());
+            let _node = graph.observe(next.clone());
+            (graph, next.clone())
+        },
+        incremental_state_observe,
+    )?;
+    Ok(())
+}
+
 /// Runs the current-profile checkpoint cost matrix and emits raw CSV samples.
 ///
 /// # Errors
@@ -513,6 +604,7 @@ pub fn run() -> IoResult<()> {
     )?;
     run_depth_samples(&mut output, &persistent)?;
     run_indexed_samples(&mut output)?;
+    run_state_identity_samples(&mut output)?;
     Ok(())
 }
 
