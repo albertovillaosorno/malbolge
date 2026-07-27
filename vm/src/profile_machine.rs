@@ -99,6 +99,27 @@ pub enum ProfileLoadError {
     SourceTooLong,
 }
 
+/// Stable identity of one profile-width machine register.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileRegisterName {
+    /// Accumulator register `A`.
+    Accumulator,
+    /// Code pointer register `C`.
+    CodePointer,
+    /// Data pointer register `D`.
+    DataPointer,
+}
+
+impl ProfileRegisterName {
+    const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Accumulator => "A",
+            Self::CodePointer => "C",
+            Self::DataPointer => "D",
+        }
+    }
+}
+
 /// Typed failure of profile-driven construction or one machine transition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileMachineError {
@@ -116,10 +137,31 @@ pub enum ProfileMachineError {
     },
     /// Source loading failed before machine construction.
     Load(ProfileLoadError),
+    /// Supplied state memory length differs from the selected profile image.
+    MemoryImageLength {
+        /// Exact profile memory length.
+        expected: u32,
+        /// Supplied host-vector length.
+        observed: usize,
+    },
     /// Exact memory-domain indexing unexpectedly failed internally.
     MemoryInvariant,
+    /// A supplied state memory word is outside the selected word domain.
+    MemoryWordOutOfRange {
+        /// Exact profile-width memory address.
+        address: u32,
+        /// Rejected raw word value.
+        value: u32,
+    },
     /// The selected profile exceeds this runtime's explicit capability.
     Profile(ProfileRequirementError),
+    /// A supplied register is outside the selected word/address domain.
+    RegisterOutOfRange {
+        /// Rejected register identity.
+        register: ProfileRegisterName,
+        /// Rejected raw register value.
+        value: u32,
+    },
     /// A translation-table lookup failed inside its admitted domain.
     TranslationTableInvariant,
 }
@@ -191,10 +233,23 @@ impl Display for ProfileMachineError {
                 write!(f, "non-graphical value {value}")
             },
             Self::Load(error) => Display::fmt(error, f),
+            Self::MemoryImageLength { expected, observed } => write!(
+                f,
+                "profile state memory length {observed} differs from {expected}"
+            ),
             Self::MemoryInvariant => {
                 f.write_str("profile memory invariant failed")
             },
+            Self::MemoryWordOutOfRange { address, value } => write!(
+                f,
+                "profile state memory[{address}]={value} is outside word domain"
+            ),
             Self::Profile(error) => Display::fmt(error, f),
+            Self::RegisterOutOfRange { register, value } => write!(
+                f,
+                "profile state register {}={value} is outside word domain",
+                register.stable_id()
+            ),
             Self::TranslationTableInvariant => {
                 f.write_str("profile translation-table invariant failed")
             },
@@ -271,6 +326,41 @@ impl ProfileMachine {
             output: Vec::new(),
             profile,
             registers: ProfileRegisters::default(),
+            termination: None,
+        })
+    }
+
+    /// Constructs a machine from one complete validated profile-width state.
+    ///
+    /// This verification/deoptimization boundary accepts only an exact memory
+    /// image and in-domain register values. It never truncates or wraps
+    /// supplied host values during construction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when the profile exceeds runtime
+    /// capability, memory length/words are invalid, or any register is outside
+    /// the selected profile domain.
+    pub fn from_state(
+        profile: &'static ProfileDescriptor,
+        memory: Vec<u32>,
+        input: Vec<u8>,
+        registers: ProfileRegisters,
+    ) -> Result<Self, ProfileMachineError> {
+        preflight_profile(
+            profile,
+            profile.memory_words(),
+            safe_rust_profiled_capability(),
+        )?;
+        validate_state_memory(profile, &memory)?;
+        validate_state_registers(profile, registers)?;
+        Ok(Self {
+            input,
+            input_cursor: 0,
+            memory,
+            output: Vec::new(),
+            profile,
+            registers,
             termination: None,
         })
     }
@@ -591,6 +681,69 @@ impl ProfileMachine {
         *cell = value;
         Ok(())
     }
+}
+
+fn validate_state_memory(
+    profile: &ProfileDescriptor,
+    memory: &[u32],
+) -> Result<(), ProfileMachineError> {
+    let expected = profile.memory_words();
+    let expected_len = usize::try_from(expected)
+        .ok()
+        .ok_or(ProfileMachineError::MemoryInvariant)?;
+    if memory.len() != expected_len {
+        return Err(ProfileMachineError::MemoryImageLength {
+            expected,
+            observed: memory.len(),
+        });
+    }
+    for (index, value) in memory.iter().copied().enumerate() {
+        if value >= profile.word_modulus() {
+            let address = u32::try_from(index)
+                .ok()
+                .ok_or(ProfileMachineError::MemoryInvariant)?;
+            return Err(ProfileMachineError::MemoryWordOutOfRange {
+                address,
+                value,
+            });
+        }
+    }
+    Ok(())
+}
+
+const fn validate_state_register(
+    profile: &ProfileDescriptor,
+    register: ProfileRegisterName,
+    value: u32,
+) -> Result<(), ProfileMachineError> {
+    if value >= profile.word_modulus() {
+        return Err(ProfileMachineError::RegisterOutOfRange {
+            register,
+            value,
+        });
+    }
+    Ok(())
+}
+
+fn validate_state_registers(
+    profile: &ProfileDescriptor,
+    registers: ProfileRegisters,
+) -> Result<(), ProfileMachineError> {
+    validate_state_register(
+        profile,
+        ProfileRegisterName::Accumulator,
+        registers.accumulator,
+    )?;
+    validate_state_register(
+        profile,
+        ProfileRegisterName::CodePointer,
+        registers.code_pointer,
+    )?;
+    validate_state_register(
+        profile,
+        ProfileRegisterName::DataPointer,
+        registers.data_pointer,
+    )
 }
 
 fn is_graphical(value: u32) -> bool {

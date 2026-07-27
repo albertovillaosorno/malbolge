@@ -91,7 +91,8 @@ pub use profile::{
     safe_rust_profiled_capability, target_profile,
 };
 pub use profile_machine::{
-    ProfileLoadError, ProfileMachine, ProfileMachineError, ProfileRegisters,
+    ProfileLoadError, ProfileMachine, ProfileMachineError, ProfileRegisterName,
+    ProfileRegisters,
 };
 pub use profile_trace::{ProfileMachineObservation, ProfileStepTrace};
 pub use trace::{MachineObservation, StepTrace, TraceInput};

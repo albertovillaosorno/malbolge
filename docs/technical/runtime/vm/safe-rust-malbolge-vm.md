@@ -52,8 +52,12 @@ classic loader rather than being truncated or silently reinterpreted.
 A separate safe-Rust `ProfileMachine` now implements the canonical schema-v2
 single-word-modular profile model through 14 trits/4,782,969 words under runtime
 identity `safe-rust-profiled`. It deliberately does not replace classic `Word`,
-`Memory`, tracing, or legacy-mode APIs. Historical differential fixtures run the
-same 1998 program through both engines and compare all 59,049 final memory words,
+`Memory`, tracing, or legacy-mode APIs. `ProfileMachine::from_state()` is the
+validated reconstruction boundary for verification/deoptimization work: the
+supplied memory image must have exact profile length, every cell must be inside
+the profile word domain, and all three registers must be in-domain. Construction
+never truncates or wraps invalid host values. Historical differential fixtures
+run the same 1998 program through both engines and compare all 59,049 final memory words,
 registers, byte I/O/EOF, and termination. Current-profile fixtures additionally
 exercise addresses above 59,048 and independent scalar expectations for 14-trit
 crazy and rotate.
@@ -79,6 +83,8 @@ command passes at retirement time.
   of the Rust VM.
 - `ProfileMachine` generalizes only profile-width geometry and preserves the same
   sequential/self-modifying semantic core; it never changes classic `Machine`.
+- Profile state reconstruction is fail-closed: exact memory shape and all word/
+  register values are validated before a machine exists.
 - Classic and profiled trace hooks wrap their respective real step engines and
   therefore cannot become an alternate transition implementation.
 
@@ -105,6 +111,9 @@ memory, input consumption, or output.
   traced and plain current execution agree on outcome, I/O, registers and sampled
   memory, and exercises a real 14-trit recurrence jump whose rejected encryption
   target remains observationally atomic.
+- `tests/vm/profile_state.rs` validates exact state reconstruction errors and
+  places both current pointers at 4,782,968, proving the last cell is encrypted
+  before `C` and `D` wrap to zero.
 - `tests/compatibility/specification/` contains versioned specification fixtures
   for historical disagreement edges and byte-I/O semantics.
 - Trace hooks are observational only: classic and profile-driven traced/untraced

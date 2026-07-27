@@ -54,7 +54,10 @@ normative 1998 specification.
 - Classic and profile-driven implementation, tracing, instruction coverage, and
   independent differential evidence are present. Current profile tracing records
   exact profile identity/EOF and rejected-transition atomicity without duplicating
-  the transition engine. Completion remains gated on the declared repository-wide
-  `jig validate --root .` command passing at retirement time.
+  the transition engine. `ProfileMachine::from_state()` now validates exact memory
+  image length, every memory word, and all registers before reconstruction;
+  current max-address execution proves self-encryption precedes pointer wrap.
+  Completion remains gated on the declared repository-wide `jig validate --root
+  .` command passing at retirement time.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.

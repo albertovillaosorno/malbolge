@@ -70,6 +70,8 @@ mod profile_logical;
 mod profile_machine;
 #[path = "vm/profile_requirements.rs"]
 mod profile_requirements;
+#[path = "vm/profile_state.rs"]
+mod profile_state;
 #[path = "vm/profile_tracing.rs"]
 mod profile_tracing;
 #[path = "vm/tables.rs"]
