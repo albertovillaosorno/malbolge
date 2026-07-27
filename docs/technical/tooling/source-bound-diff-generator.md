@@ -2,9 +2,9 @@
 
 ## Status
 
-Scaffolded and active. Public recipe types, DOOM integration scaffolds, contracts,
-and fail-closed behavior exist; matching, source binding, payload recovery, and
-Rust emission are not implemented.
+Active. The exact authoring planner/materializer and source-span reuse are
+implemented. Canonical compatibility matching, stable admission anchors, behavior
+probes, source binding, payload recovery, and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -44,6 +44,24 @@ source plus source-bound transformation material.
 
 Possession of the generated transform alone must be insufficient to materialize
 the local oracle.
+
+### Exact Authoring Baseline
+
+The implemented exact layer snapshots regular files by normalized relative path,
+rejects symlinks and special entries, and models the target as deterministic file
+instructions. Byte-identical target files reuse source files directly. Modified
+same-path files reuse exact source byte spans discovered by a deterministic block
+matcher and retain only unmatched oracle bytes as local authoring literals.
+
+This local plan is verification evidence, not a distributable transform. Raw
+`OracleLiteral` bytes must never cross the public emission boundary. A later
+source-binding stage must convert them to recovery material that cannot be
+materialized without sufficient admitted source evidence.
+
+Exact materialization verifies the source snapshot before writing, constructs the
+result under a staging path, verifies the complete target snapshot, and publishes
+only after exact equality succeeds. The matcher used for source-span reuse is
+separate from future canonical identity and stable admission anchors.
 
 ### Canonical Identity
 

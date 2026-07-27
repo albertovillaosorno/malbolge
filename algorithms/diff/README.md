@@ -13,6 +13,7 @@ quality pipeline. Application-specific policy belongs in the consumer.
 algorithms/diff/
 |-- generate.py       # public recipe API/orchestration
 |-- model.py          # deterministic transformation data model
+|-- exact.py          # exact authoring plan and materializer
 |-- canonicalize.py   # identity-only normalization
 |-- fingerprints.py   # structural similarity and stable anchors
 |-- behavior.py       # identity/compatibility/bug probes
@@ -21,7 +22,27 @@ algorithms/diff/
 `-- tests/
 ```
 
-The modules are scaffolds until the owning TODO records implementation evidence.
+The exact authoring model is implemented. Canonical admission, behavioral probes, source binding, and Rust emission remain active work under the owning TODO.
+
+## Implemented Exact Authoring Baseline
+
+The first executable layer is deliberately stricter than later compatibility
+admission. `build_exact_plan()` snapshots the local source and oracle, reuses
+whole source files when their bytes already match, and represents modified
+same-path files as deterministic source slices plus local oracle literals. The
+current byte matcher uses fixed source blocks only to discover exact reusable
+spans; those blocks are **not** the future stable admission anchors.
+
+`materialize_exact_plan()` requires the exact source snapshot, writes into a
+deterministic staging directory, verifies the complete target snapshot, and only
+then publishes the output tree. Symlinks and special filesystem entries fail
+closed. Empty directories are outside the version-one byte-tree model.
+
+`ExactAuthoringPlan` is intentionally non-distributable. Its target-only literal
+segments are local generator state. `source_binding.py` must transform that
+material into source-bound recovery data before `emit_rust.py` is allowed to
+serialize a public transform. This separation lets exact diff correctness be
+tested without weakening the final source-binding invariant.
 
 ## Core Contract
 

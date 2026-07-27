@@ -33,13 +33,18 @@ format.
 **Current implementation.**
 
 - The public `DiffRecipe` and fail-closed `write_algorithm()` scaffold exist.
+- The exact authoring planner/materializer reconstructs deterministic byte trees,
+  reuses whole source files and source spans, and publishes only after full target
+  verification.
+- Synthetic tests cover exact reconstruction, deterministic planning, binary data,
+  moves, modifications, creations, deletions, source mutation, and symlink failure.
 - `algorithms/doom/generator/quality.py` records the first consumer recipe.
 - The planned admission model combines structural similarity, stable anchors,
   behavior probes, and threshold source binding.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds; those
   values are not frozen until synthetic calibration evidence exists.
-- No source-bound payload format, matching engine, cryptographic construction, or
-  Rust emitter is implemented yet.
+- No canonical compatibility matcher, stable admission-anchor engine, source-bound
+  payload format, cryptographic construction, or Rust emitter is implemented yet.
 
 ## Acceptance
 

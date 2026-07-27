@@ -34,3 +34,8 @@ Thumbs.db
 # Reproducible algorithm outputs are local. User-owned interoperability input
 # corpora are local too; other algorithm inputs/configuration remain versioned.
 **/out/
+
+# Canonical interoperability products are generated from user-supplied source
+# and must remain local even if a tool accidentally writes them outside `out/`.
+doom.c
+doom.malbolge
