@@ -228,11 +228,12 @@ TODO by TODO with its governing documents already available.
 
 ### TODO - Academic research methodology and evidence model
 
-Define the repository-wide scientific method for compiler research: falsifiable
-questions, preregistered hypotheses where practical, correctness/performance
-separation, negative and null result retention, threats to validity,
-replication, source quality, experiment provenance, and criteria for claiming
-that evidence supports or rejects a technique.
+Define the repository-wide scientific method for compiler research. The active
+methodology now requires explicit research class, baseline/falsification rule,
+correctness-before-quality, plan/raw/derived/interpretation separation,
+negative/null retention, method-specific benchmarking/optimization evidence, and
+an explicit promotion boundary; downstream records still own their concrete
+experiments and replications.
 
 ### TODO - Algorithm research mirror and local output contract
 

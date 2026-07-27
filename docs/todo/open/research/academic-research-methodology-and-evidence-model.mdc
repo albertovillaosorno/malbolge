@@ -1,6 +1,6 @@
 ---
 id: "academic-research-methodology-and-evidence-model"
-status: "pending"
+status: "active"
 lane: "1"
 area: "research"
 task: "TODO - Academic research methodology and evidence model"
@@ -24,6 +24,29 @@ questions, preregistered hypotheses where practical, correctness/performance
 separation, negative and null result retention, threats to validity,
 replication, source quality, experiment provenance, and criteria for claiming
 that evidence supports or rejects a technique.
+
+
+**Current implementation.**
+
+- `docs/research/methodology/scientific-method.md` now defines the base evidence
+  contract and method-specific classes for engineering, benchmarking,
+  optimization, replication, mathematical, and exploratory work.
+- Comparative plans freeze/version the question, baseline, rejection condition,
+  correctness oracle, workloads/profile, budgets/stopping rules, stochastic
+  controls, metrics, analysis, and raw-output policy before interpretation.
+- Correctness and optimization quality are separate evidence channels; invalid
+  candidates cannot become performance wins.
+- Raw, derived, interpretation, and conclusion layers are distinct. Negative,
+  null, resource-exhausted, tool-failure, and candidate-invalid outcomes remain
+  durable evidence under explicit exclusion/deviation rules.
+- Benchmarking and optimization overlays require reproducible setup, raw samples,
+  stability/trial evidence, justified baselines, stochasticity/seeds, and
+  distributions/variation where applicable.
+- Research conclusions may recommend promotion/rejection/inconclusive states but
+  cannot mutate trusted product semantics without a separate owning contract.
+- The strengthened research template makes these fields concrete for downstream
+  algorithm work; external prior art resolves through canonical ACM SIGSOFT and
+  ACM artifact-evaluation bibliography records.
 
 ## Acceptance
 
@@ -49,6 +72,6 @@ that evidence supports or rejects a technique.
   `benchmarks/research/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Methodology evidence is now bibliography-backed and operational. Individual
+  downstream research records still own their experiment-specific manifests,
+  raw outputs, replications, and conclusions.

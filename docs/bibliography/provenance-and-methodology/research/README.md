@@ -16,3 +16,5 @@ Repository policy, legal conclusions, or research conclusions.
 ## Contents
 
 - `acm-artifact-evaluation.md`
+
+- `acm-sigsoft-empirical-standards.md`
