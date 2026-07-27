@@ -52,8 +52,10 @@ and transform emission remain application-agnostic.
   quality README and changelog.
 - `algorithms/doom/generator/quality.py` now records the source/oracle/output
   recipe and exploratory 0.50/0.66/0.80 admission values.
-- `algorithms/diff/` and the generated quality transform are scaffolded but the
-  matching/source-binding/emission engine is not implemented.
+- `algorithms/diff/` now has exact authoring/source-span reconstruction, stable
+  anchors, and distributed tree admission; `doom.py` supplies C-aware source
+  identity. Behavior admission, source binding, Rust emission, and the generated
+  quality transform remain unfinished.
 - The checked-in comparison report still describes an older 143,662 to 38,462
   findings snapshot. It is historical progress evidence and must not be refreshed
   as final acceptance evidence until generated `out/doom_fixed/` exists.

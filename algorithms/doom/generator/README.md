@@ -9,9 +9,13 @@ quality transformation from the local root `doom/` source and the ignored manual
 oracle under `algorithms/doom/quality/in/doom/`. Its output is
 `algorithms/doom/quality/main.rs`.
 
-DOOM-specific probe construction and compatibility policy belong in `doom.py`
-when they cannot remain declarative. Generic matching, source binding,
-reconstruction, and Rust emission remain under `algorithms/diff/`.
+`doom.py` now owns the Linux DOOM C/H identity adapter. It selects only the
+`linuxdoom-1.10` C/header subtree, excludes WAD/IPX surfaces from source identity,
+and emits a framed C preprocessing-token view that ignores comments and ordinary
+formatting without erasing token boundaries or preprocessor line termination.
+Future DOOM-specific probe construction and compatibility policy stay in the same
+domain module. Generic matching, source binding, reconstruction, and Rust emission
+remain under `algorithms/diff/`.
 
 `amalgamate.py` reserves the second consumer. It remains intentionally
 unconfigured until normalized quality output and a semantically accepted local
@@ -24,5 +28,7 @@ The intended invocation is from the repository root:
 python -m algorithms.doom.generator.quality
 ```
 
-Until `algorithms/diff` is implemented this command fails closed without writing
-`quality/main.rs`.
+`algorithms/diff` now implements exact authoring, source-span reuse, canonical
+identity primitives, stable anchors, and tree admission. `write_algorithm()` still
+fails closed without writing `quality/main.rs` until behavior admission, source
+binding, and Rust emission are implemented.

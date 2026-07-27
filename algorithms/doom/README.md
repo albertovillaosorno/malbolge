@@ -26,9 +26,10 @@ algorithms/doom/
 `-- adapters/
 ```
 
-`generator/` contains thin DOOM recipes and domain policy. Generic source-tree
-matching, source binding, and transformation emission belong in
-`algorithms/diff/`.
+`generator/` contains thin DOOM recipes and domain policy. Its C identity adapter
+selects Linux DOOM C/header source only; opaque assets such as the WAD do not enter
+structural lineage scoring. Generic source-tree matching, source binding, and
+transformation emission belong in `algorithms/diff/`.
 
 `quality/` is the first product stage. Its ignored `in/doom/` tree is the manual
 modernization oracle used while generating `quality/main.rs`; its ignored

@@ -67,10 +67,20 @@ The same generic engine is planned for a second stage later: accepted normalized
 DOOM plus a semantically validated local single-file oracle will generate the
 source-bound amalgamation transform for canonical `doom.c`.
 
-None of this means the diff engine is implemented yet. This round establishes
-the repository layout, fail-closed API scaffold, contracts, TODOs, and
-validation boundaries so implementation can start without redesigning the
-project in the next chat.
+Implementation has now started behind that contract. The exact authoring layer can
+reconstruct the manual oracle byte-for-byte from local source using whole-file
+copies, source spans, and local authoring literals. Generic structural/anchor
+admission is also executable, while the DOOM domain module now supplies a C-aware
+identity view that excludes the WAD and IPX source family from Linux lineage
+scoring. `write_algorithm()` still fails closed because behavior admission,
+source-bound payload recovery, and Rust emission are intentionally unfinished.
+
+As a local calibration stress test, the 124 selected Linux source C/header files
+were compared with their current normalized descendant paths. The current rolling
+anchor profile measured 0.780928 structural similarity and 0.766396 stable-anchor
+coverage; 94 of 123 anchor-eligible files individually met the provisional 0.66
+coverage threshold. This is engineering calibration, not acceptance or legal
+evidence.
 
 ## Bugs First
 

@@ -2,10 +2,10 @@
 
 ## Status
 
-Active. Exact authoring/materialization, generic identity primitives, and
-tree-level structural/stable-anchor admission are implemented. Language-aware
-consumer identity, behavior probes, source binding, payload recovery, and Rust
-emission remain unfinished.
+Active. Exact authoring/materialization, generic identity primitives, tree-level
+structural/stable-anchor admission, and the first language-aware consumer identity
+adapter are implemented. Behavior probes, source binding, payload recovery, and
+Rust emission remain unfinished.
 
 ## Purpose
 
@@ -117,6 +117,29 @@ source rejection, the representable floating-point boundary immediately above an
 below both thresholds, concentration in only one file, and candidate-only opaque
 assets. These checks remain necessary but insufficient until behavior and source
 binding also pass.
+
+### First Language-Aware Consumer Identity
+
+`algorithms/doom/generator/doom.py` provides the first domain identity adapter.
+It restricts identity to C/header files under `linuxdoom-1.10`, so the large WAD
+and the separate IPX source family do not affect Linux source-lineage scores. The
+adapter applies C line splicing before comment handling, preserves comment-internal
+newlines, protects string/character literals, frames preprocessing tokens
+unambiguously, and records preprocessor-directive line termination while ignoring
+ordinary presentation whitespace.
+
+Synthetic tests prove comment/formatting equivalence, comment-looking bytes inside
+literals, whitespace-sensitive punctuator boundaries, preprocessor line endings,
+backslash-newline splicing, malformed-comment failure, and source-tree selection.
+The generic engine remains language-agnostic; this adapter is consumer policy, not
+a C mode hidden inside `algorithms/diff`.
+
+A local calibration smoke compared the 124 selected source identity files against
+the current normalized oracle descendant. All 124 source paths were present in the
+oracle view. With the provisional 0.50 structural and 0.66 anchor thresholds, the
+aggregate structural score was 0.780928, aggregate anchor coverage was 0.766396,
+and 94 of 123 anchor-eligible source files individually met 0.66 coverage. This is
+useful stress evidence, not final compatibility calibration and not legal evidence.
 
 ### Behavioral Identity
 
