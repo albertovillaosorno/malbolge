@@ -4,8 +4,9 @@
 
 Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
-adapter, and generic behavior-evidence semantics are implemented. Consumer probe
-execution, source binding, payload recovery, and Rust emission remain unfinished.
+adapter, generic behavior-evidence semantics, and a portable bounded process-probe
+executor are implemented. DOOM-specific probe programs, source binding, payload
+recovery, and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -161,6 +162,29 @@ evidence never replaces source evidence, and source scores never replace failed
 behavior preconditions. Synthetic tests include a perfect-behavior/unrelated-source
 clone and prove it is rejected. The generic evaluator consumes normalized
 observations only; executing application-specific probes remains consumer work.
+
+### Portable Behavior Programs
+
+The generic execution layer now has a process-program representation designed to
+be reproducible by the future Rust emitter. Commands never use shell interpolation.
+Executables are logical tool references or rooted artifacts; argv paths are
+structured beneath authorized source, repository, or scratch roots. Commands carry
+explicit timeouts, expected exit status, bounded stdout/stderr capture, optional
+stdin, and an explicit flag selecting stdout into the observation transcript.
+
+A probe batch copies the candidate source into an isolated temporary mirror before
+execution. Programs receive the mirror path rather than the user input path. Any
+program that changes the mirror is rejected, while the original tree is verified
+unchanged. Compile-then-run programs are possible because one command may create a
+scratch executable consumed by a later command.
+
+Behavior authoring runs identity programs on the original source. Bug programs run
+on both original source and the local corrected oracle; their selected-stdout
+transcripts must differ. Those two digests become the portable `present` and `fixed`
+baselines. Candidate execution matching neither baseline produces `unknown` and
+fails closed. Compatibility programs contribute success/failure rather than an
+identity digest. Application-specific harnesses and logical tool resolution remain
+consumer policy; the generic engine only owns execution and transcript semantics.
 
 ### Source Binding
 

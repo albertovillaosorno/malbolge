@@ -18,6 +18,8 @@ algorithms/diff/
 |-- fingerprints.py   # content-defined stable-anchor primitives
 |-- admission.py      # tree-level structural/anchor admission
 |-- behavior.py       # behavior profile/observation evaluation
+|-- probe_exec.py     # bounded no-shell portable probe programs
+|-- behavior_programs.py # source/oracle probe authoring and observation
 |-- gate.py           # conjunctive lineage + behavior admission
 |-- source_binding.py # threshold-bound reconstruction material
 |-- emit_rust.py      # deterministic Rust transform emission
@@ -25,9 +27,9 @@ algorithms/diff/
 ```
 
 Exact authoring, generic identity primitives, tree-level structural/anchor
-admission, and behavior-evidence semantics are implemented. Consumer probe
-execution, source binding, and Rust emission remain active work under the owning
-TODO.
+admission, behavior-evidence semantics, and the portable process-probe executor
+are implemented. DOOM-specific probe programs, source binding, and Rust emission
+remain active work under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -97,11 +99,23 @@ hard preconditions. Bug probes classify a historical defect as `present`, `fixed
 or `unknown`: `present` routes its correction to apply, `fixed` routes the
 correction to skip without rejecting the source, and `unknown` fails closed.
 
-This layer evaluates normalized observations; it does **not** execute application
-probes itself. Probe construction/execution remains consumer policy. `gate.py` then
-requires both source-lineage admission and behavior admission. Tests explicitly
-prove that perfect behavior cannot rescue unrelated source and that perfect source
-lineage cannot rescue a failed compatibility precondition.
+`probe_exec.py` supplies the generic execution primitive without embedding
+application semantics. A portable program is an ordered sequence of bounded process
+commands with no shell interpolation. Executables are either logical consumer tool
+IDs or artifacts beneath authorized roots; path arguments are structured under
+`source`, `repository`, or per-program `scratch` roots. Timeouts and captured output
+are bounded. Programs run against an isolated source mirror, and modifying that
+mirror invalidates the probe while leaving user input untouched.
+
+`behavior_programs.py` authors identity baselines from the original source and bug
+baselines from both original source and corrected oracle. A bug program must produce
+distinct selected-stdout transcript digests for `present` and `fixed`; candidate
+output matching neither becomes `unknown`. Compatibility programs are success
+preconditions. The domain still owns the actual programs and tool bindings.
+
+`gate.py` then requires both source-lineage admission and behavior admission. Tests
+explicitly prove that perfect behavior cannot rescue unrelated source and that
+perfect source lineage cannot rescue a failed compatibility precondition.
 
 ## Core Contract
 

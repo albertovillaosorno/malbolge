@@ -51,6 +51,12 @@ format.
   mandatory evidence fails closed.
 - A conjunctive gate proves behavior-only clones cannot replace structural lineage
   and source lineage cannot replace failed compatibility behavior.
+- Portable process probes now execute without shell interpolation, with structured
+  roots, bounded time/output, isolated source mirrors, and deterministic selected-
+  stdout transcripts.
+- Behavior authoring derives identity transcripts from source and distinct bug
+  `present`/`fixed` transcripts from source versus corrected oracle; a third
+  candidate transcript becomes `unknown` and fails closed.
 - `algorithms/doom/generator/quality.py` records the first consumer recipe, and
   `doom.py` now supplies its C-aware Linux source identity view while excluding WAD
   and IPX surfaces from lineage scoring.
@@ -60,9 +66,9 @@ format.
   threshold tests exist, and a local source-to-normalized-descendant stress smoke
   measured 0.780928 structural similarity and 0.766396 anchor coverage; broader
   source-variant and behavior calibration is still required before freezing them.
-- Behavior observation evaluation is implemented, but no consumer probe executor,
-  source-bound payload format, cryptographic construction, or Rust emitter exists
-  yet.
+- Generic process-probe execution and behavior authoring are implemented, but DOOM
+  still needs concrete probe programs. No source-bound payload format,
+  cryptographic construction, or Rust emitter exists yet.
 
 ## Acceptance
 
