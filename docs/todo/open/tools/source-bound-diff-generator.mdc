@@ -39,8 +39,8 @@ format.
 - Synthetic tests cover exact reconstruction, deterministic planning, binary data,
   moves, modifications, creations, deletions, source mutation, and symlink failure.
 - Generic identity helpers normalize line endings/optional whitespace, while the
-  stable-anchor primitive uses digest-selected sliding windows that survive offset
-  shifts from insertions.
+  stable-anchor primitive uses rolling-content-selected sliding windows plus SHA-256
+  fingerprints that survive offset shifts from insertions.
 - Tree-level admission now separates symmetric structural similarity from
   asymmetric anchor survival, weights reference files equally, requires distributed
   matching files, and ignores candidate-only opaque size.

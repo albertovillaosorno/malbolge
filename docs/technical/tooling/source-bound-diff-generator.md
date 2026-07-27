@@ -81,12 +81,14 @@ materialization.
 
 ### Implemented Stable-Anchor Primitive
 
-The generic anchor primitive scans sliding byte windows, hashes them with SHA-256,
-and selects windows using a digest-derived sampling predicate. Because selection
-depends on content rather than absolute position, unchanged windows remain
-recognizable after insertions shift their offsets. Duplicate digests are counted
-once for coverage, and a deterministic minimum-digest fallback prevents a
-non-empty small/sparse input from accidentally producing no evidence.
+The generic anchor primitive scans sliding byte windows with a deterministic 64-bit
+polynomial rolling hash and selects windows from that content-derived value. Only
+selected windows receive SHA-256 fingerprints. Selection therefore depends on
+window content rather than absolute position while avoiding a cryptographic hash at
+every byte offset. Unchanged windows remain recognizable after insertions shift
+their offsets. Duplicate SHA-256 digests count once for coverage, and a deterministic
+minimum-rolling-hash fallback prevents a non-empty sparse input from producing no
+evidence.
 
 This primitive does not by itself admit a tree. Tree-level distribution rules,
 minimum anchor counts, canonical language-aware views, ambiguous-match handling,

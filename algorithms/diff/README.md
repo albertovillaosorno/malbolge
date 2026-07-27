@@ -54,12 +54,14 @@ preprocessor structure, and token boundaries require a language-aware consumer
 canonicalizer. DOOM-specific lexical identity therefore remains outside the
 generic engine.
 
-`fingerprints.py` now selects stable anchors from sliding SHA-256 content windows.
-Selection depends on the window digest rather than its absolute offset, so source
-insertions can shift later bytes without invalidating unchanged anchor content. A
-deterministic minimum-digest fallback covers small/sparse inputs, and coverage is
-measured over unique reference digests. These fingerprints are lineage evidence;
-they are not encryption keys or a completed source-binding construction.
+`fingerprints.py` scans sliding content windows with a deterministic 64-bit
+polynomial rolling hash. The rolling value selects sparse windows independent of
+absolute offset, then selected windows receive SHA-256 fingerprints. Insertions can
+therefore shift later bytes without invalidating unchanged anchor content while
+avoiding a cryptographic hash at every byte offset. A deterministic minimum-rolling
+fallback covers small/sparse inputs, and coverage is measured over unique SHA-256
+digests. These fingerprints are lineage evidence, not encryption keys or a
+completed source-binding construction.
 
 ## Implemented Tree Admission
 

@@ -9,7 +9,10 @@ import hashlib
 
 _DEFAULT_WINDOW_BYTES = 32
 _DEFAULT_SELECTION_MODULUS = 64
-_SELECTION_PREFIX_BYTES = 8
+_ROLLING_BASE = 257
+_ROLLING_BITS = 64
+_ROLLING_MODULUS = 1 << _ROLLING_BITS
+_ROLLING_MASK = _ROLLING_MODULUS - 1
 _ZERO = 0
 _ONE = 1
 
@@ -61,34 +64,66 @@ def _digest_window(window: bytes) -> bytes:
     return hashlib.sha256(window).digest()
 
 
-def _is_selected(digest: bytes, policy: AnchorPolicy) -> bool:
-    prefix = digest[:_SELECTION_PREFIX_BYTES]
-    value = int.from_bytes(prefix, byteorder="big", signed=False)
-    return value % policy.selection_modulus == _ZERO
-
-
 def _small_input_anchor(data: bytes) -> tuple[StableAnchor, ...]:
     if not data:
         return ()
     return (StableAnchor(digest=_digest_window(data), offset=_ZERO),)
 
 
+def _initial_rolling_hash(data: bytes, window_bytes: int) -> int:
+    value = _ZERO
+    for byte in data[:window_bytes]:
+        value = ((value * _ROLLING_BASE) + byte) & _ROLLING_MASK
+    return value
+
+
+def _rolling_power(window_bytes: int) -> int:
+    return pow(_ROLLING_BASE, window_bytes - _ONE, _ROLLING_MODULUS)
+
+
+def _roll_hash(
+    value: int,
+    outgoing: int,
+    incoming: int,
+    *,
+    leading_power: int,
+) -> int:
+    without_leading = (value - (outgoing * leading_power)) & _ROLLING_MASK
+    return ((without_leading * _ROLLING_BASE) + incoming) & _ROLLING_MASK
+
+
+def _selected_anchor(
+    data: bytes, offset: int, window_bytes: int
+) -> StableAnchor:
+    window = data[offset : offset + window_bytes]
+    return StableAnchor(digest=_digest_window(window), offset=offset)
+
+
 def _scan_anchor_windows(
     data: bytes,
     policy: AnchorPolicy,
-) -> tuple[dict[bytes, StableAnchor], StableAnchor]:
+) -> tuple[dict[bytes, StableAnchor], int]:
     last_offset = len(data) - policy.window_bytes
     selected: dict[bytes, StableAnchor] = {}
-    first_digest = _digest_window(data[: policy.window_bytes])
-    fallback = StableAnchor(digest=first_digest, offset=_ZERO)
+    rolling = _initial_rolling_hash(data, policy.window_bytes)
+    leading_power = _rolling_power(policy.window_bytes)
+    fallback_value = rolling
+    fallback_offset = _ZERO
     for offset in range(last_offset + _ONE):
-        digest = _digest_window(data[offset : offset + policy.window_bytes])
-        anchor = StableAnchor(digest=digest, offset=offset)
-        if digest < fallback.digest:
-            fallback = anchor
-        if _is_selected(digest, policy):
-            selected.setdefault(digest, anchor)
-    return selected, fallback
+        if rolling < fallback_value:
+            fallback_value = rolling
+            fallback_offset = offset
+        if rolling % policy.selection_modulus == _ZERO:
+            anchor = _selected_anchor(data, offset, policy.window_bytes)
+            selected.setdefault(anchor.digest, anchor)
+        if offset < last_offset:
+            rolling = _roll_hash(
+                rolling,
+                data[offset],
+                data[offset + policy.window_bytes],
+                leading_power=leading_power,
+            )
+    return selected, fallback_offset
 
 
 def stable_anchors(
@@ -97,20 +132,23 @@ def stable_anchors(
 ) -> tuple[StableAnchor, ...]:
     """Select deterministic anchors from sliding content windows.
 
-    Every byte offset is considered, so an insertion changes offsets but leaves
-    unchanged content windows eligible for the same anchor digest. Selection is
-    based only on the digest value. If no window passes the sampling predicate,
-    the lexicographically smallest digest is retained as a deterministic
-    fallback.
+    A 64-bit polynomial rolling hash evaluates every fixed-size content window.
+    The rolling value selects sparse windows without a cryptographic hash call
+    at every byte offset; selected windows are then fingerprinted with SHA-256.
+    Insertions shift offsets but unchanged windows retain the same selector
+    value
+    and final digest. If no window is selected, the minimum rolling-hash window
+    becomes a deterministic fallback.
 
     Returns:
-        Unique selected digests ordered by authoring offset.
+        Unique selected SHA-256 digests ordered by authoring offset.
 
     """
     if len(data) < policy.window_bytes:
         return _small_input_anchor(data)
-    selected, fallback = _scan_anchor_windows(data, policy)
+    selected, fallback_offset = _scan_anchor_windows(data, policy)
     if not selected:
+        fallback = _selected_anchor(data, fallback_offset, policy.window_bytes)
         selected[fallback.digest] = fallback
     return tuple(sorted(selected.values(), key=lambda anchor: anchor.offset))
 
