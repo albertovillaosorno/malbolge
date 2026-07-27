@@ -59,6 +59,29 @@ node to its exact after node, labelled with decoded instruction (when available)
 and normalized result: continued, normative termination, or atomic invalid
 self-encryption rejection. Duplicate exact edges are retained only once.
 
+\section{Consumed input prefix reduction}
+
+The normative classic machine can observe an input byte only through the current
+committed input cursor. Bytes strictly before that cursor are not read again.
+Define the first reduced future key
+\begin{equation}
+  F_I(s)=\left(
+    p,A,C,D,i,I[i\ldots],O,\tau,M[0],\ldots,M[W_{10}-1]
+  \right).
+  \label{eq:state-graph-consumed-input-prefix}
+\end{equation}
+Compared with $E(s)$, $F_I$ removes only the \emph{contents} of the consumed
+input prefix; it keeps the exact cursor and exact remaining suffix. Therefore
+states identical under $F_I$ cannot distinguish prior input bytes through any
+future normative input operation.
+
+The executable fixture uses source \texttt{cbO}, which decodes to two input
+instructions followed by halt. It exhausts all 256 values of the first byte,
+uses one common second byte, and verifies equality of $F_I$ both after the second
+input and after the following halt. This correspondence establishes the
+reduction only for consumed-prefix content; it does not justify dropping the
+cursor or any remaining input byte.
+
 \section{Reduction research boundary}
 
 A proposed reduced key $R(s)$ is not trusted merely because it hashes or groups

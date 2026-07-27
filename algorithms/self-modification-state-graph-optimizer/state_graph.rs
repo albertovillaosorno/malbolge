@@ -58,6 +58,7 @@ const FNV_PRIME: u64 = 1_099_511_628_211;
 const HISTORICAL_PROFILE_ID: &str = "malbolge-1998";
 
 type DigestFunction = fn(&ExactStateSnapshot) -> u64;
+type MemoryImage = Box<[u16]>;
 
 /// Stable node identifier inside one exact-state graph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -110,6 +111,18 @@ pub struct ExactStateSnapshot {
     termination: Option<Termination>,
 }
 
+/// Reduced future-state key that drops consumed input byte contents only.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FutureInputSnapshot {
+    input_consumed: usize,
+    memory: Box<[u16]>,
+    output: Box<[u8]>,
+    profile_id: &'static str,
+    registers: Registers,
+    remaining_input: Box<[u8]>,
+    termination: Option<Termination>,
+}
+
 /// Collision-safe exact-state graph and deterministic observation statistics.
 #[derive(Clone, Debug)]
 pub struct ExactStateGraph {
@@ -124,6 +137,8 @@ pub struct ExactStateGraph {
 /// Failure while constructing or extending the exact research graph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StateGraphError {
+    /// Supplied deterministic input is shorter than the machine cursor.
+    InputCursorOutOfRange,
     /// Classic source could not initialize a machine.
     Load(malbolge::LoadError),
     /// Public VM memory access unexpectedly failed.
@@ -299,21 +314,10 @@ fn exact_snapshot(
     machine: &Machine,
     input: &[u8],
 ) -> Result<ExactStateSnapshot, StateGraphError> {
-    let mut memory = Vec::with_capacity(MEMORY_WORDS);
-    for raw in 0..MEMORY_WORDS {
-        let raw_word = u16::try_from(raw)
-            .map_err(|_error| StateGraphError::NodeIdentityOverflow)?;
-        let address = Word::new(raw_word)
-            .map_err(|_error| StateGraphError::NodeIdentityOverflow)?;
-        let value = machine
-            .memory_word(address)
-            .map_err(StateGraphError::Memory)?;
-        memory.push(value.value());
-    }
     Ok(ExactStateSnapshot {
         input: input.into(),
         input_consumed: machine.input_consumed(),
-        memory: memory.into_boxed_slice(),
+        memory: memory_snapshot(machine)?,
         output: machine.output().into(),
         profile_id: HISTORICAL_PROFILE_ID,
         registers: machine.registers(),
@@ -337,6 +341,31 @@ fn exact_state_digest(snapshot: &ExactStateSnapshot) -> u64 {
     hash
 }
 
+/// Builds the first proved reduced key by dropping consumed input contents.
+///
+/// # Errors
+///
+/// Returns [`StateGraphError`] when memory observation fails or the caller's
+/// input bytes cannot represent the machine's committed cursor.
+pub fn future_input_snapshot(
+    machine: &Machine,
+    input: &[u8],
+) -> Result<FutureInputSnapshot, StateGraphError> {
+    let cursor = machine.input_consumed();
+    let remaining_input = input
+        .get(cursor..)
+        .ok_or(StateGraphError::InputCursorOutOfRange)?;
+    Ok(FutureInputSnapshot {
+        input_consumed: cursor,
+        memory: memory_snapshot(machine)?,
+        output: machine.output().into(),
+        profile_id: HISTORICAL_PROFILE_ID,
+        registers: machine.registers(),
+        remaining_input: remaining_input.into(),
+        termination: machine.termination(),
+    })
+}
+
 fn hash_byte(hash: u64, value: u8) -> u64 {
     (hash ^ u64::from(value)).wrapping_mul(FNV_PRIME)
 }
@@ -354,6 +383,21 @@ fn hash_usize(hash: u64, value: usize) -> u64 {
 
 fn hash_word(hash: u64, value: Word) -> u64 {
     hash_bytes(hash, &value.value().to_le_bytes())
+}
+
+fn memory_snapshot(machine: &Machine) -> Result<MemoryImage, StateGraphError> {
+    let mut memory = Vec::with_capacity(MEMORY_WORDS);
+    for raw in 0..MEMORY_WORDS {
+        let raw_word = u16::try_from(raw)
+            .map_err(|_error| StateGraphError::NodeIdentityOverflow)?;
+        let address = Word::new(raw_word)
+            .map_err(|_error| StateGraphError::NodeIdentityOverflow)?;
+        let value = machine
+            .memory_word(address)
+            .map_err(StateGraphError::Memory)?;
+        memory.push(value.value());
+    }
+    Ok(memory.into_boxed_slice())
 }
 
 const fn normalize_step_result(

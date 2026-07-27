@@ -185,3 +185,11 @@ label = "eq:state-graph-exact-key"
 domain = "bounded classic specification-mode executions with full 59049-word snapshots"
 mechanism = "exact-replay"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::exact_replay_deduplicates_nodes_and_edges"]
+
+[[correspondence]]
+id = "state-graph-consumed-input-prefix"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-consumed-input-prefix"
+domain = "classic states identical except consumed input-prefix contents; exhaustive first-byte convergence fixture"
+mechanism = "structural-reduction-plus-exhaustive-byte-fixture"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::consumed_input_prefix_is_future_irrelevant"]

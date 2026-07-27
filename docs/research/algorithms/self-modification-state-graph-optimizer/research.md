@@ -88,8 +88,16 @@ exact projection and collision-safe merge rule. Both equations are registered in
 `math/specification/correspondence.toml` and mapped directly to the algorithm's
 owned tests.
 
-No reduced-state key or performance improvement is accepted yet. This result is
-the correctness baseline against which future reductions will be falsified.
+The first reduced-state key is now admitted for one structural fact:
+`future_input_snapshot` removes only the contents of bytes strictly before the
+committed input cursor while retaining that cursor and the exact remaining input
+suffix. The `cbO` fixture (`<`, `<`, `v`) exhausts all 256 possible first input
+bytes, applies one common second byte that overwrites `A`, and proves the reduced
+keys are equal both before and after the common future halt.
+
+This does not justify removing the input cursor, changing the remaining suffix,
+removing output history, reducing memory, or claiming a performance improvement.
+Those remain separate falsifiable hypotheses.
 
 ## Threats to Validity
 
@@ -99,10 +107,11 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-Accept exact-state deduplication as the conservative graph baseline. Do not yet
-promote a state reduction or native-execution shortcut. The next research slice
-must propose a smaller key and demonstrate, against this baseline, that every
-merged pair has equivalent future observations on an explicit bounded domain.
+Accept exact-state deduplication as the conservative graph baseline and admit
+one first reduction: consumed input-prefix contents are future-irrelevant when
+the cursor and remaining suffix are retained and all other key components match.
+Do not yet promote memory/register/output reductions or a native-execution
+shortcut. Each further reduction must independently defeat the exact baseline.
 
 ## References
 

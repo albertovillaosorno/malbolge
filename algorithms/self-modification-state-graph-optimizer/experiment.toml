@@ -15,3 +15,9 @@ profile = "malbolge-1998"
 required = true
 correspondence = "math/specification/correspondence.toml"
 rejection_condition = "any exact-state hash collision that merges unequal snapshots, or any reduced-key merge with divergent future observations"
+
+[reduction]
+baseline = "exact-state"
+candidate = "drop-consumed-input-prefix-content"
+domain = "same cursor, same remaining input suffix, otherwise exact-equal state"
+first_byte_domain = 256

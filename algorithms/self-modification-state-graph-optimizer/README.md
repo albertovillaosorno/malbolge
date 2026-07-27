@@ -14,3 +14,8 @@ that uses deterministic hashing only as a bucket index and confirms every merge
 against complete input/output/register/termination/memory snapshots. The
 collision fixture deliberately maps all states to one digest to prove hashing is
 not a correctness authority. Reduced-state keys remain research candidates only.
+
+The first admitted reduction is `future_input_snapshot`: it keeps the committed
+input cursor and exact remaining suffix but drops the contents of bytes strictly
+before the cursor. `exact.rs` exhausts all 256 possible consumed first bytes in a
+converging two-input fixture before accepting this reduction.

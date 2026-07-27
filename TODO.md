@@ -604,10 +604,11 @@ Canonical forms, lower bounds, and search-space reductions remain open.
 ### TODO - Self-modification state-graph optimizer
 
 Model self-modifying execution as verified state graphs. The active first slice
-now provides a collision-safe exact classic-state baseline: full input/output,
-registers, termination, and all 59,049 memory words are compared before a merge,
-even under a deliberately constant hash. Reduced future-relevant keys,
-mutation-history collapse, and native-region shortcuts remain research work.
+now provides a collision-safe exact classic-state baseline and the first proved
+reduction: consumed input-prefix contents may be removed while the cursor and
+remaining suffix stay exact. A two-input fixture exhausts all 256 first-byte
+values. Memory/register/output reductions, broader mutation-history collapse,
+and native-region shortcuts remain research work.
 
 ## Optimization and accelerator architecture
 
@@ -762,6 +763,17 @@ through pinned Clang, then emit one deterministic
 multi-file build with the amalgamated build before copying the accepted artifact
 byte-for-byte to `tests/applications/doom/out/doom.c`. Plain textual
 concatenation and source-specific hand patches are not accepted algorithms.
+### TODO - Cross-platform native capability runners
+
+Implement the version-1 host-capability contract for supported 64-bit Windows,
+macOS, and Linux runners on x86-64 and AArch64. Keep adapters outside the guest
+and require the same `.malbolge` payload and guest-visible behavior on every
+runner. The normalized DOOM C corpus already passes the strict freestanding
+compile gate on all six target/architecture pairs without OS-selection macros;
+the remaining platform work is capability implementation and runtime validation,
+not guest-source porting. Runners must not require LLVM or an externally installed
+multimedia library merely to execute an already generated program.
+
 ### TODO - DOOM playable generated-code performance
 
 Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and

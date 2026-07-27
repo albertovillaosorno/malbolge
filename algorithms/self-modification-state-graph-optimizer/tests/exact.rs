@@ -44,13 +44,17 @@
 
 //! Exact-state graph baseline correctness fixtures.
 
-use malbolge::ExecutionMode;
+use malbolge::{ExecutionMode, Machine, StepOutcome, Termination};
 
 use crate::state_graph::{
     ExactStateGraph, admitted_mode, constant_collision_digest,
+    future_input_snapshot,
 };
 
 const BUDGET: usize = 8;
+const INPUT_PREFIX_RESET: &[u8] = b"cbO";
+const INPUT_STEPS: usize = 2;
+const SHARED_SECOND_INPUT: u8 = 0x7a;
 const ROUNDTRIP: &[u8] = include_bytes!(
     "../../../tests/compatibility/specification/spec-io-roundtrip.malbolge"
 );
@@ -108,4 +112,56 @@ fn exact_baseline_admits_specification_mode_only() -> Result<(), String> {
             "exact graph baseline selected non-specification mode",
         ))
     }
+}
+
+#[test]
+fn consumed_input_prefix_is_future_irrelevant() -> Result<(), String> {
+    let mut before_halt = None;
+    let mut after_halt = None;
+    for first_byte in u8::MIN..=u8::MAX {
+        let input = [first_byte, SHARED_SECOND_INPUT];
+        let mut machine =
+            Machine::from_source(INPUT_PREFIX_RESET, input.to_vec()).map_err(
+                |error| format!("input-prefix fixture load failed: {error}"),
+            )?;
+        for _step in 0..INPUT_STEPS {
+            let outcome = machine.step().map_err(|error| {
+                format!("input-prefix step failed: {error}")
+            })?;
+            if outcome != StepOutcome::Continued {
+                return Err(format!(
+                    "input-prefix fixture stopped early: {outcome:?}"
+                ));
+            }
+        }
+        let pre_halt = future_input_snapshot(&machine, &input)
+            .map_err(|error| format!("future snapshot failed: {error:?}"))?;
+        if let Some(expected) = &before_halt {
+            if expected != &pre_halt {
+                return Err(format!(
+                    "consumed byte remained future-relevant: first={first_byte}"
+                ));
+            }
+        } else {
+            before_halt = Some(pre_halt);
+        }
+        let outcome = machine
+            .step()
+            .map_err(|error| format!("future halt step failed: {error}"))?;
+        if outcome != StepOutcome::Terminated(Termination::HaltInstruction) {
+            return Err(format!("future fixture did not halt: {outcome:?}"));
+        }
+        let post_halt = future_input_snapshot(&machine, &input)
+            .map_err(|error| format!("post-halt snapshot failed: {error:?}"))?;
+        if let Some(expected) = &after_halt {
+            if expected != &post_halt {
+                return Err(format!(
+                    "future diverged after consumed prefix: {first_byte}"
+                ));
+            }
+        } else {
+            after_halt = Some(post_halt);
+        }
+    }
+    Ok(())
 }
