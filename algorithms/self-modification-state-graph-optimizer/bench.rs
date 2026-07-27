@@ -50,6 +50,7 @@
 use std::hint::black_box;
 use std::io::{Error as IoError, Result as IoResult, Write, stdout};
 use std::iter::repeat_with;
+use std::sync::Arc;
 use std::time::Instant;
 
 use malbolge::{
@@ -61,6 +62,7 @@ use malbolge::{
 use crate::indexed::IndexedProfileMemory;
 use crate::indexed_state::{IndexedMachineState, IndexedStateGraph};
 use crate::persistent::PersistentProfileMemory;
+use crate::persistent_output::PersistentOutput;
 use crate::profile_graph::ProfileStateGraph;
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
@@ -82,6 +84,8 @@ const PERSISTENT_DEPTH_CASES: &[(usize, usize)] = &[
     (512, 2_048),
     (4_096, 256),
 ];
+const OUTPUT_LENGTH_CASES: &[(usize, usize)] =
+    &[(0, 16_384), (1_024, 8_192), (65_536, 512), (262_144, 128)];
 const PERSISTENT_OPERATIONS: usize = 16_384;
 const PERSISTENT_PATCH_ADDRESS: u32 = 1;
 const PERSISTENT_ROOT_ADDRESS: u32 = 3;
@@ -218,6 +222,22 @@ fn apply_persistent(
         },
         Err(_error) => u64::MAX,
     }
+}
+
+fn output_persistent_append((output, byte): (PersistentOutput, u8)) -> u64 {
+    let updated = output.append(byte);
+    let hash = hash_usize(FNV_OFFSET, updated.len());
+    hash_u64(hash, updated.digest())
+}
+
+fn output_vec_clone_append((output, byte): VecOutputFixture) -> u64 {
+    let mut updated = output.to_vec();
+    updated.push(byte);
+    let hash = hash_usize(FNV_OFFSET, updated.len());
+    updated
+        .last()
+        .copied()
+        .map_or(hash, |last| hash_byte(hash, last))
 }
 
 fn persistent_chain(
@@ -505,6 +525,41 @@ fn replay_checkpoint(
     }
 }
 
+fn run_output_samples(output: &mut impl Write) -> IoResult<()> {
+    for &(length, operations) in OUTPUT_LENGTH_CASES {
+        let bytes = (0..length)
+            .map(|raw| u8::try_from(raw & 0xff).unwrap_or(0))
+            .collect::<Vec<_>>();
+        let vector = Arc::<[u8]>::from(bytes.as_slice());
+        let mut persistent = PersistentOutput::from_bytes(&[]);
+        for byte in &bytes {
+            persistent = persistent.append(*byte);
+        }
+        let vector_name = format!("output-vec-clone-append-length-{length}");
+        emit_repeated_samples(
+            output,
+            RepeatedSampleConfig {
+                implementation: &vector_name,
+                operations,
+            },
+            || (Arc::clone(&vector), 0x5a),
+            output_vec_clone_append,
+        )?;
+        let persistent_name =
+            format!("output-persistent-append-length-{length}");
+        emit_repeated_samples(
+            output,
+            RepeatedSampleConfig {
+                implementation: &persistent_name,
+                operations,
+            },
+            || (persistent.clone(), 0x5a),
+            output_persistent_append,
+        )?;
+    }
+    Ok(())
+}
+
 fn run_state_identity_samples(output: &mut impl Write) -> IoResult<()> {
     let (seed, trace, next) = state_fixture()?;
     emit_repeated_samples(
@@ -604,6 +659,7 @@ pub fn run() -> IoResult<()> {
     )?;
     run_depth_samples(&mut output, &persistent)?;
     run_indexed_samples(&mut output)?;
+    run_output_samples(&mut output)?;
     run_state_identity_samples(&mut output)?;
     Ok(())
 }
