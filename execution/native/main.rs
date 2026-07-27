@@ -413,7 +413,7 @@ impl<'program> LoweringPlan<'program> {
         Ok(())
     }
 
-    fn render_preflight(
+    fn render_host_preflight(
         &self,
         output: &mut String,
     ) -> Result<(), NativeArtifactError> {
@@ -447,7 +447,24 @@ impl<'program> LoweringPlan<'program> {
                 "return MB_NATIVE_INVALID_ARGUMENT; }\n"
             ));
         }
-        render_observation_guard(output, self.entry)?;
+        if self.final_observation.output_len > self.entry.output_len {
+            writeln!(
+                output,
+                concat!(
+                    "    if (state->output_capacity < MB_U64({})) ",
+                    "{{ return MB_NATIVE_INVALID_ARGUMENT; }}"
+                ),
+                self.final_observation.output_len
+            )
+            .map_err(|_error| NativeArtifactError::Rendering)?;
+        }
+        Ok(())
+    }
+
+    fn render_memory_preflight(
+        &self,
+        output: &mut String,
+    ) -> Result<(), NativeArtifactError> {
         for (address, flow) in &self.memory {
             writeln!(
                 output,
@@ -461,7 +478,8 @@ impl<'program> LoweringPlan<'program> {
             writeln!(
                 output,
                 concat!(
-                    "    if (state->memory[MB_U64({address})] != MB_U32({value})) ",
+                    "    if (state->memory[MB_U64({address})] ",
+                    "!= MB_U32({value})) ",
                     "{{ return MB_NATIVE_GUARD_MISS; }}"
                 ),
                 address = address,
@@ -469,19 +487,18 @@ impl<'program> LoweringPlan<'program> {
             )
             .map_err(|_error| NativeArtifactError::Rendering)?;
         }
+        Ok(())
+    }
+
+    fn render_preflight(
+        &self,
+        output: &mut String,
+    ) -> Result<(), NativeArtifactError> {
+        self.render_host_preflight(output)?;
+        render_observation_guard(output, self.entry)?;
+        self.render_memory_preflight(output)?;
         for (offset, input) in &self.input_checks {
             render_input_guard(output, *offset, *input)?;
-        }
-        if self.final_observation.output_len > self.entry.output_len {
-            writeln!(
-                output,
-                concat!(
-                    "    if (state->output_capacity < MB_U64({})) ",
-                    "{{ return MB_NATIVE_INVALID_ARGUMENT; }}"
-                ),
-                self.final_observation.output_len
-            )
-            .map_err(|_error| NativeArtifactError::Rendering)?;
         }
         Ok(())
     }

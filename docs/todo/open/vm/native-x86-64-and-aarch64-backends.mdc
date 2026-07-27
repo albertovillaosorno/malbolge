@@ -1,6 +1,6 @@
 ---
 id: "native-x86-64-and-aarch64-backends"
-status: "pending"
+status: "active"
 lane: "10"
 area: "vm"
 task: "TODO - Native x86-64 and AArch64 backends"
