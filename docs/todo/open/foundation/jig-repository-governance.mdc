@@ -1,6 +1,6 @@
 ---
 id: "jig-repository-governance"
-status: "pending"
+status: "active"
 lane: "2"
 area: "foundation"
 task: "TODO - Jig repository governance"
@@ -39,14 +39,20 @@ without weakening unrelated linter contracts.
 
 ## Evidence
 
-- Repository-local Jig 26.3.1 is installed through the source-linked launcher
-  under `.dependencies/jig/bin/`, and `jig.toml` describes the current polyglot
-  repository.
-- `jig check --root .` and `jig validate --root .` currently reach only two
-  repository diagnostics, both owned by `pytest.ini`: coverage flags remain in
-  `[pytest].addopts`, and `[pytest].required_plugins` is not reviewed.
-- Commit-history, documentation-taxonomy, ADR, TODO, header, and repository
-  architecture diagnostics are clean after the 2026-07-26 governance migration.
-- Completion remains blocked until the pytest configuration is reconciled by the
-  linter/configuration owner and repository-local Jig validates cleanly.
+- Repository-local Jig 26.3.1 remains installed through the source-linked
+  launcher under `.dependencies/jig/bin/`; the active development authority now
+  requires configuration schema 8.
+- `jig.toml` schema 8 declares the repository-owned typed TODO workflow: task
+  document, open/completed roots, record extension, exact sections, acceptance
+  evidence, validation commands, and strict dependency-lane ordering. It also
+  declares closed change-class path policy for architecture, implementation,
+  bugfix, tests, documentation, and dependency admission.
+- The installed commit-message hook parses the schema-8 configuration and accepts
+  new compliant commits fail-closed.
+- Full `jig validate --root .` remains fail-closed. The source-linked Jig moved
+  from schema 7 to schema 8 during this migration; Malbolge follows the published
+  configuration contract without bypassing its hook or editing that concurrent
+  tool worktree.
+- Completion remains blocked until the current source-linked Jig and the complete
+  repository validate cleanly under the same authority.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.

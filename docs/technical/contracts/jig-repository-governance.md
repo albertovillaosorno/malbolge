@@ -2,7 +2,7 @@
 
 ## Status
 
-Active; validation is blocked only by the reviewed pytest configuration.
+Active; schema 8 is adopted and full repository validation remains open.
 
 ## Intent
 
@@ -31,11 +31,14 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 - Repository-local Jig 26.3.1 is installed under `.dependencies/jig/bin/` and
   executes from the repository-local source-linked authority.
-- Current `jig check` and `jig validate` runs report only `JIG-LINT-001`
-  and `JIG-LINT-005` for `pytest.ini`; documentation, TODO, ADR, header,
-  taxonomy, commit-history, and architecture diagnostics are otherwise clean.
-- The remaining failure is not waived here. The pytest configuration owner must
-  reconcile the reviewed addopts/plugin contract before this TODO can close.
+- The active source-linked Jig requires configuration schema 8. Malbolge declares
+  its typed TODO document, lifecycle roots, record shape, acceptance requirements,
+  validation-command requirement, strict dependency-lane policy, and all six
+  closed change-class path policies explicitly.
+- Commit-message validation accepts compliant new commits with this configuration.
+- Full repository validation remains fail-closed. The source-linked Jig advanced
+  from schema 7 to schema 8 during this migration. Malbolge adopts that contract
+  without suppressing repository findings or patching the concurrent Jig worktree.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -50,9 +53,10 @@ selecting an implicit repository policy.
 
 ## Implementation
 
-The repository-local launcher and `jig.toml` are installed and executable. The
-contract remains incomplete only because current pytest configuration does not
-yet satisfy its reviewed linter authority.
+The schema-8 `jig.toml` and installed commit-message hook accept the declared
+TODO workflow. Full validation is temporarily blocked by the concurrently changing
+source-linked Jig worktree itself; completion still requires that authority to
+build and validate the complete repository without waived findings.
 
 ## References
 

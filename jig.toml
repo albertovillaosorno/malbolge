@@ -1,5 +1,5 @@
 [jig]
-schema_version = 6
+schema_version = 8
 
 [documentation]
 path_style = "lower-kebab"
@@ -108,6 +108,43 @@ kind = "markdown"
 paths = ["docs/technical/"]
 section_mode = "exact"
 sections = ["Status", "Purpose", "Scope", "Current Behavior", "Invariants", "Failure Behavior", "Verification", "References"]
+
+[todo]
+acceptance_section = "Acceptance"
+completed_root = "docs/todo/completed/"
+lane_policy = "strict-dependency-order"
+open_root = "docs/todo/open/"
+record_extension = "mdc"
+record_root = "docs/todo/"
+require_acceptance_items = true
+require_validation_commands = true
+sections = ["Objective", "Acceptance", "Evidence"]
+task_document = "TODO.md"
+task_heading_level = 3
+
+[change_policy.architecture]
+mode = "all"
+selectors = []
+
+[change_policy.bugfix]
+mode = "all-except"
+selectors = ["basename:Cargo.toml", "exact:AGENTS.md", "exact:Cargo.lock", "exact:jig.toml", "exact:rust-toolchain.toml", "prefix:docs/technical/adr/"]
+
+[change_policy.dependency-admission]
+mode = "only"
+selectors = ["basename:Cargo.toml", "exact:Cargo.lock", "prefix:docs/bibliography/", "prefix:docs/technical/adr/"]
+
+[change_policy.documentation]
+mode = "only"
+selectors = ["extension:md", "extension:mdc"]
+
+[change_policy.implementation]
+mode = "all-except"
+selectors = ["basename:Cargo.toml", "exact:AGENTS.md", "exact:Cargo.lock", "exact:jig.toml", "exact:rust-toolchain.toml", "prefix:docs/technical/adr/"]
+
+[change_policy.test]
+mode = "only"
+selectors = ["directory:tests"]
 
 [header]
 adapters = ["c:c:slash-line", "rs:rust:slash-line"]
