@@ -14,8 +14,8 @@
 *.jsonc text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
-*.md text eol=lf linguist-language=Markdown linguist-detectable -linguist-documentation
-*.mdc text eol=lf linguist-language=Markdown linguist-detectable -linguist-documentation
+*.md text eol=lf
+*.mdc text eol=lf
 *.tex text eol=lf
 *.bib text eol=lf
 *.malbolge text eol=lf
