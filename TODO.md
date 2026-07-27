@@ -237,12 +237,11 @@ experiments and replications.
 
 ### TODO - Algorithm research mirror and local output contract
 
-Standardize the semantic mirror between `docs/research/algorithms/<id>/` and
-`algorithms/<id>/`, including stable algorithm identity, optional
-`math/algorithms/<id>.tex`, implementation/test layout, experiment
-configuration, and Git-ignored local `out/`. Define the explicit exception for
-ordinary product algorithms such as DOOM interoperability transformations, which
-require engineering evidence but not artificial academic capsules.
+Standardize and enforce the semantic mirror between
+`docs/research/algorithms/<id>/` and `algorithms/<id>/`. The accepted ADR plus
+`research_mirror.py` now require exact two-sided IDs, research/experiment/test
+layout, and Git-ignored local `out/`, while product-owned interoperability
+algorithms remain explicitly outside the academic mirror.
 
 ### TODO - Reproducible experiment identity and manifest
 

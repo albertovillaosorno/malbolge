@@ -28,6 +28,14 @@ method, correctness boundary, measurements, results, threats to validity, and
 conclusion. The executable side owns implementations, experiment configuration,
 tests, verifier integration, and Git-ignored local `out/` artifacts.
 
+`scripts/validate/research_mirror.py` enforces the repository shape. Every direct
+research ID under either mirror root must exist on both sides. The documentation
+half requires `README.md` and `research.md`; the executable half requires
+`README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
+`check-ignore --no-index`, whether `algorithms/<id>/out/` is ignored. Optional
+`math/algorithms/<id>.tex` remains a research-specific addition rather than a
+universal mirror requirement.
+
 Research conclusions may recommend promotion, rejection, or retirement, but an
 experiment does not modify trusted compiler semantics or production policy by
 itself. Promotion requires an explicit owning technical decision or contract.
@@ -51,6 +59,8 @@ genuine research question.
 - Null and negative results remain durable evidence.
 - Product architecture is not accidentally determined by whichever experiment
   was written first.
+- Mirror drift, documentation-only research, executable-only research, missing
+  experiment/test structure, and tracked local-output policy fail validation.
 - Multiple implementation languages can coexist under one algorithm identity.
 
 ## Rejected Alternatives
@@ -71,3 +81,13 @@ traceability.
 External sources resolve through `docs/bibliography/`. Generated experiment
 artifacts remain under the owning algorithm `out/` directory and are ignored by
 Git unless deliberately promoted into a versioned documentation artifact.
+
+Executable evidence:
+
+- `.dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py`
+  currently validates eight mirrored IDs, including the repository template;
+- `tests/test_research_mirror.py` covers the current repository plus
+  documentation-only, executable-only, empty-mirror, and product-algorithm
+  exception boundaries;
+- product-owned `interop/algorithms/` is deliberately outside both research
+  roots and is not forced into an academic mirror.

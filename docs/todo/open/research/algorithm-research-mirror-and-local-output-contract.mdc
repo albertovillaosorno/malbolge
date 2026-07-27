@@ -1,6 +1,6 @@
 ---
 id: "algorithm-research-mirror-and-local-output-contract"
-status: "pending"
+status: "active"
 lane: "2"
 area: "research"
 task: "TODO - Algorithm research mirror and local output contract"
@@ -13,7 +13,11 @@ scope:
   - "docs/research/"
   - "algorithms/"
   - "benchmarks/research/"
+  - "scripts/validate/research_mirror.py"
+  - "tests/test_research_mirror.py"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_research_mirror.py"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py"
   - "jig validate --root ."
 ---
 # TODO - Algorithm research mirror and local output contract
@@ -26,6 +30,27 @@ Standardize the semantic mirror between `docs/research/algorithms/<id>/` and
 configuration, and Git-ignored local `out/`. Define the explicit exception for
 ordinary product algorithms such as DOOM interoperability transformations, which
 require engineering evidence but not artificial academic capsules.
+
+
+**Current implementation.**
+
+- The accepted research ADR fixes the stable two-sided identity and the product
+  engineering exception.
+- The repository currently contains eight exact mirrored IDs (seven research
+  topics plus `template`) under `docs/research/algorithms/` and `algorithms/`.
+- `scripts/validate/research_mirror.py` fails closed on one-sided IDs, missing
+  document `README.md`/`research.md`, missing executable
+  `README.md`/`experiment.toml`/`tests/`, an empty mirror, or an `out/` path that
+  Git does not actually ignore.
+- The local-output check uses `git check-ignore --no-index` on a virtual probe, so
+  an absent generated `out/` directory is still checked against real Git policy.
+- `tests/test_research_mirror.py` locks the current eight IDs and deliberately
+  proves documentation-only/executable-only/empty failures plus the explicit
+  exclusion of product-owned `interop/algorithms/`.
+- The academic record remains responsible for question/hypothesis/evidence and
+  the executable mirror for implementations/config/tests. Negative/null results
+  remain governed by the repository methodology committed under the prerequisite
+  research-methodology task.
 
 ## Acceptance
 
@@ -53,6 +78,7 @@ require engineering evidence but not artificial academic capsules.
   experiment manifest, raw-output provenance, results, and threats to validity.
 - Prerequisite completion evidence:
   `academic-research-methodology-and-evidence-model`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- The mirror contract and enforcement are implemented. Each individual research
+  ID still owns its bibliography, experiment identity, raw evidence, negative/null
+  results, threats to validity, and conclusion; the mirror validator does not
+  fabricate those study-specific records.
