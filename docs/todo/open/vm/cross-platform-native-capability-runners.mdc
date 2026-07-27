@@ -1,0 +1,67 @@
+---
+id: "cross-platform-native-capability-runners"
+status: "pending"
+lane: "11"
+area: "vm"
+task: "TODO - Cross-platform native capability runners"
+contract: "docs/technical/runtime/execution/cross-platform-native-capability-runners.md"
+depends_on:
+  - "versioned-host-capability-call-abi"
+  - "native-x86-64-and-aarch64-backends"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "execution/"
+  - "runtime/"
+  - "vm/"
+  - "tests/vm/"
+  - "benchmarks/interpreter/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Cross-platform native capability runners
+
+## Objective
+
+Implement the version-1 host-capability contract for supported 64-bit Windows,
+macOS, and Linux runners on x86-64 and AArch64. Keep adapters outside the guest
+and require the same `.malbolge` payload and guest-visible behavior on every
+runner. The normalized DOOM C corpus already passes the strict freestanding
+compile gate on the intended six target/architecture pairs without OS-selection
+macros; the remaining platform work is capability implementation and runtime
+validation, not guest-source porting. Runners must not require LLVM/Clang or an
+externally installed multimedia development stack merely to execute an already
+generated program.
+
+## Acceptance
+
+- Windows, macOS, and Linux runners on x86-64 and AArch64 implement the same
+  versioned capability-frame semantics behind host-only adapters.
+- The same `.malbolge` payload/profile passes differential capability fixtures on
+  every supported runner without guest OS-selection code or host ABI leakage.
+- Capability discovery, invalid ranges/frames, unavailable services, host
+  failures, blocking/partial progress, startup, and shutdown fail/complete with
+  the same declared guest-visible rules across the matrix.
+- An already generated guest program runs without LLVM/Clang and without an
+  externally installed multimedia development/runtime dependency except where an
+  operating-system facility is explicitly part of the runner contract.
+- x86-64/AArch64 implementation details remain adapter concerns and do not alter
+  VM semantics or the versioned call ABI.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `execution/`, `runtime/`, `vm/`,
+  `tests/vm/`, and `benchmarks/interpreter/`.
+- Required evidence: one shared capability-vector corpus across all six
+  OS/architecture pairs, malformed/unavailable/failure vectors, dependency
+  startup checks, cross-runner differential results, and reproducible platform
+  identity for measurements.
+- Prerequisite completion evidence: `versioned-host-capability-call-abi` and
+  `native-x86-64-and-aarch64-backends`.
