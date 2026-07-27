@@ -188,3 +188,53 @@ fn forged_before_value_is_rejected_by_index() -> Result<(), String> {
         other => Err(format!("indexed forged before was accepted: {other:?}")),
     }
 }
+
+#[test]
+fn reverted_override_returns_to_canonical_root_identity() -> Result<(), String>
+{
+    let machine =
+        ProfileMachine::from_source(current_profile(), b"QP", Vec::new())
+            .map_err(|error| {
+                format!("indexed revert fixture failed: {error}")
+            })?;
+    let state = machine.snapshot_state();
+    let root = IndexedProfileMemory::from_state(&state)
+        .map_err(|error| format!("indexed revert root failed: {error:?}"))?;
+    let address = PATCH_BASE;
+    let before = root.read(address).map_err(|error| {
+        format!("indexed revert root read failed: {error:?}")
+    })?;
+    let changed = u32::from(before == 0);
+    let modified = root
+        .apply(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address,
+                after: changed,
+                before,
+            }),
+            encryption: None,
+        })
+        .map_err(|error| format!("indexed change failed: {error:?}"))?;
+    if modified.overlay_digest() == root.overlay_digest() {
+        return Err(String::from(
+            "indexed change did not alter overlay digest",
+        ));
+    }
+    let reverted = modified
+        .apply(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address,
+                after: before,
+                before: changed,
+            }),
+            encryption: None,
+        })
+        .map_err(|error| format!("indexed revert failed: {error:?}"))?;
+    if reverted.overlay_digest() != root.overlay_digest() {
+        return Err(String::from("indexed revert digest is not canonical"));
+    }
+    if !reverted.exact_memory_eq(&root) {
+        return Err(String::from("indexed reverted memory is not exact root"));
+    }
+    Ok(())
+}

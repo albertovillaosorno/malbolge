@@ -52,6 +52,8 @@ use std::sync::Arc;
 
 use malbolge::{ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite};
 
+const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+const FNV_PRIME: u64 = 1_099_511_628_211;
 const RADIX_CAPACITY: usize = 16_777_216;
 const RADIX_FANOUT: usize = 64;
 const RADIX_LEVELS: u8 = 4;
@@ -59,6 +61,7 @@ const RADIX_MASK: u32 = 63;
 const RADIX_SHIFT: u32 = 6;
 
 type RadixChildren = [Option<Arc<RadixNode>>; RADIX_FANOUT];
+type RadixUpdateResult = Result<Option<Arc<RadixNode>>, IndexedMemoryError>;
 type RadixValues = [Option<u32>; RADIX_FANOUT];
 
 /// Failure while applying or reading the bounded persistent index.
@@ -94,6 +97,7 @@ pub enum IndexedMemoryError {
 pub struct IndexedProfileMemory {
     base: Arc<[u32]>,
     overlay: Option<Arc<RadixNode>>,
+    overlay_digest: u64,
     patches: usize,
 }
 
@@ -114,6 +118,7 @@ impl IndexedProfileMemory {
         &self,
         delta: ProfileMemoryDelta,
     ) -> Result<Self, IndexedMemoryError> {
+        validate_delta_shape(delta)?;
         for write in [delta.data, delta.encryption].into_iter().flatten() {
             validate_write(self, write)?;
         }
@@ -121,19 +126,40 @@ impl IndexedProfileMemory {
             return Ok(self.clone());
         }
         let mut overlay = self.overlay.clone();
+        let mut overlay_digest = self.overlay_digest;
         for write in [delta.data, delta.encryption].into_iter().flatten() {
-            overlay = Some(update_node(
+            let base_value = base_word(&self.base, write.address)?;
+            let before_override =
+                (write.before != base_value).then_some(write.before);
+            let after_override =
+                (write.after != base_value).then_some(write.after);
+            overlay = update_node(
                 overlay.as_ref(),
                 write.address,
-                write.after,
+                after_override,
                 RADIX_LEVELS.saturating_sub(1),
-            )?);
+            )?;
+            overlay_digest = update_overlay_digest(
+                overlay_digest,
+                write.address,
+                before_override,
+                after_override,
+            );
         }
         Ok(Self {
             base: Arc::clone(&self.base),
             overlay,
+            overlay_digest,
             patches: self.patches.saturating_add(1),
         })
+    }
+
+    /// Returns whether two views have exactly equal canonical overlays and
+    /// root.
+    #[must_use]
+    pub fn exact_memory_eq(&self, other: &Self) -> bool {
+        self.shares_root(other)
+            && overlays_equal(self.overlay.as_ref(), other.overlay.as_ref())
     }
 
     /// Constructs the bounded radix candidate over one validated checkpoint.
@@ -153,6 +179,7 @@ impl IndexedProfileMemory {
         Ok(Self {
             base: Arc::from(state.memory()),
             overlay: None,
+            overlay_digest: 0,
             patches: 0,
         })
     }
@@ -174,6 +201,15 @@ impl IndexedProfileMemory {
             )?;
         }
         Ok(memory)
+    }
+
+    /// Returns the deterministic incremental digest of canonical overrides.
+    ///
+    /// Digest equality is only a bucket hint; callers must confirm exact
+    /// memory.
+    #[must_use]
+    pub const fn overlay_digest(&self) -> u64 {
+        self.overlay_digest
     }
 
     /// Returns the number of non-empty semantic deltas applied to this view.
@@ -202,6 +238,19 @@ impl IndexedProfileMemory {
             .copied()
             .ok_or(IndexedMemoryError::IndexInvariant)
     }
+
+    /// Returns whether two views share the exact immutable root allocation.
+    #[must_use]
+    pub fn shares_root(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.base, &other.base)
+    }
+}
+
+fn base_word(base: &[u32], address: u32) -> Result<u32, IndexedMemoryError> {
+    let index = checked_base_index(base, address)?;
+    base.get(index)
+        .copied()
+        .ok_or(IndexedMemoryError::IndexInvariant)
 }
 
 fn checked_base_index(
@@ -219,6 +268,17 @@ fn checked_base_index(
 
 fn empty_children() -> Box<RadixChildren> {
     Box::new(from_fn(|_index| None))
+}
+
+fn hash_byte(hash: u64, value: u8) -> u64 {
+    (hash ^ u64::from(value)).wrapping_mul(FNV_PRIME)
+}
+
+fn hash_u32(mut hash: u64, value: u32) -> u64 {
+    for byte in value.to_le_bytes() {
+        hash = hash_byte(hash, byte);
+    }
+    hash
 }
 
 fn lookup_node(
@@ -305,6 +365,49 @@ fn materialize_node(
     }
 }
 
+fn nodes_equal(left: &Arc<RadixNode>, right: &Arc<RadixNode>) -> bool {
+    if Arc::ptr_eq(left, right) {
+        return true;
+    }
+    match (left.as_ref(), right.as_ref()) {
+        (RadixNode::Leaf(left_values), RadixNode::Leaf(right_values)) => {
+            left_values == right_values
+        },
+        (
+            RadixNode::Branch(left_children),
+            RadixNode::Branch(right_children),
+        ) => left_children.iter().zip(right_children.iter()).all(
+            |(left_child, right_child)| match (left_child, right_child) {
+                (None, None) => true,
+                (Some(left_node), Some(right_node)) => {
+                    nodes_equal(left_node, right_node)
+                },
+                (None, Some(_node)) | (Some(_node), None) => false,
+            },
+        ),
+        (RadixNode::Branch(_children), RadixNode::Leaf(_values))
+        | (RadixNode::Leaf(_values), RadixNode::Branch(_children)) => false,
+    }
+}
+
+fn overlay_contribution(address: u32, value: u32) -> u64 {
+    let hash = hash_u32(FNV_OFFSET, address);
+    hash_u32(hash, value)
+}
+
+fn overlays_equal(
+    left: Option<&Arc<RadixNode>>,
+    right: Option<&Arc<RadixNode>>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left_node), Some(right_node)) => {
+            nodes_equal(left_node, right_node)
+        },
+        (None, Some(_node)) | (Some(_node), None) => false,
+    }
+}
+
 fn radix_index(address: u32, level: u8) -> Result<usize, IndexedMemoryError> {
     let shift = u32::from(level).saturating_mul(RADIX_SHIFT);
     let chunk = address.checked_shr(shift).unwrap_or(0) & RADIX_MASK;
@@ -314,10 +417,13 @@ fn radix_index(address: u32, level: u8) -> Result<usize, IndexedMemoryError> {
 fn update_node(
     current: Option<&Arc<RadixNode>>,
     address: u32,
-    value: u32,
+    value: Option<u32>,
     level: u8,
-) -> Result<Arc<RadixNode>, IndexedMemoryError> {
+) -> RadixUpdateResult {
     let index = radix_index(address, level)?;
+    if current.is_none() && value.is_none() {
+        return Ok(None);
+    }
     if level == 0 {
         let mut values = match current.map(Arc::as_ref) {
             Some(RadixNode::Leaf(existing)) => existing.clone(),
@@ -329,30 +435,65 @@ fn update_node(
         let slot = values
             .get_mut(index)
             .ok_or(IndexedMemoryError::IndexInvariant)?;
-        *slot = Some(value);
-        return Ok(Arc::new(RadixNode::Leaf(values)));
+        *slot = value;
+        if values.iter().all(Option::is_none) {
+            Ok(None)
+        } else {
+            Ok(Some(Arc::new(RadixNode::Leaf(values))))
+        }
+    } else {
+        let mut children = match current.map(Arc::as_ref) {
+            Some(RadixNode::Branch(existing)) => existing.clone(),
+            Some(RadixNode::Leaf(_values)) => {
+                return Err(IndexedMemoryError::IndexInvariant);
+            },
+            None => empty_children(),
+        };
+        let previous = children
+            .get(index)
+            .ok_or(IndexedMemoryError::IndexInvariant)?;
+        let updated = update_node(
+            previous.as_ref(),
+            address,
+            value,
+            level.saturating_sub(1),
+        )?;
+        let slot = children
+            .get_mut(index)
+            .ok_or(IndexedMemoryError::IndexInvariant)?;
+        *slot = updated;
+        if children.iter().all(Option::is_none) {
+            Ok(None)
+        } else {
+            Ok(Some(Arc::new(RadixNode::Branch(children))))
+        }
     }
-    let mut children = match current.map(Arc::as_ref) {
-        Some(RadixNode::Branch(existing)) => existing.clone(),
-        Some(RadixNode::Leaf(_values)) => {
-            return Err(IndexedMemoryError::IndexInvariant);
-        },
-        None => empty_children(),
-    };
-    let previous = children
-        .get(index)
-        .ok_or(IndexedMemoryError::IndexInvariant)?;
-    let updated = update_node(
-        previous.as_ref(),
-        address,
-        value,
-        level.saturating_sub(1),
-    )?;
-    let slot = children
-        .get_mut(index)
-        .ok_or(IndexedMemoryError::IndexInvariant)?;
-    *slot = Some(updated);
-    Ok(Arc::new(RadixNode::Branch(children)))
+}
+
+fn update_overlay_digest(
+    mut digest: u64,
+    address: u32,
+    before: Option<u32>,
+    after: Option<u32>,
+) -> u64 {
+    if let Some(value) = before {
+        digest ^= overlay_contribution(address, value);
+    }
+    if let Some(value) = after {
+        digest ^= overlay_contribution(address, value);
+    }
+    digest
+}
+
+const fn validate_delta_shape(
+    delta: ProfileMemoryDelta,
+) -> Result<(), IndexedMemoryError> {
+    if let (Some(data), Some(encryption)) = (delta.data, delta.encryption)
+        && data.address == encryption.address
+    {
+        return Err(IndexedMemoryError::IndexInvariant);
+    }
+    Ok(())
 }
 
 fn validate_write(
