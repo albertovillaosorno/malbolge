@@ -4,13 +4,13 @@
 
 from __future__ import annotations
 
+from array import array
 import ctypes
 from dataclasses import dataclass
 from time import perf_counter_ns
 from typing import Final
 from typing import Self
 from typing import TYPE_CHECKING
-from typing import cast
 from typing import final
 
 from accelerator.classic_run import ClassicRunResult
@@ -101,11 +101,19 @@ class _PhaseCounter:
 
 
 @dataclass(frozen=True, slots=True)
+class _WordBuffer:
+    """Contiguous unsigned-word owner plus zero-copy ctypes view."""
+
+    owner: array[int]
+    view: HostWords
+
+
+@dataclass(frozen=True, slots=True)
 class _HostBatch:
-    states: HostWords
-    memories: HostWords
-    inputs: HostWords
-    outputs: HostWords
+    states: _WordBuffer
+    memories: _WordBuffer
+    inputs: _WordBuffer
+    outputs: _WordBuffer
 
 
 def _kernel_source() -> str:
@@ -427,7 +435,7 @@ class CudaClassicRunAdapter:
         if not requests:
             return ()
         validated = tuple(request.validated() for request in requests)
-        plan = self.plan(validated)
+        plan = self._plan_validated(validated)
         results: list[ClassicRunResult] = []
         for chunk in plan.chunks:
             results.extend(
@@ -456,7 +464,7 @@ class CudaClassicRunAdapter:
         phase = _PhaseCounter()
         plan_start = perf_counter_ns()
         validated = tuple(request.validated() for request in requests)
-        plan = self.plan(validated) if validated else None
+        plan = self._plan_validated(validated) if validated else None
         validation_plan_ns = perf_counter_ns() - plan_start
         if plan is None:
             total_ns = perf_counter_ns() - total_start
@@ -497,8 +505,14 @@ class CudaClassicRunAdapter:
             message = "CUDA classic-run adapter is closed"
             raise AcceleratorExecutionError(message)
         validated = tuple(request.validated() for request in requests)
+        return self._plan_validated(validated)
+
+    def _plan_validated(
+        self,
+        requests: tuple[ClassicRunRequest, ...],
+    ) -> ResourcePlan:
         item_bytes = tuple(
-            _resident_item_bytes(request) for request in validated
+            _resident_item_bytes(request) for request in requests
         )
         try:
             return plan_resident_batches(
@@ -541,22 +555,22 @@ class CudaClassicRunAdapter:
         phase: _PhaseCounter,
     ) -> None:
         start = perf_counter_ns()
-        self._runtime.copy_from_device(hosts.states, pointers[0])
-        self._runtime.copy_from_device(hosts.memories, pointers[1])
-        self._runtime.copy_from_device(hosts.outputs, pointers[3])
+        self._runtime.copy_from_device(hosts.states.view, pointers[0])
+        self._runtime.copy_from_device(hosts.memories.view, pointers[1])
+        self._runtime.copy_from_device(hosts.outputs.view, pointers[3])
         phase.download_ns += perf_counter_ns() - start
 
     def _profile_upload(
         self,
-        host: HostWords,
+        host: _WordBuffer,
         phase: _PhaseCounter,
     ) -> int:
         start = perf_counter_ns()
-        pointer = self._runtime.allocate(ctypes.sizeof(host))
+        pointer = self._runtime.allocate(ctypes.sizeof(host.view))
         phase.allocate_ns += perf_counter_ns() - start
         try:
             start = perf_counter_ns()
-            self._runtime.copy_to_device(pointer, host)
+            self._runtime.copy_to_device(pointer, host.view)
             phase.upload_ns += perf_counter_ns() - start
         except AcceleratorExecutionError:
             self._runtime.free(pointer)
@@ -601,9 +615,9 @@ class CudaClassicRunAdapter:
                 )
             )
             self._runtime.launch(self._kernel, tuple(pointers), len(requests))
-            self._runtime.copy_from_device(hosts.states, pointers[0])
-            self._runtime.copy_from_device(hosts.memories, pointers[1])
-            self._runtime.copy_from_device(hosts.outputs, pointers[3])
+            self._runtime.copy_from_device(hosts.states.view, pointers[0])
+            self._runtime.copy_from_device(hosts.memories.view, pointers[1])
+            self._runtime.copy_from_device(hosts.outputs.view, pointers[3])
             return _decode_results(hosts, count=len(requests))
         finally:
             _free_all(self._runtime, pointers)
@@ -622,10 +636,10 @@ def _resident_item_bytes(request: ClassicRunRequest) -> int:
 
 def _encode_variable_state(
     requests: tuple[ClassicRunRequest, ...],
-) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
-    states: list[int] = []
-    inputs: list[int] = []
-    outputs: list[int] = []
+) -> tuple[array[int], array[int], array[int]]:
+    states = array("I")
+    inputs = array("I")
+    outputs = array("I")
     for request in requests:
         input_offset = len(inputs)
         inputs.extend(request.input_bytes)
@@ -659,30 +673,34 @@ def _encode_variable_state(
             0,
             0,
         ))
-    return tuple(states), tuple(inputs), tuple(outputs)
+    return states, inputs, outputs
 
 
 def _build_host_batch(
     requests: tuple[ClassicRunRequest, ...],
 ) -> _HostBatch:
-    state_values, input_values, output_values = _encode_variable_state(requests)
-    memory_values = tuple(
-        value for request in requests for value in request.memory
-    )
+    states, inputs, outputs = _encode_variable_state(requests)
+    memories = array("I")
+    for request in requests:
+        memories.extend(request.memory)
+    if not inputs:
+        inputs.append(0)
+    if not outputs:
+        outputs.append(0)
     return _HostBatch(
-        states=_host_words(state_values),
-        memories=_host_words(memory_values),
-        inputs=_host_words(input_values or (0,)),
-        outputs=_host_words(output_values or (0,)),
+        states=_word_buffer(states),
+        memories=_word_buffer(memories),
+        inputs=_word_buffer(inputs),
+        outputs=_word_buffer(outputs),
     )
 
 
 def _copy_words(
-    runtime: CudaRuntime, host: HostWords
+    runtime: CudaRuntime, host: _WordBuffer
 ) -> int:
-    pointer = runtime.allocate(ctypes.sizeof(host))
+    pointer = runtime.allocate(ctypes.sizeof(host.view))
     try:
-        runtime.copy_to_device(pointer, host)
+        runtime.copy_to_device(pointer, host.view)
     except AcceleratorExecutionError:
         runtime.free(pointer)
         raise
@@ -694,37 +712,34 @@ def _decode_results(
     *,
     count: int,
 ) -> tuple[ClassicRunResult, ...]:
-    state_values = _host_values(hosts.states)
-    memory_values = _host_values(hosts.memories)
-    output_values = _host_values(hosts.outputs)
+    states = hosts.states.owner
+    memories = hosts.memories.owner
+    outputs = hosts.outputs.owner
     results: list[ClassicRunResult] = []
     for index in range(count):
         base = index * STATE_WORDS
-        state = state_values[base : base + STATE_WORDS]
         memory_base = index * MEMORY_WORDS
-        output_offset = state[6]
-        output_len = state[7]
+        output_offset = states[base + 6]
+        output_len = states[base + 7]
         results.append(ClassicRunResult(
-            accumulator=state[0],
-            code_pointer=state[1],
-            data_pointer=state[2],
-            error=RunError(state[_ERROR_INDEX]),
-            error_pointer=state[_ERROR_POINTER_INDEX],
-            error_value=state[_ERROR_VALUE_INDEX],
-            input_consumed=state[5],
-            memory=memory_values[memory_base : memory_base + MEMORY_WORDS],
-            output_bytes=output_values[
-                output_offset : output_offset + output_len
-            ],
-            status=RunStatus(state[_STATUS_INDEX]),
-            steps=state[_STEPS_INDEX],
-            termination=StepTermination(state[10]),
+            accumulator=states[base],
+            code_pointer=states[base + 1],
+            data_pointer=states[base + 2],
+            error=RunError(states[base + _ERROR_INDEX]),
+            error_pointer=states[base + _ERROR_POINTER_INDEX],
+            error_value=states[base + _ERROR_VALUE_INDEX],
+            input_consumed=states[base + 5],
+            memory=tuple(
+                memories[memory_base : memory_base + MEMORY_WORDS]
+            ),
+            output_bytes=tuple(
+                outputs[output_offset : output_offset + output_len]
+            ),
+            status=RunStatus(states[base + _STATUS_INDEX]),
+            steps=states[base + _STEPS_INDEX],
+            termination=StepTermination(states[base + 10]),
         ))
     return tuple(results)
-
-
-def _host_values(host: HostWords) -> tuple[int, ...]:
-    return tuple(cast("Sequence[int]", cast("object", host)))
 
 
 def _free_all(runtime: CudaRuntime, pointers: list[int]) -> None:
@@ -732,6 +747,12 @@ def _free_all(runtime: CudaRuntime, pointers: list[int]) -> None:
         runtime.free(pointers.pop())
 
 
-def _host_words(values: tuple[int, ...]) -> HostWords:
-    host_type = ctypes.c_uint32 * len(values)
-    return host_type(*values)
+def _word_buffer(owner: array[int]) -> _WordBuffer:
+    if owner.itemsize != _DEVICE_WORD_BYTES:
+        message = (
+            "host unsigned-int width is incompatible with CUDA u32 buffers: "
+            f"{owner.itemsize} bytes"
+        )
+        raise AcceleratorExecutionError(message)
+    host_type = ctypes.c_uint32 * len(owner)
+    return _WordBuffer(owner=owner, view=host_type.from_buffer(owner))
