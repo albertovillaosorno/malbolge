@@ -54,6 +54,9 @@ uses device-to-device replication for shared initial memory: complete-snapshot
 batch 32 reaches about 51.67 VMs/s, about 1.289x the retained baseline, and
 median upload time falls about 6.93x. Persistent profile sessions separately
 reach about 2.00 million 64-step VM segments/s at batch 128 when setup, compact
-observation, and snapshots are outside the timed `advance()` region. Reusable
-validation, complete-snapshot materialization, asynchronous transfer/stream
-tuning, broader hardware evidence, and CUDA superoptimization remain open.
+observation, and snapshots are outside the timed `advance()` region. Validated
+`ProfileMemoryImage` inputs now reuse their geometry/domain proof across calls;
+retained complete-snapshot batch 32 reaches about 55.40 VMs/s and median
+validation/planning is about 0.23 ms. Complete-snapshot materialization,
+asynchronous transfer/stream tuning, broader hardware evidence, and CUDA
+superoptimization remain open.

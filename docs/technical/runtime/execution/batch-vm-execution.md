@@ -86,8 +86,11 @@ replication now raises the retained batch-32 result to about 51.67 VMs/s while
 preserving private mutable memory per VM. A separate resident-session matrix
 keeps complete state on-device across repeated segments and reaches about
 2.00 million 64-step segments/s at batch 128, but its timed region excludes
-setup, observation, and snapshots. No CPU-relative or cross-device speedup is
-claimed from either backend-only measurement.
+setup, observation, and snapshots. Reusable validated profile inputs now avoid
+rescanning the full 4,782,969-word image on each call; the retained validated
+input matrix reaches about 55.40 complete-snapshot VMs/s at batch 32. No
+CPU-relative or cross-device speedup is claimed from these backend-only
+measurements.
 
 ## Invariants
 

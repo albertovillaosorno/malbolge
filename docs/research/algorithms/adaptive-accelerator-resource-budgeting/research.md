@@ -161,10 +161,13 @@ replication now raises the retained batch-32 result to about 51.67 VMs/s and cut
 median upload time about 6.93x. Persistent scalable sessions separately reach
 about 2.00 million 64-step VM segments/s at batch 128 when complete state remains
 resident and setup/observation/snapshots are outside the timed region. This
-confirms transfer avoidance as a high-leverage continuation boundary while
-leaving reusable-input validation and complete snapshot materialization as
-measured host costs. None of these values is a CPU-relative or cross-device
-speedup claim; broader hardware evidence remains open.
+confirms transfer avoidance as a high-leverage continuation boundary. A later
+`ProfileMemoryImage` experiment validates and owns one geometry-bound input once;
+on the same RTX 4060 matrix, median validation/planning falls from about 62.40 ms
+to 0.23 ms at batch 32 and complete throughput reaches about 55.40 VMs/s. The
+remaining measured complete-run host boundary is snapshot construction/download
+and final `array('I')` materialization. None of these values is a CPU-relative or
+cross-device speedup claim; broader hardware evidence remains open.
 
 ## References
 

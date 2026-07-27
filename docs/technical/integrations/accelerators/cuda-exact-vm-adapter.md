@@ -118,8 +118,11 @@ private per-VM regions in VRAM; post-change batch 32 reaches about 51.67 VMs/s
 with median upload time about 6.93x lower. Persistent profile sessions keep those
 private states resident across bounded launches and reach about 2.00 million
 64-step VM segments/s at batch 128 when setup, observation, and snapshots are
-outside the timed region. These are backend measurements, not CPU-relative or
-cross-device speedup claims.
+outside the timed region. Validated `ProfileMemoryImage` inputs additionally
+reuse their geometry/domain proof across calls: retained batch-32 validation and
+planning falls to about 0.23 ms and complete-snapshot throughput reaches about
+55.40 VMs/s. These are backend measurements, not CPU-relative or cross-device
+speedup claims.
 
 ## Invariants
 

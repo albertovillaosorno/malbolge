@@ -28,7 +28,9 @@ safe-Rust fallback. RTX 4060 current-profile evidence now includes device-side
 shared-state replication and persistent scalable sessions. Complete-snapshot
 batch 32 reaches about 51.67 VMs/s, while resident batch 128 reaches about
 2.00 million 64-step segments/s when setup and snapshots are outside the timed
-region. Reusable-input validation and unavoidable complete-snapshot
-materialization remain measured host-side costs. Candidate evaluation,
+region. `ProfileMemoryImage` now carries reusable geometry-bound validation proof;
+retained batch-32 complete-snapshot throughput reaches about 55.40 VMs/s and
+validation/planning falls to about 0.23 ms. Complete-snapshot materialization
+remains a measured host-side cost. Candidate evaluation,
 search/verification ports, ROCm, broader hardware evidence, and further
 performance orchestration remain follow-on work.

@@ -64,7 +64,9 @@ directly on CUDA APIs.
   geometry. Hardware-neutral Rust batch ports now route both real resident CUDA
   workers while safe Rust owns admission and fallback. RTX 4060 current-profile
   baseline, shared-initialization, and persistent-session evidence is also
-  retained. Search/verification ports, ROCm, broader hardware, reusable-input
-  validation, and complete-snapshot materialization remain open.
+  retained. Geometry-bound `ProfileMemoryImage` inputs now carry reusable
+  validation proof without weakening mutable-input checks. Search/verification
+  ports, ROCm, broader hardware, and complete-snapshot materialization remain
+  open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

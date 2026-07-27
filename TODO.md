@@ -794,8 +794,10 @@ capacity and are automatically split only at backend representation boundaries.
 RTX 4060 classic and current-profile throughput evidence is now retained.
 Current-profile shared initialization replicates one host image into private
 device states, and persistent scalable sessions avoid repeated full-state
-movement between bounded segments. Broader live-device evidence, reusable-input
-validation, and complete-snapshot materialization improvements remain open.
+movement between bounded segments. `ProfileMemoryImage` now validates and owns
+reusable geometry-bound input once, reducing repeated current-profile validation
+to sub-millisecond planning in retained evidence. Broader live-device evidence
+and complete-snapshot materialization improvements remain open.
 
 ### TODO - Compilation latency performance budget
 
