@@ -38,11 +38,10 @@ def _cuda() -> CudaProfileRunAdapter:
         raise SkipTest(message) from error
 
 
-def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
-    """Execute a valid NVRTC profile distinct from 10/14 trits."""
+def _request() -> ProfileRunRequest:
     memory = array("I", [0]) * SYNTHETIC_WORDS
     memory[0] = NO_OP_CELL
-    request = ProfileRunRequest(
+    return ProfileRunRequest(
         accumulator=INITIAL_ACCUMULATOR,
         code_pointer=0,
         data_pointer=1,
@@ -54,6 +53,11 @@ def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
         termination=StepTermination.NONE,
     )
 
+
+def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
+    """Execute a valid NVRTC profile distinct from 10/14 trits."""
+    request = _request()
+
     with _cuda() as adapter:
         (result,) = adapter.evaluate((request,))
 
@@ -63,8 +67,23 @@ def test_cuda_resident_kernel_executes_synthetic_five_trit_geometry() -> None:
     assert result.error is RunError.NONE
     assert result.input_consumed == 0
     assert result.memory[0] == ENCRYPTED_NO_OP_CELL
-    assert result.memory[1:] == memory[1:]
+    assert result.memory[1:] == request.memory[1:]
     assert result.output_bytes == ()
     assert result.status is RunStatus.BUDGET_EXHAUSTED
     assert result.steps == 1
     assert result.termination is StepTermination.NONE
+
+
+def test_cuda_profile_diagnostics_preserve_exact_results() -> None:
+    """Phase instrumentation must not change the scalable execution result."""
+    request = _request()
+    with _cuda() as adapter:
+        expected = adapter.evaluate((request,))
+        observed, profile = adapter.profile_evaluate((request,))
+
+    assert observed == expected
+    assert profile.chunks == 1
+    assert profile.total_ns >= profile.validation_plan_ns
+    assert profile.host_build_ns >= 0
+    assert profile.kernel_ns >= 0
+    assert profile.decode_ns >= 0

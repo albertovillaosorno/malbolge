@@ -43,3 +43,30 @@ Run with:
 .dependencies/python/3.14.6/Scripts/python-jig.cmd `
   -m benchmarks.accelerator.classic_run_phase_profile
 ```
+
+`profile_run_throughput.py` measures 15 end-to-end samples for batch sizes 1, 2,
+4, 8, 16, and 32. The fixture derives current memory width from `3**14`; each VM
+commits exactly 64 no-op transitions and materializes the complete 4,782,969-word
+result. The timed region includes validation/planning, host assembly, allocation,
+transfers, kernel execution, full result decode, and release.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_run_throughput
+```
+
+`profile_run_phase_profile.py` measures the same current-profile workload with
+adapter diagnostics split into validation/planning, host construction,
+allocation, upload, kernel+sync, download, full result decode, and release. It
+uses batch sizes 1, 8, and 32 with 15 samples each so phase evidence remains
+comparable with the end-to-end throughput run without retaining redundant large
+batch points.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_run_phase_profile
+```

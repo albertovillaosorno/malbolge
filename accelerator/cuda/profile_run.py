@@ -7,6 +7,7 @@ from __future__ import annotations
 from array import array
 import ctypes
 from dataclasses import dataclass
+from time import perf_counter_ns
 from typing import Final
 from typing import Self
 from typing import TYPE_CHECKING
@@ -44,6 +45,59 @@ _FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
 _KERNEL_NAME: Final = "malbolge_profile_run_batch"
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileRunPhaseProfile:
+    """Diagnostic wall-clock phase totals for one profiled evaluation."""
+
+    allocate_ns: int
+    chunks: int
+    decode_ns: int
+    download_ns: int
+    host_build_ns: int
+    kernel_ns: int
+    release_ns: int
+    total_ns: int
+    upload_ns: int
+    validation_plan_ns: int
+
+
+@dataclass(slots=True)
+class _PhaseCounter:
+    allocate_ns: int = 0
+    decode_ns: int = 0
+    download_ns: int = 0
+    host_build_ns: int = 0
+    kernel_ns: int = 0
+    release_ns: int = 0
+    upload_ns: int = 0
+
+    def freeze(
+        self,
+        *,
+        chunks: int,
+        total_ns: int,
+        validation_plan_ns: int,
+    ) -> ProfileRunPhaseProfile:
+        """Freeze accumulated phase counters into public evidence.
+
+        Returns:
+            Immutable aggregate timing evidence.
+
+        """
+        return ProfileRunPhaseProfile(
+            allocate_ns=self.allocate_ns,
+            chunks=chunks,
+            decode_ns=self.decode_ns,
+            download_ns=self.download_ns,
+            host_build_ns=self.host_build_ns,
+            kernel_ns=self.kernel_ns,
+            release_ns=self.release_ns,
+            total_ns=total_ns,
+            upload_ns=self.upload_ns,
+            validation_plan_ns=validation_plan_ns,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +225,53 @@ class CudaProfileRunAdapter:
             )
         return tuple(results)
 
+    def profile_evaluate(
+        self,
+        requests: Sequence[ProfileRunRequest],
+    ) -> tuple[tuple[ProfileRunResult, ...], ProfileRunPhaseProfile]:
+        """Execute the ordinary path while recording diagnostic wall time.
+
+        Returns:
+            Exact results plus aggregate per-phase timing for this evaluation.
+
+        Raises:
+            AcceleratorExecutionError: If the adapter is closed or CUDA fails.
+
+        """
+        total_start = perf_counter_ns()
+        if self._closed:
+            message = "CUDA profile-run adapter is closed"
+            raise AcceleratorExecutionError(message)
+        phase = _PhaseCounter()
+        plan_start = perf_counter_ns()
+        validated = validate_profile_run_requests(
+            self._geometry,
+            tuple(requests),
+        )
+        plan = self._plan_validated(validated) if validated else None
+        validation_plan_ns = perf_counter_ns() - plan_start
+        if plan is None:
+            total_ns = perf_counter_ns() - total_start
+            return (), phase.freeze(
+                chunks=0,
+                total_ns=total_ns,
+                validation_plan_ns=validation_plan_ns,
+            )
+        results: list[ProfileRunResult] = []
+        for chunk in plan.chunks:
+            results.extend(
+                self._profile_chunk(
+                    validated[chunk.start : chunk.stop],
+                    phase,
+                )
+            )
+        total_ns = perf_counter_ns() - total_start
+        return tuple(results), phase.freeze(
+            chunks=len(plan.chunks),
+            total_ns=total_ns,
+            validation_plan_ns=validation_plan_ns,
+        )
+
     def plan(
         self,
         requests: Sequence[ProfileRunRequest],
@@ -193,6 +294,83 @@ class CudaProfileRunAdapter:
             tuple(requests),
         )
         return self._plan_validated(validated)
+
+    def _profile_chunk(
+        self,
+        requests: tuple[ProfileRunRequest, ...],
+        phase: _PhaseCounter,
+    ) -> tuple[ProfileRunResult, ...]:
+        start = perf_counter_ns()
+        hosts = _build_host_batch(self._geometry, requests)
+        phase.host_build_ns += perf_counter_ns() - start
+        pointers = self._profile_uploads(hosts, phase)
+        try:
+            start = perf_counter_ns()
+            self._runtime.launch(self._kernel, tuple(pointers), len(requests))
+            phase.kernel_ns += perf_counter_ns() - start
+            self._profile_downloads(hosts, pointers, phase)
+            start = perf_counter_ns()
+            results = _decode_results(
+                self._geometry,
+                hosts,
+                count=len(requests),
+            )
+            phase.decode_ns += perf_counter_ns() - start
+            return results
+        finally:
+            start = perf_counter_ns()
+            _free_all(self._runtime, pointers)
+            phase.release_ns += perf_counter_ns() - start
+
+    def _profile_downloads(
+        self,
+        hosts: _HostBatch,
+        pointers: list[int],
+        phase: _PhaseCounter,
+    ) -> None:
+        start = perf_counter_ns()
+        self._runtime.copy_from_device(hosts.states.view, pointers[0])
+        self._runtime.copy_from_device(hosts.memories.view, pointers[1])
+        self._runtime.copy_from_device(hosts.outputs.view, pointers[3])
+        phase.download_ns += perf_counter_ns() - start
+
+    def _profile_upload(
+        self,
+        host: _WordBuffer,
+        phase: _PhaseCounter,
+    ) -> int:
+        start = perf_counter_ns()
+        pointer = self._runtime.allocate(ctypes.sizeof(host.view))
+        phase.allocate_ns += perf_counter_ns() - start
+        try:
+            start = perf_counter_ns()
+            self._runtime.copy_to_device(pointer, host.view)
+            phase.upload_ns += perf_counter_ns() - start
+        except AcceleratorExecutionError:
+            self._runtime.free(pointer)
+            raise
+        return pointer
+
+    def _profile_uploads(
+        self,
+        hosts: _HostBatch,
+        phase: _PhaseCounter,
+    ) -> list[int]:
+        pointers: list[int] = []
+        try:
+            pointers.extend(
+                self._profile_upload(host, phase)
+                for host in (
+                    hosts.states,
+                    hosts.memories,
+                    hosts.inputs,
+                    hosts.outputs,
+                )
+            )
+        except AcceleratorExecutionError:
+            _free_all(self._runtime, pointers)
+            raise
+        return pointers
 
     def _evaluate_chunk(
         self,
