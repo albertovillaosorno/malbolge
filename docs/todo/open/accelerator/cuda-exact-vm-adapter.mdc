@@ -59,9 +59,13 @@ batches.
   returns the full `StepTrace`-equivalent projection. Rust integration compares
   fourteen instruction/edge fixtures directly with normative
   `Machine::step_traced()`, including atomic rejection and write aliasing.
-- RTX 4060 (`sm_89`) development evidence matches CPU primitive results and Rust
-  classic-step traces. Resident full-memory multi-step VM execution, adaptive
-  resource sizing, current-profile coverage, and performance evidence remain
-  open.
+- Resident classic bounded execution is active behind
+  `ClassicRunRequest`/`ClassicRunResult`: one CUDA thread keeps one complete
+  59,049-word state resident for its full budget. `tests/vm/cuda_run.rs` compares
+  nine results against normative Rust across every final memory word plus
+  registers, I/O, termination, steps, resumption, wrap, aliasing, and atomic
+  rejection. RTX 4060 (`sm_89`) development evidence passes this differential.
+- Current-profile coverage, adaptive resource sizing, product-level batch routing,
+  and performance evidence remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

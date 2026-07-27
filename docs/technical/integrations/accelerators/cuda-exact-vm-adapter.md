@@ -63,10 +63,25 @@ safe-Rust `Machine::step_traced()` first, projects the resulting `StepTrace` to 
 fixed-width versioned process protocol, invokes the CUDA worker externally, and
 requires exact equality for fourteen fixtures spanning all seven instructions,
 no-op, EOF, non-graphical termination, rejected jump atomicity, pointer wrap,
-data/self-encryption aliasing, and already-terminated state. CUDA unavailability
-keeps this optional path unavailable rather than changing VM correctness. This
-still does not provide resident full-memory/multi-step GPU VM execution or a
-performance claim.
+data/self-encryption aliasing, and already-terminated state.
+
+Resident classic execution is now active through the hardware-neutral
+`ClassicRunRequest`/`ClassicRunResult` contract. Each request contains the complete
+59,049-word memory image, registers, deterministic input, prior output, termination
+state, and an explicit bounded step budget. One CUDA thread owns one independent
+memory image in device memory and loops over the complete semantic transition
+function without host state transfers between steps. The kernel preserves atomic
+rejection: a failing self-encryption step contributes no register, I/O, or memory
+mutation, while earlier committed steps remain visible.
+
+`tests/vm/cuda_run.rs` serializes complete states to a binary CUDA worker and
+requires byte-exact agreement with normative Rust across nine fixtures, including
+budget exhaustion, input/output/halt, EOF, non-graphical termination, resumed and
+already-terminated execution, rejected jump atomicity, pointer wrap, and
+data/encryption aliasing. Every one of the 59,049 memory words is compared. CUDA
+unavailability keeps this optional path unavailable rather than changing VM
+correctness. Current-profile resident execution and performance claims remain
+open.
 
 ## Invariants
 
@@ -92,10 +107,12 @@ fails explicitly without changing correctness rules.
 - The current workstation evidence is RTX 4060 / `sm_89`; toolchain smoke also
   verifies NVRTC -> PTX -> Driver API execution with the pinned CUDA 13.3 Update
   1 redistributables.
-- Compact classic-step differential evidence now covers VM state/I/O/mutation
-  trace projections and atomic rejection. Resident full-memory multi-step batches,
-  adaptive resource limits, throughput benchmarks, and current-profile coverage
-  remain required before this TODO can complete.
+- Compact classic-step differential evidence covers VM state/I/O/mutation trace
+  projections and atomic rejection. Resident classic evidence additionally
+  compares complete 59,049-word states after bounded multi-step execution against
+  normative Rust. Adaptive resource limits, product-level batch routing, throughput
+  benchmarks, and current-profile coverage remain required before this TODO can
+  complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

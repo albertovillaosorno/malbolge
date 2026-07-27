@@ -63,12 +63,14 @@ checksum. These data demonstrate this classic workload on this host only and are
 portable speedup guarantee. They do not establish a current-profile speedup;
 profile-driven batching has correctness evidence only until separately measured.
 
-The optional accelerator boundary now has a compact one-step classic batch as a
-semantic proving layer before resident GPU state. Each CUDA work item is an
-independent machine transition over explicitly declared memory cells; there is no
-guest-visible parallelism or shared guest state. `tests/vm/cuda_step.rs` compares
-CUDA transition projections directly to normative Rust traces. This does not yet
-replace `execute_batch` or persist complete 59,049-word machine memories on GPU.
+The optional accelerator boundary now has both a compact one-step proving layer
+and resident classic bounded execution. Each resident CUDA work item owns one
+complete 59,049-word memory image plus independent registers and I/O and performs
+its entire explicit step budget on device; there is no guest-visible parallelism
+or shared guest state. `tests/vm/cuda_step.rs` checks transition projections, while
+`tests/vm/cuda_run.rs` compares every final memory word and complete machine state
+to normative Rust. This accelerator path is not yet routed through the Rust
+`execute_batch` product API and does not yet cover the current profile.
 
 ## Invariants
 
@@ -96,6 +98,9 @@ deterministically without changing guest-visible state silently.
 - `tests/vm/cuda_step.rs` verifies optional CUDA compact-step equality against
   normative classic `StepTrace` results across every instruction family,
   termination/rejection edges, pointer wrap, and data/encryption aliasing.
+- `tests/vm/cuda_run.rs` verifies resident classic bounded execution against
+  normative Rust, including all 59,049 final memory words, registers, I/O,
+  termination, step counts, resumption, and atomic rejection.
 - CPU performance evidence for the classic batch path only:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
   raw samples and exact commit/workload/toolchain/host provenance.

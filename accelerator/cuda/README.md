@@ -4,14 +4,15 @@ This directory owns the optional NVIDIA CUDA implementation behind the shared
 accelerator contract. It is not a semantic dependency of the compiler, verifier,
 or VM.
 
-The first active slice evaluates exact classic `rotate` and `crazy` batches with
-integer-only CUDA kernels. The next slice adds compact specification-mode classic
-VM transitions: one GPU thread evaluates one independent machine step from a
-bounded memory snapshot and returns the same observable projection as Rust
-`StepTrace`. A narrow standard-library `ctypes` runtime binds only the reviewed
-NVRTC and CUDA Driver API calls needed by the adapter; compiler,
-verifier, VM, and shared accelerator code never import CUDA APIs. CPU reference
-results remain the differential correctness oracle.
+The active slices evaluate exact classic `rotate`/`crazy` batches, compact
+one-step classic transitions, and complete resident classic bounded runs with
+integer-only CUDA kernels. For resident execution, one GPU thread owns one
+independent 59,049-word memory image and performs its whole step budget without
+round-tripping guest state through the host between steps. A narrow
+standard-library `ctypes` runtime binds only the reviewed NVRTC and CUDA Driver API
+calls needed by the adapter; compiler, verifier, VM, and shared accelerator code
+never import CUDA APIs. Normative Rust execution remains the differential
+correctness oracle.
 
 The repository pins CUDA 13.3 Update 1 for Windows x86-64 through
 `toolchain.json`. Binary redistributables live under ignored
@@ -25,9 +26,12 @@ boundary-heavy plus deterministic `rotate`/`crazy` batches. Rust integration als
 sends fourteen compact transition fixtures through an external CUDA worker and
 requires exact equality with normative `Machine::step_traced()` across all seven
 instructions, no-op, EOF, non-graphical termination, rejected jump atomicity,
-pointer wrap, data/encryption aliasing, and already-terminated state. This is
-correctness evidence, not a speedup claim.
+pointer wrap, data/encryption aliasing, and already-terminated state. A second
+Rust integration sends nine complete resident states through a binary worker and
+compares all 59,049 memory words plus registers, I/O, termination, step counts,
+and atomic rejection after bounded multi-step execution. This is correctness
+evidence, not a speedup claim.
 
-Resident/full-memory multi-step VM batching, adaptive resource sizing,
-asynchronous transfer/stream tuning, benchmark evidence, and CUDA
+Current-profile resident execution, adaptive resource sizing, product-level batch
+routing, asynchronous transfer/stream tuning, benchmark evidence, and CUDA
 superoptimization remain open.

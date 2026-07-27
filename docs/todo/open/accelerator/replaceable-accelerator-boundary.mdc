@@ -51,13 +51,14 @@ directly on CUDA APIs.
 - Active foundation: `ExactPrimitiveAdapter` owns hardware-neutral classic
   rotate/crazy batches; CPU scalar and optional CUDA adapters implement the same
   request/result contract. `ClassicStepRequest`/`ClassicStepResult` additionally
-  define one compact specification-mode VM transition without exposing CUDA APIs
-  to VM/compiler/verifier code. Shared validation rejects malformed requests
-  before backend execution.
+  define one compact specification-mode VM transition, while
+  `ClassicRunRequest`/`ClassicRunResult` define complete classic bounded execution
+  without exposing CUDA APIs to VM/compiler/verifier code. Shared validation
+  rejects malformed requests before backend execution.
 - Current differential evidence executes CUDA on available hardware over boundary
-  values plus deterministic 4,096-element corpora. Rust `StepTrace` differential
-  evidence now also covers compact classic transitions; resident/full-memory
-  VM/search/verification ports, ROCm, resource policy, and benchmark claims remain
-  open.
+  values plus deterministic 4,096-element corpora. Rust differential evidence
+  covers compact classic transitions and resident complete-state bounded runs.
+  Current-profile resident VM/search/verification ports, ROCm, resource policy,
+  and benchmark claims remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

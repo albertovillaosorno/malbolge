@@ -30,7 +30,9 @@ types plus the `ExactPrimitiveAdapter` protocol. The first admitted operation
 family batches classic ten-trit `rotate` and `crazy`; malformed shape or word
 domain is rejected before any backend executes. `accelerator/classic_step.py`
 adds a hardware-neutral fixed-width contract for one classic specification-mode
-transition over an explicitly bounded memory snapshot.
+transition over an explicitly bounded memory snapshot. `accelerator/classic_run.py`
+adds a complete-state bounded-run contract whose classic memory width is fixed at
+59,049 words without exposing CUDA handles or layout details.
 
 ### Implementation Status
 
@@ -45,8 +47,9 @@ for evidence. Accelerator unavailability and execution failure have distinct
 typed errors; neither changes candidate validity or CPU-reference semantics. The
 CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
-full-memory VM batching, candidate evaluation/search/verification ports, and ROCm
-remain open.
+classic bounded execution is likewise checked against complete normative Rust
+states. Current-profile resident execution, product routing, candidate
+evaluation/search/verification ports, and ROCm remain open.
 
 ## Invariants
 
@@ -72,7 +75,9 @@ fails explicitly without changing correctness rules.
   `sm_89`; no performance claim is made from this correctness slice.
 - `tests/vm/cuda_step.rs` checks compact transition results against normative
   Rust traces across every instruction family and adversarial transition edges.
-- Remaining evidence includes resident/full-memory VM and candidate ports,
+- `tests/vm/cuda_run.rs` checks complete resident classic bounded-run results,
+  including every final memory word, against normative Rust.
+- Remaining evidence includes current-profile resident VM and candidate ports,
   unavailable-device orchestration at product call sites, ROCm substitution,
   resource metadata, and benchmark samples for any future speedup claim.
 - Prerequisite completion evidence: `batch-vm-execution`,
