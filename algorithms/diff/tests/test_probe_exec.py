@@ -102,6 +102,7 @@ def test_structured_source_path_is_passed_without_shell(tmp_path: Path) -> None:
 
     transcript = run_probe_program(program, _context(source, tmp_path))
     expected = hashlib.sha256()
+    expected.update(b"O")
     expected.update((0).to_bytes(8, byteorder="big"))
     expected.update(len(b"payload").to_bytes(8, byteorder="big"))
     expected.update(b"payload")
@@ -160,6 +161,33 @@ def test_scratch_executable_can_be_produced_then_run(tmp_path: Path) -> None:
 
     transcript = run_probe_program(program, _context(source, tmp_path))
     _expect(transcript.digested_commands == 1, "scratch executable did not run")
+
+
+def test_exit_code_can_be_observed_instead_of_required(tmp_path: Path) -> None:
+    """Allow behavior probes to digest a nonzero process result as evidence."""
+    source = tmp_path / "source"
+    source.mkdir()
+    program = ProbeProgram(
+        probe_id="exit-observation",
+        commands=(
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=("-c", "raise SystemExit(37)"),
+                expected_exit_code=None,
+                digest_exit_code=True,
+            ),
+        ),
+    )
+
+    transcript = run_probe_program(program, _context(source, tmp_path))
+    expected = hashlib.sha256()
+    expected.update(b"E")
+    expected.update((0).to_bytes(8, byteorder="big"))
+    expected.update((37).to_bytes(8, byteorder="big", signed=True))
+    _expect(
+        transcript.digest == expected.digest(), "exit-code transcript changed"
+    )
+    _expect(transcript.digested_commands == 1, "exit code was not selected")
 
 
 def test_unexpected_exit_code_fails_closed(tmp_path: Path) -> None:

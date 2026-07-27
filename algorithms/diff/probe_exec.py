@@ -96,11 +96,12 @@ class ProbeCommand:
     executable: ProbeExecutable
     arguments: tuple[ProbeArgument, ...] = ()
     stdin: bytes = b""
-    expected_exit_code: int = _ZERO
+    expected_exit_code: int | None = _ZERO
     timeout_ms: int = _DEFAULT_TIMEOUT_MS
     max_stdout_bytes: int = _DEFAULT_OUTPUT_LIMIT
     max_stderr_bytes: int = _DEFAULT_OUTPUT_LIMIT
     digest_stdout: bool = False
+    digest_exit_code: bool = False
 
     def __post_init__(self) -> None:
         """Reject unbounded or nonsensical process limits.
@@ -167,11 +168,17 @@ class ProbeRunContext:
 
 @dataclass(frozen=True, slots=True)
 class ProbeTranscript:
-    """Stable digest of stdout explicitly selected by a probe program."""
+    """Stable digest of explicitly selected process observations."""
 
     probe_id: str
     digest: bytes
     digested_commands: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CommandResult:
+    stdout: bytes
+    returncode: int
 
 
 def _validate_relative_path(relative_path: str) -> None:
@@ -266,7 +273,7 @@ def _run_command(
     command: ProbeCommand,
     context: ProbeRunContext,
     scratch_root: Path,
-) -> bytes:
+) -> _CommandResult:
     argv = _command_argv(command, context, scratch_root)
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv; shell disabled.
@@ -287,20 +294,43 @@ def _run_command(
     if len(completed.stderr) > command.max_stderr_bytes:
         message = "probe command exceeded stderr limit"
         raise ProbeExecutionError(message)
-    if completed.returncode != command.expected_exit_code:
+    if (
+        command.expected_exit_code is not None
+        and completed.returncode != command.expected_exit_code
+    ):
         message = "probe command returned an unexpected exit code"
         raise ProbeExecutionError(message)
-    return completed.stdout
+    return _CommandResult(
+        stdout=completed.stdout,
+        returncode=completed.returncode,
+    )
 
 
-def _update_digest(
-    hasher: hashlib._Hash, command_index: int, stdout: bytes
+def _update_stdout_digest(
+    hasher: hashlib._Hash,
+    command_index: int,
+    stdout: bytes,
 ) -> None:
     index_bytes = command_index.to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
     length_bytes = len(stdout).to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
+    hasher.update(b"O")
     hasher.update(index_bytes)
     hasher.update(length_bytes)
     hasher.update(stdout)
+
+
+def _update_exit_digest(
+    hasher: hashlib._Hash,
+    command_index: int,
+    returncode: int,
+) -> None:
+    index_bytes = command_index.to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
+    code_bytes = int(returncode).to_bytes(
+        _FRAME_LENGTH_BYTES, byteorder="big", signed=True
+    )
+    hasher.update(b"E")
+    hasher.update(index_bytes)
+    hasher.update(code_bytes)
 
 
 def _run_program(
@@ -312,9 +342,15 @@ def _run_program(
     with tempfile.TemporaryDirectory(prefix="diff-probe-") as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
-            stdout = _run_command(command, context, scratch_root)
+            result = _run_command(command, context, scratch_root)
+            selected = False
             if command.digest_stdout:
-                _update_digest(hasher, command_index, stdout)
+                _update_stdout_digest(hasher, command_index, result.stdout)
+                selected = True
+            if command.digest_exit_code:
+                _update_exit_digest(hasher, command_index, result.returncode)
+                selected = True
+            if selected:
                 digested_commands += 1
     return ProbeTranscript(
         probe_id=program.probe_id,
