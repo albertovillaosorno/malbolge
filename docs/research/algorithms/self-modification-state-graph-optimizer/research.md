@@ -266,3 +266,18 @@ stack overflow. The implementation now iteratively unwraps uniquely owned tail
 nodes until a shared prefix is reached, and the same 65,536-byte test passes.
 Performance is not yet claimed: a post-commit benchmark must compare persistent
 append against the previous complete-`Vec` clone as output length grows.
+
+Post-commit persistent-output evidence at `1d229d0` removes the last obvious
+history-length copy from the ordinary incremental-state update. Persistent append
+measures 107.70 ns at empty history, 139.82 ns at 1 KiB, 138.87 ns at 64 KiB, and
+144.53 ns at 256 KiB. The previous complete-vector clone/push measures 84.45 ns,
+230.60 ns, 3.12 microseconds, and 20.83 microseconds respectively. The candidate
+therefore accepts a small fixed empty-history overhead in exchange for effectively
+flat append cost; the 256 KiB ratio is about 144x.
+
+This remains a representation microbenchmark. Materialization and rare exact
+comparison of non-shared equal branches can still scale with output length, but
+they are not the per-step fast path. Memory, state identity, and committed-output
+storage now all have bounded/incremental ordinary update paths. The next research
+question is semantic: identify native-executable regions with explicit
+self-modification guards and deterministic deoptimization conditions.

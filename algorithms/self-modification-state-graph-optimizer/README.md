@@ -107,3 +107,11 @@ retains byte authority after digest/length filters, materialization reconstructs
 the complete output, and iterative destruction prevents recursive-`Arc` stack
 overflow on long unique histories. `state.rs` now uses this persistent history in
 its exact merge key and oracle checkpoints.
+
+Post-commit output evidence at `1d229d0` promotes persistent output storage. The
+append candidate stays about 108--145 ns/op from empty through 256 KiB histories;
+the prior complete-`Vec` clone rises from about 84 ns to 20.83 microseconds. At
+256 KiB the measured representation ratio is about 144x. The small empty-history
+penalty is accepted because persistent append removes history-length scaling from
+ordinary state updates. Native-region safety/guards are now the next state-graph
+research boundary.

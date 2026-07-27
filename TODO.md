@@ -633,8 +633,10 @@ measurement is 535.82 ns new-observe and
 26.29/30.48 ms for
 complete checkpoints in the same run. Append-only output now uses a shared
 persistent history with exact byte equality and safe iterative destruction for
-65,536-byte fixtures. Post-commit output performance, wider-profile geometry,
-broader mutation-history collapse, and native-region shortcuts remain open.
+65,536-byte fixtures. Post-commit append stays near 108--145 ns through 256 KiB
+while the prior vector clone reaches 20.83 microseconds. Persistent output is
+promoted; wider-profile geometry, broader mutation-history collapse, and
+native-region safety/guard rules remain open.
 
 ## Optimization and accelerator architecture
 

@@ -98,3 +98,11 @@ candidate = "shared-prefix-plus-immutable-byte-tail"
 digest_role = "filter-only"
 exact_equality = "shared-tail-or-bytewise"
 long_history_fixture_bytes = 65536
+
+[persistent_output.benchmark]
+commit = "1d229d0"
+evidence = "benchmarks/research/state-graph/evidence/2026-07-27-output-windows-x86_64"
+lengths = [0, 1024, 65536, 262144]
+samples_per_case = 15
+verdict = "promote-persistent-output-storage"
+next_risk = "native-region-safety-and-guards"

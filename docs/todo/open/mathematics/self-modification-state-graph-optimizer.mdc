@@ -86,9 +86,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Persistent-output post-commit performance, wider-profile radix geometry,
-  broader mutation-history collapse, native-region shortcuts, and end-to-end
-  performance claims remain active research and
+- Wider-profile radix geometry, broader mutation-history collapse,
+  native-region safety/guard rules, and end-to-end performance claims remain
+  active research and
   must be falsified independently against the exact baseline.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
   ns through 4096 distinct overrides; depth-4096 root fallback is
@@ -115,6 +115,10 @@ VM evidence.
   the state key. Independent equal/different branches compare correctly, a
   65,536-byte history materializes exactly, and iterative destruction fixes the
   stack overflow discovered by that long-history fixture. Performance is next.
+- Post-commit output evidence at `1d229d0` keeps persistent append near
+  108--145 ns from empty through 256 KiB histories, while complete-vector
+  clone/push grows to 20.83 microseconds at 256 KiB (about 144x). Persistent
+  output is promoted; the next research boundary is native-region safety/guards.
 
 ## Acceptance
 

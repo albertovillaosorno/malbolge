@@ -1,0 +1,491 @@
+{
+  "captured_at": "2026-07-27T04:38:01.1481787-06:00",
+  "commit": "1d229d0ce853682c8f9ed8926848c8253c37fec2",
+  "short_commit": "1d229d0",
+  "benchmark_command": ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe run --release --bin state_graph_benchmark --quiet",
+  "sample_count": 15,
+  "output_lengths": [
+    0,
+    1024,
+    65536,
+    262144
+  ],
+  "benchmark_scope_matches_head": true,
+  "working_tree_note": "Unrelated .gitignore/DOOM interoperability edits were present and excluded from benchmark-owned/runtime scope.",
+  "cpu": {
+    "Name": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+    "Manufacturer": "GenuineIntel",
+    "NumberOfCores": 12,
+    "NumberOfLogicalProcessors": 24,
+    "MaxClockSpeed": 2601
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200",
+    "OSArchitecture": "64-bit"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "results": [
+    {
+      "implementation": "indexed-apply-depth-1",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 917.919921875,
+      "median_ns_per_op": 919.5068359375,
+      "maximum_ns_per_op": 943.0908203125,
+      "checksum": "16928533803608187685",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1618.212890625,
+      "median_ns_per_op": 1626.46484375,
+      "maximum_ns_per_op": 1734.7900390625,
+      "checksum": "10392220539554710309",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-512",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1017.0166015625,
+      "median_ns_per_op": 1018.603515625,
+      "maximum_ns_per_op": 1035.1806640625,
+      "checksum": "13279449747975267109",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-64",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 932.4462890625,
+      "median_ns_per_op": 936.0595703125,
+      "maximum_ns_per_op": 1102.5634765625,
+      "checksum": "17062710960419316517",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-8",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 915.7470703125,
+      "median_ns_per_op": 920.166015625,
+      "maximum_ns_per_op": 939.3310546875,
+      "checksum": "6296289106748244773",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1649.609375,
+      "median_ns_per_op": 1668.8232421875,
+      "maximum_ns_per_op": 1853.3447265625,
+      "checksum": "17793303670962922277",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.648193359375,
+      "median_ns_per_op": 20.709228515625,
+      "maximum_ns_per_op": 21.10595703125,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.39794921875,
+      "median_ns_per_op": 20.42236328125,
+      "maximum_ns_per_op": 21.86279296875,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 21.484375,
+      "median_ns_per_op": 21.875,
+      "maximum_ns_per_op": 23.4375,
+      "checksum": "11130583311107593509",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 20.60546875,
+      "median_ns_per_op": 20.751953125,
+      "maximum_ns_per_op": 24.12109375,
+      "checksum": "3361148569019855653",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 20.44677734375,
+      "median_ns_per_op": 20.49560546875,
+      "maximum_ns_per_op": 21.39892578125,
+      "checksum": "18181643104867607333",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 20.404052734375,
+      "median_ns_per_op": 20.42236328125,
+      "maximum_ns_per_op": 21.905517578125,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.384765625,
+      "median_ns_per_op": 19.451904296875,
+      "maximum_ns_per_op": 20.391845703125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 19.921875,
+      "median_ns_per_op": 20.3125,
+      "maximum_ns_per_op": 48.4375,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 19.53125,
+      "median_ns_per_op": 19.580078125,
+      "maximum_ns_per_op": 21.19140625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 19.482421875,
+      "median_ns_per_op": 19.51904296875,
+      "maximum_ns_per_op": 20.42236328125,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.390869140625,
+      "median_ns_per_op": 19.427490234375,
+      "maximum_ns_per_op": 20.0439453125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "insert-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 26135400.0,
+      "median_ns_per_op": 26211500.0,
+      "maximum_ns_per_op": 26477900.0,
+      "checksum": "4625247251222736821",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-0",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 107.281494140625,
+      "median_ns_per_op": 107.696533203125,
+      "maximum_ns_per_op": 111.724853515625,
+      "checksum": "2239359047875044133",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-1024",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 138.37890625,
+      "median_ns_per_op": 139.8193359375,
+      "maximum_ns_per_op": 144.3359375,
+      "checksum": "3618128858675274533",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-262144",
+      "samples": 15,
+      "operations_per_sample": 128,
+      "minimum_ns_per_op": 143.75,
+      "median_ns_per_op": 144.53125,
+      "maximum_ns_per_op": 211.71875,
+      "checksum": "15599016845748899109",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-65536",
+      "samples": 15,
+      "operations_per_sample": 512,
+      "minimum_ns_per_op": 138.671875,
+      "median_ns_per_op": 138.8671875,
+      "maximum_ns_per_op": 141.015625,
+      "checksum": "9211644291040418597",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-0",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 83.28857421875,
+      "median_ns_per_op": 84.454345703125,
+      "maximum_ns_per_op": 86.260986328125,
+      "checksum": "5246240905470812965",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-1024",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 226.7578125,
+      "median_ns_per_op": 230.60302734375,
+      "maximum_ns_per_op": 286.12060546875,
+      "checksum": "2259198589157827365",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-262144",
+      "samples": 15,
+      "operations_per_sample": 128,
+      "minimum_ns_per_op": 20746.09375,
+      "median_ns_per_op": 20827.34375,
+      "maximum_ns_per_op": 21095.3125,
+      "checksum": "16371337858183992613",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-65536",
+      "samples": 15,
+      "operations_per_sample": 512,
+      "minimum_ns_per_op": 3102.34375,
+      "median_ns_per_op": 3124.609375,
+      "maximum_ns_per_op": 3200.78125,
+      "checksum": "2300536404903783205",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 140.936279296875,
+      "median_ns_per_op": 141.8701171875,
+      "maximum_ns_per_op": 147.015380859375,
+      "checksum": "4167613253049000741",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.9443359375,
+      "median_ns_per_op": 17.974853515625,
+      "maximum_ns_per_op": 18.75,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.901611328125,
+      "median_ns_per_op": 18.182373046875,
+      "maximum_ns_per_op": 19.43359375,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 18.359375,
+      "median_ns_per_op": 18.359375,
+      "maximum_ns_per_op": 20.3125,
+      "checksum": "17165412970885540645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 17.96875,
+      "median_ns_per_op": 17.96875,
+      "maximum_ns_per_op": 18.115234375,
+      "checksum": "13040278181342372645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 17.98095703125,
+      "median_ns_per_op": 18.00537109375,
+      "maximum_ns_per_op": 18.64013671875,
+      "checksum": "217943758197170981",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.901611328125,
+      "median_ns_per_op": 17.93212890625,
+      "maximum_ns_per_op": 18.267822265625,
+      "checksum": "8321053844470768421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 18.231201171875,
+      "median_ns_per_op": 18.408203125,
+      "maximum_ns_per_op": 20.068359375,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 19566.015625,
+      "median_ns_per_op": 19648.046875,
+      "maximum_ns_per_op": 20121.875,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 1472.705078125,
+      "median_ns_per_op": 1542.578125,
+      "maximum_ns_per_op": 1577.978515625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 145.05615234375,
+      "median_ns_per_op": 145.81298828125,
+      "maximum_ns_per_op": 150.06103515625,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 23.779296875,
+      "median_ns_per_op": 23.809814453125,
+      "maximum_ns_per_op": 25.323486328125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "replay-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 30213100.0,
+      "median_ns_per_op": 30567800.0,
+      "maximum_ns_per_op": 31362600.0,
+      "checksum": "12549573586291003927",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "snapshot",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 6243000.0,
+      "median_ns_per_op": 6467500.0,
+      "maximum_ns_per_op": 7435800.0,
+      "checksum": "15378766449629180008",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-apply-trace",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 895.4833984375,
+      "median_ns_per_op": 902.3193359375,
+      "maximum_ns_per_op": 945.9716796875,
+      "checksum": "2806732789937808165",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-observe-new",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 523.5107421875,
+      "median_ns_per_op": 538.916015625,
+      "maximum_ns_per_op": 646.142578125,
+      "checksum": "15542364202839024421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-replay",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 418.7744140625,
+      "median_ns_per_op": 437.01171875,
+      "maximum_ns_per_op": 497.9248046875,
+      "checksum": "11735635569798456101",
+      "checksum_count": 1
+    }
+  ],
+  "analysis": {
+    "output_append_comparison": [
+      {
+        "length": 0,
+        "vec_ns_per_op": 84.454345703125,
+        "persistent_ns_per_op": 107.696533203125,
+        "vec_to_persistent_ratio": 0.7841881552847833
+      },
+      {
+        "length": 1024,
+        "vec_ns_per_op": 230.60302734375,
+        "persistent_ns_per_op": 139.8193359375,
+        "vec_to_persistent_ratio": 1.6492928234677842
+      },
+      {
+        "length": 65536,
+        "vec_ns_per_op": 3124.609375,
+        "persistent_ns_per_op": 138.8671875,
+        "vec_to_persistent_ratio": 22.50070323488045
+      },
+      {
+        "length": 262144,
+        "vec_ns_per_op": 20827.34375,
+        "persistent_ns_per_op": 144.53125,
+        "vec_to_persistent_ratio": 144.10270270270271
+      }
+    ],
+    "note": "Representation microbenchmark only; materialization and rare non-shared exact-equality fallback are not part of append timing."
+  }
+}
