@@ -52,6 +52,30 @@ Consequently, a collision can increase comparison cost but cannot change graph
 identity. The executable test forces $H(E(s))=0$ for every state and verifies
 that distinct input strings still create distinct nodes.
 
+\section{Per-step memory mutation bound}
+
+For one requested normative step from memory $M$ to returned memory $M'$, define
+\[
+  \Delta_M(M,M')=\{a\mid M[a]\neq M'[a]\}.
+\]
+Malbolge instruction-specific effects can write at most the current data cell
+(`crazy` or rotate), and every committed non-halting step can additionally write
+at most one self-encryption target. Halt, non-graphical termination, and rejected
+self-encryption commit no memory change. Therefore, for both classic and
+profile-width execution,
+\begin{equation}
+  \left|\Delta_M(M,M')\right|\leq2.
+  \label{eq:state-graph-two-cell-memory-delta}
+\end{equation}
+The two addresses may coincide, reducing the observed cardinality. This bound is
+independent of total profile memory size and is therefore the semantic basis for
+researching persistent/delta memory nodes instead of full per-step snapshots.
+
+The executable correspondence compares complete before/after memories for all
+eight instruction families in both classic and current 14-trit states. It
+includes real two-cell crazy/rotate witnesses and zero-cell halt/atomic-rejection
+witnesses; no private transition-plan metadata is used.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

@@ -117,12 +117,21 @@ Every operation retained one checksum across all samples. Raw samples, host,
 toolchain, command, and profile geometry are versioned under
 `benchmarks/research/state-graph/evidence/2026-07-27-windows-x86_64/`.
 
+A profile-size-independent memory result now supplies the next reduction
+boundary. For every instruction family, one normative step can change at most two
+memory cells: an optional data-cell write for crazy/rotate plus the committed
+self-encryption target. Complete-memory classic and current fixtures observe
+exactly two changes for crazy/rotate, one for ordinary committed instructions,
+and zero for halt/atomic rejection. This proves `|Delta M| <= 2` without using
+private transition-plan metadata.
+
 These results do not justify removing the live input cursor, changing the
-remaining suffix, removing live output history, or reducing live memory/registers
-without proof. They do reject repeated full-checkpoint copy/hash as the default
-per-step production graph representation on the measured host. The exact current
-checkpoint remains the correctness/reconstruction oracle against which a smaller
-representation must be validated.
+remaining suffix, removing live output history, or dropping arbitrary live
+memory/register state without proof. They do reject repeated full-checkpoint
+copy/hash as the default per-step production graph representation and justify
+researching persistent/delta memory whose per-step patch contains at most two
+cells. The exact current checkpoint remains the correctness/reconstruction oracle
+for that next representation.
 
 ## Threats to Validity
 

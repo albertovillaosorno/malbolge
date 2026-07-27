@@ -37,3 +37,9 @@ records 15 samples per operation. The current host median is 7.19 ms to clone a
 checkpoint, 26.24 ms to digest/insert a prepared checkpoint, and 30.76 ms to
 digest/confirm an exact replay. These values reject full-checkpoint copying and
 hashing as the default per-step production graph representation on this host.
+
+`tests/d.rs` establishes the profile-size-independent memory mutation bound:
+every requested normative step changes at most two memory cells. It compares
+complete before/after memories for all instruction families in classic and
+current profiles, including real two-cell crazy/rotate cases and zero-cell
+halt/rejection. This is the prerequisite for a persistent/delta memory graph.

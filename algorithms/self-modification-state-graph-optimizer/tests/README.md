@@ -18,3 +18,7 @@ not admitted to that reduction.
 `c.rs` owns current-profile exact-checkpoint evidence: one full current checkpoint
 replay must deduplicate, while two unequal current checkpoints remain distinct
 under a forced constant digest.
+
+`d.rs` compares complete before/after memory for all eight instruction families
+in classic and current profiles. It proves the per-step memory delta never
+exceeds two cells and demonstrates both the two-cell and zero-cell boundaries.

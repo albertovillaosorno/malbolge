@@ -55,6 +55,10 @@ VM evidence.
   7.19 ms median snapshot clone, 26.24 ms prepared insert, and 30.76 ms exact
   replay on the recorded host. This rejects full checkpoint copy/hash as the
   expected per-step production representation while retaining it as oracle.
+- Complete before/after memory witnesses across all instruction families in
+  classic and current profiles establish `|Delta M| <= 2` for every requested
+  step, including actual two-cell crazy/rotate and zero-cell halt/rejection
+  boundaries. This opens persistent/delta memory as the next research slice.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while
@@ -64,8 +68,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Live memory/register/output reductions, broader mutation-history collapse,
-  native-region shortcuts, and performance claims remain active research and
+- Persistent/delta memory representation, live register/output reductions,
+  broader mutation-history collapse, native-region shortcuts, and performance
+  claims remain active research and
   must be falsified independently against the exact baseline.
 
 ## Acceptance

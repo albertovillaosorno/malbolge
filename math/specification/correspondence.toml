@@ -217,3 +217,11 @@ label = "eq:state-graph-profile-collision-safe-merge"
 domain = "validated current checkpoints under an adversarial constant digest"
 mechanism = "forced-current-checkpoint-collision"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/c.rs::current_forced_collision_keeps_distinct_checkpoints"]
+
+[[correspondence]]
+id = "state-graph-two-cell-memory-delta"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-two-cell-memory-delta"
+domain = "one normative classic or current-profile step across every instruction family, halt, and atomic rejection"
+mechanism = "structural-bound-with-complete-memory-family-witnesses"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/d.rs::classic_instruction_families_obey_two_cell_memory_delta", "algorithms/self-modification-state-graph-optimizer/tests/d.rs::current_instruction_families_obey_two_cell_memory_delta"]

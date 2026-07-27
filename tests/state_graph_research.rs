@@ -53,3 +53,5 @@ pub mod profile_graph;
 mod profile_state;
 #[path = "../algorithms/self-modification-state-graph-optimizer/state_graph.rs"]
 pub mod state_graph;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/d.rs"]
+mod step_delta;
