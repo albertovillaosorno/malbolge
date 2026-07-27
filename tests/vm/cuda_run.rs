@@ -49,12 +49,16 @@
 //! Exact full-state checks for resident classic CUDA bounded execution.
 
 use std::io::Write as _;
+use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use malbolge::{
-    MAX_WORD_VALUE, MEMORY_WORDS, Machine, MachineError, Memory, Registers,
-    StepOutcome, Termination, Word,
+    BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
+    BatchRequest, BatchResult, ExecutionMachine, ExecutionMode, MAX_WORD_VALUE,
+    MEMORY_WORDS, Machine, MachineError, MachineIoState, MachineState, Memory,
+    Registers, RunOutcome, StepOutcome, Termination, Word, execute_batch,
+    execute_batch_with_backend, historical_profile,
 };
 
 use crate::{TestResult, check_equal, normalize_result};
@@ -70,6 +74,7 @@ const ERROR_INVALID_ENCRYPTION: u32 = 1;
 const IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
+type ProductBackendBatch = Option<Vec<Option<BatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
 
 struct BinaryReader<'data> {
@@ -143,6 +148,39 @@ struct RunSnapshot {
     termination: u32,
 }
 
+struct CudaProductBackend {
+    error: Option<String>,
+    used_cuda: bool,
+}
+
+impl CudaProductBackend {
+    const fn new() -> Self {
+        Self {
+            error: None,
+            used_cuda: false,
+        }
+    }
+}
+
+impl BatchExecutionBackend for CudaProductBackend {
+    fn execute(
+        &mut self,
+        requests: &[BatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<BatchBackendCompletion>>> {
+        match try_cuda_product_batch(requests) {
+            Ok(Some(results)) => {
+                self.used_cuda = true;
+                Some(results)
+            },
+            Ok(None) => None,
+            Err(error) => {
+                self.error = Some(error);
+                None
+            },
+        }
+    }
+}
+
 #[test]
 fn cuda_resident_classic_runs_match_complete_normative_states() -> TestResult {
     let fixtures = fixtures()?;
@@ -156,6 +194,237 @@ fn cuda_resident_classic_runs_match_complete_normative_states() -> TestResult {
         return Ok(());
     };
     compare_batches(&observed, &expected)
+}
+
+#[test]
+fn cuda_classic_routes_through_product_batch_port() -> TestResult {
+    let requests = product_batch_requests()?;
+    let expected = execute_batch(requests.clone());
+    let mut backend = CudaProductBackend::new();
+    let observed = execute_batch_with_backend(requests, &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("classic CUDA product backend: {error}"));
+    }
+    if !backend.used_cuda {
+        return Ok(());
+    }
+    compare_product_batch(&observed, &expected)
+}
+
+fn product_batch_requests() -> TestResult<Vec<BatchRequest>> {
+    let mut resumed = normalize_result(ExecutionMachine::from_source(
+        IO_ROUNDTRIP,
+        vec![0x51],
+        ExecutionMode::Specification,
+    ))?;
+    let _prefix = normalize_result(resumed.run(2))?;
+    let invalid = invalid_jump_fixture(1)?;
+    let invalid_machine = normalize_result(ExecutionMachine::from_snapshot(
+        invalid.machine.snapshot_state(),
+        ExecutionMode::Specification,
+        historical_profile(),
+    ))?;
+    Ok(vec![
+        BatchRequest::from_machine(resumed, 1),
+        BatchRequest::from_source(
+            IO_ROUNDTRIP.to_vec(),
+            vec![0x62],
+            ExecutionMode::Specification,
+            3,
+        ),
+        BatchRequest::from_machine(invalid_machine, 1),
+        BatchRequest::from_source(
+            b"D".to_vec(),
+            Vec::new(),
+            ExecutionMode::Specification,
+            4,
+        ),
+    ])
+}
+
+fn try_cuda_product_batch(
+    requests: &[BatchBackendRequest<'_>],
+) -> TestResult<ProductBackendBatch> {
+    if requests
+        .iter()
+        .any(|request| request.machine().mode() != ExecutionMode::Specification)
+    {
+        return Ok(Some(repeat_n(None, requests.len()).collect()));
+    }
+    let encoded = encode_product_batch(requests)?;
+    let Some(snapshots) = run_cuda_worker(&encoded)? else {
+        return Ok(None);
+    };
+    check_equal(
+        &snapshots.len(),
+        &requests.len(),
+        "classic product CUDA result count",
+    )?;
+    requests
+        .iter()
+        .zip(snapshots)
+        .map(|(request, snapshot)| product_completion(request, snapshot))
+        .collect::<TestResult<Vec<_>>>()
+        .map(Some)
+}
+
+fn encode_product_batch(
+    requests: &[BatchBackendRequest<'_>],
+) -> TestResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(MAGIC);
+    push_u32(&mut bytes, usize_u32(requests.len())?);
+    for request in requests {
+        encode_product_request(&mut bytes, request)?;
+    }
+    Ok(bytes)
+}
+
+fn encode_product_request(
+    bytes: &mut Vec<u8>,
+    request: &BatchBackendRequest<'_>,
+) -> TestResult {
+    let machine = request.machine();
+    let registers = machine.registers();
+    for value in [
+        u32::from(registers.accumulator.value()),
+        u32::from(registers.code_pointer.value()),
+        u32::from(registers.data_pointer.value()),
+        usize_u32(machine.input().len())?,
+        usize_u32(machine.input_consumed())?,
+        usize_u32(machine.output().len())?,
+        usize_u32(request.step_budget())?,
+        termination_code(machine.termination()),
+    ] {
+        push_u32(bytes, value);
+    }
+    for value in machine.memory().words() {
+        push_u32(bytes, u32::from(value.value()));
+    }
+    bytes.extend_from_slice(machine.input());
+    bytes.extend_from_slice(machine.output());
+    Ok(())
+}
+
+fn product_completion(
+    request: &BatchBackendRequest<'_>,
+    snapshot: RunSnapshot,
+) -> TestResult<Option<BatchBackendCompletion>> {
+    if snapshot.status == RUN_ERROR {
+        return Ok(None);
+    }
+    check_equal(
+        &snapshot.error,
+        &ERROR_NONE,
+        "classic product completion error code",
+    )?;
+    let termination = decode_termination(snapshot.termination)?;
+    let outcome = decode_outcome(snapshot.status, snapshot.steps, termination)?;
+    let words = snapshot
+        .memory
+        .into_iter()
+        .map(|value| {
+            let raw = u16::try_from(value).map_err(|error| {
+                format!("classic product word width: {error}")
+            })?;
+            normalize_result(Word::new(raw))
+        })
+        .collect::<TestResult<Vec<_>>>()?;
+    let memory = normalize_result(Memory::from_words(words))?;
+    let registers = Registers {
+        accumulator: word_u32(snapshot.accumulator)?,
+        code_pointer: word_u32(snapshot.code_pointer)?,
+        data_pointer: word_u32(snapshot.data_pointer)?,
+    };
+    let io = normalize_result(MachineIoState::new(
+        request.machine().input().to_vec(),
+        usize::try_from(snapshot.input_consumed).map_err(|error| {
+            format!("classic product input cursor: {error}")
+        })?,
+        snapshot.output,
+        termination,
+    ))?;
+    Ok(Some(BatchBackendCompletion::new(
+        MachineState::new(memory, registers, io),
+        outcome,
+    )))
+}
+
+fn decode_outcome(
+    status: u32,
+    steps: u32,
+    termination: Option<Termination>,
+) -> TestResult<RunOutcome> {
+    let step_count = usize::try_from(steps)
+        .map_err(|error| format!("classic product step count: {error}"))?;
+    match status {
+        RUN_BUDGET_EXHAUSTED => {
+            Ok(RunOutcome::BudgetExhausted { steps: step_count })
+        },
+        RUN_TERMINATED => termination
+            .map(|reason| RunOutcome::Terminated {
+                reason,
+                steps: step_count,
+            })
+            .ok_or_else(|| {
+                String::from("classic product terminated without reason")
+            }),
+        other => Err(format!("classic product unsupported status {other}")),
+    }
+}
+
+fn decode_termination(code: u32) -> TestResult<Option<Termination>> {
+    match code {
+        0 => Ok(None),
+        1 => Ok(Some(Termination::HaltInstruction)),
+        2 => Ok(Some(Termination::NonGraphicalCell)),
+        other => Err(format!("classic product termination code {other}")),
+    }
+}
+
+fn word_u32(value: u32) -> TestResult<Word> {
+    let raw = u16::try_from(value)
+        .map_err(|error| format!("classic product register width: {error}"))?;
+    normalize_result(Word::new(raw))
+}
+
+fn compare_product_batch(
+    observed: &[BatchResult],
+    expected: &[BatchResult],
+) -> TestResult {
+    check_equal(
+        &observed.len(),
+        &expected.len(),
+        "classic product batch length",
+    )?;
+    for (index, (actual, oracle)) in observed.iter().zip(expected).enumerate() {
+        let context =
+            |field: &str| format!("classic product case {index} {field}");
+        check_equal(&actual.error(), &oracle.error(), &context("error"))?;
+        check_equal(&actual.outcome(), &oracle.outcome(), &context("outcome"))?;
+        match (actual.machine(), oracle.machine()) {
+            (Some(actual_machine), Some(oracle_machine)) => {
+                check_equal(
+                    &actual_machine.mode(),
+                    &oracle_machine.mode(),
+                    &context("mode"),
+                )?;
+                check_equal(
+                    actual_machine.profile(),
+                    oracle_machine.profile(),
+                    &context("profile"),
+                )?;
+                check_equal(
+                    &actual_machine.snapshot_state(),
+                    &oracle_machine.snapshot_state(),
+                    &context("state"),
+                )?;
+            },
+            (None, None) => {},
+            _ => return Err(context("machine presence")),
+        }
+    }
+    Ok(())
 }
 
 fn fixtures() -> TestResult<Vec<RunFixture>> {

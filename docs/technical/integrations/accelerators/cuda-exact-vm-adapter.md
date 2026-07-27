@@ -108,7 +108,10 @@ counts, and rejection details. Cases cover the real six-step current program wit
 input and EOF, rejected jump atomicity, non-graphical termination, maximum-pointer
 wrap, bounded budget exhaustion, live checkpoint resumption, and
 already-terminated execution. CUDA remains optional and is not profile
-authority. Current-profile throughput and product-level batch routing remain open.
+authority. Rust product-batch integration additionally exercises the real classic
+and current workers through hardware-neutral backend traits; unavailable,
+deferred, or structurally invalid attempts fall back to untouched safe-Rust
+states. Current-profile throughput remains open.
 
 ## Invariants
 

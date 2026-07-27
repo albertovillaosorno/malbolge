@@ -50,12 +50,17 @@
 //! Full-state current-profile differential checks for resident CUDA execution.
 
 use std::io::Write as _;
+use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileRegisters, StepOutcome,
-    Termination, current_profile,
+    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
+    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineState, ProfileRegisters, RunOutcome, StepOutcome,
+    Termination, current_profile, execute_profile_batch,
+    execute_profile_batch_with_backend,
 };
 
 use crate::{TestResult, check_equal, normalize_result};
@@ -76,6 +81,7 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
     b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 
+type ProductBackendBatch = Option<Vec<Option<ProfileBatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
 
 struct BinaryReader<'data> {
@@ -148,6 +154,39 @@ struct RunSnapshot {
     termination: u32,
 }
 
+struct CudaProfileProductBackend {
+    error: Option<String>,
+    used_cuda: bool,
+}
+
+impl CudaProfileProductBackend {
+    const fn new() -> Self {
+        Self {
+            error: None,
+            used_cuda: false,
+        }
+    }
+}
+
+impl ProfileBatchExecutionBackend for CudaProfileProductBackend {
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        match try_cuda_profile_product_batch(requests) {
+            Ok(Some(results)) => {
+                self.used_cuda = true;
+                Some(results)
+            },
+            Ok(None) => None,
+            Err(error) => {
+                self.error = Some(error);
+                None
+            },
+        }
+    }
+}
+
 #[test]
 fn cuda_resident_current_profile_matches_complete_normative_states()
 -> TestResult {
@@ -162,6 +201,214 @@ fn cuda_resident_current_profile_matches_complete_normative_states()
         return Ok(());
     };
     compare_batches(&observed, &expected)
+}
+
+#[test]
+fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
+    let requests = product_profile_requests()?;
+    let expected = execute_profile_batch(requests.clone());
+    let mut backend = CudaProfileProductBackend::new();
+    let observed = execute_profile_batch_with_backend(requests, &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("profile CUDA product backend: {error}"));
+    }
+    if !backend.used_cuda {
+        return Ok(());
+    }
+    compare_profile_product_batch(&observed, &expected)
+}
+
+fn product_profile_requests() -> TestResult<Vec<ProfileBatchRequest>> {
+    let profile = current_profile();
+    let machine = normalize_result(ProfileMachine::from_source(
+        profile,
+        CURRENT_SOURCE,
+        vec![CURRENT_INPUT],
+    ))?;
+    Ok(vec![
+        ProfileBatchRequest::from_machine(machine, 2),
+        ProfileBatchRequest::from_source(profile, b"D".to_vec(), Vec::new(), 4),
+    ])
+}
+
+fn try_cuda_profile_product_batch(
+    requests: &[ProfileBatchBackendRequest<'_>],
+) -> TestResult<ProductBackendBatch> {
+    if requests.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+    let profile = current_profile();
+    if requests
+        .iter()
+        .any(|request| request.machine().profile() != profile)
+    {
+        return Ok(Some(repeat_n(None, requests.len()).collect()));
+    }
+    let encoded = encode_profile_product_batch(requests)?;
+    let Some(snapshots) = run_cuda_worker(&encoded)? else {
+        return Ok(None);
+    };
+    check_equal(
+        &snapshots.len(),
+        &requests.len(),
+        "profile product CUDA result count",
+    )?;
+    requests
+        .iter()
+        .zip(snapshots)
+        .map(|(request, snapshot)| {
+            profile_product_completion(request, snapshot)
+        })
+        .collect::<TestResult<Vec<_>>>()
+        .map(Some)
+}
+
+fn encode_profile_product_batch(
+    requests: &[ProfileBatchBackendRequest<'_>],
+) -> TestResult<Vec<u8>> {
+    let profile = current_profile();
+    let memory_words = usize::try_from(profile.memory_words())
+        .map_err(|error| format!("profile product memory words: {error}"))?;
+    let capacity = requests
+        .len()
+        .saturating_mul(memory_words.saturating_mul(size_of::<u32>()))
+        .saturating_add(1024);
+    let mut bytes = Vec::with_capacity(capacity);
+    bytes.extend_from_slice(MAGIC);
+    for value in [
+        profile.eof_word(),
+        profile.memory_words(),
+        profile.word_modulus(),
+        u32::from(profile.word_trits()),
+        usize_u32(requests.len())?,
+    ] {
+        push_u32(&mut bytes, value);
+    }
+    for request in requests {
+        encode_profile_product_request(&mut bytes, request)?;
+    }
+    Ok(bytes)
+}
+
+fn encode_profile_product_request(
+    bytes: &mut Vec<u8>,
+    request: &ProfileBatchBackendRequest<'_>,
+) -> TestResult {
+    let machine = request.machine();
+    let registers = machine.registers();
+    for value in [
+        registers.accumulator,
+        registers.code_pointer,
+        registers.data_pointer,
+        usize_u32(machine.input().len())?,
+        usize_u32(machine.input_consumed())?,
+        usize_u32(machine.output().len())?,
+        usize_u32(request.step_budget())?,
+        termination_code(machine.termination()),
+    ] {
+        push_u32(bytes, value);
+    }
+    for value in machine.memory() {
+        push_u32(bytes, *value);
+    }
+    bytes.extend_from_slice(machine.input());
+    bytes.extend_from_slice(machine.output());
+    Ok(())
+}
+
+fn profile_product_completion(
+    request: &ProfileBatchBackendRequest<'_>,
+    snapshot: RunSnapshot,
+) -> TestResult<Option<ProfileBatchBackendCompletion>> {
+    if snapshot.status == RUN_ERROR {
+        return Ok(None);
+    }
+    check_equal(
+        &snapshot.error,
+        &ERROR_NONE,
+        "profile product completion error code",
+    )?;
+    let termination = decode_product_termination(snapshot.termination)?;
+    let outcome =
+        decode_product_outcome(snapshot.status, snapshot.steps, termination)?;
+    let io = normalize_result(ProfileMachineIoState::new(
+        request.machine().input().to_vec(),
+        usize::try_from(snapshot.input_consumed).map_err(|error| {
+            format!("profile product input cursor: {error}")
+        })?,
+        snapshot.output,
+        termination,
+    ))?;
+    let state = normalize_result(ProfileMachineState::new(
+        request.machine().profile(),
+        snapshot.memory,
+        ProfileRegisters {
+            accumulator: snapshot.accumulator,
+            code_pointer: snapshot.code_pointer,
+            data_pointer: snapshot.data_pointer,
+        },
+        io,
+    ))?;
+    Ok(Some(ProfileBatchBackendCompletion::new(state, outcome)))
+}
+
+fn decode_product_outcome(
+    status: u32,
+    steps: u32,
+    termination: Option<Termination>,
+) -> TestResult<RunOutcome> {
+    let step_count = usize::try_from(steps)
+        .map_err(|error| format!("profile product step count: {error}"))?;
+    match status {
+        RUN_BUDGET_EXHAUSTED => {
+            Ok(RunOutcome::BudgetExhausted { steps: step_count })
+        },
+        RUN_TERMINATED => termination
+            .map(|reason| RunOutcome::Terminated {
+                reason,
+                steps: step_count,
+            })
+            .ok_or_else(|| {
+                String::from("profile product terminated without reason")
+            }),
+        other => Err(format!("profile product unsupported status {other}")),
+    }
+}
+
+fn decode_product_termination(code: u32) -> TestResult<Option<Termination>> {
+    match code {
+        0 => Ok(None),
+        1 => Ok(Some(Termination::HaltInstruction)),
+        2 => Ok(Some(Termination::NonGraphicalCell)),
+        other => Err(format!("profile product termination code {other}")),
+    }
+}
+
+fn compare_profile_product_batch(
+    observed: &[ProfileBatchResult],
+    expected: &[ProfileBatchResult],
+) -> TestResult {
+    check_equal(
+        &observed.len(),
+        &expected.len(),
+        "profile product batch length",
+    )?;
+    for (index, (actual, oracle)) in observed.iter().zip(expected).enumerate() {
+        let context =
+            |field: &str| format!("profile product case {index} {field}");
+        check_equal(&actual.error(), &oracle.error(), &context("error"))?;
+        check_equal(&actual.outcome(), &oracle.outcome(), &context("outcome"))?;
+        match (actual.machine(), oracle.machine()) {
+            (Some(actual_machine), Some(oracle_machine)) => check_equal(
+                &actual_machine.snapshot_state(),
+                &oracle_machine.snapshot_state(),
+                &context("state"),
+            )?,
+            (None, None) => {},
+            _ => return Err(context("machine presence")),
+        }
+    }
+    Ok(())
 }
 
 fn fixtures() -> TestResult<Vec<RunFixture>> {

@@ -43,6 +43,8 @@ the hardware-neutral resource planner before allocation. There is no fixed
 RTX-specific batch ceiling. Classic launches also split before their 32-bit memory-index product can
 overflow. Very large VRAM therefore expands total capacity without requiring one
 unsafe monolithic launch. Scalable profile execution uses the same live resource
-planner and compact contiguous 32-bit host memory representation. Product-level
-batch routing, current-profile throughput evidence, asynchronous transfer/stream
-tuning, broader hardware evidence, and CUDA superoptimization remain open.
+planner and compact contiguous 32-bit host memory representation. Rust product
+batch ports now route both classic and current-profile requests through the real
+CUDA workers while retaining safe-Rust fallback. Current-profile throughput
+evidence, asynchronous transfer/stream tuning, broader hardware evidence, and
+CUDA superoptimization remain open.

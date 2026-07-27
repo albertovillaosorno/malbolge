@@ -51,8 +51,9 @@ typed errors; neither changes candidate validity or CPU-reference semantics. The
 CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
 classic and current-profile bounded execution are likewise checked against
-complete normative Rust states. Product routing, candidate
-evaluation/search/verification ports, and ROCm remain open.
+complete normative Rust states. Rust product batch routing now uses replaceable
+backend traits with safe-Rust fallback and live CUDA-worker integration. Candidate
+evaluation/search/verification ports and ROCm remain open.
 
 ## Invariants
 
@@ -84,9 +85,13 @@ fails explicitly without changing correctness rules.
   including every one of the 4,782,969 final memory words, against normative Rust.
 - A live synthetic five-trit/243-word CUDA test proves resident kernel generation
   is geometry-driven rather than fixed to the published 10/14-trit profiles.
-- Remaining evidence includes product-level candidate/search/verification ports,
-  unavailable-device orchestration at product call sites, ROCm substitution,
-  broader hardware evidence, and benchmark samples for future speedup claims.
+- `tests/vm/batch_backend.rs` proves whole-batch unavailability, malformed
+  backend shape, per-item deferral, and complete checkpoint restoration all fall
+  back deterministically to safe Rust. CUDA integration tests exercise the same
+  product ports against the real resident workers.
+- Remaining evidence includes candidate/search/verification ports, ROCm
+  substitution, broader hardware evidence, and benchmark samples for future
+  speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

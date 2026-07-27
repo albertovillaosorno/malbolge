@@ -738,8 +738,9 @@ execution, search, and verification. Compiler and verifier code must not depend
 directly on CUDA APIs. The active first slice now provides an immutable exact
 primitive request/result protocol with a mandatory scalar CPU implementation and
 optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
-fail before backend execution. Full VM/search/verification ports and ROCm remain
-open.
+fail before backend execution. Rust batch APIs now expose replaceable classic and
+profile execution ports with deterministic safe-Rust fallback, and live CUDA
+workers exercise both routes. Search/verification ports and ROCm remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -764,9 +765,10 @@ now keeps each complete 59,049-word state on GPU for a bounded multi-step run an
 matches normative Rust across every final memory word, registers, I/O,
 termination, step count, resumption, and atomic rejection. The same geometry-bound
 resident kernel now executes `malbolge-2026.2`; Rust compares eight current cases
-across all 4,782,969 final words plus complete observable state. Product-level
-batch routing, current-profile throughput, broader hardware evidence, and
-remaining accelerator ports remain open.
+across all 4,782,969 final words plus complete observable state. Rust product
+batches now route classic and current-profile states through hardware-neutral
+backend ports with safe-Rust fallback. Current-profile throughput, broader
+hardware evidence, and remaining accelerator ports remain open.
 
 ### TODO - CUDA superoptimizer
 

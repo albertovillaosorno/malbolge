@@ -69,9 +69,17 @@ item owns one complete profile-sized memory image plus independent registers and
 I/O and performs its explicit step budget on device; there is no guest-visible
 parallelism or shared guest state. `tests/vm/cuda_run.rs` compares all 59,049
 classic words, while `tests/vm/cuda_profile_run.rs` compares all 4,782,969 current
-words and complete observable state to normative Rust. These accelerator paths are
-not yet routed through the Rust `execute_batch` / `execute_profile_batch` product
-APIs, and no current-profile speedup is claimed.
+words and complete observable state to normative Rust.
+
+`execute_batch_with_backend` and `execute_profile_batch_with_backend` now expose
+hardware-neutral best-effort product routes. Source/profile admission stays on
+safe Rust; backends receive immutable prepared-state views, return complete
+checkpoints only for successful items, and may defer individual items or the
+whole batch. Unavailability, malformed result counts, deferred items, or
+inconsistent completion metadata execute from the untouched CPU state instead.
+Live integration tests route both classic and current-profile batches through the
+real CUDA workers and compare complete results with the sequential CPU baseline.
+No current-profile speedup is claimed.
 
 ## Invariants
 

@@ -50,6 +50,8 @@
 mod annotated;
 #[path = "vm/batch.rs"]
 mod batch;
+#[path = "vm/batch_backend.rs"]
+mod batch_backend;
 #[path = "vm/capsule.rs"]
 mod capsule;
 #[path = "vm/conformance.rs"]

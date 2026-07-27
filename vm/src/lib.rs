@@ -67,9 +67,13 @@ pub use annotated::{
     format_annotated_source,
 };
 pub use batch::{
-    BatchError, BatchRequest, BatchResult, ProfileBatchRequest,
-    ProfileBatchResult, execute_batch, execute_batch_parallel,
+    BatchBackendCompletion, BatchBackendRequest, BatchError,
+    BatchExecutionBackend, BatchRequest, BatchResult,
+    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
+    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
+    execute_batch, execute_batch_parallel, execute_batch_with_backend,
     execute_profile_batch, execute_profile_batch_parallel,
+    execute_profile_batch_with_backend,
 };
 pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
@@ -85,8 +89,8 @@ pub use logical::{
     join_profile_logical_outputs,
 };
 pub use machine::{
-    LegacyBehavior, Machine, MachineError, Registers, RunOutcome, StepOutcome,
-    Termination,
+    LegacyBehavior, Machine, MachineError, MachineIoState, MachineState,
+    MachineStateError, Registers, RunOutcome, StepOutcome, Termination,
 };
 pub use memory::{Memory, MemoryError};
 pub use mode::{ExecutionMode, ExecutionModeParseError};

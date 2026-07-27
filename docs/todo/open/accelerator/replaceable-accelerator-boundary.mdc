@@ -61,7 +61,8 @@ directly on CUDA APIs.
   covers compact classic transitions plus resident classic and current-profile
   complete-state bounded runs. A live five-trit/243-word CUDA test additionally
   proves the generated resident kernel is not fixed to canonical 10/14-trit
-  geometry. Product routing, search/verification ports, ROCm, broader hardware,
-  and current-profile throughput evidence remain open.
+  geometry. Hardware-neutral Rust batch ports now route both real resident CUDA
+  workers while safe Rust owns admission and fallback. Search/verification ports,
+  ROCm, broader hardware, and current-profile throughput evidence remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

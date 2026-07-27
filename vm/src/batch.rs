@@ -46,8 +46,18 @@
 
 //! Deterministic batching for independent classic and profile-driven machines.
 
+#[path = "batch_backend.rs"]
+mod backend;
+
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::thread;
+
+pub use backend::{
+    BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
+    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
+    ProfileBatchExecutionBackend, execute_batch_with_backend,
+    execute_profile_batch_with_backend,
+};
 
 use crate::{
     ExecutionError, ExecutionMachine, ExecutionMode, ProfileDescriptor,
@@ -366,12 +376,14 @@ pub fn execute_batch_parallel(
 }
 
 fn execute_one(request: BatchRequest) -> BatchResult {
-    let BuiltRequest { mut machine, step_budget } = match request.build() {
-        Ok(built) => built,
-        Err(error) => {
-            return BatchResult::Rejected { error, machine: None };
-        },
-    };
+    match request.build() {
+        Ok(built) => execute_built(built),
+        Err(error) => BatchResult::Rejected { error, machine: None },
+    }
+}
+
+fn execute_built(request: BuiltRequest) -> BatchResult {
+    let BuiltRequest { mut machine, step_budget } = request;
     match machine.run(step_budget) {
         Ok(outcome) => BatchResult::Completed { machine, outcome },
         Err(error) => BatchResult::Rejected {
@@ -448,13 +460,14 @@ pub fn execute_profile_batch_parallel(
 }
 
 fn execute_profile_one(request: ProfileBatchRequest) -> ProfileBatchResult {
-    let BuiltProfileRequest { mut machine, step_budget } = match request.build()
-    {
-        Ok(built) => built,
-        Err(error) => {
-            return ProfileBatchResult::Rejected { error, machine: None };
-        },
-    };
+    match request.build() {
+        Ok(built) => execute_profile_built(built),
+        Err(error) => ProfileBatchResult::Rejected { error, machine: None },
+    }
+}
+
+fn execute_profile_built(request: BuiltProfileRequest) -> ProfileBatchResult {
+    let BuiltProfileRequest { mut machine, step_budget } = request;
     match machine.run(step_budget) {
         Ok(outcome) => ProfileBatchResult::Completed { machine, outcome },
         Err(error) => ProfileBatchResult::Rejected {

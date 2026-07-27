@@ -79,6 +79,128 @@ pub enum Termination {
     NonGraphicalCell,
 }
 
+/// Invalid complete classic-machine checkpoint metadata.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineStateError {
+    /// Supplied checkpoint cursor is beyond its input stream.
+    InputCursorOutOfRange {
+        /// Exact supplied input length.
+        input_len: usize,
+        /// Rejected consumed-input cursor.
+        observed: usize,
+    },
+}
+
+impl Display for MachineStateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::InputCursorOutOfRange { input_len, observed } => write!(
+                f,
+                "classic input cursor {observed} exceeds length {input_len}"
+            ),
+        }
+    }
+}
+
+/// Complete validated I/O portion of one classic-machine checkpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MachineIoState {
+    input: Vec<u8>,
+    input_cursor: usize,
+    output: Vec<u8>,
+    termination: Option<Termination>,
+}
+
+impl MachineIoState {
+    /// Returns the immutable full input stream carried by this checkpoint.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
+    }
+
+    /// Returns the number of input bytes already consumed at the checkpoint.
+    #[must_use]
+    pub const fn input_consumed(&self) -> usize {
+        self.input_cursor
+    }
+
+    /// Constructs one validated classic I/O checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MachineStateError::InputCursorOutOfRange`] when the cursor is
+    /// beyond the supplied input stream.
+    pub fn new(
+        input: Vec<u8>,
+        input_cursor: usize,
+        output: Vec<u8>,
+        termination: Option<Termination>,
+    ) -> Result<Self, MachineStateError> {
+        if input_cursor > input.len() {
+            return Err(MachineStateError::InputCursorOutOfRange {
+                input_len: input.len(),
+                observed: input_cursor,
+            });
+        }
+        Ok(Self {
+            input,
+            input_cursor,
+            output,
+            termination,
+        })
+    }
+
+    /// Returns bytes already committed to guest output at the checkpoint.
+    #[must_use]
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    /// Returns the stable termination reason recorded by the checkpoint.
+    #[must_use]
+    pub const fn termination(&self) -> Option<Termination> {
+        self.termination
+    }
+}
+
+/// Complete validated checkpoint of one classic machine.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MachineState {
+    io: MachineIoState,
+    memory: Memory,
+    registers: Registers,
+}
+
+impl MachineState {
+    /// Returns the validated I/O checkpoint carried by this complete state.
+    #[must_use]
+    pub const fn io(&self) -> &MachineIoState {
+        &self.io
+    }
+
+    /// Returns the exact fixed-width classic memory image.
+    #[must_use]
+    pub const fn memory(&self) -> &Memory {
+        &self.memory
+    }
+
+    /// Constructs one complete validated classic-machine checkpoint.
+    #[must_use]
+    pub const fn new(
+        memory: Memory,
+        registers: Registers,
+        io: MachineIoState,
+    ) -> Self {
+        Self { io, memory, registers }
+    }
+
+    /// Returns the classic register values carried by the checkpoint.
+    #[must_use]
+    pub const fn registers(&self) -> Registers {
+        self.registers
+    }
+}
+
 /// Result of bounded machine execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RunOutcome {
@@ -248,6 +370,19 @@ impl Machine {
             .map_err(AnnotatedLoadError::Load)
     }
 
+    /// Restores a machine from one already validated complete checkpoint.
+    #[must_use]
+    pub fn from_snapshot(state: MachineState) -> Self {
+        Self {
+            input: state.io.input,
+            input_cursor: state.io.input_cursor,
+            memory: state.memory,
+            output: state.io.output,
+            registers: state.registers,
+            termination: state.io.termination,
+        }
+    }
+
     /// Loads source and constructs the default machine state.
     ///
     /// # Errors
@@ -260,10 +395,22 @@ impl Machine {
         load(source).map(|memory| Self::new(memory, input))
     }
 
+    /// Returns the immutable full input stream carried by this machine.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
+    }
+
     /// Returns the number of input bytes consumed by committed transitions.
     #[must_use]
     pub const fn input_consumed(&self) -> usize {
         self.input_cursor
+    }
+
+    /// Returns the complete immutable classic memory image.
+    #[must_use]
+    pub const fn memory(&self) -> &Memory {
+        &self.memory
     }
 
     fn memory_delta(
@@ -469,6 +616,24 @@ impl Machine {
             }
         }
         Ok(RunOutcome::BudgetExhausted { steps })
+    }
+
+    /// Clones the complete machine state into a validated checkpoint value.
+    ///
+    /// The fixed memory image is copied deliberately so the checkpoint remains
+    /// independent from subsequent interpreter mutation.
+    #[must_use]
+    pub fn snapshot_state(&self) -> MachineState {
+        MachineState {
+            io: MachineIoState {
+                input: self.input.clone(),
+                input_cursor: self.input_cursor,
+                output: self.output.clone(),
+                termination: self.termination,
+            },
+            memory: self.memory.clone(),
+            registers: self.registers,
+        }
     }
 
     /// Executes one atomic normative transition.

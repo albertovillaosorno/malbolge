@@ -50,10 +50,10 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
     AnnotatedLoadError, ExecutionMode, LoadError, Machine, MachineError,
-    Memory, MemoryError, ProfileDescriptor, ProfileRequirementError, Registers,
-    RunOutcome, StepOutcome, StepTrace, Termination, Word,
-    canonicalize_annotated_source, historical_profile, preflight_profile,
-    safe_rust_classic_capability,
+    MachineState, Memory, MemoryError, ProfileDescriptor,
+    ProfileRequirementError, Registers, RunOutcome, StepOutcome, StepTrace,
+    Termination, Word, canonicalize_annotated_source, historical_profile,
+    preflight_profile, safe_rust_classic_capability,
 };
 
 /// Mode-tagged failure from construction or execution.
@@ -190,6 +190,31 @@ impl ExecutionMachine {
             .map_err(AnnotatedLoadError::Load)
     }
 
+    /// Restores one complete classic checkpoint under explicit mode/profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionError`] when the mode is disabled or `profile` is not
+    /// executable by the classic safe-Rust runtime.
+    pub fn from_snapshot(
+        state: MachineState,
+        mode: ExecutionMode,
+        profile: &'static ProfileDescriptor,
+    ) -> Result<Self, ExecutionError> {
+        Self::check_mode(mode)?;
+        preflight_profile(
+            profile,
+            profile.memory_words(),
+            safe_rust_classic_capability(),
+        )
+        .map_err(|error| ExecutionError::profile(mode, error))?;
+        Ok(Self {
+            machine: Machine::from_snapshot(state),
+            mode,
+            profile,
+        })
+    }
+
     /// Loads source and constructs an explicitly selected execution mode.
     ///
     /// # Errors
@@ -246,10 +271,22 @@ impl ExecutionMachine {
         })
     }
 
+    /// Returns the immutable full input stream carried by this machine.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        self.machine.input()
+    }
+
     /// Returns the number of input bytes consumed by committed transitions.
     #[must_use]
     pub const fn input_consumed(&self) -> usize {
         self.machine.input_consumed()
+    }
+
+    /// Returns the complete immutable classic memory image.
+    #[must_use]
+    pub const fn memory(&self) -> &Memory {
+        self.machine.memory()
     }
 
     /// Reads one current guest memory word.
@@ -315,6 +352,12 @@ impl ExecutionMachine {
         self.machine
             .run_traced_in_mode(step_budget, self.mode, observer)
             .map_err(|error| ExecutionError::machine(self.mode, error))
+    }
+
+    /// Clones the complete classic machine state into a checkpoint.
+    #[must_use]
+    pub fn snapshot_state(&self) -> MachineState {
+        self.machine.snapshot_state()
     }
 
     /// Executes one transition in the selected mode.

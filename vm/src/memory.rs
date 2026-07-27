@@ -139,4 +139,10 @@ impl Memory {
         *target = value;
         Ok(())
     }
+
+    /// Returns all words in deterministic address order.
+    #[must_use]
+    pub fn words(&self) -> &[Word] {
+        &self.words
+    }
 }

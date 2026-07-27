@@ -49,8 +49,9 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 - Optional CUDA now has compact classic proving transitions plus resident classic
   and current-profile bounded execution. Current geometry comes from canonical
   Rust profile identity, and full-state differential evidence compares every
-  4,782,969 current memory word. Product-level routing through the Rust batch APIs
-  and current-profile performance measurement remain open.
+  4,782,969 current memory word. Hardware-neutral Rust product ports now route
+  both resident workers with per-item/whole-batch safe-Rust fallback.
+  Current-profile performance measurement remains open.
 
 ## Acceptance
 

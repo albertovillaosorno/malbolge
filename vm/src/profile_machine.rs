@@ -556,10 +556,22 @@ impl ProfileMachine {
         Ok(Self::from_snapshot(state))
     }
 
+    /// Returns the immutable full input stream carried by this machine.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
+    }
+
     /// Returns the number of input bytes consumed by committed transitions.
     #[must_use]
     pub const fn input_consumed(&self) -> usize {
         self.input_cursor
+    }
+
+    /// Returns the complete immutable profile-width memory image.
+    #[must_use]
+    pub fn memory(&self) -> &[u32] {
+        &self.memory
     }
 
     fn memory_delta(
