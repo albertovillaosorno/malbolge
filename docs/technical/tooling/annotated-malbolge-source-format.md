@@ -31,11 +31,11 @@ already exists.
 Version one adds presentation syntax only before canonical loading:
 
 - ASCII whitespace remains semantically empty and may appear freely.
-- A full-line comment begins when `//` is the first non-whitespace token on a
-  line and continues through LF, CRLF, CR, or end of file.
-- Inline `code // comment` syntax is not admitted in v1. Slash is a legitimate
-  Malbolge source byte, so inline comment recognition would make ordinary code
-  unnecessarily ambiguous.
+- A full-line comment begins when `#` is the first non-whitespace byte on a
+  line and the following byte is ASCII whitespace, a line ending, or end of
+  file. A prefix such as `#X` is code, not a comment.
+- Inline `code # comment` syntax is not admitted in v1. Comments are a
+  presentation-layer line form, not a token that can begin after code.
 - Block comments are not admitted in v1.
 - The canonicalizer removes comments and ASCII whitespace, then submits the
   resulting graphical bytes to the exact selected-profile loader.
@@ -54,10 +54,10 @@ comments at C/IR region boundaries. For example, an annotated generated view may
 look conceptually like:
 
 ```text
-// C function: update_player
+# C function: update_player
 <canonical Malbolge bytes for region A>
 
-// C block: collision branch
+# C block: collision branch
 <canonical Malbolge bytes for region B>
 ```
 
@@ -82,7 +82,7 @@ metadata.
 - Formatting, comment text, indentation, newline convention, and wrap width never
   change decode phase, memory layout, self-modification, or execution.
 - Canonical `.malbolge` files are never reinterpreted merely because they contain
-  two slash bytes.
+  hash bytes.
 - Comment recognition is ASCII/byte-defined and locale-independent.
 
 ## Failure Behavior

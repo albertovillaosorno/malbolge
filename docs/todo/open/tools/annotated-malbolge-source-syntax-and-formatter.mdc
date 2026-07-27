@@ -32,9 +32,10 @@ by the selected profile loader.
 ## Acceptance
 
 - Raw canonical `.malbolge` remains unchanged: whitespace is ignored as today,
-  and `//` has no implicit comment meaning in the canonical format.
-- Annotated v1 recognizes `//` only as a full-line comment marker when it is the
-  first non-whitespace token; inline comments remain intentionally unsupported.
+  and `#` has no implicit comment meaning in the canonical format.
+- Annotated v1 recognizes `#` as a full-line comment marker only when it is the
+  first non-whitespace byte and is followed by ASCII whitespace or end of line.
+  A prefix such as `#X` remains code; inline comments remain unsupported.
 - Canonicalization strips ASCII whitespace/comments and then invokes the exact
   selected-profile loader, so presentation cannot bypass source validation.
 - A deterministic formatter inserts automatic line breaks without changing any
