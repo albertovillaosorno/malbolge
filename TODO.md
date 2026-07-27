@@ -797,7 +797,7 @@ device states, and persistent scalable sessions avoid repeated full-state
 movement between bounded segments. `ProfileMemoryImage` now validates and owns
 reusable geometry-bound input once, reducing repeated current-profile validation
 to sub-millisecond planning in retained evidence. Broader live-device evidence
-and complete-snapshot materialization improvements remain open.
+and redundant complete-snapshot materialization is removed; unavoidable final-array transfer/page commitment and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

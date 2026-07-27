@@ -56,7 +56,15 @@ median upload time falls about 6.93x. Persistent profile sessions separately
 reach about 2.00 million 64-step VM segments/s at batch 128 when setup, compact
 observation, and snapshots are outside the timed `advance()` region. Validated
 `ProfileMemoryImage` inputs now reuse their geometry/domain proof across calls;
-retained complete-snapshot batch 32 reaches about 55.40 VMs/s and median
+retained complete-snapshot batch 32 reaches about 93.68 VMs/s and median
 validation/planning is about 0.23 ms. Complete-snapshot materialization,
 asynchronous transfer/stream tuning, broader hardware evidence, and CUDA
 superoptimization remain open.
+
+Direct current-profile snapshot evidence is retained under
+`benchmarks/accelerator/evidence/2026-07-27-current-profile-direct-snapshot-rtx4060/`.
+The adapter downloads complete memory directly into each final `array('I')`;
+batch 32 reaches about 93.68 VMs/s and batch 1 about 60.43 VMs/s on the
+retained RTX 4060 workload. This removes redundant packed host staging/copying;
+it does not remove the requested full-state transfer.
+

@@ -123,6 +123,6 @@ example probe points, not supported-range endpoints.
   at batch 128 when setup/observation/snapshots are excluded from `advance()`.
   `ProfileMemoryImage` now validates/owns reusable geometry-bound inputs once;
   retained batch-32 validation/planning falls from about 62.40 ms to 0.23 ms and
-  complete throughput reaches about 55.40 VMs/s. Complete-snapshot
+  complete throughput reaches about 93.68 VMs/s. Complete-snapshot
   materialization and broader live-hardware measurements remain required.
   Persistent classic continuation is tracked by its own retained session evidence.

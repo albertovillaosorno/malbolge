@@ -121,7 +121,7 @@ private states resident across bounded launches and reach about 2.00 million
 outside the timed region. Validated `ProfileMemoryImage` inputs additionally
 reuse their geometry/domain proof across calls: retained batch-32 validation and
 planning falls to about 0.23 ms and complete-snapshot throughput reaches about
-55.40 VMs/s. These are backend measurements, not CPU-relative or cross-device
+93.68 VMs/s. These are backend measurements, not CPU-relative or cross-device
 speedup claims.
 
 ## Invariants

@@ -164,7 +164,7 @@ resident and setup/observation/snapshots are outside the timed region. This
 confirms transfer avoidance as a high-leverage continuation boundary. A later
 `ProfileMemoryImage` experiment validates and owns one geometry-bound input once;
 on the same RTX 4060 matrix, median validation/planning falls from about 62.40 ms
-to 0.23 ms at batch 32 and complete throughput reaches about 55.40 VMs/s. The
+to 0.23 ms at batch 32 and complete throughput reaches about 93.68 VMs/s. The
 remaining measured complete-run host boundary is snapshot construction/download
 and final `array('I')` materialization. None of these values is a CPU-relative or
 cross-device speedup claim; broader hardware evidence remains open.
@@ -177,3 +177,12 @@ cross-device speedup claim; broader hardware evidence remains open.
   Boundary](../../../technical/adr/verification-trust-boundary.md)
 - [Research Evidence And Algorithm
   Mirror](../../adr/research-evidence-and-algorithm-mirror.md)
+
+A subsequent direct-snapshot experiment removes the packed intermediate host
+memory buffer and downloads each VM directly into its final compact result
+array. On the same 14-trit/64-step RTX 4060 workload, retained batch-32
+throughput reaches about 93.68 VMs/s. Median batch-32 host construction is
+about 13.39 ms and result decode/materialization about 163.34 ms; the
+remaining roughly 97.97 ms D-to-H phase is the requested complete snapshot
+transfer itself rather than a redundant second copy.
+

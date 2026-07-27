@@ -53,7 +53,7 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   both resident workers with per-item/whole-batch safe-Rust fallback. The retained
   RTX 4060 current-profile baseline reached about 40.08 VMs/s at complete-snapshot
   batch 32; device-side shared initialization reaches about 51.67 VMs/s, and
-  reusable validated profile memory now reaches about 55.40 VMs/s. A persistent
+  reusable validated profile memory now reaches about 93.68 VMs/s. A persistent
   current-profile session separately reaches about 2.00 million
   64-step segments/s at batch 128 when setup, observation, and snapshots are
   outside the timed region. A matched CPU-relative speedup claim remains
