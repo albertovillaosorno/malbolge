@@ -935,3 +935,11 @@ claims.
 Produce a reproducible demonstration from the 1998 interpreter through modern
 tooling to substantial generated programs and self-hosting while keeping
 historical attribution and compatibility evidence explicit.
+
+`examples/museum/` now separates historical provenance from executable product
+corpora. It keeps metadata, primary/archived source locations, authorship,
+behavior, and locally observed hashes for Cooke's first significant program and
+the two historically important Malbolge 99-bottles entries, while intentionally
+not vendoring third-party program bytes without explicit redistribution rights.
+DOOM, compiler outputs, benchmark algorithms, and generated decompiler views are
+outside the museum.

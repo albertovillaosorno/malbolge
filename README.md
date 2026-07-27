@@ -106,9 +106,11 @@ The major responsibility surfaces are:
 - `algorithms/` for executable research algorithms with mirrored academic
   records under `docs/research/algorithms/`;
 - `interop/` for product interoperability engineering such as the optional
-  user-supplied DOOM experiment; and
-- `tools/` for repository tools including the untouched historical interpreter
-  and the planned clang-tidy plugin.
+  user-supplied DOOM experiment;
+- `examples/` for project-owned examples plus a provenance-only historical
+  museum that does not vendor unlicensed third-party programs; and
+- `tools/` for repository tools including the untouched historical interpreter,
+  guest-C validation, and reverse-engineering/decompilation utilities.
 
 Empty or speculative language-owned roots are not architecture.
 
