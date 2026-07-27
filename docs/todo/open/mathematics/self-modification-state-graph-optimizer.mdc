@@ -87,8 +87,8 @@ VM evidence.
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
 - Wider-profile radix geometry, broader mutation-history collapse,
-  native-region safety/guard rules, and end-to-end performance claims remain
-  active research and
+  reduced dependency/read-set native guards, code-generation integration, and
+  end-to-end performance claims remain active research and
   must be falsified independently against the exact baseline.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
   ns through 4096 distinct overrides; depth-4096 root fallback is
@@ -119,6 +119,12 @@ VM evidence.
   108--145 ns from empty through 256 KiB histories, while complete-vector
   clone/push grows to 20.83 microseconds at 256 KiB (about 144x). Persistent
   output is promoted; the next research boundary is native-region safety/guards.
+- `region.rs` now supplies the first verifier-admitted shortcut class:
+  untrusted exact-state certificates are normatively re-executed and must match
+  exact exit/outcome/traces before promotion. Runtime reuse requires exact entry
+  equality; one real entry mutation invalidates the guard, tampered claims fail,
+  and rejected transitions never promote. Dependency/read-set guard reduction is
+  the next native-region research boundary.
 
 ## Acceptance
 

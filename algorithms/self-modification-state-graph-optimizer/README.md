@@ -115,3 +115,13 @@ the prior complete-`Vec` clone rises from about 84 ns to 20.83 microseconds. At
 penalty is accepted because persistent append removes history-length scaling from
 ordinary state updates. Native-region safety/guards are now the next state-graph
 research boundary.
+
+`region.rs` introduces the first verifier-admitted native-shortcut class without
+emitting native code yet. `ExactRegionCertificate` is explicitly untrusted; its
+entry, bounded outcome, full normative trace sequence, and exact exit are
+re-executed by `verify()`. Only the resulting `VerifiedExactRegion` may be reused,
+and only when `accepts_entry()` confirms exact incremental-state equality. Digest
+identity is never a guard. Mutated entries deopt/reject, tampered claims fail
+reverification, and normative transition errors never produce verified regions.
+This is deliberately an exact-state specialization baseline; broader dependency
+guards remain research.

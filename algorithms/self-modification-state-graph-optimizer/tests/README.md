@@ -39,3 +39,8 @@ full-root comparison.
 `o.rs` proves persistent output materialization, equality of independently built
 identical branches, inequality of different branches, and safe 65,536-byte
 history destruction/materialization without recursive stack growth.
+
+`r.rs` verifies the exact-state region trust boundary: normative replay must
+reproduce the exact exit/outcome/traces, one real entry mutation invalidates the
+guard, caller-tampered certificate fields fail reverification, and a rejected VM
+transition cannot be promoted to a verified shortcut.

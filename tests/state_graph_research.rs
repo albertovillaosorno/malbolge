@@ -65,6 +65,10 @@ pub mod persistent_output;
 pub mod profile_graph;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/c.rs"]
 mod profile_state;
+#[path = "../algorithms/self-modification-state-graph-optimizer/region.rs"]
+pub mod region_certificate;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/r.rs"]
+mod region_safety;
 #[path = "../algorithms/self-modification-state-graph-optimizer/state_graph.rs"]
 pub mod state_graph;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/s.rs"]

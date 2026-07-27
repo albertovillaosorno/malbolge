@@ -201,6 +201,39 @@ suffixes, materializes exact bytes, and exercises a 65,536-byte appended history
 Incremental state reconstruction continues to compare exactly with complete
 runtime checkpoints after replacing `Vec<u8>` copying with this persistent form.
 
+\section{Verified exact-state region shortcut}
+
+Let $T$ be the deterministic normative profile-machine transition relation and
+let an untrusted bounded-region claim be
+$C=(e,n,\tau,x,o)$, where $e$ is an exact incremental entry state, $n$ is the
+step budget, $\tau$ is the claimed trace sequence, $x$ is the claimed exact exit
+state, and $o$ is the claimed bounded-run outcome. The verifier admits $C$ only
+when normative re-execution from $e$ reproduces all three claims exactly:
+\begin{equation}
+  \operatorname{verify}(C)
+  \Longleftrightarrow
+  T^{\leq n}(e)=(x,o,\tau).
+  \label{eq:state-graph-exact-region-certificate}
+\end{equation}
+A verified shortcut may execute only under the exact entry guard
+$s\equiv_L e$. Therefore
+\[
+  \operatorname{verify}(C)\land s\equiv_L e
+  \Longrightarrow
+  \operatorname{shortcut}_C(s)=(x,o,\tau),
+\]
+with the same observable result as normative replay. State digests are never
+guards: they may select a certificate candidate, but exact incremental-state
+equality authorizes reuse. Any entry mismatch deoptimizes/rejects the shortcut.
+A normative transition error during certificate recording prevents promotion to a
+verified region entirely.
+
+The executable correspondence records and re-verifies a current 14-trit region,
+compares its exit with direct VM execution, mutates the entry by one real trace
+and requires guard failure, tampers with an otherwise valid certificate and
+requires verifier rejection, and confirms a rejected encryption transition never
+produces a verified region.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

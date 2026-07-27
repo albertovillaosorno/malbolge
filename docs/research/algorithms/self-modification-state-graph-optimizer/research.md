@@ -281,3 +281,19 @@ they are not the per-step fast path. Memory, state identity, and committed-outpu
 storage now all have bounded/incremental ordinary update paths. The next research
 question is semantic: identify native-executable regions with explicit
 self-modification guards and deterministic deoptimization conditions.
+
+The first native-shortcut safety class is now executable without introducing
+code generation. `region.rs` treats every `ExactRegionCertificate` as untrusted.
+Recording runs the normative `ProfileMachine` from an exact incremental entry and
+captures the bounded outcome plus complete trace sequence; verification performs
+that normative execution again and requires exact outcome, trace, and incremental
+exit-state equality before returning `VerifiedExactRegion`.
+
+Runtime reuse is deliberately conservative: `accepts_entry()` requires exact
+incremental-state equality, never digest equality. A state advanced by even the
+first real trace fails the guard. An otherwise valid certificate with a tampered
+outcome fails reverification, and an invalid self-encryption transition returns a
+VM error before any verified region exists. This establishes a safe exact-state
+specialization/deoptimization baseline for future AOT/JIT code. It does **not**
+yet establish a reduced stable-region guard: that requires explicit future read
+and dependency evidence so irrelevant state can be omitted from the guard.

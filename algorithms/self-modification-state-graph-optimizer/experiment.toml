@@ -106,3 +106,12 @@ lengths = [0, 1024, 65536, 262144]
 samples_per_case = 15
 verdict = "promote-persistent-output-storage"
 next_risk = "native-region-safety-and-guards"
+
+[reduction.exact_region_certificate]
+baseline = "normative-profile-vm-bounded-replay"
+candidate = "verifier-produced-exact-state-region-shortcut"
+certificate_trust = "untrusted-until-normative-reexecution"
+entry_guard = "exact-incremental-state-equality"
+digest_guard_allowed = false
+rejected_transition = "never-promote"
+next_risk = "dependency-read-set-guard-reduction"

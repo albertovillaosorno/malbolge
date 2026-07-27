@@ -273,3 +273,11 @@ label = "eq:state-graph-persistent-output"
 domain = "one lineage output prefix plus append-only committed byte histories"
 mechanism = "materialization-independent-branch-equality-and-long-history"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/o.rs::independent_equal_branches_compare_exactly", "algorithms/self-modification-state-graph-optimizer/tests/o.rs::different_output_branches_remain_distinct", "algorithms/self-modification-state-graph-optimizer/tests/o.rs::long_append_history_materializes_without_prefix_loss", "algorithms/self-modification-state-graph-optimizer/tests/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
+
+[[correspondence]]
+id = "state-graph-exact-region-certificate"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-exact-region-certificate"
+domain = "bounded current-profile normative execution under one exact incremental entry-state lineage"
+mechanism = "normative-reexecution-exact-exit-trace-outcome-and-entry-guard"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/r.rs::current_region_reexecutes_to_exact_verified_exit", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::exact_guard_rejects_mutated_entry_state", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::tampered_certificate_fails_normative_reverification", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::rejected_transition_never_records_verified_region"]
