@@ -102,6 +102,15 @@ adds a 100,000 GiB synthetic scenario with 100,000 classic items. The complete
 workload is admitted as 72,736 + 27,264 items because classic CUDA splits at its
 32-bit per-launch memory-index boundary rather than imposing a VRAM maximum.
 
+The first retained throughput matrix at
+`benchmarks/accelerator/evidence/2026-07-27-classic-throughput-rtx4060/` is a
+negative scaling result. For an exact 64-step classic no-op workload, median
+end-to-end throughput is 29.127 VMs/s at batch 1, 28.136 at batch 8, 27.922 at
+batch 32, and 27.751 at batch 128. Batch 128 is about 4.73% slower than batch 1.
+Therefore larger resident batches are not yet converting capacity into measured
+throughput. The evidence does not assign causality; phase-separated timing is the
+next experiment.
+
 ## Threats to Validity
 
 Initial threats include challenge-family bias, hardware/toolchain sensitivity,

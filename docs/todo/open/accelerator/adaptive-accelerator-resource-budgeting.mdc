@@ -83,6 +83,12 @@ example probe points, not supported-range endpoints.
   admitted and split only at the classic backend's 32-bit launch-index boundary.
 - Research evidence remains incomplete until retained throughput samples,
   current-profile resident execution, and broader live-hardware evidence exist.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Retained end-to-end throughput evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-classic-throughput-rtx4060/`
+  contains 15 raw samples for batches 1/8/32/128 on an exact 64-step workload.
+  Median throughput falls from 29.127 VMs/s at batch 1 to 27.751 VMs/s at batch
+  128 (~4.73% slower), rejecting a current claim that larger batches alone
+  improve throughput. Phase-separated timing is required before selecting an
+  optimization.
+- Performance evidence remains incomplete: current-profile execution, phase
+  attribution, and broader live-hardware measurements are still required.
