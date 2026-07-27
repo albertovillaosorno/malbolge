@@ -56,6 +56,15 @@ inheriting the classic 59,048 value. Independent research fixtures reconstruct
 complete before/after memory differences for every classic/current instruction
 family and require exact equality with the trace delta.
 
+The explicit annotated-source frontend is implemented separately from raw
+loading. `canonicalize_annotated_source()` removes ASCII whitespace and only
+full-line `# ` / `#\t` comments while recording loaded-position source
+locations; bare/inline hashes remain code. `format_annotated_source()` inserts
+deterministic LF wrapping. `Machine`, `ExecutionMachine`, and `ProfileMachine`
+provide explicit annotated constructors, while every existing `from_source()`
+entry point retains canonical raw semantics. Canonicalized bytes still pass
+through the ordinary selected-profile loader before execution.
+
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
 classic compatibility, while `from_source_for_profile()` performs a typed
@@ -154,6 +163,11 @@ memory, input consumption, or output.
   domain.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
+
+- `tests/vm/annotated.rs` verifies hash-safe comment recognition, line-ending
+  independence, byte-exact automatic-wrap round trips, exact source-map
+  positions, fail-closed presentation errors, and canonical-versus-annotated
+  execution equality for classic/facade/current profile paths.
 
 ## References
 

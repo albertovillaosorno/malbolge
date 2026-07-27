@@ -46,6 +46,8 @@
 
 //! Cargo composition root for VM integration tests.
 
+#[path = "vm/annotated.rs"]
+mod annotated;
 #[path = "vm/batch.rs"]
 mod batch;
 #[path = "vm/capsule.rs"]

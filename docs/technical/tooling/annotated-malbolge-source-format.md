@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Purpose
 
@@ -12,10 +12,10 @@ position-sensitive semantics and historical/raw `.malbolge` compatibility.
 
 ## Scope
 
-This contract governs a future annotated-source canonicalizer/formatter, its
-source maps, compiler/decompiler integration, and explicit interpreter/tooling
-entry points that opt into annotated parsing. It does not redefine the raw
-classic or profile loaders.
+This contract governs the annotated-source canonicalizer/formatter, source
+maps, compiler/decompiler integration, and explicit interpreter/tooling entry
+points that opt into annotated parsing. It does not redefine the raw classic or
+profile loaders.
 
 ## Current Behavior
 
@@ -26,14 +26,16 @@ line breaks, indentation, and blank lines can be inserted without consuming a
 loaded position. The new feature is not multiline execution; that property
 already exists.
 
-### Proposed annotated syntax v1
+### Annotated syntax v1
 
 Version one adds presentation syntax only before canonical loading:
 
 - ASCII whitespace remains semantically empty and may appear freely.
 - A full-line comment begins when `#` is the first non-whitespace byte on a
-  line and the following byte is ASCII whitespace, a line ending, or end of
-  file. A prefix such as `#X` is code, not a comment.
+  line and the following byte is horizontal ASCII space or tab. Bare `#`, a
+  hash immediately before a line ending/end of file, and prefixes such as `#X`
+  remain code. This makes every graphical canonical byte sequence representable
+  without an escape syntax.
 - Inline `code # comment` syntax is not admitted in v1. Comments are a
   presentation-layer line form, not a token that can begin after code.
 - Block comments are not admitted in v1.
@@ -42,10 +44,24 @@ Version one adds presentation syntax only before canonical loading:
 - Raw `.malbolge` input never gains implicit comment semantics. Annotated parsing
   must be selected by an explicit source format/entry point.
 
-A formatter may insert line breaks automatically because those breaks do not
-change loaded positions. It must never emit a code line whose first
-non-whitespace bytes accidentally form the full-line comment marker. If needed,
-it inserts a semantically empty line break before or between those bytes.
+`format_annotated_source()` inserts deterministic LF line breaks at an explicit
+nonzero byte width. It emits no horizontal whitespace in code lines, so wrapping
+cannot create the `# ` or `#\t` marker accidentally. Bare and line-start hash
+bytes remain ordinary code.
+
+### Implemented frontend
+
+`vm/src/annotated.rs` now owns the presentation frontend.
+`canonicalize_annotated_source()` returns exact canonical bytes plus one
+annotated offset/line/column for every loaded position.
+`format_annotated_source()` provides deterministic automatic wrapping.
+`Machine`, `ExecutionMachine`, and `ProfileMachine` expose explicit annotated
+constructors; their existing raw `from_source` APIs remain unchanged. After
+canonicalization, the ordinary classic/profile loader remains final admission
+authority.
+
+The current formatter is structure-neutral. C/IR-aligned comments and breaks
+remain follow-on compiler/decompiler work once layout/source-map metadata exists.
 
 ### Structure-aware formatting
 
@@ -97,14 +113,19 @@ format.
 
 Required evidence includes:
 
-- raw canonical programs containing slash bytes remain unchanged;
-- full-line comments disappear without changing loaded positions;
+- raw canonical programs containing hash and slash bytes remain unchanged;
+- bare `#`/`#X` and inline hashes remain code while `# ` / `#\t` full-line
+  comments disappear without changing loaded positions;
 - LF/CRLF/CR presentation produces identical canonical bytes;
 - formatter round trips are byte-exact;
 - automatic wrapping cannot accidentally create a comment marker from code;
 - source-map positions match loader positions after comment/whitespace removal;
-- classic and current-profile VMs produce identical observations from canonical
-  bytes and their annotated presentation equivalents.
+- classic facade/current-profile VMs produce identical observations from
+  canonical bytes and their annotated presentation equivalents.
+
+`tests/vm/annotated.rs` currently covers those boundaries with seven strict
+fixtures, including exact source-map positions and hash-heavy formatter
+round-trips.
 
 ## References
 

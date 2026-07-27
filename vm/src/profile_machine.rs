@@ -52,10 +52,11 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
-    CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryReads, ProfileMemoryWrite, ProfileRequirementError,
-    ProfileStepTrace, RunOutcome, StepOutcome, Termination, TraceInput, XLAT2,
+    AnnotatedLoadError, CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN,
+    ProfileDescriptor, ProfileMachineObservation, ProfileMemoryDelta,
+    ProfileMemoryRead, ProfileMemoryReads, ProfileMemoryWrite,
+    ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
+    Termination, TraceInput, XLAT2, canonicalize_annotated_source,
     crazy_chunk_lookup, preflight_profile, safe_rust_profiled_capability,
 };
 
@@ -469,6 +470,26 @@ impl ProfileMachine {
             self.output.push(byte);
         }
         Ok(())
+    }
+
+    /// Canonicalizes annotated source for one explicit target profile.
+    ///
+    /// Raw [`Self::from_source`] remains canonical-only and never interprets
+    /// hash comments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AnnotatedLoadError<ProfileMachineError>`] when annotated
+    /// presentation, profile capability, or canonical loading fails.
+    pub fn from_annotated_source(
+        profile: &'static ProfileDescriptor,
+        source: &[u8],
+        input: Vec<u8>,
+    ) -> Result<Self, AnnotatedLoadError<ProfileMachineError>> {
+        let canonical = canonicalize_annotated_source(source)
+            .map_err(AnnotatedLoadError::Annotated)?;
+        Self::from_source(profile, canonical.bytes(), input)
+            .map_err(AnnotatedLoadError::Load)
     }
 
     /// Restores a machine from one already validated complete checkpoint.

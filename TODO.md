@@ -528,15 +528,14 @@ Define a non-canonical annotated source form for readable Malbolge without
 changing executable byte semantics. Canonical `.malbolge` remains the exact
 artifact. Annotated source may use arbitrary ASCII whitespace, deterministic
 automatic line wrapping, and full-line `#` comments whose marker is the first
-non-whitespace token and is followed by ASCII whitespace or end of line. A
-canonicalizer strips presentation only, emits the same position-sensitive
-Malbolge byte sequence, and preserves a source map from annotated offsets/regions
-to canonical loaded positions. Inline comments are deliberately excluded from
-version one. A leading `#` followed immediately by another non-whitespace byte
-remains ordinary Malbolge code, preserving the graphical `#` byte when it appears
-at a code-line start. Compiler and decompiler views may align line breaks and
-comments with C/IR regions so generated Malbolge can retain recognizable source
-structure while the VM still executes ordinary canonical bytes.
+non-whitespace byte followed by horizontal space or tab. Bare hash, hash before a
+line ending/end of file, `#X`, and inline hashes remain ordinary code, so every
+graphical canonical sequence is representable without escapes. The active
+safe-Rust frontend now canonicalizes presentation to exact position-sensitive
+bytes, records loaded-position source locations, wraps automatically, and has
+explicit classic/facade/current-profile constructors while raw loaders remain
+unchanged. Compiler/decompiler C/IR-aligned comments and composed source maps
+remain follow-on layout work.
 
 ### TODO - State-aware Malbolge linker
 

@@ -49,10 +49,11 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
-    ExecutionMode, LoadError, Machine, MachineError, Memory, MemoryError,
-    ProfileDescriptor, ProfileRequirementError, Registers, RunOutcome,
-    StepOutcome, StepTrace, Termination, Word, historical_profile,
-    preflight_profile, safe_rust_classic_capability,
+    AnnotatedLoadError, ExecutionMode, LoadError, Machine, MachineError,
+    Memory, MemoryError, ProfileDescriptor, ProfileRequirementError, Registers,
+    RunOutcome, StepOutcome, StepTrace, Termination, Word,
+    canonicalize_annotated_source, historical_profile, preflight_profile,
+    safe_rust_classic_capability,
 };
 
 /// Mode-tagged failure from construction or execution.
@@ -149,6 +150,44 @@ impl ExecutionMachine {
         } else {
             Ok(())
         }
+    }
+
+    /// Canonicalizes annotated source before explicit execution-mode selection.
+    ///
+    /// Raw [`Self::from_source`] remains canonical-only and never interprets
+    /// hash comments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AnnotatedLoadError`] for annotated presentation failure or the
+    /// same [`ExecutionError`] produced by canonical construction.
+    pub fn from_annotated_source(
+        source: &[u8],
+        input: Vec<u8>,
+        mode: ExecutionMode,
+    ) -> Result<Self, AnnotatedLoadError<ExecutionError>> {
+        let canonical = canonicalize_annotated_source(source)
+            .map_err(AnnotatedLoadError::Annotated)?;
+        Self::from_source(canonical.bytes(), input, mode)
+            .map_err(AnnotatedLoadError::Load)
+    }
+
+    /// Canonicalizes annotated source before explicit profile/mode preflight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AnnotatedLoadError`] for annotated presentation failure or the
+    /// same [`ExecutionError`] produced by canonical profile construction.
+    pub fn from_annotated_source_for_profile(
+        source: &[u8],
+        input: Vec<u8>,
+        mode: ExecutionMode,
+        profile: &'static ProfileDescriptor,
+    ) -> Result<Self, AnnotatedLoadError<ExecutionError>> {
+        let canonical = canonicalize_annotated_source(source)
+            .map_err(AnnotatedLoadError::Annotated)?;
+        Self::from_source_for_profile(canonical.bytes(), input, mode, profile)
+            .map_err(AnnotatedLoadError::Load)
     }
 
     /// Loads source and constructs an explicitly selected execution mode.

@@ -46,6 +46,7 @@
 
 //! Safe deterministic classic and profile-driven Malbolge interpreters.
 
+mod annotated;
 mod batch;
 mod capsule;
 mod execution;
@@ -60,6 +61,11 @@ mod profile_trace;
 mod trace;
 mod word;
 
+pub use annotated::{
+    AnnotatedLoadError, AnnotatedSourceError, AnnotatedSourceLocation,
+    CanonicalizedAnnotatedSource, canonicalize_annotated_source,
+    format_annotated_source,
+};
 pub use batch::{
     BatchError, BatchRequest, BatchResult, ProfileBatchRequest,
     ProfileBatchResult, execute_batch, execute_batch_parallel,

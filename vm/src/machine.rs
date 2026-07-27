@@ -50,6 +50,7 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
 use crate::loader::{LoadError, load};
 use crate::trace::{
     MachineObservation, MemoryDelta, MemoryWrite, StepTrace, TraceInput,
@@ -225,6 +226,26 @@ impl Machine {
             self.output.push(byte);
         }
         Ok(())
+    }
+
+    /// Canonicalizes annotated source and constructs the default machine state.
+    ///
+    /// Raw [`Self::from_source`] retains ordinary Malbolge semantics and never
+    /// interprets hash comments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AnnotatedSourceError`] when presentation parsing fails, or
+    /// [`LoadError`] after canonicalization when the classic loader rejects the
+    /// resulting bytes.
+    pub fn from_annotated_source(
+        source: &[u8],
+        input: Vec<u8>,
+    ) -> Result<Self, AnnotatedLoadError<LoadError>> {
+        let canonical = canonicalize_annotated_source(source)
+            .map_err(AnnotatedLoadError::Annotated)?;
+        Self::from_source(canonical.bytes(), input)
+            .map_err(AnnotatedLoadError::Load)
     }
 
     /// Loads source and constructs the default machine state.
