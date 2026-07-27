@@ -332,8 +332,11 @@ verified: they return guard miss without touching state, providing the first
 semantically admitted native artifact and deterministic fallback floor. A second
 byte-canonical direct backend now admits the exact initial-halt IR subset and
 performs the first native guest-state commit: after zero-state preflight it sets
-only termination to halt; misses are atomic. General region-effect fast paths,
-cache/orchestration, and end-to-end tier selection remain open.
+only termination to halt; misses are atomic. Direct-template selection is now
+deterministic: exact initial-halt chooses that fast path and all other current IR
+chooses the verified deopt stub, while unsupported host formats fail explicitly.
+General region-effect fast paths, cache/orchestration, executable invocation, and
+full AOT/JIT tier selection remain open.
 
 Current implementation foundation: portable effect IR v1, verifier admission,
 deterministic deoptimization, canonical native cache identity, and an untrusted

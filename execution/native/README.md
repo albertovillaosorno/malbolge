@@ -76,3 +76,10 @@ remain structurally valid but fails semantic admission. Development evidence
 links both ISA objects and executes x86-64 hit/miss/null cases, with miss state
 byte-identical before and after. General region-effect code generation remains
 outside this reviewed subset.
+
+`select_verified_direct_native()` now owns deterministic direct-template
+selection for the implemented Windows surface. It classifies IR before creating
+a backend identity: exact initial-halt selects the admitted fast path; every other
+IR selects the byte-verified deopt stub. Backend/emission/verification errors are
+never reinterpreted as fallback, and unsupported host formats fail explicitly.
+This removes backend-ID choice from callers while keeping unsupported IR safe.

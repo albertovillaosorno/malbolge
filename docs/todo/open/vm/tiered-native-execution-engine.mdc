@@ -79,6 +79,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   changes only termination on hit, and returns guard miss atomically otherwise.
   Complete object fixtures and x86-64 hit/miss/null execution evidence cover the
   boundary; ARM64 object linkage is also verified.
+- Direct-template orchestration now classifies IR before backend construction:
+  exact initial-halt selects the verified fast path and all other current IR
+  selects the verified deopt stub. Unsupported host formats fail explicitly and
+  post-selection errors never degrade silently to fallback.
 - Accelerated semantic machine-code admission/direct effect emitters, AOT/JIT
   orchestration,
   durable cache storage/eviction, executable-memory policy, and end-to-end tier

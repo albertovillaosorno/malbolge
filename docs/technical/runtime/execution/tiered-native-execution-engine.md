@@ -102,13 +102,21 @@ evidence links both ISA objects; x86-64 execution proves valid state returns
 state return guard miss without mutation. This is the first accelerated
 state-applying native subset; all other IR still requires deopt/bootstrap/VM.
 
+`select_verified_direct_native()` now removes direct-backend identity selection
+from callers. It first classifies the IR: exact initial-halt uses the admitted
+fast path, otherwise the selector emits and verifies the direct deopt stub. Only
+program shape controls this fallback; an emission/admission error after selection
+is propagated rather than silently retried. Non-Windows host formats fail
+explicitly because direct ELF/Mach-O templates do not exist yet.
+
 ### Remaining Implementation
 
 Semantic admission beyond the deopt and exact initial-halt templates, general
 direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
 policy/invocation, durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
-selector remain open. The interpreter remains the only normative execution
+selector beyond this direct-template choice remain open. The interpreter remains
+the only normative execution
 authority and the guaranteed fallback.
 
 ## Invariants

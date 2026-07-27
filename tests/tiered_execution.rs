@@ -69,9 +69,11 @@ use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
     CoffAdmissionError, DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
-    DirectDeoptError, DirectInitialHaltError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
-    emit_direct_initial_halt_coff, lower_clang_c23, structurally_admit_coff,
+    DirectDeoptError, DirectInitialHaltError, DirectNativeKind,
+    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
+    emit_direct_initial_halt_coff, lower_clang_c23,
+    select_verified_direct_native, structurally_admit_coff,
     verify_direct_deopt_stub, verify_direct_initial_halt,
 };
 use malbolge::{
@@ -535,6 +537,67 @@ fn direct_initial_halt_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+#[test]
+fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
+-> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let fast = select_verified_direct_native(
+            &direct_initial_halt_program(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        if fast.kind() != DirectNativeKind::InitialHalt
+            || fast.key().target().backend_id()
+                != DIRECT_INITIAL_HALT_BACKEND_ID
+            || fast.object().is_empty()
+        {
+            return Err(String::from(
+                "direct selector missed initial-halt fast path",
+            ));
+        }
+
+        let fallback = select_verified_direct_native(
+            &native_program(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        if fallback.kind() != DirectNativeKind::Deopt
+            || fallback.key().target().backend_id() != DIRECT_DEOPT_BACKEND_ID
+            || fallback.object().is_empty()
+        {
+            return Err(String::from(
+                "direct selector failed verified deopt fallback",
+            ));
+        }
+        if fast.target_triple() != fallback.target_triple() {
+            return Err(String::from(
+                "direct selector changed target triple by tier",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_selector_rejects_unsupported_host_format_without_fallback()
+-> Result<(), String> {
+    for host_os in [HostOperatingSystem::Linux, HostOperatingSystem::MacOs] {
+        if select_verified_direct_native(
+            &native_program(),
+            host_os,
+            HostIsa::X86_64,
+        ) != Err(DirectSelectionError::TargetFormat)
+        {
+            return Err(format!(
+                "unsupported direct host {host_os:?} was admitted"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]

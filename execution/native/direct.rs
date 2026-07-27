@@ -60,7 +60,8 @@ use super::{
     structurally_admit_coff,
 };
 use crate::execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetConfig,
+    NativeTargetIdentity,
 };
 use crate::execution_ir::{
     EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
@@ -216,6 +217,38 @@ impl From<IrEncodingError> for DirectInitialHaltError {
     }
 }
 
+/// Direct native template selected for one portable IR program.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectNativeKind {
+    /// Safe fallback artifact that always requests interpreter deoptimization.
+    Deopt,
+    /// Exact one-step zero-state halt fast path.
+    InitialHalt,
+}
+
+/// Failure while selecting/emitting/verifying one direct native template.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectSelectionError {
+    /// Deoptimization artifact emission or admission failed.
+    Deopt(DirectDeoptError),
+    /// Initial-halt artifact emission or admission failed.
+    InitialHalt(DirectInitialHaltError),
+    /// Direct native templates currently emit Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectSelectionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Deopt(error) => Display::fmt(error, f),
+            Self::InitialHalt(error) => Display::fmt(error, f),
+            Self::TargetFormat => f.write_str(
+                "direct native selection currently requires Windows",
+            ),
+        }
+    }
+}
+
 /// Native object proven to be the canonical no-write guard-miss stub.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedDeoptNativeObjectArtifact {
@@ -267,6 +300,98 @@ impl VerifiedInitialHaltNativeObjectArtifact {
     pub const fn target_triple(&self) -> &'static str {
         self.artifact.target_triple()
     }
+}
+
+/// Semantically admitted direct native artifact selected for one exact IR.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerifiedDirectNativeArtifact {
+    /// Safe no-state-change guard-miss fallback.
+    Deopt(VerifiedDeoptNativeObjectArtifact),
+    /// Exact zero-state one-step halt fast path.
+    InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
+}
+
+impl VerifiedDirectNativeArtifact {
+    /// Returns the exact selected native artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        match self {
+            Self::Deopt(artifact) => artifact.key(),
+            Self::InitialHalt(artifact) => artifact.key(),
+        }
+    }
+
+    /// Returns which reviewed direct template was selected.
+    #[must_use]
+    pub const fn kind(&self) -> DirectNativeKind {
+        match self {
+            Self::Deopt(_artifact) => DirectNativeKind::Deopt,
+            Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
+        }
+    }
+
+    /// Returns verified object bytes for the selected template.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        match self {
+            Self::Deopt(artifact) => artifact.object(),
+            Self::InitialHalt(artifact) => artifact.object(),
+        }
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        match self {
+            Self::Deopt(artifact) => artifact.target_triple(),
+            Self::InitialHalt(artifact) => artifact.target_triple(),
+        }
+    }
+}
+
+/// Selects the narrowest semantically admitted direct native template.
+///
+/// Exact initial-halt IR selects the state-applying fast path. Every other
+/// portable IR selects the byte-verified deoptimization stub. Selection never
+/// converts an emitter/verifier error into fallback; only program shape
+/// controls which backend identity is constructed.
+///
+/// # Errors
+///
+/// Returns [`DirectSelectionError`] for unsupported host format or any
+/// emission/ verification failure after deterministic template selection.
+pub fn select_verified_direct_native(
+    program: &RegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<VerifiedDirectNativeArtifact, DirectSelectionError> {
+    if host_os != HostOperatingSystem::Windows {
+        return Err(DirectSelectionError::TargetFormat);
+    }
+    if validate_initial_halt_program(program).is_ok() {
+        let target = direct_target(
+            DIRECT_INITIAL_HALT_BACKEND_ID,
+            DIRECT_INITIAL_HALT_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        );
+        let artifact = emit_direct_initial_halt_coff(program, target)
+            .map_err(DirectSelectionError::InitialHalt)?;
+        let verified = verify_direct_initial_halt(&artifact, program)
+            .map_err(DirectSelectionError::InitialHalt)?;
+        return Ok(VerifiedDirectNativeArtifact::InitialHalt(verified));
+    }
+    let target = direct_target(
+        DIRECT_DEOPT_BACKEND_ID,
+        DIRECT_DEOPT_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    );
+    let artifact = emit_direct_deopt_coff(program, target)
+        .map_err(DirectSelectionError::Deopt)?;
+    let verified = verify_direct_deopt_stub(&artifact)
+        .map_err(DirectSelectionError::Deopt)?;
+    Ok(VerifiedDirectNativeArtifact::Deopt(verified))
 }
 
 /// Emits a deterministic direct native object that always requests deopt.
@@ -439,6 +564,22 @@ fn push_u16(output: &mut Vec<u8>, value: u16) {
 
 fn push_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn direct_target(
+    backend_id: &str,
+    backend_revision: u32,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(backend_id),
+        backend_revision,
+        host_isa,
+        host_os,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
 }
 
 const fn target_triple(isa: HostIsa) -> &'static str {
