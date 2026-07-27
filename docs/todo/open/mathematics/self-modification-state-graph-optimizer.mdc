@@ -86,9 +86,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Wider-profile radix geometry, broader mutation-history collapse, reduced
-  guard/shortcut post-commit performance, code-generation integration, and
-  end-to-end performance claims remain active research and
+- Wider-profile radix geometry, broader mutation-history collapse,
+  code-generation integration, and end-to-end performance claims remain active
+  research and
   must be falsified independently against the exact baseline.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
   ns through 4096 distinct overrides; depth-4096 root fallback is
@@ -139,8 +139,13 @@ VM evidence.
   `ProfileStepTrace::memory_reads` and `memory_delta`. Exact non-memory state plus
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
-  execution exactly. Changing a live-in fails closed. Post-commit guard/shortcut
-  cost is the next evidence slice.
+  execution exactly. Changing a live-in fails closed.
+- Post-commit dependency-region evidence at `1988f14` measures exact/dependency
+  guard hits at 60.57/106.88 ns, dependency miss at 72.22 ns,
+  verified shortcut application at 6.88 microseconds, and a
+  prepared direct normative region run at 889.60 microseconds. The
+  shortcut is about 129.36x faster on the recorded host. Guard reduction is
+  promoted for broader safe reuse; native code artifact integration is next.
 
 ## Acceptance
 

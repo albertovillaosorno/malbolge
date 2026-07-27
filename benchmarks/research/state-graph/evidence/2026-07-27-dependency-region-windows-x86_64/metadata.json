@@ -1,0 +1,550 @@
+{
+  "captured_at": "2026-07-27T05:19:02.8531143-06:00",
+  "commit": "1988f1444c253b7e8f7ae28ec98736bfb3ef5dab",
+  "short_commit": "1988f14",
+  "benchmark_command": ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe run --release --bin state_graph_benchmark --quiet",
+  "sample_count": 15,
+  "profile": "malbolge-2026.2",
+  "region_budget": 8,
+  "benchmark_scope_matches_head": true,
+  "working_tree_note": "Unrelated .gitignore/DOOM interoperability edits were present and excluded from benchmark-owned/runtime scope.",
+  "cpu": {
+    "Name": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+    "Manufacturer": "GenuineIntel",
+    "NumberOfCores": 12,
+    "NumberOfLogicalProcessors": 24,
+    "MaxClockSpeed": 2601
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200",
+    "OSArchitecture": "64-bit"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "results": [
+    {
+      "implementation": "indexed-apply-depth-1",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 920.263671875,
+      "median_ns_per_op": 936.62109375,
+      "maximum_ns_per_op": 966.2353515625,
+      "checksum": "16928533803608187685",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1130.6396484375,
+      "median_ns_per_op": 1134.130859375,
+      "maximum_ns_per_op": 1147.9248046875,
+      "checksum": "10392220539554710309",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-512",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 1004.6630859375,
+      "median_ns_per_op": 1006.005859375,
+      "maximum_ns_per_op": 1021.7529296875,
+      "checksum": "13279449747975267109",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-64",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 920.3857421875,
+      "median_ns_per_op": 922.36328125,
+      "maximum_ns_per_op": 937.4755859375,
+      "checksum": "17062710960419316517",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-depth-8",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 928.7841796875,
+      "median_ns_per_op": 932.470703125,
+      "maximum_ns_per_op": 1064.16015625,
+      "checksum": "6296289106748244773",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 2065.4541015625,
+      "median_ns_per_op": 2071.8017578125,
+      "maximum_ns_per_op": 2170.3369140625,
+      "checksum": "17793303670962922277",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 23.18115234375,
+      "median_ns_per_op": 23.22998046875,
+      "maximum_ns_per_op": 25.08544921875,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 25.579833984375,
+      "median_ns_per_op": 25.823974609375,
+      "maximum_ns_per_op": 26.885986328125,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 21.875,
+      "median_ns_per_op": 22.65625,
+      "maximum_ns_per_op": 24.21875,
+      "checksum": "11130583311107593509",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 21.484375,
+      "median_ns_per_op": 21.533203125,
+      "maximum_ns_per_op": 25.09765625,
+      "checksum": "3361148569019855653",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 21.27685546875,
+      "median_ns_per_op": 21.3134765625,
+      "maximum_ns_per_op": 24.9755859375,
+      "checksum": "18181643104867607333",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 21.19140625,
+      "median_ns_per_op": 21.22802734375,
+      "maximum_ns_per_op": 21.746826171875,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.671630859375,
+      "median_ns_per_op": 20.01953125,
+      "maximum_ns_per_op": 20.806884765625,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 20.3125,
+      "median_ns_per_op": 20.703125,
+      "maximum_ns_per_op": 21.484375,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 19.82421875,
+      "median_ns_per_op": 19.921875,
+      "maximum_ns_per_op": 20.166015625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 19.775390625,
+      "median_ns_per_op": 19.90966796875,
+      "maximum_ns_per_op": 20.88623046875,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "indexed-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 19.683837890625,
+      "median_ns_per_op": 19.964599609375,
+      "maximum_ns_per_op": 21.453857421875,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "insert-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 26012500.0,
+      "median_ns_per_op": 26145600.0,
+      "maximum_ns_per_op": 26263800.0,
+      "checksum": "4625247251222736821",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-0",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 108.294677734375,
+      "median_ns_per_op": 108.82568359375,
+      "maximum_ns_per_op": 118.212890625,
+      "checksum": "2239359047875044133",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-1024",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 139.70947265625,
+      "median_ns_per_op": 140.9912109375,
+      "maximum_ns_per_op": 141.943359375,
+      "checksum": "3618128858675274533",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-262144",
+      "samples": 15,
+      "operations_per_sample": 128,
+      "minimum_ns_per_op": 142.1875,
+      "median_ns_per_op": 142.96875,
+      "maximum_ns_per_op": 150.0,
+      "checksum": "15599016845748899109",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-persistent-append-length-65536",
+      "samples": 15,
+      "operations_per_sample": 512,
+      "minimum_ns_per_op": 142.3828125,
+      "median_ns_per_op": 142.578125,
+      "maximum_ns_per_op": 144.3359375,
+      "checksum": "9211644291040418597",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-0",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 84.375,
+      "median_ns_per_op": 84.954833984375,
+      "maximum_ns_per_op": 88.275146484375,
+      "checksum": "5246240905470812965",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-1024",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 218.90869140625,
+      "median_ns_per_op": 220.25146484375,
+      "maximum_ns_per_op": 321.435546875,
+      "checksum": "2259198589157827365",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-262144",
+      "samples": 15,
+      "operations_per_sample": 128,
+      "minimum_ns_per_op": 20075.78125,
+      "median_ns_per_op": 20166.40625,
+      "maximum_ns_per_op": 20696.09375,
+      "checksum": "16371337858183992613",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "output-vec-clone-append-length-65536",
+      "samples": 15,
+      "operations_per_sample": 512,
+      "minimum_ns_per_op": 3564.453125,
+      "median_ns_per_op": 3576.3671875,
+      "maximum_ns_per_op": 3665.0390625,
+      "checksum": "2300536404903783205",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-apply-two-cell",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 140.899658203125,
+      "median_ns_per_op": 141.912841796875,
+      "maximum_ns_per_op": 143.64013671875,
+      "checksum": "4167613253049000741",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 18.280029296875,
+      "median_ns_per_op": 18.988037109375,
+      "maximum_ns_per_op": 20.44677734375,
+      "checksum": "13171888774626517797",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.578125,
+      "median_ns_per_op": 17.61474609375,
+      "maximum_ns_per_op": 18.78662109375,
+      "checksum": "10912027532953821989",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 17.96875,
+      "median_ns_per_op": 18.75,
+      "maximum_ns_per_op": 20.3125,
+      "checksum": "17165412970885540645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 17.724609375,
+      "median_ns_per_op": 17.7734375,
+      "maximum_ns_per_op": 51.611328125,
+      "checksum": "13040278181342372645",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 17.66357421875,
+      "median_ns_per_op": 17.7001953125,
+      "maximum_ns_per_op": 18.408203125,
+      "checksum": "217943758197170981",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-latest-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 17.59033203125,
+      "median_ns_per_op": 17.608642578125,
+      "maximum_ns_per_op": 17.962646484375,
+      "checksum": "8321053844470768421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-1",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 18.06640625,
+      "median_ns_per_op": 18.145751953125,
+      "maximum_ns_per_op": 18.56689453125,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-4096",
+      "samples": 15,
+      "operations_per_sample": 256,
+      "minimum_ns_per_op": 19736.328125,
+      "median_ns_per_op": 19893.75,
+      "maximum_ns_per_op": 20201.171875,
+      "checksum": "12737079839697574181",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-512",
+      "samples": 15,
+      "operations_per_sample": 2048,
+      "minimum_ns_per_op": 1553.125,
+      "median_ns_per_op": 1563.18359375,
+      "maximum_ns_per_op": 1583.7890625,
+      "checksum": "1048150029568955173",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-64",
+      "samples": 15,
+      "operations_per_sample": 8192,
+      "minimum_ns_per_op": 145.22705078125,
+      "median_ns_per_op": 146.142578125,
+      "maximum_ns_per_op": 150.52490234375,
+      "checksum": "11424002540886352677",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "persistent-read-root-depth-8",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 22.760009765625,
+      "median_ns_per_op": 22.784423828125,
+      "maximum_ns_per_op": 24.4873046875,
+      "checksum": "6223406958553047845",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-certificate-verify",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 8561100.0,
+      "median_ns_per_op": 8783900.0,
+      "maximum_ns_per_op": 9137200.0,
+      "checksum": "11478188253863321915",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-dependency-guard-hit",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 106.31103515625,
+      "median_ns_per_op": 106.884765625,
+      "maximum_ns_per_op": 110.25390625,
+      "checksum": "4753771177308627749",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-dependency-guard-miss",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 71.54541015625,
+      "median_ns_per_op": 72.222900390625,
+      "maximum_ns_per_op": 74.200439453125,
+      "checksum": "11539576849273725733",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-dependency-shortcut",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 6840.52734375,
+      "median_ns_per_op": 6876.9287109375,
+      "maximum_ns_per_op": 6953.61328125,
+      "checksum": "5424646014620549925",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-direct-vm-run",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 864000.0,
+      "median_ns_per_op": 889600.0,
+      "maximum_ns_per_op": 1014900.0,
+      "checksum": "6592603210250027329",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-exact-guard-hit",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 59.66796875,
+      "median_ns_per_op": 60.5712890625,
+      "maximum_ns_per_op": 62.39013671875,
+      "checksum": "4753771177308627749",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-exact-guard-irrelevant-miss",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 63.787841796875,
+      "median_ns_per_op": 64.6484375,
+      "maximum_ns_per_op": 67.05322265625,
+      "checksum": "11539576849273725733",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "region-exact-guard-miss",
+      "samples": 15,
+      "operations_per_sample": 16384,
+      "minimum_ns_per_op": 60.638427734375,
+      "median_ns_per_op": 61.38916015625,
+      "maximum_ns_per_op": 62.445068359375,
+      "checksum": "11539576849273725733",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "replay-exact",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 30159600.0,
+      "median_ns_per_op": 30292900.0,
+      "maximum_ns_per_op": 30422300.0,
+      "checksum": "12549573586291003927",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "snapshot",
+      "samples": 15,
+      "operations_per_sample": 1,
+      "minimum_ns_per_op": 6170500.0,
+      "median_ns_per_op": 6285400.0,
+      "maximum_ns_per_op": 7463000.0,
+      "checksum": "15378766449629180008",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-apply-trace",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 917.822265625,
+      "median_ns_per_op": 924.8046875,
+      "maximum_ns_per_op": 965.380859375,
+      "checksum": "2806732789937808165",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-observe-new",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 536.6455078125,
+      "median_ns_per_op": 548.6572265625,
+      "maximum_ns_per_op": 640.185546875,
+      "checksum": "15542364202839024421",
+      "checksum_count": 1
+    },
+    {
+      "implementation": "state-incremental-replay",
+      "samples": 15,
+      "operations_per_sample": 4096,
+      "minimum_ns_per_op": 432.3486328125,
+      "median_ns_per_op": 455.9814453125,
+      "maximum_ns_per_op": 481.0302734375,
+      "checksum": "11735635569798456101",
+      "checksum_count": 1
+    }
+  ],
+  "analysis": {
+    "exact_guard_hit_ns": 60.5712890625,
+    "exact_guard_irrelevant_miss_ns": 64.6484375,
+    "dependency_guard_hit_ns": 106.884765625,
+    "dependency_guard_miss_ns": 72.222900390625,
+    "dependency_guard_hit_over_exact_hit": 1.7646110439338976,
+    "shortcut_ns": 6876.9287109375,
+    "direct_vm_ns": 889600.0,
+    "direct_vm_to_shortcut_ratio": 129.36007299088678,
+    "verifier_ns": 8783900.0,
+    "note": "Prepared-machine normative run excludes checkpoint construction/cloning from timed region. Shortcut timing includes dependency guard plus verified trace-effect application."
+  }
+}

@@ -646,8 +646,11 @@ from the real transition engine (at most three per step). Verified regions now
 derive read-before-write live-ins from those reads and exact writes: an
 irrelevant-memory variant fails exact equality but safely reuses the region,
 preserves its irrelevant value, and matches direct VM exit exactly; live-in
-changes fail closed. Post-commit reduced-guard/shortcut cost, wider-profile
-geometry, broader mutation-history collapse, and native codegen integration
+changes fail closed. Post-commit evidence measures dependency-guard hit at
+106.88 ns and verified shortcut application at 6.88
+microseconds versus 889.60 microseconds for the prepared direct VM
+region, about 129.36x. Native code artifact integration, wider-profile
+geometry, broader mutation-history collapse, and end-to-end tier performance
 remain open.
 
 ## Optimization and accelerator architecture

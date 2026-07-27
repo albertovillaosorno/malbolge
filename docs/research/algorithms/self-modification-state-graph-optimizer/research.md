@@ -345,6 +345,18 @@ value. Changing the first live-in dependency fails the guard and returns
 `DependencyGuardMismatch`.
 
 This is the first demonstrated semantic state-collapse useful to native reuse,
-not merely a storage optimization. Post-commit measurement should now quantify
-its guard cost and shortcut-effect cost relative to the exact guard and direct VM
-region execution.
+not merely a storage optimization. Post-commit evidence at `1988f14` measures an
+exact guard hit at 60.57 ns, a dependency guard hit at 106.88 ns, and a
+dependency guard miss at 72.22 ns. The reduced guard is deliberately a
+little more expensive than exact equality because it reads the verified live-in
+set, but that cost buys reuse across future-irrelevant memory differences.
+
+Applying the already verified dependency shortcut measures 6.88
+microseconds versus 889.60 microseconds for a prepared normative VM
+run of the same bounded region, about 129.36x on this host. Certificate
+verification remains deliberately expensive at 8.78 ms and is
+not a hot-path operation. These are region microbenchmarks, not an end-to-end
+native-tier claim. Dependency guards and verified effects are promoted as the
+correctness/performance baseline; the next research risk is replacing the
+interpreted verified-effect application with a real native code artifact while
+retaining the same verifier and deoptimization boundary.
