@@ -53,6 +53,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `tiered-native-execution-engine`.
+- Shared prerequisite evidence includes portable IR v1 and cache identity that
+  distinguishes OS, ISA, backend/native ABI revisions, required features, and
+  exact canonical IR even under forced bucket-digest collisions. Backend
+  emission itself remains pending.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

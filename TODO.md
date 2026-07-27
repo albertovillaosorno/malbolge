@@ -324,6 +324,11 @@ verifier/deoptimization research boundary exercises it directly. Native code
 artifacts, architecture backends, cache/orchestration, and end-to-end tier
 selection remain open.
 
+Current implementation foundation: portable effect IR v1, verifier admission,
+deterministic deoptimization, and canonical native cache identity are
+implemented. Native x86-64/AArch64 code artifacts, durable cache storage, and
+tier orchestration remain open.
+
 ### TODO - Ahead-of-execution native translation
 
 Translate reachable stable Malbolge regions into native code in memory before
@@ -656,14 +661,15 @@ microseconds versus 889.60 microseconds for the prepared direct VM
 region, about 129.36x. Tier selection now also has an executable
 deoptimization boundary: guard hits use verified effects, while guard misses run
 the normative VM for the same region budget and reconstruct the incremental
-lineage from real
-traces; normative rejection is propagated unchanged. A portable effect-IR v1
+lineage from real traces; normative rejection is propagated unchanged. A portable effect-IR v1
 research artifact now admits only exact verifier reprojections of profile,
 live-ins, budget, outcome, and compact state-changing effects; tampering any
 field fails and admitted shortcut/deopt results match the existing region
-baseline. Product `execution/ir/` now owns effect IR v1. Host-code
-artifacts, wider-profile geometry, broader mutation-history collapse, and
-end-to-end tier performance remain open.
+baseline. Product `execution/ir/` now owns effect IR v1, and
+`execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
+revisions, and required features with full equality after bucket collisions.
+Host-code artifacts, wider-profile geometry, broader mutation-history collapse,
+and end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture
 

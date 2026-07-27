@@ -59,6 +59,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   crate boundary. State-graph research reprojects verifier traces into this IR,
   rejects tampered profile/live-in/budget/outcome/effect fields, and preserves
   deterministic interpreter deoptimization on guard miss.
-- Native x86-64/AArch64 code artifacts, AOT/JIT orchestration, cache identity,
-  executable-memory policy, and end-to-end tier performance remain
-  unimplemented.
+- `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
+  OS, ISA, backend revision, native ABI revision, and required features. Digest
+  collisions never authorize reuse because full canonical/key equality remains
+  authoritative; `tests/tiered_execution.rs` forces that boundary explicitly.
+- Native x86-64/AArch64 code artifacts, AOT/JIT orchestration, durable cache
+  storage/eviction, executable-memory policy, and end-to-end tier performance
+  remain unimplemented.

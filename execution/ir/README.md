@@ -27,3 +27,21 @@ trusted by construction: the state-graph verifier remains responsible for
 reprojecting and admitting a candidate program before any accelerated tier may
 execute it. The current research bridge composes this file by explicit Cargo
 paths rather than creating a language-shaped crate boundary.
+
+### Canonical identity encoding v1
+
+`RegionEffectProgram::canonical_bytes()` is the byte authority for cache/native
+identity. It starts with ASCII `MBIR`, then the `u16` IR version. All integers
+use fixed-width little-endian encoding; host-sized counts are first converted to
+`u64`; strings and vectors use `u64` length prefixes. Field order is:
+
+1. profile fingerprint and semantic step budget;
+2. bounded `RunOutcome` tag/reason/step count;
+3. verifier-ordered memory live-ins as `(address, value)` `u32` pairs;
+4. ordered effects, each containing before/after observations, input/output
+   tags, and data/encryption memory-write options.
+
+The encoding never depends on Rust struct layout, enum discriminants, pointer
+width, or host endianness. `tests/execution/fixtures/region-effect-v1.hex` is an
+independently rendered 186-byte v1 vector and is compared byte-for-byte in
+`tests/tiered_execution.rs`.

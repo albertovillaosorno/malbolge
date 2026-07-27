@@ -31,7 +31,12 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+Native code emitters are not implemented. The shared prerequisite identity layer
+is executable: `execution/ir/main.rs` defines portable effect IR v1 and
+`execution/cache/main.rs` binds its canonical bytes to host OS/ISA,
+backend/native ABI revisions, and required features with collision-safe full
+equality. No x86-64/AArch64 instruction selection or executable artifact is
+claimed yet.
 
 ## Invariants
 

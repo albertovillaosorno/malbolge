@@ -59,8 +59,8 @@ deterministically without changing guest-visible state silently.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `tiered-native-execution-engine`,
-
-ative-x86-64-and-aarch64-backends`, `self-modification-state-graph-optimizer`.
+  `native-x86-64-and-aarch64-backends`,
+  `self-modification-state-graph-optimizer`.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

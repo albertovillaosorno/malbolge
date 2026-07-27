@@ -41,12 +41,19 @@ run the normative `ProfileMachine` for the same verified budget and reconstruct
 the incremental lineage from real traces; typed VM rejection propagates
 unchanged.
 
+`execution/cache/main.rs` now owns collision-safe native artifact identity.
+`RegionEffectProgram` has a versioned layout-independent canonical byte
+encoding, frozen by an independently rendered fixture. Native keys additionally
+bind host OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision,
+and sorted required features. FNV-1a is only a bucket accelerator; full canonical
+IR and target equality remain authoritative after collisions.
+
 ### Remaining Implementation
 
-No host machine-code artifact is emitted yet. x86-64/AArch64 backends, native
-cache identity/serialization, executable-memory policy, AOT/JIT orchestration,
-and the end-to-end tier selector remain open. The interpreter remains the only
-normative execution authority and the guaranteed fallback.
+No host machine-code artifact is emitted yet. x86-64/AArch64 backends, durable
+native cache serialization/storage/eviction, executable-memory policy, AOT/JIT
+orchestration, and the end-to-end tier selector remain open. The interpreter
+remains the only normative execution authority and the guaranteed fallback.
 
 ## Invariants
 
@@ -70,10 +77,11 @@ deterministically without changing guest-visible state silently.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
-- Current executable foundation is covered by
-  `tests/state_graph_research.rs`: portable IR artifact tampering fails closed,
-  verified effects match the region shortcut, and guard misses match normative
-  deoptimization exactly.
+- Current executable foundation is covered by `tests/state_graph_research.rs`
+  and `tests/tiered_execution.rs`: artifact tampering fails closed, verified
+  effects/deoptimization match their normative baselines, canonical IR matches a
+  byte-exact independent fixture, and forced bucket collisions never authorize
+  native-cache reuse.
 ## References
 
 ### Host Architecture Baseline
