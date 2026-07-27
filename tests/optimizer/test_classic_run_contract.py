@@ -55,6 +55,14 @@ def test_resident_request_rejects_out_of_domain_memory() -> None:
     assert MEMORY_WORD_ERROR in _invalid(request.validated)
 
 
+def test_resident_request_rejects_negative_memory() -> None:
+    """Aggregate memory validation still rejects the lower domain edge."""
+    memory: list[int] = list(ZERO_MEMORY)
+    memory[0] = -1
+    request = replace(_base_request(), memory=tuple(memory))
+    assert MEMORY_WORD_ERROR in _invalid(request.validated)
+
+
 def test_resident_request_rejects_invalid_io_and_cursor() -> None:
     """I/O bytes and the resumable input cursor remain bounded."""
     invalid_input = replace(_base_request(), input_bytes=(INVALID_BYTE,))

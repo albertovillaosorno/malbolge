@@ -69,8 +69,7 @@ class ClassicRunRequest:
                 f"got {len(self.memory)}"
             )
             raise InvalidPrimitiveBatchError(message)
-        for value in self.memory:
-            _check_word(value, "memory value")
+        _validate_words(self.memory, "memory value")
         _validate_bytes(self.input_bytes, "input")
         _validate_bytes(self.output_bytes, "output")
         if not 0 <= self.input_consumed <= len(self.input_bytes):
@@ -119,10 +118,25 @@ def _check_word(value: int, label: str) -> None:
 
 
 def _validate_bytes(values: tuple[int, ...], label: str) -> None:
-    for value in values:
-        if not 0 <= value <= MAX_BYTE:
-            message = f"{label} byte outside byte domain: {value}"
-            raise InvalidPrimitiveBatchError(message)
+    if not values:
+        return
+    minimum = min(values)
+    maximum = max(values)
+    if minimum < 0:
+        message = f"{label} byte outside byte domain: {minimum}"
+        raise InvalidPrimitiveBatchError(message)
+    if maximum > MAX_BYTE:
+        message = f"{label} byte outside byte domain: {maximum}"
+        raise InvalidPrimitiveBatchError(message)
+
+
+def _validate_words(values: tuple[int, ...], label: str) -> None:
+    minimum = min(values)
+    maximum = max(values)
+    if minimum < 0:
+        _check_word(minimum, label)
+    if maximum > MAX_WORD:
+        _check_word(maximum, label)
 
 
 def _validate_termination(termination: StepTermination | int) -> None:
