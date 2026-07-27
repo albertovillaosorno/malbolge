@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Research Question
 
@@ -17,7 +17,7 @@ size, state layout, caches, and search breadth accordingly. Tiny devices around
 128 MiB must remain usable; devices around 80 GiB should turn additional
 resources into measured throughput instead of hitting fixed artificial limits.
 
-- Status: Proposed
+- Status: Active
 - Research ID: `adaptive-accelerator-resource-budgeting`
 - Last reviewed: 2026-07-26
 
@@ -27,20 +27,27 @@ resources into measured throughput instead of hitting fixed artificial limits.
 
 ## Hypothesis
 
-- H1: the proposed technique improves at least one preregistered objective under
-  an equivalent resource budget while all accepted outputs pass the independent
-  verifier.
-- H0/rejection condition: the technique is unsound, cannot reproduce its result,
-  or provides no meaningful advantage over the declared baseline on the admitted
-  challenge distribution.
+- Baseline: one fixed resident batch ceiling chosen for a development GPU. Such
+  a ceiling either wastes larger devices or fails when a smaller device cannot
+  admit the configured state set.
+- H1: measuring free/total memory and coarse compute capacity at runtime, then
+  greedily partitioning exact per-item byte requirements below an explicit
+  reserve, admits the same workload across wider device sizes without changing
+  semantic acceptance.
+- H0/rejection condition: reject the planner if one admitted chunk exceeds its
+  measured usable bytes, if an item that cannot fit alone is admitted, if input
+  order changes, or if increasing otherwise-equivalent usable memory reduces
+  resident breadth. Performance benefit remains unproven until raw throughput
+  samples exist.
 
 ## Method
 
-The executable mirror lives at
-`algorithms/adaptive-accelerator-resource-budgeting/`. Experiments use versioned
-configuration, explicit seeds where stochastic behavior exists, fixed resource
-budgets, parametric challenge identities, and the same verifier used for
-baselines. Raw regenerable output stays in the mirror's Git-ignored `out/`.
+The research identity and configuration live at
+`algorithms/adaptive-accelerator-resource-budgeting/`. The product planner lives
+in `accelerator/resource_budget.py`; the reproducible measurement entry point is
+`benchmarks/accelerator/resource_budget_measure.py`. The experiment deliberately
+separates synthetic capacity scenarios from live CUDA resource evidence. Raw
+regenerable output stays outside correctness authority.
 
 ## Evidence
 
@@ -65,7 +72,24 @@ verifier accepts the candidate under the declared target profile.
 
 ## Results
 
-No experiment result is recorded yet.
+The first correctness slice is active. `AcceleratorResources` validates measured
+free/total memory, maximum threads per block, and multiprocessor count.
+`plan_resident_batches` reserves the larger of 8 MiB or one sixteenth of total
+memory, then constructs maximal contiguous input-order chunks whose exact
+resident byte requirement fits the remaining free-memory budget. An item that
+cannot fit alone is rejected before backend allocation.
+
+The classic resident CUDA adapter now uses this plan before allocation. CUDA
+resource evidence comes from `cuMemGetInfo_v2` plus
+`cuDeviceGetAttribute`; no GPU model name selects a batch limit. Synthetic
+boundary tests model a 19,131,940-byte current-profile state and admit six such
+states in the first chunk of a 128 MiB device model versus 4,209 in an 80 GiB
+model under the same reserve rule. These are capacity-model results, **not**
+claims that either hardware class was physically benchmarked.
+
+Existing RTX 4060 classic resident differential tests continue to pass after the
+planner is inserted into the real allocation path. Raw post-commit resource and
+throughput evidence is still required before accepting a performance conclusion.
 
 ## Threats to Validity
 
@@ -75,7 +99,10 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-No conclusion is accepted before reproducible evidence exists.
+Accept the measured-memory planner as a correctness-preserving allocation guard
+for resident classic CUDA execution. Do not yet conclude that it improves
+throughput or completes adaptive search breadth: live retained measurements,
+current-profile execution, and broader hardware evidence remain open.
 
 ## References
 

@@ -25,17 +25,22 @@ from accelerator.cuda.runtime import CudaRuntime
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
+from accelerator.resource_budget import ResourceBudgetError
+from accelerator.resource_budget import plan_resident_batches
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from accelerator.classic_run import ClassicRunRequest
+    from accelerator.resource_budget import ResourcePlan
 
 _STATUS_INDEX: Final = 11
 _ERROR_INDEX: Final = 12
 _ERROR_POINTER_INDEX: Final = 13
 _ERROR_VALUE_INDEX: Final = 14
 _STEPS_INDEX: Final = 15
+_DEVICE_WORD_BYTES: Final = 4
+_FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
@@ -367,7 +372,49 @@ class CudaClassicRunAdapter:
         if not requests:
             return ()
         validated = tuple(request.validated() for request in requests)
-        hosts = _build_host_batch(validated)
+        plan = self.plan(validated)
+        results: list[ClassicRunResult] = []
+        for chunk in plan.chunks:
+            results.extend(
+                self._evaluate_chunk(validated[chunk.start : chunk.stop])
+            )
+        return tuple(results)
+
+    def plan(
+        self,
+        requests: Sequence[ClassicRunRequest],
+    ) -> ResourcePlan:
+        """Plan safe input-order resident chunks from measured device resources.
+
+        Returns:
+            Deterministic memory-bounded chunks and measured compute capacity.
+
+        Raises:
+            AcceleratorExecutionError: If even one request cannot fit safely.
+
+        """
+        if self._closed:
+            message = "CUDA classic-run adapter is closed"
+            raise AcceleratorExecutionError(message)
+        validated = tuple(request.validated() for request in requests)
+        item_bytes = tuple(
+            _resident_item_bytes(request) for request in validated
+        )
+        try:
+            return plan_resident_batches(
+                item_bytes,
+                self._runtime.resources.snapshot(),
+                fixed_chunk_bytes=_FIXED_CHUNK_BYTES,
+            )
+        except ResourceBudgetError as error:
+            message = f"CUDA resident resource budget rejected batch: {error}"
+            raise AcceleratorExecutionError(message) from error
+
+    def _evaluate_chunk(
+        self,
+        requests: tuple[ClassicRunRequest, ...],
+    ) -> tuple[ClassicRunResult, ...]:
+        hosts = _build_host_batch(requests)
         pointers: list[int] = []
         try:
             pointers.extend(
@@ -379,13 +426,24 @@ class CudaClassicRunAdapter:
                     hosts.outputs,
                 )
             )
-            self._runtime.launch(self._kernel, tuple(pointers), len(validated))
+            self._runtime.launch(self._kernel, tuple(pointers), len(requests))
             self._runtime.copy_from_device(hosts.states, pointers[0])
             self._runtime.copy_from_device(hosts.memories, pointers[1])
             self._runtime.copy_from_device(hosts.outputs, pointers[3])
-            return _decode_results(hosts, count=len(validated))
+            return _decode_results(hosts, count=len(requests))
         finally:
             _free_all(self._runtime, pointers)
+
+
+def _resident_item_bytes(request: ClassicRunRequest) -> int:
+    output_capacity = len(request.output_bytes) + request.step_budget
+    words = (
+        STATE_WORDS
+        + MEMORY_WORDS
+        + len(request.input_bytes)
+        + output_capacity
+    )
+    return words * _DEVICE_WORD_BYTES
 
 
 def _encode_variable_state(

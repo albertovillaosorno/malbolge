@@ -779,9 +779,12 @@ retain exact semantic execution where tensor operations are a poor fit.
 ### TODO - Adaptive accelerator resource budgeting
 
 Discover available memory and compute resources at runtime and choose batch
-size, state layout, caches, and search breadth accordingly. Tiny devices around
-128 MiB must remain usable; devices around 80 GiB should turn additional
-resources into measured throughput instead of hitting fixed artificial limits.
+size, state layout, caches, and search breadth accordingly. The first active
+slice now measures CUDA free/total memory, SM count, and maximum threads/block,
+then partitions exact resident classic item bytes below a deterministic reserve
+without a fixed device-specific batch ceiling. Synthetic 128 MiB/80 GiB capacity
+models are correctness evidence only; retained throughput and broader live-device
+evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

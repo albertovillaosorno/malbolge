@@ -4,14 +4,32 @@
 \title{Adaptive accelerator resource budgeting Research Model}
 \begin{document}
 \maketitle
-Let $C$ be the candidate space, $V(c,p)\in\{0,1\}$ the independent verifier
-for candidate $c$ under profile $p$, and $\mathbf{K}(c)$ the measured cost
-vector. Search may rank or generate candidates arbitrarily, but only
+Let $F$ be currently free accelerator memory, $T>0$ total accelerator
+memory, and $b_i>0$ the exact resident byte requirement of input item $i$. The
+planner reserves
 \[
-  C_V = \{c\in C\mid V(c,p)=1\}
+  R(T)=\max(8\,\mathrm{MiB},\lfloor T/16\rfloor)
 \]
-is eligible for comparison. Optimization therefore selects verified candidates
-under explicit resource budgets rather than treating the search heuristic as a
-correctness authority. This file will be refined with algorithm-specific
-equations before the first claimed result.
+and exposes usable memory
+\[
+  U(F,T)=\max(0,F-R(T)).
+\]
+For fixed per-chunk overhead $h\ge 0$, each emitted contiguous chunk
+$[s,e)$ must satisfy
+\[
+  h+\sum_{i=s}^{e-1} b_i \le U(F,T).
+\]
+The greedy planner chooses each $e$ maximally while preserving input order. It
+rejects the complete plan when any individual item violates
+\[
+  h+b_i \le U(F,T).
+\]
+Coarse compute-wave evidence is recorded independently as
+\[
+  W = N_{\mathrm{SM}} T_{\max},
+\]
+where $N_{\mathrm{SM}}$ is the measured multiprocessor count and $T_{\max}$
+is the measured maximum threads per block. $W$ is capacity metadata, not a
+semantic bound and not a throughput claim. Increasing $U$ while holding
+$\{b_i\}$ and $h$ fixed cannot reduce the maximal first-chunk item count.
 \end{document}

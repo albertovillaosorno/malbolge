@@ -80,8 +80,15 @@ budget exhaustion, input/output/halt, EOF, non-graphical termination, resumed an
 already-terminated execution, rejected jump atomicity, pointer wrap, and
 data/encryption aliasing. Every one of the 59,049 memory words is compared. CUDA
 unavailability keeps this optional path unavailable rather than changing VM
-correctness. Current-profile resident execution and performance claims remain
-open.
+correctness.
+
+Resident allocations are now budgeted from live driver evidence rather than a
+fixed batch constant. `cuMemGetInfo_v2` supplies current free/total bytes and
+`cuDeviceGetAttribute` supplies multiprocessor count and maximum threads per
+block. The hardware-neutral planner reserves the larger of 8 MiB or 1/16 of total
+memory, preserves request order across automatically split chunks, and rejects
+any request that cannot fit alone before allocation. Current-profile resident
+execution and performance claims remain open.
 
 ## Invariants
 

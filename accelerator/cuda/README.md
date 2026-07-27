@@ -32,6 +32,9 @@ compares all 59,049 memory words plus registers, I/O, termination, step counts,
 and atomic rejection after bounded multi-step execution. This is correctness
 evidence, not a speedup claim.
 
-Current-profile resident execution, adaptive resource sizing, product-level batch
-routing, asynchronous transfer/stream tuning, benchmark evidence, and CUDA
-superoptimization remain open.
+The classic resident path now measures free/total device memory with
+`cuMemGetInfo_v2` and SM/thread capacity with `cuDeviceGetAttribute`, then applies
+the hardware-neutral resource planner before allocation. There is no fixed
+RTX-specific batch ceiling. Current-profile resident execution, product-level
+batch routing, asynchronous transfer/stream tuning, broader hardware evidence,
+throughput evidence, and CUDA superoptimization remain open.

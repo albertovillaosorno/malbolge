@@ -14,6 +14,7 @@ from typing import cast
 
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
+from accelerator.resource_budget import AcceleratorResources
 
 ROOT: Final = Path(__file__).resolve().parents[2]
 CUDA_TOOLKIT: Final = ROOT / ".dependencies" / "cuda" / "13.3.1" / "toolkit"
@@ -21,6 +22,8 @@ NVRTC_DLL: Final = CUDA_TOOLKIT / "bin" / "x64" / "nvrtc64_130_0.dll"
 CUDA_SUCCESS: Final = 0
 NVRTC_SUCCESS: Final = 0
 THREADS_PER_BLOCK: Final = 256
+CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
+CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
@@ -31,7 +34,44 @@ class CudaDeviceInfo:
     """Stable metadata exposed to hardware-neutral accelerator adapters."""
 
     arch: str
+    max_threads_per_block: int
+    multiprocessor_count: int
     name: str
+
+
+class CudaResourceProbe:
+    """Read dynamic CUDA memory with stable device compute metadata."""
+
+    _device_info: CudaDeviceInfo
+    _get_info: _CudaFn
+
+    def __init__(self, get_info: _CudaFn, device_info: CudaDeviceInfo) -> None:
+        """Bind memory-info query and immutable device compute metadata."""
+        self._device_info = device_info
+        self._get_info = get_info
+
+    def snapshot(self) -> AcceleratorResources:
+        """Measure current free memory and stable compute capacity.
+
+        Returns:
+            Hardware-neutral accelerator resource evidence.
+
+        """
+        free_bytes = ctypes.c_size_t()
+        total_bytes = ctypes.c_size_t()
+        _check_execution(
+            self._get_info(
+                ctypes.byref(free_bytes),
+                ctypes.byref(total_bytes),
+            ),
+            "cuMemGetInfo_v2",
+        )
+        return AcceleratorResources(
+            free_memory_bytes=free_bytes.value,
+            max_threads_per_block=self._device_info.max_threads_per_block,
+            multiprocessor_count=self._device_info.multiprocessor_count,
+            total_memory_bytes=total_bytes.value,
+        ).validated()
 
 
 class CudaRuntime:
@@ -44,16 +84,19 @@ class CudaRuntime:
     _driver: ctypes.WinDLL
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
+    resources: CudaResourceProbe
 
     _cu_ctx_create: _CudaFn
     _cu_ctx_destroy: _CudaFn
     _cu_ctx_synchronize: _CudaFn
     _cu_device_compute_capability: _CudaFn
     _cu_device_get: _CudaFn
+    _cu_device_get_attribute: _CudaFn
     _cu_device_get_name: _CudaFn
     _cu_init: _CudaFn
     _cu_launch_kernel: _CudaFn
     _cu_mem_alloc: _CudaFn
+    _cu_mem_get_info: _CudaFn
     _cu_mem_free: _CudaFn
     _cu_memcpy_dtoh: _CudaFn
     _cu_memcpy_htod: _CudaFn
@@ -91,6 +134,10 @@ class CudaRuntime:
         self._device = self._open_device(device_id)
         self._context = self._create_context(self._device)
         self.device_info = self._read_device_info(self._device)
+        self.resources = CudaResourceProbe(
+            self._cu_mem_get_info,
+            self.device_info,
+        )
 
     def allocate(self, byte_count: int) -> int:
         """Allocate device memory.
@@ -296,6 +343,7 @@ class CudaRuntime:
         (
             self._cu_init,
             self._cu_device_get,
+            self._cu_device_get_attribute,
             self._cu_ctx_create,
             self._cu_ctx_destroy,
             self._cu_ctx_synchronize,
@@ -304,6 +352,7 @@ class CudaRuntime:
         ) = context
         (
             self._cu_mem_alloc,
+            self._cu_mem_get_info,
             self._cu_mem_free,
             self._cu_memcpy_htod,
             self._cu_memcpy_dtoh,
@@ -367,8 +416,26 @@ class CudaRuntime:
         device_name = bytes(name).split(b"\x00", maxsplit=1)[0].decode("utf-8")
         return CudaDeviceInfo(
             arch=f"sm_{major.value}{minor.value}",
+            max_threads_per_block=self._read_device_attribute(
+                device, CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK
+            ),
+            multiprocessor_count=self._read_device_attribute(
+                device, CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT
+            ),
             name=device_name,
         )
+
+    def _read_device_attribute(self, device: int, attribute: int) -> int:
+        value = ctypes.c_int()
+        _check_available(
+            self._cu_device_get_attribute(
+                ctypes.byref(value),
+                attribute,
+                device,
+            ),
+            "cuDeviceGetAttribute",
+        )
+        return value.value
 
     def _program_log(self, program: ctypes.c_void_p) -> str:
         size = ctypes.c_size_t()
@@ -400,6 +467,13 @@ def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_device_get = dll.cuDeviceGet
     raw_device_get.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
     raw_device_get.restype = ctypes.c_int
+    raw_attribute = dll.cuDeviceGetAttribute
+    raw_attribute.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    raw_attribute.restype = ctypes.c_int
     raw_ctx_create = dll.cuCtxCreate_v2
     raw_ctx_create.argtypes = [
         ctypes.POINTER(ctypes.c_void_p),
@@ -428,6 +502,7 @@ def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
         for raw in (
             raw_init,
             raw_device_get,
+            raw_attribute,
             raw_ctx_create,
             raw_ctx_destroy,
             raw_sync,
@@ -441,6 +516,12 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_alloc = dll.cuMemAlloc_v2
     raw_alloc.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_size_t]
     raw_alloc.restype = ctypes.c_int
+    raw_info = dll.cuMemGetInfo_v2
+    raw_info.argtypes = [
+        ctypes.POINTER(ctypes.c_size_t),
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
+    raw_info.restype = ctypes.c_int
     raw_free = dll.cuMemFree_v2
     raw_free.argtypes = [ctypes.c_uint64]
     raw_free.restype = ctypes.c_int
@@ -452,7 +533,7 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_dtoh.restype = ctypes.c_int
     return tuple(
         cast("_CudaFn", raw)
-        for raw in (raw_alloc, raw_free, raw_htod, raw_dtoh)
+        for raw in (raw_alloc, raw_info, raw_free, raw_htod, raw_dtoh)
     )
 
 

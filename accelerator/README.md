@@ -17,6 +17,8 @@ normative Rust execution. Compiler and verifier code do not import CUDA APIs.
 Missing accelerator hardware changes availability/performance only. Malformed
 requests fail in the shared contract before backend execution; accelerator
 runtime failures are explicit and never silently change acceptance rules.
+`resource_budget.py` additionally owns hardware-neutral measured resource
+snapshots and deterministic resident chunk planning; it does not know CUDA APIs.
 
 Current-profile resident execution, product-level batch routing, candidate
 evaluation, search/verification ports, ROCm, adaptive resource policy, and

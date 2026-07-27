@@ -3,7 +3,7 @@ id = "adaptive-accelerator-resource-budgeting"
 seed = 0
 
 [challenge]
-family = "unassigned"
+family = "resident-state-batching"
 difficulty = 1
 
 [budget]
