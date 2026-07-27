@@ -80,3 +80,12 @@ override. At depth 4096 the linked root miss is
 20.70 ns for the radix (~1165x ratio).
 The remaining blocker is exact indexed-memory identity/dedup without full
 materialization.
+
+`state.rs` closes the per-observation full-checkpoint identity bottleneck for one
+execution lineage. It stores immutable input/root lineage by shared `Arc`, evolves
+all changing fields from public `ProfileStepTrace`, keeps output and radix
+digests incrementally, and uses the resulting constant-size digest only for
+bucket selection. Exact output/scalar/radix equality still confirms every merge.
+Foreign roots fail closed instead of triggering a complete memory comparison.
+`tests/s.rs` reconstructs every current checkpoint exactly, forces digest
+collisions, and verifies exact replay deduplication.

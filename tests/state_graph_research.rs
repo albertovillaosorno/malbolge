@@ -51,6 +51,8 @@ mod exact_state;
 pub mod indexed;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/i.rs"]
 mod indexed_memory;
+#[path = "../algorithms/self-modification-state-graph-optimizer/state.rs"]
+pub mod indexed_state;
 #[path = "../algorithms/self-modification-state-graph-optimizer/memory.rs"]
 pub mod persistent;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/p.rs"]
@@ -61,5 +63,7 @@ pub mod profile_graph;
 mod profile_state;
 #[path = "../algorithms/self-modification-state-graph-optimizer/state_graph.rs"]
 pub mod state_graph;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/s.rs"]
+mod state_identity;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/d.rs"]
 mod step_delta;

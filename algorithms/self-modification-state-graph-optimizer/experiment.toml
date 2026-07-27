@@ -75,3 +75,11 @@ depths = [1, 8, 64, 512, 4096]
 samples_per_case = 15
 verdict = "promote-current-profile-memory-candidate"
 next_risk = "exact-state-identity-without-full-materialization"
+
+[reduction.incremental_state_identity]
+baseline = "complete-checkpoint-hash-and-equality-per-observation"
+candidate = "lineage-bound-incremental-digest-plus-exact-canonical-state"
+foreign_lineage = "fail-closed"
+digest_role = "bucket-only"
+collision_confirmation = "exact-state-equality"
+materialization_role = "oracle-only"

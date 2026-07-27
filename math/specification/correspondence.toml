@@ -249,3 +249,19 @@ label = "eq:state-graph-indexed-memory"
 domain = "current 14-trit profile within the explicit 24-bit radix research capacity"
 mechanism = "stepwise-materialization-distinct-overrides-and-before-validation"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/i.rs::current_trace_deltas_reconstruct_every_indexed_checkpoint", "algorithms/self-modification-state-graph-optimizer/tests/i.rs::distinct_overrides_preserve_root_and_latest_reads", "algorithms/self-modification-state-graph-optimizer/tests/i.rs::forged_before_value_is_rejected_by_index"]
+
+[[correspondence]]
+id = "state-graph-incremental-identity"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-incremental-identity"
+domain = "one canonical profile/input/root execution lineage using current-profile indexed memory"
+mechanism = "trace-evolution-full-checkpoint-reconstruction-and-lineage-rejection"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/s.rs::current_trace_reconstructs_and_replay_deduplicates", "algorithms/self-modification-state-graph-optimizer/tests/s.rs::independently_constructed_root_is_foreign_lineage"]
+
+[[correspondence]]
+id = "state-graph-incremental-collision-guard"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-incremental-collision-guard"
+domain = "incremental states inside one admitted lineage under arbitrary digest collisions"
+mechanism = "constant-digest-adversarial-collision-confirmation"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/s.rs::forced_digest_collision_never_merges_distinct_states", "algorithms/self-modification-state-graph-optimizer/tests/s.rs::current_trace_reconstructs_and_replay_deduplicates"]

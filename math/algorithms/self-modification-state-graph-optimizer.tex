@@ -141,6 +141,45 @@ The executable correspondence reconstructs every checkpoint of current traced
 execution exactly, inserts 4096 distinct overrides while preserving both latest
 overrides and untouched-root reads, and rejects a forged `before` value.
 
+\section{Incremental exact state identity}
+
+Fix one execution lineage $L$ consisting of one canonical profile, one immutable
+input allocation, and one immutable complete memory root. Let $I(s)$ be the
+canonical indexed-memory overlay, $O(s)$ committed output, $R(s)$ registers,
+$t(s)$ termination, and $p(s)$ consumed-input cursor. The incremental state key
+is
+\begin{equation}
+  K_L(s)=\bigl(p(s),O(s),R(s),t(s),I(s)\bigr),
+  \qquad
+  s_1\equiv_L s_2 \Longleftrightarrow K_L(s_1)=K_L(s_2).
+  \label{eq:state-graph-incremental-identity}
+\end{equation}
+Profile, input bytes, and complete root memory are omitted from the changing key
+only because lineage membership requires exact shared immutable allocations for
+all three semantic authorities. A state from another lineage is rejected rather
+than compared by rescanning the root.
+
+A constant-size digest combines immutable profile/input digests, input cursor,
+incremental output digest, registers, termination, and the canonical radix
+overlay digest. It is only a bucket selector:
+\begin{equation}
+  \operatorname{merge}(s_1,s_2)
+  \Longrightarrow
+  h(s_1)=h(s_2)\land s_1\equiv_L s_2.
+  \label{eq:state-graph-incremental-collision-guard}
+\end{equation}
+Thus digest collision never authorizes a merge. Exact overlay equality uses
+canonical radix structure with shared-node pointer shortcuts, while output and
+scalar state are compared exactly. Returning an override to its immutable root
+value deletes that override and prunes empty radix nodes, so equivalent memory
+histories converge to the same canonical overlay semantics.
+
+The executable correspondence evolves the incremental state exclusively from
+public `ProfileStepTrace` records, materializes every state back to a complete
+runtime checkpoint, and requires exact equality. It also forces every state into
+one digest bucket and proves distinct states remain distinct, while an
+independently reconstructed checkpoint root is rejected as foreign lineage.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

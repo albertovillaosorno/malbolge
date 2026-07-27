@@ -624,8 +624,11 @@ reconstructs current checkpoints exactly and preserves 4096 distinct overrides
 with bounded lookup depth. Post-commit evidence keeps indexed reads near
 20--25 ns through 4096 distinct overrides and makes the depth-4096 root fallback
 about 1165x faster than the linked chain.
-The radix is promoted as the current-profile memory candidate; exact incremental
-identity/dedup, wider-profile geometry, live register/output reductions, broader
+The radix is promoted as the current-profile memory candidate. A lineage-bound
+incremental state graph now reconstructs every current checkpoint exactly,
+deduplicates replay, rejects foreign roots, and keeps forced digest collisions
+separate without full-memory hashing per observation. Post-commit state-graph
+performance, wider-profile geometry, output storage reduction, broader
 mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture

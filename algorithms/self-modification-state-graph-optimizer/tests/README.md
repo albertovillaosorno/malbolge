@@ -30,3 +30,8 @@ trace deltas, verifies empty deltas do not add patch depth, and rejects a forged
 `i.rs` verifies the four-level radix overlay against complete current-profile
 checkpoints, inserts 4096 distinct overrides while preserving root fallthrough,
 and rejects a forged `before` value before any indexed update commits.
+
+`s.rs` proves incremental full-state reconstruction and exact replay
+deduplication, forces all states into one digest bucket without false merge, and
+rejects independently allocated roots as foreign lineage instead of performing a
+full-root comparison.

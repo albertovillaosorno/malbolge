@@ -220,3 +220,19 @@ The next correctness/performance boundary is exact state identity. Current
 `ProfileStateGraph` hashes and compares complete checkpoints; the radix candidate
 must gain deterministic incremental identity and collision-confirming equality
 without re-materializing all 4,782,969 words per observation.
+
+The next identity candidate is now executable in `state.rs`. One incremental graph
+is explicitly bound to a single immutable profile/input/memory-root lineage.
+Changing state consists only of input cursor, committed output, registers,
+termination, and canonical radix overlay. Input/profile/root identity therefore
+uses shared allocations instead of repeated complete comparisons; independently
+constructed roots fail closed as foreign lineage.
+
+State evolution consumes only public `ProfileStepTrace` records. Input/output
+observations are checked against the current incremental state, memory uses the
+exact trace delta, and every resulting state materializes back to the complete
+runtime checkpoint exactly. Bucket identity combines incremental component
+digests in constant-size work. Exact state equality remains the merge authority:
+a forced constant digest does not merge distinct states, while exact replay
+returns the same node ID. Performance remains unclaimed until this graph is
+benchmarked directly against `ProfileStateGraph` full-checkpoint insert/replay.
