@@ -83,8 +83,8 @@ example probe points, not supported-range endpoints.
   admitted and split only at the classic backend's 32-bit launch-index boundary.
 - Current-profile resident execution now consumes the same measured resource
   planner with exact 4,782,969-word item sizing; full-state RTX 4060 differential
-  evidence passes. Broader live-hardware evidence and current-profile throughput
-  samples remain open.
+  evidence passes. Retained RTX 4060 throughput/phase samples now cover the
+  current profile; broader live-hardware evidence remains open.
 - Retained end-to-end throughput evidence under
   `benchmarks/accelerator/evidence/2026-07-27-classic-throughput-rtx4060/`
   contains 15 raw samples for batches 1/8/32/128 on an exact 64-step workload.
@@ -112,6 +112,10 @@ example probe points, not supported-range endpoints.
   reaches about 1,076.38 VMs/s at batch 128 and lowers wall time about 39.5x versus
   the original phase baseline. Complete Python result materialization is now the
   dominant phase (~75%).
-- Performance evidence remains incomplete: current-profile throughput and broader
-  live-hardware measurements are still required. Persistent classic continuation
-  is tracked by its own retained session evidence.
+- Current-profile evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-current-profile-throughput-rtx4060/`
+  contains 15-sample end-to-end batches 1/2/4/8/16/32 plus phase batches 1/8/32.
+  Batch 32 reaches about 40.08 VMs/s; kernel+sync is about 0.014% of profiled wall
+  time, selecting host validation/copy/materialization as the next optimization
+  boundary. Broader live-hardware measurements remain required. Persistent
+  classic continuation is tracked by its own retained session evidence.

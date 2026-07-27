@@ -70,7 +70,9 @@ batches.
   and compares eight complete `malbolge-2026.2` results across all 4,782,969 final
   words plus registers, I/O, termination, steps, wrap, and atomic rejection on the
   RTX 4060 (`sm_89`).
-- Product-level batch routing, current-profile throughput evidence, broader live
-  hardware, and remaining search/verification accelerator ports remain open.
+- Product-level batch routing is active, and retained RTX 4060 current-profile
+  throughput/phase evidence reaches about 40.08 VMs/s at batch 32 while
+  kernel+sync accounts for about 0.014% of profiled wall time. Broader live
+  hardware and remaining search/verification accelerator ports remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

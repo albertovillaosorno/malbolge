@@ -23,6 +23,9 @@ runtime failures are explicit and never silently change acceptance rules.
 `resource_budget.py` additionally owns hardware-neutral measured resource
 snapshots and deterministic resident chunk planning; it does not know CUDA APIs.
 
-Product-level batch routing, current-profile throughput evidence, candidate
-evaluation, search/verification ports, ROCm, broader hardware evidence, and
+Rust product batches now route through hardware-neutral optional backends with
+safe-Rust fallback. RTX 4060 current-profile throughput and phase evidence is
+retained; it selects host-state validation/copy/materialization rather than kernel
+execution as the next measured performance boundary. Candidate evaluation,
+search/verification ports, ROCm, broader hardware evidence, and further
 performance orchestration remain follow-on work.

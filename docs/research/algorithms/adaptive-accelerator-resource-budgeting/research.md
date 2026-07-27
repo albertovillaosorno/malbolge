@@ -154,10 +154,13 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Accept the measured-memory planner as a correctness-preserving allocation guard
-for resident classic and current-profile CUDA execution. Complete current-profile
-state now runs through the same planner on the RTX 4060, but do not infer a
-current-profile throughput benefit from correctness evidence. Broader hardware and
-current-profile performance measurements remain open.
+for resident classic and current-profile CUDA execution. Retained RTX 4060
+current-profile measurements now reach about 40.08 VMs/s at batch 32 for the
+64-step complete-snapshot workload, with kernel+sync only about 0.014% of profiled
+wall time. This selects host validation, state copying/transfers, and full result
+materialization as the next optimization boundary. The measurement is not a
+CPU-relative or cross-device speedup claim; broader hardware evidence remains
+open.
 
 ## References
 

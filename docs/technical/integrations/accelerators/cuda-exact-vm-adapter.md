@@ -111,7 +111,11 @@ already-terminated execution. CUDA remains optional and is not profile
 authority. Rust product-batch integration additionally exercises the real classic
 and current workers through hardware-neutral backend traits; unavailable,
 deferred, or structurally invalid attempts fall back to untouched safe-Rust
-states. Current-profile throughput remains open.
+states. RTX 4060 current-profile performance evidence now measures 15 samples per
+batch point: batch 32 reaches about 40.08 VMs/s for the 64-step complete-snapshot
+workload, while phase attribution places kernel+sync at about 0.014% of wall
+time. This is a backend baseline, not a CPU-relative or cross-device speedup
+claim.
 
 ## Invariants
 
@@ -140,10 +144,10 @@ fails explicitly without changing correctness rules.
 - Compact classic-step differential evidence covers VM state/I/O/mutation trace
   projections and atomic rejection. Resident classic evidence compares complete
   59,049-word states; scalable resident evidence compares complete 4,782,969-word
-  current-profile states against normative Rust. Product-level batch routing,
-  current-profile throughput evidence, broader live-hardware evidence, and the
-  remaining search/verification ports are still required before this TODO can
-  complete.
+  current-profile states against normative Rust. Product-level batch routing and
+  an RTX 4060 current-profile throughput/phase baseline are now retained. Broader
+  live-hardware evidence and the remaining search/verification ports are still
+  required before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

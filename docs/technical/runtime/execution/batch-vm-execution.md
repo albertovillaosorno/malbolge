@@ -60,8 +60,9 @@ One explicit worker measured 55,930,200 ns (0.99x), exposing thread overhead;
 2 workers measured 29,656,900 ns (1.87x), 4 measured 16,569,700 ns (3.35x), and
 8 measured 9,839,800 ns (5.65x). Every implementation produced the same
 checksum. These data demonstrate this classic workload on this host only and are not a
-portable speedup guarantee. They do not establish a current-profile speedup;
-profile-driven batching has correctness evidence only until separately measured.
+portable speedup guarantee. A separate RTX 4060 current-profile CUDA baseline
+now measures complete-snapshot throughput, but it does not include a matched CPU
+baseline and therefore establishes no CPU-relative current-profile speedup.
 
 The optional accelerator boundary now has a compact one-step proving layer plus
 resident classic and current-profile bounded execution. Each resident CUDA work
@@ -79,7 +80,9 @@ whole batch. Unavailability, malformed result counts, deferred items, or
 inconsistent completion metadata execute from the untouched CPU state instead.
 Live integration tests route both classic and current-profile batches through the
 real CUDA workers and compare complete results with the sequential CPU baseline.
-No current-profile speedup is claimed.
+The retained current-profile CUDA performance matrix reaches about 40.08 VMs/s at
+batch 32 for a 64-step complete-snapshot workload; no CPU-relative or
+cross-device speedup is claimed from that backend-only measurement.
 
 ## Invariants
 

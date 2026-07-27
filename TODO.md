@@ -791,7 +791,8 @@ without a fixed device-specific batch ceiling. Synthetic 128 MiB/80 GiB capacity
 models are example correctness probes only, not supported-range endpoints. No
 artificial VRAM maximum is declared; larger addressable devices increase resident
 capacity and are automatically split only at backend representation boundaries.
-Retained throughput and broader live-device evidence remain open.
+RTX 4060 classic and current-profile throughput evidence is now retained; broader
+live-device evidence and selected host-state optimizations remain open.
 
 ### TODO - Compilation latency performance budget
 
