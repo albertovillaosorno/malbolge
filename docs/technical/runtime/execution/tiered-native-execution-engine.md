@@ -48,12 +48,27 @@ bind host OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision
 and sorted required features. FNV-1a is only a bucket accelerator; full canonical
 IR and target equality remain authoritative after collisions.
 
+`execution/native/main.rs` now owns the first host-code artifact boundary. The
+bootstrap backend lowers one structurally consistent `RegionEffectProgram` into
+deterministic freestanding C23 and binds the candidate to the exact
+`NativeArtifactKey`. Generated code performs all entry-observation, memory,
+input/EOF, pointer, and output-capacity checks before any guest-visible commit.
+Repeated writes to one address collapse to its first required value and final
+committed value, so a guard miss cannot leave an intermediate region state.
+
+Pinned Clang 22.1.8 materializes the same bootstrap representation as real
+Windows COFF objects for both x86-64 and AArch64 under strict warning-clean C23
+compilation. Source and object containers remain explicitly `Untrusted*`:
+matching IR/target identity proves provenance of the claim, not semantic
+correctness of compiler-produced machine code.
+
 ### Remaining Implementation
 
-No host machine-code artifact is emitted yet. x86-64/AArch64 backends, durable
-native cache serialization/storage/eviction, executable-memory policy, AOT/JIT
-orchestration, and the end-to-end tier selector remain open. The interpreter
-remains the only normative execution authority and the guaranteed fallback.
+Independent native semantic admission, direct x86-64/AArch64 instruction
+selection, executable-memory policy/invocation, durable native cache
+serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
+selector remain open. The interpreter remains the only normative execution
+authority and the guaranteed fallback.
 
 ## Invariants
 
@@ -80,8 +95,11 @@ deterministically without changing guest-visible state silently.
 - Current executable foundation is covered by `tests/state_graph_research.rs`
   and `tests/tiered_execution.rs`: artifact tampering fails closed, verified
   effects/deoptimization match their normative baselines, canonical IR matches a
-  byte-exact independent fixture, and forced bucket collisions never authorize
-  native-cache reuse.
+  byte-exact independent fixture, forced bucket collisions never authorize
+  native-cache reuse, bootstrap source is deterministic/atomic/key-bound, and
+  pinned Clang emits real x86-64 and AArch64 COFF object candidates.
+- Native object candidates are not executed or admitted as verified artifacts by
+  this evidence; that trust-boundary step remains explicit follow-on work.
 ## References
 
 ### Host Architecture Baseline

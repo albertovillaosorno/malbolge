@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active bootstrap; direct ISA backends proposed
 
 ## Purpose
 
@@ -31,12 +31,18 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Native code emitters are not implemented. The shared prerequisite identity layer
-is executable: `execution/ir/main.rs` defines portable effect IR v1 and
-`execution/cache/main.rs` binds its canonical bytes to host OS/ISA,
-backend/native ABI revisions, and required features with collision-safe full
-equality. No x86-64/AArch64 instruction selection or executable artifact is
-claimed yet.
+A shared bootstrap host-code path is now implemented under
+`execution/native/main.rs`. It consumes portable effect IR, validates structural
+state/input/output/memory flow, renders deterministic freestanding C23, and
+binds the candidate to the same collision-safe `NativeArtifactKey` used by the
+cache identity layer. Pinned Clang 22.1.8 compiles that source into real Windows
+COFF object candidates for both x86-64 and AArch64.
+
+This does not complete this TODO. The bootstrap deliberately delegates
+instruction selection to Clang and stores compiler output only as an
+`UntrustedNativeObjectArtifact`. Direct x86-64/AArch64 emitters, independent
+semantic admission of machine code, executable-memory handling, calling/runtime
+integration, and instruction-cache synchronization remain unimplemented.
 
 ## Invariants
 
@@ -45,6 +51,11 @@ claimed yet.
   including executable-memory and instruction-cache edge cases.
 - Native cache identity includes host ISA and every assumption required by the
   compiled region.
+- Bootstrap lowering performs all local guards before the first guest-visible
+  write; guard failure never commits a partial output, memory, register, cursor,
+  or termination transition.
+- Compiler-produced object bytes remain untrusted until an independent native
+  admission boundary proves behavior against verifier-owned effect evidence.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample
@@ -65,6 +76,10 @@ deterministically without changing guest-visible state silently.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `tiered-native-execution-engine`.
+- Bootstrap evidence: `tests/tiered_execution.rs` verifies deterministic source,
+  exact cache-key binding, collapsed repeated writes, preflight-before-commit,
+  target/backend rejection, and real x86-64/AArch64 COFF generation using pinned
+  Clang 22.1.8.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

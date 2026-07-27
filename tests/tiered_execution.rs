@@ -50,7 +50,12 @@
 pub mod execution_cache;
 #[path = "../execution/ir/main.rs"]
 pub mod execution_ir;
+#[path = "../execution/native/main.rs"]
+pub mod execution_native;
 
+use std::fs::{create_dir_all, read, remove_dir_all, write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str::from_utf8;
 
 use execution_cache::{
@@ -59,6 +64,11 @@ use execution_cache::{
 };
 use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
+};
+use execution_native::{
+    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    UntrustedNativeObjectArtifact, lower_clang_c23,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -336,4 +346,332 @@ fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+const fn native_observation(
+    input_consumed: usize,
+    output_len: usize,
+    registers: ProfileRegisters,
+    termination: Option<Termination>,
+) -> ProfileMachineObservation {
+    ProfileMachineObservation {
+        input_consumed,
+        output_len,
+        registers,
+        termination,
+    }
+}
+
+const fn native_first_effect(
+    entry: ProfileMachineObservation,
+    middle: ProfileMachineObservation,
+) -> EffectOp {
+    EffectOp {
+        after: middle,
+        before: entry,
+        input: Some(TraceInput::Byte(0x41)),
+        memory_delta: ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address: 7,
+                after: 9,
+                before: 8,
+            }),
+            encryption: Some(ProfileMemoryWrite {
+                address: 11,
+                after: 13,
+                before: 12,
+            }),
+        },
+        output: Some(0x42),
+    }
+}
+
+const fn native_second_effect(
+    middle: ProfileMachineObservation,
+    exit: ProfileMachineObservation,
+) -> EffectOp {
+    EffectOp {
+        after: exit,
+        before: middle,
+        input: None,
+        memory_delta: ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address: 7,
+                after: 10,
+                before: 9,
+            }),
+            encryption: Some(ProfileMemoryWrite {
+                address: 11,
+                after: 14,
+                before: 13,
+            }),
+        },
+        output: None,
+    }
+}
+
+fn native_program() -> RegionEffectProgram {
+    let entry = native_observation(
+        0,
+        0,
+        ProfileRegisters {
+            accumulator: 3,
+            code_pointer: 4,
+            data_pointer: 5,
+        },
+        None,
+    );
+    let middle = native_observation(
+        1,
+        1,
+        ProfileRegisters {
+            accumulator: 6,
+            code_pointer: 7,
+            data_pointer: 8,
+        },
+        None,
+    );
+    let exit = native_observation(
+        1,
+        1,
+        ProfileRegisters {
+            accumulator: 9,
+            code_pointer: 10,
+            data_pointer: 11,
+        },
+        Some(Termination::HaltInstruction),
+    );
+    RegionEffectProgram {
+        effects: vec![
+            native_first_effect(entry, middle),
+            native_second_effect(middle, exit),
+        ],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 17, value: 18 }],
+        outcome: RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:native-bootstrap-fixture",
+        ),
+        step_budget: 2,
+    }
+}
+
+fn native_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(CLANG_C23_BOOTSTRAP_BACKEND_ID),
+        backend_revision: CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+#[test]
+fn native_bootstrap_source_is_deterministic_atomic_and_key_bound()
+-> Result<(), String> {
+    let program = native_program();
+    let first = lower_clang_c23(&program, native_target(HostIsa::X86_64))
+        .map_err(|error| error.to_string())?;
+    let second = lower_clang_c23(&program, native_target(HostIsa::X86_64))
+        .map_err(|error| error.to_string())?;
+    if first != second {
+        return Err(String::from(
+            "native bootstrap source is not deterministic",
+        ));
+    }
+    let expected_key =
+        NativeArtifactKey::new(&program, native_target(HostIsa::X86_64))
+            .map_err(|error| {
+                format!("native expected key failed: {error:?}")
+            })?;
+    if first.key() != &expected_key {
+        return Err(String::from("native source lost exact artifact key"));
+    }
+    let source = first.source();
+    let guard = source
+        .find("state->memory_words <= MB_U64(7)")
+        .ok_or_else(|| String::from("native memory preflight missing"))?;
+    if !source.contains("return MB_NATIVE_INVALID_ARGUMENT")
+        || !source.contains("return MB_NATIVE_GUARD_MISS")
+    {
+        return Err(String::from("native status split is missing"));
+    }
+    let commit = source
+        .find("state->output[MB_U64(0)] = MB_U8(66);")
+        .ok_or_else(|| String::from("native output commit missing"))?;
+    let final_write = source
+        .find("state->memory[MB_U64(7)] = MB_U32(10);")
+        .ok_or_else(|| String::from("collapsed final memory write missing"))?;
+    if guard >= commit || guard >= final_write {
+        return Err(String::from("native commit precedes complete preflight"));
+    }
+    if source.contains("state->memory[MB_U64(7)] = MB_U32(9);") {
+        return Err(String::from(
+            "intermediate memory state leaked into commit",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_bootstrap_rejects_structural_and_target_mismatches()
+-> Result<(), String> {
+    let mut broken_chain = native_program();
+    let second = broken_chain
+        .effects
+        .get_mut(1)
+        .ok_or_else(|| String::from("native fixture has no second effect"))?;
+    second.before.registers.accumulator = 99;
+    if lower_clang_c23(&broken_chain, native_target(HostIsa::X86_64))
+        != Err(NativeArtifactError::ObservationChain)
+    {
+        return Err(String::from(
+            "broken native observation chain was admitted",
+        ));
+    }
+
+    let mut post_termination = native_program();
+    let first = post_termination
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("native fixture has no first effect"))?;
+    first.after.termination = Some(Termination::HaltInstruction);
+    let post_termination_second = post_termination
+        .effects
+        .get_mut(1)
+        .ok_or_else(|| String::from("native fixture has no second effect"))?;
+    post_termination_second.before.termination =
+        Some(Termination::HaltInstruction);
+    if lower_clang_c23(&post_termination, native_target(HostIsa::X86_64))
+        != Err(NativeArtifactError::ObservationChain)
+    {
+        return Err(String::from(
+            "native lowering admitted effects after termination",
+        ));
+    }
+
+    let mut feature_target = NativeTargetConfig {
+        backend_id: String::from(CLANG_C23_BOOTSTRAP_BACKEND_ID),
+        backend_revision: CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: vec![String::from("avx2")],
+    };
+    if lower_clang_c23(
+        &native_program(),
+        NativeTargetIdentity::new(feature_target.clone()),
+    ) != Err(NativeArtifactError::TargetFeatures)
+    {
+        return Err(String::from("bootstrap claimed unsupported CPU features"));
+    }
+    feature_target.backend_id = String::from("direct-x86");
+    feature_target.required_features.clear();
+    if lower_clang_c23(
+        &native_program(),
+        NativeTargetIdentity::new(feature_target),
+    ) != Err(NativeArtifactError::TargetBackend)
+    {
+        return Err(String::from("wrong native backend identity was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn native_bootstrap_compiles_real_x86_64_and_aarch64_coff_objects()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let clang = root.join(".dependencies/llvm/22.1.8/bin/clang.exe");
+    if !clang.is_file() {
+        return Err(format!("pinned Clang missing: {}", clang.display()));
+    }
+    let temporary = native_test_directory(root);
+    if temporary.exists() {
+        remove_dir_all(&temporary)
+            .map_err(|error| format!("native temp cleanup: {error}"))?;
+    }
+    create_dir_all(&temporary)
+        .map_err(|error| format!("native temp create: {error}"))?;
+
+    let program = native_program();
+    let cases = [
+        (HostIsa::X86_64, [0x64u8, 0x86u8]),
+        (HostIsa::AArch64, [0x64u8, 0xaau8]),
+    ];
+    for (isa, expected_machine) in cases {
+        let candidate = lower_clang_c23(&program, native_target(isa))
+            .map_err(|error| error.to_string())?;
+        let stem = match isa {
+            HostIsa::X86_64 => "x86_64",
+            HostIsa::AArch64 => "aarch64",
+        };
+        let source_path = temporary.join(format!("{stem}.c"));
+        let object_path = temporary.join(format!("{stem}.obj"));
+        write(&source_path, candidate.source().as_bytes())
+            .map_err(|error| format!("native source write: {error}"))?;
+        compile_native_object(
+            &clang,
+            candidate.target_triple(),
+            &source_path,
+            &object_path,
+        )?;
+        let object = read(&object_path)
+            .map_err(|error| format!("native object read: {error}"))?;
+        let artifact = UntrustedNativeObjectArtifact::from_compiler_output(
+            &candidate, object,
+        )
+        .map_err(|error| error.to_string())?;
+        if artifact.key() != candidate.key()
+            || artifact.target_triple() != candidate.target_triple()
+        {
+            return Err(String::from("native object lost source identity"));
+        }
+        if artifact.object().get(..2) != Some(expected_machine.as_slice()) {
+            return Err(format!("unexpected COFF machine for {stem}"));
+        }
+    }
+    remove_dir_all(&temporary)
+        .map_err(|error| format!("native temp final cleanup: {error}"))?;
+    Ok(())
+}
+
+fn native_test_directory(root: &Path) -> PathBuf {
+    root.join(".temp/native-bootstrap-tests")
+}
+
+fn compile_native_object(
+    clang: &Path,
+    target: &str,
+    source: &Path,
+    object: &Path,
+) -> Result<(), String> {
+    let output = Command::new(clang)
+        .args([
+            "-std=c23",
+            "-ffreestanding",
+            "-nostdinc",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-O2",
+            "-c",
+            "-target",
+            target,
+        ])
+        .arg(source)
+        .arg("-o")
+        .arg(object)
+        .output()
+        .map_err(|error| format!("native Clang launch failed: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "native Clang failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    ))
 }

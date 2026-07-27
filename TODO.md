@@ -320,13 +320,17 @@ runtime, and deoptimize safely to the interpreter whenever a code-version guard
 or speculative assumption fails. The normative VM contract remains the semantic
 baseline; native tiers are accelerators of identical observable behavior.
 Portable effect IR v1 is now product-owned under `execution/ir/`, and the
-verifier/deoptimization research boundary exercises it directly. Native code
-artifacts, architecture backends, cache/orchestration, and end-to-end tier
+verifier/deoptimization research boundary exercises it directly. The first
+host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
+atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
+Windows COFF objects for both x86-64 and AArch64. Architecture-specific direct
+emitters, machine-code admission, cache/orchestration, and end-to-end tier
 selection remain open.
 
 Current implementation foundation: portable effect IR v1, verifier admission,
-deterministic deoptimization, and canonical native cache identity are
-implemented. Native x86-64/AArch64 code artifacts, durable cache storage, and
+deterministic deoptimization, canonical native cache identity, and an untrusted
+cross-ISA bootstrap object boundary are implemented. Direct x86-64/AArch64
+instruction selection, executable-memory integration, durable cache storage, and
 tier orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
@@ -694,7 +698,9 @@ field fails and admitted shortcut/deopt results match the existing region
 baseline. Product `execution/ir/` now owns effect IR v1, and
 `execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
 revisions, and required features with full equality after bucket collisions.
-Host-code artifacts, wider-profile geometry, broader mutation-history collapse,
+`execution/native/` now lowers those effects into atomic C23 host-code candidates
+and pinned Clang emits untrusted x86-64/AArch64 COFF objects. Independent native
+admission/execution, wider-profile geometry, broader mutation-history collapse,
 and end-to-end tier performance remain open.
 
 ## Optimization and accelerator architecture

@@ -63,6 +63,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   OS, ISA, backend revision, native ABI revision, and required features. Digest
   collisions never authorize reuse because full canonical/key equality remains
   authoritative; `tests/tiered_execution.rs` forces that boundary explicitly.
-- Native x86-64/AArch64 code artifacts, AOT/JIT orchestration, durable cache
-  storage/eviction, executable-memory policy, and end-to-end tier performance
-  remain unimplemented.
+- `execution/native/main.rs` now lowers structurally consistent effect IR to
+  deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
+  entry/memory/input/output guards precede a collapsed final commit. Pinned
+  Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
+  x86-64 and AArch64, and the tiered test suite checks their machine identities.
+- Independent machine-code admission, direct ISA emitters, AOT/JIT orchestration,
+  durable cache storage/eviction, executable-memory policy, and end-to-end tier
+  performance remain unimplemented.
