@@ -33,6 +33,9 @@ adds a hardware-neutral fixed-width contract for one classic specification-mode
 transition over an explicitly bounded memory snapshot. `accelerator/classic_run.py`
 adds a complete-state bounded-run contract whose classic memory width is fixed at
 59,049 words without exposing CUDA handles or layout details.
+`accelerator/profile_run.py` extends the same hardware-neutral boundary to
+validated single-word-modular ternary geometries, including the current
+14-trit/4,782,969-word profile.
 
 ### Implementation Status
 
@@ -47,8 +50,8 @@ for evidence. Accelerator unavailability and execution failure have distinct
 typed errors; neither changes candidate validity or CPU-reference semantics. The
 CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
-classic bounded execution is likewise checked against complete normative Rust
-states. Current-profile resident execution, product routing, candidate
+classic and current-profile bounded execution are likewise checked against
+complete normative Rust states. Product routing, candidate
 evaluation/search/verification ports, and ROCm remain open.
 
 ## Invariants
@@ -77,9 +80,13 @@ fails explicitly without changing correctness rules.
   Rust traces across every instruction family and adversarial transition edges.
 - `tests/vm/cuda_run.rs` checks complete resident classic bounded-run results,
   including every final memory word, against normative Rust.
-- Remaining evidence includes current-profile resident VM and candidate ports,
+- `tests/vm/cuda_profile_run.rs` checks eight complete current-profile outcomes,
+  including every one of the 4,782,969 final memory words, against normative Rust.
+- A live synthetic five-trit/243-word CUDA test proves resident kernel generation
+  is geometry-driven rather than fixed to the published 10/14-trit profiles.
+- Remaining evidence includes product-level candidate/search/verification ports,
   unavailable-device orchestration at product call sites, ROCm substitution,
-  resource metadata, and benchmark samples for any future speedup claim.
+  broader hardware evidence, and benchmark samples for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

@@ -154,9 +154,10 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Accept the measured-memory planner as a correctness-preserving allocation guard
-for resident classic CUDA execution. Do not yet conclude that it improves
-throughput or completes adaptive search breadth: live retained measurements,
-current-profile execution, and broader hardware evidence remain open.
+for resident classic and current-profile CUDA execution. Complete current-profile
+state now runs through the same planner on the RTX 4060, but do not infer a
+current-profile throughput benefit from correctness evidence. Broader hardware and
+current-profile performance measurements remain open.
 
 ## References
 

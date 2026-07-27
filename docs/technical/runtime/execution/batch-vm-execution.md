@@ -63,14 +63,15 @@ checksum. These data demonstrate this classic workload on this host only and are
 portable speedup guarantee. They do not establish a current-profile speedup;
 profile-driven batching has correctness evidence only until separately measured.
 
-The optional accelerator boundary now has both a compact one-step proving layer
-and resident classic bounded execution. Each resident CUDA work item owns one
-complete 59,049-word memory image plus independent registers and I/O and performs
-its entire explicit step budget on device; there is no guest-visible parallelism
-or shared guest state. `tests/vm/cuda_step.rs` checks transition projections, while
-`tests/vm/cuda_run.rs` compares every final memory word and complete machine state
-to normative Rust. This accelerator path is not yet routed through the Rust
-`execute_batch` product API and does not yet cover the current profile.
+The optional accelerator boundary now has a compact one-step proving layer plus
+resident classic and current-profile bounded execution. Each resident CUDA work
+item owns one complete profile-sized memory image plus independent registers and
+I/O and performs its explicit step budget on device; there is no guest-visible
+parallelism or shared guest state. `tests/vm/cuda_run.rs` compares all 59,049
+classic words, while `tests/vm/cuda_profile_run.rs` compares all 4,782,969 current
+words and complete observable state to normative Rust. These accelerator paths are
+not yet routed through the Rust `execute_batch` / `execute_profile_batch` product
+APIs, and no current-profile speedup is claimed.
 
 ## Invariants
 
@@ -101,6 +102,9 @@ deterministically without changing guest-visible state silently.
 - `tests/vm/cuda_run.rs` verifies resident classic bounded execution against
   normative Rust, including all 59,049 final memory words, registers, I/O,
   termination, step counts, resumption, and atomic rejection.
+- `tests/vm/cuda_profile_run.rs` verifies resident `malbolge-2026.2` execution
+  against normative `ProfileMachine` across eight edge/real-program cases and every
+  one of the 4,782,969 final memory words.
 - CPU performance evidence for the classic batch path only:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
   raw samples and exact commit/workload/toolchain/host provenance.

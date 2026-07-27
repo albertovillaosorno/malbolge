@@ -22,8 +22,8 @@ from accelerator.classic_run import RunStatus
 from accelerator.classic_run import STATE_WORDS
 from accelerator.classic_run import validate_classic_run_requests
 from accelerator.classic_step import StepTermination
-from accelerator.cuda.classic_step import XLAT1
-from accelerator.cuda.classic_step import XLAT2
+from accelerator.cuda.resident_kernel import ResidentGeometry
+from accelerator.cuda.resident_kernel import resident_kernel_source
 from accelerator.cuda.runtime import CudaRuntime
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
@@ -118,239 +118,6 @@ class _HostBatch:
     outputs: _WordBuffer
 
 
-def _kernel_source() -> str:
-    xlat1 = ",".join(str(value) for value in XLAT1)
-    xlat2 = ",".join(str(value) for value in XLAT2)
-    return f"""
-#define MEMORY_WORDS {MEMORY_WORDS}u
-#define STATE_WORDS {STATE_WORDS}u
-#define MAX_WORD 59048u
-#define STATUS_BUDGET 0u
-#define STATUS_TERMINATED 1u
-#define STATUS_ERROR 2u
-#define ERROR_NONE 0u
-#define ERROR_INVALID_ENCRYPTION 1u
-#define ERROR_INVALID_REQUEST 2u
-#define TERMINATION_NONE 0u
-#define TERMINATION_HALT 1u
-#define TERMINATION_NON_GRAPHICAL 2u
-
-static __device__ __constant__ unsigned char XLAT1[94] = {{{xlat1}}};
-static __device__ __constant__ unsigned char XLAT2[94] = {{{xlat2}}};
-
-static __device__ unsigned int successor(unsigned int value) {{
-    return value == MAX_WORD ? 0u : value + 1u;
-}}
-
-static __device__ unsigned int rotate_word(unsigned int value) {{
-    return (value / 3u) + ((value % 3u) * 19683u);
-}}
-
-static __device__ unsigned int crazy_trit(
-    unsigned int data,
-    unsigned int acc
-) {{
-    if (((data == 0u || data == 1u) && acc == 0u)
-        || (data == 2u && acc == 2u)) {{
-        return 1u;
-    }}
-    if ((data == 1u && acc == 2u)
-        || (data == 2u && (acc == 0u || acc == 1u))) {{
-        return 2u;
-    }}
-    return 0u;
-}}
-
-static __device__ unsigned int crazy_word(
-    unsigned int data,
-    unsigned int acc
-) {{
-    unsigned int result = 0u;
-    unsigned int place = 1u;
-    for (unsigned int trit = 0u; trit < 10u; ++trit) {{
-        result += crazy_trit(data % 3u, acc % 3u) * place;
-        place *= 3u;
-        data /= 3u;
-        acc /= 3u;
-    }}
-    return result;
-}}
-
-static __device__ bool graphical(unsigned int value) {{
-    return value >= 33u && value <= 126u;
-}}
-
-static __device__ void reject(
-    unsigned int* state,
-    unsigned int error,
-    unsigned int pointer,
-    unsigned int value
-) {{
-    state[11] = STATUS_ERROR;
-    state[12] = error;
-    state[13] = pointer;
-    state[14] = value;
-}}
-
-extern "C" __global__ void malbolge_classic_run_batch(
-    unsigned int* states,
-    unsigned int* memories,
-    const unsigned int* inputs,
-    unsigned int* outputs,
-    unsigned int count
-) {{
-    unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index >= count) {{
-        return;
-    }}
-    unsigned int* state = states + (index * STATE_WORDS);
-    unsigned int* memory = memories + (index * MEMORY_WORDS);
-    unsigned int a = state[0];
-    unsigned int c = state[1];
-    unsigned int d = state[2];
-    unsigned int input_offset = state[3];
-    unsigned int input_len = state[4];
-    unsigned int input_consumed = state[5];
-    unsigned int output_offset = state[6];
-    unsigned int output_len = state[7];
-    unsigned int output_capacity = state[8];
-    unsigned int step_budget = state[9];
-    unsigned int termination = state[10];
-
-    state[11] = STATUS_BUDGET;
-    state[12] = ERROR_NONE;
-    state[13] = 0u;
-    state[14] = 0u;
-    state[15] = 0u;
-    if (a > MAX_WORD || c > MAX_WORD || d > MAX_WORD
-        || termination > TERMINATION_NON_GRAPHICAL
-        || input_consumed > input_len || output_len > output_capacity) {{
-        reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
-        return;
-    }}
-    if (termination != TERMINATION_NONE) {{
-        state[11] = STATUS_TERMINATED;
-        return;
-    }}
-
-    for (unsigned int step = 0u; step < step_budget; ++step) {{
-        unsigned int cell = memory[c];
-        if (cell > MAX_WORD) {{
-            reject(state, ERROR_INVALID_REQUEST, c, cell);
-            break;
-        }}
-        if (!graphical(cell)) {{
-            termination = TERMINATION_NON_GRAPHICAL;
-            state[11] = STATUS_TERMINATED;
-            state[15] += 1u;
-            break;
-        }}
-        unsigned int decoded = XLAT1[((cell - 33u) + (c % 94u)) % 94u];
-        if (decoded == (unsigned int)'v') {{
-            termination = TERMINATION_HALT;
-            state[11] = STATUS_TERMINATED;
-            state[15] += 1u;
-            break;
-        }}
-        unsigned int planned_a = a;
-        unsigned int planned_c = c;
-        unsigned int planned_d = d;
-        unsigned int data_before = 0u;
-        unsigned int data_after = 0u;
-        bool data_write = false;
-        bool input_advance = false;
-        bool output_present = false;
-        unsigned int output_value = 0u;
-
-        if (decoded == (unsigned int)'p' || decoded == (unsigned int)'*'
-            || decoded == (unsigned int)'i' || decoded == (unsigned int)'j') {{
-            data_before = memory[d];
-            if (data_before > MAX_WORD) {{
-                reject(state, ERROR_INVALID_REQUEST, d, data_before);
-                break;
-            }}
-        }}
-        if (decoded == (unsigned int)'p') {{
-            data_after = crazy_word(data_before, a);
-            planned_a = data_after;
-            data_write = true;
-        }} else if (decoded == (unsigned int)'*') {{
-            data_after = rotate_word(data_before);
-            planned_a = data_after;
-            data_write = true;
-        }} else if (decoded == (unsigned int)'i') {{
-            planned_c = data_before;
-        }} else if (decoded == (unsigned int)'j') {{
-            planned_d = data_before;
-        }} else if (decoded == (unsigned int)'<') {{
-            if (input_consumed < input_len) {{
-                planned_a = inputs[input_offset + input_consumed];
-                input_advance = true;
-            }} else {{
-                planned_a = MAX_WORD;
-            }}
-        }} else if (decoded == (unsigned int)'/') {{
-            if (output_len >= output_capacity) {{
-                reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
-                break;
-            }}
-            output_present = true;
-            output_value = a & 255u;
-        }}
-
-        unsigned int encryption_pointer = planned_c;
-        unsigned int encryption_before = memory[encryption_pointer];
-        if (encryption_before > MAX_WORD) {{
-            reject(
-                state,
-                ERROR_INVALID_REQUEST,
-                encryption_pointer,
-                encryption_before
-            );
-            break;
-        }}
-        unsigned int encryption_input = encryption_before;
-        if (data_write && d == encryption_pointer) {{
-            encryption_input = data_after;
-        }}
-        if (!graphical(encryption_input)) {{
-            reject(
-                state,
-                ERROR_INVALID_ENCRYPTION,
-                encryption_pointer,
-                encryption_input
-            );
-            break;
-        }}
-        unsigned int encryption_after = XLAT2[encryption_input - 33u];
-
-        if (data_write && d != encryption_pointer) {{
-            memory[d] = data_after;
-        }}
-        memory[encryption_pointer] = encryption_after;
-        a = planned_a;
-        c = successor(planned_c);
-        d = successor(planned_d);
-        if (input_advance) {{
-            input_consumed += 1u;
-        }}
-        if (output_present) {{
-            outputs[output_offset + output_len] = output_value;
-            output_len += 1u;
-        }}
-        state[15] += 1u;
-    }}
-
-    state[0] = a;
-    state[1] = c;
-    state[2] = d;
-    state[5] = input_consumed;
-    state[7] = output_len;
-    state[10] = termination;
-}}
-"""
-
-
 @dataclass(frozen=True, slots=True)
 class _ResidentChunk:
     """One device-resident independently launchable classic batch chunk."""
@@ -374,7 +141,18 @@ class CudaClassicRunAdapter:
         runtime = CudaRuntime(device_id)
         try:
             info = runtime.device_info
-            module = runtime.compile_module(_kernel_source(), info.arch)
+            module = runtime.compile_module(
+                resident_kernel_source(
+                    ResidentGeometry(
+                        eof_word=MEMORY_WORDS - 1,
+                        memory_words=MEMORY_WORDS,
+                        word_modulus=MEMORY_WORDS,
+                        word_trits=10,
+                    ),
+                    "malbolge_classic_run_batch",
+                ),
+                info.arch,
+            )
             kernel = runtime.get_kernel(module, b"malbolge_classic_run_batch")
         except AcceleratorExecutionError:
             runtime.close()
@@ -492,12 +270,14 @@ class CudaClassicRunAdapter:
                     output_budget_multiplier=max_runs,
                 )
                 pointers = _upload_host_batch(self._runtime, hosts)
-                chunks.append(_ResidentChunk(
-                    count=len(chunk_requests),
-                    hosts=hosts,
-                    pointers=pointers,
-                ))
-        except (AcceleratorExecutionError, InvalidPrimitiveBatchError):
+                chunks.append(
+                    _ResidentChunk(
+                        count=len(chunk_requests),
+                        hosts=hosts,
+                        pointers=pointers,
+                    )
+                )
+        except AcceleratorExecutionError, InvalidPrimitiveBatchError:
             _free_resident_chunks(self._runtime, chunks)
             raise
         return CudaClassicRunSession(
@@ -854,9 +634,8 @@ def _session_output_capacity(
     *,
     max_runs: int,
 ) -> int:
-    output_capacity = (
-        len(request.output_bytes)
-        + (request.step_budget * max_runs)
+    output_capacity = len(request.output_bytes) + (
+        request.step_budget * max_runs
     )
     if output_capacity > MAX_U32:
         message = (
@@ -877,10 +656,7 @@ def _resident_item_bytes(
         max_runs=output_budget_multiplier,
     )
     words = (
-        STATE_WORDS
-        + MEMORY_WORDS
-        + len(request.input_bytes)
-        + output_capacity
+        STATE_WORDS + MEMORY_WORDS + len(request.input_bytes) + output_capacity
     )
     return words * _DEVICE_WORD_BYTES
 
@@ -974,19 +750,21 @@ def _decode_observations(
     observations: list[ClassicRunObservation] = []
     for index in range(count):
         base = index * STATE_WORDS
-        observations.append(ClassicRunObservation(
-            accumulator=states[base],
-            code_pointer=states[base + 1],
-            data_pointer=states[base + 2],
-            error=RunError(states[base + _ERROR_INDEX]),
-            error_pointer=states[base + _ERROR_POINTER_INDEX],
-            error_value=states[base + _ERROR_VALUE_INDEX],
-            input_consumed=states[base + 5],
-            output_length=states[base + 7],
-            status=RunStatus(states[base + _STATUS_INDEX]),
-            steps=states[base + _STEPS_INDEX],
-            termination=StepTermination(states[base + 10]),
-        ))
+        observations.append(
+            ClassicRunObservation(
+                accumulator=states[base],
+                code_pointer=states[base + 1],
+                data_pointer=states[base + 2],
+                error=RunError(states[base + _ERROR_INDEX]),
+                error_pointer=states[base + _ERROR_POINTER_INDEX],
+                error_value=states[base + _ERROR_VALUE_INDEX],
+                input_consumed=states[base + 5],
+                output_length=states[base + 7],
+                status=RunStatus(states[base + _STATUS_INDEX]),
+                steps=states[base + _STEPS_INDEX],
+                termination=StepTermination(states[base + 10]),
+            )
+        )
     return tuple(observations)
 
 
@@ -1019,9 +797,7 @@ def _upload_host_batch(
     return pointers[0], pointers[1], pointers[2], pointers[3]
 
 
-def _copy_words(
-    runtime: CudaRuntime, host: _WordBuffer
-) -> int:
+def _copy_words(runtime: CudaRuntime, host: _WordBuffer) -> int:
     pointer = runtime.allocate(ctypes.sizeof(host.view))
     try:
         runtime.copy_to_device(pointer, host.view)
@@ -1045,24 +821,26 @@ def _decode_results(
         memory_base = index * MEMORY_WORDS
         output_offset = states[base + 6]
         output_len = states[base + 7]
-        results.append(ClassicRunResult(
-            accumulator=states[base],
-            code_pointer=states[base + 1],
-            data_pointer=states[base + 2],
-            error=RunError(states[base + _ERROR_INDEX]),
-            error_pointer=states[base + _ERROR_POINTER_INDEX],
-            error_value=states[base + _ERROR_VALUE_INDEX],
-            input_consumed=states[base + 5],
-            memory=tuple(
-                memories[memory_base : memory_base + MEMORY_WORDS]
-            ),
-            output_bytes=tuple(
-                outputs[output_offset : output_offset + output_len]
-            ),
-            status=RunStatus(states[base + _STATUS_INDEX]),
-            steps=states[base + _STEPS_INDEX],
-            termination=StepTermination(states[base + 10]),
-        ))
+        results.append(
+            ClassicRunResult(
+                accumulator=states[base],
+                code_pointer=states[base + 1],
+                data_pointer=states[base + 2],
+                error=RunError(states[base + _ERROR_INDEX]),
+                error_pointer=states[base + _ERROR_POINTER_INDEX],
+                error_value=states[base + _ERROR_VALUE_INDEX],
+                input_consumed=states[base + 5],
+                memory=tuple(
+                    memories[memory_base : memory_base + MEMORY_WORDS]
+                ),
+                output_bytes=tuple(
+                    outputs[output_offset : output_offset + output_len]
+                ),
+                status=RunStatus(states[base + _STATUS_INDEX]),
+                steps=states[base + _STEPS_INDEX],
+                termination=StepTermination(states[base + 10]),
+            )
+        )
     return tuple(results)
 
 

@@ -54,6 +54,8 @@ mod batch;
 mod capsule;
 #[path = "vm/conformance.rs"]
 mod conformance;
+#[path = "vm/cuda_profile_run.rs"]
+mod cuda_profile_run;
 #[path = "vm/cuda_run.rs"]
 mod cuda_run;
 #[path = "vm/cuda_step.rs"]

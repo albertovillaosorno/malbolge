@@ -81,8 +81,10 @@ example probe points, not supported-range endpoints.
   `benchmarks/accelerator/evidence/2026-07-27-unbounded-vram-windows-x86_64/`
   retains the 100,000 GiB / 100,000-item synthetic case. All requested work is
   admitted and split only at the classic backend's 32-bit launch-index boundary.
-- Research evidence remains incomplete until retained throughput samples,
-  current-profile resident execution, and broader live-hardware evidence exist.
+- Current-profile resident execution now consumes the same measured resource
+  planner with exact 4,782,969-word item sizing; full-state RTX 4060 differential
+  evidence passes. Broader live-hardware evidence and current-profile throughput
+  samples remain open.
 - Retained end-to-end throughput evidence under
   `benchmarks/accelerator/evidence/2026-07-27-classic-throughput-rtx4060/`
   contains 15 raw samples for batches 1/8/32/128 on an exact 64-step workload.
@@ -110,6 +112,6 @@ example probe points, not supported-range endpoints.
   reaches about 1,076.38 VMs/s at batch 128 and lowers wall time about 39.5x versus
   the original phase baseline. Complete Python result materialization is now the
   dominant phase (~75%).
-- Performance evidence remains incomplete: persistent resident continuation with
-  explicit snapshot materialization, current-profile execution, and broader
-  live-hardware measurements are still required.
+- Performance evidence remains incomplete: current-profile throughput and broader
+  live-hardware measurements are still required. Persistent classic continuation
+  is tracked by its own retained session evidence.

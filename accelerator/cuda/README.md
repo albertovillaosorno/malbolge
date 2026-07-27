@@ -5,13 +5,13 @@ accelerator contract. It is not a semantic dependency of the compiler, verifier,
 or VM.
 
 The active slices evaluate exact classic `rotate`/`crazy` batches, compact
-one-step classic transitions, and complete resident classic bounded runs with
-integer-only CUDA kernels. For resident execution, one GPU thread owns one
-independent 59,049-word memory image and performs its whole step budget without
-round-tripping guest state through the host between steps. A narrow
+one-step classic transitions, and complete resident bounded runs with integer-only
+CUDA kernels. The resident kernel is geometry-bound: classic uses 10 trits and
+59,049 words, while `malbolge-2026.2` uses 14 trits and 4,782,969 words. One GPU
+thread owns one independent complete memory image and performs its whole step
+budget without round-tripping guest state through the host between steps. A narrow
 standard-library `ctypes` runtime binds only the reviewed NVRTC and CUDA Driver API
-calls needed by the adapter; compiler, verifier, VM, and shared accelerator code
-never import CUDA APIs. Normative Rust execution remains the differential
+calls needed by the adapter. Normative Rust execution remains the differential
 correctness oracle.
 
 The repository pins CUDA 13.3 Update 1 for Windows x86-64 through
@@ -27,16 +27,22 @@ sends fourteen compact transition fixtures through an external CUDA worker and
 requires exact equality with normative `Machine::step_traced()` across all seven
 instructions, no-op, EOF, non-graphical termination, rejected jump atomicity,
 pointer wrap, data/encryption aliasing, and already-terminated state. A second
-Rust integration sends nine complete resident states through a binary worker and
-compares all 59,049 memory words plus registers, I/O, termination, step counts,
-and atomic rejection after bounded multi-step execution. This is correctness
-evidence, not a speedup claim.
+Rust integration sends nine complete classic resident states through a binary
+worker and compares all 59,049 memory words plus registers, I/O, termination,
+step counts, and atomic rejection. A scalable integration separately supplies
+canonical geometry from Rust `current_profile()` and compares eight complete
+`malbolge-2026.2` outcomes across all 4,782,969 final memory words, including real
+I/O, EOF, non-graphical termination, rejected jump atomicity, maximum-pointer
+wrap, bounded budget exhaustion, live checkpoint resumption, and
+already-terminated execution. This is correctness evidence, not a
+speedup claim.
 
 The classic resident path now measures free/total device memory with
 `cuMemGetInfo_v2` and SM/thread capacity with `cuDeviceGetAttribute`, then applies
 the hardware-neutral resource planner before allocation. There is no fixed
 RTX-specific batch ceiling. Classic launches also split before their 32-bit memory-index product can
 overflow. Very large VRAM therefore expands total capacity without requiring one
-unsafe monolithic launch. Current-profile resident execution, product-level batch
-routing, asynchronous transfer/stream tuning, broader hardware evidence,
-throughput evidence, and CUDA superoptimization remain open.
+unsafe monolithic launch. Scalable profile execution uses the same live resource
+planner and compact contiguous 32-bit host memory representation. Product-level
+batch routing, current-profile throughput evidence, asynchronous transfer/stream
+tuning, broader hardware evidence, and CUDA superoptimization remain open.

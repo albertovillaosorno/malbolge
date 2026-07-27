@@ -65,7 +65,12 @@ batches.
   nine results against normative Rust across every final memory word plus
   registers, I/O, termination, steps, resumption, wrap, aliasing, and atomic
   rejection. RTX 4060 (`sm_89`) development evidence passes this differential.
-- Current-profile coverage, adaptive resource sizing, product-level batch routing,
-  and performance evidence remain open.
+- Current-profile resident coverage is now active behind explicit scalable
+  geometry. `tests/vm/cuda_profile_run.rs` supplies canonical geometry from Rust
+  and compares eight complete `malbolge-2026.2` results across all 4,782,969 final
+  words plus registers, I/O, termination, steps, wrap, and atomic rejection on the
+  RTX 4060 (`sm_89`).
+- Product-level batch routing, current-profile throughput evidence, broader live
+  hardware, and remaining search/verification accelerator ports remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

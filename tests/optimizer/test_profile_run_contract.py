@@ -1,0 +1,112 @@
+# Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier: MIT
+"""Contract tests for scalable resident profile accelerator requests."""
+
+from __future__ import annotations
+
+from array import array
+from dataclasses import replace
+from typing import Final
+from typing import TYPE_CHECKING
+
+from accelerator.classic_step import StepTermination
+from accelerator.exact_primitives import InvalidPrimitiveBatchError
+from accelerator.profile_run import ProfileRunGeometry
+from accelerator.profile_run import ProfileRunRequest
+from accelerator.profile_run import validate_profile_run_requests
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+SMALL_TRITS: Final = 5
+SMALL_WORDS: Final = 243
+WORD_BYTES: Final = 4
+MODULUS_ERROR: Final = "modulus 244"
+TOO_SMALL_ERROR: Final = "cannot represent graphical encryption values"
+MEMORY_LENGTH_ERROR: Final = "requires 243 words"
+REGISTER_ERROR: Final = "code pointer outside"
+TERMINATION_ERROR: Final = "invalid resident termination"
+GEOMETRY = ProfileRunGeometry(
+    eof_word=SMALL_WORDS - 1,
+    memory_words=SMALL_WORDS,
+    word_modulus=SMALL_WORDS,
+    word_trits=SMALL_TRITS,
+)
+
+
+def test_profile_geometry_accepts_exact_ternary_modulus() -> None:
+    """Exact single-word-modular ternary geometry is admitted."""
+    assert GEOMETRY.validated() is GEOMETRY
+
+
+def test_profile_geometry_rejects_nonternary_modulus() -> None:
+    """Geometry cannot silently reinterpret a non-power-of-three word domain."""
+    invalid = replace(
+        GEOMETRY, word_modulus=244, memory_words=244, eof_word=243
+    )
+    assert MODULUS_ERROR in _invalid(invalid.validated)
+
+
+def test_profile_geometry_rejects_too_small_encryption_domain() -> None:
+    """A profile must represent every graphical self-encryption result."""
+    too_small = ProfileRunGeometry(
+        eof_word=80,
+        memory_words=81,
+        word_modulus=81,
+        word_trits=4,
+    )
+    assert TOO_SMALL_ERROR in _invalid(too_small.validated)
+
+
+def test_profile_request_uses_compact_u32_memory() -> None:
+    """Scalable memory is a compact contiguous unsigned-word array."""
+    request = _request()
+    observed = validate_profile_run_requests(GEOMETRY, (request,))
+    assert observed == (request,)
+    assert request.memory.itemsize == WORD_BYTES
+
+
+def test_profile_request_rejects_memory_and_register_drift() -> None:
+    """Memory shape/domain and registers remain geometry-bound."""
+    short = _request(memory=array("I", [0]) * (SMALL_WORDS - 1))
+    assert MEMORY_LENGTH_ERROR in _invalid(
+        lambda: validate_profile_run_requests(GEOMETRY, (short,))
+    )
+    bad_register = replace(_request(), code_pointer=SMALL_WORDS)
+    assert REGISTER_ERROR in _invalid(
+        lambda: validate_profile_run_requests(GEOMETRY, (bad_register,))
+    )
+
+
+def test_profile_request_rejects_raw_termination_integer() -> None:
+    """Dynamic callers cannot substitute an untyped termination integer."""
+    request = replace(_request(), termination=1)
+    assert TERMINATION_ERROR in _invalid(
+        lambda: validate_profile_run_requests(GEOMETRY, (request,))
+    )
+
+
+def _request(
+    *,
+    memory: array[int] | None = None,
+) -> ProfileRunRequest:
+    return ProfileRunRequest(
+        accumulator=0,
+        code_pointer=0,
+        data_pointer=0,
+        input_bytes=(),
+        input_consumed=0,
+        memory=memory if memory is not None else array("I", [0]) * SMALL_WORDS,
+        output_bytes=(),
+        step_budget=1,
+        termination=StepTermination.NONE,
+    )
+
+
+def _invalid(call: Callable[[], object]) -> str:
+    try:
+        _ = call()
+    except InvalidPrimitiveBatchError as error:
+        return str(error)
+    message = "expected InvalidPrimitiveBatchError"
+    raise AssertionError(message)

@@ -407,8 +407,9 @@ Remove the practical 59,049-word ceiling from current Malbolge while retaining
 `malbolge-2026.2` geometry with 4,782,969 directly addressed words, and the new
 safe-Rust `ProfileMachine` executes that profile explicitly while the classic
 facade remains ten-trit. Current-profile tracing is also explicit and
-profile-aware; compiler, native, and accelerator consumers still
-need profile-driven adoption rather than silent fallback.
+profile-aware; the resident CUDA accelerator now has explicit current-profile
+adoption, while compiler/native consumers and product-level accelerator routing
+still require profile-driven adoption rather than silent fallback.
 
 ### TODO - Historical-interpreter fallback capsule
 
@@ -761,9 +762,11 @@ returns `StepTrace`-equivalent projections and is checked by Rust across all
 instruction families plus rejection/wrap/alias edges. Resident classic execution
 now keeps each complete 59,049-word state on GPU for a bounded multi-step run and
 matches normative Rust across every final memory word, registers, I/O,
-termination, step count, resumption, and atomic rejection. Current-profile
-coverage, product-level batch routing, adaptive resource policy, and measured
-throughput remain open.
+termination, step count, resumption, and atomic rejection. The same geometry-bound
+resident kernel now executes `malbolge-2026.2`; Rust compares eight current cases
+across all 4,782,969 final words plus complete observable state. Product-level
+batch routing, current-profile throughput, broader hardware evidence, and
+remaining accelerator ports remain open.
 
 ### TODO - CUDA superoptimizer
 

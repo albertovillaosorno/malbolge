@@ -89,8 +89,26 @@ block. The hardware-neutral planner reserves the larger of 8 MiB or 1/16 of tota
 memory, preserves request order across automatically split chunks, and rejects
 any request that cannot fit alone before allocation. There is no configured VRAM
 ceiling: backend-specific integer/addressing limits cause additional chunks rather
-than rejection or truncation. Current-profile resident execution and performance
-claims remain open.
+than rejection or truncation.
+
+Scalable resident execution is active through `ProfileRunGeometry` and the
+`ProfileRunRequest`/`ProfileRunResult` contract. Geometry is explicit and
+fail-closed: memory size equals the ternary word modulus, EOF equals modulus minus
+one, and the modulus must equal `3^word_trits`. Scalable memory is represented as
+contiguous 32-bit words rather than boxed Python integers. The shared resident
+kernel specializes crazy width, rotate high-trit weight, EOF, wrap modulus, and
+memory geometry at NVRTC compile time while retaining the same instruction tables
+and atomic transition rules.
+
+`tests/vm/cuda_profile_run.rs` obtains geometry exclusively from canonical Rust
+`current_profile()` and compares eight complete `malbolge-2026.2` cases against
+`ProfileMachine`. The RTX 4060 / `sm_89` differential compares every one of the
+4,782,969 final memory words plus registers, input/output, termination, step
+counts, and rejection details. Cases cover the real six-step current program with
+input and EOF, rejected jump atomicity, non-graphical termination, maximum-pointer
+wrap, bounded budget exhaustion, live checkpoint resumption, and
+already-terminated execution. CUDA remains optional and is not profile
+authority. Current-profile throughput and product-level batch routing remain open.
 
 ## Invariants
 
@@ -117,10 +135,11 @@ fails explicitly without changing correctness rules.
   verifies NVRTC -> PTX -> Driver API execution with the pinned CUDA 13.3 Update
   1 redistributables.
 - Compact classic-step differential evidence covers VM state/I/O/mutation trace
-  projections and atomic rejection. Resident classic evidence additionally
-  compares complete 59,049-word states after bounded multi-step execution against
-  normative Rust. Adaptive resource limits, product-level batch routing, throughput
-  benchmarks, and current-profile coverage remain required before this TODO can
+  projections and atomic rejection. Resident classic evidence compares complete
+  59,049-word states; scalable resident evidence compares complete 4,782,969-word
+  current-profile states against normative Rust. Product-level batch routing,
+  current-profile throughput evidence, broader live-hardware evidence, and the
+  remaining search/verification ports are still required before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

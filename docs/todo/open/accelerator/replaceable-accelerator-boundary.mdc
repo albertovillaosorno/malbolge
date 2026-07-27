@@ -52,13 +52,16 @@ directly on CUDA APIs.
   rotate/crazy batches; CPU scalar and optional CUDA adapters implement the same
   request/result contract. `ClassicStepRequest`/`ClassicStepResult` additionally
   define one compact specification-mode VM transition, while
-  `ClassicRunRequest`/`ClassicRunResult` define complete classic bounded execution
-  without exposing CUDA APIs to VM/compiler/verifier code. Shared validation
-  rejects malformed requests before backend execution.
+  `ClassicRunRequest`/`ClassicRunResult` define complete classic bounded execution,
+  while `ProfileRunGeometry` and the scalable run request/result contract extend
+  the boundary to validated ternary profile geometry without exposing CUDA APIs.
+  Shared validation rejects malformed requests before backend execution.
 - Current differential evidence executes CUDA on available hardware over boundary
   values plus deterministic 4,096-element corpora. Rust differential evidence
-  covers compact classic transitions and resident complete-state bounded runs.
-  Current-profile resident VM/search/verification ports, ROCm, resource policy,
-  and benchmark claims remain open.
+  covers compact classic transitions plus resident classic and current-profile
+  complete-state bounded runs. A live five-trit/243-word CUDA test additionally
+  proves the generated resident kernel is not fixed to canonical 10/14-trit
+  geometry. Product routing, search/verification ports, ROCm, broader hardware,
+  and current-profile throughput evidence remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
