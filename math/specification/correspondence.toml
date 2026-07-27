@@ -193,3 +193,11 @@ label = "eq:state-graph-consumed-input-prefix"
 domain = "classic states identical except consumed input-prefix contents; exhaustive first-byte convergence fixture"
 mechanism = "structural-reduction-plus-exhaustive-byte-fixture"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::consumed_input_prefix_is_future_irrelevant"]
+
+[[correspondence]]
+id = "state-graph-terminal-state"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-terminal-state"
+domain = "already-terminated classic states with equal profile, output prefix, and termination reason"
+mechanism = "structural-reduction-with-diverse-terminal-fixtures"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/exact.rs::terminal_state_drops_dead_details", "algorithms/self-modification-state-graph-optimizer/tests/exact.rs::terminal_projection_rejects_live_machine"]

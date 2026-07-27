@@ -10,3 +10,7 @@ from the future key only after the common second input overwrites `A`.
 
 Further reduced-state tests belong here only after they state a falsifiable
 domain and compare against the exact baseline.
+
+Terminal-state fixtures vary halt-source memory, registers, and input while
+requiring one terminal future key; a separate fixture proves live machines are
+not admitted to that reduction.

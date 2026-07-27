@@ -123,6 +123,14 @@ pub struct FutureInputSnapshot {
     termination: Option<Termination>,
 }
 
+/// Reduced key for a machine whose termination is already stable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminalFutureSnapshot {
+    output: Box<[u8]>,
+    profile_id: &'static str,
+    termination: Termination,
+}
+
 /// Collision-safe exact-state graph and deterministic observation statistics.
 #[derive(Clone, Debug)]
 pub struct ExactStateGraph {
@@ -141,6 +149,8 @@ pub enum StateGraphError {
     InputCursorOutOfRange,
     /// Classic source could not initialize a machine.
     Load(malbolge::LoadError),
+    /// Terminal future projection was requested from a live machine.
+    MachineNotTerminated,
     /// Public VM memory access unexpectedly failed.
     Memory(malbolge::MemoryError),
     /// Exact graph node count exceeded the stable identifier domain.
@@ -423,6 +433,24 @@ const fn normalize_step_result(
         },
         Err(error) => Err(StateGraphError::UnexpectedMachine(error)),
     }
+}
+
+/// Builds a reduced future key for an already terminated classic machine.
+///
+/// # Errors
+///
+/// Returns [`StateGraphError::MachineNotTerminated`] while execution is live.
+pub fn terminal_future_snapshot(
+    machine: &Machine,
+) -> Result<TerminalFutureSnapshot, StateGraphError> {
+    let termination = machine
+        .termination()
+        .ok_or(StateGraphError::MachineNotTerminated)?;
+    Ok(TerminalFutureSnapshot {
+        output: machine.output().into(),
+        profile_id: HISTORICAL_PROFILE_ID,
+        termination,
+    })
 }
 
 const fn termination_tag(termination: Option<Termination>) -> u8 {

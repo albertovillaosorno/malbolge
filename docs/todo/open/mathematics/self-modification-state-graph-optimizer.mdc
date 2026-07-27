@@ -51,7 +51,10 @@ VM evidence.
   retaining the exact cursor and remaining suffix. A `cbO` two-input fixture
   exhausts all 256 first-byte values and confirms convergence before/after the
   common future halt.
-- Memory/register/output reductions, broader mutation-history collapse,
+- Already-terminated states have a second admitted key containing only profile,
+  committed output, and termination reason; varied memory/register/input fixtures
+  converge and live machines fail closed outside this domain.
+- Live memory/register/output reductions, broader mutation-history collapse,
   native-region shortcuts, and performance claims remain active research and
   must be falsified independently against the exact baseline.
 
@@ -89,5 +92,6 @@ VM evidence.
   evidence for reduced keys, merge rules, native-region safety, and performance
   remains open and must retain negative/null outcomes.
 - Mathematical evidence currently covers exact identity, collision-safe merging,
-  and consumed-input-prefix reduction. Any further reduced equivalence must add
+  consumed-input-prefix reduction, and terminal dead-state reduction. Any
+  further reduced equivalence must add
   its own labelled equation and executable correspondence before use.

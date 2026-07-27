@@ -19,3 +19,8 @@ The first admitted reduction is `future_input_snapshot`: it keeps the committed
 input cursor and exact remaining suffix but drops the contents of bytes strictly
 before the cursor. `exact.rs` exhausts all 256 possible consumed first bytes in a
 converging two-input fixture before accepting this reduction.
+
+The second admitted reduction is `terminal_future_snapshot`. For an already
+terminated classic machine it retains only profile identity, committed output,
+and termination reason; memory/register/input state is dead for future requests.
+The projection rejects live machines fail-closed.

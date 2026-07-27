@@ -16,8 +16,13 @@ required = true
 correspondence = "math/specification/correspondence.toml"
 rejection_condition = "any exact-state hash collision that merges unequal snapshots, or any reduced-key merge with divergent future observations"
 
-[reduction]
+[reduction.consumed_input_prefix]
 baseline = "exact-state"
 candidate = "drop-consumed-input-prefix-content"
 domain = "same cursor, same remaining input suffix, otherwise exact-equal state"
 first_byte_domain = 256
+
+[reduction.terminal_state]
+baseline = "exact-state"
+candidate = "drop-dead-state-after-termination"
+domain = "terminated state with exact profile, output prefix, and termination reason"

@@ -605,10 +605,11 @@ Canonical forms, lower bounds, and search-space reductions remain open.
 
 Model self-modifying execution as verified state graphs. The active first slice
 now provides a collision-safe exact classic-state baseline and the first proved
-reduction: consumed input-prefix contents may be removed while the cursor and
-remaining suffix stay exact. A two-input fixture exhausts all 256 first-byte
-values. Memory/register/output reductions, broader mutation-history collapse,
-and native-region shortcuts remain research work.
+reductions: consumed input-prefix contents may be removed while cursor/suffix
+stay exact, and terminated states may retain only profile/output/termination.
+The input reduction exhausts all 256 first-byte values; terminal fixtures vary
+memory/register/input state. Live-state memory/register/output reductions,
+broader mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 

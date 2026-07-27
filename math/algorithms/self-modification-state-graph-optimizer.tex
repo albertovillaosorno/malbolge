@@ -82,6 +82,24 @@ input and after the following halt. This correspondence establishes the
 reduction only for consumed-prefix content; it does not justify dropping the
 cursor or any remaining input byte.
 
+\section{Terminal-state reduction}
+
+Once $\tau\neq\varnothing$, the normative machine returns the same termination
+reason on later step/run requests without reading memory, registers, or input and
+without committing further output. For already terminated states define
+\begin{equation}
+  F_{\tau}(s)=\left(p,O,\tau\right).
+  \label{eq:state-graph-terminal-state}
+\end{equation}
+The committed output prefix remains in the key because it is externally
+observable history; memory, registers, input bytes/cursor, and other live-state
+components are dead for future execution after termination.
+
+The executable correspondence varies valid halt-source memory images, register
+values, and input while preserving profile/output/termination and verifies the
+same $F_{\tau}$ plus stable repeated termination. A live machine is rejected by
+the terminal projection rather than being coerced into this reduced domain.
+
 \section{Reduction research boundary}
 
 A proposed reduced key $R(s)$ is not trusted merely because it hashes or groups

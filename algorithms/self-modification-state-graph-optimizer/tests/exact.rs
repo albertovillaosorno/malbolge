@@ -44,20 +44,40 @@
 
 //! Exact-state graph baseline correctness fixtures.
 
-use malbolge::{ExecutionMode, Machine, StepOutcome, Termination};
+use malbolge::{
+    ExecutionMode, Machine, Registers, StepOutcome, Termination, Word, load,
+};
 
 use crate::state_graph::{
-    ExactStateGraph, admitted_mode, constant_collision_digest,
-    future_input_snapshot,
+    ExactStateGraph, StateGraphError, TerminalFutureSnapshot, admitted_mode,
+    constant_collision_digest, future_input_snapshot, terminal_future_snapshot,
 };
 
 const BUDGET: usize = 8;
+const HALT_SECOND_BYTES: &[u8; 8] = b"&'=CPabt";
+const REGISTER_VARIANTS: &[u16; 3] = &[0, 7, 59_048];
 const INPUT_PREFIX_RESET: &[u8] = b"cbO";
 const INPUT_STEPS: usize = 2;
 const SHARED_SECOND_INPUT: u8 = 0x7a;
 const ROUNDTRIP: &[u8] = include_bytes!(
     "../../../tests/compatibility/specification/spec-io-roundtrip.malbolge"
 );
+
+fn check_terminal_reference(
+    expected: &mut Option<TerminalFutureSnapshot>,
+    observed: TerminalFutureSnapshot,
+) -> Result<(), String> {
+    match expected {
+        Some(reference) if reference != &observed => {
+            Err(String::from("terminal future key retained dead state"))
+        },
+        Some(_reference) => Ok(()),
+        None => {
+            *expected = Some(observed);
+            Ok(())
+        },
+    }
+}
 
 #[test]
 fn exact_replay_deduplicates_nodes_and_edges() -> Result<(), String> {
@@ -164,4 +184,65 @@ fn consumed_input_prefix_is_future_irrelevant() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn terminal_state_drops_dead_details() -> Result<(), String> {
+    let mut expected = None;
+    for second in HALT_SECOND_BYTES {
+        let source = [b'Q', *second];
+        let memory = load(&source).map_err(|error| {
+            format!("terminal fixture load failed: {error}")
+        })?;
+        for register_value in REGISTER_VARIANTS {
+            let value = Word::new(*register_value).map_err(|error| {
+                format!("terminal register failed: {error}")
+            })?;
+            let registers = Registers {
+                accumulator: value,
+                code_pointer: Word::ZERO,
+                data_pointer: value,
+            };
+            let input = vec![register_value.to_le_bytes()[0]];
+            let mut machine =
+                Machine::with_registers(memory.clone(), input, registers);
+            let outcome = machine
+                .step()
+                .map_err(|error| format!("terminal halt failed: {error}"))?;
+            if outcome != StepOutcome::Terminated(Termination::HaltInstruction)
+            {
+                return Err(format!(
+                    "terminal fixture did not halt: {outcome:?}"
+                ));
+            }
+            let reduced =
+                terminal_future_snapshot(&machine).map_err(|error| {
+                    format!("terminal snapshot failed: {error:?}")
+                })?;
+            check_terminal_reference(&mut expected, reduced)?;
+            let repeated = machine.step().map_err(|error| {
+                format!("repeated terminal step failed: {error}")
+            })?;
+            if repeated != StepOutcome::Terminated(Termination::HaltInstruction)
+            {
+                return Err(String::from(
+                    "terminated machine changed future result",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn terminal_projection_rejects_live_machine() -> Result<(), String> {
+    let machine = Machine::from_source(ROUNDTRIP, Vec::new())
+        .map_err(|error| format!("live terminal fixture failed: {error}"))?;
+    if terminal_future_snapshot(&machine)
+        == Err(StateGraphError::MachineNotTerminated)
+    {
+        Ok(())
+    } else {
+        Err(String::from("live machine produced a terminal future key"))
+    }
 }

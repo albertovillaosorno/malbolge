@@ -95,9 +95,16 @@ suffix. The `cbO` fixture (`<`, `<`, `v`) exhausts all 256 possible first input
 bytes, applies one common second byte that overwrites `A`, and proves the reduced
 keys are equal both before and after the common future halt.
 
-This does not justify removing the input cursor, changing the remaining suffix,
-removing output history, reducing memory, or claiming a performance improvement.
-Those remain separate falsifiable hypotheses.
+A second structural reduction is also admitted for already terminated states.
+`terminal_future_snapshot` keeps profile identity, committed output prefix, and
+termination reason while dropping memory, registers, and input state. Fixtures
+vary valid halt-source memory, `A/D`, and input and still produce one future key;
+a live machine is rejected from this domain.
+
+These results do not justify removing the live input cursor, changing the
+remaining suffix, removing live output history, reducing live memory/registers,
+or claiming a performance improvement. Those remain separate falsifiable
+hypotheses.
 
 ## Threats to Validity
 
@@ -108,9 +115,10 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Accept exact-state deduplication as the conservative graph baseline and admit
-one first reduction: consumed input-prefix contents are future-irrelevant when
-the cursor and remaining suffix are retained and all other key components match.
-Do not yet promote memory/register/output reductions or a native-execution
+two structural reductions: consumed input-prefix contents are future-irrelevant
+when cursor/suffix stay exact, and already-terminated states may drop dead
+memory/register/input state while retaining profile/output/termination. Do not
+yet promote live memory/register/output reductions or a native-execution
 shortcut. Each further reduction must independently defeat the exact baseline.
 
 ## References
