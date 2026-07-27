@@ -123,3 +123,12 @@ samples_per_case = 15
 guard_operations_per_sample = 16384
 verdict = "retain-exact-guard-baseline"
 reduced_guard_motivation = "increase-safe-reuse-not-guard-latency"
+
+[reduction.region_dependency_guard]
+baseline = "verified-exact-entry-state-guard"
+candidate = "exact-non-memory-plus-read-before-write-live-in-memory"
+read_authority = "ProfileStepTrace.memory_reads"
+write_authority = "ProfileStepTrace.memory_delta"
+lineage_must_match = true
+verified_writes_preserve_unwritten_candidate_memory = true
+reduction_goal = "increase-safe-region-reuse"

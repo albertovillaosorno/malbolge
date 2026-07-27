@@ -139,3 +139,13 @@ optional encryption) directly from the transition engine. The VM fixture table
 covers every instruction family and preserves reads completed before rejected
 jump encryption. Region live-in analysis can therefore be derived from observed
 read-before-write behavior instead of re-decoding opcodes in research code.
+
+Verified regions now derive a reduced memory guard by ordered read-before-write
+analysis over the VM-provided semantic read set and exact memory delta. A cell is
+a live-in dependency only when the region reads it before any earlier verified
+region write dominates that address. The guard still requires exact non-memory
+state and the same immutable lineage. After it passes, verified after-values are
+applied to the candidate while memory outside the verified write set is
+preserved. `tests/r.rs` proves an irrelevant-memory variant fails the exact guard
+but safely reuses the region and matches direct VM execution exactly; changing a
+live-in dependency fails closed.

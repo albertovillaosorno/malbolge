@@ -642,10 +642,13 @@ Exact guard hit/miss is 55.51/59.09 ns in
 post-commit evidence versus 9.09 ms normative
 verification, so reduced guards target broader safe reuse rather than guard
 latency. Profile traces now record exact semantic fetch/data/encryption reads
-from the real transition engine (at most three per step), so read-before-write
-live-in guards can be derived without opcode inference. Reduced region guards,
-wider-profile geometry, broader mutation-history collapse, and native codegen
-integration remain open.
+from the real transition engine (at most three per step). Verified regions now
+derive read-before-write live-ins from those reads and exact writes: an
+irrelevant-memory variant fails exact equality but safely reuses the region,
+preserves its irrelevant value, and matches direct VM exit exactly; live-in
+changes fail closed. Post-commit reduced-guard/shortcut cost, wider-profile
+geometry, broader mutation-history collapse, and native codegen integration
+remain open.
 
 ## Optimization and accelerator architecture
 

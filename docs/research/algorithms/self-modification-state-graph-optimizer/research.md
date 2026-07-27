@@ -325,3 +325,26 @@ This enables a standard read-before-write live-in calculation for a verified
 region: an entry-memory value belongs in the guard only when the region reads that
 address before any verified region write dominates it. The next slice derives and
 validates that guard against direct VM execution.
+
+The first reduced native-region guard is now executable. Verification derives a
+memory live-in set directly from the already verified trace: semantic reads are
+processed before each step's committed writes, and an address constrains entry
+memory only when no earlier region write dominates that read. Repeated live-in
+reads must agree exactly. No opcode decoder or heuristic dependency model exists
+in the research layer.
+
+Runtime admission still requires exact non-memory state and the same immutable
+profile/input/root lineage, then checks only the derived live-in memory values.
+The shortcut applies verified after-values to the candidate's indexed memory
+without requiring the certificate's original `before` at write-only locations;
+this preserves candidate differences outside the verified write set. The
+end-to-end fixture changes such an irrelevant cell: exact entry equality rejects
+the state, the dependency guard accepts it, and shortcut/direct normative runs
+produce identical complete exit checkpoints while preserving the irrelevant
+value. Changing the first live-in dependency fails the guard and returns
+`DependencyGuardMismatch`.
+
+This is the first demonstrated semantic state-collapse useful to native reuse,
+not merely a storage optimization. Post-commit measurement should now quantify
+its guard cost and shortcut-effect cost relative to the exact guard and direct VM
+region execution.

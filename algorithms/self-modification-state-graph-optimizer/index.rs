@@ -118,9 +118,19 @@ impl IndexedProfileMemory {
         &self,
         delta: ProfileMemoryDelta,
     ) -> Result<Self, IndexedMemoryError> {
+        self.apply_delta(delta, true)
+    }
+
+    fn apply_delta(
+        &self,
+        delta: ProfileMemoryDelta,
+        validate_before: bool,
+    ) -> Result<Self, IndexedMemoryError> {
         validate_delta_shape(delta)?;
-        for write in [delta.data, delta.encryption].into_iter().flatten() {
-            validate_write(self, write)?;
+        if validate_before {
+            for write in [delta.data, delta.encryption].into_iter().flatten() {
+                validate_write(self, write)?;
+            }
         }
         if delta.changed_cells() == 0 {
             return Ok(self.clone());
@@ -129,8 +139,13 @@ impl IndexedProfileMemory {
         let mut overlay_digest = self.overlay_digest;
         for write in [delta.data, delta.encryption].into_iter().flatten() {
             let base_value = base_word(&self.base, write.address)?;
+            let before_value = if validate_before {
+                write.before
+            } else {
+                self.read(write.address)?
+            };
             let before_override =
-                (write.before != base_value).then_some(write.before);
+                (before_value != base_value).then_some(before_value);
             let after_override =
                 (write.after != base_value).then_some(write.after);
             overlay = update_node(
@@ -152,6 +167,13 @@ impl IndexedProfileMemory {
             overlay_digest,
             patches: self.patches.saturating_add(1),
         })
+    }
+
+    pub(crate) fn apply_verified(
+        &self,
+        delta: ProfileMemoryDelta,
+    ) -> Result<Self, IndexedMemoryError> {
+        self.apply_delta(delta, false)
     }
 
     /// Returns whether two views have exactly equal canonical overlays and

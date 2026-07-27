@@ -48,8 +48,11 @@
 
 //! Deterministically verified exact-state region certificates.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileStepTrace, RunOutcome,
+    ProfileMachine, ProfileMachineError, ProfileMemoryRead, ProfileStepTrace,
+    RunOutcome,
 };
 
 use crate::indexed_state::{IndexedMachineState, IndexedStateError};
@@ -62,6 +65,15 @@ pub struct ExactRegionCertificate {
     outcome: RunOutcome,
     step_budget: usize,
     traces: Vec<ProfileStepTrace>,
+}
+
+/// One exact entry-memory value required by a verified region before writes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RegionMemoryDependency {
+    /// Profile-width entry address read before any region write dominates it.
+    pub address: u32,
+    /// Exact entry value required at that address.
+    pub value: u32,
 }
 
 /// Explicit caller-supplied region claim with no verifier authority.
@@ -84,6 +96,7 @@ pub struct UntrustedExactRegionClaim {
 pub struct VerifiedExactRegion {
     entry: IndexedMachineState,
     exit: IndexedMachineState,
+    memory_dependencies: Vec<RegionMemoryDependency>,
     outcome: RunOutcome,
     traces: Vec<ProfileStepTrace>,
 }
@@ -91,6 +104,8 @@ pub struct VerifiedExactRegion {
 /// Failure while recording or verifying one exact-state region.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExactRegionError {
+    /// A candidate failed the verified reduced dependency guard.
+    DependencyGuardMismatch,
     /// Normative execution rejected a requested transition.
     Machine(ProfileMachineError),
     /// Incremental state evolution or checkpoint reconstruction failed.
@@ -205,9 +220,11 @@ impl ExactRegionCertificate {
         {
             return Err(ExactRegionError::VerificationMismatch);
         }
+        let memory_dependencies = derive_memory_dependencies(&replay.traces)?;
         Ok(VerifiedExactRegion {
             entry: self.entry.clone(),
             exit: self.exit.clone(),
+            memory_dependencies,
             outcome: self.outcome,
             traces: self.traces.clone(),
         })
@@ -215,16 +232,66 @@ impl ExactRegionCertificate {
 }
 
 impl VerifiedExactRegion {
+    /// Returns whether a candidate satisfies the reduced verified dependency
+    /// guard.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExactRegionError`] when indexed dependency reads fail.
+    pub fn accepts_dependency_entry(
+        &self,
+        candidate: &IndexedMachineState,
+    ) -> Result<bool, ExactRegionError> {
+        if !self.entry.exact_non_memory_eq(candidate) {
+            return Ok(false);
+        }
+        for dependency in &self.memory_dependencies {
+            if candidate.memory_word(dependency.address)? != dependency.value {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// Returns whether a candidate satisfies the exact entry-state guard.
     #[must_use]
     pub fn accepts_entry(&self, candidate: &IndexedMachineState) -> bool {
         self.entry.exact_state_eq(candidate)
     }
 
+    /// Applies verified region effects after the reduced dependency guard
+    /// passes.
+    ///
+    /// Memory outside verified writes is preserved from the candidate state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExactRegionError::DependencyGuardMismatch`] when the candidate
+    /// cannot safely reuse this region, or propagates indexed effect failures.
+    pub fn apply_dependency_shortcut(
+        &self,
+        candidate: &IndexedMachineState,
+    ) -> Result<IndexedMachineState, ExactRegionError> {
+        if !self.accepts_dependency_entry(candidate)? {
+            return Err(ExactRegionError::DependencyGuardMismatch);
+        }
+        let mut state = candidate.clone();
+        for trace in &self.traces {
+            state = state.apply_verified_trace_effect(trace)?;
+        }
+        Ok(state)
+    }
+
     /// Returns the exact verified exit state produced by normative execution.
     #[must_use]
     pub const fn exit(&self) -> &IndexedMachineState {
         &self.exit
+    }
+
+    /// Returns the verified entry-memory live-in dependency set.
+    #[must_use]
+    pub fn memory_dependencies(&self) -> &[RegionMemoryDependency] {
+        &self.memory_dependencies
     }
 
     /// Returns the exact verified bounded-run outcome.
@@ -238,4 +305,51 @@ impl VerifiedExactRegion {
     pub fn traces(&self) -> &[ProfileStepTrace] {
         &self.traces
     }
+}
+
+fn add_live_in_read(
+    dependencies: &mut BTreeMap<u32, u32>,
+    written: &BTreeSet<u32>,
+    read: ProfileMemoryRead,
+) -> Result<(), ExactRegionError> {
+    if written.contains(&read.address) {
+        return Ok(());
+    }
+    if let Some(previous) = dependencies.get(&read.address) {
+        if *previous != read.value {
+            return Err(ExactRegionError::VerificationMismatch);
+        }
+        return Ok(());
+    }
+    let _previous = dependencies.insert(read.address, read.value);
+    Ok(())
+}
+
+fn derive_memory_dependencies(
+    traces: &[ProfileStepTrace],
+) -> Result<Vec<RegionMemoryDependency>, ExactRegionError> {
+    let mut dependencies = BTreeMap::<u32, u32>::new();
+    let mut written = BTreeSet::<u32>::new();
+    for trace in traces {
+        for read in [
+            trace.memory_reads.fetch,
+            trace.memory_reads.data,
+            trace.memory_reads.encryption,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            add_live_in_read(&mut dependencies, &written, read)?;
+        }
+        for write in [trace.memory_delta.data, trace.memory_delta.encryption]
+            .into_iter()
+            .flatten()
+        {
+            let _inserted = written.insert(write.address);
+        }
+    }
+    Ok(dependencies
+        .into_iter()
+        .map(|(address, value)| RegionMemoryDependency { address, value })
+        .collect())
 }

@@ -224,6 +224,53 @@ performs these reads. The executable correspondence constructs every instruction
 family under the current profile plus an invalid jump-encryption case and requires
 exact role/address/value records for fetch, data, and encryption.
 
+\section{Read-before-write dependency guard}
+
+For a verified trace sequence $\tau=(t_1,\ldots,t_n)$, let $R(t_i)$ be the
+semantic memory reads published by the normative engine and $W(t_i)$ the actual
+committed memory-delta addresses. The live-in memory dependency set is
+\begin{equation}
+  L(\tau)=\left\{(a,v)\;\middle|\;
+    (a,v)\in R(t_i)\ \land\
+    a\notin\bigcup_{j<i}W(t_j)
+  \right\}.
+  \label{eq:state-graph-region-live-in}
+\end{equation}
+Repeated live-in reads of one address must agree on the same value or certificate
+verification fails. Reads dominated by an earlier verified region write do not
+constrain entry memory because the region supplies their value before they are
+observed.
+
+Let $N(s)$ be exact non-memory state within the same immutable profile/input/root
+lineage. A verified region with exact entry $e$ admits a reduced candidate $s$
+when
+\begin{equation}
+  G_{\tau}(s,e)
+  \Longleftrightarrow
+  N(s)=N(e)\ \land\
+  \forall(a,v)\in L(\tau),\ M_s[a]=v.
+  \label{eq:state-graph-region-dependency-guard}
+\end{equation}
+After this guard succeeds, the shortcut applies the already verified trace effects
+to $s$. Each verified memory write replaces the candidate's current value with
+the certified after-value; memory outside the verified write set is preserved.
+Consequently, for the admitted deterministic region,
+\[
+  \operatorname{verify}(C)\land G_{\tau}(s,e)
+  \Longrightarrow
+  \operatorname{shortcut}_C(s)=T^{\leq n}(s).
+\]
+This is a reuse reduction, not a weaker verifier: the certificate itself was
+still produced by exact normative re-execution, and the reduced guard is derived
+only from that verified trace's real read/write evidence.
+
+The executable correspondence changes one memory cell absent from both the
+verified live-in set and write set. Exact entry equality rejects that candidate,
+the dependency guard admits it, direct normative execution and shortcut execution
+produce identical complete exit checkpoints, and the irrelevant difference is
+preserved. A second fixture changes a live-in value and requires both guard and
+shortcut rejection.
+
 \section{Verified exact-state region shortcut}
 
 Let $T$ be the deterministic normative profile-machine transition relation and

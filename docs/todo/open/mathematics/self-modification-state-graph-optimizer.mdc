@@ -86,8 +86,8 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Wider-profile radix geometry, broader mutation-history collapse,
-  reduced dependency/read-set native guards, code-generation integration, and
+- Wider-profile radix geometry, broader mutation-history collapse, reduced
+  guard/shortcut post-commit performance, code-generation integration, and
   end-to-end performance claims remain active research and
   must be falsified independently against the exact baseline.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
@@ -135,6 +135,12 @@ VM evidence.
   Every current instruction family plus rejected jump encryption has exact
   role/address/value fixtures, enabling read-before-write region live-in guards
   without duplicating opcode semantics in research code.
+- Verified regions now derive read-before-write memory live-ins exclusively from
+  `ProfileStepTrace::memory_reads` and `memory_delta`. Exact non-memory state plus
+  those live-ins admits an irrelevant-memory variant that exact state equality
+  rejects; verified effects preserve that irrelevant memory and match direct VM
+  execution exactly. Changing a live-in fails closed. Post-commit guard/shortcut
+  cost is the next evidence slice.
 
 ## Acceptance
 

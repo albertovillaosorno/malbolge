@@ -56,8 +56,8 @@ use std::sync::Arc;
 
 use malbolge::{
     ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineState, ProfileRegisters, ProfileStepTrace, Termination,
-    TraceInput,
+    ProfileMachineState, ProfileMemoryDelta, ProfileRegisters,
+    ProfileStepTrace, Termination, TraceInput,
 };
 
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
@@ -136,6 +136,29 @@ impl From<ProfileMachineError> for IndexedStateError {
 }
 
 impl IndexedMachineState {
+    /// Applies one validated memory-only delta while preserving all other
+    /// state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexedStateError`] when the indexed memory rejects the delta.
+    pub fn apply_memory_delta(
+        &self,
+        delta: ProfileMemoryDelta,
+    ) -> Result<Self, IndexedStateError> {
+        Ok(Self {
+            input: Arc::clone(&self.input),
+            input_cursor: self.input_cursor,
+            input_digest: self.input_digest,
+            memory: self.memory.apply(delta)?,
+            output: self.output.clone(),
+            profile: self.profile,
+            profile_digest: self.profile_digest,
+            registers: self.registers,
+            termination: self.termination,
+        })
+    }
+
     /// Applies one exact runtime trace to a new incremental state.
     ///
     /// # Errors
@@ -161,6 +184,37 @@ impl IndexedMachineState {
             registers: trace.after.registers,
             termination: trace.after.termination,
         })
+    }
+
+    pub(crate) fn apply_verified_trace_effect(
+        &self,
+        trace: &ProfileStepTrace,
+    ) -> Result<Self, IndexedStateError> {
+        self.validate_before(trace)?;
+        let input_cursor = self.next_input_cursor(trace)?;
+        let output = self.next_output(trace)?;
+        let memory = self.memory.apply_verified(trace.memory_delta)?;
+        Ok(Self {
+            input: Arc::clone(&self.input),
+            input_cursor,
+            input_digest: self.input_digest,
+            memory,
+            output,
+            profile: self.profile,
+            profile_digest: self.profile_digest,
+            registers: trace.after.registers,
+            termination: trace.after.termination,
+        })
+    }
+
+    /// Returns exact equality for all state except mutable memory overrides.
+    #[must_use]
+    pub fn exact_non_memory_eq(&self, other: &Self) -> bool {
+        self.shares_lineage(other)
+            && self.input_cursor == other.input_cursor
+            && self.output.exact_output_eq(&other.output)
+            && self.registers == other.registers
+            && self.termination == other.termination
     }
 
     /// Returns exact equality inside the same immutable execution lineage.
@@ -224,6 +278,16 @@ impl IndexedMachineState {
             self.registers,
             io,
         )?)
+    }
+
+    /// Reads one current indexed memory word without materializing the root.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexedStateError`] when the address is outside the lineage
+    /// root or the bounded radix violates an internal invariant.
+    pub fn memory_word(&self, address: u32) -> Result<u32, IndexedStateError> {
+        Ok(self.memory.read(address)?)
     }
 
     fn next_input_cursor(

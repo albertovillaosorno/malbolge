@@ -289,3 +289,19 @@ label = "eq:state-graph-profile-read-bound"
 domain = "one current-profile normative step across every instruction family and rejected jump encryption"
 mechanism = "exact-transition-engine-read-role-address-value-fixtures"
 evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads"]
+
+[[correspondence]]
+id = "state-graph-region-live-in"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-live-in"
+domain = "verified current-profile region traces with exact semantic memory reads and committed memory deltas"
+mechanism = "ordered-read-before-write-live-in-derivation"
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_rejects_live_in_memory_change"]
+
+[[correspondence]]
+id = "state-graph-region-dependency-guard"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-dependency-guard"
+domain = "verified exact-state region reused inside the same immutable lineage with identical non-memory state"
+mechanism = "irrelevant-memory-variation-direct-vm-equivalence-and-live-in-rejection"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "algorithms/self-modification-state-graph-optimizer/tests/r.rs::dependency_guard_rejects_live_in_memory_change"]
