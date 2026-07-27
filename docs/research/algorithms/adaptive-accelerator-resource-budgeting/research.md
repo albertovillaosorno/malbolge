@@ -95,7 +95,12 @@ at `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
 records commit/toolchain/device identity plus the raw planning JSON. The live
 snapshot reports 8,585,084,928 total bytes, 7,451,181,056 free bytes, 24 SMs,
 and 1,024 maximum threads/block; the modeled current state admits 361 items in
-the first chunk. This remains capacity evidence, not throughput.
+the first chunk. This remains capacity evidence, not throughput. Post-commit
+no-ceiling evidence under
+`benchmarks/accelerator/evidence/2026-07-27-unbounded-vram-windows-x86_64/`
+adds a 100,000 GiB synthetic scenario with 100,000 classic items. The complete
+workload is admitted as 72,736 + 27,264 items because classic CUDA splits at its
+32-bit per-launch memory-index boundary rather than imposing a VRAM maximum.
 
 ## Threats to Validity
 

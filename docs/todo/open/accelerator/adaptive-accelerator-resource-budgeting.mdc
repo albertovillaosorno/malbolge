@@ -77,6 +77,10 @@ example probe points, not supported-range endpoints.
   `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
   records the RTX 4060 Driver API snapshot and synthetic boundary rows with exact
   commit/toolchain/device provenance. It is capacity evidence only.
+- Post-commit no-ceiling evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-unbounded-vram-windows-x86_64/`
+  retains the 100,000 GiB / 100,000-item synthetic case. All requested work is
+  admitted and split only at the classic backend's 32-bit launch-index boundary.
 - Research evidence remains incomplete until retained throughput samples,
   current-profile resident execution, and broader live-hardware evidence exist.
 - Performance evidence pending: raw measurements plus a reproducible
