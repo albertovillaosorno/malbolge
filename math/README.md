@@ -17,3 +17,9 @@ document imports it. Validate source layout and compile every document with:
 `python scripts/validate/math_specifications.py`
 
 Generated LaTeX artifacts belong only under `.cache/latex/`.
+
+`specification/correspondence.toml` maps promoted `eq:*` labels to executable
+evidence. Validate that graph with
+`python scripts/validate/math_correspondence.py`. A manifest link
+records traceability and declared domain; it does not strengthen the underlying
+test's proof coverage.

@@ -50,3 +50,5 @@ pub mod cases;
 mod classic_profile;
 #[path = "exhaustive/loader_boundaries.rs"]
 mod loader_boundaries;
+#[path = "exhaustive/math_correspondence.rs"]
+mod math_correspondence;

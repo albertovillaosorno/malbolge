@@ -452,10 +452,14 @@ bootstrap already uses the intended memory shape: the host exposes one stable
 guest-memory region and the guest zone allocator owns object allocation inside
 it; no host malloc-like service remains. Guest-side formatting likewise owns
 fatal-message construction before raw diagnostic bytes cross the host boundary.
-Generalize these properties into the reusable guest runtime, and move strict
-self-contained media paths toward guest-produced PCM rather than a host music
-decoder. Raw external effects remain behind a narrow host-capability boundary
-rather than growing into a shadow libc or hidden application runtime.
+The DOOM quality corpus now also carries its deterministic memory/string
+runtime, including compiler-synthesized standard memory symbols, and passes the
+real guest-C validator without a libc shim. Generalize those primitives into the
+reusable guest runtime rather than treating the DOOM-local implementation as the
+final shared library. Next, move strict self-contained media paths toward
+guest-produced PCM rather than a host music decoder. Raw external effects remain
+behind a narrow host-capability boundary rather than growing into a shadow libc
+or hidden application runtime.
 
 ## Compiler
 
@@ -570,8 +574,11 @@ into `.cache/latex/`. Machine-checked correspondence remains a separate task.
 
 ### TODO - Machine-checked mathematical correspondence
 
-Connect mathematical specifications to executable tests or proof tooling so the
-`.tex` files are reviewable mathematics rather than decorative documentation.
+Connect mathematical specifications to executable evidence. The active
+correspondence graph now maps seventeen stable `eq:*` labels from the profile model
+to explicit exhaustive, seeded-differential, current-profile, and rejection
+fixtures; graph validation fails on orphan equations or stale test functions.
+Future implementation-relevant compiler/research equations remain open.
 
 ### TODO - Malbolge-specific optimization mathematics
 
