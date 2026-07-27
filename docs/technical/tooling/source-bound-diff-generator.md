@@ -3,9 +3,9 @@
 ## Status
 
 Active. Exact authoring/materialization, generic identity primitives, tree-level
-structural/stable-anchor admission, and the first language-aware consumer identity
-adapter are implemented. Behavior probes, source binding, payload recovery, and
-Rust emission remain unfinished.
+structural/stable-anchor admission, the first language-aware consumer identity
+adapter, and generic behavior-evidence semantics are implemented. Consumer probe
+execution, source binding, payload recovery, and Rust emission remain unfinished.
 
 ## Purpose
 
@@ -143,19 +143,24 @@ useful stress evidence, not final compatibility calibration and not legal eviden
 
 ### Behavioral Identity
 
-The engine supports three probe classes supplied by a consumer:
+The implemented evaluator supports three probe classes supplied by a consumer:
 
 - identity probes for stable lineage behavior;
 - compatibility probes for transform preconditions;
 - bug probes for conditional corrections.
 
-Bug probes are not identity requirements. A compatible upstream revision that
-already satisfies a postcondition must not be rejected merely because the
-original defect disappeared.
+Every identity probe must execute. Matching identity observations contribute
+equally to the configured behavior-similarity threshold. Compatibility probes are
+hard preconditions. Bug probes classify the candidate as defect `present`, already
+`fixed`, or `unknown`; present defects route a named correction to apply, fixed
+defects route that correction to skip, and unknown state fails closed. Bug probes
+therefore remain deliberately separate from identity probes.
 
-Behavioral evidence supplements structural lineage; it never replaces the source
-requirement. A separately written behavioral clone without enough admitted source
-anchors must fail.
+`gate.py` combines source-lineage and behavior evidence conjunctively. Behavioral
+evidence never replaces source evidence, and source scores never replace failed
+behavior preconditions. Synthetic tests include a perfect-behavior/unrelated-source
+clone and prove it is rejected. The generic evaluator consumes normalized
+observations only; executing application-specific probes remains consumer work.
 
 ### Source Binding
 

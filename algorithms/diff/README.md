@@ -17,13 +17,17 @@ algorithms/diff/
 |-- canonicalize.py   # identity-only normalization
 |-- fingerprints.py   # content-defined stable-anchor primitives
 |-- admission.py      # tree-level structural/anchor admission
-|-- behavior.py       # identity/compatibility/bug probes
+|-- behavior.py       # behavior profile/observation evaluation
+|-- gate.py           # conjunctive lineage + behavior admission
 |-- source_binding.py # threshold-bound reconstruction material
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
 
-Exact authoring, generic identity primitives, and tree-level structural/anchor admission are implemented. Language-aware consumer identity, behavioral probes, source binding, and Rust emission remain active work under the owning TODO.
+Exact authoring, generic identity primitives, tree-level structural/anchor
+admission, and behavior-evidence semantics are implemented. Consumer probe
+execution, source binding, and Rust emission remain active work under the owning
+TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -80,8 +84,24 @@ requires a minimum number of files with real matched anchors above the configure
 per-file threshold. A single strongly matching file cannot satisfy a distributed
 source-evidence requirement.
 
-Admission is still pre-behavior and pre-source-binding. Passing these structural
-checks is necessary but not sufficient to materialize a distributable transform.
+Structural admission is independently necessary but not sufficient. `gate.py`
+combines source-lineage and behavior evidence conjunctively, so neither family can
+offset failure in the other. Source binding remains a later independent gate.
+
+## Implemented Behavior Semantics
+
+`behavior.py` models deterministic behavior profiles and candidate observations.
+Identity probes must all execute; successful identity observations contribute
+equally to the configured behavior-similarity threshold. Compatibility probes are
+hard preconditions. Bug probes classify a historical defect as `present`, `fixed`,
+or `unknown`: `present` routes its correction to apply, `fixed` routes the
+correction to skip without rejecting the source, and `unknown` fails closed.
+
+This layer evaluates normalized observations; it does **not** execute application
+probes itself. Probe construction/execution remains consumer policy. `gate.py` then
+requires both source-lineage admission and behavior admission. Tests explicitly
+prove that perfect behavior cannot rescue unrelated source and that perfect source
+lineage cannot rescue a failed compatibility precondition.
 
 ## Core Contract
 
