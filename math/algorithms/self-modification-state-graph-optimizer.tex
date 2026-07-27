@@ -201,6 +201,29 @@ suffixes, materializes exact bytes, and exercises a 65,536-byte appended history
 Incremental state reconstruction continues to compare exactly with complete
 runtime checkpoints after replacing `Vec<u8>` copying with this persistent form.
 
+\section{Semantic memory-read surface}
+
+For one requested profile-machine step, let $R_T(s)$ be the ordered semantic
+memory-read operations performed by the normative transition engine. The current
+schema-v2 transition has exactly three possible roles: code-cell fetch, optional
+data-pointer read, and optional self-encryption-target read. Therefore
+\begin{equation}
+  R_T(s)=R_{\mathrm{fetch}}\Vert R_{\mathrm{data}}?
+         \Vert R_{\mathrm{encrypt}}?,
+  \qquad |R_T(s)|\leq3.
+  \label{eq:state-graph-profile-read-bound}
+\end{equation}
+The encryption read is absent when a same-address instruction data write supplies
+the post-instruction encryption target directly; no synthetic read is invented.
+Rejected transitions retain the semantic reads completed before rejection even
+though their memory delta is empty. Internal reads used only to build diagnostics
+or trace deltas are not members of $R_T$.
+
+`ProfileStepTrace::memory\_reads` is emitted from the same transition engine that
+performs these reads. The executable correspondence constructs every instruction
+family under the current profile plus an invalid jump-encryption case and requires
+exact role/address/value records for fetch, data, and encryption.
+
 \section{Verified exact-state region shortcut}
 
 Let $T$ be the deterministic normative profile-machine transition relation and

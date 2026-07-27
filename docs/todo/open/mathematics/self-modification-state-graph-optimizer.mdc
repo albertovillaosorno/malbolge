@@ -130,6 +130,11 @@ VM evidence.
   replay at 9.09 ms. Exact guard latency is already
   cheap; dependency/read-set reduction is pursued to broaden safe reuse across
   future-irrelevant memory differences.
+- `ProfileStepTrace::memory_reads` now records real transition-engine fetch,
+  optional data, and optional encryption reads (at most three operations/step).
+  Every current instruction family plus rejected jump encryption has exact
+  role/address/value fixtures, enabling read-before-write region live-in guards
+  without duplicating opcode semantics in research code.
 
 ## Acceptance
 

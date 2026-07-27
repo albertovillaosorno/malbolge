@@ -641,8 +641,11 @@ requires exact entry equality; tampered, mutated, or rejected cases fail closed.
 Exact guard hit/miss is 55.51/59.09 ns in
 post-commit evidence versus 9.09 ms normative
 verification, so reduced guards target broader safe reuse rather than guard
-latency. Semantic read-set guards, wider-profile geometry, broader
-mutation-history collapse, and native codegen integration remain open.
+latency. Profile traces now record exact semantic fetch/data/encryption reads
+from the real transition engine (at most three per step), so read-before-write
+live-in guards can be derived without opcode inference. Reduced region guards,
+wider-profile geometry, broader mutation-history collapse, and native codegen
+integration remain open.
 
 ## Optimization and accelerator architecture
 

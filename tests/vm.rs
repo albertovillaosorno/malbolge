@@ -68,6 +68,8 @@ mod profile_batch;
 mod profile_logical;
 #[path = "vm/profile_machine.rs"]
 mod profile_machine;
+#[path = "vm/profile_reads.rs"]
+mod profile_reads;
 #[path = "vm/profile_requirements.rs"]
 mod profile_requirements;
 #[path = "vm/profile_state.rs"]

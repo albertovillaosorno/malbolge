@@ -52,7 +52,10 @@ normative 1998 specification.
   semantic signature `0xa74cec75a875c85a` independently from the Rust API. The
   same signature is produced and asserted by `tests/vm/c_conformance.c`.
 - Classic and profile-driven implementation, tracing, instruction coverage, and
-  independent differential evidence are present. Both trace surfaces now expose
+  independent differential evidence are present. Profile traces additionally
+  expose exact semantic fetch/data/encryption reads from the real step engine,
+  with every instruction family and rejection covered by `profile_reads.rs`.
+  Both trace surfaces now expose
   allocation-free actual memory deltas of at most two changed cells from the same
   transition engine; full-memory classic/current research fixtures verify those
   records exactly and halt/rejection remain empty. Current profile tracing also

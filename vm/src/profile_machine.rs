@@ -53,10 +53,10 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
     CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
-    Termination, TraceInput, XLAT2, crazy_chunk_lookup, preflight_profile,
-    safe_rust_profiled_capability,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
+    ProfileMemoryReads, ProfileMemoryWrite, ProfileRequirementError,
+    ProfileStepTrace, RunOutcome, StepOutcome, Termination, TraceInput, XLAT2,
+    crazy_chunk_lookup, preflight_profile, safe_rust_profiled_capability,
 };
 
 const GRAPHICAL_MAX: u32 = 126;
@@ -312,8 +312,44 @@ struct ProfileTransitionPlan {
     registers: ProfileRegisters,
 }
 
-type ProfileStepExecution =
-    Result<(StepOutcome, ProfileMemoryDelta), ProfileMachineError>;
+#[derive(Clone, Copy, Debug)]
+struct ProfileStepExecution {
+    memory_delta: ProfileMemoryDelta,
+    memory_reads: ProfileMemoryReads,
+    result: Result<StepOutcome, ProfileMachineError>,
+}
+
+impl ProfileStepExecution {
+    const fn continued(
+        memory_delta: ProfileMemoryDelta,
+        memory_reads: ProfileMemoryReads,
+    ) -> Self {
+        Self {
+            memory_delta,
+            memory_reads,
+            result: Ok(StepOutcome::Continued),
+        }
+    }
+
+    fn error(
+        memory_reads: ProfileMemoryReads,
+        error: ProfileMachineError,
+    ) -> Self {
+        Self {
+            memory_delta: ProfileMemoryDelta::default(),
+            memory_reads,
+            result: Err(error),
+        }
+    }
+
+    fn outcome(memory_reads: ProfileMemoryReads, outcome: StepOutcome) -> Self {
+        Self {
+            memory_delta: ProfileMemoryDelta::default(),
+            memory_reads,
+            result: Ok(outcome),
+        }
+    }
+}
 
 /// Owned safe Rust machine for one explicitly selected canonical profile.
 #[derive(Clone, Debug)]
@@ -567,6 +603,7 @@ impl ProfileMachine {
     fn plan(
         &self,
         decoded: ProfileInstruction,
+        memory_reads: &mut ProfileMemoryReads,
     ) -> Result<ProfileTransitionPlan, ProfileMachineError> {
         let mut plan = ProfileTransitionPlan {
             input_advance: false,
@@ -575,21 +612,25 @@ impl ProfileMachine {
             registers: self.registers,
         };
         match decoded {
-            ProfileInstruction::Crazy => self.plan_crazy(&mut plan)?,
+            ProfileInstruction::Crazy => {
+                self.plan_crazy(&mut plan, memory_reads)?;
+            },
             ProfileInstruction::Halt | ProfileInstruction::NoOperation => {},
             ProfileInstruction::Input => self.plan_input(&mut plan),
             ProfileInstruction::JumpCode => {
                 plan.registers.code_pointer =
-                    self.read(self.registers.data_pointer)?;
+                    self.semantic_data_read(memory_reads)?;
             },
             ProfileInstruction::JumpData => {
                 plan.registers.data_pointer =
-                    self.read(self.registers.data_pointer)?;
+                    self.semantic_data_read(memory_reads)?;
             },
             ProfileInstruction::Output => {
                 plan.output = Some(low_byte(self.registers.accumulator));
             },
-            ProfileInstruction::Rotate => self.plan_rotate(&mut plan)?,
+            ProfileInstruction::Rotate => {
+                self.plan_rotate(&mut plan, memory_reads)?;
+            },
         }
         Ok(plan)
     }
@@ -597,8 +638,9 @@ impl ProfileMachine {
     fn plan_crazy(
         &self,
         plan: &mut ProfileTransitionPlan,
+        memory_reads: &mut ProfileMemoryReads,
     ) -> Result<(), ProfileMachineError> {
-        let data = self.read(self.registers.data_pointer)?;
+        let data = self.semantic_data_read(memory_reads)?;
         let value = profile_crazy(
             data,
             self.registers.accumulator,
@@ -621,8 +663,9 @@ impl ProfileMachine {
     fn plan_rotate(
         &self,
         plan: &mut ProfileTransitionPlan,
+        memory_reads: &mut ProfileMemoryReads,
     ) -> Result<(), ProfileMachineError> {
-        let data = self.read(self.registers.data_pointer)?;
+        let data = self.semantic_data_read(memory_reads)?;
         let value = profile_rotate(data, self.profile.word_modulus());
         plan.registers.accumulator = value;
         plan.memory_write = Some((self.registers.data_pointer, value));
@@ -707,6 +750,16 @@ impl ProfileMachine {
         Ok(RunOutcome::BudgetExhausted { steps })
     }
 
+    fn semantic_data_read(
+        &self,
+        memory_reads: &mut ProfileMemoryReads,
+    ) -> Result<u32, ProfileMachineError> {
+        let address = self.registers.data_pointer;
+        let value = self.read(address)?;
+        memory_reads.data = Some(ProfileMemoryRead { address, value });
+        Ok(value)
+    }
+
     /// Clones the complete machine state into a validated checkpoint value.
     ///
     /// The memory image is copied deliberately so the checkpoint owns an exact
@@ -732,8 +785,85 @@ impl ProfileMachine {
     ///
     /// Returns [`ProfileMachineError`] when a transition cannot commit exactly.
     pub fn step(&mut self) -> Result<StepOutcome, ProfileMachineError> {
-        self.step_with_delta()
-            .map(|(outcome, _memory_delta)| outcome)
+        self.step_execution().result
+    }
+
+    fn step_after_decode(
+        &mut self,
+        decoded: ProfileInstruction,
+        mut memory_reads: ProfileMemoryReads,
+    ) -> ProfileStepExecution {
+        if decoded == ProfileInstruction::Halt {
+            self.termination = Some(Termination::HaltInstruction);
+            return ProfileStepExecution::outcome(
+                memory_reads,
+                StepOutcome::Terminated(Termination::HaltInstruction),
+            );
+        }
+        let plan = match self.plan(decoded, &mut memory_reads) {
+            Ok(value) => value,
+            Err(error) => {
+                return ProfileStepExecution::error(memory_reads, error);
+            },
+        };
+        let encrypted = match self.validate_encryption(&plan, &mut memory_reads)
+        {
+            Ok(value) => value,
+            Err(error) => {
+                return ProfileStepExecution::error(memory_reads, error);
+            },
+        };
+        let memory_delta = match self.memory_delta(&plan, encrypted) {
+            Ok(value) => value,
+            Err(error) => {
+                return ProfileStepExecution::error(memory_reads, error);
+            },
+        };
+        if let Err(error) = self.commit(plan, encrypted) {
+            return ProfileStepExecution::error(memory_reads, error);
+        }
+        ProfileStepExecution::continued(memory_delta, memory_reads)
+    }
+
+    fn step_after_fetch(
+        &mut self,
+        cell: u32,
+        memory_reads: ProfileMemoryReads,
+    ) -> ProfileStepExecution {
+        if !is_graphical(cell) {
+            self.termination = Some(Termination::NonGraphicalCell);
+            return ProfileStepExecution::outcome(
+                memory_reads,
+                StepOutcome::Terminated(Termination::NonGraphicalCell),
+            );
+        }
+        let Some(decoded) = profile_decode(cell, self.registers.code_pointer)
+        else {
+            return ProfileStepExecution::error(
+                memory_reads,
+                ProfileMachineError::TranslationTableInvariant,
+            );
+        };
+        self.step_after_decode(profile_instruction(decoded), memory_reads)
+    }
+
+    fn step_execution(&mut self) -> ProfileStepExecution {
+        let mut memory_reads = ProfileMemoryReads::default();
+        if let Some(reason) = self.termination {
+            return ProfileStepExecution::outcome(
+                memory_reads,
+                StepOutcome::Terminated(reason),
+            );
+        }
+        let address = self.registers.code_pointer;
+        let cell = match self.read(address) {
+            Ok(value) => value,
+            Err(error) => {
+                return ProfileStepExecution::error(memory_reads, error);
+            },
+        };
+        memory_reads.fetch = Some(ProfileMemoryRead { address, value: cell });
+        self.step_after_fetch(cell, memory_reads)
     }
 
     /// Executes one atomic profile-driven transition and emits trace evidence.
@@ -753,11 +883,8 @@ impl ProfileMachine {
         Observer: FnMut(&ProfileStepTrace),
     {
         let before = self.observation();
-        let fetched_cell = if before.termination.is_none() {
-            self.read(before.registers.code_pointer).ok()
-        } else {
-            None
-        };
+        let execution = self.step_execution();
+        let fetched_cell = execution.memory_reads.fetch.map(|read| read.value);
         let decoded =
             fetched_cell
                 .filter(|cell| is_graphical(*cell))
@@ -765,11 +892,9 @@ impl ProfileMachine {
                     profile_decode(cell, before.registers.code_pointer)
                 });
         let decoded_instruction = decoded.map(profile_instruction);
-        let execution = self.step_with_delta();
-        let (result, memory_delta) = match execution {
-            Ok((outcome, delta)) => (Ok(outcome), delta),
-            Err(error) => (Err(error), ProfileMemoryDelta::default()),
-        };
+        let result = execution.result;
+        let memory_delta = execution.memory_delta;
+        let memory_reads = execution.memory_reads;
         let after = self.observation();
         let input = if result == Ok(StepOutcome::Continued)
             && decoded_instruction == Some(ProfileInstruction::Input)
@@ -797,43 +922,12 @@ impl ProfileMachine {
             fetched_cell,
             input,
             memory_delta,
+            memory_reads,
             output,
             profile: self.profile,
             result,
         });
         result
-    }
-
-    fn step_with_delta(&mut self) -> ProfileStepExecution {
-        if let Some(reason) = self.termination {
-            return Ok((
-                StepOutcome::Terminated(reason),
-                ProfileMemoryDelta::default(),
-            ));
-        }
-        let cell = self.read(self.registers.code_pointer)?;
-        if !is_graphical(cell) {
-            self.termination = Some(Termination::NonGraphicalCell);
-            return Ok((
-                StepOutcome::Terminated(Termination::NonGraphicalCell),
-                ProfileMemoryDelta::default(),
-            ));
-        }
-        let decoded = profile_decode(cell, self.registers.code_pointer)
-            .ok_or(ProfileMachineError::TranslationTableInvariant)?;
-        let decoded_instruction = profile_instruction(decoded);
-        if decoded_instruction == ProfileInstruction::Halt {
-            self.termination = Some(Termination::HaltInstruction);
-            return Ok((
-                StepOutcome::Terminated(Termination::HaltInstruction),
-                ProfileMemoryDelta::default(),
-            ));
-        }
-        let plan = self.plan(decoded_instruction)?;
-        let encrypted = self.validate_encryption(&plan)?;
-        let memory_delta = self.memory_delta(&plan, encrypted)?;
-        self.commit(plan, encrypted)?;
-        Ok((StepOutcome::Continued, memory_delta))
     }
 
     /// Returns the current stable termination reason, if any.
@@ -845,6 +939,7 @@ impl ProfileMachine {
     fn validate_encryption(
         &self,
         plan: &ProfileTransitionPlan,
+        memory_reads: &mut ProfileMemoryReads,
     ) -> Result<u32, ProfileMachineError> {
         let pointer = plan.registers.code_pointer;
         let target = if let Some((write_pointer, value)) = plan.memory_write
@@ -852,7 +947,10 @@ impl ProfileMachine {
         {
             value
         } else {
-            self.read(pointer)?
+            let value = self.read(pointer)?;
+            memory_reads.encryption =
+                Some(ProfileMemoryRead { address: pointer, value });
+            value
         };
         if !is_graphical(target) {
             return Err(ProfileMachineError::InvalidEncryptionTarget {

@@ -311,3 +311,17 @@ valuable because they may admit the same verified region from states that differ
 only in memory the region cannot observe. The next slice therefore records
 semantic memory reads from the real profile transition engine before attempting a
 broader guard.
+
+The normative VM now exposes the dependency evidence needed for reduced region
+guards. Each `ProfileStepTrace` carries `memory_reads` populated by the real
+transition engine, not by opcode inference in research code. The fixed roles are
+code fetch, optional data-pointer read, and optional encryption-target read, so a
+requested current-profile step performs at most three semantic memory reads.
+Every instruction family plus rejected jump encryption has an exact role/address/
+value fixture. Rejected transitions retain reads performed before the error while
+committing no memory delta.
+
+This enables a standard read-before-write live-in calculation for a verified
+region: an entry-memory value belongs in the guard only when the region reads that
+address before any verified region write dominates it. The next slice derives and
+validates that guard against direct VM execution.

@@ -96,8 +96,8 @@ pub use profile_machine::{
     ProfileRegisters,
 };
 pub use profile_trace::{
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileStepTrace,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
+    ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
 pub use trace::{
     MachineObservation, MemoryDelta, MemoryWrite, StepTrace, TraceInput,

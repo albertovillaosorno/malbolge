@@ -44,8 +44,13 @@ one address is represented once by its final encrypted value, and
 halt/non-graphical termination/rejected transitions report no memory change.
 
 Both traced and untraced APIs still invoke the same transition engine. The
-internal step result carries the already-validated memory delta; `step()` discards
-it and `step_traced()` publishes it. `TraceInput::EndOfInput` remains
+internal profile step result now carries both the already-validated memory delta
+and fixed-role semantic reads. `ProfileStepTrace::memory_reads` records the real
+code fetch, optional data-pointer read, and optional encryption-target read, for a
+maximum of three semantic reads per request. Rejected transitions retain reads
+completed before the error; diagnostic/delta bookkeeping reads are excluded.
+`step()` discards this evidence and `step_traced()` publishes it.
+`TraceInput::EndOfInput` remains
 profile-neutral: current traces record EOF accumulator 4,782,968 rather than
 inheriting the classic 59,048 value. Independent research fixtures reconstruct
 complete before/after memory differences for every classic/current instruction
@@ -124,6 +129,9 @@ memory, input consumption, or output.
   `0xa74cec75a875c85a` from the public Rust API.
 - `tests/vm/c_conformance.c` independently produces and asserts the same
   signature from the pure-C VM.
+- `tests/vm/profile_reads.rs` covers every current-profile instruction family
+  plus rejected jump encryption and requires exact fetch/data/encryption semantic
+  read roles, addresses, values, and operation counts from the real step engine.
 - `tests/vm/profile_tracing.rs` traces current-profile EOF/output/halt, proves
   traced and plain current execution agree on outcome, I/O, registers and sampled
   memory, verifies halt/rejection expose an empty memory delta, and exercises a

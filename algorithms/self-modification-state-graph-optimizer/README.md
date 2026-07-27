@@ -132,3 +132,10 @@ certificate verification at 9.09 ms. This is the
 intended trust split: expensive cold verification, cheap hot exact guards. Future
 read-set guards are therefore motivated by safe reuse across memory variants,
 not by a need to reduce the ~55 ns exact guard itself.
+
+The normative `ProfileStepTrace` now supplies the missing dependency authority:
+`memory_reads` records at most three real semantic roles (fetch, optional data,
+optional encryption) directly from the transition engine. The VM fixture table
+covers every instruction family and preserves reads completed before rejected
+jump encryption. Region live-in analysis can therefore be derived from observed
+read-before-write behavior instead of re-decoding opcodes in research code.

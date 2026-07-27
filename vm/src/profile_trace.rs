@@ -65,6 +65,48 @@ pub struct ProfileMachineObservation {
     pub termination: Option<Termination>,
 }
 
+/// One actual semantic profile-memory read performed by the step engine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProfileMemoryRead {
+    /// Profile-width address read by the normative transition.
+    pub address: u32,
+    /// Exact word returned by that semantic read.
+    pub value: u32,
+}
+
+/// Fixed-role semantic memory reads performed by one requested profile step.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileMemoryReads {
+    /// Instruction data-pointer read, when the decoded instruction requires
+    /// it.
+    pub data: Option<ProfileMemoryRead>,
+    /// Self-encryption target read when no same-address planned write supplies
+    /// it.
+    pub encryption: Option<ProfileMemoryRead>,
+    /// Current code-cell fetch performed before decode.
+    pub fetch: Option<ProfileMemoryRead>,
+}
+
+impl ProfileMemoryReads {
+    /// Returns the number of semantic read operations represented by this step.
+    #[must_use]
+    pub const fn read_count(self) -> usize {
+        let data = match self.data {
+            Some(_read) => 1usize,
+            None => 0usize,
+        };
+        let encryption = match self.encryption {
+            Some(_read) => 1usize,
+            None => 0usize,
+        };
+        let fetch = match self.fetch {
+            Some(_read) => 1usize,
+            None => 0usize,
+        };
+        data.saturating_add(encryption).saturating_add(fetch)
+    }
+}
+
 /// Actual changed memory cells committed by one profile-driven step.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProfileMemoryDelta {
@@ -116,6 +158,8 @@ pub struct ProfileStepTrace {
     pub input: Option<TraceInput>,
     /// Actual committed memory changes for this requested step.
     pub memory_delta: ProfileMemoryDelta,
+    /// Semantic memory reads performed by the real transition engine.
+    pub memory_reads: ProfileMemoryReads,
     /// Output byte emitted by a successfully committed output instruction.
     pub output: Option<u8>,
     /// Exact canonical profile identity for the observed machine.
