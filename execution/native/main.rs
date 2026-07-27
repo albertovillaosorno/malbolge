@@ -49,8 +49,12 @@
 
 //! First untrusted native-artifact lowering boundary for portable effect IR.
 
+#[path = "aarch64/main.rs"]
+mod aarch64;
 mod coff;
 mod direct;
+#[path = "x86_64/main.rs"]
+mod x86_64;
 
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
@@ -61,13 +65,15 @@ pub use coff::{
 };
 pub use direct::{
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
-    DirectDeoptError, DirectInitialHaltError, DirectNativeKind,
-    DirectSelectionError, VerifiedDeoptNativeObjectArtifact,
-    VerifiedDirectNativeArtifact, VerifiedInitialHaltNativeObjectArtifact,
-    emit_direct_deopt_coff, emit_direct_initial_halt_coff,
+    DirectDeoptError, DirectHaltRegistersError, DirectInitialHaltError,
+    DirectNativeKind, DirectSelectionError, VerifiedDeoptNativeObjectArtifact,
+    VerifiedDirectNativeArtifact, VerifiedHaltRegistersNativeObjectArtifact,
+    VerifiedInitialHaltNativeObjectArtifact, emit_direct_deopt_coff,
+    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
     select_verified_direct_native, verify_direct_deopt_stub,
-    verify_direct_initial_halt,
+    verify_direct_halt_registers, verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,

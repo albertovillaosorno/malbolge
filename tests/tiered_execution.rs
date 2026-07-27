@@ -68,13 +68,15 @@ use execution_ir::{
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
     CoffAdmissionError, DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
-    DirectDeoptError, DirectInitialHaltError, DirectNativeKind,
-    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
-    emit_direct_initial_halt_coff, lower_clang_c23,
-    select_verified_direct_native, structurally_admit_coff,
-    verify_direct_deopt_stub, verify_direct_initial_halt,
+    DirectDeoptError, DirectHaltRegistersError, DirectInitialHaltError,
+    DirectNativeKind, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactError, UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
+    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
+    lower_clang_c23, select_verified_direct_native, structurally_admit_coff,
+    verify_direct_deopt_stub, verify_direct_halt_registers,
+    verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -496,6 +498,53 @@ fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_halt_registers_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0,
+        output_len: 0,
+        registers: ProfileRegisters {
+            accumulator: 0x1234_5678,
+            code_pointer: 0x9abc_def0,
+            data_pointer: 0x1357_9bdf,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta::default(),
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: Vec::new(),
+        outcome: RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
+        ),
+        step_budget: 1,
+    }
+}
+
+fn direct_halt_registers_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_HALT_REGISTERS_BACKEND_ID),
+        backend_revision: DIRECT_HALT_REGISTERS_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_initial_halt_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0,
@@ -559,6 +608,22 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
             ));
         }
 
+        let register_halt = select_verified_direct_native(
+            &direct_halt_registers_program(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        if register_halt.kind() != DirectNativeKind::HaltRegisters
+            || register_halt.key().target().backend_id()
+                != DIRECT_HALT_REGISTERS_BACKEND_ID
+            || register_halt.object().is_empty()
+        {
+            return Err(String::from(
+                "direct selector missed register-bound halt fast path",
+            ));
+        }
+
         let fallback = select_verified_direct_native(
             &native_program(),
             HostOperatingSystem::Windows,
@@ -596,6 +661,100 @@ fn direct_selector_rejects_unsupported_host_format_without_fallback()
                 "unsupported direct host {host_os:?} was admitted"
             ));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_halt_register_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!(
+                "execution/fixtures/native-halt-registers-x86_64-coff.hex"
+            ),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-halt-registers-aarch64-coff.hex"
+            ),
+        ),
+    ];
+    let program = direct_halt_registers_program();
+    for (isa, fixture) in cases {
+        let artifact = emit_direct_halt_registers_coff(
+            &program,
+            direct_halt_registers_target(isa),
+        )
+        .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!(
+                "direct register-halt fixture mismatch for {isa:?}"
+            ));
+        }
+        let verified = verify_direct_halt_registers(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from(
+                "verified register-halt identity drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_halt_registers_rejects_ir_and_opcode_tampering() -> Result<(), String>
+{
+    let program = direct_halt_registers_program();
+    let artifact = emit_direct_halt_registers_coff(
+        &program,
+        direct_halt_registers_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let immediate = 0x1234_5678u32.to_le_bytes();
+    let offset = mutated_object
+        .windows(immediate.len())
+        .position(|window| window == immediate)
+        .ok_or_else(|| {
+            String::from("register-halt accumulator immediate missing")
+        })?;
+    let first = mutated_object.get_mut(offset).ok_or_else(|| {
+        String::from("register-halt immediate offset invalid")
+    })?;
+    *first ^= 1;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered).map_err(|error| {
+        format!("tampered register-halt structure: {error}")
+    })?;
+    if verify_direct_halt_registers(&tampered, &program)
+        != Err(DirectHaltRegistersError::ObjectBytes)
+    {
+        return Err(String::from("tampered register-halt object was admitted"));
+    }
+
+    let mut with_output = program;
+    let first_effect = with_output
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("register-halt fixture lost effect"))?;
+    first_effect.output = Some(0x41);
+    if emit_direct_halt_registers_coff(
+        &with_output,
+        direct_halt_registers_target(HostIsa::X86_64),
+    ) != Err(DirectHaltRegistersError::ProgramShape)
+    {
+        return Err(String::from("register-halt output mutation was admitted"));
     }
     Ok(())
 }

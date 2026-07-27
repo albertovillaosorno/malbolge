@@ -103,15 +103,16 @@ state return guard miss without mutation. This is the first accelerated
 state-applying native subset; all other IR still requires deopt/bootstrap/VM.
 
 `select_verified_direct_native()` now removes direct-backend identity selection
-from callers. It first classifies the IR: exact initial-halt uses the admitted
-fast path, otherwise the selector emits and verifies the direct deopt stub. Only
+from callers. It classifies the IR from narrowest to broadest: zero-register halt
+uses `direct-initial-halt`, other eligible one-step halts use
+`direct-halt-registers`, and otherwise the selector emits/verifies direct deopt. Only
 program shape controls this fallback; an emission/admission error after selection
 is propagated rather than silently retried. Non-Windows host formats fail
 explicitly because direct ELF/Mach-O templates do not exist yet.
 
 ### Remaining Implementation
 
-Semantic admission beyond the deopt and exact initial-halt templates, general
+Semantic admission beyond the deopt and one-step halt template family, general
 direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
 policy/invocation, durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier

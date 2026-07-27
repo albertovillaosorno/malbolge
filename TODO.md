@@ -332,9 +332,13 @@ verified: they return guard miss without touching state, providing the first
 semantically admitted native artifact and deterministic fallback floor. A second
 byte-canonical direct backend now admits the exact initial-halt IR subset and
 performs the first native guest-state commit: after zero-state preflight it sets
-only termination to halt; misses are atomic. Direct-template selection is now
-deterministic: exact initial-halt chooses that fast path and all other current IR
-chooses the verified deopt stub, while unsupported host formats fail explicitly.
+only termination to halt; misses are atomic. `direct-halt-registers` now extends
+that exact template to every 32-bit `A/C/D` combination with zero I/O counters,
+still with no memory/I/O effects; independent x86-64/AArch64 object fixtures and
+x86 execution cover nontrivial values. Direct-template selection is deterministic:
+zero-register halt chooses the smallest specialization, other eligible one-step
+halts choose register-bound code, and all remaining IR chooses verified deopt;
+unsupported host formats fail explicitly.
 General region-effect fast paths, cache/orchestration, executable invocation, and
 full AOT/JIT tier selection remain open.
 

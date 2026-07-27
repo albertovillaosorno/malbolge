@@ -62,7 +62,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   machine/entry/section identity and rejects unresolved external dependencies;
   a minimal direct emitter/verifier owns deopt-only x86-64/AArch64 stubs with
   byte-exact semantic admission, and `direct-initial-halt` now supplies the first
-  state-applying fast path for an exact one-step zero-state halt subset. General
+  state-applying fast path for an exact one-step zero-state halt subset.
+  `direct-halt-registers` extends that halt-only surface across arbitrary 32-bit
+  register values with independent full-object fixtures on both ISAs. General
   region-effect instruction selection, semantic machine-code admission,
   executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.

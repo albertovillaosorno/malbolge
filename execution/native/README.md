@@ -79,7 +79,17 @@ outside this reviewed subset.
 
 `select_verified_direct_native()` now owns deterministic direct-template
 selection for the implemented Windows surface. It classifies IR before creating
-a backend identity: exact initial-halt selects the admitted fast path; every other
-IR selects the byte-verified deopt stub. Backend/emission/verification errors are
+a backend identity: exact zero-register halt selects `direct-initial-halt`, any
+other zero-counter/no-I/O/no-memory one-step halt selects
+`direct-halt-registers`, and every other IR selects the byte-verified deopt stub. Backend/emission/verification errors are
 never reinterpreted as fallback, and unsupported host formats fail explicitly.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
+
+`direct-halt-registers` generalizes the halt template across the complete 32-bit
+`A`, `C`, and `D` domains while keeping input/output counters zero and admitting
+no memory/I/O effects. x86-64 encodes exact `cmp imm32` guards; AArch64 materializes
+each value with reviewed `movz`/`movk` pairs before comparison. Independent
+whole-object fixtures bind a nontrivial `0x12345678 / 0x9abcdef0 / 0x13579bdf`
+case for both ISAs. Development execution on x86-64 preserves all three matching
+registers and commits only halt; changing one register returns guard miss with
+the complete ABI state unchanged. The ARM64 object links successfully.

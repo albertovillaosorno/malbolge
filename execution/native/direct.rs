@@ -16,7 +16,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Canonical direct deopt/initial-halt objects and byte-exact admission.
+//   - Canonical direct deopt/halt objects and byte-exact semantic admission.
 // - Must-Not:
 //   - Lower unsupported effects, bypass verifier guards, or trust compiler
 //     output.
@@ -34,7 +34,7 @@
 // - Description:
 //   - Emits reviewed x86-64/AArch64 objects for exact verified IR subsets.
 // - Usage:
-//   - Provides a safe deopt floor plus the first initial-halt fast path.
+//   - Provides a safe deopt floor plus exact reviewed one-step halt fast paths.
 // - Defaults:
 //   - Unsupported IR is rejected; no direct template is selected implicitly.
 //
@@ -43,7 +43,7 @@
 // - docs/technical/adr/verification-trust-boundary.md
 //
 // Large file:
-//   - false
+//   - true
 
 //! Canonical direct native templates with byte-exact semantic verification.
 
@@ -57,7 +57,7 @@ use malbolge::{
 use super::{
     CoffAdmissionError, NATIVE_REGION_ABI_REVISION,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
-    structurally_admit_coff,
+    aarch64, structurally_admit_coff, x86_64,
 };
 use crate::execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetConfig,
@@ -67,17 +67,6 @@ use crate::execution_ir::{
     EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
 };
 
-const AARCH64_DEOPT_CODE: &[u8] =
-    &[0x20, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
-const AARCH64_INITIAL_HALT_CODE: &[u8] = &[
-    0x60, 0x01, 0x00, 0xb4, 0x08, 0x10, 0x40, 0xf9, 0x28, 0x01, 0x00, 0xb5,
-    0x08, 0x1c, 0x40, 0xf9, 0xe8, 0x00, 0x00, 0xb5, 0x08, 0x40, 0x40, 0xb9,
-    0xa8, 0x00, 0x00, 0x35, 0x08, 0x44, 0x40, 0xb9, 0x68, 0x00, 0x00, 0x35,
-    0x08, 0x48, 0x40, 0xb9, 0x68, 0x00, 0x00, 0x34, 0x20, 0x00, 0x80, 0x52,
-    0xc0, 0x03, 0x5f, 0xd6, 0x09, 0x30, 0x41, 0x39, 0xe8, 0x03, 0x00, 0xaa,
-    0x20, 0x00, 0x80, 0x52, 0x69, 0x00, 0x00, 0x35, 0x00, 0x31, 0x01, 0x39,
-    0xe0, 0x03, 0x1f, 0x2a, 0xc0, 0x03, 0x5f, 0xd6,
-];
 const COFF_HEADER_BYTES: usize = 20;
 const COFF_SECTION_BYTES: usize = 40;
 const COFF_SYMBOL_BYTES: usize = 18;
@@ -88,15 +77,6 @@ const IMAGE_SCN_ARM64_TEXT: u32 = 0x6030_0020;
 const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
-const X86_64_DEOPT_CODE: &[u8] = &[0xb8, 0x01, 0x00, 0x00, 0x00, 0xc3];
-const X86_64_INITIAL_HALT_CODE: &[u8] = &[
-    0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9, 0x74, 0x07, 0x48, 0x83,
-    0x79, 0x20, 0x00, 0x74, 0x01, 0xc3, 0x48, 0x83, 0x79, 0x38, 0x00, 0x75,
-    0xf8, 0x83, 0x79, 0x40, 0x00, 0x75, 0xf2, 0x83, 0x79, 0x44, 0x00, 0x75,
-    0xec, 0x83, 0x79, 0x48, 0x00, 0x75, 0xe6, 0x80, 0x79, 0x4c, 0x00, 0x75,
-    0xe0, 0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3,
-];
-
 /// Backend identity for the first direct, semantically admitted native tier.
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
@@ -105,6 +85,10 @@ pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 1;
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.
 pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for arbitrary-register one-step direct halt.
+pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
+/// Direct arbitrary-register halt code-generation revision.
+pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 1;
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,6 +137,65 @@ impl From<CoffAdmissionError> for DirectDeoptError {
 }
 
 impl From<IrEncodingError> for DirectDeoptError {
+    fn from(error: IrEncodingError) -> Self {
+        Self::Identity(error)
+    }
+}
+
+/// Failure while emitting or verifying arbitrary-register direct halt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectHaltRegistersError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity could not encode the portable program.
+    Identity(IrEncodingError),
+    /// Object bytes differ from the canonical register-bound halt object.
+    ObjectBytes,
+    /// Portable IR is outside the exact register-bound halt subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not the register-halt contract.
+    TargetBackend,
+    /// Register-halt v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Register-halt v1 emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectHaltRegistersError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "direct register-halt COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "direct register-halt identity encoding failed"
+            },
+            Self::ObjectBytes => {
+                "direct register-halt object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "portable IR is outside direct register-halt subset"
+            },
+            Self::TargetBackend => {
+                "target does not select direct register-halt backend"
+            },
+            Self::TargetFeatures => {
+                "direct register-halt backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "direct register-halt backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectHaltRegistersError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<IrEncodingError> for DirectHaltRegistersError {
     fn from(error: IrEncodingError) -> Self {
         Self::Identity(error)
     }
@@ -222,6 +265,8 @@ impl From<IrEncodingError> for DirectInitialHaltError {
 pub enum DirectNativeKind {
     /// Safe fallback artifact that always requests interpreter deoptimization.
     Deopt,
+    /// One-step halt bound to arbitrary 32-bit entry registers.
+    HaltRegisters,
     /// Exact one-step zero-state halt fast path.
     InitialHalt,
 }
@@ -231,6 +276,8 @@ pub enum DirectNativeKind {
 pub enum DirectSelectionError {
     /// Deoptimization artifact emission or admission failed.
     Deopt(DirectDeoptError),
+    /// Arbitrary-register halt artifact emission or admission failed.
+    HaltRegisters(DirectHaltRegistersError),
     /// Initial-halt artifact emission or admission failed.
     InitialHalt(DirectInitialHaltError),
     /// Direct native templates currently emit Windows COFF only.
@@ -241,6 +288,7 @@ impl Display for DirectSelectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::Deopt(error) => Display::fmt(error, f),
+            Self::HaltRegisters(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(
                 "direct native selection currently requires Windows",
@@ -257,6 +305,33 @@ pub struct VerifiedDeoptNativeObjectArtifact {
 
 impl VerifiedDeoptNativeObjectArtifact {
     /// Returns the exact native artifact identity associated with the stub.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+/// Native object proven to implement exact-register one-step halt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedHaltRegistersNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedHaltRegistersNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
     #[must_use]
     pub const fn key(&self) -> &NativeArtifactKey {
         self.artifact.key()
@@ -307,6 +382,8 @@ impl VerifiedInitialHaltNativeObjectArtifact {
 pub enum VerifiedDirectNativeArtifact {
     /// Safe no-state-change guard-miss fallback.
     Deopt(VerifiedDeoptNativeObjectArtifact),
+    /// One-step halt bound to arbitrary 32-bit entry registers.
+    HaltRegisters(VerifiedHaltRegistersNativeObjectArtifact),
     /// Exact zero-state one-step halt fast path.
     InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
 }
@@ -317,6 +394,7 @@ impl VerifiedDirectNativeArtifact {
     pub const fn key(&self) -> &NativeArtifactKey {
         match self {
             Self::Deopt(artifact) => artifact.key(),
+            Self::HaltRegisters(artifact) => artifact.key(),
             Self::InitialHalt(artifact) => artifact.key(),
         }
     }
@@ -326,6 +404,7 @@ impl VerifiedDirectNativeArtifact {
     pub const fn kind(&self) -> DirectNativeKind {
         match self {
             Self::Deopt(_artifact) => DirectNativeKind::Deopt,
+            Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
             Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
         }
     }
@@ -335,6 +414,7 @@ impl VerifiedDirectNativeArtifact {
     pub fn object(&self) -> &[u8] {
         match self {
             Self::Deopt(artifact) => artifact.object(),
+            Self::HaltRegisters(artifact) => artifact.object(),
             Self::InitialHalt(artifact) => artifact.object(),
         }
     }
@@ -344,6 +424,7 @@ impl VerifiedDirectNativeArtifact {
     pub const fn target_triple(&self) -> &'static str {
         match self {
             Self::Deopt(artifact) => artifact.target_triple(),
+            Self::HaltRegisters(artifact) => artifact.target_triple(),
             Self::InitialHalt(artifact) => artifact.target_triple(),
         }
     }
@@ -381,6 +462,19 @@ pub fn select_verified_direct_native(
             .map_err(DirectSelectionError::InitialHalt)?;
         return Ok(VerifiedDirectNativeArtifact::InitialHalt(verified));
     }
+    if validate_halt_registers_program(program).is_ok() {
+        let target = direct_target(
+            DIRECT_HALT_REGISTERS_BACKEND_ID,
+            DIRECT_HALT_REGISTERS_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        );
+        let artifact = emit_direct_halt_registers_coff(program, target)
+            .map_err(DirectSelectionError::HaltRegisters)?;
+        let verified = verify_direct_halt_registers(&artifact, program)
+            .map_err(DirectSelectionError::HaltRegisters)?;
+        return Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified));
+    }
     let target = direct_target(
         DIRECT_DEOPT_BACKEND_ID,
         DIRECT_DEOPT_BACKEND_REVISION,
@@ -411,6 +505,25 @@ pub fn emit_direct_deopt_coff(
     let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
     let object = canonical_coff(key.target().host_isa())?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+/// Emits a one-step halt fast path bound to exact entry registers.
+///
+/// # Errors
+///
+/// Returns [`DirectHaltRegistersError`] when IR/target is outside this subset.
+pub fn emit_direct_halt_registers_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectHaltRegistersError> {
+    let registers = validate_halt_registers_program(program)?;
+    validate_halt_registers_target(&target)?;
+    let triple = target_triple(target.host_isa());
+    let key = NativeArtifactKey::new(program, target)?;
+    let object = halt_registers_coff(key.target().host_isa(), registers)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -458,6 +571,32 @@ pub fn verify_direct_deopt_stub(
     Ok(VerifiedDeoptNativeObjectArtifact { artifact: admitted })
 }
 
+/// Promotes only the canonical exact-register halt object for its IR.
+///
+/// # Errors
+///
+/// Returns [`DirectHaltRegistersError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_halt_registers(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedHaltRegistersNativeObjectArtifact, DirectHaltRegistersError>
+{
+    let registers = validate_halt_registers_program(program)?;
+    validate_halt_registers_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectHaltRegistersError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected =
+        halt_registers_coff(artifact.key().target().host_isa(), registers)?;
+    if admitted.object() != expected {
+        return Err(DirectHaltRegistersError::ObjectBytes);
+    }
+    Ok(VerifiedHaltRegistersNativeObjectArtifact { artifact: admitted })
+}
+
 /// Promotes only the exact canonical initial-halt object for its exact IR.
 ///
 /// # Errors
@@ -485,8 +624,8 @@ pub fn verify_direct_initial_halt(
 
 fn canonical_coff(isa: HostIsa) -> Result<Vec<u8>, DirectDeoptError> {
     let text = match isa {
-        HostIsa::AArch64 => AARCH64_DEOPT_CODE,
-        HostIsa::X86_64 => X86_64_DEOPT_CODE,
+        HostIsa::AArch64 => aarch64::deopt_code(),
+        HostIsa::X86_64 => x86_64::deopt_code(),
     };
     build_minimal_coff(isa, text).ok_or(DirectDeoptError::ObjectBytes)
 }
@@ -543,10 +682,29 @@ fn build_minimal_coff(isa: HostIsa, text: &[u8]) -> Option<Vec<u8>> {
     Some(object)
 }
 
+fn halt_registers_coff(
+    isa: HostIsa,
+    registers: ProfileRegisters,
+) -> Result<Vec<u8>, DirectHaltRegistersError> {
+    let text = match isa {
+        HostIsa::AArch64 => aarch64::halt_registers_code(
+            registers.accumulator,
+            registers.code_pointer,
+            registers.data_pointer,
+        ),
+        HostIsa::X86_64 => x86_64::halt_registers_code(
+            registers.accumulator,
+            registers.code_pointer,
+            registers.data_pointer,
+        ),
+    };
+    build_minimal_coff(isa, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
+}
+
 fn initial_halt_coff(isa: HostIsa) -> Result<Vec<u8>, DirectInitialHaltError> {
     let text = match isa {
-        HostIsa::AArch64 => AARCH64_INITIAL_HALT_CODE,
-        HostIsa::X86_64 => X86_64_INITIAL_HALT_CODE,
+        HostIsa::AArch64 => aarch64::initial_halt_code(),
+        HostIsa::X86_64 => x86_64::initial_halt_code(),
     };
     build_minimal_coff(isa, text).ok_or(DirectInitialHaltError::ObjectBytes)
 }
@@ -587,6 +745,60 @@ const fn target_triple(isa: HostIsa) -> &'static str {
         HostIsa::AArch64 => "aarch64-pc-windows-msvc",
         HostIsa::X86_64 => "x86_64-pc-windows-msvc",
     }
+}
+
+fn validate_halt_registers_program(
+    program: &RegionEffectProgram,
+) -> Result<ProfileRegisters, DirectHaltRegistersError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || program.step_budget != 1
+        || !program.memory_live_ins.is_empty()
+        || program.effects.len() != 1
+        || program.outcome
+            != (RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 1,
+            })
+    {
+        return Err(DirectHaltRegistersError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .ok_or(DirectHaltRegistersError::ProgramShape)?;
+    let expected_after = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..effect.before
+    };
+    if effect.before.input_consumed != 0
+        || effect.before.output_len != 0
+        || effect.before.termination.is_some()
+        || effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta != ProfileMemoryDelta::default()
+    {
+        return Err(DirectHaltRegistersError::ProgramShape);
+    }
+    Ok(effect.before.registers)
+}
+
+fn validate_halt_registers_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectHaltRegistersError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectHaltRegistersError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_HALT_REGISTERS_BACKEND_ID
+        || target.backend_revision() != DIRECT_HALT_REGISTERS_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectHaltRegistersError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectHaltRegistersError::TargetFeatures);
+    }
+    Ok(())
 }
 
 fn validate_initial_halt_program(

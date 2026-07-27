@@ -60,6 +60,13 @@ both ISA implementations; x86-64 execution evidence covers hit, miss, and null
 state, while ARM64 object linkage is verified on the development host. This
 remains a deliberately tiny subset rather than general instruction selection.
 
+`direct-halt-registers` now covers the same halt-only effect across arbitrary
+32-bit entry registers. The x86-64 owner emits immediate comparisons; the
+AArch64 owner emits reviewed `movz`/`movk` immediate materialization. Complete
+independent object fixtures cover nontrivial register values, and x86-64 native
+execution proves exact-register hit plus one-register atomic miss. This extends
+parameterization, not the admitted guest-effect surface.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF remains semantically untrusted. A
