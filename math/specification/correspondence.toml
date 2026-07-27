@@ -265,3 +265,11 @@ label = "eq:state-graph-incremental-collision-guard"
 domain = "incremental states inside one admitted lineage under arbitrary digest collisions"
 mechanism = "constant-digest-adversarial-collision-confirmation"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/s.rs::forced_digest_collision_never_merges_distinct_states", "algorithms/self-modification-state-graph-optimizer/tests/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
+
+[[correspondence]]
+id = "state-graph-persistent-output"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-persistent-output"
+domain = "one lineage output prefix plus append-only committed byte histories"
+mechanism = "materialization-independent-branch-equality-and-long-history"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/o.rs::independent_equal_branches_compare_exactly", "algorithms/self-modification-state-graph-optimizer/tests/o.rs::different_output_branches_remain_distinct", "algorithms/self-modification-state-graph-optimizer/tests/o.rs::long_append_history_materializes_without_prefix_loss", "algorithms/self-modification-state-graph-optimizer/tests/s.rs::current_trace_reconstructs_and_replay_deduplicates"]

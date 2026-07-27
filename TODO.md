@@ -631,9 +631,10 @@ separate without full-memory hashing per observation. Post-commit identity
 measurement is 535.82 ns new-observe and
 406.67 ns replay versus
 26.29/30.48 ms for
-complete checkpoints in the same run. Append-only output storage, wider-profile
-geometry, broader mutation-history collapse, and native-region shortcuts remain
-open.
+complete checkpoints in the same run. Append-only output now uses a shared
+persistent history with exact byte equality and safe iterative destruction for
+65,536-byte fixtures. Post-commit output performance, wider-profile geometry,
+broader mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 

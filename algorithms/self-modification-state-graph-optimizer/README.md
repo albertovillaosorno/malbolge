@@ -99,3 +99,11 @@ measured representation ratios are about
 49070x and
 74958x respectively. The remaining
 history-sized field is committed output, currently cloned as `Vec<u8>` on append.
+
+`output.rs` removes the remaining per-step clone of complete committed output
+without changing observable identity. It stores the checkpoint output prefix in
+one shared `Arc<[u8]>` and appends immutable one-byte tail nodes. Exact equality
+retains byte authority after digest/length filters, materialization reconstructs
+the complete output, and iterative destruction prevents recursive-`Arc` stack
+overflow on long unique histories. `state.rs` now uses this persistent history in
+its exact merge key and oracle checkpoints.

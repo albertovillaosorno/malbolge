@@ -61,12 +61,13 @@ use malbolge::{
 };
 
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
+use crate::persistent_output::PersistentOutput;
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 
 type IndexedDigestFunction = fn(&IndexedMachineState) -> u64;
-type OutputTransition = Result<(Vec<u8>, u64), IndexedStateError>;
+type OutputTransition = Result<PersistentOutput, IndexedStateError>;
 
 /// Exact incremental profile-machine state inside one execution lineage.
 #[derive(Clone, Debug)]
@@ -75,8 +76,7 @@ pub struct IndexedMachineState {
     input_cursor: usize,
     input_digest: u64,
     memory: IndexedProfileMemory,
-    output: Vec<u8>,
-    output_digest: u64,
+    output: PersistentOutput,
     profile: &'static ProfileDescriptor,
     profile_digest: u64,
     registers: ProfileRegisters,
@@ -148,7 +148,7 @@ impl IndexedMachineState {
     ) -> Result<Self, IndexedStateError> {
         self.validate_before(trace)?;
         let input_cursor = self.next_input_cursor(trace)?;
-        let (output, output_digest) = self.next_output(trace)?;
+        let output = self.next_output(trace)?;
         let memory = self.memory.apply(trace.memory_delta)?;
         Ok(Self {
             input: Arc::clone(&self.input),
@@ -156,7 +156,6 @@ impl IndexedMachineState {
             input_digest: self.input_digest,
             memory,
             output,
-            output_digest,
             profile: self.profile,
             profile_digest: self.profile_digest,
             registers: trace.after.registers,
@@ -170,7 +169,7 @@ impl IndexedMachineState {
         ptr::eq(self.profile, other.profile)
             && Arc::ptr_eq(&self.input, &other.input)
             && self.input_cursor == other.input_cursor
-            && self.output == other.output
+            && self.output.exact_output_eq(&other.output)
             && self.registers == other.registers
             && self.termination == other.termination
             && self.memory.exact_memory_eq(&other.memory)
@@ -188,8 +187,7 @@ impl IndexedMachineState {
         let io = state.io();
         let input = Arc::<[u8]>::from(io.input());
         let input_digest = hash_bytes(FNV_OFFSET, &input);
-        let output = io.output().to_vec();
-        let output_digest = hash_bytes(FNV_OFFSET, &output);
+        let output = PersistentOutput::from_bytes(io.output());
         let profile_digest =
             hash_bytes(FNV_OFFSET, state.profile().fingerprint().as_bytes());
         Ok(Self {
@@ -198,7 +196,6 @@ impl IndexedMachineState {
             input_digest,
             memory: IndexedProfileMemory::from_state(state)?,
             output,
-            output_digest,
             profile: state.profile(),
             profile_digest,
             registers: state.registers(),
@@ -218,7 +215,7 @@ impl IndexedMachineState {
         let io = ProfileMachineIoState::new(
             self.input.to_vec(),
             self.input_cursor,
-            self.output.clone(),
+            self.output.materialize(),
             self.termination,
         )?;
         Ok(ProfileMachineState::new(
@@ -264,24 +261,23 @@ impl IndexedMachineState {
     }
 
     fn next_output(&self, trace: &ProfileStepTrace) -> OutputTransition {
-        match trace.output {
-            None => {
+        trace.output.map_or_else(
+            || {
                 if trace.after.output_len == self.output.len() {
-                    Ok((self.output.clone(), self.output_digest))
+                    Ok(self.output.clone())
                 } else {
                     Err(IndexedStateError::OutputTraceMismatch)
                 }
             },
-            Some(byte) => {
+            |byte| {
                 let expected_len = self.output.len().saturating_add(1);
-                if trace.after.output_len != expected_len {
-                    return Err(IndexedStateError::OutputTraceMismatch);
+                if trace.after.output_len == expected_len {
+                    Ok(self.output.append(byte))
+                } else {
+                    Err(IndexedStateError::OutputTraceMismatch)
                 }
-                let mut output = self.output.clone();
-                output.push(byte);
-                Ok((output, hash_byte(self.output_digest, byte)))
             },
-        }
+        )
     }
 
     fn shares_lineage(&self, other: &Self) -> bool {
@@ -300,7 +296,7 @@ impl IndexedMachineState {
         hash = hash_u64(hash, self.profile_digest);
         hash = hash_u64(hash, self.input_digest);
         hash = hash_usize(hash, self.input_cursor);
-        hash = hash_u64(hash, self.output_digest);
+        hash = hash_u64(hash, self.output.digest());
         hash = hash_termination(hash, self.termination);
         hash = hash_u32(hash, self.registers.accumulator);
         hash = hash_u32(hash, self.registers.code_pointer);

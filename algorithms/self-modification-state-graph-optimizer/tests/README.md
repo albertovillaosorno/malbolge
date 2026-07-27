@@ -35,3 +35,7 @@ and rejects a forged `before` value before any indexed update commits.
 deduplication, forces all states into one digest bucket without false merge, and
 rejects independently allocated roots as foreign lineage instead of performing a
 full-root comparison.
+
+`o.rs` proves persistent output materialization, equality of independently built
+identical branches, inequality of different branches, and safe 65,536-byte
+history destruction/materialization without recursive stack growth.

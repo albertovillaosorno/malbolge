@@ -180,6 +180,27 @@ runtime checkpoint, and requires exact equality. It also forces every state into
 one digest bucket and proves distinct states remain distinct, while an
 independently reconstructed checkpoint root is rejected as foreign lineage.
 
+\section{Persistent committed output}
+
+Let $O_0$ be the immutable committed-output prefix at lineage construction and
+let $b_1,\ldots,b_n$ be later committed output bytes. The persistent output
+history $P_n$ is an immutable parent chain with incremental digest, but its
+semantic authority remains the exact byte sequence:
+\begin{equation}
+  \operatorname{materialize}(P_n)=O_0\Vert b_1\Vert\cdots\Vert b_n.
+  \label{eq:state-graph-persistent-output}
+\end{equation}
+Appending one byte creates one new tail node and shares the entire prior history.
+Exact equality first checks shared immutable base, length, and digest, then uses a
+shared-tail pointer shortcut or compares tail bytes exactly. Digest equality
+alone never proves output equality. Destruction iteratively unwraps uniquely
+owned tail nodes so long output histories do not recurse through the host stack.
+
+The executable correspondence builds independent branches with equal and unequal
+suffixes, materializes exact bytes, and exercises a 65,536-byte appended history.
+Incremental state reconstruction continues to compare exactly with complete
+runtime checkpoints after replacing `Vec<u8>` copying with this persistent form.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

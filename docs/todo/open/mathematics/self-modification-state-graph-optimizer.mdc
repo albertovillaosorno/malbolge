@@ -86,9 +86,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- Incremental-state post-commit performance, wider-profile radix geometry,
-  output storage reduction, broader mutation-history collapse, native-region
-  shortcuts, and end-to-end performance claims remain active research and
+- Persistent-output post-commit performance, wider-profile radix geometry,
+  broader mutation-history collapse, native-region shortcuts, and end-to-end
+  performance claims remain active research and
   must be falsified independently against the exact baseline.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
   ns through 4096 distinct overrides; depth-4096 root fallback is
@@ -110,6 +110,11 @@ VM evidence.
   are 26.29/30.48 ms
   in the same run. Incremental identity is promoted; append-only output storage
   is now the remaining obvious history-sized state update.
+- `output.rs` replaces complete-output `Vec` copying with a shared immutable
+  prefix plus one tail node per committed byte while preserving exact output in
+  the state key. Independent equal/different branches compare correctly, a
+  65,536-byte history materializes exactly, and iterative destruction fixes the
+  stack overflow discovered by that long-history fixture. Performance is next.
 
 ## Acceptance
 

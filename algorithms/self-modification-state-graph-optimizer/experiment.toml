@@ -91,3 +91,10 @@ samples_per_case = 15
 operations_per_incremental_sample = 4096
 verdict = "promote-lineage-bound-incremental-identity"
 next_risk = "append-only-output-storage"
+
+[reduction.persistent_output]
+baseline = "clone-complete-output-vector-on-state-update"
+candidate = "shared-prefix-plus-immutable-byte-tail"
+digest_role = "filter-only"
+exact_equality = "shared-tail-or-bytewise"
+long_history_fixture_bytes = 65536

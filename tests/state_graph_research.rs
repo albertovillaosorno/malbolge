@@ -53,10 +53,14 @@ pub mod indexed;
 mod indexed_memory;
 #[path = "../algorithms/self-modification-state-graph-optimizer/state.rs"]
 pub mod indexed_state;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/o.rs"]
+mod output_history;
 #[path = "../algorithms/self-modification-state-graph-optimizer/memory.rs"]
 pub mod persistent;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/p.rs"]
 mod persistent_memory;
+#[path = "../algorithms/self-modification-state-graph-optimizer/output.rs"]
+pub mod persistent_output;
 #[path = "../algorithms/self-modification-state-graph-optimizer/profile.rs"]
 pub mod profile_graph;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/c.rs"]

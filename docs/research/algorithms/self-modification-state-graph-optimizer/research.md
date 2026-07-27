@@ -252,3 +252,17 @@ lineage-bound incremental identity as the current graph candidate. The remaining
 obvious history-sized update is committed output: `state.rs` still clones the
 entire output `Vec<u8>` whenever one byte is emitted. Output persistence is the
 next falsifiable representation slice before native-region work.
+
+The remaining history-sized state update now has a correctness candidate in
+`output.rs`. The initial committed output prefix is shared once; each later byte
+creates one immutable parent-linked tail node. Exact output equality keeps bytes
+as authority after digest/length filters, while shared tails make ordinary replay
+constant-time. Independent branches producing the same three-byte suffix compare
+exactly, different suffixes remain distinct, and a 65,536-byte history
+materializes correctly.
+
+The long-history fixture initially exposed recursive `Arc` destruction as a host
+stack overflow. The implementation now iteratively unwraps uniquely owned tail
+nodes until a shared prefix is reached, and the same 65,536-byte test passes.
+Performance is not yet claimed: a post-commit benchmark must compare persistent
+append against the previous complete-`Vec` clone as output length grows.
