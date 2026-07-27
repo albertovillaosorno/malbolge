@@ -69,8 +69,12 @@ resources into measured throughput instead of hitting fixed artificial limits.
   byte model admits 6 first-chunk states at 128 MiB and 4,209 at 80 GiB. These
   values prove absence of one fixed batch ceiling; they are not hardware
   throughput measurements.
-- Research evidence remains incomplete until retained live resource/performance
-  samples and broader hardware evidence exist.
+- Retained post-commit resource evidence under
+  `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
+  records the RTX 4060 Driver API snapshot and synthetic boundary rows with exact
+  commit/toolchain/device provenance. It is capacity evidence only.
+- Research evidence remains incomplete until retained throughput samples,
+  current-profile resident execution, and broader live-hardware evidence exist.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

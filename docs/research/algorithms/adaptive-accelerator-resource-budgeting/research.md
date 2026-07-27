@@ -88,8 +88,12 @@ model under the same reserve rule. These are capacity-model results, **not**
 claims that either hardware class was physically benchmarked.
 
 Existing RTX 4060 classic resident differential tests continue to pass after the
-planner is inserted into the real allocation path. Raw post-commit resource and
-throughput evidence is still required before accepting a performance conclusion.
+planner is inserted into the real allocation path. Post-commit resource evidence
+at `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
+records commit/toolchain/device identity plus the raw planning JSON. The live
+snapshot reports 8,585,084,928 total bytes, 7,451,181,056 free bytes, 24 SMs,
+and 1,024 maximum threads/block; the modeled current state admits 361 items in
+the first chunk. This remains capacity evidence, not throughput.
 
 ## Threats to Validity
 

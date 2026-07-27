@@ -1,0 +1,49 @@
+{
+  "device": {
+    "arch": "sm_89",
+    "free_memory_bytes": 7451181056,
+    "max_threads_per_block": 1024,
+    "multiprocessor_count": 24,
+    "name": "NVIDIA GeForce RTX 4060",
+    "total_memory_bytes": 8585084928
+  },
+  "research_id": "adaptive-accelerator-resource-budgeting",
+  "scenarios": [
+    {
+      "first_chunk_items": 6,
+      "item_bytes": 19131940,
+      "label": "synthetic-128m-current",
+      "reserve_bytes": 8388608,
+      "synthetic": true,
+      "total_chunks": 1667,
+      "usable_memory_bytes": 125829120
+    },
+    {
+      "first_chunk_items": 4209,
+      "item_bytes": 19131940,
+      "label": "synthetic-80g-current",
+      "reserve_bytes": 5368709120,
+      "synthetic": true,
+      "total_chunks": 3,
+      "usable_memory_bytes": 80530636800
+    },
+    {
+      "first_chunk_items": 10000,
+      "item_bytes": 236260,
+      "label": "live-classic",
+      "reserve_bytes": 536567808,
+      "synthetic": false,
+      "total_chunks": 1,
+      "usable_memory_bytes": 6914613248
+    },
+    {
+      "first_chunk_items": 361,
+      "item_bytes": 19131940,
+      "label": "live-current-model",
+      "reserve_bytes": 536567808,
+      "synthetic": false,
+      "total_chunks": 28,
+      "usable_memory_bytes": 6914613248
+    }
+  ]
+}
