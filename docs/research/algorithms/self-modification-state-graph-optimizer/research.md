@@ -190,3 +190,17 @@ root-miss per step, the simple `S/N + alpha*N/2` model has its optimum near
 work. The model is explicitly illustrative, not a throughput claim. The next
 candidate therefore requires persistent sharing **and** read cost bounded
 independently of patch-history depth.
+
+The next correctness candidate is now implemented in `index.rs`: a persistent
+64-way radix overlay with four six-bit address chunks above the same shared full
+root. The 24-bit capacity contains the current 14-trit address domain and is
+explicitly rejected rather than widened implicitly. Reads are structurally
+bounded to at most four radix levels independent of patch-history length.
+
+Correctness evidence remains checkpoint-based rather than performance-based.
+Real current trace deltas reconstruct every complete runtime checkpoint exactly;
+a separate fixture accumulates 4096 distinct overrides and still returns the
+latest override and an untouched root cell correctly. A forged `before` value
+fails before path copying. Performance is deliberately unclaimed until a
+post-commit benchmark compares indexed apply/root/latest reads to the linked
+baseline.

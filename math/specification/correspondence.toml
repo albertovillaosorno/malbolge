@@ -241,3 +241,11 @@ label = "eq:state-graph-persistent-memory"
 domain = "current-profile checkpoint root plus exact traced deltas for bounded execution"
 mechanism = "stepwise-full-materialization-and-fail-closed-before-validation"
 evidence = ["algorithms/self-modification-state-graph-optimizer/tests/p.rs::current_trace_patches_reconstruct_every_checkpoint", "algorithms/self-modification-state-graph-optimizer/tests/p.rs::mismatched_before_value_fails_closed", "algorithms/self-modification-state-graph-optimizer/tests/p.rs::empty_delta_reuses_patch_depth"]
+
+[[correspondence]]
+id = "state-graph-indexed-memory"
+tex = "math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-indexed-memory"
+domain = "current 14-trit profile within the explicit 24-bit radix research capacity"
+mechanism = "stepwise-materialization-distinct-overrides-and-before-validation"
+evidence = ["algorithms/self-modification-state-graph-optimizer/tests/i.rs::current_trace_deltas_reconstruct_every_indexed_checkpoint", "algorithms/self-modification-state-graph-optimizer/tests/i.rs::distinct_overrides_preserve_root_and_latest_reads", "algorithms/self-modification-state-graph-optimizer/tests/i.rs::forged_before_value_is_rejected_by_index"]

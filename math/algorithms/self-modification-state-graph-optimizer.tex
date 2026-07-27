@@ -116,6 +116,31 @@ separate fixture corrupts a `before` value and requires fail-closed rejection.
 Materialization remains an oracle operation; the proposed fast path is shared
 root plus bounded patches and exact indexed reads.
 
+\section{Bounded persistent radix overlay}
+
+For the current 14-trit profile, every admitted address is below $2^{24}$.
+Partition a 24-bit address into four six-bit chunks and let $O_k$ be a persistent
+64-way radix overlay after semantic delta $k$, while $M_0$ remains the shared
+complete root memory. The indexed read is
+\begin{equation}
+  \operatorname{read}(I_k,a)=
+  \begin{cases}
+    O_k[a], & \text{when an override exists},\\
+    M_0[a], & \text{otherwise},
+  \end{cases}
+  \qquad \operatorname{depth}(I_k,a)\leq4.
+  \label{eq:state-graph-indexed-memory}
+\end{equation}
+Applying a trace delta validates every recorded `before` value through the same
+indexed read before path-copying only the affected radix nodes. The bound is on
+lookup structure depth, not on total historical patch count. This candidate is
+intentionally limited to the 24-bit research domain; wider future profiles must
+select a different geometry explicitly rather than silently truncate addresses.
+
+The executable correspondence reconstructs every checkpoint of current traced
+execution exactly, inserts 4096 distinct overrides while preserving both latest
+overrides and untouched-root reads, and rejects a forged `before` value.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

@@ -619,9 +619,11 @@ persistent memory now reconstructs every current checkpoint exactly from those
 patches and rejects forged `before` values. Depth evidence rejects the linked
 chain as a general index: latest hits stay near 18 ns but root misses reach
 20751.17 ns at depth 4096, and compaction-only remains multi-microsecond
-in the recorded lower-bound model. A bounded-read persistent memory index, live
-register/output reductions, broader mutation-history collapse, and native-region
-shortcuts remain open.
+in the recorded lower-bound model. A four-level 64-way persistent radix now
+reconstructs current checkpoints exactly and preserves 4096 distinct overrides
+with bounded lookup depth. Post-commit indexed performance, wider-profile
+geometry, live register/output reductions, broader mutation-history collapse,
+and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 

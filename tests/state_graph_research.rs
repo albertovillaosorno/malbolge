@@ -47,6 +47,10 @@
 
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/exact.rs"]
 mod exact_state;
+#[path = "../algorithms/self-modification-state-graph-optimizer/index.rs"]
+pub mod indexed;
+#[path = "../algorithms/self-modification-state-graph-optimizer/tests/i.rs"]
+mod indexed_memory;
 #[path = "../algorithms/self-modification-state-graph-optimizer/memory.rs"]
 pub mod persistent;
 #[path = "../algorithms/self-modification-state-graph-optimizer/tests/p.rs"]

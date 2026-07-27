@@ -72,6 +72,11 @@ VM evidence.
   about 5.20 ns per traversed patch. A compaction-only lower-bound model
   still costs about 10.93 microseconds
   per step at its one-miss optimum, so a bounded-read persistent index is next.
+- `index.rs` implements that next candidate as a four-level 64-way persistent
+  radix over one shared root. Current traced checkpoints reconstruct exactly,
+  4096 distinct overrides preserve both indexed and root reads, forged `before`
+  values fail closed, and the explicit 24-bit capacity contains current 14-trit
+  addresses. Performance remains unclaimed until post-commit measurement.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while
@@ -81,9 +86,9 @@ VM evidence.
 - Already-terminated states have a second admitted key containing only profile,
   committed output, and termination reason; varied memory/register/input fixtures
   converge and live machines fail closed outside this domain.
-- A bounded-read persistent memory index, live register/output reductions,
-  broader mutation-history collapse, native-region shortcuts, and end-to-end
-  performance claims remain active research and
+- Indexed-memory post-commit performance, wider-profile radix geometry, live
+  register/output reductions, broader mutation-history collapse, native-region
+  shortcuts, and end-to-end performance claims remain active research and
   must be falsified independently against the exact baseline.
 
 ## Acceptance

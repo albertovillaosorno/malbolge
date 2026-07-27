@@ -58,3 +58,12 @@ depths = [1, 8, 64, 512, 4096]
 samples_per_case = 15
 latest_hit_expectation = "depth-independent"
 root_miss_hypothesis = "linear-in-patch-depth"
+
+[reduction.indexed_memory]
+baseline = "shared-root-linked-patch-chain"
+candidate = "shared-root-four-level-64-way-radix-overlay"
+address_bits = 24
+radix_bits_per_level = 6
+radix_levels = 4
+current_profile_supported = true
+full_materialization_role = "oracle-only"

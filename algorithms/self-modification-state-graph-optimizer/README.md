@@ -62,3 +62,12 @@ depth measurements keep newest-patch hits near 18 ns, but root misses grow to
 20751.17 ns at depth 4096. Periodic full compaction also retains a
 multi-microsecond modeled lower bound on the measured host. The next memory
 candidate must keep structural sharing while bounding arbitrary read depth.
+
+`index.rs` is the bounded-read candidate selected after the linked-chain depth
+experiment. It keeps the same shared full root but stores overrides in a
+persistent 64-way radix over four six-bit address chunks. Current 14-trit
+addresses fit within the explicit 24-bit research capacity. Reads therefore
+inspect at most four radix levels before either finding an override or falling
+back to the root; writes validate trace `before` values and path-copy only the
+affected radix nodes. `tests/i.rs` reconstructs real current checkpoints and
+exercises 4096 distinct overrides.

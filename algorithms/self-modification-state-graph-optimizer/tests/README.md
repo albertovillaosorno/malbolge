@@ -26,3 +26,7 @@ exceeds two cells and demonstrates both the two-cell and zero-cell boundaries.
 `p.rs` proves persistent current memory reconstruction from one complete root and
 trace deltas, verifies empty deltas do not add patch depth, and rejects a forged
 `before` value before it can enter the persistent chain.
+
+`i.rs` verifies the four-level radix overlay against complete current-profile
+checkpoints, inserts 4096 distinct overrides while preserving root fallthrough,
+and rejects a forged `before` value before any indexed update commits.
