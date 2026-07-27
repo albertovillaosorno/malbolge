@@ -87,7 +87,11 @@ format.
   and bind its plan-specific key to distributed source anchors.
 - A read-only DOOM smoke protected 2,116,232 literal bytes across 152 instructions
   and materialized an exact 152-file oracle snapshot from the original source.
-- No serialized source-bound transform or constant-time Rust emitter exists yet.
+- Exact protected plans now emit as standalone std-only Rust. Synthetic compile/run
+  tests use Rust 1.97.1 with `-D warnings`; a full read-only DOOM smoke emitted a
+  4,655,376-byte transform and reproduced the 152-file oracle exactly.
+- Compatible/fuzzy Rust emission remains unfinished: consumer canonical identity,
+  thresholds, behavior probes, and bug-routing still need runtime representation.
 
 ## Acceptance
 

@@ -16,4 +16,7 @@ recovery, plus the RFC 8439 ChaCha20-Poly1305 AEAD vector and ciphertext/tag/AAD
 tamper rejection. Protected exact-plan tests also prove deterministic ciphertext,
 no plaintext literal retention, transform-without-source rejection, metadata AEAD
 binding, oracle-free exact reconstruction, and no output before authentication.
-Compatible-variant placement and Rust emission remain unfinished.
+Exact Rust-emission tests compile generated standalone source with `rustc -D
+warnings`, execute the binary, verify exact reconstruction, and exercise wrong-source
+and existing-output rejection. Compatible-variant placement/emission remains
+unfinished.

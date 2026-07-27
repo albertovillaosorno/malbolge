@@ -6,9 +6,9 @@ Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
 adapter, generic behavior-evidence semantics, a portable bounded process-probe
 executor, the first DOOM identity behavior program, and threshold source-bound key
-unlock, RFC 8439 ChaCha20-Poly1305, and protected exact-plan materialization are
-implemented. Broader DOOM compatibility/bug probes, compatible-variant placement,
-serialized transform emission, and the constant-time Rust runtime remain unfinished.
+unlock, RFC 8439 ChaCha20-Poly1305, protected exact-plan materialization, and
+standalone std-only Rust emission for the exact baseline are implemented. Broader DOOM
+compatibility/bug probes and compatible-variant admission/placement remain unfinished.
 
 ## Purpose
 

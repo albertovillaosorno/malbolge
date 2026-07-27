@@ -75,9 +75,17 @@ identity view that excludes the WAD and IPX source family from Linux lineage
 scoring. Generic behavior admission and portable process-probe execution now also
 exist. The DOOM domain has its first executable fixed-point identity probe, while
 `algorithms/diff` now also protects exact-plan oracle literals behind source-bound
-authenticated payload recovery. `write_algorithm()` still fails closed because
-deterministic Rust emission is unfinished and the DOOM probe suite is not broad
-enough yet.
+authenticated payload recovery and emits the exact plan as standalone std-only Rust.
+`write_algorithm()` remains fail-closed at the public recipe boundary because exact
+versus compatible emission still needs to be explicit and the DOOM probe suite is not
+broad enough yet.
+
+The standalone Rust exact-transform smoke is now end to end. The generated source
+was 4,655,376 bytes, compiled warning-free with Rust 1.97.1, ran directly against
+the ignored original `doom/` tree, and materialized a temporary 152-file output
+whose complete snapshot matched the manual oracle. Compilation took about 1.6
+seconds and materialization about 12.3 seconds on the development workstation. The
+generated `.rs`, executable, and output were all deleted after the smoke.
 
 The protected exact-plan smoke now exercises the complete local authoring corpus
 without publishing it. It encrypted 2,116,232 target-only bytes into one RFC 8439

@@ -31,8 +31,9 @@ algorithms/diff/
 Exact authoring, generic identity primitives, tree-level structural/anchor
 admission, behavior-evidence semantics, the portable process-probe executor, and
 the threshold source-bound key-unlock primitive, RFC 8439 payload crypto, and
-protected exact-plan integration are implemented. Broader DOOM probes, compatible-
-variant placement, and Rust emission remain active work under the owning TODO.
+protected exact-plan integration, and standalone std-only Rust emission for the
+exact baseline are implemented. Broader DOOM probes and compatible-variant admission/
+placement remain active work under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -49,9 +50,9 @@ then publishes the output tree. Symlinks and special filesystem entries fail
 closed. Empty directories are outside the version-one byte-tree model.
 
 `ExactAuthoringPlan` is intentionally non-distributable. Its target-only literal
-segments are local generator state. `source_binding.py` must transform that
-material into source-bound recovery data before `emit_rust.py` is allowed to
-serialize a public transform. This separation lets exact diff correctness be
+segments are local generator state. `protect_exact_plan()` moves those bytes into
+authenticated ciphertext and source-binds the plan key before `emit_rust.py` can
+serialize the standalone transform. This separation lets exact diff correctness be
 tested without weakening the final source-binding invariant.
 
 ## Implemented Identity Primitives
@@ -193,9 +194,10 @@ binding identity.
 
 `payload.py` now provides the isolated RFC 8439 ChaCha20-Poly1305 primitive that
 will protect the eventual literal stream. Its Python Poly1305 implementation uses
-arbitrary-precision arithmetic and is intentionally authoring/test-only; the future
-generated Rust runtime must use a constant-time fixed-limb implementation. The
-primitive is locked to the RFC Section 2.8.2 AEAD vector and was independently
+arbitrary-precision arithmetic and is intentionally authoring/test-only. The emitted
+Rust exact runtime uses a fixed-limb Poly1305 implementation and is compiled with
+`-D warnings` in regression tests. The primitive is locked to the RFC Section 2.8.2
+AEAD vector and was independently
 cross-checked byte-for-byte against Node crypto during development.
 
 `protected.py` now integrates these primitives for the exact baseline. All local
@@ -212,9 +214,33 @@ payload key are derived deterministically from authoring material so repeated
 generation is byte-stable; this is computational source binding and authenticated
 reconstruction, not information-theoretic secrecy or protection against an attacker
 who already knows/guesses the target bytes. The Python Poly1305 path is reference
-code only. The generated Rust runtime must provide a constant-time implementation
-and derive candidate identity from the actual source tree rather than trusting an
-externally supplied identity object.
+code only. The emitted exact runtime derives raw anchor evidence directly from the
+actual source tree rather than accepting caller-supplied identity. The current GF(256)
+source-binding recovery is **not** yet claimed to be side-channel hardened; that is a
+separate review requirement from functional correctness.
+
+## Implemented Exact Rust Emission
+
+`emit_rust.py` embeds one `ProtectedExactPlan` into the repository-owned
+`rust_runtime.rs` template. The resulting source is standalone and depends only on
+`std`; its CLI is:
+
+```text
+generated-transform <source-root> <output-root>
+```
+
+The runtime parses authenticated metadata, snapshots the candidate source, rejects
+anything other than the exact authoring tree, recovers the source-bound key from raw
+source anchors, authenticates/decrypts the RFC 8439 literal stream, reconstructs every
+instruction into a staging tree, verifies the complete target snapshot, and publishes
+only by a final rename. It never requires Python or the local oracle at runtime.
+
+Synthetic tests compile emitted source with Rust 1.97.1 and `-D warnings`, execute it,
+verify exact target reconstruction, reject a changed source before output, reject an
+existing output root, and verify that target-only plaintext strings do not occur in the
+emitted source. Exact emission deliberately uses raw source bytes because exact mode
+already requires a byte-identical source snapshot. A future compatible/fuzzy emitter
+must instead reproduce the consumer-selected canonical identity and behavior gates.
 
 Required negative tests include:
 
