@@ -1,7 +1,7 @@
 // File:
-//   - persistent.rs
+//   - memory.rs
 // Path:
-//   - algorithms/self-modification-state-graph-optimizer/persistent.rs
+//   - algorithms/self-modification-state-graph-optimizer/memory.rs
 //
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.

@@ -46,7 +46,7 @@
 
 #[path = "../../algorithms/self-modification-state-graph-optimizer/bench.rs"]
 pub mod benchmark;
-#[path = "../../algorithms/self-modification-state-graph-optimizer/persistent.rs"]
+#[path = "../../algorithms/self-modification-state-graph-optimizer/memory.rs"]
 pub mod persistent;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/profile.rs"]
 pub mod profile_graph;

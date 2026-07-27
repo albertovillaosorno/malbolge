@@ -63,7 +63,7 @@ VM evidence.
   contain only actual final changed cells. The same full-memory fixtures require
   exact `(address,before,after)` equality between trace deltas and independently
   reconstructed memory differences for all classic/current instruction families.
-- `persistent.rs` now represents current memory as one shared complete root plus
+- `memory.rs` now represents current memory as one shared complete root plus
   exact trace patches. Every patch validates `before`, empty deltas add no depth,
   and stepwise materialization matches the runtime's complete 4,782,969-word
   checkpoint after every traced step. Performance/compaction remains open.

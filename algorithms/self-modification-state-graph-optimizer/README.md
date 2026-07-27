@@ -50,7 +50,7 @@ changes committed by the real step engine. `tests/d.rs` independently scans full
 before/after memory and requires exact address/before/after equality, so future
 persistent nodes can consume the trace without making it a correctness oracle.
 
-`persistent.rs` is the first concrete alternative to per-step full checkpoints.
+`memory.rs` is the first concrete alternative to per-step full checkpoints.
 It stores one `Arc<[u32]>` root plus immutable `ProfileMemoryDelta` patch nodes.
 Every patch validates its trace `before` values against the current persistent
 view, empty deltas reuse depth, reads search newest patches before the root, and

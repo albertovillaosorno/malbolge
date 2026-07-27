@@ -134,7 +134,7 @@ to one final change and halt/rejection remain empty. This makes the trace a
 validated O(1)-sized input for persistent-memory research while the full scan
 remains the independent oracle.
 
-The first persistent-memory candidate is now executable in `persistent.rs`. It
+The first persistent-memory candidate is now executable in `memory.rs`. It
 stores one shared complete root plus immutable exact trace patches. Applying a
 patch validates every `before` word against the current persistent view; empty
 deltas reuse the current node. In the current-profile fixture, every traced step

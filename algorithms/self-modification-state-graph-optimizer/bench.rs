@@ -16,9 +16,9 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Raw current-profile checkpoint copy/hash/equality benchmark samples.
+//   - Raw checkpoint, persistent patch, and read-depth benchmark samples.
 // - Must-Not:
-//   - Claim a reduced-state design or include profile loading in timed regions.
+//   - Claim a production index or include profile loading in timed regions.
 // - Allows:
 //   - Inputs: current profile, validated checkpoints, exact profile-state
 //     graph.
@@ -31,7 +31,7 @@
 // - Summary:
 //   - Measures the cost of the conservative scalable checkpoint baseline.
 // - Description:
-//   - Separates snapshot copy, first exact insert, and exact replay matching.
+//   - Separates full checkpoint costs from patch and depth-sensitive reads.
 // - Usage:
 //   - Run with `cargo run --release --bin state_graph_benchmark`.
 // - Defaults:
@@ -49,11 +49,13 @@
 
 use std::hint::black_box;
 use std::io::{Error as IoError, Result as IoResult, Write, stdout};
+use std::iter::repeat_with;
 use std::time::Instant;
 
 use malbolge::{
     ProfileMachine, ProfileMachineIoState, ProfileMachineState,
-    ProfileMemoryDelta, ProfileRegisters, ProfileStepTrace, current_profile,
+    ProfileMemoryDelta, ProfileMemoryWrite, ProfileRegisters, ProfileStepTrace,
+    current_profile,
 };
 
 use crate::persistent::PersistentProfileMemory;
@@ -64,14 +66,30 @@ const DELTA_BASE_SOURCE: &[u8] = b"QP";
 const DELTA_DATA_ADDRESS: u32 = 1;
 const DELTA_DATA_INDEX: usize = 1;
 const DELTA_ENCRYPTION_INDEX: usize = 2;
-const DELTA_ENCRYPTION_TARGET: u32 = 2;
-const DELTA_GRAPHICAL_TARGET: u32 = u32::from(b'D');
-const DELTA_INSTRUCTION: u32 = u32::from(b'>');
+const DELTA_GRAPHICAL_TARGET: u8 = b'D';
+const DELTA_INSTRUCTION: u8 = b'>';
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
+const PERSISTENT_DEPTH_CASES: &[(usize, usize)] = &[
+    (1, 16_384),
+    (8, 16_384),
+    (64, 8_192),
+    (512, 2_048),
+    (4_096, 256),
+];
 const PERSISTENT_OPERATIONS: usize = 16_384;
+const PERSISTENT_PATCH_ADDRESS: u32 = 1;
+const PERSISTENT_ROOT_ADDRESS: u32 = 3;
 const PROFILE_BENCHMARK: &str = "profile-checkpoint";
 const SAMPLE_COUNT: u8 = 15;
+
+type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
+
+#[derive(Clone, Copy)]
+struct RepeatedSampleConfig<'config> {
+    implementation: &'config str,
+    operations: usize,
+}
 
 fn checkpoint_checksum(state: &ProfileMachineState) -> u64 {
     let mut hash = FNV_OFFSET;
@@ -154,8 +172,34 @@ fn apply_persistent(
     }
 }
 
-fn persistent_fixture()
--> IoResult<(PersistentProfileMemory, ProfileMemoryDelta, u32)> {
+fn persistent_chain(
+    root: &PersistentProfileMemory,
+    depth: usize,
+) -> IoResult<PersistentProfileMemory> {
+    let mut memory = root.clone();
+    let mut before =
+        memory.read(PERSISTENT_PATCH_ADDRESS).map_err(|error| {
+            IoError::other(format!("depth root read: {error:?}"))
+        })?;
+    for _level in 0..depth {
+        let after = u32::from(before == 0);
+        let delta = ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite {
+                address: PERSISTENT_PATCH_ADDRESS,
+                after,
+                before,
+            }),
+            encryption: None,
+        };
+        memory = memory.apply(delta).map_err(|error| {
+            IoError::other(format!("depth patch: {error:?}"))
+        })?;
+        before = after;
+    }
+    Ok(memory)
+}
+
+fn persistent_fixture() -> IoResult<PersistentFixture> {
     let base_machine = ProfileMachine::from_source(
         current_profile(),
         DELTA_BASE_SOURCE,
@@ -167,7 +211,7 @@ fn persistent_fixture()
     let instruction = memory
         .get_mut(0)
         .ok_or_else(|| IoError::other("missing delta instruction cell"))?;
-    *instruction = DELTA_INSTRUCTION;
+    *instruction = u32::from(DELTA_INSTRUCTION);
     let data = memory
         .get_mut(DELTA_DATA_INDEX)
         .ok_or_else(|| IoError::other("missing delta data cell"))?;
@@ -175,7 +219,7 @@ fn persistent_fixture()
     let target = memory
         .get_mut(DELTA_ENCRYPTION_INDEX)
         .ok_or_else(|| IoError::other("missing delta encryption cell"))?;
-    *target = DELTA_GRAPHICAL_TARGET;
+    *target = u32::from(DELTA_GRAPHICAL_TARGET);
     let state = ProfileMachineState::new(
         current_profile(),
         memory,
@@ -192,7 +236,7 @@ fn persistent_fixture()
     let root = PersistentProfileMemory::from_state(&state);
     let mut machine = ProfileMachine::from_snapshot(state);
     let mut delta = None;
-    machine
+    let _outcome = machine
         .step_traced(&mut |trace: &ProfileStepTrace| {
             delta = Some(trace.memory_delta);
         })
@@ -218,6 +262,36 @@ fn read_persistent((memory, address): (PersistentProfileMemory, u32)) -> u64 {
         Ok(value) => hash_u32(FNV_OFFSET, value),
         Err(_error) => u64::MAX,
     }
+}
+
+fn run_depth_samples(
+    output: &mut impl Write,
+    root: &PersistentProfileMemory,
+) -> IoResult<()> {
+    for &(depth, operations) in PERSISTENT_DEPTH_CASES {
+        let chain = persistent_chain(root, depth)?;
+        let latest = format!("persistent-read-latest-depth-{depth}");
+        emit_repeated_samples(
+            output,
+            RepeatedSampleConfig {
+                implementation: &latest,
+                operations,
+            },
+            || (chain.clone(), PERSISTENT_PATCH_ADDRESS),
+            read_persistent,
+        )?;
+        let root_miss = format!("persistent-read-root-depth-{depth}");
+        emit_repeated_samples(
+            output,
+            RepeatedSampleConfig {
+                implementation: &root_miss,
+                operations,
+            },
+            || (chain.clone(), PERSISTENT_ROOT_ADDRESS),
+            read_persistent,
+        )?;
+    }
+    Ok(())
 }
 
 fn replay_checkpoint(
@@ -271,8 +345,10 @@ pub fn run() -> IoResult<()> {
     let (persistent, delta, address) = persistent_fixture()?;
     emit_repeated_samples(
         &mut output,
-        "persistent-apply-two-cell",
-        PERSISTENT_OPERATIONS,
+        RepeatedSampleConfig {
+            implementation: "persistent-apply-two-cell",
+            operations: PERSISTENT_OPERATIONS,
+        },
         || (persistent.clone(), delta, address),
         apply_persistent,
     )?;
@@ -281,18 +357,20 @@ pub fn run() -> IoResult<()> {
     })?;
     emit_repeated_samples(
         &mut output,
-        "persistent-read-latest",
-        PERSISTENT_OPERATIONS,
+        RepeatedSampleConfig {
+            implementation: "persistent-read-latest",
+            operations: PERSISTENT_OPERATIONS,
+        },
         || (patched.clone(), address),
         read_persistent,
     )?;
+    run_depth_samples(&mut output, &persistent)?;
     Ok(())
 }
 
 fn emit_repeated_samples<Prepare, Input, Run>(
     output: &mut impl Write,
-    implementation: &str,
-    operations: usize,
+    config: RepeatedSampleConfig<'_>,
     mut prepare: Prepare,
     mut run: Run,
 ) -> IoResult<()>
@@ -305,22 +383,24 @@ where
     let _warmup_sink = black_box(warmup_checksum);
     let mut sample = 0u8;
     while sample < SAMPLE_COUNT {
-        let inputs = std::iter::repeat_with(&mut prepare)
-            .take(operations)
+        let inputs = repeat_with(&mut prepare)
+            .take(config.operations)
             .map(black_box)
             .collect::<Vec<_>>();
         let start = Instant::now();
-        let mut checksum = FNV_OFFSET;
+        let mut accumulated_checksum = FNV_OFFSET;
         for input in inputs {
-            checksum = hash_u64(checksum, black_box(run(input)));
+            accumulated_checksum =
+                hash_u64(accumulated_checksum, black_box(run(input)));
         }
         let nanoseconds = start.elapsed().as_nanos();
-        let checksum = black_box(checksum);
+        let final_checksum = black_box(accumulated_checksum);
         write!(
             output,
-            "{PROFILE_BENCHMARK},{implementation},{sample},{operations},"
+            "{PROFILE_BENCHMARK},{},{sample},{},",
+            config.implementation, config.operations
         )?;
-        writeln!(output, "{nanoseconds},{checksum}")?;
+        writeln!(output, "{nanoseconds},{final_checksum}")?;
         sample = sample.saturating_add(1);
     }
     Ok(())
@@ -345,7 +425,7 @@ where
         let start = Instant::now();
         let checksum = black_box(run(input));
         let nanoseconds = start.elapsed().as_nanos();
-        write!(output, "{PROFILE_BENCHMARK},{implementation},{sample},")?;
+        write!(output, "{PROFILE_BENCHMARK},{implementation},{sample},1,")?;
         writeln!(output, "{nanoseconds},{checksum}")?;
         sample = sample.saturating_add(1);
     }

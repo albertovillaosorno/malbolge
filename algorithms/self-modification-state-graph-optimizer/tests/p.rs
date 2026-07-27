@@ -40,7 +40,7 @@
 //   - Empty deltas add no patch and invalid `before` values fail closed.
 //
 // Related documents:
-// - algorithms/self-modification-state-graph-optimizer/persistent.rs
+// - algorithms/self-modification-state-graph-optimizer/memory.rs
 //
 // Large file:
 //   - false
