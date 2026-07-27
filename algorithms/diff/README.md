@@ -15,14 +15,15 @@ algorithms/diff/
 |-- model.py          # deterministic transformation data model
 |-- exact.py          # exact authoring plan and materializer
 |-- canonicalize.py   # identity-only normalization
-|-- fingerprints.py   # structural similarity and stable anchors
+|-- fingerprints.py   # content-defined stable-anchor primitives
+|-- admission.py      # tree-level structural/anchor admission
 |-- behavior.py       # identity/compatibility/bug probes
 |-- source_binding.py # threshold-bound reconstruction material
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
 
-The exact authoring model is implemented. Canonical admission, behavioral probes, source binding, and Rust emission remain active work under the owning TODO.
+Exact authoring, generic identity primitives, and tree-level structural/anchor admission are implemented. Language-aware consumer identity, behavioral probes, source binding, and Rust emission remain active work under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -59,6 +60,26 @@ insertions can shift later bytes without invalidating unchanged anchor content. 
 deterministic minimum-digest fallback covers small/sparse inputs, and coverage is
 measured over unique reference digests. These fingerprints are lineage evidence;
 they are not encryption keys or a completed source-binding construction.
+
+## Implemented Tree Admission
+
+`admission.py` consumes an explicit tree of already-canonicalized identity files.
+The consumer decides which files belong to source identity; generic admission does
+not infer language, asset type, or licensing policy. Candidate-only files do not
+raise a score, and reference files receive equal aggregate weight regardless of
+byte size. A large opaque asset therefore cannot dominate a source decision merely
+by being large.
+
+Structural similarity is symmetric overlap over a denser set of content-defined
+fingerprints. Stable-anchor coverage remains asymmetric reference-anchor survival.
+The two metrics are evaluated independently. Anchor coverage is averaged per
+reference file rather than over one global anchor pool, and policy additionally
+requires a minimum number of files with real matched anchors above the configured
+per-file threshold. A single strongly matching file cannot satisfy a distributed
+source-evidence requirement.
+
+Admission is still pre-behavior and pre-source-binding. Passing these structural
+checks is necessary but not sufficient to materialize a distributable transform.
 
 ## Core Contract
 

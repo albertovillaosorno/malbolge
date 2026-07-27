@@ -3,6 +3,8 @@
 Tests for `algorithms/diff` use only repository-owned synthetic fixture trees.
 No DOOM source belongs in this directory.
 
-The eventual suite must prove exact reconstruction, fuzzy admission, threshold
-source binding, fail-closed behavior, deterministic generation, and rejection of
-wrong-source or behavior-only clones.
+The suite currently proves exact reconstruction, source-span reuse, deterministic
+identity primitives, insertion-stable anchors, structural/anchor threshold
+boundaries, distributed multi-file evidence, wrong-source rejection, and opaque
+asset non-dominance. Threshold source binding, behavior-clone rejection, and Rust
+emission remain unfinished.

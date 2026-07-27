@@ -2,10 +2,10 @@
 
 ## Status
 
-Active. Exact authoring/materialization, generic text-identity helpers, and the
-content-defined stable-anchor primitive are implemented. Language-aware canonical
-matching, tree-level admission, behavior probes, source binding, payload recovery,
-and Rust emission remain unfinished.
+Active. Exact authoring/materialization, generic identity primitives, and
+tree-level structural/stable-anchor admission are implemented. Language-aware
+consumer identity, behavior probes, source binding, payload recovery, and Rust
+emission remain unfinished.
 
 ## Purpose
 
@@ -93,6 +93,28 @@ minimum anchor counts, canonical language-aware views, ambiguous-match handling,
 and the configured coverage threshold still belong to the unfinished admission
 layer. Anchor digests are evidence only and must not be treated as source-binding
 secrets.
+
+### Implemented Tree-Level Admission
+
+The generic admission layer accepts only consumer-selected canonical identity
+files. It is reference-driven: candidate-only files do not improve similarity.
+Each reference file has equal aggregate weight, so large binary/opaque files cannot
+dominate merely through byte count or number of fingerprints. Consumers are still
+expected to exclude files that do not belong to source identity.
+
+Structural similarity uses a denser content-defined fingerprint view and a
+symmetric overlap score. Stable-anchor coverage uses the sparse anchor primitive
+and asymmetric reference-anchor survival. Coverage is averaged per eligible file,
+not over a global anchor bag. Policy separately requires a minimum number of files
+with at least one real matching anchor and per-file coverage at or above the
+configured threshold. This prevents one concentrated region from satisfying the
+distributed lineage requirement.
+
+Synthetic tests exercise exact and insertion-compatible admission, unrelated
+source rejection, the representable floating-point boundary immediately above and
+below both thresholds, concentration in only one file, and candidate-only opaque
+assets. These checks remain necessary but insufficient until behavior and source
+binding also pass.
 
 ### Behavioral Identity
 

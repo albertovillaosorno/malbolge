@@ -41,12 +41,17 @@ format.
 - Generic identity helpers normalize line endings/optional whitespace, while the
   stable-anchor primitive uses digest-selected sliding windows that survive offset
   shifts from insertions.
+- Tree-level admission now separates symmetric structural similarity from
+  asymmetric anchor survival, weights reference files equally, requires distributed
+  matching files, and ignores candidate-only opaque size.
+- Synthetic admission tests lock wrong-source rejection and the immediate
+  representable thresholds above/below measured structural and anchor scores.
 - `algorithms/doom/generator/quality.py` records the first consumer recipe.
 - The planned admission model combines structural similarity, stable anchors,
   behavior probes, and threshold source binding.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds; those
   values are not frozen until synthetic calibration evidence exists.
-- No language-aware canonical matcher, tree-level admission engine, source-bound
+- No language-aware consumer canonicalizer, behavior-probe executor, source-bound
   payload format, cryptographic construction, or Rust emitter is implemented yet.
 
 ## Acceptance
