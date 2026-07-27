@@ -119,6 +119,15 @@ construction, and result decode account for about 97.75% combined. The evidence
 therefore rejects CUDA-kernel tuning as the next bottleneck-directed action and
 selects host representation/validation work for optimization first.
 
+The first bottleneck-directed optimization is retained under
+`benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-array-rtx4060/`.
+Removing duplicate request validation and replacing tuple/ctypes flattening with
+contiguous unsigned-word buffers reduces batch-8 median wall time from
+287,277,100 ns to 66,098,600 ns (4.35x) and batch-128 time from 4,698,614,500 ns
+to 1,162,925,900 ns (4.04x). Batch-128 throughput rises from about 27.24 to
+110.07 VMs/s. Validation/planning is now the dominant measured phase, so the next
+candidate is safe reuse of validation for immutable requests.
+
 ## Threats to Validity
 
 Initial threats include challenge-family bias, hardware/toolchain sensitivity,

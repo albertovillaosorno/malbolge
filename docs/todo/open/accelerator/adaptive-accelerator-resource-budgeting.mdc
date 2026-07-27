@@ -95,6 +95,11 @@ example probe points, not supported-range endpoints.
   At batch 128, kernel+sync is about 0.0097% of total wall time while
   validation/planning + host construction + decode account for about 97.75%.
   This selects host representation/validation as the next measured bottleneck.
-- Performance evidence remains incomplete: current-profile execution,
-  post-optimization comparison, and broader live-hardware measurements are still
+- First post-optimization comparison is retained under
+  `benchmarks/accelerator/evidence/2026-07-27-classic-phase-profile-array-rtx4060/`.
+  Batch-8 median wall time falls 4.35x and batch-128 falls 4.04x versus the
+  phase-profile baseline after contiguous host buffers and duplicate-validation
+  removal. Validation/planning becomes the dominant measured phase.
+- Performance evidence remains incomplete: immutable-request validation reuse,
+  current-profile execution, and broader live-hardware measurements are still
   required.
