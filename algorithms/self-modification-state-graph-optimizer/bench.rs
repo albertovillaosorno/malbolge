@@ -64,6 +64,7 @@ use crate::indexed_state::{IndexedMachineState, IndexedStateGraph};
 use crate::persistent::PersistentProfileMemory;
 use crate::persistent_output::PersistentOutput;
 use crate::profile_graph::ProfileStateGraph;
+use crate::region_certificate::{ExactRegionCertificate, VerifiedExactRegion};
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
 const DELTA_BASE_SOURCE: &[u8] = b"QP";
@@ -96,6 +97,13 @@ const STATE_OPERATIONS: usize = 4_096;
 type DeltaFixture = (ProfileMachineState, ProfileMemoryDelta, u32);
 type IndexedFixture = (IndexedProfileMemory, ProfileMemoryDelta, u32);
 type PersistentFixture = (PersistentProfileMemory, ProfileMemoryDelta, u32);
+type RegionGuardFixture = (Arc<VerifiedExactRegion>, IndexedMachineState);
+type RegionFixture = (
+    ExactRegionCertificate,
+    Arc<VerifiedExactRegion>,
+    IndexedMachineState,
+    IndexedMachineState,
+);
 type StateFixture =
     (IndexedMachineState, ProfileStepTrace, IndexedMachineState);
 type VecOutputFixture = (Arc<[u8]>, u8);
@@ -360,6 +368,32 @@ fn indexed_fixture() -> IoResult<IndexedFixture> {
     Ok((indexed, delta, address))
 }
 
+fn region_fixture() -> IoResult<RegionFixture> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| {
+            IoError::other(format!("region fixture load: {error}"))
+        })?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| IoError::other(format!("region entry: {error:?}")))?;
+    let certificate = ExactRegionCertificate::record(&entry, 8)
+        .map_err(|error| IoError::other(format!("region record: {error:?}")))?;
+    let verified = Arc::new(certificate.verify().map_err(|error| {
+        IoError::other(format!("region verify: {error:?}"))
+    })?);
+    let first_trace = verified
+        .traces()
+        .first()
+        .copied()
+        .ok_or_else(|| IoError::other("region fixture has no trace"))?;
+    let mutated = entry.apply_trace(&first_trace).map_err(|error| {
+        IoError::other(format!("region mutation: {error:?}"))
+    })?;
+    Ok((certificate, verified, entry, mutated))
+}
+
 fn state_fixture() -> IoResult<StateFixture> {
     let mut machine =
         ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
@@ -517,6 +551,20 @@ fn run_indexed_samples(output: &mut impl Write) -> IoResult<()> {
     Ok(())
 }
 
+fn region_guard((region, candidate): RegionGuardFixture) -> u64 {
+    hash_byte(FNV_OFFSET, u8::from(region.accepts_entry(&candidate)))
+}
+
+fn region_verify(certificate: &ExactRegionCertificate) -> u64 {
+    match certificate.verify() {
+        Ok(region) => {
+            let hash = hash_usize(FNV_OFFSET, region.traces().len());
+            hash_u64(hash, region.exit().state_digest())
+        },
+        Err(_error) => u64::MAX,
+    }
+}
+
 fn replay_checkpoint(
     (mut graph, checkpoint): (ProfileStateGraph, ProfileMachineState),
 ) -> u64 {
@@ -561,6 +609,35 @@ fn run_output_samples(output: &mut impl Write) -> IoResult<()> {
     Ok(())
 }
 
+fn run_region_samples(output: &mut impl Write) -> IoResult<()> {
+    let (certificate, verified, entry, mutated) = region_fixture()?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "region-exact-guard-hit",
+            operations: PERSISTENT_OPERATIONS,
+        },
+        || (Arc::clone(&verified), entry.clone()),
+        region_guard,
+    )?;
+    emit_repeated_samples(
+        output,
+        RepeatedSampleConfig {
+            implementation: "region-exact-guard-miss",
+            operations: PERSISTENT_OPERATIONS,
+        },
+        || (Arc::clone(&verified), mutated.clone()),
+        region_guard,
+    )?;
+    emit_samples(
+        output,
+        "region-certificate-verify",
+        || certificate.clone(),
+        |claim| region_verify(&claim),
+    )?;
+    Ok(())
+}
+
 fn run_state_identity_samples(output: &mut impl Write) -> IoResult<()> {
     let (seed, trace, next) = state_fixture()?;
     emit_repeated_samples(
@@ -597,6 +674,35 @@ fn run_state_identity_samples(output: &mut impl Write) -> IoResult<()> {
     Ok(())
 }
 
+fn run_checkpoint_samples(
+    output: &mut impl Write,
+    machine: &ProfileMachine,
+) -> IoResult<()> {
+    emit_samples(
+        output,
+        "snapshot",
+        || (),
+        |()| checkpoint_checksum(&black_box(machine.snapshot_state())),
+    )?;
+    emit_samples(
+        output,
+        "insert-exact",
+        || (ProfileStateGraph::new(), machine.snapshot_state()),
+        insert_checkpoint,
+    )?;
+    emit_samples(
+        output,
+        "replay-exact",
+        || {
+            let mut graph = ProfileStateGraph::new();
+            let seed = machine.snapshot_state();
+            let _seed_result = black_box(graph.observe(seed));
+            (graph, machine.snapshot_state())
+        },
+        replay_checkpoint,
+    )
+}
+
 /// Runs the current-profile checkpoint cost matrix and emits raw CSV samples.
 ///
 /// # Errors
@@ -613,29 +719,7 @@ pub fn run() -> IoResult<()> {
         output,
         "benchmark,implementation,sample,operations,nanoseconds,checksum"
     )?;
-    emit_samples(
-        &mut output,
-        "snapshot",
-        || (),
-        |()| checkpoint_checksum(&black_box(machine.snapshot_state())),
-    )?;
-    emit_samples(
-        &mut output,
-        "insert-exact",
-        || (ProfileStateGraph::new(), machine.snapshot_state()),
-        insert_checkpoint,
-    )?;
-    emit_samples(
-        &mut output,
-        "replay-exact",
-        || {
-            let mut graph = ProfileStateGraph::new();
-            let seed = machine.snapshot_state();
-            let _seed_result = black_box(graph.observe(seed));
-            (graph, machine.snapshot_state())
-        },
-        replay_checkpoint,
-    )?;
+    run_checkpoint_samples(&mut output, &machine)?;
     let (persistent, delta, address) = persistent_fixture()?;
     emit_repeated_samples(
         &mut output,
@@ -661,6 +745,7 @@ pub fn run() -> IoResult<()> {
     run_depth_samples(&mut output, &persistent)?;
     run_indexed_samples(&mut output)?;
     run_output_samples(&mut output)?;
+    run_region_samples(&mut output)?;
     run_state_identity_samples(&mut output)?;
     Ok(())
 }

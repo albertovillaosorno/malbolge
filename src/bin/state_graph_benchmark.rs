@@ -56,6 +56,8 @@ pub mod persistent;
 pub mod persistent_output;
 #[path = "../../algorithms/self-modification-state-graph-optimizer/profile.rs"]
 pub mod profile_graph;
+#[path = "../../algorithms/self-modification-state-graph-optimizer/region.rs"]
+pub mod region_certificate;
 
 use std::io::Result as IoResult;
 
