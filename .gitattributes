@@ -5,8 +5,8 @@
 *.rs text eol=lf
 *.c text eol=lf
 *.h text eol=lf
-*.cu text eol=lf
-*.cuh text eol=lf
+*.cu text eol=lf linguist-language=Cuda linguist-detectable
+*.cuh text eol=lf linguist-language=Cuda linguist-detectable
 *.py text eol=lf
 *.toml text eol=lf
 *.lock text eol=lf
@@ -14,8 +14,8 @@
 *.jsonc text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
-*.md text eol=lf
-*.mdc text eol=lf
+*.md text eol=lf linguist-language=Markdown linguist-detectable -linguist-documentation
+*.mdc text eol=lf linguist-language=Markdown linguist-detectable -linguist-documentation
 *.tex text eol=lf
 *.bib text eol=lf
 *.malbolge text eol=lf
