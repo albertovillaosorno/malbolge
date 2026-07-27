@@ -61,8 +61,7 @@ host architecture.
 - Full 1998 differential fixtures compare every final memory word plus registers,
   I/O, EOF, and termination between classic and profile-driven interpreters.
 - Current profile tracing is now profile-driven and records exact profile/EOF plus
-  atomic rejection evidence. Compiler, batch/logical orchestration, native tiers,
-  and accelerators remain downstream profile-consumer work rather than
+  atomic rejection evidence. Compiler, native tiers, and accelerators remain downstream profile-consumer work rather than
   memory-model ambiguity.
 
 ## Acceptance

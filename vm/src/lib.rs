@@ -61,8 +61,9 @@ mod trace;
 mod word;
 
 pub use batch::{
-    BatchError, BatchRequest, BatchResult, execute_batch,
-    execute_batch_parallel,
+    BatchError, BatchRequest, BatchResult, ProfileBatchRequest,
+    ProfileBatchResult, execute_batch, execute_batch_parallel,
+    execute_profile_batch, execute_profile_batch_parallel,
 };
 pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
@@ -71,8 +72,11 @@ pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use loader::{LoadError, load};
 pub use logical::{
     LogicalConcurrencyError, LogicalJoinError, LogicalTask, LogicalTaskId,
-    LogicalTaskResult, execute_logical_tasks, execute_logical_tasks_parallel,
-    join_logical_outputs,
+    LogicalTaskResult, ProfileLogicalJoinError, ProfileLogicalTask,
+    ProfileLogicalTaskResult, execute_logical_tasks,
+    execute_logical_tasks_parallel, execute_profile_logical_tasks,
+    execute_profile_logical_tasks_parallel, join_logical_outputs,
+    join_profile_logical_outputs,
 };
 pub use machine::{
     LegacyBehavior, Machine, MachineError, Registers, RunOutcome, StepOutcome,

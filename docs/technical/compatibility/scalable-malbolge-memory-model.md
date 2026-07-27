@@ -128,8 +128,7 @@ implicit fifteenth trit can enter the result.
 `Machine` and `ExecutionMachine` intentionally remain the frozen/classic surface.
 They still reject `malbolge-2026.2` through `safe-rust-classic` preflight rather
 than silently changing classic types or loader behavior. `ProfileMachine` is the
-explicit runtime surface for current scalable execution. Compiler, batch/logical
-orchestration, native tiers, and accelerators are not yet universally
+explicit runtime surface for current scalable execution. Compiler, native tiers, and accelerators are not yet universally
 profile-driven and remain downstream adoption work.
 
 ## Invariants

@@ -29,21 +29,29 @@ ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-The first CPU batch execution slice is implemented. Requests own either source
-construction inputs or an already constructed `ExecutionMachine`, plus an exact
-step budget. The sequential executor is the reference ordering. The parallel
-executor uses only host threads over disjoint owned requests, requires an
-explicit positive worker count, and reassembles results in original input order.
+The CPU batch execution layer now has two explicit request/result families.
+`BatchRequest`/`BatchResult` retain the classic `ExecutionMachine` surface, while
+`ProfileBatchRequest`/`ProfileBatchResult` own canonical-profile source inputs or
+an already constructed `ProfileMachine`. Both carry an exact step budget.
 
-A per-instance load or machine failure is represented in that instance's
-`BatchResult`; it does not terminate the whole batch. Runtime failures retain the
-constructed machine so atomic-state evidence remains inspectable. Host worker
-panic is a scheduler-level typed error and is never translated into guest
-semantics.
+Classic and profile-driven APIs share one generic host scheduler. Sequential
+execution is the reference ordering. Parallel execution uses only host threads
+over disjoint owned requests, requires an explicit positive worker count, and
+reassembles results in original input order. Profile identity never comes from a
+worker or completion order; it remains attached to each owned request/machine.
 
-Integration tests compare sequential results with worker counts 1, 2, and 8,
-including full-memory fingerprints, registers, I/O, termination, run outcome,
-and typed diagnostics.
+A per-instance load or machine failure is represented in that instance's typed
+classic/profile result; it does not terminate the whole batch. Runtime failures
+retain the constructed machine so atomic-state evidence remains inspectable.
+Host worker panic is a shared scheduler-level typed error and is never translated
+into guest semantics.
+
+Classic integration tests compare sequential results with worker counts 1, 2,
+and 8, including full-memory fingerprints, registers, I/O, termination, run
+outcome, and typed diagnostics. Profile-driven tests execute two independent
+`malbolge-2026.2` machines plus rejected neighbors through both sequential and
+2-worker paths and compare profile identity, sampled memory including addresses
+above 59,048, registers, I/O, outcomes, and exact errors.
 
 Post-commit release measurements on `5a01c9c` use 96 independent roundtrip jobs,
 a 16-step budget, and 15 raw samples per implementation. On the recorded
@@ -51,14 +59,15 @@ a 16-step budget, and 15 raw samples per implementation. On the recorded
 One explicit worker measured 55,930,200 ns (0.99x), exposing thread overhead;
 2 workers measured 29,656,900 ns (1.87x), 4 measured 16,569,700 ns (3.35x), and
 8 measured 9,839,800 ns (5.65x). Every implementation produced the same
-checksum. These data demonstrate this workload on this host only and are not a
-portable speedup guarantee.
+checksum. These data demonstrate this classic workload on this host only and are not a
+portable speedup guarantee. They do not establish a current-profile speedup;
+profile-driven batching has correctness evidence only until separately measured.
 
 ## Invariants
 
-- Batch execution preserves per-instance exact semantics and deterministic
-  result identity while scaling across independent programs/candidates without
-  cross-instance state leakage.
+- Batch execution preserves per-instance exact semantics, canonical profile when
+  applicable, and deterministic result identity while scaling across independent
+  programs/candidates without cross-instance state leakage.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 
@@ -75,7 +84,9 @@ deterministically without changing guest-visible state silently.
   differential results against independent specification-conformant
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
-- CPU performance evidence:
+- `tests/vm/profile_batch.rs` verifies current 14-trit sequential/parallel batch
+  equality, per-item profile identity, errors, I/O, registers, and sampled memory.
+- CPU performance evidence for the classic batch path only:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
   raw samples and exact commit/workload/toolchain/host provenance.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.

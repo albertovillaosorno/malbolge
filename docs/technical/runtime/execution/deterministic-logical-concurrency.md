@@ -21,16 +21,19 @@ This contract currently governs:
 - `vm/src/logical.rs`
 - `vm/src/batch.rs`
 - `tests/vm/logical.rs`
+- `tests/vm/profile_logical.rs`
 - `tests/vm/batch.rs`
+- `tests/vm/profile_batch.rs`
 - `benchmarks/interpreter/`
 
 ## Current Behavior
 
 ### Independence Boundary
 
-A `LogicalTask` owns one `BatchRequest` and one `LogicalTaskId`. A `BatchRequest`
-in turn owns either all source/input construction data or an already constructed
-`ExecutionMachine`.
+`LogicalTask` owns one classic `BatchRequest` and one `LogicalTaskId`.
+`ProfileLogicalTask` uses the same ID type while owning one
+`ProfileBatchRequest`. Those batch requests own either all source/input/profile
+construction data or an already constructed machine.
 
 That ownership boundary is the executable independence evidence for the current
 CPU implementation: logical tasks do not receive references to shared mutable
@@ -64,7 +67,9 @@ position.
 3. tags each batch result with the corresponding logical ID; and
 4. returns results in strict ascending logical order.
 
-The underlying guest machine remains sequential and unchanged.
+The underlying guest machine remains sequential and unchanged. The profile-driven
+counterpart `execute_profile_logical_tasks()` applies the same ID normalization
+before `execute_profile_batch()` and retains each task's canonical profile.
 
 ### Host-Parallel Execution
 
@@ -77,9 +82,10 @@ returns results in input order. Because its input has first been normalized to
 logical-ID order, host completion order is never observable through the logical
 API.
 
-Batch scheduler failures remain typed host failures. Zero workers, for example,
-becomes `LogicalConcurrencyError::Batch(BatchError::ZeroWorkers)` rather than a
-guest diagnostic.
+Batch scheduler failures remain typed host failures for both classic and
+profile-driven logical tasks. Zero workers, for example, becomes
+`LogicalConcurrencyError::Batch(BatchError::ZeroWorkers)` rather than a guest
+diagnostic.
 
 ### Deterministic Join
 
@@ -98,7 +104,8 @@ plus its deterministic `ExecutionError`.
 
 Importantly, one rejected task does not cancel its independent neighbors. Batch
 execution still records all per-task results; only construction of a successful
-joined artifact is rejected.
+joined artifact is rejected. `join_profile_logical_outputs()` applies the same
+rule with `ProfileMachineError` while leaving each machine/profile independent.
 
 ### Falsifiable Correctness Question
 
@@ -122,6 +129,12 @@ and 8 produce logical order `10, 20, 30`, identical full-state snapshots, and
 joined output `ABC`. A rejected middle task does not prevent the later task from
 executing, while the artifact join fails deterministically at the rejected task.
 Duplicate task IDs and deliberately reordered result sequences also fail closed.
+
+Profile-driven fixtures additionally scramble one `malbolge-2026.1` task and one
+`malbolge-2026.2` task. Sequential and two-worker execution both return logical
+order `10, 20`, preserve transition/current profile identities respectively, and
+join bytes as `AB`. Profile rejection and reordered profile results fail through
+the typed profile join errors without cancelling later independent tasks.
 
 This is a correctness observation, not a performance conclusion.
 
@@ -162,8 +175,10 @@ than a new executable algorithm experiment, it is not mirrored into
 - batch scheduler failure -> `LogicalConcurrencyError::Batch`;
 - reordered/duplicated result sequence at join ->
   `LogicalJoinError::OutOfOrder`;
-- rejected task during artifact join -> `LogicalJoinError::RejectedTask` with
-  exact logical ID and execution error.
+- rejected classic task during join -> `LogicalJoinError::RejectedTask`;
+- reordered/duplicated profile results -> `ProfileLogicalJoinError::OutOfOrder`;
+- rejected profile task -> `ProfileLogicalJoinError::RejectedTask` with exact ID
+  and `ProfileMachineError`.
 
 No logical-concurrency failure is translated into a new Malbolge guest
 instruction, state transition, or termination reason.
@@ -176,8 +191,12 @@ instruction, state transition, or termination reason.
 - The same tests prove physical task input order does not affect logical order or
   joined output, duplicate IDs fail before worker validation, rejected tasks do
   not cancel neighbors, and reordered results cannot be joined.
-- `tests/vm/batch.rs` remains lower-level evidence that independently owned
-  machine execution itself is isolated across worker counts.
+- `tests/vm/profile_logical.rs` proves mixed transition/current profile identity,
+  sequential/parallel joined-byte equality, duplicate-ID precedence, profile
+  rejection isolation, and reordered-result failure.
+- `tests/vm/batch.rs` and `tests/vm/profile_batch.rs` remain lower-level evidence
+  that independently owned classic/profile machines are isolated by the shared
+  scheduler.
 - `cargo test --workspace --all-features` is the executable semantic gate.
 - `jig validate --root .` remains the repository-wide closure gate.
 

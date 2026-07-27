@@ -51,8 +51,7 @@ still implements `malbolge-1998` constants directly and must not silently execut
 a `malbolge-2026.2` artifact. The separate `ProfileMachine` now consumes the
 canonical descriptor and executes schema-v2 profiles through 14 trits under
 explicit `safe-rust-profiled` capability. Profile-driven trace evidence now
-carries the same canonical identity. Compiler, tidy, verifier, batch/logical
-orchestration, native, and accelerator consumers are not yet universally
+carries the same canonical identity. Compiler, tidy, verifier, native, and accelerator consumers are not yet universally
 profile-driven, so this contract remains active.
 
 Published profile identity is additionally bound by `malbolge-profile-v1`

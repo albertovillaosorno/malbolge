@@ -16,7 +16,9 @@ scope:
   - "vm/src/logical.rs"
   - "vm/src/batch.rs"
   - "tests/vm/logical.rs"
+  - "tests/vm/profile_logical.rs"
   - "tests/vm/batch.rs"
+  - "tests/vm/profile_batch.rs"
   - "benchmarks/interpreter/"
 validation:
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
@@ -33,22 +35,23 @@ observable results.
 
 **Current implementation.**
 
-- `LogicalTask` owns one `BatchRequest` plus an explicit `LogicalTaskId`; current
-  host independence is structural ownership of disjoint VM requests, not a
-  caller-supplied assertion flag.
+- `LogicalTask`/`ProfileLogicalTask` own classic/profile batch requests plus one
+  shared `LogicalTaskId`; host independence is structural ownership of disjoint
+  VM requests, not a caller-supplied assertion flag.
 - Tasks are sorted by logical ID before sequential or parallel batch execution.
   Duplicate IDs fail before execution, so physical input/completion order cannot
   select artifact order.
-- `join_logical_outputs()` concatenates only committed per-machine outputs in
-  strict logical order. Reordered results and rejected tasks fail explicitly;
-  no guest memory/register state is merged.
+- Classic and profile-driven joins concatenate only committed per-machine output
+  in strict logical order. Reordered results and rejected tasks fail through
+  typed classic/profile errors; no guest state is merged.
 - Full-state fixtures compare sequential execution with 1, 2, and 8 host workers
   after deliberately scrambling physical task order. Memory fingerprints,
   registers, input consumption, I/O, run outcomes, diagnostics, task order, and
   joined bytes are identical.
-- The falsifiable baseline is sequential logical execution. Any worker/schedule
-  mismatch in those observations rejects the technique. Current fixtures pass;
-  no performance speedup is claimed for the logical adapter itself yet.
+- The falsifiable baseline is sequential logical execution. Current fixtures pass
+  for classic full-state comparisons and for mixed `malbolge-2026.1` plus current
+  `malbolge-2026.2` profile identity/join ordering. No logical-layer speedup is
+  claimed yet.
 - This is execution-engine product work, not an algorithm experiment, so no
   research algorithm mirror is created.
 

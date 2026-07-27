@@ -62,6 +62,10 @@ mod instructions;
 mod logical;
 #[path = "vm/modes.rs"]
 mod modes;
+#[path = "vm/profile_batch.rs"]
+mod profile_batch;
+#[path = "vm/profile_logical.rs"]
+mod profile_logical;
 #[path = "vm/profile_machine.rs"]
 mod profile_machine;
 #[path = "vm/profile_requirements.rs"]

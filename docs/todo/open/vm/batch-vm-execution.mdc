@@ -28,23 +28,24 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 
 **Current implementation.**
 
-- `vm/src/batch.rs` defines owned `BatchRequest` and input-ordered `BatchResult`
-  values around the existing explicit `ExecutionMachine` trust boundary.
-- `execute_batch` is the deterministic sequential baseline.
-- `execute_batch_parallel` requires an explicit positive host worker count,
-  partitions only independently owned requests, and joins results in exact input
-  order. It does not introduce guest-visible threads or shared mutable VM state.
+- `vm/src/batch.rs` keeps classic `BatchRequest`/`BatchResult` and adds
+  `ProfileBatchRequest`/`ProfileBatchResult` around explicit `ProfileMachine`
+  identity. Both families use the same internal host scheduler.
+- `execute_batch` and `execute_profile_batch` are deterministic sequential
+  baselines; their parallel counterparts require an explicit positive worker
+  count and return results in exact input order without guest-visible threads.
 - Source/load failures and runtime transition failures remain per-instance typed
   results; one rejected candidate does not abort adjacent candidates.
-- Integration tests compare sequential execution with worker counts 1, 2, and 8
-  across final registers, I/O, termination, diagnostics, and a hash of all 59,049
-  final memory words. Tests also cover load rejection, atomic runtime rejection,
-  empty batches, and zero-worker failure.
-- Post-commit CPU evidence on `5a01c9c` retains 15 samples each for the
+- Classic integration tests compare worker counts 1, 2, and 8 across full final
+  state. Profile-driven tests additionally compare sequential and two-worker
+  `malbolge-2026.2` execution across canonical profile identity, registers, I/O,
+  outcomes, exact load errors, and sampled memory above the historical ceiling.
+- Post-commit classic CPU evidence on `5a01c9c` retains 15 samples each for the
   sequential baseline and explicit worker counts 1, 2, 4, and 8 over 96
   independent roundtrip jobs. On the identified host, median speedups versus
   sequential were 0.99x, 1.87x, 3.35x, and 5.65x respectively, with identical
-  deterministic checksums.
+  deterministic checksums. No profile-driven speedup is claimed from that classic
+  evidence; current-profile batching remains correctness-measured only.
 
 ## Acceptance
 

@@ -16,16 +16,14 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Deterministic execution of independent Malbolge machine batches.
+//   - Deterministic execution of independent classic/profiled machine batches.
 // - Must-Not:
 //   - Introduce guest-visible parallel semantics or share mutable machine
 //     state.
 // - Allows:
 //   - Inputs: owned source/machine requests and explicit step budgets/workers.
-// - Outputs:
-//   - Input-ordered completed or rejected per-instance execution results.
-// - Side effects:
-//   - Host threads and mutation only of each independently owned machine.
+//   - Outputs: input-ordered completed or rejected per-instance results.
+//   - Side effects: host threads and independently owned machine mutation only.
 // - Split-When:
 //   - Split when an accelerator backend gains an independent batch lifecycle.
 // - Merge-When:
@@ -33,11 +31,11 @@
 // - Summary:
 //   - Sequential and host-parallel batch execution with deterministic ordering.
 // - Description:
-//   - Parallel workers process disjoint owned requests and join in input order.
+//   - One host scheduler processes disjoint classic or profiled owned requests.
 // - Usage:
 //   - Used by fuzzing, verification, synthesis, and independent candidate runs.
 // - Defaults:
-//   - `execute_batch` is sequential; parallel worker count is always explicit.
+//   - Sequential APIs are baselines; parallel worker count is always explicit.
 //
 // Related documents:
 // - docs/technical/runtime/execution/batch-vm-execution.md
@@ -45,14 +43,16 @@
 //
 // Large file:
 //   - false
-//
 
-//! Deterministic batching for independent Malbolge machine executions.
+//! Deterministic batching for independent classic and profile-driven machines.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::thread;
 
-use crate::{ExecutionError, ExecutionMachine, ExecutionMode, RunOutcome};
+use crate::{
+    ExecutionError, ExecutionMachine, ExecutionMode, ProfileDescriptor,
+    ProfileMachine, ProfileMachineError, RunOutcome,
+};
 
 #[derive(Clone, Debug)]
 enum BatchSeed {
@@ -65,12 +65,28 @@ enum BatchSeed {
 }
 
 #[derive(Clone, Debug)]
+struct BuiltProfileRequest {
+    machine: ProfileMachine,
+    step_budget: usize,
+}
+
+#[derive(Clone, Debug)]
 struct BuiltRequest {
     machine: ExecutionMachine,
     step_budget: usize,
 }
 
-/// Host-level failure of the batch scheduler itself.
+#[derive(Clone, Debug)]
+enum ProfileBatchSeed {
+    Machine(ProfileMachine),
+    Source {
+        input: Vec<u8>,
+        profile: &'static ProfileDescriptor,
+        source: Vec<u8>,
+    },
+}
+
+/// Host-level failure of the shared batch scheduler itself.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BatchError {
     /// A host worker panicked instead of returning deterministic results.
@@ -80,6 +96,65 @@ pub enum BatchError {
     },
     /// Parallel execution was requested with zero workers.
     ZeroWorkers,
+}
+
+/// One owned independent classic batch execution request.
+#[derive(Clone, Debug)]
+pub struct BatchRequest {
+    seed: BatchSeed,
+    step_budget: usize,
+}
+
+/// One input-ordered independent classic batch execution result.
+#[derive(Clone, Debug)]
+pub enum BatchResult {
+    /// Construction and bounded execution completed without a machine error.
+    Completed {
+        /// Final owned classic machine state for inspection or resumed
+        /// execution.
+        machine: ExecutionMachine,
+        /// Bounded run outcome returned by the machine.
+        outcome: RunOutcome,
+    },
+    /// Construction or execution rejected this one request.
+    Rejected {
+        /// Mode-tagged deterministic rejection.
+        error: ExecutionError,
+        /// Final state when construction succeeded before execution failed.
+        machine: Option<ExecutionMachine>,
+    },
+}
+
+/// One owned independent profile-driven batch execution request.
+#[derive(Clone, Debug)]
+pub struct ProfileBatchRequest {
+    seed: ProfileBatchSeed,
+    step_budget: usize,
+}
+
+/// One input-ordered independent profile-driven batch execution result.
+#[derive(Clone, Debug)]
+pub enum ProfileBatchResult {
+    /// Construction and bounded execution completed without a machine error.
+    Completed {
+        /// Final owned profile-driven machine state for inspection/resume.
+        machine: ProfileMachine,
+        /// Bounded run outcome returned by the machine.
+        outcome: RunOutcome,
+    },
+    /// Construction or execution rejected this one request.
+    Rejected {
+        /// Deterministic profile-driven rejection.
+        error: ProfileMachineError,
+        /// Final state when construction succeeded before execution failed.
+        machine: Option<ProfileMachine>,
+    },
+}
+
+impl BatchError {
+    const fn worker_panicked(worker: usize) -> Self {
+        Self::WorkerPanicked { worker }
+    }
 }
 
 impl Display for BatchError {
@@ -95,13 +170,6 @@ impl Display for BatchError {
     }
 }
 
-/// One owned independent batch execution request.
-#[derive(Clone, Debug)]
-pub struct BatchRequest {
-    seed: BatchSeed,
-    step_budget: usize,
-}
-
 impl BatchRequest {
     fn build(self) -> Result<BuiltRequest, ExecutionError> {
         let Self { seed, step_budget } = self;
@@ -114,7 +182,7 @@ impl BatchRequest {
         Ok(BuiltRequest { machine, step_budget })
     }
 
-    /// Creates a batch request from an already constructed execution machine.
+    /// Creates a batch request from an already constructed classic machine.
     #[must_use]
     pub const fn from_machine(
         machine: ExecutionMachine,
@@ -126,7 +194,8 @@ impl BatchRequest {
         }
     }
 
-    /// Creates a request from source bytes and deterministic byte input.
+    /// Creates a classic request from source bytes and deterministic byte
+    /// input.
     #[must_use]
     pub const fn from_source(
         source: Vec<u8>,
@@ -140,7 +209,7 @@ impl BatchRequest {
         }
     }
 
-    /// Returns the immutable execution mode selected for this request.
+    /// Returns the immutable execution mode selected for this classic request.
     #[must_use]
     pub const fn mode(&self) -> ExecutionMode {
         match &self.seed {
@@ -156,27 +225,8 @@ impl BatchRequest {
     }
 }
 
-/// One input-ordered independent batch execution result.
-#[derive(Clone, Debug)]
-pub enum BatchResult {
-    /// Construction and bounded execution completed without a machine error.
-    Completed {
-        /// Final owned machine state for inspection or resumed execution.
-        machine: ExecutionMachine,
-        /// Bounded run outcome returned by the machine.
-        outcome: RunOutcome,
-    },
-    /// Construction or execution rejected this one request.
-    Rejected {
-        /// Mode-tagged deterministic rejection.
-        error: ExecutionError,
-        /// Final state when construction succeeded before execution failed.
-        machine: Option<ExecutionMachine>,
-    },
-}
-
 impl BatchResult {
-    /// Returns the deterministic rejection, when this item failed.
+    /// Returns the deterministic rejection, when this classic item failed.
     #[must_use]
     pub const fn error(&self) -> Option<ExecutionError> {
         match self {
@@ -185,7 +235,7 @@ impl BatchResult {
         }
     }
 
-    /// Returns the owned machine state when construction succeeded.
+    /// Returns the owned classic machine state when construction succeeded.
     #[must_use]
     pub const fn machine(&self) -> Option<&ExecutionMachine> {
         match self {
@@ -207,13 +257,99 @@ impl BatchResult {
     }
 }
 
-/// Executes all independent requests sequentially in exact input order.
+impl ProfileBatchRequest {
+    fn build(self) -> Result<BuiltProfileRequest, ProfileMachineError> {
+        let Self { seed, step_budget } = self;
+        let machine = match seed {
+            ProfileBatchSeed::Machine(machine) => machine,
+            ProfileBatchSeed::Source { input, profile, source } => {
+                ProfileMachine::from_source(profile, &source, input)?
+            },
+        };
+        Ok(BuiltProfileRequest { machine, step_budget })
+    }
+
+    /// Creates a request from an already constructed profile-driven machine.
+    #[must_use]
+    pub const fn from_machine(
+        machine: ProfileMachine,
+        step_budget: usize,
+    ) -> Self {
+        Self {
+            seed: ProfileBatchSeed::Machine(machine),
+            step_budget,
+        }
+    }
+
+    /// Creates a request from source and one explicit canonical profile.
+    #[must_use]
+    pub const fn from_source(
+        profile: &'static ProfileDescriptor,
+        source: Vec<u8>,
+        input: Vec<u8>,
+        step_budget: usize,
+    ) -> Self {
+        Self {
+            seed: ProfileBatchSeed::Source { input, profile, source },
+            step_budget,
+        }
+    }
+
+    /// Returns the exact canonical profile selected for this request.
+    #[must_use]
+    pub const fn profile(&self) -> &'static ProfileDescriptor {
+        match &self.seed {
+            ProfileBatchSeed::Machine(machine) => machine.profile(),
+            ProfileBatchSeed::Source { profile, .. } => profile,
+        }
+    }
+
+    /// Returns the maximum semantic steps requested for this instance.
+    #[must_use]
+    pub const fn step_budget(&self) -> usize {
+        self.step_budget
+    }
+}
+
+impl ProfileBatchResult {
+    /// Returns the deterministic rejection, when this profiled item failed.
+    #[must_use]
+    pub const fn error(&self) -> Option<ProfileMachineError> {
+        match self {
+            Self::Completed { .. } => None,
+            Self::Rejected { error, .. } => Some(*error),
+        }
+    }
+
+    /// Returns the owned profile machine state when construction succeeded.
+    #[must_use]
+    pub const fn machine(&self) -> Option<&ProfileMachine> {
+        match self {
+            Self::Completed { machine, .. }
+            | Self::Rejected {
+                machine: Some(machine), ..
+            } => Some(machine),
+            Self::Rejected { machine: None, .. } => None,
+        }
+    }
+
+    /// Returns the bounded run outcome for successfully completed execution.
+    #[must_use]
+    pub const fn outcome(&self) -> Option<RunOutcome> {
+        match self {
+            Self::Completed { outcome, .. } => Some(*outcome),
+            Self::Rejected { .. } => None,
+        }
+    }
+}
+
+/// Executes all independent classic requests sequentially in exact input order.
 #[must_use]
 pub fn execute_batch(requests: Vec<BatchRequest>) -> Vec<BatchResult> {
     requests.into_iter().map(execute_one).collect()
 }
 
-/// Executes independent requests across explicit host workers.
+/// Executes independent classic requests across explicit host workers.
 ///
 /// Results are always returned in exact input order. Worker scheduling cannot
 /// change per-instance machine state, I/O, diagnostics, or result ordering.
@@ -226,38 +362,7 @@ pub fn execute_batch_parallel(
     requests: Vec<BatchRequest>,
     worker_count: usize,
 ) -> Result<Vec<BatchResult>, BatchError> {
-    if worker_count == 0 {
-        return Err(BatchError::ZeroWorkers);
-    }
-    if requests.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let workers = worker_count.min(requests.len());
-    let chunk_size = requests.len().div_ceil(workers);
-    let chunks = owned_chunks(requests, chunk_size);
-    thread::scope(|scope| {
-        let handles = chunks
-            .into_iter()
-            .enumerate()
-            .map(|(worker, chunk)| {
-                (
-                    worker,
-                    scope.spawn(move || {
-                        chunk.into_iter().map(execute_one).collect::<Vec<_>>()
-                    }),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut results = Vec::new();
-        for (worker, handle) in handles {
-            let mut chunk_results = handle
-                .join()
-                .map_err(|_panic| BatchError::WorkerPanicked { worker })?;
-            results.append(&mut chunk_results);
-        }
-        Ok(results)
-    })
+    execute_parallel(requests, worker_count, execute_one)
 }
 
 fn execute_one(request: BatchRequest) -> BatchResult {
@@ -276,10 +381,93 @@ fn execute_one(request: BatchRequest) -> BatchResult {
     }
 }
 
-fn owned_chunks(
-    requests: Vec<BatchRequest>,
+fn execute_parallel<Request, Output>(
+    requests: Vec<Request>,
+    worker_count: usize,
+    execute: fn(Request) -> Output,
+) -> Result<Vec<Output>, BatchError>
+where
+    Request: Send,
+    Output: Send,
+{
+    if worker_count == 0 {
+        return Err(BatchError::ZeroWorkers);
+    }
+    if requests.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let workers = worker_count.min(requests.len());
+    let chunk_size = requests.len().div_ceil(workers);
+    let chunks = owned_chunks(requests, chunk_size);
+    thread::scope(|scope| {
+        let handles = chunks
+            .into_iter()
+            .enumerate()
+            .map(|(worker, chunk)| {
+                (
+                    worker,
+                    scope.spawn(move || {
+                        chunk.into_iter().map(execute).collect::<Vec<_>>()
+                    }),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut results = Vec::new();
+        for (worker, handle) in handles {
+            let mut chunk_results = handle
+                .join()
+                .map_err(|_panic| BatchError::worker_panicked(worker))?;
+            results.append(&mut chunk_results);
+        }
+        Ok(results)
+    })
+}
+
+/// Executes all independent profile requests sequentially in exact input order.
+#[must_use]
+pub fn execute_profile_batch(
+    requests: Vec<ProfileBatchRequest>,
+) -> Vec<ProfileBatchResult> {
+    requests.into_iter().map(execute_profile_one).collect()
+}
+
+/// Executes independent profile-driven requests across explicit host workers.
+///
+/// Results remain in exact input order and each machine retains its exact
+/// canonical profile descriptor regardless of host scheduling.
+///
+/// # Errors
+///
+/// Returns the same host scheduler failures as [`execute_batch_parallel`].
+pub fn execute_profile_batch_parallel(
+    requests: Vec<ProfileBatchRequest>,
+    worker_count: usize,
+) -> Result<Vec<ProfileBatchResult>, BatchError> {
+    execute_parallel(requests, worker_count, execute_profile_one)
+}
+
+fn execute_profile_one(request: ProfileBatchRequest) -> ProfileBatchResult {
+    let BuiltProfileRequest { mut machine, step_budget } = match request.build()
+    {
+        Ok(built) => built,
+        Err(error) => {
+            return ProfileBatchResult::Rejected { error, machine: None };
+        },
+    };
+    match machine.run(step_budget) {
+        Ok(outcome) => ProfileBatchResult::Completed { machine, outcome },
+        Err(error) => ProfileBatchResult::Rejected {
+            error,
+            machine: Some(machine),
+        },
+    }
+}
+
+fn owned_chunks<Request>(
+    requests: Vec<Request>,
     chunk_size: usize,
-) -> Vec<Vec<BatchRequest>> {
+) -> Vec<Vec<Request>> {
     let mut remaining = requests.into_iter();
     let mut chunks = Vec::new();
     loop {

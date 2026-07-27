@@ -335,17 +335,19 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
 Define deterministic logical tasks and joins while preserving sequential guest
 semantics. The safe Rust execution layer now orders structurally independent
-owned VM tasks by explicit logical ID, rejects duplicate identity, and joins
-committed outputs only in that order; 1/2/8-worker fixtures match the sequential
-full-state/artifact baseline. Logical-layer performance evidence remains open.
+classic or profile-driven VM tasks by explicit logical ID and joins committed
+outputs only in that order. Classic 1/2/8-worker full-state fixtures and mixed
+2026.1/current profile joins match sequential baselines; logical-layer performance
+evidence remains open.
 
 ### TODO - Batch VM execution
 
 Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 The CPU baseline now has deterministic sequential and explicit host-parallel
-execution plus retained worker-scaling evidence; future accelerator adapters
-remain open.
+execution for classic and profile-driven machines through one scheduler. Retained
+worker-scaling evidence applies to the classic workload only; current-profile
+performance measurement and future accelerator adapters remain open.
 
 ### TODO - Explicit native-tier execution controls
 
@@ -365,7 +367,7 @@ Remove the practical 59,049-word ceiling from current Malbolge while retaining
 `malbolge-2026.2` geometry with 4,782,969 directly addressed words, and the new
 safe-Rust `ProfileMachine` executes that profile explicitly while the classic
 facade remains ten-trit. Current-profile tracing is also explicit and
-profile-aware; compiler, batch/logical, native, and accelerator consumers still
+profile-aware; compiler, native, and accelerator consumers still
 need profile-driven adoption rather than silent fallback.
 
 ### TODO - Historical-interpreter fallback capsule
