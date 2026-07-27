@@ -33,6 +33,9 @@ emission.
 - Layout solves address-sensitive decode and self-modification constraints
   reproducibly and emits only verifier-accepted `.malbolge` for the declared
   profile.
+- The backend may additionally emit an annotated human/debug view, but
+  canonicalizing that view must reproduce the executable `.malbolge` stream
+  byte-for-byte; comments and layout never occupy target positions.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.

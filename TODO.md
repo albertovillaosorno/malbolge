@@ -512,6 +512,20 @@ Implement address-sensitive instruction layout, self-modification planning,
 encoding, jumps, data placement, runtime linkage, and final `.malbolge`
 emission.
 
+### TODO - Annotated Malbolge source syntax and formatter
+
+Define a non-canonical annotated source form for readable Malbolge without
+changing executable byte semantics. Canonical `.malbolge` remains the exact
+artifact. Annotated source may use arbitrary ASCII whitespace, deterministic
+automatic line wrapping, and full-line `//` comments whose marker is the first
+non-whitespace token on a line. A canonicalizer strips presentation only, emits
+the same position-sensitive Malbolge byte sequence, and preserves a source map
+from annotated offsets/regions to canonical loaded positions. Inline `//`
+comments are deliberately excluded from version one because `/` is a real
+Malbolge source byte. Compiler and decompiler views may align line breaks and
+comments with C/IR regions so generated Malbolge can retain recognizable source
+structure while the VM still executes ordinary canonical bytes.
+
 ### TODO - State-aware Malbolge linker
 
 Build a linker that composes independently compiled Malbolge blocks while

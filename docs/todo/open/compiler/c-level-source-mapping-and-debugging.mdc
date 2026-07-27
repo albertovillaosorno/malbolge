@@ -32,6 +32,9 @@ for implementation and verification.
 - Source maps preserve C file/line/function/variable provenance through
   IR/lowering/layout so stepping and diagnostics can reconstruct C-level
   execution without requiring raw A/C/D inspection.
+- Source maps provide deterministic boundaries for an optional annotated
+  Malbolge view so generated output can mirror C translation units, functions,
+  blocks, and source lines without changing canonical target bytes.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.

@@ -1,0 +1,61 @@
+---
+id: "annotated-malbolge-source-syntax-and-formatter"
+status: "pending"
+lane: "11"
+area: "tools"
+task: "TODO - Annotated Malbolge source syntax and formatter"
+contract: "docs/technical/tooling/annotated-malbolge-source-format.md"
+depends_on:
+  - "canonical-malbolge-target-profile"
+  - "safe-rust-malbolge-vm"
+  - "malbolge-layout-and-encoding-backend"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
+scope:
+  - "tools/"
+  - "compiler/"
+  - "src/"
+  - "tests/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Annotated Malbolge source syntax and formatter
+
+## Objective
+
+Add an explicit readable Malbolge source form that supports multiline layout,
+full-line comments, deterministic automatic formatting, and source maps while
+canonicalizing to exactly the same position-sensitive `.malbolge` bytes consumed
+by the selected profile loader.
+
+## Acceptance
+
+- Raw canonical `.malbolge` remains unchanged: whitespace is ignored as today,
+  and `//` has no implicit comment meaning in the canonical format.
+- Annotated v1 recognizes `//` only as a full-line comment marker when it is the
+  first non-whitespace token; inline comments remain intentionally unsupported.
+- Canonicalization strips ASCII whitespace/comments and then invokes the exact
+  selected-profile loader, so presentation cannot bypass source validation.
+- A deterministic formatter inserts automatic line breaks without changing any
+  loaded position and never emits an accidental full-line comment marker from
+  code bytes.
+- Compiler/decompiler integrations may align comments and breaks with C/IR
+  regions and preserve an annotated-to-canonical source map.
+- Round-trip tests prove `canonicalize(format(canonical)) == canonical`
+  byte-for-byte across slash-heavy, whitespace-heavy, classic, and current-profile
+  fixtures.
+- LF, CRLF, and CR presentations canonicalize identically, and parsing is
+  locale-independent.
+- Evidence is durable enough to retire this TODO without losing the raw/canonical
+  compatibility boundary.
+
+## Evidence
+
+- Expected durable artifact surface: `tools/`, `compiler/`, `src/`, `tests/`,
+  `docs/technical/tooling/annotated-malbolge-source-format.md`.
+- Required evidence: canonicalizer/formatter fixtures, slash/comment ambiguity
+  regressions, automatic-wrap round trips, source-map checks, and VM differential
+  execution of canonical versus annotated-equivalent inputs.
+- Prerequisite completion evidence: `canonical-malbolge-target-profile`,
+  `safe-rust-malbolge-vm`, `malbolge-layout-and-encoding-backend`.
