@@ -23,16 +23,16 @@ algorithms/diff/
 |-- gate.py           # conjunctive lineage + behavior admission
 |-- source_binding.py # threshold-bound reconstruction key material
 |-- payload.py        # RFC 8439 authenticated payload primitive
+|-- protected.py      # source-bound authenticated exact plans
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
 
 Exact authoring, generic identity primitives, tree-level structural/anchor
 admission, behavior-evidence semantics, the portable process-probe executor, and
-the threshold source-bound key-unlock primitive and RFC 8439 payload crypto are
-implemented. Broader DOOM probes, protected-plan integration, and Rust emission
-remain active work
-under the owning TODO.
+the threshold source-bound key-unlock primitive, RFC 8439 payload crypto, and
+protected exact-plan integration are implemented. Broader DOOM probes, compatible-
+variant placement, and Rust emission remain active work under the owning TODO.
 
 ## Implemented Exact Authoring Baseline
 
@@ -198,17 +198,23 @@ generated Rust runtime must use a constant-time fixed-limb implementation. The
 primitive is locked to the RFC Section 2.8.2 AEAD vector and was independently
 cross-checked byte-for-byte against Node crypto during development.
 
-This is deliberately **not** the payload format yet. Polynomial coefficients are
-derived deterministically from the secret so repeated generation is byte-stable;
-the construction therefore makes a computational source-binding claim, not an
-information-theoretic perfect-secret-sharing claim. Target literals remain local
-authoring state until an independently reviewed authenticated-encryption payload
-construction is selected and integrated.
+`protected.py` now integrates these primitives for the exact baseline. All local
+`OracleLiteral` bytes are concatenated into one deterministic plaintext stream,
+referenced by authenticated payload ranges, and encrypted as exactly one RFC 8439
+message under one plan-specific 256-bit key. That key is then source-bound by the
+T-of-N layer. Source/target snapshots and all protected instruction metadata are
+AEAD associated data, so metadata tampering fails before any output is published.
+The recovered plaintext exists only in the temporary in-memory exact plan passed
+to the already-transactional materializer.
 
-The exact cryptographic construction is intentionally not selected by this
-scaffold. It must be reviewed independently before implementation. A threshold
-secret-sharing construction or an equivalent independently validated mechanism
-may be used, but the security property is tested rather than assumed.
+The construction remains deliberately scoped. Polynomial coefficients and the
+payload key are derived deterministically from authoring material so repeated
+generation is byte-stable; this is computational source binding and authenticated
+reconstruction, not information-theoretic secrecy or protection against an attacker
+who already knows/guesses the target bytes. The Python Poly1305 path is reference
+code only. The generated Rust runtime must provide a constant-time implementation
+and derive candidate identity from the actual source tree rather than trusting an
+externally supplied identity object.
 
 Required negative tests include:
 

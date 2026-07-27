@@ -74,9 +74,16 @@ admission is also executable, while the DOOM domain module now supplies a C-awar
 identity view that excludes the WAD and IPX source family from Linux lineage
 scoring. Generic behavior admission and portable process-probe execution now also
 exist. The DOOM domain has its first executable fixed-point identity probe, while
-`write_algorithm()` still fails closed because source-bound payload recovery and
-Rust emission are intentionally unfinished and the DOOM probe suite is not broad
+`algorithms/diff` now also protects exact-plan oracle literals behind source-bound
+authenticated payload recovery. `write_algorithm()` still fails closed because
+deterministic Rust emission is unfinished and the DOOM probe suite is not broad
 enough yet.
+
+The protected exact-plan smoke now exercises the complete local authoring corpus
+without publishing it. It encrypted 2,116,232 target-only bytes into one RFC 8439
+payload, source-bound the key with 127 distributed shares (84 required), and
+materialized a temporary 152-file tree whose snapshot matched the manual oracle
+exactly. The temporary output was deleted; source and oracle remained read-only.
 
 The first executable behavior calibration uses `m_fixed.c` only. A small MIT
 freestanding harness is compiled with pinned LLVM 22.1.8 into a no-CRT Windows

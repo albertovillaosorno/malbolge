@@ -69,8 +69,8 @@ format.
   `doom.py` now supplies its C-aware Linux source identity view while excluding WAD
   and IPX surfaces from lineage scoring.
 - The admission model combines structural similarity, stable anchors, and normalized
-  behavior evidence. Threshold source-bound key unlock is now implemented; payload
-  authenticated encryption/recovery remains unfinished.
+  behavior evidence. Threshold key unlock and authenticated exact-plan payload
+  recovery are implemented; compatible-variant placement remains unfinished.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds. Synthetic
   threshold tests exist, and a local source-to-normalized-descendant stress smoke
   measured 0.780928 structural similarity and 0.766396 anchor coverage; broader
@@ -82,10 +82,12 @@ format.
   covered by RFC/synthetic negative tests. Deterministic coefficient derivation is
   explicitly computational rather than information-theoretic and still requires
   independent cryptographic review.
-- RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD vector;
-  protected-plan framing/key integration and the constant-time Rust runtime remain
-  unfinished.
-- No emitted source-bound payload format or Rust emitter exists yet.
+- RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD vector.
+  Protected exact plans move all oracle literals into one authenticated ciphertext
+  and bind its plan-specific key to distributed source anchors.
+- A read-only DOOM smoke protected 2,116,232 literal bytes across 152 instructions
+  and materialized an exact 152-file oracle snapshot from the original source.
+- No serialized source-bound transform or constant-time Rust emitter exists yet.
 
 ## Acceptance
 

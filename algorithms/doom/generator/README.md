@@ -34,7 +34,8 @@ python -m algorithms.doom.generator.quality
 ```
 
 `algorithms/diff` now implements exact authoring, source-span reuse, canonical
-identity primitives, stable anchors, tree admission, behavior evaluation, and a
-portable bounded process-probe executor. `write_algorithm()` still fails closed
-without writing `quality/main.rs` until source binding and Rust emission are
-implemented and the DOOM behavior suite has broader compatibility/bug coverage.
+identity primitives, stable anchors, tree admission, behavior evaluation, portable
+process probes, threshold key unlock, RFC 8439 payload protection, and protected
+exact-plan materialization. `write_algorithm()` still fails closed without writing
+`quality/main.rs` until deterministic std-only Rust emission exists and the DOOM
+behavior suite has broader compatibility/bug coverage.

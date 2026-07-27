@@ -13,4 +13,7 @@ source/oracle-authored bug transcript classification, HKDF-SHA-256 vectors,
 T-of-N source-bound key recovery, below-threshold/no-source rejection, tamper
 rejection, insufficient-file-distribution rejection, and offset-shifted anchor
 recovery, plus the RFC 8439 ChaCha20-Poly1305 AEAD vector and ciphertext/tag/AAD
-tamper rejection. Protected-plan integration and Rust emission remain unfinished.
+tamper rejection. Protected exact-plan tests also prove deterministic ciphertext,
+no plaintext literal retention, transform-without-source rejection, metadata AEAD
+binding, oracle-free exact reconstruction, and no output before authentication.
+Compatible-variant placement and Rust emission remain unfinished.

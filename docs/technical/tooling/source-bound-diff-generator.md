@@ -6,9 +6,9 @@ Active. Exact authoring/materialization, generic identity primitives, tree-level
 structural/stable-anchor admission, the first language-aware consumer identity
 adapter, generic behavior-evidence semantics, a portable bounded process-probe
 executor, the first DOOM identity behavior program, and threshold source-bound key
-unlock and the isolated RFC 8439 ChaCha20-Poly1305 payload primitive are
-implemented. Broader DOOM compatibility/bug probes, protected-plan integration,
-and Rust emission remain unfinished.
+unlock, RFC 8439 ChaCha20-Poly1305, and protected exact-plan materialization are
+implemented. Broader DOOM compatibility/bug probes, compatible-variant placement,
+serialized transform emission, and the constant-time Rust runtime remain unfinished.
 
 ## Purpose
 
@@ -247,12 +247,30 @@ ciphertext and Poly1305 tag; a development cross-check against Node crypto produ
 the same bytes. The Python implementation is a deterministic authoring/reference
 implementation rather than the eventual constant-time Rust runtime.
 
-This does **not** yet make target literals distributable. Shamir coefficients are
-derived deterministically from the high-entropy secret to preserve byte-identical
-generation, so the current layer claims computational source binding rather than
-information-theoretic secrecy. The authenticated payload cipher/serialization
-format remains intentionally blocked pending independent review; `emit_rust.py`
-must not serialize oracle literals until that layer exists.
+`protected.py` now combines key binding and authenticated encryption for exact
+authoring plans. Every `OracleLiteral` is moved into one deterministic plaintext
+stream. Protected instructions retain only source slices or offsets into that stream.
+The stream is encrypted as one ChaCha20-Poly1305 message; source/target snapshots,
+context, output paths, expected hashes, source paths, segment types, offsets, and
+lengths are authenticated as AAD. The 256-bit payload key is then bound to canonical
+source anchors. Recovery must unlock that key and authenticate the full payload before
+the transactional exact materializer can create its staging output.
+
+A read-only DOOM exact-baseline smoke generated 152 protected instructions and a
+2,116,232-byte ciphertext with a 16-byte tag. The binding contained 127 shares with
+an 84-share threshold and a 32-file minimum. Materialization under `.temp` reproduced
+the 152-file local oracle snapshot exactly and the smoke output was deleted afterward.
+Neither `doom/` nor `algorithms/doom/quality/in/doom/` was modified.
+
+The in-memory protected plan is not yet the checked-in distributable format. Shamir
+coefficients and the payload key are derived deterministically from authoring material
+to preserve byte-identical generation, so the property is computational source binding
+and authenticated reconstruction rather than information-theoretic secrecy. The
+Python Poly1305 implementation is reference/authoring code; emitted Rust must use a
+constant-time fixed-limb implementation. The emitted runtime must also derive identity
+from the actual candidate source tree instead of accepting caller-supplied identity
+evidence. `emit_rust.py` remains fail-closed until that runtime and deterministic
+serialization exist.
 
 ### Exact Baseline and Compatible Variants
 
