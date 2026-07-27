@@ -62,6 +62,42 @@ pub struct MachineObservation {
     pub termination: Option<Termination>,
 }
 
+/// Actual changed memory cells committed by one classic step.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MemoryDelta {
+    /// Instruction-specific data-cell change when distinct from encryption.
+    pub data: Option<MemoryWrite>,
+    /// Final self-encryption cell change.
+    pub encryption: Option<MemoryWrite>,
+}
+
+impl MemoryDelta {
+    /// Returns the number of distinct memory cells changed by this step.
+    #[must_use]
+    pub const fn changed_cells(self) -> usize {
+        let data = match self.data {
+            Some(_write) => 1usize,
+            None => 0usize,
+        };
+        let encryption = match self.encryption {
+            Some(_write) => 1usize,
+            None => 0usize,
+        };
+        data.saturating_add(encryption)
+    }
+}
+
+/// One actual classic memory-cell change committed by a step.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MemoryWrite {
+    /// Classic memory address whose final value changed.
+    pub address: Word,
+    /// Final committed word after the step.
+    pub after: Word,
+    /// Word observed before the step committed.
+    pub before: Word,
+}
+
 /// Input observation attached to one successfully planned input instruction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraceInput {
@@ -85,6 +121,8 @@ pub struct StepTrace {
     pub fetched_cell: Option<Word>,
     /// Input effect selected by a successfully planned input instruction.
     pub input: Option<TraceInput>,
+    /// Actual committed memory changes for this requested step.
+    pub memory_delta: MemoryDelta,
     /// Explicit execution-mode identity for this requested step.
     pub mode: ExecutionMode,
     /// Output byte emitted by a successfully committed output instruction.

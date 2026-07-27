@@ -65,6 +65,42 @@ pub struct ProfileMachineObservation {
     pub termination: Option<Termination>,
 }
 
+/// Actual changed memory cells committed by one profile-driven step.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileMemoryDelta {
+    /// Instruction-specific data-cell change when distinct from encryption.
+    pub data: Option<ProfileMemoryWrite>,
+    /// Final self-encryption cell change.
+    pub encryption: Option<ProfileMemoryWrite>,
+}
+
+impl ProfileMemoryDelta {
+    /// Returns the number of distinct memory cells changed by this step.
+    #[must_use]
+    pub const fn changed_cells(self) -> usize {
+        let data = match self.data {
+            Some(_write) => 1usize,
+            None => 0usize,
+        };
+        let encryption = match self.encryption {
+            Some(_write) => 1usize,
+            None => 0usize,
+        };
+        data.saturating_add(encryption)
+    }
+}
+
+/// One actual profile-width memory-cell change committed by a step.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProfileMemoryWrite {
+    /// Profile-width address whose final value changed.
+    pub address: u32,
+    /// Final committed word after the step.
+    pub after: u32,
+    /// Word observed before the step committed.
+    pub before: u32,
+}
+
 /// Deterministic evidence emitted for one requested profile-driven step.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProfileStepTrace {
@@ -78,6 +114,8 @@ pub struct ProfileStepTrace {
     pub fetched_cell: Option<u32>,
     /// Input effect selected by a successfully planned input instruction.
     pub input: Option<TraceInput>,
+    /// Actual committed memory changes for this requested step.
+    pub memory_delta: ProfileMemoryDelta,
     /// Output byte emitted by a successfully committed output instruction.
     pub output: Option<u8>,
     /// Exact canonical profile identity for the observed machine.

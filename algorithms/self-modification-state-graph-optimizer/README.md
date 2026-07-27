@@ -43,3 +43,9 @@ every requested normative step changes at most two memory cells. It compares
 complete before/after memories for all instruction families in classic and
 current profiles, including real two-cell crazy/rotate cases and zero-cell
 halt/rejection. This is the prerequisite for a persistent/delta memory graph.
+
+The VM trace now exposes the proved memory delta directly. Classic `MemoryDelta`
+and current `ProfileMemoryDelta` contain at most the distinct data/encryption
+changes committed by the real step engine. `tests/d.rs` independently scans full
+before/after memory and requires exact address/before/after equality, so future
+persistent nodes can consume the trace without making it a correctness oracle.

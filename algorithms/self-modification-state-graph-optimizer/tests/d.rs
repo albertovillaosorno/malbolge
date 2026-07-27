@@ -50,9 +50,10 @@
 //! Complete-memory witnesses for the normative per-step mutation-count bound.
 
 use malbolge::{
-    MEMORY_WORDS, Machine, MachineError, Memory, ProfileMachine,
+    MEMORY_WORDS, Machine, MachineError, Memory, MemoryDelta, ProfileMachine,
     ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
-    ProfileRegisters, Registers, Word, current_profile,
+    ProfileMemoryDelta, ProfileRegisters, ProfileStepTrace, Registers,
+    StepTrace, Word, current_profile,
 };
 
 const ACCUMULATOR: u8 = 7;
@@ -112,6 +113,16 @@ const CASES: &[InstructionCase] = &[
     },
 ];
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct Change {
+    address: u32,
+    after: u32,
+    before: u32,
+}
+
+type ClassicCaseResult = Result<(Vec<Change>, MemoryDelta), String>;
+type ProfileCaseResult = Result<(Vec<Change>, ProfileMemoryDelta), String>;
+
 #[derive(Clone, Copy, Debug)]
 struct InstructionCase {
     cell: u8,
@@ -122,8 +133,8 @@ struct InstructionCase {
 fn changed_classic_cells(
     before: &Memory,
     after: &Machine,
-) -> Result<usize, String> {
-    let mut changed = 0usize;
+) -> Result<Vec<Change>, String> {
+    let mut changed = Vec::new();
     for raw in 0..MEMORY_WORDS {
         let value = u16::try_from(raw).map_err(|error| {
             format!("classic address conversion failed: {error}")
@@ -137,7 +148,11 @@ fn changed_classic_cells(
             .memory_word(address)
             .map_err(|error| format!("classic after read failed: {error}"))?;
         if before_word != after_word {
-            changed = changed.saturating_add(1);
+            changed.push(Change {
+                address: u32::from(value),
+                after: u32::from(after_word.value()),
+                before: u32::from(before_word.value()),
+            });
         }
     }
     Ok(changed)
@@ -146,20 +161,59 @@ fn changed_classic_cells(
 fn changed_profile_cells(
     before: &[u32],
     after: &[u32],
-) -> Result<usize, String> {
+) -> Result<Vec<Change>, String> {
     if before.len() != after.len() {
         return Err(String::from(
             "profile memory length changed after one step",
         ));
     }
-    Ok(before
-        .iter()
-        .zip(after)
-        .filter(|(left, right)| left != right)
-        .count())
+    let mut changed = Vec::new();
+    for (raw_address, (before_word, after_word)) in
+        before.iter().zip(after).enumerate()
+    {
+        if before_word != after_word {
+            let address = u32::try_from(raw_address).map_err(|error| {
+                format!("profile address conversion: {error}")
+            })?;
+            changed.push(Change {
+                address,
+                after: *after_word,
+                before: *before_word,
+            });
+        }
+    }
+    Ok(changed)
 }
 
-fn classic_case(case: InstructionCase) -> Result<usize, String> {
+fn classic_trace_changes(delta: MemoryDelta) -> Vec<Change> {
+    let mut changed = [delta.data, delta.encryption]
+        .into_iter()
+        .flatten()
+        .map(|write| Change {
+            address: u32::from(write.address.value()),
+            after: u32::from(write.after.value()),
+            before: u32::from(write.before.value()),
+        })
+        .collect::<Vec<_>>();
+    changed.sort_unstable();
+    changed
+}
+
+fn profile_trace_changes(delta: ProfileMemoryDelta) -> Vec<Change> {
+    let mut changed = [delta.data, delta.encryption]
+        .into_iter()
+        .flatten()
+        .map(|write| Change {
+            address: write.address,
+            after: write.after,
+            before: write.before,
+        })
+        .collect::<Vec<_>>();
+    changed.sort_unstable();
+    changed
+}
+
+fn classic_case(case: InstructionCase) -> ClassicCaseResult {
     let mut memory = Memory::filled(Word::ZERO);
     memory
         .replace(Word::ZERO, Word::from_byte(case.cell))
@@ -184,7 +238,10 @@ fn classic_case(case: InstructionCase) -> Result<usize, String> {
         data_pointer: Word::from_byte(DATA_ADDRESS),
     };
     let mut machine = Machine::with_registers(memory, vec![INPUT], registers);
-    let result = machine.step();
+    let mut traced_delta = None;
+    let result = machine.step_traced(&mut |trace: &StepTrace| {
+        traced_delta = Some(trace.memory_delta);
+    });
     if case.rejection {
         let expected = Err(MachineError::InvalidEncryptionTarget {
             pointer: Word::from_byte(ENCRYPTION_TARGET),
@@ -198,7 +255,11 @@ fn classic_case(case: InstructionCase) -> Result<usize, String> {
             "classic instruction unexpectedly failed: {result:?}"
         ));
     }
-    changed_classic_cells(&before, &machine)
+    let changed = changed_classic_cells(&before, &machine)?;
+    let delta = traced_delta.ok_or_else(|| {
+        String::from("classic trace did not emit memory delta")
+    })?;
+    Ok((changed, delta))
 }
 
 fn current_base_memory() -> Result<Vec<u32>, String> {
@@ -211,7 +272,7 @@ fn current_base_memory() -> Result<Vec<u32>, String> {
     Ok(machine.snapshot_state().memory().to_vec())
 }
 
-fn profile_case(base: &[u32], case: InstructionCase) -> Result<usize, String> {
+fn profile_case(base: &[u32], case: InstructionCase) -> ProfileCaseResult {
     let mut memory = base.to_vec();
     let instruction = memory
         .get_mut(0)
@@ -244,7 +305,10 @@ fn profile_case(base: &[u32], case: InstructionCase) -> Result<usize, String> {
     )
     .map_err(|error| format!("current state failed: {error}"))?;
     let mut machine = ProfileMachine::from_snapshot(state);
-    let result = machine.step();
+    let mut traced_delta = None;
+    let result = machine.step_traced(&mut |trace: &ProfileStepTrace| {
+        traced_delta = Some(trace.memory_delta);
+    });
     if case.rejection {
         let expected = Err(ProfileMachineError::InvalidEncryptionTarget {
             pointer: u32::from(ENCRYPTION_TARGET),
@@ -259,21 +323,39 @@ fn profile_case(base: &[u32], case: InstructionCase) -> Result<usize, String> {
         ));
     }
     let after = machine.snapshot_state();
-    changed_profile_cells(&before, after.memory())
+    let changed = changed_profile_cells(&before, after.memory())?;
+    let delta = traced_delta.ok_or_else(|| {
+        String::from("profile trace did not emit memory delta")
+    })?;
+    Ok((changed, delta))
 }
 
 fn validate_case(
     case: InstructionCase,
-    observed: usize,
+    mut observed: Vec<Change>,
+    mut traced: Vec<Change>,
     profile: &str,
 ) -> Result<(), String> {
-    if observed > MAX_MEMORY_DELTA {
-        return Err(format!("{profile} step changed {observed} memory cells"));
-    }
-    if observed != case.expected_changes {
+    observed.sort_unstable();
+    traced.sort_unstable();
+    if observed.len() > MAX_MEMORY_DELTA {
         return Err(format!(
-            "{profile} cell={} expected {} changes, observed {observed}",
-            case.cell, case.expected_changes
+            "{profile} step changed {} memory cells",
+            observed.len()
+        ));
+    }
+    if observed.len() != case.expected_changes {
+        return Err(format!(
+            "{profile} cell={} expected {} changes, observed {}",
+            case.cell,
+            case.expected_changes,
+            observed.len()
+        ));
+    }
+    if observed != traced {
+        return Err(format!(
+            "{profile} delta cell={}: actual={observed:?} trace={traced:?}",
+            case.cell
         ));
     }
     Ok(())
@@ -283,7 +365,13 @@ fn validate_case(
 fn classic_instruction_families_obey_two_cell_memory_delta()
 -> Result<(), String> {
     for case in CASES {
-        validate_case(*case, classic_case(*case)?, "classic")?;
+        let (observed, delta) = classic_case(*case)?;
+        validate_case(
+            *case,
+            observed,
+            classic_trace_changes(delta),
+            "classic",
+        )?;
     }
     Ok(())
 }
@@ -293,7 +381,13 @@ fn current_instruction_families_obey_two_cell_memory_delta()
 -> Result<(), String> {
     let base = current_base_memory()?;
     for case in CASES {
-        validate_case(*case, profile_case(&base, *case)?, "current")?;
+        let (observed, delta) = profile_case(&base, *case)?;
+        validate_case(
+            *case,
+            observed,
+            profile_trace_changes(delta),
+            "current",
+        )?;
     }
     Ok(())
 }

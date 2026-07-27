@@ -125,6 +125,15 @@ exactly two changes for crazy/rotate, one for ordinary committed instructions,
 and zero for halt/atomic rejection. This proves `|Delta M| <= 2` without using
 private transition-plan metadata.
 
+The same fixtures now cross-check the incremental trace representation. Classic
+`MemoryDelta` and profile `ProfileMemoryDelta` are produced by the real step
+engine and contain only actual final changes. For all 18 instruction-family/
+profile cases, the normalized trace tuples `(address,before,after)` equal the
+complete-memory difference exactly; same-address data/encryption writes collapse
+to one final change and halt/rejection remain empty. This makes the trace a
+validated O(1)-sized input for persistent-memory research while the full scan
+remains the independent oracle.
+
 These results do not justify removing the live input cursor, changing the
 remaining suffix, removing live output history, or dropping arbitrary live
 memory/register state without proof. They do reject repeated full-checkpoint

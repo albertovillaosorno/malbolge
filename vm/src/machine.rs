@@ -51,7 +51,9 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::loader::{LoadError, load};
-use crate::trace::{MachineObservation, StepTrace, TraceInput};
+use crate::trace::{
+    MachineObservation, MemoryDelta, MemoryWrite, StepTrace, TraceInput,
+};
 use crate::{
     ExecutionMode, Memory, MemoryError, Word, decode_instruction, encrypt,
 };
@@ -185,6 +187,8 @@ struct TransitionPlan {
     registers: Registers,
 }
 
+type ClassicStepExecution = Result<(StepOutcome, MemoryDelta), MachineError>;
+
 /// Owned classic Malbolge machine state and deterministic byte streams.
 #[derive(Clone, Debug)]
 pub struct Machine {
@@ -239,6 +243,34 @@ impl Machine {
     #[must_use]
     pub const fn input_consumed(&self) -> usize {
         self.input_cursor
+    }
+
+    fn memory_delta(
+        &self,
+        plan: &TransitionPlan,
+        encrypted: Word,
+    ) -> Result<MemoryDelta, MachineError> {
+        let encryption_pointer = plan.registers.code_pointer;
+        let data = if let Some((write_pointer, value)) = plan.memory_write
+            && write_pointer != encryption_pointer
+        {
+            let before = self.memory.read(write_pointer)?;
+            (before != value).then_some(MemoryWrite {
+                address: write_pointer,
+                after: value,
+                before,
+            })
+        } else {
+            None
+        };
+        let encryption_before = self.memory.read(encryption_pointer)?;
+        let encryption =
+            (encryption_before != encrypted).then_some(MemoryWrite {
+                address: encryption_pointer,
+                after: encrypted,
+                before: encryption_before,
+            });
+        Ok(MemoryDelta { data, encryption })
     }
 
     /// Reads one current guest memory word.
@@ -431,28 +463,8 @@ impl Machine {
         &mut self,
         mode: ExecutionMode,
     ) -> Result<StepOutcome, MachineError> {
-        if let Some(reason) = self.termination {
-            return Ok(StepOutcome::Terminated(reason));
-        }
-        let cell = self.memory.read(self.registers.code_pointer)?;
-        if !cell.is_graphical() {
-            if mode == ExecutionMode::LegacyBen {
-                return Ok(StepOutcome::Continued);
-            }
-            self.termination = Some(Termination::NonGraphicalCell);
-            return Ok(StepOutcome::Terminated(Termination::NonGraphicalCell));
-        }
-        let decoded = decode_instruction(cell, self.registers.code_pointer)
-            .ok_or(MachineError::TranslationTableInvariant)?;
-        let decoded_instruction = instruction(decoded, mode);
-        if decoded_instruction == Instruction::Halt {
-            self.termination = Some(Termination::HaltInstruction);
-            return Ok(StepOutcome::Terminated(Termination::HaltInstruction));
-        }
-        let plan = self.plan(decoded_instruction)?;
-        let encrypted = self.validate_encryption(&plan, mode)?;
-        self.commit(plan, encrypted)?;
-        Ok(StepOutcome::Continued)
+        self.step_with_delta_in_mode(mode)
+            .map(|(outcome, _memory_delta)| outcome)
     }
 
     /// Executes one atomic transition and emits deterministic trace evidence.
@@ -495,7 +507,11 @@ impl Machine {
                     decode_instruction(cell, before.registers.code_pointer)
                 });
         let decoded_instruction = decoded.map(|byte| instruction(byte, mode));
-        let result = self.step_in_mode(mode);
+        let execution = self.step_with_delta_in_mode(mode);
+        let (result, memory_delta) = match execution {
+            Ok((outcome, delta)) => (Ok(outcome), delta),
+            Err(error) => (Err(error), MemoryDelta::default()),
+        };
         let after = self.observation();
         let input = if result == Ok(StepOutcome::Continued)
             && decoded_instruction == Some(Instruction::Input)
@@ -522,11 +538,50 @@ impl Machine {
             decoded,
             fetched_cell,
             input,
+            memory_delta,
             mode,
             output,
             result,
         });
         result
+    }
+
+    fn step_with_delta_in_mode(
+        &mut self,
+        mode: ExecutionMode,
+    ) -> ClassicStepExecution {
+        if let Some(reason) = self.termination {
+            return Ok((
+                StepOutcome::Terminated(reason),
+                MemoryDelta::default(),
+            ));
+        }
+        let cell = self.memory.read(self.registers.code_pointer)?;
+        if !cell.is_graphical() {
+            if mode == ExecutionMode::LegacyBen {
+                return Ok((StepOutcome::Continued, MemoryDelta::default()));
+            }
+            self.termination = Some(Termination::NonGraphicalCell);
+            return Ok((
+                StepOutcome::Terminated(Termination::NonGraphicalCell),
+                MemoryDelta::default(),
+            ));
+        }
+        let decoded = decode_instruction(cell, self.registers.code_pointer)
+            .ok_or(MachineError::TranslationTableInvariant)?;
+        let decoded_instruction = instruction(decoded, mode);
+        if decoded_instruction == Instruction::Halt {
+            self.termination = Some(Termination::HaltInstruction);
+            return Ok((
+                StepOutcome::Terminated(Termination::HaltInstruction),
+                MemoryDelta::default(),
+            ));
+        }
+        let plan = self.plan(decoded_instruction)?;
+        let encrypted = self.validate_encryption(&plan, mode)?;
+        let memory_delta = self.memory_delta(&plan, encrypted)?;
+        self.commit(plan, encrypted)?;
+        Ok((StepOutcome::Continued, memory_delta))
     }
 
     /// Returns the current stable termination reason, if any.

@@ -61,12 +61,17 @@ const IO_ROUNDTRIP: &[u8] =
 const REJECTING_JUMP_SOURCE: &[u8] = b"b'";
 const REJECTING_POINTER: u32 = 98;
 
-fn check_halt_trace(trace: ProfileStepTrace) -> TestResult {
+fn check_halt_trace(trace: &ProfileStepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'v'), "profile halt decode")?;
     check_equal(
         &trace.result,
         &Ok(StepOutcome::Terminated(Termination::HaltInstruction)),
         "profile halt result",
+    )?;
+    check_equal(
+        &trace.memory_delta.changed_cells(),
+        &0usize,
+        "profile halt changes no memory",
     )?;
     check_equal(
         &trace.profile.id(),
@@ -75,7 +80,7 @@ fn check_halt_trace(trace: ProfileStepTrace) -> TestResult {
     )
 }
 
-fn check_input_eof_trace(trace: ProfileStepTrace) -> TestResult {
+fn check_input_eof_trace(trace: &ProfileStepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'<'), "profile input decode")?;
     check_equal(
         &trace.input,
@@ -99,7 +104,7 @@ fn check_input_eof_trace(trace: ProfileStepTrace) -> TestResult {
     )
 }
 
-fn check_output_trace(trace: ProfileStepTrace) -> TestResult {
+fn check_output_trace(trace: &ProfileStepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'/'), "profile output decode")?;
     check_equal(
         &trace.output,
@@ -177,17 +182,17 @@ fn current_trace_records_profile_eof_and_is_inert() -> TestResult {
     )?;
     check_equal(&records.len(), &3usize, "current trace count")?;
     check_input_eof_trace(
-        *records
+        records
             .first()
             .ok_or_else(|| String::from("missing current input trace"))?,
     )?;
     check_output_trace(
-        *records
+        records
             .get(1)
             .ok_or_else(|| String::from("missing current output trace"))?,
     )?;
     check_halt_trace(
-        *records
+        records
             .get(2)
             .ok_or_else(|| String::from("missing current halt trace"))?,
     )?;
@@ -224,6 +229,11 @@ fn current_rejected_jump_trace_is_observationally_atomic() -> TestResult {
         "current rejection trace atomicity",
     )?;
     check_equal(&trace.input, &None, "current rejection input")?;
+    check_equal(
+        &trace.memory_delta.changed_cells(),
+        &0usize,
+        "current rejection changes no memory",
+    )?;
     check_equal(&trace.output, &None, "current rejection output")?;
     check_equal(
         &trace.profile.id(),

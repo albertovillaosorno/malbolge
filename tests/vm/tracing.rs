@@ -57,16 +57,21 @@ use super::{TestResult, check_equal, normalize_result};
 const IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
-fn check_halt_trace(trace: StepTrace) -> TestResult {
+fn check_halt_trace(trace: &StepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'v'), "third trace decodes halt")?;
     check_equal(
         &trace.result,
         &Ok(StepOutcome::Terminated(Termination::HaltInstruction)),
         "halt trace records termination",
+    )?;
+    check_equal(
+        &trace.memory_delta.changed_cells(),
+        &0usize,
+        "halt trace changes no memory",
     )
 }
 
-fn check_input_trace(trace: StepTrace) -> TestResult {
+fn check_input_trace(trace: &StepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'<'), "first trace decodes input")?;
     check_equal(
         &trace.input,
@@ -91,7 +96,7 @@ fn check_input_trace(trace: StepTrace) -> TestResult {
     )
 }
 
-fn check_output_trace(trace: StepTrace) -> TestResult {
+fn check_output_trace(trace: &StepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'/'), "second trace decodes output")?;
     check_equal(&trace.output, &Some(0x41), "second trace records output")?;
     check_equal(
@@ -125,17 +130,17 @@ fn traced_roundtrip_records_state_and_io_without_changing_semantics()
         "one trace is emitted per requested step",
     )?;
     check_input_trace(
-        *records
+        records
             .first()
             .ok_or_else(|| String::from("missing input trace"))?,
     )?;
     check_output_trace(
-        *records
+        records
             .get(1)
             .ok_or_else(|| String::from("missing output trace"))?,
     )?;
     check_halt_trace(
-        *records
+        records
             .get(2)
             .ok_or_else(|| String::from("missing halt trace"))?,
     )?;
@@ -194,6 +199,11 @@ fn rejected_transition_is_traced_without_partial_effects() -> TestResult {
         "rejection trace is observationally atomic",
     )?;
     check_equal(&trace.input, &None, "rejected transition consumes no input")?;
+    check_equal(
+        &trace.memory_delta.changed_cells(),
+        &0usize,
+        "rejected transition changes no memory",
+    )?;
     check_equal(&trace.output, &None, "rejected transition emits no output")?;
     check_equal(
         &normalize_result(machine.memory_word(Word::from_byte(2)))?,

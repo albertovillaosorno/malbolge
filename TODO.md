@@ -613,9 +613,10 @@ memory/register/input state. Exact identity also consumes validated current
 7.19 ms snapshot, 26.24 ms insert, and 30.76 ms replay on the recorded host, so
 full copy/hash is rejected as the expected per-step representation. Complete
 classic/current instruction-family witnesses now prove each step changes at most
-two memory cells, making persistent/delta memory the next admitted research
-path. Live register/output reductions, broader mutation-history collapse, and
-native-region shortcuts remain open.
+two memory cells. The real trace engine exposes those exact final deltas and
+full-memory scans cross-check every address/before/after record, making persistent
+memory the next admitted research path. Live register/output reductions, broader
+mutation-history collapse, and native-region shortcuts remain open.
 
 ## Optimization and accelerator architecture
 

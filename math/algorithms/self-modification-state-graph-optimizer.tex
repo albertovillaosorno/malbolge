@@ -76,6 +76,21 @@ eight instruction families in both classic and current 14-trit states. It
 includes real two-cell crazy/rotate witnesses and zero-cell halt/atomic-rejection
 witnesses; no private transition-plan metadata is used.
 
+The tracing surface now reports the same actual final changed-cell set without
+rescanning memory. Let $D_T(s,s')$ be the set of trace records
+$(a,M[a],M'[a])$ emitted for one requested step. The trace contract is
+\begin{equation}
+  D_T(s,s')
+    = \left\{(a,M[a],M'[a])\mid a\in\Delta_M(M,M')\right\}.
+  \label{eq:state-graph-trace-memory-delta}
+\end{equation}
+A data-cell write and self-encryption at the same address therefore produce one
+final changed-cell record, unchanged writes are omitted, and halt/rejection
+produce the empty set. The executable correspondence reconstructs
+$\Delta_M$ independently by complete before/after memory comparison and requires
+exact equality with the trace records for every classic/current instruction
+family fixture.
+
 \section{Versioned profile checkpoint baseline}
 
 For a validated profile checkpoint $q$, define the complete checkpoint projection

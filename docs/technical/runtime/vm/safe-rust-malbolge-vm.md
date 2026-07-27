@@ -34,13 +34,22 @@ fixed memory, deterministic loading, byte I/O, atomic single-step transitions,
 bounded execution, and optional in-memory trace hooks.
 
 The classic public trace surface records before/after observations, decoded
-instruction bytes, committed I/O, termination, and rejected transition results
-without changing guest semantics. `ProfileMachine` now exposes the parallel
-`ProfileStepTrace` surface with exact canonical profile identity and profile-width
-`u32` registers/cells. `TraceInput::EndOfInput` is profile-neutral: current traces
-record EOF accumulator 4,782,968 rather than inheriting the classic 59,048 value.
-Memory-transition correctness remains directly covered by instruction and
-atomicity fixtures rather than duplicated by either trace layer.
+instruction bytes, committed I/O, termination, rejected transition results, and
+an allocation-free `MemoryDelta` with at most one instruction-data change plus
+one final self-encryption change. `ProfileMachine` exposes the parallel
+`ProfileStepTrace`/`ProfileMemoryDelta` surface with exact canonical profile
+identity and profile-width `u32` addresses/words. Deltas contain actual final
+changed cells only: unchanged writes are omitted, a data/encryption collision at
+one address is represented once by its final encrypted value, and
+halt/non-graphical termination/rejected transitions report no memory change.
+
+Both traced and untraced APIs still invoke the same transition engine. The
+internal step result carries the already-validated memory delta; `step()` discards
+it and `step_traced()` publishes it. `TraceInput::EndOfInput` remains
+profile-neutral: current traces record EOF accumulator 4,782,968 rather than
+inheriting the classic 59,048 value. Independent research fixtures reconstruct
+complete before/after memory differences for every classic/current instruction
+family and require exact equality with the trace delta.
 
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
@@ -93,7 +102,8 @@ command passes at retirement time.
 - Complete profile checkpoints preserve input position, committed output, and
   termination as well as memory/register state; restoration does not restart I/O.
 - Classic and profiled trace hooks wrap their respective real step engines and
-  therefore cannot become an alternate transition implementation.
+  therefore cannot become an alternate transition implementation. Their memory
+  deltas are the validated transition result, not a second write planner.
 
 ## Failure Behavior
 
@@ -116,8 +126,9 @@ memory, input consumption, or output.
   signature from the pure-C VM.
 - `tests/vm/profile_tracing.rs` traces current-profile EOF/output/halt, proves
   traced and plain current execution agree on outcome, I/O, registers and sampled
-  memory, and exercises a real 14-trit recurrence jump whose rejected encryption
-  target remains observationally atomic.
+  memory, verifies halt/rejection expose an empty memory delta, and exercises a
+  real 14-trit recurrence jump whose rejected encryption target remains
+  observationally atomic.
 - `tests/vm/profile_state.rs` validates exact initial-state/checkpoint errors,
   round-trips consumed input, committed output, registers and termination through
   snapshot restoration, and places both current pointers at 4,782,968 to prove
@@ -126,7 +137,9 @@ memory, input consumption, or output.
   for historical disagreement edges and byte-I/O semantics.
 - Trace hooks are observational only: classic and profile-driven traced/untraced
   executions over the same state and input must produce identical observable
-  outcomes, output, and final state.
+  outcomes, output, and final state. State-graph research additionally compares
+  trace memory deltas to complete before/after memory images for every instruction
+  family in both profiles.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - The historical interpreter is compared only on its documented agreement

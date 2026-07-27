@@ -95,8 +95,13 @@ pub use profile_machine::{
     ProfileMachineIoState, ProfileMachineState, ProfileRegisterName,
     ProfileRegisters,
 };
-pub use profile_trace::{ProfileMachineObservation, ProfileStepTrace};
-pub use trace::{MachineObservation, StepTrace, TraceInput};
+pub use profile_trace::{
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
+    ProfileStepTrace,
+};
+pub use trace::{
+    MachineObservation, MemoryDelta, MemoryWrite, StepTrace, TraceInput,
+};
 pub use word::{MAX_WORD_VALUE, MEMORY_WORDS, Word, WordError};
 const CRAZY_CHUNK_TRITS: u8 = 5;
 const CRAZY_CHUNK_VALUES: u16 = 243;

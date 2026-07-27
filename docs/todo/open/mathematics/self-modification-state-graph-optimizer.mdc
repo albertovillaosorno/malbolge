@@ -59,6 +59,10 @@ VM evidence.
   classic and current profiles establish `|Delta M| <= 2` for every requested
   step, including actual two-cell crazy/rotate and zero-cell halt/rejection
   boundaries. This opens persistent/delta memory as the next research slice.
+- `MemoryDelta`/`ProfileMemoryDelta` now come from the real step engines and
+  contain only actual final changed cells. The same full-memory fixtures require
+  exact `(address,before,after)` equality between trace deltas and independently
+  reconstructed memory differences for all classic/current instruction families.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.
 - The first reduced future key drops only consumed input-prefix contents while

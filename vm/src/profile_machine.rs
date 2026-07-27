@@ -53,9 +53,10 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::{
     CRAZY_CHUNK_TRITS, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileMachineObservation, ProfileRequirementError, ProfileStepTrace,
-    RunOutcome, StepOutcome, Termination, TraceInput, XLAT2,
-    crazy_chunk_lookup, preflight_profile, safe_rust_profiled_capability,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
+    ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
+    Termination, TraceInput, XLAT2, crazy_chunk_lookup, preflight_profile,
+    safe_rust_profiled_capability,
 };
 
 const GRAPHICAL_MAX: u32 = 126;
@@ -311,6 +312,9 @@ struct ProfileTransitionPlan {
     registers: ProfileRegisters,
 }
 
+type ProfileStepExecution =
+    Result<(StepOutcome, ProfileMemoryDelta), ProfileMachineError>;
+
 /// Owned safe Rust machine for one explicitly selected canonical profile.
 #[derive(Clone, Debug)]
 pub struct ProfileMachine {
@@ -499,6 +503,34 @@ impl ProfileMachine {
     #[must_use]
     pub const fn input_consumed(&self) -> usize {
         self.input_cursor
+    }
+
+    fn memory_delta(
+        &self,
+        plan: &ProfileTransitionPlan,
+        encrypted: u32,
+    ) -> Result<ProfileMemoryDelta, ProfileMachineError> {
+        let encryption_pointer = plan.registers.code_pointer;
+        let data = if let Some((write_pointer, value)) = plan.memory_write
+            && write_pointer != encryption_pointer
+        {
+            let before = self.read(write_pointer)?;
+            (before != value).then_some(ProfileMemoryWrite {
+                address: write_pointer,
+                after: value,
+                before,
+            })
+        } else {
+            None
+        };
+        let encryption_before = self.read(encryption_pointer)?;
+        let encryption =
+            (encryption_before != encrypted).then_some(ProfileMemoryWrite {
+                address: encryption_pointer,
+                after: encrypted,
+                before: encryption_before,
+            });
+        Ok(ProfileMemoryDelta { data, encryption })
     }
 
     /// Reads one guest memory word by exact profile-width address.
@@ -700,25 +732,8 @@ impl ProfileMachine {
     ///
     /// Returns [`ProfileMachineError`] when a transition cannot commit exactly.
     pub fn step(&mut self) -> Result<StepOutcome, ProfileMachineError> {
-        if let Some(reason) = self.termination {
-            return Ok(StepOutcome::Terminated(reason));
-        }
-        let cell = self.read(self.registers.code_pointer)?;
-        if !is_graphical(cell) {
-            self.termination = Some(Termination::NonGraphicalCell);
-            return Ok(StepOutcome::Terminated(Termination::NonGraphicalCell));
-        }
-        let decoded = profile_decode(cell, self.registers.code_pointer)
-            .ok_or(ProfileMachineError::TranslationTableInvariant)?;
-        let decoded_instruction = profile_instruction(decoded);
-        if decoded_instruction == ProfileInstruction::Halt {
-            self.termination = Some(Termination::HaltInstruction);
-            return Ok(StepOutcome::Terminated(Termination::HaltInstruction));
-        }
-        let plan = self.plan(decoded_instruction)?;
-        let encrypted = self.validate_encryption(&plan)?;
-        self.commit(plan, encrypted)?;
-        Ok(StepOutcome::Continued)
+        self.step_with_delta()
+            .map(|(outcome, _memory_delta)| outcome)
     }
 
     /// Executes one atomic profile-driven transition and emits trace evidence.
@@ -750,7 +765,11 @@ impl ProfileMachine {
                     profile_decode(cell, before.registers.code_pointer)
                 });
         let decoded_instruction = decoded.map(profile_instruction);
-        let result = self.step();
+        let execution = self.step_with_delta();
+        let (result, memory_delta) = match execution {
+            Ok((outcome, delta)) => (Ok(outcome), delta),
+            Err(error) => (Err(error), ProfileMemoryDelta::default()),
+        };
         let after = self.observation();
         let input = if result == Ok(StepOutcome::Continued)
             && decoded_instruction == Some(ProfileInstruction::Input)
@@ -777,11 +796,44 @@ impl ProfileMachine {
             decoded,
             fetched_cell,
             input,
+            memory_delta,
             output,
             profile: self.profile,
             result,
         });
         result
+    }
+
+    fn step_with_delta(&mut self) -> ProfileStepExecution {
+        if let Some(reason) = self.termination {
+            return Ok((
+                StepOutcome::Terminated(reason),
+                ProfileMemoryDelta::default(),
+            ));
+        }
+        let cell = self.read(self.registers.code_pointer)?;
+        if !is_graphical(cell) {
+            self.termination = Some(Termination::NonGraphicalCell);
+            return Ok((
+                StepOutcome::Terminated(Termination::NonGraphicalCell),
+                ProfileMemoryDelta::default(),
+            ));
+        }
+        let decoded = profile_decode(cell, self.registers.code_pointer)
+            .ok_or(ProfileMachineError::TranslationTableInvariant)?;
+        let decoded_instruction = profile_instruction(decoded);
+        if decoded_instruction == ProfileInstruction::Halt {
+            self.termination = Some(Termination::HaltInstruction);
+            return Ok((
+                StepOutcome::Terminated(Termination::HaltInstruction),
+                ProfileMemoryDelta::default(),
+            ));
+        }
+        let plan = self.plan(decoded_instruction)?;
+        let encrypted = self.validate_encryption(&plan)?;
+        let memory_delta = self.memory_delta(&plan, encrypted)?;
+        self.commit(plan, encrypted)?;
+        Ok((StepOutcome::Continued, memory_delta))
     }
 
     /// Returns the current stable termination reason, if any.
