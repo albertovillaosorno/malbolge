@@ -58,6 +58,8 @@ mod differential;
 mod execution;
 #[path = "vm/instructions.rs"]
 mod instructions;
+#[path = "vm/logical.rs"]
+mod logical;
 #[path = "vm/modes.rs"]
 mod modes;
 #[path = "vm/profile_requirements.rs"]

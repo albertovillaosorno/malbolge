@@ -50,6 +50,7 @@ mod batch;
 mod capsule;
 mod execution;
 mod loader;
+mod logical;
 mod machine;
 mod memory;
 mod mode;
@@ -66,6 +67,11 @@ pub use capsule::{
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use loader::{LoadError, load};
+pub use logical::{
+    LogicalConcurrencyError, LogicalJoinError, LogicalTask, LogicalTaskId,
+    LogicalTaskResult, execute_logical_tasks, execute_logical_tasks_parallel,
+    join_logical_outputs,
+};
 pub use machine::{
     LegacyBehavior, Machine, MachineError, Registers, RunOutcome, StepOutcome,
     Termination,

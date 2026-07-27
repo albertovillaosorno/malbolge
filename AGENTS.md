@@ -66,6 +66,10 @@ semantics. Do not make generated code globally immutable, and do not invent a
 parallel or nonlinear classic target as a performance shortcut. Host parallelism,
 JITs, caches, and accelerators are allowed only behind contracts that preserve the
 same observable guest behavior.
+Deterministic logical concurrency is host orchestration only: independent VM
+requests own disjoint state, explicit `LogicalTaskId` order controls result/join
+order, and worker completion order is never semantic. Do not add a guest thread
+model or treat an arbitrary shared-effect task as independent by assertion.
 
 Large or heuristic components are untrusted. CUDA, PyTorch, stochastic search,
 learned guidance, superoptimization, and reusable block search may propose code;

@@ -1,6 +1,6 @@
 ---
 id: "deterministic-logical-concurrency"
-status: "pending"
+status: "active"
 lane: "6"
 area: "vm"
 task: "TODO - Deterministic logical concurrency"
@@ -13,11 +13,13 @@ adr_paths:
   - "docs/technical/adr/tiered-native-execution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "vm/"
-  - "execution/"
-  - "tests/vm/"
+  - "vm/src/logical.rs"
+  - "vm/src/batch.rs"
+  - "tests/vm/logical.rs"
+  - "tests/vm/batch.rs"
   - "benchmarks/interpreter/"
 validation:
+  - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
 # TODO - Deterministic logical concurrency
@@ -27,6 +29,28 @@ validation:
 Define deterministic logical tasks and joins that serialize under Malbolge while
 allowing proven-independent host work to execute concurrently with identical
 observable results.
+
+
+**Current implementation.**
+
+- `LogicalTask` owns one `BatchRequest` plus an explicit `LogicalTaskId`; current
+  host independence is structural ownership of disjoint VM requests, not a
+  caller-supplied assertion flag.
+- Tasks are sorted by logical ID before sequential or parallel batch execution.
+  Duplicate IDs fail before execution, so physical input/completion order cannot
+  select artifact order.
+- `join_logical_outputs()` concatenates only committed per-machine outputs in
+  strict logical order. Reordered results and rejected tasks fail explicitly;
+  no guest memory/register state is merged.
+- Full-state fixtures compare sequential execution with 1, 2, and 8 host workers
+  after deliberately scrambling physical task order. Memory fingerprints,
+  registers, input consumption, I/O, run outcomes, diagnostics, task order, and
+  joined bytes are identical.
+- The falsifiable baseline is sequential logical execution. Any worker/schedule
+  mismatch in those observations rejects the technique. Current fixtures pass;
+  no performance speedup is claimed for the logical adapter itself yet.
+- This is execution-engine product work, not an algorithm experiment, so no
+  research algorithm mirror is created.
 
 ## Acceptance
 
@@ -56,6 +80,6 @@ observable results.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `canonical-malbolge-target-profile`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Performance evidence remains intentionally separate: existing batch scaling
+  does not by itself establish logical sort/tag/join speedup, so no logical-layer
+  performance claim is accepted yet.

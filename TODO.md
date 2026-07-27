@@ -333,9 +333,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
 ### TODO - Deterministic logical concurrency
 
-Define deterministic logical tasks and joins that serialize under Malbolge while
-allowing proven-independent host work to execute concurrently with identical
-observable results.
+Define deterministic logical tasks and joins while preserving sequential guest
+semantics. The safe Rust execution layer now orders structurally independent
+owned VM tasks by explicit logical ID, rejects duplicate identity, and joins
+committed outputs only in that order; 1/2/8-worker fixtures match the sequential
+full-state/artifact baseline. Logical-layer performance evidence remains open.
 
 ### TODO - Batch VM execution
 
