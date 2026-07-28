@@ -38,10 +38,15 @@ trust boundary, or ownership rules stated by its governing decisions.
 - Git governance declares `JIG_SHIT.md` as required local-only evidence and
   binds that policy to the tracked root `.gitignore`; the ledger may exist
   locally but must not become governed source.
-- Commit-message validation accepts compliant new commits with this configuration.
-- Full repository validation remains fail-closed. The source-linked Jig advanced
-  from schema 7 to schema 8 during this migration. Malbolge adopts that contract
-  without suppressing repository findings or patching the concurrent Jig worktree.
+- The canonical validation command is
+  `.dependencies/jig/bin/jig.cmd validate --root .`. It builds and runs the
+  source-linked authority; the versioned release executable is not the active
+  schema-8 validator.
+- Commit-message validation accepts compliant new commits with this
+  configuration.
+- The source-linked validator parses schema 8 and reaches exhaustive policy
+  evaluation. Full validation remains fail-closed on inherited history-wide
+  commit-policy findings, including obsolete scopes and missing commit bodies.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -57,9 +62,9 @@ selecting an implicit repository policy.
 ## Implementation
 
 The schema-8 `jig.toml` and installed commit-message hook accept the declared
-TODO workflow. Full validation is temporarily blocked by the concurrently changing
-source-linked Jig worktree itself; completion still requires that authority to
-build and validate the complete repository without waived findings.
+TODO workflow. The source-linked validator builds and reaches exhaustive policy
+evaluation. Completion still requires an explicit resolution for inherited
+history findings and a clean full-repository result without waived diagnostics.
 
 ## References
 

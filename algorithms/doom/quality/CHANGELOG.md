@@ -127,10 +127,10 @@ and the source LICENSE plus all 124 historical C/header attributions survive. Th
 compact comparison report now uses generated `out/doom_fixed/` as its after corpus and
 measures 143,662 to 36,637 unique broad-repository findings, a 74.50% reduction.
 
-Jig remains the one repository-level validation exception: the pinned Jig binary exits
-while parsing the repository's schema-8 `change_policy.architecture.mode` key, before
-it can inspect this change. That tooling mismatch is tracked separately and is not a
-quality-output failure.
+The canonical source-linked Jig launcher now parses schema 8 and reaches
+exhaustive policy evaluation. Full repository validation still fails on inherited
+history-wide commit-policy findings. Those findings are tracked by repository
+governance and are not a quality-output failure.
 
 ## Bugs First
 

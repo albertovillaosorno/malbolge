@@ -83,9 +83,10 @@ and transform emission remain application-agnostic.
 **Functional quality generation is accepted and this application task is
 completed.** Generic compiler, lowerability, legal-corpus, and Jig-governance work
 remains tracked by their own records rather than keeping the finished DOOM source
-stage open. The pinned Jig binary still fails before repository analysis on the
-schema-8 `change_policy.architecture.mode` key; that is retained as a governance
-tooling exception, not reported as a passing validation.
+stage open. The canonical source-linked Jig launcher parses schema 8 and reaches
+policy evaluation. Full validation still fails on inherited history-wide
+commit-policy findings; that governance result is not reported as a passing
+application validation.
 
 ## Acceptance
 

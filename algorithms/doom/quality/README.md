@@ -517,9 +517,9 @@ amalgamation stage. Guest-C acceptance is source-level readiness, not proof that
 
 The larger runtime/manual-play evidence recorded below was produced against the same
 byte-identical normalized corpus during oracle development, so generation introduces
-no code or data delta relative to that evidence. Jig repository validation remains an
-infrastructure exception because the pinned Jig binary currently rejects the
-repository's schema-8 `change_policy.architecture.mode` key before normal checks run.
+no code or data delta relative to that evidence. The canonical source-linked Jig
+launcher parses schema 8 and reaches policy evaluation. Full repository validation
+still fails on inherited history-wide commit-policy findings, not on this corpus.
 
 ## Completion Criteria
 

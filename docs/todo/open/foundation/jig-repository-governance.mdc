@@ -51,12 +51,14 @@ without weakening unrelated linter contracts.
   local-only QA ledger. The tracked root `.gitignore` owns `/JIG_SHIT.md`, so
   agents may record Jig integration defects without accidentally promoting that
   scratch evidence into repository history.
-- The installed commit-message hook parses the schema-8 configuration and accepts
-  new compliant commits fail-closed.
-- Full `jig validate --root .` remains fail-closed. The source-linked Jig moved
-  from schema 7 to schema 8 during this migration; Malbolge follows the published
-  configuration contract without bypassing its hook or editing that concurrent
-  tool worktree.
-- Completion remains blocked until the current source-linked Jig and the complete
-  repository validate cleanly under the same authority.
+- The installed commit-message hook parses the schema-8 configuration and
+  accepts new compliant commits fail-closed.
+- `.dependencies/jig/bin/jig.cmd validate --root .` is the canonical command.
+  It builds and runs the source-linked authority instead of the stale versioned
+  release executable.
+- The source-linked validator now parses schema 8 and reaches exhaustive policy
+  evaluation. Full validation remains fail-closed on inherited history-wide
+  commit-policy findings, including obsolete scopes and missing commit bodies.
+- Completion remains blocked until those history findings have an explicit
+  governance resolution and the repository validates under the same authority.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
