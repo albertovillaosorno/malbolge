@@ -69,7 +69,6 @@ from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
-from accelerator.primitive_candidates import prepared_primitive_candidate_batch
 from accelerator.primitive_candidates import (
     prepared_primitive_reference_word_count,
 )
@@ -80,6 +79,7 @@ from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import TrustedCandidateVerifier
 from accelerator.work_ports import indexed_candidate_items_from_rotated_u32le
+from accelerator.work_ports import prepare_candidate_subset
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -87,6 +87,7 @@ if TYPE_CHECKING:
 
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.work_ports import CandidateEvaluationResult
+    from accelerator.work_ports import PreparedCandidateSubset
     from accelerator.work_ports import SearchRequest
     from accelerator.work_ports import VerificationHint
 
@@ -95,11 +96,14 @@ ROTATE_TARGET_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
 ROTATE_TARGET_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
-ROTATE_TARGET_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
+ROTATE_TARGET_PROJECTED_EVALUATION_ID = (
+    "classic-rotate-preimage-position-subset-v2"
+)
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
 _PREPARED_ROTATE_SELECTION_PROOF = object()
+_PREPARED_PROJECTED_ROTATE_PROOF = object()
 _CORPUS_ID_PREFIX = "corpus-"
 _LITTLE_ENDIAN = "little"
 _NATIVE_WORD_FORMAT = "I"
@@ -151,6 +155,30 @@ class PreparedRotateTargetSelection:
             message = "prepared rotate selection state is forged"
             raise InvalidAcceleratorWorkError(message)
         return len(self.positions)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedProjectedRotateEvaluation:
+    """Proof-bound exact subset plus prepared rotate primitive state."""
+
+    subset: PreparedCandidateSubset
+    primitive_state: object
+    _proof: object
+
+    def for_evaluation(self) -> tuple[PreparedCandidateSubset, object]:
+        """Return exact projected state only for repository preparation.
+
+        Returns:
+            Request-order subset proof and its prepared primitive state.
+
+        Raises:
+            InvalidAcceleratorWorkError: If this state was forged.
+
+        """
+        if self._proof is not _PREPARED_PROJECTED_ROTATE_PROOF:
+            message = "prepared projected rotate state is forged"
+            raise InvalidAcceleratorWorkError(message)
+        return (self.subset, self.primitive_state)
 
 
 class InvalidRotateTargetProblemError(ValueError):
@@ -243,6 +271,11 @@ def rotate_target_search_adapter(
         primitive,
         PrimitiveKind.ROTATE,
     )
+
+    def evaluate_projected(state: object) -> CandidateEvaluationResult:
+        _, primitive_state = _projected_rotate_state(state)
+        return evaluator.evaluate_prepared(primitive_state)
+
     return EvaluatedSearchExecutionAdapter(
         ROTATE_TARGET_ALGORITHM_ID,
         evaluator,
@@ -251,12 +284,12 @@ def rotate_target_search_adapter(
             proposal_selector=select_rotate_target_proposals,
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=None,
-                evaluator=evaluator.evaluate_prepared,
-                evaluation_batch=prepared_primitive_candidate_batch,
+                evaluator=evaluate_projected,
+                evaluation_subset=prepared_projected_rotate_subset,
                 selection_aware_preparer=(
                     prepare_projected_rotate_candidate_batch
                 ),
-                state_count=prepared_primitive_reference_word_count,
+                state_count=prepared_projected_rotate_reference_word_count,
             ),
             prepared_selection=PreparedProposalSelection(
                 state_preparer=prepare_rotate_target_selection,
@@ -498,12 +531,44 @@ def prepare_projected_rotate_candidate_batch(
         message = "prepared rotate projection has wrong selector state"
         raise InvalidAcceleratorWorkError(message)
     _, positions = selection_state.for_selection(request, batch)
-    projected_items = tuple(batch.items[index] for index in positions)
-    projected = CandidateEvaluationBatch(
-        evaluator_id=batch.evaluator_id,
-        items=projected_items,
-    ).validated()
-    return prepare_rotate_candidate_batch(projected)
+    subset = prepare_candidate_subset(batch, positions)
+    projected, _ = subset.for_batch(batch)
+    return PreparedProjectedRotateEvaluation(
+        subset=subset,
+        primitive_state=prepare_rotate_candidate_batch(projected),
+        _proof=_PREPARED_PROJECTED_ROTATE_PROOF,
+    )
+
+
+def prepared_projected_rotate_subset(state: object) -> PreparedCandidateSubset:
+    """Return the proof-bound exact rotate evaluation subset.
+
+    Returns:
+        Request-order subset tied to the original full candidate batch.
+
+    """
+    subset, _ = _projected_rotate_state(state)
+    return subset
+
+
+def prepared_projected_rotate_reference_word_count(state: object) -> int:
+    """Return exact trusted-reference cardinality for projected rotate state.
+
+    Returns:
+        Number of prepared primitive reference words in the projected subset.
+
+    """
+    _, primitive_state = _projected_rotate_state(state)
+    return prepared_primitive_reference_word_count(primitive_state)
+
+
+def _projected_rotate_state(
+    state: object,
+) -> tuple[PreparedCandidateSubset, object]:
+    if not isinstance(state, PreparedProjectedRotateEvaluation):
+        message = "prepared projected rotate state has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    return state.for_evaluation()
 
 
 def count_prepared_rotate_target_positions(state: object) -> int:

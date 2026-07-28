@@ -323,6 +323,31 @@ moves from 6/6 to 8/7. The next architectural boundary is an exact projected-sub
 contract for strategies without a unique algebraic inverse; any generalization must
 retain subset identity, full membership, exact evidence, proposal validation, and
 independent trusted admission rather than introduce heuristic filtering.
+The next exact-subset slice is implemented under
+`request-order-position-subset-v1` and upgrades rotate projection identity to
+`classic-rotate-preimage-position-subset-v2`. A neutral proof now retains the exact
+full-batch object, projected batch, and strictly increasing request-order positions;
+empty, one-item, and multi-item subsets are supported. Mutable, duplicate, reordered,
+out-of-range, forged, wrong-type, and cross-batch state fail closed before backend
+execution. Generic prepared search consumes only this proof instead of accepting an
+arbitrary projected batch; rotate separately retains the subset proof and primitive
+prepared state. The version-8 bundle remains the historical v1 baseline. Exploratory
+`candidate-subset-proof-tradeoff-v1` medians over a 59,049-item full batch compare
+legacy membership revalidation with the proof route: 2.2/4.3 microseconds for an
+empty subset (0.512x), 20.0/7.5 microseconds for one item (2.667x), 1.0347/0.1584 ms
+for 64 items (6.532x), and 16.8057/2.5480 ms for 1,024 items (6.596x). Peak traced
+memory is equal from one item upward; the empty proof adds 64 bytes. Clean post-commit
+microbenchmark plus crossover/throughput/phase evidence is pending before promotion.
+The active implementation now closes that architecture boundary with neutral
+`request-order-position-subset-v1`. `PreparedCandidateSubset` binds a strictly
+increasing immutable tuple of request-order positions to the exact validated full-batch
+object and constructs the evaluator-preserving sub-batch from those positions. Mutable,
+duplicate, reordered, out-of-range, forged, and cross-batch subsets fail closed. Rotate
+adopts the neutral proof under `classic-rotate-preimage-position-subset-v2` and wraps it
+with the exact prepared primitive state. Proposal membership and independent trusted
+admission remain full-batch checks. The retained version-8 performance measurements
+above remain attributable only to v1; clean v2 performance evidence is still required
+before making a new speed claim.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

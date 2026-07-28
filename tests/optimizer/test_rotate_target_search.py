@@ -91,7 +91,7 @@ ROTATE_ONE = 19_683
 EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
-EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
+EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-position-subset-v2"
 EXPECTED_ROTATION_PIVOT = 2
 EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 BAD_CAPABILITY = AcceleratorCapability(

@@ -62,8 +62,10 @@ from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
+from accelerator.work_ports import PreparedCandidateSubset
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import indexed_candidate_items_from_unique_u32
+from accelerator.work_ports import prepare_candidate_subset
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -137,19 +139,23 @@ def _count_invalid_identity_state(state: object) -> int:
     return -1
 
 
+def _identity_state_batch(state: object) -> CandidateEvaluationBatch:
+    if isinstance(state, CandidateEvaluationBatch):
+        return state
+    if isinstance(state, PreparedCandidateSubset):
+        batch, _ = state.for_batch(state.full_batch)
+        return batch
+    message = "identity prepared state must carry a candidate batch"
+    raise InvalidAcceleratorWorkError(message)
+
+
 def _count_identity_state(state: object) -> int:
-    if not isinstance(state, CandidateEvaluationBatch):
-        message = "identity prepared state must be a candidate batch"
-        raise InvalidAcceleratorWorkError(message)
-    return len(state.items)
+    return len(_identity_state_batch(state).items)
 
 
 def _evaluate_identity_state(state: object) -> CandidateEvaluationResult:
-    if not isinstance(state, CandidateEvaluationBatch):
-        message = "identity prepared state must be a candidate batch"
-        raise InvalidAcceleratorWorkError(message)
     return CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity).evaluate(
-        state
+        _identity_state_batch(state)
     )
 
 
@@ -198,10 +204,7 @@ def _project_first_candidate(
         message = "projection selector state changed candidate batch"
         raise InvalidAcceleratorWorkError(message)
     _ = request
-    return CandidateEvaluationBatch(
-        evaluator_id=batch.evaluator_id,
-        items=(batch.items[0],),
-    )
+    return prepare_candidate_subset(batch, (0,))
 
 
 def _project_first_candidate_other(
@@ -217,11 +220,8 @@ def _project_fabricated_candidate(
     batch: CandidateEvaluationBatch,
     selection_state: object,
 ) -> object:
-    _ = (request, selection_state)
-    return CandidateEvaluationBatch(
-        evaluator_id=batch.evaluator_id,
-        items=(CandidateWorkItem(logical_id="fabricated", payload=b"fake"),),
-    )
+    _ = (request, batch, selection_state)
+    return object()
 
 
 def _project_wrong_evaluator(
@@ -229,11 +229,8 @@ def _project_wrong_evaluator(
     batch: CandidateEvaluationBatch,
     selection_state: object,
 ) -> object:
-    _ = (request, selection_state)
-    return CandidateEvaluationBatch(
-        evaluator_id="different-evaluator",
-        items=(batch.items[0],),
-    )
+    _ = (request, batch, selection_state)
+    return object()
 
 
 def _project_oversized_batch(
@@ -242,26 +239,20 @@ def _project_oversized_batch(
     selection_state: object,
 ) -> object:
     _ = (request, selection_state)
-    return CandidateEvaluationBatch(
-        evaluator_id=batch.evaluator_id,
-        items=(
-            CandidateWorkItem(logical_id="first", payload=b"first"),
-            CandidateWorkItem(logical_id="second", payload=b"second"),
-        ),
-    )
+    return prepare_candidate_subset(batch, (0, 1))
 
 
-def _projected_evaluation_batch(state: object) -> CandidateEvaluationBatch:
-    if not isinstance(state, CandidateEvaluationBatch):
-        message = "projected state must be a candidate batch"
+def _projected_evaluation_subset(state: object) -> PreparedCandidateSubset:
+    if not isinstance(state, PreparedCandidateSubset):
+        message = "projected state must be a candidate subset"
         raise InvalidAcceleratorWorkError(message)
     return state
 
 
-def _projected_evaluation_batch_other(
+def _projected_evaluation_subset_other(
     state: object,
-) -> CandidateEvaluationBatch:
-    return _projected_evaluation_batch(state)
+) -> PreparedCandidateSubset:
+    return _projected_evaluation_subset(state)
 
 
 def _projected_adapter(
@@ -269,8 +260,8 @@ def _projected_adapter(
         [SearchRequest, CandidateEvaluationBatch, object], object
     ],
     *,
-    evaluation_batch: Callable[[object], CandidateEvaluationBatch] = (
-        _projected_evaluation_batch
+    evaluation_subset: Callable[[object], PreparedCandidateSubset] = (
+        _projected_evaluation_subset
     ),
 ) -> EvaluatedSearchExecutionAdapter:
     evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
@@ -283,7 +274,7 @@ def _projected_adapter(
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=None,
                 evaluator=_evaluate_identity_state,
-                evaluation_batch=evaluation_batch,
+                evaluation_subset=evaluation_subset,
                 selection_aware_preparer=projection,
                 state_count=_count_identity_state,
             ),
@@ -522,7 +513,7 @@ def test_selection_aware_projection_rejects_fabricated_candidate() -> None:
     adapter = _projected_adapter(_project_fabricated_candidate)
 
     _expect_error(
-        "prepared evaluation projection fabricated a candidate",
+        "projected state must be a candidate subset",
         lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
     )
 
@@ -532,7 +523,7 @@ def test_selection_aware_projection_rejects_evaluator_drift() -> None:
     adapter = _projected_adapter(_project_wrong_evaluator)
 
     _expect_error(
-        "prepared evaluation projection changed evaluator identity",
+        "projected state must be a candidate subset",
         lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
     )
 
@@ -549,7 +540,7 @@ def test_selection_aware_projection_rejects_oversized_batch() -> None:
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=None,
                 evaluator=_evaluate_identity_state,
-                evaluation_batch=_projected_evaluation_batch,
+                evaluation_subset=_projected_evaluation_subset,
                 selection_aware_preparer=_project_oversized_batch,
             ),
             prepared_selection=PreparedProposalSelection(
@@ -561,7 +552,7 @@ def test_selection_aware_projection_rejects_oversized_batch() -> None:
     )
 
     _expect_error(
-        "prepared evaluation projection exceeds candidate batch",
+        "candidate subset position outside candidate batch",
         lambda: adapter.prepare(_request(budget=1)),
     )
 
@@ -572,7 +563,7 @@ def test_projection_callbacks_are_strategy_identity() -> None:
     different_preparer = _projected_adapter(_project_first_candidate_other)
     different_batch = _projected_adapter(
         _project_first_candidate,
-        evaluation_batch=_projected_evaluation_batch_other,
+        evaluation_subset=_projected_evaluation_subset_other,
     )
     prepared = first.prepare(_request(budget=TWO_ITEM_COUNT))
 

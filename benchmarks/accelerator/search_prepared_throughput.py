@@ -329,7 +329,7 @@ def _validated_membership_count(count: int) -> int:
 
 
 def _validated_projection_id(identifier: str) -> str:
-    expected = "classic-rotate-preimage-projection-v1"
+    expected = "classic-rotate-preimage-position-subset-v2"
     if identifier != expected:
         message = "prepared rotate projection identity drifted"
         raise RuntimeError(message)

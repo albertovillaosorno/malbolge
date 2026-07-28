@@ -76,6 +76,7 @@ from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
 from accelerator.work_ports import indexed_candidate_items_id
+from accelerator.work_ports import prepared_candidate_subset_id
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
 from benchmarks.accelerator.search_workload import SEED
@@ -109,13 +110,14 @@ COLD_CHILD_ARGUMENT_COUNT: Final = 2
 ORDINARY_VALIDATION_ID: Final = "u32le-broadword-domain-v1"
 PREPARED_VALIDATION_ID: Final = "cpu-scalar-packed-equality-v2"
 CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
+CANDIDATE_SUBSET_ID: Final = "request-order-position-subset-v1"
 PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
 ROTATE_TARGET_BATCH_BUILDER_ID: Final = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
 PROJECTED_EVALUATION_COUNT: Final = 1
 ROTATE_TARGET_PROJECTED_EVALUATION_ID: Final = (
-    "classic-rotate-preimage-projection-v1"
+    "classic-rotate-preimage-position-subset-v2"
 )
 ROTATE_TARGET_SELECTION_PREPARER_ID: Final = (
     "classic-u32le-native-view-preimage-v2"
@@ -306,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "proof": {
             "candidate_items_id": _candidate_items_id(),
+            "candidate_subset_id": _candidate_subset_id(),
             "legacy_membership_index_id": LEGACY_MEMBERSHIP_INDEX_ID,
             "membership_index_id": _membership_index_id(),
             "ordinary_validation_id": _ordinary_validation_id(),
@@ -964,6 +967,14 @@ def _prepared_primitive_storage_id() -> str:
     observed = prepared_primitive_storage_id()
     if observed != PREPARED_PRIMITIVE_STORAGE_ID:
         message = "prepared primitive storage identity drifted"
+        raise RuntimeError(message)
+    return observed
+
+
+def _candidate_subset_id() -> str:
+    observed = prepared_candidate_subset_id()
+    if observed != CANDIDATE_SUBSET_ID:
+        message = "prepared candidate subset identity drifted"
         raise RuntimeError(message)
     return observed
 

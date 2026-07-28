@@ -50,6 +50,7 @@ from __future__ import annotations
 from accelerator.exact_primitives import prepared_primitive_storage_id
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import indexed_candidate_items_id
+from accelerator.work_ports import prepared_candidate_subset_id
 from benchmarks.accelerator.rotate_target_selection_preparer_comparison import (
     SelectionMeasurementPlan,
 )
@@ -80,8 +81,9 @@ from optimizer.rotate_target import rotate_target_projected_evaluation_id
 from optimizer.rotate_target import rotate_target_selection_preparer_id
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
+EXPECTED_CANDIDATE_SUBSET_ID = "request-order-position-subset-v1"
 EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
-EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
+EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-position-subset-v2"
 EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
@@ -171,6 +173,11 @@ def test_benchmark_uses_packed_prepared_primitive_identity() -> None:
         prepared_primitive_storage_id()
         == EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID
     )
+
+
+def test_benchmark_uses_exact_candidate_subset_identity() -> None:
+    """Protocol identity tracks request-order projected candidate positions."""
+    assert prepared_candidate_subset_id() == EXPECTED_CANDIDATE_SUBSET_ID
 
 
 def test_benchmark_uses_indexed_candidate_storage_identity() -> None:

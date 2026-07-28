@@ -68,6 +68,7 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
 
 INDEXED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
+PREPARED_CANDIDATE_SUBSET_ID = "request-order-position-subset-v1"
 MAX_U32 = (1 << 32) - 1
 MAX_U64 = (1 << 64) - 1
 _U32_BYTES = 4
@@ -77,6 +78,7 @@ _LITTLE_ENDIAN = "little"
 _NATIVE_WORD_FORMAT = "I"
 _U32_LE = Struct("<I")
 _INDEXED_CANDIDATE_ITEMS_PROOF = object()
+_PREPARED_CANDIDATE_SUBSET_PROOF = object()
 
 
 def indexed_candidate_items_from_unique_u32(
@@ -342,6 +344,90 @@ class CandidateEvaluationBatch:
         _validate_identity(self.evaluator_id, "candidate evaluator ID")
         _validate_candidate_items(self.items)
         return self
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCandidateSubset:
+    """Proof-bound request-order subset of one validated candidate batch."""
+
+    full_batch: CandidateEvaluationBatch
+    batch: CandidateEvaluationBatch
+    positions: tuple[int, ...]
+    _proof: object = field(repr=False, compare=False)
+
+    def for_batch(
+        self,
+        full_batch: CandidateEvaluationBatch,
+    ) -> tuple[CandidateEvaluationBatch, tuple[int, ...]]:
+        """Return the projected batch only for its exact full batch.
+
+        Returns:
+            Exact request-order sub-batch and its strictly increasing positions.
+
+        Raises:
+            InvalidAcceleratorWorkError: If proof or full-batch identity
+                changed.
+
+        """
+        if self._proof is not _PREPARED_CANDIDATE_SUBSET_PROOF:
+            message = "prepared candidate subset is forged"
+            raise InvalidAcceleratorWorkError(message)
+        if self.full_batch is not full_batch:
+            message = "prepared candidate subset changed full candidate batch"
+            raise InvalidAcceleratorWorkError(message)
+        return (self.batch, self.positions)
+
+
+def prepare_candidate_subset(
+    full_batch: CandidateEvaluationBatch,
+    positions: tuple[int, ...],
+) -> PreparedCandidateSubset:
+    """Build one exact request-order subset from validated candidate positions.
+
+    Returns:
+        Proof-bound projected batch tied to the exact full-batch object.
+
+    """
+    validated = full_batch.validated()
+    _validate_candidate_subset_positions(positions, len(validated.items))
+    projected = CandidateEvaluationBatch(
+        evaluator_id=validated.evaluator_id,
+        items=tuple(validated.items[position] for position in positions),
+    ).validated()
+    return PreparedCandidateSubset(
+        full_batch=validated,
+        batch=projected,
+        positions=positions,
+        _proof=_PREPARED_CANDIDATE_SUBSET_PROOF,
+    )
+
+
+def prepared_candidate_subset_id() -> str:
+    """Return the active exact request-order subset identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PREPARED_CANDIDATE_SUBSET_ID
+
+
+def _validate_candidate_subset_positions(
+    positions: tuple[int, ...],
+    full_count: int,
+) -> None:
+    if type(positions) is not tuple:
+        message = "candidate subset positions must use an immutable tuple"
+        raise InvalidAcceleratorWorkError(message)
+    previous = -1
+    for position in positions:
+        if type(position) is not int or position < 0 or position >= full_count:
+            message = "candidate subset position outside candidate batch"
+            raise InvalidAcceleratorWorkError(message)
+        if position <= previous:
+            message = "candidate subset positions must be strictly increasing"
+            raise InvalidAcceleratorWorkError(message)
+        previous = position
 
 
 @dataclass(frozen=True, slots=True)

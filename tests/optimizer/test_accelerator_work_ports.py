@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import final
 from typing import override
 
@@ -67,6 +68,7 @@ from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import PackedCandidateEvidence
+from accelerator.work_ports import PreparedCandidateSubset
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import SearchResult
@@ -80,6 +82,8 @@ from accelerator.work_ports import evaluate_candidates
 from accelerator.work_ports import execute_search
 from accelerator.work_ports import indexed_candidate_items_from_rotated_u32le
 from accelerator.work_ports import indexed_candidate_items_id
+from accelerator.work_ports import prepare_candidate_subset
+from accelerator.work_ports import prepared_candidate_subset_id
 from accelerator.work_ports import request_verification_hints
 
 if TYPE_CHECKING:
@@ -90,6 +94,7 @@ EXPECTED_INDEXED_CANDIDATE_ITEMS_ID = (
     "u32-index-fixed-width-payloads-rotation-v1"
 )
 INDEXED_ITEM_COUNT = 2
+EXPECTED_CANDIDATE_SUBSET_ID = "request-order-position-subset-v1"
 
 TEST_CAPABILITY = AcceleratorCapability(
     backend_id="test-optional",
@@ -593,4 +598,79 @@ def test_admission_rejects_duplicate_proposal_identity() -> None:
         InvalidAcceleratorResultError,
         "duplicate search candidate logical ID",
         lambda: admit_search_result(result, _TrustedVerifier()),
+    )
+
+
+def test_candidate_subset_preserves_request_order_positions() -> None:
+    """Zero, one, and multi-item subsets retain exact full-batch identity."""
+    full = CandidateEvaluationBatch(
+        evaluator_id="subset-v1",
+        items=(
+            CandidateWorkItem(logical_id="a", payload=b"A"),
+            CandidateWorkItem(logical_id="b", payload=b"B"),
+            CandidateWorkItem(logical_id="c", payload=b"C"),
+            CandidateWorkItem(logical_id="d", payload=b"D"),
+        ),
+    ).validated()
+    assert prepared_candidate_subset_id() == EXPECTED_CANDIDATE_SUBSET_ID
+    for positions in ((), (1,), (0, 2, 3)):
+        subset = prepare_candidate_subset(full, positions)
+        projected, observed = subset.for_batch(full)
+        assert observed == positions
+        assert projected.items == tuple(
+            full.items[index] for index in positions
+        )
+
+
+def test_candidate_subset_rejects_invalid_positions() -> None:
+    """Mutable, duplicate, reordered, and out-of-range positions fail closed."""
+    full = CandidateEvaluationBatch(
+        evaluator_id="subset-v1",
+        items=(
+            CandidateWorkItem(logical_id="a", payload=b"A"),
+            CandidateWorkItem(logical_id="b", payload=b"B"),
+        ),
+    ).validated()
+    cases = (
+        (cast("tuple[int, ...]", cast("object", [0])), "immutable tuple"),
+        ((0, 0), "strictly increasing"),
+        ((1, 0), "strictly increasing"),
+        ((2,), "outside candidate batch"),
+    )
+    for positions, message in cases:
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            message,
+            lambda positions=positions: prepare_candidate_subset(
+                full, positions
+            ),
+        )
+
+
+def test_candidate_subset_rejects_forged_and_cross_batch_state() -> None:
+    """Subset proof cannot be fabricated or rebound to an equal batch."""
+    full = CandidateEvaluationBatch(
+        evaluator_id="subset-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"A"),),
+    ).validated()
+    replacement = CandidateEvaluationBatch(
+        evaluator_id=full.evaluator_id,
+        items=full.items,
+    ).validated()
+    valid = prepare_candidate_subset(full, (0,))
+    forged = PreparedCandidateSubset(
+        full_batch=full,
+        batch=valid.batch,
+        positions=(0,),
+        _proof=object(),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "subset is forged",
+        lambda: forged.for_batch(full),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "changed full candidate batch",
+        lambda: valid.for_batch(replacement),
     )
