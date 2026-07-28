@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-extrema-validation-throughput-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-extrema-validation-search-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does exact tuple-extrema validation lower CPU and CUDA prepared medians versus direct selection?"
+hypothesis = "Both prepared medians are lower while all exact proof identities and domain-failure tests pass."
+baseline = "benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-rtx4060/"
+rejection_observation = "Either prepared median is not lower, exactness/proof identity fails, or negative/overflow evidence is accepted."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed execution of each route"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "exactness and prepared-proof identity precede time comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-extrema-validation-search-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

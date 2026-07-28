@@ -135,8 +135,9 @@ fails explicitly without changing correctness rules.
   indexed membership, while selection falls from 11.801 ms to 13.2 us (894.008x).
   Backend evaluation remains 14.387 ms and changes only 1.034x. Primitive result
   validation now uses exact tuple extrema instead of a Python per-value loop and
-  still rejects negative or above-domain output. Post-commit evidence is pending;
-  rotate arithmetic remains the CPU target.
+  still rejects negative or above-domain output. Retained CPU prepared median falls
+  from 15.266 to 14.058 ms (1.086x), and backend evaluation from 14.387 to
+  13.190 ms (1.091x). Rotate arithmetic remains the CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

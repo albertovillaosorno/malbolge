@@ -234,4 +234,8 @@ CPU/CUDA medians reach 15.266/6.182 ms, while selection reaches 13.2/12.4 us.
 Backend phases move only about 3.5%, identifying primitive execution as the next
 boundary. The active bridge now validates primitive result domain through exact
 tuple extrema while preserving negative/overflow failure. These direct-selection
-records remain the pre-change baseline until a post-commit rerun is retained.
+records are the pre-change baseline. Retained post-change evidence is under
+`evidence/2026-07-28-extrema-validation-search-rtx4060/` and
+`evidence/2026-07-28-extrema-validation-search-phase-profile-rtx4060/`. Prepared
+CPU/CUDA medians improve 1.086x/1.254x and backend phases improve 1.091x/1.330x;
+ordinary controls remain essentially flat/slightly slower.

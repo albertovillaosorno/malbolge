@@ -117,8 +117,9 @@ directly on CUDA APIs.
   medians improve 1.755x CPU and 2.907x CUDA; selection improves
   894.008x/948.452x. CUDA is 2.470x faster than same-run CPU. Exact min/max
   primitive-result validation now replaces the Python value loop while retaining
-  negative/overflow failure. Post-commit evidence is pending; CPU arithmetic and
-  CUDA tuple/materialization are next. Synthesis/guided search,
+  negative/overflow failure. Retained prepared medians improve 1.086x CPU and
+  1.254x CUDA; backend phases improve 1.091x/1.330x. CPU arithmetic and CUDA
+  tuple/materialization are next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

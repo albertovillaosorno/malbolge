@@ -142,10 +142,10 @@ membership; CUDA is 2.470x faster in the same run. Selection improves
 894.008x/948.452x to 13.2/12.4 us. Ordinary controls improve only 1.022x/1.015x and
 backend phases only 1.034x/1.035x, strongly bounding attribution. Primitive backend
 execution selected the next neutral boundary. Primitive result validation now uses
-exact tuple minimum/maximum bounds rather than an interpreted per-value loop. Both
-negative and above-domain evidence still fail before packing. Post-commit evidence
-is pending; CPU arithmetic and CUDA host tuple/materialization are the next neutral
-subphases. Resident or
+exact tuple minimum/maximum bounds rather than an interpreted per-value loop. Both negative and above-domain evidence still fail before packing. Retained
+prepared medians improve 1.086x CPU and 1.254x CUDA; backend evaluation improves
+1.091x/1.330x while ordinary controls remain nearly flat. CPU arithmetic and CUDA
+host tuple/materialization are the next neutral subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -216,6 +216,10 @@ fails explicitly without changing correctness rules.
   and its phase sibling retain selector/index/session proof identity. Prepared
   medians improve 1.755x CPU and 2.907x CUDA; selection improves
   894.008x/948.452x to microsecond scale.
+- `benchmarks/accelerator/evidence/2026-07-28-extrema-validation-search-rtx4060/`
+  and its phase sibling retain negative/overflow failure plus all prepared proofs.
+  Prepared medians improve 1.086x CPU and 1.254x CUDA; backend phases improve
+  1.091x/1.330x while ordinary controls remain effectively unchanged.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

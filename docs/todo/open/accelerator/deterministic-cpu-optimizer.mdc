@@ -94,8 +94,9 @@ baseline for accelerator implementations.
   after pruning/seed/budget and validates only their evidence; ordinary CPU search
   retains the packed scan. Retained CPU prepared median is 15.266 ms (1.755x
   better), and selection improves 894.008x to 13.2 us. Exact min/max validation now
-  replaces the Python value loop while preserving domain failure. Post-commit
-  evidence is pending; rotate arithmetic is next.
+  replaces the Python value loop while preserving domain failure. Retained CPU
+  prepared median is 14.058 ms (1.086x better), and backend evaluation improves
+  1.091x to 13.190 ms. Rotate arithmetic is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

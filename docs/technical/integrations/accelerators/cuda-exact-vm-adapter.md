@@ -219,8 +219,9 @@ fails explicitly without changing correctness rules.
   CPU. CUDA selection falls from 11.761 ms to 12.4 us (948.452x), while backend
   evaluation changes only 1.035x to 5.239 ms. Primitive result validation now uses
   exact tuple extrema and continues rejecting negative or above-domain output before
-  packing. Post-commit performance evidence is pending; host tuple/materialization
-  is the next CUDA backend subphase.
+  packing. Retained CUDA prepared median falls from 6.182 to 4.929 ms (1.254x), and
+  backend evaluation from 5.239 to 3.940 ms (1.330x). CUDA ordinary remains nearly
+  flat/slightly slower. Host tuple/materialization is the next CUDA backend subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
