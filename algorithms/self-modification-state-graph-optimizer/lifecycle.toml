@@ -1,0 +1,7 @@
+schema_version = 1
+
+[algorithm]
+id = "self-modification-state-graph-optimizer"
+state = "experimental"
+research_record = "docs/research/algorithms/self-modification-state-graph-optimizer/research.md"
+experiment_manifest = "algorithms/self-modification-state-graph-optimizer/experiment.toml"

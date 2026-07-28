@@ -147,6 +147,10 @@ def _validate_entry(
         entry.executable / "experiment.toml",
         f"{entry.research_id} experiment configuration",
     )
+    _require_file(
+        entry.executable / "lifecycle.toml",
+        f"{entry.research_id} lifecycle configuration",
+    )
     _require_directory(
         entry.executable / "tests",
         f"{entry.research_id} executable tests",

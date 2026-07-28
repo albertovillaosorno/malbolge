@@ -1,0 +1,7 @@
+schema_version = 1
+
+[algorithm]
+id = "adaptive-accelerator-resource-budgeting"
+state = "experimental"
+research_record = "docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md"
+experiment_manifest = "algorithms/adaptive-accelerator-resource-budgeting/experiment.toml"

@@ -1,0 +1,7 @@
+schema_version = 1
+
+[algorithm]
+id = "stochastic-and-guided-search"
+state = "experimental"
+research_record = "docs/research/algorithms/stochastic-and-guided-search/research.md"
+experiment_manifest = "algorithms/stochastic-and-guided-search/experiment.toml"

@@ -1,0 +1,7 @@
+schema_version = 1
+
+[algorithm]
+id = "pytorch-search-orchestration"
+state = "experimental"
+research_record = "docs/research/algorithms/pytorch-search-orchestration/research.md"
+experiment_manifest = "algorithms/pytorch-search-orchestration/experiment.toml"

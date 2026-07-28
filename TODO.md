@@ -209,13 +209,6 @@ TODO by TODO with its governing documents already available.
 
 ## Research methodology and experiment infrastructure
 
-### TODO - Algorithm promotion rejection and retirement lifecycle
-
-Define how an experimental algorithm becomes eligible for a production compiler
-or execution path, how negative results are retained, how superseded algorithms
-are retired without deleting scientific history, and how correctness,
-reproducibility, complexity, portability, and measured benefit gate promotion.
-
 ### TODO - Publication-grade paper pipeline
 
 Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable

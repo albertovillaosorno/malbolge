@@ -1,6 +1,6 @@
 ---
 id: "algorithm-promotion-rejection-and-retirement-lifecycle"
-status: "pending"
+status: "completed"
 lane: "5"
 area: "research"
 task: "TODO - Algorithm promotion rejection and retirement lifecycle"
@@ -14,7 +14,12 @@ scope:
   - "docs/research/"
   - "algorithms/"
   - "benchmarks/research/"
+  - "scripts/validate/"
+  - "tests/"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_algorithm_lifecycle.py tests/test_research_mirror.py"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.algorithm_lifecycle"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py"
   - "jig validate --root ."
 ---
 # TODO - Algorithm promotion rejection and retirement lifecycle
@@ -53,6 +58,12 @@ reproducibility, complexity, portability, and measured benefit gate promotion.
 - Prerequisite completion evidence:
   `algorithm-research-mirror-and-local-output-contract`,
   `benchmark-and-statistical-evidence-protocol`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Lifecycle schema v1 is active for all eight research mirrors, currently all
+  `experimental`. `promotion-candidate`/`promoted` require durable correctness,
+  reproducibility, maintainability, portability, and measured-benefit evidence.
+  `promoted` additionally requires a dated decision; `rejected` retains negative
+  evidence; `retired` retains promotion evidence and successor identity.
+- The research-mirror validator now requires `lifecycle.toml`, and lifecycle tests
+  exercise promotion, rejection, retirement, and fail-closed experimental cases.
+- No current algorithm is promoted by policy fiat; observed lifecycle state and
+  interpretation remain separate.
