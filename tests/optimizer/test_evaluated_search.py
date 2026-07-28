@@ -480,6 +480,36 @@ def test_prepared_candidate_preparer_is_strategy_identity() -> None:
     )
 
 
+def test_ordinary_indexed_membership_rejects_fabricated_payload() -> None:
+    """One-shot indexed validation avoids item-table materialization."""
+    items = indexed_candidate_items_from_unique_u32(
+        logical_id_prefix="corpus-",
+        logical_indices=(7, 9, 1, 3),
+        payload_width=1,
+        payloads=b"ABCD",
+    )
+
+    def batch_builder(request: SearchRequest) -> CandidateEvaluationBatch:
+        del request
+        return CandidateEvaluationBatch(
+            evaluator_id=EVALUATOR_ID,
+            items=items,
+        )
+
+    def fabricate(
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+        evidence: CandidateEvaluationResult,
+    ) -> tuple[CandidateProposal, ...]:
+        del request, batch, evidence
+        return (CandidateProposal(logical_id="corpus-7", payload=b"X"),)
+
+    _expect_error(
+        "proposal was not in evaluated candidate batch",
+        lambda: _adapter(batch_builder, fabricate).search(_request(budget=4)),
+    )
+
+
 def test_selector_cannot_fabricate_candidate_payload() -> None:
     """Selection cannot change payloads after candidate evaluation."""
     _expect_error(

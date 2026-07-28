@@ -177,7 +177,9 @@ by-side comparison without recompiling or modifying compiler semantics.
   objects before pruning. A validated rotation pivot lets
   `u32-rotation-or-pair-or-reference-binary-search-v1` search two ordered regions
   without retaining a sorted reference or pair array; arbitrary indexed batches and
-  ordinary tuple batches retain exact pair/reference fallbacks. Duplicate or
+  ordinary tuple batches retain exact pair/reference fallbacks. Ordinary indexed
+  proposal admission also uses direct proof-bound lookup instead of materializing a
+  one-shot identity/payload dictionary. Duplicate or
   out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged/cross-batch
   proofs, and payload substitution fail closed. Crossover protocol v3 records both
   storage identities. Clean post-commit memory, preparation, lookup, and crossover

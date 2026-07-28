@@ -1022,9 +1022,28 @@ def _validate_proposal_membership(
 ) -> None:
     if not proposals:
         return
-    if membership_index is not None:
-        _validate_indexed_membership(proposals, batch, membership_index)
+    resolved_index = _resolved_membership_index(batch, membership_index)
+    if resolved_index is not None:
+        _validate_indexed_membership(proposals, batch, resolved_index)
         return
+    _validate_ordinary_tuple_membership(proposals, batch)
+
+
+def _resolved_membership_index(
+    batch: CandidateEvaluationBatch,
+    membership_index: PreparedCandidateMembershipIndex | None,
+) -> PreparedCandidateMembershipIndex | None:
+    if membership_index is not None:
+        return membership_index
+    if isinstance(batch.items, IndexedCandidateWorkItems):
+        return PreparedCandidateMembershipIndex.prepare(batch)
+    return None
+
+
+def _validate_ordinary_tuple_membership(
+    proposals: tuple[CandidateProposal, ...],
+    batch: CandidateEvaluationBatch,
+) -> None:
     candidates = {item.logical_id: item.payload for item in batch.items}
     for proposal in proposals:
         payload = candidates.get(proposal.logical_id)

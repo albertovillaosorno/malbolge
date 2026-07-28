@@ -82,6 +82,8 @@ from accelerator.work_ports import indexed_candidate_items_from_unique_u32
 from optimizer.pruning import prune_exact_duplicates
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.work_ports import CandidateEvaluationResult
     from accelerator.work_ports import SearchRequest
@@ -405,8 +407,14 @@ def select_rotate_target_proposals(
 
     """
     target = RotateTargetProblem.decode_target(request.problem)
-    proposals: list[CandidateProposal] = []
     observed_values = iter_primitive_evidence_values(evidence)
+    if isinstance(batch.items, IndexedCandidateWorkItems):
+        return _select_indexed_rotate_target_proposals(
+            batch.items,
+            observed_values,
+            target,
+        )
+    proposals: list[CandidateProposal] = []
     for item, observed in zip(batch.items, observed_values, strict=True):
         if observed == target:
             proposals.append(
@@ -415,6 +423,28 @@ def select_rotate_target_proposals(
                     payload=item.payload,
                 )
             )
+    return tuple(proposals)
+
+
+def _select_indexed_rotate_target_proposals(
+    items: IndexedCandidateWorkItems,
+    observed_values: Iterator[int],
+    target: int,
+) -> tuple[CandidateProposal, ...]:
+    proposals: list[CandidateProposal] = []
+    observed_count = 0
+    for index, observed in enumerate(observed_values):
+        observed_count += 1
+        if observed == target:
+            proposals.append(
+                CandidateProposal(
+                    logical_id=items.logical_id_at(index),
+                    payload=items.payload_at(index),
+                )
+            )
+    if observed_count != len(items):
+        message = "rotate evidence count does not match indexed candidate batch"
+        raise InvalidAcceleratorWorkError(message)
     return tuple(proposals)
 
 
