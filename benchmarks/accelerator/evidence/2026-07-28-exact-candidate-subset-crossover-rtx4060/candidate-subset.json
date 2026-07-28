@@ -1,0 +1,447 @@
+{
+  "benchmark_id": "candidate-subset-proof-tradeoff-v1",
+  "candidate_subset_id": "request-order-position-subset-v1",
+  "corpus_size": 59049,
+  "legacy_validation_id": "materialized-membership-revalidation-v1",
+  "memory_sample_count": 5,
+  "sample_count": 15,
+  "scales": [
+    {
+      "legacy": {
+        "memory": {
+          "peak": {
+            "max_bytes": 960,
+            "median_bytes": 960,
+            "min_bytes": 960,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              960,
+              960,
+              960,
+              960,
+              960
+            ]
+          },
+          "retained": {
+            "max_bytes": 704,
+            "median_bytes": 704,
+            "min_bytes": 704,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              704,
+              704,
+              704,
+              704,
+              704
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 6700,
+          "median_ns": 2300,
+          "min_ns": 2100,
+          "pstdev_ns": 1207.0901650940027,
+          "raw_ns": [
+            4400,
+            3300,
+            2600,
+            2200,
+            2300,
+            2200,
+            2300,
+            2200,
+            2300,
+            2100,
+            2200,
+            2100,
+            2100,
+            6700,
+            2400
+          ]
+        }
+      },
+      "proof": {
+        "memory": {
+          "peak": {
+            "max_bytes": 1024,
+            "median_bytes": 1024,
+            "min_bytes": 1024,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1024,
+              1024,
+              1024,
+              1024,
+              1024
+            ]
+          },
+          "retained": {
+            "max_bytes": 848,
+            "median_bytes": 848,
+            "min_bytes": 848,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              848,
+              848,
+              848,
+              848,
+              848
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 7500,
+          "median_ns": 4300,
+          "min_ns": 4100,
+          "pstdev_ns": 843.3794453796517,
+          "raw_ns": [
+            7500,
+            5500,
+            4700,
+            4400,
+            4300,
+            4300,
+            4400,
+            4200,
+            4400,
+            4200,
+            4300,
+            4100,
+            4200,
+            4200,
+            4200
+          ]
+        }
+      },
+      "subset_size": 0
+    },
+    {
+      "legacy": {
+        "memory": {
+          "peak": {
+            "max_bytes": 1351,
+            "median_bytes": 1351,
+            "min_bytes": 1351,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1351,
+              1351,
+              1351,
+              1351,
+              1351
+            ]
+          },
+          "retained": {
+            "max_bytes": 1111,
+            "median_bytes": 1111,
+            "min_bytes": 1111,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1111,
+              1111,
+              1111,
+              1111,
+              1111
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 24500,
+          "median_ns": 20000,
+          "min_ns": 19500,
+          "pstdev_ns": 1260.0529089420545,
+          "raw_ns": [
+            24500,
+            22100,
+            21000,
+            20400,
+            20100,
+            19900,
+            20000,
+            20100,
+            19900,
+            20400,
+            19800,
+            19500,
+            19600,
+            19600,
+            19700
+          ]
+        }
+      },
+      "proof": {
+        "memory": {
+          "peak": {
+            "max_bytes": 1351,
+            "median_bytes": 1351,
+            "min_bytes": 1351,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1351,
+              1351,
+              1351,
+              1351,
+              1351
+            ]
+          },
+          "retained": {
+            "max_bytes": 1095,
+            "median_bytes": 1095,
+            "min_bytes": 1095,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1095,
+              1095,
+              1095,
+              1095,
+              1095
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 10400,
+          "median_ns": 7500,
+          "min_ns": 7100,
+          "pstdev_ns": 841.3217114886684,
+          "raw_ns": [
+            10400,
+            9000,
+            8100,
+            7800,
+            7500,
+            7500,
+            7600,
+            7500,
+            7300,
+            7300,
+            7300,
+            7500,
+            7200,
+            7200,
+            7100
+          ]
+        }
+      },
+      "subset_size": 1
+    },
+    {
+      "legacy": {
+        "memory": {
+          "peak": {
+            "max_bytes": 13408,
+            "median_bytes": 13408,
+            "min_bytes": 13408,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              13408,
+              13408,
+              13408,
+              13408,
+              13408
+            ]
+          },
+          "retained": {
+            "max_bytes": 10176,
+            "median_bytes": 10176,
+            "min_bytes": 10176,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              10176,
+              10176,
+              10176,
+              10176,
+              10176
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 1091300,
+          "median_ns": 1035600,
+          "min_ns": 1024900,
+          "pstdev_ns": 16475.536072883606,
+          "raw_ns": [
+            1031800,
+            1067500,
+            1028800,
+            1091300,
+            1042700,
+            1041900,
+            1034900,
+            1032000,
+            1035600,
+            1042200,
+            1031500,
+            1040600,
+            1031300,
+            1024900,
+            1037900
+          ]
+        }
+      },
+      "proof": {
+        "memory": {
+          "peak": {
+            "max_bytes": 13408,
+            "median_bytes": 13408,
+            "min_bytes": 13408,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              13408,
+              13408,
+              13408,
+              13408,
+              13408
+            ]
+          },
+          "retained": {
+            "max_bytes": 10160,
+            "median_bytes": 10160,
+            "min_bytes": 10160,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              10160,
+              10160,
+              10160,
+              10160,
+              10160
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 171500,
+          "median_ns": 158100,
+          "min_ns": 156900,
+          "pstdev_ns": 4186.592356028415,
+          "raw_ns": [
+            157500,
+            159800,
+            158400,
+            158000,
+            157800,
+            158200,
+            157800,
+            158100,
+            157800,
+            171500,
+            169000,
+            158000,
+            158900,
+            156900,
+            158800
+          ]
+        }
+      },
+      "subset_size": 64
+    },
+    {
+      "legacy": {
+        "memory": {
+          "peak": {
+            "max_bytes": 198358,
+            "median_bytes": 198358,
+            "min_bytes": 198358,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              198358,
+              198358,
+              198358,
+              198358,
+              198358
+            ]
+          },
+          "retained": {
+            "max_bytes": 148502,
+            "median_bytes": 148502,
+            "min_bytes": 148502,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              148502,
+              148502,
+              148502,
+              148502,
+              148502
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 17024600,
+          "median_ns": 16864700,
+          "min_ns": 16787300,
+          "pstdev_ns": 62725.4724086546,
+          "raw_ns": [
+            16819800,
+            16954100,
+            16823100,
+            16845800,
+            16864700,
+            16915700,
+            17024600,
+            16895200,
+            16960400,
+            16900700,
+            16909700,
+            16816200,
+            16787300,
+            16853700,
+            16838500
+          ]
+        }
+      },
+      "proof": {
+        "memory": {
+          "peak": {
+            "max_bytes": 198358,
+            "median_bytes": 198358,
+            "min_bytes": 198358,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              198358,
+              198358,
+              198358,
+              198358,
+              198358
+            ]
+          },
+          "retained": {
+            "max_bytes": 148422,
+            "median_bytes": 148422,
+            "min_bytes": 148422,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              148422,
+              148422,
+              148422,
+              148422,
+              148422
+            ]
+          }
+        },
+        "timing": {
+          "max_ns": 2709100,
+          "median_ns": 2529800,
+          "min_ns": 2502000,
+          "pstdev_ns": 49603.90396822501,
+          "raw_ns": [
+            2502000,
+            2709100,
+            2529800,
+            2539900,
+            2527300,
+            2529700,
+            2515900,
+            2601900,
+            2559000,
+            2538400,
+            2528800,
+            2526900,
+            2527100,
+            2571800,
+            2594500
+          ]
+        }
+      },
+      "subset_size": 1024
+    }
+  ],
+  "warmup_count": 1
+}

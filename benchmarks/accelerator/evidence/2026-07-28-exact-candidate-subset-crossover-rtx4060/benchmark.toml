@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "exact-candidate-subset-crossover-v9"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does a proof-bound request-order position subset generalize exact prepared projection to multiple candidates without weakening full membership or independent admission and without materially regressing the projected rotate baseline?"
+hypothesis = "Exact subset proof construction is faster than repeated membership validation for one or more candidates, while full-domain rotate preparation, memory, crossover, and prepared phase totals remain equivalent to or better than the immediate projected baseline. Empty-subset fixed overhead and any route regression remain explicit."
+baseline = "immediate clean source commit 59a88a3a89953b232d3220c0bf65b74d65c05b73; retained projected prepared rotate crossover v8 bundle"
+rejection_observation = "Subset identity, immutable strictly increasing positions, full-batch binding, exact projected bytes, full membership, trusted admission, session counts, or provenance drift; one-or-more-candidate proof construction does not improve; full-domain crossover changes; or prepared phase totals materially regress. Empty-subset overhead and isolated route variance remain retained tradeoffs."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-plus-exact-position-subsets-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one route warmup per exact subset; one ordinary warmup and one projected prepared build plus reuse warmup; fixed interleaved throughput and phase ordering"
+ordering = "fixed"
+stopping_rule = "fifteen retained timing samples and five retained memory samples per subset and crossover scale; fifteen samples per throughput route and phase"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "crossover_runs", "subset_count", "projection_count", "membership_count", "selection_count"]
+tradeoff_policy = "subset proof, position order, full-batch identity, projection, membership, validators, proposal, admission, cardinality, and CPU/CUDA session proofs precede performance interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

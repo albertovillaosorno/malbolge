@@ -461,34 +461,31 @@ moves from 6/6 to 8/7. The next architectural boundary is an exact projected-sub
 contract for strategies without a unique algebraic inverse; any generalization must
 retain subset identity, full membership, exact evidence, proposal validation, and
 independent trusted admission rather than introduce heuristic filtering.
-The next exact-subset slice is implemented under
-`request-order-position-subset-v1` and upgrades rotate projection identity to
-`classic-rotate-preimage-position-subset-v2`. A neutral proof now retains the exact
-full-batch object, projected batch, and strictly increasing request-order positions;
-empty, one-item, and multi-item subsets are supported. Mutable, duplicate, reordered,
-out-of-range, forged, wrong-type, and cross-batch state fail closed before backend
-execution. A selection-aware preparer must return a neutral proof-bound projection
-rather than
-an arbitrary projected batch. Generic preparation validates and unwraps that projection
-once, stores the primitive candidate state directly on the repeated hot path, and retains
-the exact projected batch beside the full membership authority. The version-8 bundle
-remains the historical v1 baseline. Exploratory
-`candidate-subset-proof-tradeoff-v1` medians over a 59,049-item full batch compare
-legacy membership revalidation with the proof route: 2.2/4.3 microseconds for an
-empty subset (0.512x), 20.0/7.5 microseconds for one item (2.667x), 1.0347/0.1584 ms
-for 64 items (6.532x), and 16.8057/2.5480 ms for 1,024 items (6.596x). Peak traced
-memory is equal from one item upward; the empty proof adds 64 bytes. Clean post-commit
-microbenchmark plus crossover/throughput/phase evidence is pending before promotion.
-The active implementation now closes that architecture boundary with neutral
-`request-order-position-subset-v1`. `PreparedCandidateSubset` binds a strictly
-increasing immutable tuple of request-order positions to the exact validated full-batch
-object and constructs the evaluator-preserving sub-batch from those positions. Mutable,
-duplicate, reordered, out-of-range, forged, and cross-batch subsets fail closed. Rotate
-adopts the neutral proof under `classic-rotate-preimage-position-subset-v2` and wraps it
-with the exact prepared primitive state. Proposal membership and independent trusted
-admission remain full-batch checks. The retained version-8 performance measurements
-above remain attributable only to v1; clean v2 performance evidence is still required
-before making a new speed claim.
+Retained version-9 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
+promotes neutral `request-order-position-subset-v1` and rotate projection
+`classic-rotate-preimage-position-subset-v2`. The proof binds immutable, strictly
+increasing request-order positions to the exact full-batch object; empty, one-item,
+and multi-item subsets are supported. Mutable, duplicate, reordered, out-of-range,
+forged, wrong-type, and cross-batch state fail closed. Generic preparation validates
+and unwraps the projection once, stores primitive state directly on the repeated hot
+path, and retains the exact projected batch beside full membership authority. Formal
+`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items compare
+legacy membership revalidation with the proof route: 2.3/4.3 microseconds for empty
+(0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
+64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
+proof adds 144 retained and 64 peak bytes; from one item upward retained memory is
+slightly lower and peak memory is equal. Against the immediate clean version-8
+baseline, full-domain cold/warm preparation improves from 46.2706/46.6161 ms to
+45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak stays
+710,126 bytes, and crossover remains 1/1. One-candidate crossover improves from
+8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated throughput
+regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepared
+phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
+improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
+is promoted for exact authority and multi-item scaling, not as an empty-subset
+optimization. The next production boundary is the first real non-invertible or
+multi-position strategy that can supply exact positions without heuristic filtering.
 
 Run the projected prepared-search measurements with:
 
