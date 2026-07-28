@@ -75,8 +75,12 @@ directly on CUDA APIs.
   malformed primitive capability/count/domain evidence falls back safely. Exact
   candidate evidence can also traverse a live CUDA verification-assist adapter;
   hints remain untrusted and malformed optional evidence becomes no hint. Direct
-  snapshot materialization removes redundant packed host staging. Additional
-  search algorithms, CUDA search execution, ROCm work ports/VM execution,
+  snapshot materialization removes redundant packed host staging.
+  `EvaluatedSearchExecutionAdapter` now composes bounded candidate evaluation into
+  search without allowing selectors to fabricate unevaluated payloads. The same
+  `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA
+  matches CPU proposals over 257 candidates while independent CPU admission
+  remains authoritative. Synthesis/guided search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

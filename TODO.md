@@ -691,8 +691,10 @@ CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
 evaluation now exercises the same port through CPU and live CUDA backends. The
 same exact evidence can now traverse a verification-assist adapter on live CUDA;
 hints remain untrusted and malformed optional evidence becomes no hint rather
-than admission. Additional search strategies, CUDA search execution, ROCm work
-ports, and ROCm VM execution remain open.
+than admission. `classic-rotate-target-search-v1` now runs the same bounded
+seed/budget strategy through CPU or live CUDA candidate evaluation, records CUDA
+as the actual backend, and still requires independent CPU admission. Synthesis,
+guided/stochastic search, ROCm work ports, and ROCm VM execution remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -709,8 +711,11 @@ configured-versus-actual execution identity. Search configuration v1 now loads
 independent algorithm/backend identities from versioned TOML, rejects unknown or
 empty configuration, preserves source identity, and applies explicit overrides
 without mutating the base selection. The deterministic corpus enumerator is the
-first concrete CPU strategy. User-facing CLI wiring, additional strategies,
-accelerator search implementations, and comparative evidence remain open.
+first concrete CPU-only strategy. `classic-rotate-target-search-v1` additionally
+binds one exact bounded strategy to interchangeable CPU/CUDA evaluators; live CUDA
+records configured and actual backend identity and matches CPU proposals before
+trusted CPU admission. User-facing CLI wiring, synthesis/guided strategies, ROCm
+search implementations, and comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
@@ -732,8 +737,10 @@ retained through direct complete-snapshot materialization and persistent session
 A hardware-neutral exact-primitive candidate bridge now differentially matches
 CPU and live CUDA for classic crazy/rotate batches. Candidate evidence can also
 feed verification-assist hints through live CUDA while trusted admission remains
-CPU-owned. Broader hardware evidence plus CUDA search execution and ROCm
-implementations remain open.
+CPU-owned. `classic-rotate-target-search-v1` now supplies a concrete live CUDA
+search route over a deterministic 257-word corpus and matches the CPU reference
+before independent trusted admission. Broader hardware evidence, synthesis/search
+algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer
 

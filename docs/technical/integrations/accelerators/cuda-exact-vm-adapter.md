@@ -158,9 +158,12 @@ fails explicitly without changing correctness rules.
   classic crazy and rotate corpora on live CUDA and matches CPU evidence exactly.
   Verification-assist now reuses exact candidate evidence through the same live
   CUDA backend over a deterministic 257-item rotate corpus; those results remain
-  untrusted hints and malformed optional evidence becomes no hint. Broader
-  live-hardware evidence plus CUDA search execution remain before this TODO can
-  complete.
+  untrusted hints and malformed optional evidence becomes no hint. The bounded
+  `classic-rotate-target-search-v1` strategy now uses live CUDA candidate
+  evaluation through the neutral search port over 257 deterministic candidates,
+  records CUDA as the actual backend, matches CPU proposals, and leaves acceptance
+  to an independent CPU verifier. Broader live-hardware evidence, synthesis/search
+  strategies, and ROCm work remain before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

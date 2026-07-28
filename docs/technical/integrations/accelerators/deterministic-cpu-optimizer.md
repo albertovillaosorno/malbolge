@@ -40,6 +40,14 @@ It produces only untrusted `CandidateProposal` values; `search_and_verify()`
 passes those proposals to an independent `TrustedCandidateVerifier`, which alone
 decides acceptance. GPU availability is irrelevant to this path.
 
+A second bounded reference, `classic-rotate-target-search-v1`, searches an
+explicit classic-word corpus for inputs whose exact rotate result equals one
+target. It uses the same `EvaluatedSearchExecutionAdapter` strategy shape as the
+optional CUDA route, but binds the exact CPU primitive evaluator. Exact duplicate
+inputs are pruned by stable first representative, seed rotates the representative
+order, budget bounds candidate evaluations, and `RotateTargetVerifier` recomputes
+acceptance independently on CPU.
+
 ### Implementation Status
 
 A bounded deterministic CPU baseline is active and plugs into the generic
@@ -76,6 +84,10 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_exact_duplicate_pruning.py` matches the production Python
   relation against the retained duplicate-rich/null/adversarial research fixtures;
   the independent Rust mirror keeps the same five adversarial checks.
+- `tests/optimizer/test_rotate_target_search.py` verifies canonical problem replay,
+  duplicate pruning, seed/budget bounds, CPU search, live CUDA differential search,
+  actual-backend identity, independent CPU admission, and malformed-backend CPU
+  fallback. This is a bounded exact-search fixture, not general synthesis.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

@@ -52,9 +52,16 @@ the loaded base configuration. The first concrete strategy is
 `deterministic-corpus-enumeration-v1`, bound to the mandatory CPU reference
 through the same registry. Candidate evidence can independently feed optional
 verification-assist hints through CPU or CUDA without granting either backend
-acceptance authority. User-facing CLI wiring, additional research strategies,
-CUDA/ROCm search implementations, and comparative benchmark evidence remain
-open.
+acceptance authority. `EvaluatedSearchExecutionAdapter` now binds deterministic
+batch construction and proposal selection to a replaceable candidate evaluator;
+selected proposals must be byte-identical members of the evaluated batch and the
+evaluation count cannot exceed the search budget. The concrete
+`classic-rotate-target-search-v1` strategy runs unchanged through CPU or live CUDA
+evaluation. CUDA and CPU produce identical proposals over a deterministic
+257-candidate corpus, `SearchRunIdentity` records CUDA as actual execution, and a
+separate CPU verifier recomputes acceptance. User-facing CLI wiring,
+synthesis/guided strategies, ROCm search implementations, and comparative
+benchmark evidence remain open.
 
 ## Invariants
 

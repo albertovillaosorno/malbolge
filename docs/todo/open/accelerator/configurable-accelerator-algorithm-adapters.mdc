@@ -63,8 +63,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   configuration v1 now loads independent algorithm/backend identities from TOML,
   rejects unknown/empty configuration, preserves source identity, and applies
   explicit caller overrides without mutating the loaded base selection. The
-  deterministic corpus enumerator is the first concrete CPU strategy. User-facing
-  CLI wiring, additional strategies, CUDA/ROCm search implementations, and
-  comparative benchmarks remain open.
+  deterministic corpus enumerator is the first concrete CPU-only strategy.
+  `classic-rotate-target-search-v1` additionally composes one bounded strategy with
+  interchangeable CPU/CUDA candidate evaluators. Live CUDA matches CPU proposals
+  over 257 candidates, records configured/actual backend identity, and still uses
+  independent CPU admission. User-facing CLI wiring, synthesis/guided strategies,
+  ROCm search implementations, and comparative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

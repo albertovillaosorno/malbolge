@@ -82,7 +82,10 @@ batches.
   and matches CPU evidence over 257-item deterministic corpora. Exact candidate
   evidence can now feed verification-assist hints through live CUDA over a
   deterministic 257-item rotate corpus while trusted admission remains separate;
-  malformed optional evidence becomes no hint. Broader live hardware and CUDA
-  search execution remain open.
+  malformed optional evidence becomes no hint. The bounded
+  `classic-rotate-target-search-v1` strategy now evaluates a deterministic
+  257-candidate corpus through live CUDA, records CUDA as actual search execution,
+  matches the CPU reference proposals, and leaves final admission to the CPU
+  verifier. Broader live hardware plus synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

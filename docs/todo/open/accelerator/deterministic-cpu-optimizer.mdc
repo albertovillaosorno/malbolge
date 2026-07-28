@@ -57,9 +57,13 @@ baseline for accelerator implementations.
   prunes only exact byte-identical payloads before logical identity, uses seed and
   evaluation budget over stable first representatives, and never duplicates
   candidates by wraparound. It executes through the mandatory CPU search adapter
-  and only an independent `TrustedCandidateVerifier` may accept a proposal. This
-  establishes a CPU-only search baseline, not general Malbolge synthesis.
-  Translation-validation integration, real synthesis generators, AArch64
-  execution evidence, and performance measurements remain open.
+  and only an independent `TrustedCandidateVerifier` may accept a proposal. A
+  second bounded reference, `classic-rotate-target-search-v1`, composes exact CPU
+  primitive evaluation with stable duplicate pruning, deterministic seed/budget
+  ordering, and an independent CPU verifier; the identical strategy shape is also
+  exercised by optional CUDA evaluation. These establish CPU search baselines,
+  not general Malbolge synthesis. Translation-validation integration, real
+  synthesis generators, AArch64 execution evidence, and performance measurements
+  remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.

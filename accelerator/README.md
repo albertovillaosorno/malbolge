@@ -46,8 +46,12 @@ classic crazy/rotate candidate payloads to any exact primitive adapter; the same
 bridge is differentially exercised through CPU and live CUDA backends.
 `evidence_verification.py` reuses candidate evidence as optional verification
 hints without introducing backend acceptance authority, and live CUDA hints match
-the CPU reference over a deterministic 257-item corpus. Additional search
-strategies, CLI front-end wiring, CUDA search execution, ROCm work ports and VM
-execution, broader hardware evidence, and orchestration remain follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
+the CPU reference over a deterministic 257-item corpus. `evaluated_search.py`
+adds a bounded map/select search adapter that only proposes members of the exact
+evaluated batch. `classic-rotate-target-search-v1` uses that adapter with identical
+CPU/CUDA strategy logic; live CUDA records actual backend identity, matches CPU
+proposals over 257 candidates, and remains subject to independent CPU admission.
+Synthesis/guided search, CLI front-end wiring, ROCm work ports and VM execution,
+broader hardware evidence, and orchestration remain follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

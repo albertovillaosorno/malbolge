@@ -78,8 +78,12 @@ backend capability/count/domain evidence falls back before admission.
 `EvidenceVerificationAssistAdapter` can expose that evidence as ordered optional
 hints while preserving verifier-only acceptance. A live CUDA 257-item rotate
 corpus matches CPU hints exactly; malformed optional evidence produces no hints.
-Additional search algorithms, CUDA search execution, asynchronous submission, and
-ROCm remain open.
+`EvaluatedSearchExecutionAdapter` composes the candidate-evaluation port into a
+bounded search route while preventing selectors from inventing payloads outside
+the evaluated batch. `classic-rotate-target-search-v1` runs unchanged through CPU
+or live CUDA evaluation; CUDA matches CPU proposals over 257 candidates and the
+independent CPU verifier remains the only admission authority. Synthesis/guided
+search algorithms, asynchronous submission, and ROCm remain open.
 
 ## Invariants
 
