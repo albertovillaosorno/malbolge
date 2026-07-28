@@ -300,6 +300,31 @@ must locate canonical units and map them back to candidate byte spans. Target-on
 literals remain local authoring material until compatible protection/emission wraps
 this layer.
 
+### Mapped Semantic Compatible Placement
+
+The second placement layer removes the byte-boundary limitation. Generic `MappedView`
+records canonical units together with the raw source span that produced each unit.
+`semantic.py` hashes those units with domain separation, authors non-equal source to
+target ranges using deterministic sequence matching, and stores only hashed source
+unit/context locators plus local target replacement bytes. Candidate placement requires
+a unique semantic range, edits only its mapped raw span, preserves all other candidate
+bytes, and re-maps the output to verify the exact intended canonical unit sequence.
+
+The first domain mapper is DOOM C. It retains raw spans through line-ending
+normalization, comments, literals, directive line ends, and backslash-newline splicing
+without changing the existing identity stream. Synthetic tests preserve candidate
+comments, formatting, and an unrelated upstream function while applying a semantic
+replacement. Format-only oracle differences produce zero edits. A changed required
+semantic region remains fail-closed; later bug routing may explicitly skip a named
+correction when behavior evidence classifies that defect as already fixed.
+
+A read-only equivalence smoke over the original and normalized local trees processed
+273 C/header files and 549,978 mapped units with zero mismatches against the existing
+canonicalizer. This proves identity-equivalent mapping, not final compatible-tree
+correctness. Compatible tree planning still must combine admission, behavior routing,
+source-bound target material, file policy, and output postconditions around this
+primitive.
+
 ### Exact Baseline and Compatible Variants
 
 For the exact source tree used during generation:

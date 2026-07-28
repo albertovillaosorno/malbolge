@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.canonicalize import normalize_line_endings
+from algorithms.diff.mapped import MappedUnit
+from algorithms.diff.mapped import MappedView
 from algorithms.doom.generator.behavior_probes import behavior_programs
 from algorithms.doom.generator.behavior_probes import pinned_probe_context
 
@@ -102,6 +104,7 @@ _QUOTE_DOUBLE = ord('"')
 _QUOTE_SINGLE = ord("'")
 _BACKSLASH = ord("\\")
 _LINE_FEED = ord("\n")
+_CARRIAGE_RETURN = ord("\r")
 _DOT = ord(".")
 _PLUS = ord("+")
 _MINUS = ord("-")
@@ -123,6 +126,25 @@ class _TokenizeState:
     at_line_start: bool = True
     in_directive: bool = False
     output: bytearray = field(default_factory=bytearray)
+
+
+@dataclass(frozen=True, slots=True)
+class _LogicalByte:
+    """One phase-normalized byte and the raw span that produced it."""
+
+    value: int
+    raw_start: int
+    raw_end: int
+
+
+@dataclass(slots=True)
+class _MappedTokenizeState:
+    """Mutable scanner state for canonical units with raw source spans."""
+
+    cursor: int = 0
+    at_line_start: bool = True
+    in_directive: bool = False
+    units: list[MappedUnit] = field(default_factory=list)
 
 
 def _translation_phase_lines(data: bytes) -> bytes:
@@ -276,13 +298,19 @@ def _next_token(data: bytes, offset: int) -> tuple[bytes, bytes, int]:
     return kind, data[offset:end], end
 
 
-def _append_frame(output: bytearray, kind: bytes, token: bytes = b"") -> None:
+def _framed_token(kind: bytes, token: bytes = b"") -> bytes:
     if len(token) > _MAX_FRAME_LENGTH:
         message = "C identity token exceeds frame length limit"
         raise DoomIdentityError(message)
-    output.extend(kind)
-    output.extend(len(token).to_bytes(_FRAME_LENGTH_BYTES, byteorder="big"))
-    output.extend(token)
+    return b"".join((
+        kind,
+        len(token).to_bytes(_FRAME_LENGTH_BYTES, byteorder="big"),
+        token,
+    ))
+
+
+def _append_frame(output: bytearray, kind: bytes, token: bytes = b"") -> None:
+    output.extend(_framed_token(kind, token))
 
 
 def _finish_logical_line(state: _TokenizeState) -> None:
@@ -323,6 +351,194 @@ def _tokenize_identity(data: bytes) -> bytes:
     if state.in_directive:
         _finish_logical_line(state)
     return bytes(state.output)
+
+
+def _normalized_logical_bytes(data: bytes) -> tuple[_LogicalByte, ...]:
+    logical: list[_LogicalByte] = []
+    cursor = 0
+    while cursor < len(data):
+        value = data[cursor]
+        if value == _CARRIAGE_RETURN:
+            raw_end = cursor + 1
+            if raw_end < len(data) and data[raw_end] == _LINE_FEED:
+                raw_end += 1
+            logical.append(
+                _LogicalByte(
+                    value=_LINE_FEED,
+                    raw_start=cursor,
+                    raw_end=raw_end,
+                )
+            )
+            cursor = raw_end
+            continue
+        logical.append(
+            _LogicalByte(value=value, raw_start=cursor, raw_end=cursor + 1)
+        )
+        cursor += 1
+    return tuple(logical)
+
+
+def _splice_logical_bytes(
+    logical: tuple[_LogicalByte, ...],
+) -> tuple[_LogicalByte, ...]:
+    output: list[_LogicalByte] = []
+    cursor = 0
+    while cursor < len(logical):
+        if (
+            logical[cursor].value == _BACKSLASH
+            and cursor + 1 < len(logical)
+            and logical[cursor + 1].value == _LINE_FEED
+        ):
+            cursor += 2
+            continue
+        output.append(logical[cursor])
+        cursor += 1
+    return tuple(output)
+
+
+def _logical_source(data: bytes) -> tuple[bytes, tuple[_LogicalByte, ...]]:
+    logical = _splice_logical_bytes(_normalized_logical_bytes(data))
+    return bytes(item.value for item in logical), logical
+
+
+def _append_mapped_directive_end(
+    state: _MappedTokenizeState,
+    *,
+    raw_start: int,
+    raw_end: int,
+) -> None:
+    if state.in_directive:
+        state.units.append(
+            MappedUnit(
+                canonical=_framed_token(_KIND_DIRECTIVE_END),
+                raw_start=raw_start,
+                raw_end=raw_end,
+            )
+        )
+    state.at_line_start = True
+    state.in_directive = False
+
+
+def _consume_mapped_whitespace(
+    logical_data: bytes,
+    logical: tuple[_LogicalByte, ...],
+    state: _MappedTokenizeState,
+) -> bool:
+    value = logical_data[state.cursor]
+    if value not in _ASCII_WHITESPACE:
+        return False
+    if value == _LINE_FEED:
+        span = logical[state.cursor]
+        _append_mapped_directive_end(
+            state,
+            raw_start=span.raw_start,
+            raw_end=span.raw_end,
+        )
+    state.cursor += 1
+    return True
+
+
+def _mapped_block_comment_end(
+    logical_data: bytes,
+    logical: tuple[_LogicalByte, ...],
+    state: _MappedTokenizeState,
+) -> int:
+    cursor = state.cursor + len(_BLOCK_COMMENT_START)
+    while cursor < len(logical_data):
+        if logical_data.startswith(_BLOCK_COMMENT_END, cursor):
+            return cursor + len(_BLOCK_COMMENT_END)
+        if logical_data[cursor] == _LINE_FEED:
+            span = logical[cursor]
+            _append_mapped_directive_end(
+                state,
+                raw_start=span.raw_start,
+                raw_end=span.raw_end,
+            )
+        cursor += 1
+    message = "unterminated C block comment"
+    raise DoomIdentityError(message)
+
+
+def _consume_mapped_comment(
+    logical_data: bytes,
+    logical: tuple[_LogicalByte, ...],
+    state: _MappedTokenizeState,
+) -> bool:
+    if logical_data.startswith(_LINE_COMMENT, state.cursor):
+        cursor = state.cursor + len(_LINE_COMMENT)
+        while cursor < len(logical_data) and logical_data[cursor] != _LINE_FEED:
+            cursor += 1
+        state.cursor = cursor
+        return True
+    if logical_data.startswith(_BLOCK_COMMENT_START, state.cursor):
+        state.cursor = _mapped_block_comment_end(logical_data, logical, state)
+        return True
+    return False
+
+
+def _consume_mapped_token(
+    logical_data: bytes,
+    logical: tuple[_LogicalByte, ...],
+    state: _MappedTokenizeState,
+) -> None:
+    kind, token, end = _next_token(logical_data, state.cursor)
+    if state.at_line_start and token in _DIRECTIVE_MARKERS:
+        state.in_directive = True
+    state.at_line_start = False
+    first = logical[state.cursor]
+    last = logical[end - 1]
+    state.units.append(
+        MappedUnit(
+            canonical=_framed_token(kind, token),
+            raw_start=first.raw_start,
+            raw_end=last.raw_end,
+        )
+    )
+    state.cursor = end
+
+
+def _mapped_units(
+    logical_data: bytes,
+    logical: tuple[_LogicalByte, ...],
+    raw_length: int,
+) -> tuple[MappedUnit, ...]:
+    state = _MappedTokenizeState()
+    while state.cursor < len(logical_data):
+        if _consume_mapped_whitespace(logical_data, logical, state):
+            continue
+        is_literal = _literal_end(logical_data, state.cursor) is not None
+        if not is_literal and _consume_mapped_comment(
+            logical_data,
+            logical,
+            state,
+        ):
+            continue
+        _consume_mapped_token(logical_data, logical, state)
+    if state.in_directive:
+        _append_mapped_directive_end(
+            state,
+            raw_start=raw_length,
+            raw_end=raw_length,
+        )
+    return tuple(state.units)
+
+
+def mapped_c_identity(data: bytes) -> MappedView:
+    """Build C identity units while retaining exact raw candidate byte spans.
+
+    Returns:
+        Canonical units whose concatenation matches `canonicalize_c_identity`.
+
+    Raises:
+        DoomIdentityError: Source contains NUL or malformed C comments/literals.
+
+    """
+    if _ZERO_BYTE in data:
+        message = "NUL byte is not accepted in C source identity"
+        raise DoomIdentityError(message)
+    logical_data, logical = _logical_source(data)
+    units = _mapped_units(logical_data, logical, len(data))
+    return MappedView(raw=data, units=units)
 
 
 def canonicalize_c_identity(data: bytes) -> bytes:

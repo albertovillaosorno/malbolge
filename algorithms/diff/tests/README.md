@@ -24,3 +24,7 @@ unfinished.
 Relocatable compatible placement tests preserve candidate insertions inside source-
 backed ranges, preserve whole-file candidate changes, reject missing/ambiguous
 boundaries transactionally, and lock the current byte-boundary reformat limitation.
+Mapped semantic-placement tests cover canonical-to-raw span validation, zero-width
+semantic markers, deterministic hashed locators, replacement/insertion/deletion,
+candidate formatting and unrelated semantic additions, ambiguous/missing source
+evidence, and fail-closed re-tokenization at unsafe replacement seams.

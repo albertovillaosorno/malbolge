@@ -106,6 +106,13 @@ format.
   boundary-change test deliberately still fails, defining the next mapped-token C
   placement milestone rather than pretending byte relocation solves reformatting.
 
+- Generic mapped semantic placement now hashes canonical units, uniquely locates them
+  in candidate source, maps them back to raw spans, preserves unrelated raw bytes, and
+  re-tokenizes post-edit output to reject unsafe seams.
+- The DOOM C mapper is identity-equivalent to the established canonicalizer across a
+  read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches. Synthetic
+  placement preserves comments, formatting, and unrelated upstream functions.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

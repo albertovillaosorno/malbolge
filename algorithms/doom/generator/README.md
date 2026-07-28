@@ -13,6 +13,13 @@ oracle under `algorithms/doom/quality/in/doom/`. Its output is
 `linuxdoom-1.10` C/header subtree, excludes WAD/IPX surfaces from source identity,
 and emits a framed C preprocessing-token view that ignores comments and ordinary
 formatting without erasing token boundaries or preprocessor line termination.
+The C identity adapter now has a mapped form as well. `mapped_c_identity()` emits
+the same framed preprocessing-token identity as `canonicalize_c_identity()` while
+retaining the raw byte span that produced each token or directive-end marker. This is
+the domain hook used by generic semantic compatible placement to preserve candidate
+comments and formatting outside transformed semantic regions. A read-only source +
+oracle smoke mapped 273 C/header files with zero identity mismatches.
+
 The domain facade now also exposes the first executable behavior program.
 `behavior_probes.py` defines a Windows x86-64 / pinned LLVM 22.1.8 fixed-point
 identity probe. It compiles the candidate mirror's real `m_fixed.c` with a

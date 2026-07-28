@@ -25,6 +25,8 @@ algorithms/diff/
 |-- payload.py        # RFC 8439 authenticated payload primitive
 |-- protected.py      # source-bound authenticated exact plans
 |-- relocatable.py    # hash-only compatible byte-range placement
+|-- mapped.py         # canonical units with raw source spans
+|-- semantic.py       # hashed semantic compatible placement
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
@@ -269,6 +271,30 @@ literals are still local authoring bytes, and byte-window boundaries deliberatel
 fail when a reformat/comment edit changes those boundary bytes. The next placement
 layer supplies domain-mapped canonical units so compatible C placement can ignore
 presentation changes while retaining raw candidate bytes outside transformed regions.
+
+## Implemented Mapped Semantic Placement
+
+`mapped.py` defines a generic `MappedView`: canonical identity units paired with
+non-overlapping half-open spans in the original raw candidate bytes. `semantic.py`
+authors edits over SHA-256 digests of those canonical units rather than storing
+plaintext source tokens. Each locator includes the changed source-unit sequence and
+immediate before/after context. Materialization requires a unique match, maps it back
+to candidate raw bytes, changes only that raw region, and then re-maps the result to
+prove the resulting canonical unit sequence is exactly the intended one. Ambiguous,
+missing, overlapping, reordered, or token-merging seams fail closed.
+
+The DOOM domain now supplies `mapped_c_identity()`. It preserves the established C
+identity semantics while retaining raw spans through CRLF normalization, comment
+removal, preprocessing-token framing, directive termination, and backslash-newline
+splicing. Synthetic C tests prove a `return 1` to `return 2` semantic correction can
+be applied to a reformatted candidate while preserving its comments and unrelated
+upstream functions byte-for-byte. Format/comment-only oracle differences author no
+semantic edits at all.
+
+A read-only calibration over both local DOOM trees mapped 273 C/header files and
+549,978 canonical units with zero canonical-stream mismatches against the established
+`canonicalize_c_identity()` implementation. This validates mapping equivalence only;
+it does not yet claim compatible tree admission or final output acceptance.
 
 ## Exact and Compatible Modes
 
