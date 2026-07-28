@@ -181,8 +181,12 @@ fails explicitly without changing correctness rules.
   repeated-search evidence rather than one-shot latency. The retained prepared
   phase profile attributes 138.320 ms, or 81.2% of CUDA median total time, to
   backend evaluation and 31.912 ms, or 18.7%, to proposal selection. Proof/result
-  validation is negligible, selecting candidate-evaluation result representation
-  and transport before resident or fused search. Broader live-hardware evidence, synthesis/search
+  validation is negligible. Primitive CUDA evidence now returns one fixed-width
+  packed byte buffer instead of 59,049 logical-ID/bytes objects. Batch order carries
+  identity, malformed packed shape fails closed, and rotate search consumes packed
+  u32 values directly. Verification-assist materializes only when explicit hints
+  are requested. Post-commit evidence remains pending before a performance claim;
+  resident or fused search stays later work. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

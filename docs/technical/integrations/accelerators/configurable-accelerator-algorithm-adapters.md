@@ -93,8 +93,13 @@ about 9.5% slower than prepared CPU, so reusable state is beneficial without
 establishing a CUDA advantage. Preparation is outside timed intervals. The
 prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total time
 to backend evaluation, with proposal selection at 19.6% and 18.7%. Strategy-proof
-and result validation are negligible. Candidate-evaluation result representation
-and transport are therefore the next neutral optimization boundary. Resident or
+and result validation are negligible. `PackedCandidateEvidence` now implements the
+next neutral boundary: fixed-width opaque payloads share one byte buffer and inherit
+logical identity from validated request order. Existing item-based results remain
+valid; packed width/size/mixed representation failures are rejected. Primitive
+selectors iterate packed u32 evidence without materializing per-item bytes, while
+verification-assist materializes only when producing explicit hint objects.
+Post-commit comparative evidence remains pending. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

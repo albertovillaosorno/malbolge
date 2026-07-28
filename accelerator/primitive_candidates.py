@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
+import sys
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -14,11 +16,13 @@ from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.work_ports import CandidateEvaluationAdapter
 from accelerator.work_ports import CandidateEvaluationResult
-from accelerator.work_ports import CandidateEvidence
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
+from accelerator.work_ports import PackedCandidateEvidence
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.exact_primitives import PrimitiveResult
@@ -28,6 +32,8 @@ CRAZY_EVALUATOR_ID = "classic-crazy-u32le-v1"
 ROTATE_EVALUATOR_ID = "classic-rotate-u32le-v1"
 _WORD_BYTES = 4
 _CRAZY_PAYLOAD_BYTES = 8
+_LITTLE_ENDIAN = "little"
+_NATIVE_WORD_FORMAT = "I"
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +132,45 @@ def decode_primitive_evidence(payload: bytes) -> int:
         message = "primitive candidate evidence must contain exactly one u32"
         raise InvalidAcceleratorResultError(message)
     value = int.from_bytes(payload, "little")
-    if value > MAX_WORD:
-        message = (
-            f"primitive candidate evidence outside classic domain: {value}"
-        )
-        raise InvalidAcceleratorResultError(message)
+    _validate_evidence_word(value)
     return value
+
+
+def iter_primitive_evidence_values(
+    result: CandidateEvaluationResult,
+) -> Iterator[int]:
+    """Iterate exact primitive words without materializing per-item payloads.
+
+    Yields:
+        Classic-domain primitive result words in request order.
+
+    """
+    if result.packed is not None:
+        yield from _iter_packed_primitive_values(result.packed)
+        return
+    for item in result.items:
+        yield decode_primitive_evidence(item.payload)
+
+
+def _iter_packed_primitive_values(
+    packed: PackedCandidateEvidence,
+) -> Iterator[int]:
+    if packed.payload_width != _WORD_BYTES:
+        message = "primitive packed evidence must use four-byte payloads"
+        raise InvalidAcceleratorResultError(message)
+    if sys.byteorder == _LITTLE_ENDIAN:
+        values = memoryview(packed.payloads).cast(_NATIVE_WORD_FORMAT)
+        for value in values:
+            _validate_evidence_word(value)
+            yield value
+        return
+    for offset in range(0, len(packed.payloads), _WORD_BYTES):
+        value = int.from_bytes(
+            packed.payloads[offset : offset + _WORD_BYTES],
+            _LITTLE_ENDIAN,
+        )
+        _validate_evidence_word(value)
+        yield value
 
 
 def _decode_batch(
@@ -186,24 +225,38 @@ def _encode_result(
             "primitive backend result count does not match candidate batch"
         )
         raise InvalidAcceleratorResultError(message)
-    evidence: list[CandidateEvidence] = []
-    for item, value in zip(batch.items, primitive.values, strict=True):
+    for value in primitive.values:
         if not 0 <= value <= MAX_WORD:
             message = (
                 f"primitive backend result outside classic domain: {value}"
             )
             raise InvalidAcceleratorResultError(message)
-        evidence.append(
-            CandidateEvidence(
-                logical_id=item.logical_id,
-                payload=_encode_word(value),
-            )
-        )
     return CandidateEvaluationResult(
         capability=capability,
         evaluator_id=batch.evaluator_id,
-        items=tuple(evidence),
+        packed=PackedCandidateEvidence(
+            payload_width=_WORD_BYTES,
+            payloads=_pack_words(primitive.values),
+        ),
     )
+
+
+def _pack_words(values: tuple[int, ...]) -> bytes:
+    words = array("I", values)
+    if words.itemsize != _WORD_BYTES:
+        message = "native unsigned-int width cannot encode packed u32 evidence"
+        raise InvalidAcceleratorResultError(message)
+    if sys.byteorder != _LITTLE_ENDIAN:
+        words.byteswap()
+    return words.tobytes()
+
+
+def _validate_evidence_word(value: int) -> None:
+    if value > MAX_WORD:
+        message = (
+            f"primitive candidate evidence outside classic domain: {value}"
+        )
+        raise InvalidAcceleratorResultError(message)
 
 
 def _encode_word(value: int) -> bytes:

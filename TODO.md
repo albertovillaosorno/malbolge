@@ -743,8 +743,13 @@ CPU (0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search
 measurements with preparation outside the timed interval. A retained prepared-path
 phase profile attributes 79.9% of CPU and 81.2% of CUDA median total time to
 backend evaluation, with proposal selection at 19.6% and 18.7%. Proof/result
-validation is negligible, so candidate-evaluation result representation and
-transport are the next evidence-driven boundary. Synthesis/guided
+validation is negligible. `PackedCandidateEvidence` now carries fixed-width opaque
+payloads in one byte buffer with logical IDs inherited from validated request
+order. Generic item-based adapters remain supported, malformed width/size/mixed
+forms fail closed, search consumes packed primitive u32 values without per-item
+bytes, and verification-assist materializes objects only when hints are requested.
+Post-commit prepared throughput/phase evidence remains pending before claiming the
+exploratory reduction. Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -785,8 +790,11 @@ shows 1.976x CPU and 1.886x CUDA same-backend median improvements, while prepare
 CUDA remains about 9.5% slower than prepared CPU. Preparation is outside the timed
 interval, so the result is not one-shot latency evidence. The retained prepared
 phase profile places 81.2% of CUDA median total time in backend evaluation and
-18.7% in proposal selection; proof/result validation is negligible. Result
-representation/transport now precedes any resident or
+18.7% in proposal selection; proof/result validation is negligible. Fixed-width
+packed candidate evidence is now active across CPU/CUDA primitive evaluation and
+search, avoiding one `CandidateEvidence` plus bytes allocation per candidate while
+preserving request-order identity and verifier-only acceptance. Post-commit
+measurement remains pending; resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

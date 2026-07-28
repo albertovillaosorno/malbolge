@@ -17,8 +17,8 @@ from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
-from accelerator.primitive_candidates import decode_primitive_evidence
 from accelerator.primitive_candidates import encode_rotate_candidate
+from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -201,8 +201,9 @@ def select_rotate_target_proposals(
     """
     target = RotateTargetProblem.decode_target(request.problem)
     proposals: list[CandidateProposal] = []
-    for item, observed in zip(batch.items, evidence.items, strict=True):
-        if decode_primitive_evidence(observed.payload) == target:
+    observed_values = iter_primitive_evidence_values(evidence)
+    for item, observed in zip(batch.items, observed_values, strict=True):
+        if observed == target:
             proposals.append(
                 CandidateProposal(
                     logical_id=item.logical_id,

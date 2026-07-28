@@ -84,8 +84,13 @@ preparation is outside the timed interval. The retained prepared phase profile a
 `benchmarks/accelerator/evidence/2026-07-28-prepared-search-phase-profile-rtx4060/`
 shows backend evaluation consuming 79.9% of CPU and 81.2% of CUDA median total
 time; proposal selection consumes 19.6% and 18.7%. Proof/result validation is
-negligible. Candidate-evaluation result representation/transport is therefore the
-next optimization boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+negligible. `PackedCandidateEvidence` now implements that boundary with one
+fixed-width opaque payload buffer whose logical identities are inherited from the
+validated batch order. Generic item results remain compatible; width, size, and
+mixed-form drift fail closed. Primitive search iterates packed u32 values without
+per-candidate bytes/objects, while verification-assist materializes only at the hint
+boundary. Post-commit performance evidence remains pending before claiming the
+exploratory reduction. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

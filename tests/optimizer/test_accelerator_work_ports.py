@@ -22,6 +22,7 @@ from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
+from accelerator.work_ports import PackedCandidateEvidence
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import SearchResult
@@ -186,6 +187,72 @@ def test_malformed_candidate_backend_shape_falls_back() -> None:
     result = evaluate_candidates(batch, reference, _MalformedCandidateBackend())
 
     assert result.items == (CandidateEvidence(logical_id="a", payload=b"cba"),)
+
+
+def test_packed_candidate_evidence_restores_request_identities() -> None:
+    """Packed payloads inherit exact logical identity from validated order."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id="packed-v1",
+        items=(
+            CandidateWorkItem(logical_id="a", payload=b"input-a"),
+            CandidateWorkItem(logical_id="b", payload=b"input-b"),
+        ),
+    )
+    result = CandidateEvaluationResult(
+        capability=TEST_CAPABILITY,
+        evaluator_id=batch.evaluator_id,
+        packed=PackedCandidateEvidence(
+            payload_width=2,
+            payloads=b"AABB",
+        ),
+    )
+
+    items = result.materialized_items_against(batch, TEST_CAPABILITY)
+
+    assert items == (
+        CandidateEvidence(logical_id="a", payload=b"AA"),
+        CandidateEvidence(logical_id="b", payload=b"BB"),
+    )
+
+
+def test_packed_candidate_evidence_rejects_malformed_shapes() -> None:
+    """Packed results fail closed on width, size, storage, or mixed forms."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id="packed-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"input"),),
+    )
+    cases = (
+        (
+            PackedCandidateEvidence(payload_width=0, payloads=b""),
+            (),
+            "width must be positive",
+        ),
+        (
+            PackedCandidateEvidence(payload_width=2, payloads=b"A"),
+            (),
+            "size does not match request",
+        ),
+        (
+            PackedCandidateEvidence(payload_width=1, payloads=b"A"),
+            (CandidateEvidence(logical_id="a", payload=b"A"),),
+            "cannot mix packed and item forms",
+        ),
+    )
+    for packed, items, message in cases:
+        result = CandidateEvaluationResult(
+            capability=TEST_CAPABILITY,
+            evaluator_id=batch.evaluator_id,
+            items=items,
+            packed=packed,
+        )
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda result=result: result.validated_against(
+                batch,
+                TEST_CAPABILITY,
+            ),
+        )
 
 
 def test_candidate_request_rejects_duplicate_identity_before_execution() -> (

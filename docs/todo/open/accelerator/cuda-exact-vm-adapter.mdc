@@ -100,7 +100,10 @@ batches.
   prepared CUDA remains about 9.5% slower than prepared CPU. Preparation is outside
   timed intervals. The prepared phase profile attributes 81.2% of CUDA median
   total time to backend evaluation and 18.7% to proposal selection; proof/result
-  validation is negligible. Result representation/transport now precedes resident
-  search, and synthesis/search strategies remain open.
+  validation is negligible. CUDA primitive results now use fixed-width packed
+  evidence with request-order identity, eliminating per-candidate evidence objects
+  from search while keeping malformed shape and verifier boundaries fail-closed.
+  Post-commit evidence remains pending before a performance claim. Resident and
+  synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

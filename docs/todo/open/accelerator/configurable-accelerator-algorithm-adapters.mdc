@@ -90,8 +90,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   about 9.5% slower than prepared CPU, and preparation is outside timed intervals.
   The prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total
   time to backend evaluation, with proposal selection at 19.6% and 18.7%.
-  Candidate-evaluation result representation/transport is the next measured
-  boundary. Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  Fixed-width packed candidate evidence now implements that boundary. One opaque
+  byte buffer inherits logical IDs from validated request order; generic item
+  results remain compatible, malformed packed shape fails closed, and search avoids
+  per-candidate evidence objects. Verification-assist materializes only at the hint
+  boundary. Post-commit performance evidence remains pending. Synthesis/guided
+  strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

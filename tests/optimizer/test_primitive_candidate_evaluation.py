@@ -21,9 +21,9 @@ from accelerator.exact_primitives import PrimitiveResult
 from accelerator.primitive_candidates import CRAZY_EVALUATOR_ID
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
-from accelerator.primitive_candidates import decode_primitive_evidence
 from accelerator.primitive_candidates import encode_crazy_candidate
 from accelerator.primitive_candidates import encode_rotate_candidate
+from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 CUDA_BACKEND = "cuda"
 CPU_BACKEND = "cpu-reference"
 CORPUS_SIZE = 257
+EVIDENCE_WORD_BYTES = 4
 ROTATE_ONE = 19_683
 BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
@@ -146,9 +147,7 @@ def test_cpu_candidate_bridge_preserves_exact_crazy_results() -> None:
 
     result = adapter.evaluate(batch)
 
-    observed = tuple(
-        decode_primitive_evidence(item.payload) for item in result.items
-    )
+    observed = tuple(iter_primitive_evidence_values(result))
     words = _words(CORPUS_SIZE)
     expected = CpuExactPrimitiveAdapter().evaluate(
         PrimitiveBatch(
@@ -159,6 +158,9 @@ def test_cpu_candidate_bridge_preserves_exact_crazy_results() -> None:
     )
     assert observed == expected.values
     assert result.capability.backend_id == CPU_BACKEND
+    assert result.items == ()
+    assert result.packed is not None
+    assert result.packed.payload_width == EVIDENCE_WORD_BYTES
 
 
 def test_cpu_candidate_bridge_preserves_exact_rotate_results() -> None:
@@ -171,9 +173,7 @@ def test_cpu_candidate_bridge_preserves_exact_rotate_results() -> None:
 
     result = adapter.evaluate(batch)
 
-    observed = tuple(
-        decode_primitive_evidence(item.payload) for item in result.items
-    )
+    observed = tuple(iter_primitive_evidence_values(result))
     expected = CpuExactPrimitiveAdapter().evaluate(
         PrimitiveBatch(
             accumulators=(),
@@ -267,7 +267,10 @@ def test_cuda_candidate_crazy_port_matches_cpu_reference() -> None:
     expected = reference.evaluate(batch)
 
     assert result.capability.backend_id == CUDA_BACKEND
-    assert result.items == expected.items
+    assert result.packed == expected.packed
+    assert tuple(iter_primitive_evidence_values(result)) == tuple(
+        iter_primitive_evidence_values(expected)
+    )
 
 
 def test_cuda_candidate_rotate_port_matches_cpu_reference() -> None:
@@ -285,7 +288,10 @@ def test_cuda_candidate_rotate_port_matches_cpu_reference() -> None:
     expected = reference.evaluate(batch)
 
     assert result.capability.backend_id == CUDA_BACKEND
-    assert result.items == expected.items
+    assert result.packed == expected.packed
+    assert tuple(iter_primitive_evidence_values(result)) == tuple(
+        iter_primitive_evidence_values(expected)
+    )
 
 
 def test_malformed_preferred_primitive_backend_falls_back_to_cpu() -> None:
@@ -311,4 +317,4 @@ def test_malformed_preferred_primitive_backend_falls_back_to_cpu() -> None:
     result = evaluate_candidates(batch, reference, preferred)
 
     assert result.capability.backend_id == CPU_BACKEND
-    assert decode_primitive_evidence(result.items[0].payload) == ROTATE_ONE
+    assert tuple(iter_primitive_evidence_values(result)) == (ROTATE_ONE,)

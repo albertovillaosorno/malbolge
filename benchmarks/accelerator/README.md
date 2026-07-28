@@ -190,5 +190,7 @@ The retained RTX 4060 evidence is under
 156.935 ms with 125.412 ms in backend evaluation and 30.796 ms in proposal
 selection. CUDA median total is 170.276 ms with 138.320 ms in backend evaluation
 and 31.912 ms in proposal selection. Named phases cover at least 99.6% of both
-medians; candidate-evaluation result transport/materialization is the next measured
-optimization boundary.
+medians; candidate-evaluation result transport/materialization selected the next
+measured optimization boundary. The active implementation now supports fixed-width
+packed candidate evidence, but these retained pre-change numbers remain the
+baseline until a post-commit rerun is checked in.

@@ -71,12 +71,55 @@ class CandidateEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class PackedCandidateEvidence:
+    """Fixed-width opaque evidence payloads in request order."""
+
+    payload_width: int
+    payloads: bytes
+
+    def validated_for_count(self, count: int) -> PackedCandidateEvidence:
+        """Validate fixed-width storage for one candidate count.
+
+        Returns:
+            This packed representation after exact-size validation.
+
+        Raises:
+            InvalidAcceleratorResultError: If width, storage type, or size is
+                malformed.
+
+        """
+        if type(self.payload_width) is not int or self.payload_width <= 0:
+            message = "packed candidate evidence width must be positive"
+            raise InvalidAcceleratorResultError(message)
+        if type(self.payloads) is not bytes:
+            message = "packed candidate evidence storage must be bytes"
+            raise InvalidAcceleratorResultError(message)
+        expected = count * self.payload_width
+        if len(self.payloads) != expected:
+            message = "packed candidate evidence size does not match request"
+            raise InvalidAcceleratorResultError(message)
+        return self
+
+    def payload_at(self, index: int) -> bytes:
+        """Materialize one fixed-width evidence payload.
+
+        Returns:
+            The requested opaque payload bytes.
+
+        """
+        start = index * self.payload_width
+        end = start + self.payload_width
+        return self.payloads[start:end]
+
+
+@dataclass(frozen=True, slots=True)
 class CandidateEvaluationResult:
     """Ordered untrusted candidate evidence from one backend."""
 
     capability: AcceleratorCapability
     evaluator_id: str
-    items: tuple[CandidateEvidence, ...]
+    items: tuple[CandidateEvidence, ...] = ()
+    packed: PackedCandidateEvidence | None = None
 
     def validated_against(
         self,
@@ -96,12 +139,40 @@ class CandidateEvaluationResult:
         if self.evaluator_id != batch.evaluator_id:
             message = "candidate evaluator ID changed during backend execution"
             raise InvalidAcceleratorResultError(message)
+        if self.packed is not None:
+            if self.items:
+                message = "candidate evidence cannot mix packed and item forms"
+                raise InvalidAcceleratorResultError(message)
+            _ = self.packed.validated_for_count(len(batch.items))
+            return self
         expected = tuple(item.logical_id for item in batch.items)
         observed = tuple(item.logical_id for item in self.items)
         if observed != expected:
             message = "candidate evidence identities do not match request order"
             raise InvalidAcceleratorResultError(message)
         return self
+
+    def materialized_items_against(
+        self,
+        batch: CandidateEvaluationBatch,
+        capability: AcceleratorCapability,
+    ) -> tuple[CandidateEvidence, ...]:
+        """Materialize ordered evidence only for consumers that require objects.
+
+        Returns:
+            Candidate evidence with logical IDs restored from request order.
+
+        """
+        validated = self.validated_against(batch, capability)
+        if validated.packed is None:
+            return validated.items
+        return tuple(
+            CandidateEvidence(
+                logical_id=item.logical_id,
+                payload=validated.packed.payload_at(index),
+            )
+            for index, item in enumerate(batch.items)
+        )
 
 
 @dataclass(frozen=True, slots=True)

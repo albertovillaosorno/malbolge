@@ -107,7 +107,10 @@ fails explicitly without changing correctness rules.
   Preparation is outside timed intervals, and every sample preserves independent
   admission. The prepared phase profile places 125.412 ms, or 79.9% of CPU median
   total time, in backend evaluation and 30.796 ms, or 19.6%, in proposal selection.
-  Result representation/materialization is the next CPU baseline target.
+  The CPU primitive bridge now emits fixed-width packed evidence, so search reads
+  u32 results without constructing per-candidate evidence bytes/objects. Generic
+  item results and explicit hint materialization remain supported. Post-commit
+  baseline evidence remains pending.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

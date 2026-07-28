@@ -100,8 +100,12 @@ remains about 9.5% slower than prepared CPU. Preparation is outside timed interv
 so the result applies to repeated immutable search state. The prepared phase
 profile attributes 79.9% of CPU and 81.2% of CUDA median total time to backend
 evaluation, with proposal selection at 19.6% and 18.7%. Candidate-evaluation result
-representation/transport is the next neutral boundary; resident/fused search
-remains later work.
+representation/transport is now represented by `PackedCandidateEvidence`.
+Fixed-width opaque payloads share one byte buffer and inherit IDs only from validated
+request order; item-based adapters stay compatible, malformed width/size/mixed forms
+fail closed, and materialization is explicit for consumers that need objects.
+Post-commit performance evidence remains pending; resident/fused search remains
+later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

@@ -92,8 +92,10 @@ directly on CUDA APIs.
   records 1.976x CPU and 1.886x CUDA same-backend prepared improvements, while
   prepared CUDA remains about 9.5% slower than prepared CPU. Preparation is outside
   timed intervals. The prepared phase profile attributes 79.9% of CPU and 81.2%
-  of CUDA median total time to backend evaluation, selecting result
-  representation/transport as the next neutral boundary. Synthesis/guided search,
+  of CUDA median total time to backend evaluation. Fixed-width packed candidate
+  evidence now implements the next neutral boundary with request-order identity,
+  item-form compatibility, fail-closed shape checks, and explicit materialization.
+  Post-commit performance evidence remains pending. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

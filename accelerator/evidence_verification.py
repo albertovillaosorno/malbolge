@@ -80,7 +80,8 @@ class EvidenceVerificationAssistAdapter(VerificationAssistAdapter):
             items=validated.items,
         ).validated()
         capability = self.capability()
-        evidence = self._adapter.evaluate(evaluation_batch).validated_against(
+        evidence = self._adapter.evaluate(evaluation_batch)
+        items = evidence.materialized_items_against(
             evaluation_batch,
             capability,
         )
@@ -91,7 +92,7 @@ class EvidenceVerificationAssistAdapter(VerificationAssistAdapter):
                     logical_id=item.logical_id,
                     payload=item.payload,
                 )
-                for item in evidence.items
+                for item in items
             ),
             verifier_id=validated.verifier_id,
         )

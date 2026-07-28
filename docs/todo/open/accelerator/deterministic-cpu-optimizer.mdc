@@ -75,8 +75,10 @@ baseline for accelerator implementations.
   same strategy-bound proof. Retained CPU ordinary/prepared medians are
   293.564/148.590 ms (1.976x), with preparation outside timed intervals. The
   prepared phase profile places 79.9% of CPU median total time in backend
-  evaluation and 19.6% in proposal selection, selecting result representation and
-  materialization as the next baseline target.
+  evaluation and 19.6% in proposal selection. Fixed-width packed primitive evidence
+  now removes per-candidate evidence object/materialization from the CPU search
+  path while preserving generic item compatibility and request-order identity.
+  Post-commit baseline evidence remains pending.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.
