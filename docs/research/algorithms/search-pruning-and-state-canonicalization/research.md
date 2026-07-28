@@ -92,11 +92,19 @@ Each experiment must narrow these threats before drawing a conclusion.
 ## Conclusion
 
 Exact byte-duplicate pruning is supported as a conservative correctness rule for
-pre-identity candidate sequences and is retained experimentally. It cannot help
-an all-unique corpus, and this evidence does not justify stronger semantic state
-canonicalization, dominance rules, or a general performance claim. The broader
-research hypothesis remains inconclusive pending preregistered challenge and
-performance experiments.
+pre-identity candidate sequences. The deterministic CPU enumeration baseline now
+uses an independent Python implementation of that same stable-first relation:
+the original encoded corpus, including duplicates, remains replayable while only
+exact representatives consume evaluation budget and receive logical candidate
+identity. Production Python fixtures match the retained duplicate-rich, unique,
+and near-match research cases, while the independent Rust adversarial suite still
+passes all five checks.
+
+This integration does not turn the exploratory fixture into a wall-time speedup
+claim. The rule cannot help an all-unique corpus, and the evidence does not
+justify stronger semantic state canonicalization, dominance rules, or admissible
+heuristics. The broader research hypothesis remains inconclusive pending
+preregistered challenge and performance experiments.
 
 ## References
 

@@ -60,6 +60,10 @@ raw hardware scale.
   stable first representatives and rejects every stronger equality shortcut. The
   duplicate-rich fixture maps eight inputs to five representatives, while the
   all-unique null fixture remains four-to-four. One-byte and prefix/length
-  adversarial cases remain distinct. This is correctness/evaluation-count
-  evidence only; stronger canonicalization, dominance, admissible heuristics, and
+  adversarial cases remain distinct. The deterministic CPU enumerator now applies
+  an independent Python implementation of the same exact relation before logical
+  identity; duplicate corpus bytes roundtrip unchanged, while budget is consumed
+  only by stable first representatives. Python production tests and the five Rust
+  research adversarials both pass. This is correctness/evaluation-count evidence
+  only; stronger canonicalization, dominance, admissible heuristics, and
   preregistered performance evidence remain open.

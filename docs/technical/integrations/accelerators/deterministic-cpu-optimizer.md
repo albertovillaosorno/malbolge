@@ -27,9 +27,13 @@ This document governs the following declared TODO scope:
 The first concrete CPU search strategy is
 `deterministic-corpus-enumeration-v1` under `optimizer/enumerative.py`. Its
 problem is an explicitly supplied finite corpus with canonical binary encoding.
-The request seed selects a deterministic starting ordinal and the evaluation
-budget bounds how many distinct candidates are proposed without wraparound
-duplication. Stable logical candidate IDs preserve replay identity.
+The encoded problem preserves the complete supplied corpus, including exact
+duplicates, for replay identity. Before logical candidate IDs are assigned,
+`optimizer/pruning.py` partitions payloads only by complete byte equality and
+retains each first occurrence. The request seed rotates over those exact
+representatives, and evaluation budget counts distinct retained candidates rather
+than duplicate input positions. Stable logical IDs retain the first original
+corpus index.
 
 The strategy runs through `CpuSearchExecutionAdapter` and the shared search port.
 It produces only untrusted `CandidateProposal` values; `search_and_verify()`
@@ -66,8 +70,12 @@ fails explicitly without changing correctness rules.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - `tests/optimizer/test_deterministic_enumeration.py` covers canonical problem
-  roundtrip, seeded order, budget bounds, duplicate rejection, malformed
-  encodings, trusted-verifier admission, and generic search-registry integration.
+  roundtrip, seeded representative order, budget bounds, duplicate-preserving
+  input replay with exact pre-identity pruning, malformed encodings,
+  trusted-verifier admission, and generic search-registry integration.
+- `tests/optimizer/test_exact_duplicate_pruning.py` matches the production Python
+  relation against the retained duplicate-rich/null/adversarial research fixtures;
+  the independent Rust mirror keeps the same five adversarial checks.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

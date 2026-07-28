@@ -107,13 +107,59 @@ def test_budget_caps_search_without_duplicate_wraparound() -> None:
     assert len({item.logical_id for item in proposals}) == len(CANDIDATES)
 
 
-def test_duplicate_candidate_payload_is_rejected() -> None:
-    """Canonical corpus identity rejects duplicate payloads."""
-    problem = EnumerationProblem(candidates=(b"same", b"same"))
+def test_duplicate_candidates_roundtrip_and_prune_before_identity() -> None:
+    """Exact duplicates preserve input replay but consume one evaluation."""
+    problem = EnumerationProblem(
+        candidates=(b"same", b"other", b"same", b"third", b"other"),
+    )
 
-    _expect_problem_error(
-        "enumeration candidate payloads must be unique",
-        problem.encode,
+    encoded = problem.encode()
+    decoded = EnumerationProblem.decode(encoded)
+    proposals = enumerate_candidates(_request(decoded, budget=99, seed=0))
+
+    assert decoded == problem
+    assert tuple(item.logical_id for item in proposals) == (
+        "corpus-0",
+        "corpus-1",
+        "corpus-3",
+    )
+    assert tuple(item.payload for item in proposals) == (
+        b"same",
+        b"other",
+        b"third",
+    )
+
+
+def test_seed_rotates_over_exact_representatives_not_duplicates() -> None:
+    """Seed ordering is defined over retained first representatives."""
+    problem = EnumerationProblem(
+        candidates=(b"a", b"a", b"b", b"c", b"b"),
+    )
+
+    proposals = enumerate_candidates(_request(problem, budget=2, seed=1))
+
+    assert tuple(item.logical_id for item in proposals) == (
+        "corpus-2",
+        "corpus-3",
+    )
+    assert tuple(item.payload for item in proposals) == (b"b", b"c")
+
+
+def test_one_byte_difference_survives_production_pruning() -> None:
+    """Production search preserves byte-distinct near matches."""
+    problem = EnumerationProblem(
+        candidates=(b"prefix-A", b"prefix-B", b"prefix-A"),
+    )
+
+    proposals = enumerate_candidates(_request(problem, budget=99, seed=0))
+
+    assert tuple(item.logical_id for item in proposals) == (
+        "corpus-0",
+        "corpus-1",
+    )
+    assert tuple(item.payload for item in proposals) == (
+        b"prefix-A",
+        b"prefix-B",
     )
 
 

@@ -14,6 +14,7 @@ from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
 from accelerator.work_ports import execute_search
+from optimizer.pruning import prune_exact_duplicates
 
 if TYPE_CHECKING:
     from accelerator.work_ports import TrustedCandidateVerifier
@@ -46,9 +47,6 @@ class EnumerationProblem:
         """
         if len(self.candidates) > _MAX_U32:
             message = "enumeration candidate count exceeds u32 representation"
-            raise InvalidEnumerationProblemError(message)
-        if len(set(self.candidates)) != len(self.candidates):
-            message = "enumeration candidate payloads must be unique"
             raise InvalidEnumerationProblemError(message)
         for candidate in self.candidates:
             if len(candidate) > _MAX_U32:
@@ -131,12 +129,17 @@ def enumerate_candidates(
         message = "enumerative search request selects a different algorithm"
         raise InvalidAcceleratorWorkError(message)
     problem = EnumerationProblem.decode(validated.problem)
-    if not problem.candidates:
+    pruning = prune_exact_duplicates(problem.candidates)
+    representatives = pruning.representative_indices
+    if not representatives:
         return ()
-    count = min(validated.evaluation_budget, len(problem.candidates))
-    start = validated.seed % len(problem.candidates)
+    count = min(validated.evaluation_budget, len(representatives))
+    start = validated.seed % len(representatives)
     return tuple(
-        _proposal(problem, (start + offset) % len(problem.candidates))
+        _proposal(
+            problem,
+            representatives[(start + offset) % len(representatives)],
+        )
         for offset in range(count)
     )
 

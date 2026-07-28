@@ -790,11 +790,14 @@ search with deterministic final verification and reproducible research seeds.
 Develop exact pruning, dominance rules, partial-equivalence checks, canonical
 states, admissible heuristics, and profile-aware constraints before relying on
 raw hardware scale.
-The first active exploratory rule removes only byte-identical pre-identity
-candidates. Adversarial fixtures preserve one-byte, prefix, and length
-differences; a duplicate-rich fixture reduces eight evaluations to five while an
-all-unique null fixture remains four-to-four. Stronger equivalence, dominance,
-heuristics, and preregistered performance evidence remain open.
+The first active rule removes only byte-identical pre-identity candidates.
+Adversarial fixtures preserve one-byte, prefix, and length differences; a
+duplicate-rich fixture reduces eight evaluations to five while an all-unique null
+fixture remains four-to-four. The deterministic CPU enumerator now applies the
+same stable-first relation before logical candidate identity, preserving the
+encoded corpus while spending evaluation budget only on exact representatives.
+Stronger equivalence, dominance, heuristics, and preregistered performance
+evidence remain open.
 
 ## Deterministic real programs
 

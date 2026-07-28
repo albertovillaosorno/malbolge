@@ -14,3 +14,8 @@ logical candidate identity is assigned and merges only complete byte-identical
 inputs. Hashes, prefixes, nearby lengths, and one-byte differences never establish
 equivalence. The unique-corpus fixture is retained as a null result: when no
 duplicates exist, this rule saves zero candidate evaluations.
+
+`optimizer/pruning.py` now carries an independent production implementation of
+the same exact relation, used by deterministic corpus enumeration before logical
+IDs are assigned. The research mirror remains independent evidence rather than a
+runtime dependency.
