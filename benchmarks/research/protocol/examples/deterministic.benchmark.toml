@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "deterministic-protocol-fixture"
+experiment_manifest = "benchmarks/research/protocol/examples/deterministic.experiment.toml"
+kind = "deterministic"
+question = "Does the candidate reduce time on the identical fixture workload?"
+hypothesis = "Candidate median time is lower than baseline median time."
+baseline = "baseline-v1"
+rejection_observation = "Candidate median is not lower or checksums differ."
+
+[workload]
+identity = "protocol-fixture-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 5
+warmup_policy = "one untimed identical workload before retained samples"
+ordering = "fixed"
+stopping_rule = "exactly five retained samples per implementation"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "correctness checksum equality precedes time comparison"
+
+[resources]
+host = "fixture-host"
+accelerator = "none"
+memory_mib = 128
+
+[raw]
+path = "benchmarks/research/protocol/examples/deterministic-raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

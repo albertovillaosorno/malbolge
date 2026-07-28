@@ -1,0 +1,11 @@
+implementation,sample,time_ns,status
+baseline,0,110,success
+baseline,1,108,success
+baseline,2,112,success
+baseline,3,109,success
+baseline,4,111,success
+candidate,0,100,success
+candidate,1,102,success
+candidate,2,99,success
+candidate,3,101,success
+candidate,4,103,success

@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "stochastic-protocol-fixture"
+experiment_manifest = "benchmarks/research/protocol/examples/stochastic.experiment.toml"
+kind = "stochastic"
+question = "Does guided search improve time-to-verified-solution?"
+hypothesis = "Guided search improves the trial distribution under fixed budget."
+baseline = "unguided-search-v1"
+rejection_observation = "Success distribution is not improved under equal budget."
+
+[workload]
+identity = "stochastic-protocol-fixture-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 4
+warmup_policy = "no warmup because each independent seeded trial starts cold"
+ordering = "seeded-random"
+stopping_rule = "four preregistered seeds under identical evaluation budget"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "trial-distribution"
+uncertainty = "trial-distribution"
+
+[objectives]
+metrics = ["time_to_verified_solution_ns", "solution_size"]
+tradeoff_policy = "report both time and quality; do not collapse failed trials"
+
+[resources]
+host = "fixture-host"
+accelerator = "fixture-accelerator"
+memory_mib = 128
+
+[raw]
+path = "benchmarks/research/protocol/examples/stochastic-raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 4
+failed_trials = 1
+seeds = [11, 17, 23, 29]

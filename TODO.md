@@ -238,13 +238,6 @@ TODO by TODO with its governing documents already available.
 
 ## Research methodology and experiment infrastructure
 
-### TODO - Benchmark and statistical evidence protocol
-
-Define fair-comparison workloads, warmup, repetitions, confidence/dispersion
-reporting, outlier policy, randomized-search treatment, time/quality tradeoffs,
-resource normalization, and raw-sample retention rules. Performance claims must
-identify uncertainty and may never substitute for semantic verification.
-
 ### TODO - Algorithm promotion rejection and retirement lifecycle
 
 Define how an experimental algorithm becomes eligible for a production compiler

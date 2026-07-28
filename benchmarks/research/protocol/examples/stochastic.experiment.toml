@@ -1,0 +1,33 @@
+schema_version = 1
+
+[experiment]
+id = "stochastic-protocol-fixture"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 11
+
+[challenge]
+family = "stochastic-protocol-fixture-v1"
+difficulty = 1
+target_profile = "profile-independent"
+
+[budget]
+seconds = 1
+
+[verification]
+required = true
+oracle = "protocol-fixture-oracle"
+
+[provenance]
+implementation = "benchmarks/research/protocol/examples/"
+configuration = "benchmarks/research/protocol/examples/stochastic.benchmark.toml"
+output = "benchmarks/research/protocol/examples/"
+
+[run]
+commit = "cccccccccccccccccccccccccccccccccccccccc"
+workload_sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+host = "fixture-host"
+accelerator = "fixture-accelerator"
+toolchain = "protocol-fixture-toolchain-v1"
+outcome = "success"
+raw_output = "benchmarks/research/protocol/examples/stochastic-raw.csv"

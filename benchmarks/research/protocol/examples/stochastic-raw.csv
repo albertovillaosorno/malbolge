@@ -1,0 +1,5 @@
+trial,seed,status,time_to_verified_solution_ns,solution_size
+0,11,success,1000,12
+1,17,success,1200,11
+2,23,no-solution,,
+3,29,success,900,13

@@ -1,0 +1,33 @@
+schema_version = 1
+
+[experiment]
+id = "deterministic-protocol-fixture"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "protocol-fixture-v1"
+difficulty = 1
+target_profile = "profile-independent"
+
+[budget]
+seconds = 1
+
+[verification]
+required = true
+oracle = "protocol-fixture-oracle"
+
+[provenance]
+implementation = "benchmarks/research/protocol/examples/"
+configuration = "benchmarks/research/protocol/examples/deterministic.benchmark.toml"
+output = "benchmarks/research/protocol/examples/"
+
+[run]
+commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+workload_sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+host = "fixture-host"
+accelerator = "none"
+toolchain = "protocol-fixture-toolchain-v1"
+outcome = "success"
+raw_output = "benchmarks/research/protocol/examples/deterministic-raw.csv"

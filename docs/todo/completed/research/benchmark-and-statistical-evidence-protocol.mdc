@@ -1,6 +1,6 @@
 ---
 id: "benchmark-and-statistical-evidence-protocol"
-status: "pending"
+status: "completed"
 lane: "4"
 area: "research"
 task: "TODO - Benchmark and statistical evidence protocol"
@@ -15,7 +15,11 @@ scope:
   - "docs/research/"
   - "algorithms/"
   - "benchmarks/research/"
+  - "scripts/validate/"
+  - "tests/"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_benchmark_protocol.py"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.benchmark_protocol"
   - "jig validate --root ."
 ---
 # TODO - Benchmark and statistical evidence protocol
@@ -57,9 +61,12 @@ identify uncertainty and may never substitute for semantic verification.
 - Prerequisite completion evidence:
   `academic-research-methodology-and-evidence-model`,
   `reproducible-experiment-identity-and-manifest`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
-- Performance evidence pending: raw measurements plus a reproducible
-  scaling/statistical summary tied to exact workload and hardware/software
-  identity.
+- Protocol v1 validator and deterministic/stochastic fixtures enforce equivalent
+  workload identity, warmup/repetitions/stopping rules, retained raw samples,
+  declared center/dispersion/uncertainty, resource identity, objective tradeoffs,
+  outlier policy, unique stochastic seeds, and failed-trial retention.
+- Every benchmark record references an Experiment Manifest `run`; host,
+  accelerator, and raw-output identity must agree across both records, while the
+  linked run supplies exact commit, workload SHA-256, toolchain, and outcome.
+- The checked-in protocol fixtures are validation evidence only and make no
+  Malbolge performance claim.
