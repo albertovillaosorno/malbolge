@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from array import array
 from dataclasses import dataclass
+from functools import lru_cache
 import sys
 from typing import TYPE_CHECKING
 from typing import final
@@ -33,11 +34,17 @@ if TYPE_CHECKING:
 
 CRAZY_EVALUATOR_ID = "classic-crazy-u32le-v1"
 ROTATE_EVALUATOR_ID = "classic-rotate-u32le-v1"
+PACKED_PRIMITIVE_VALIDATION_ID = "u32le-broadword-domain-v1"
 _WORD_BYTES = 4
 _CRAZY_PAYLOAD_BYTES = 8
 _LITTLE_ENDIAN = "little"
 _NATIVE_WORD_FORMAT = "I"
 _PREPARED_PRIMITIVE_PROOF = object()
+_PACKED_LANE_BITS = 32
+_PACKED_LANE_MAX = (1 << 16) - 1
+_PACKED_DOMAIN_DELTA = _PACKED_LANE_MAX - MAX_WORD
+_PACKED_HIGH_MASK = 0xFFFF_0000
+_PACKED_CARRY_MASK = 0x0001_0000
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +174,16 @@ def prepare_crazy_candidate_batch(
 
     """
     return _prepare_primitive_candidate_batch(batch, PrimitiveKind.CRAZY)
+
+
+def packed_primitive_validation_id() -> str:
+    """Return the active packed primitive validation identity.
+
+    Returns:
+        Stable validation algorithm identifier for benchmark provenance.
+
+    """
+    return PACKED_PRIMITIVE_VALIDATION_ID
 
 
 def prepare_rotate_candidate_batch(
@@ -421,22 +438,42 @@ def _encode_packed_result(
 def _validate_packed_primitive_words(payloads: bytes) -> None:
     if not payloads:
         return
-    if sys.byteorder == _LITTLE_ENDIAN:
-        maximum = max(
-            memoryview(payloads).cast(_NATIVE_WORD_FORMAT),
-            default=0,
+    word_count = len(payloads) // _WORD_BYTES
+    high_mask, delta_lanes, carry_mask = _packed_domain_masks(word_count)
+    packed = int.from_bytes(payloads, _LITTLE_ENDIAN)
+    # High bits first establish unsigned 16-bit lanes. Adding 0xffff-MAX_WORD
+    # cannot cross a 32-bit lane; bit 16 is set exactly when that lane is too large.
+    if not packed & high_mask and not (packed + delta_lanes) & carry_mask:
+        return
+    maximum = max(_iter_u32le_words(payloads), default=0)
+    message = f"primitive backend result outside classic domain: {maximum}"
+    raise InvalidAcceleratorResultError(message)
+
+
+@lru_cache(maxsize=4)
+def _packed_domain_masks(word_count: int) -> tuple[int, int, int]:
+    """Build repeated masks for exact independent 32-bit lane validation.
+
+    Returns:
+        High-bit, threshold-delta, and threshold-carry masks.
+
+    """
+    lane_repetition = ((1 << (_PACKED_LANE_BITS * word_count)) - 1) // (
+        (1 << _PACKED_LANE_BITS) - 1
+    )
+    return (
+        _PACKED_HIGH_MASK * lane_repetition,
+        _PACKED_DOMAIN_DELTA * lane_repetition,
+        _PACKED_CARRY_MASK * lane_repetition,
+    )
+
+
+def _iter_u32le_words(payloads: bytes) -> Iterator[int]:
+    for offset in range(0, len(payloads), _WORD_BYTES):
+        yield int.from_bytes(
+            payloads[offset : offset + _WORD_BYTES],
+            _LITTLE_ENDIAN,
         )
-    else:
-        maximum = max(
-            int.from_bytes(
-                payloads[offset : offset + _WORD_BYTES],
-                _LITTLE_ENDIAN,
-            )
-            for offset in range(0, len(payloads), _WORD_BYTES)
-        )
-    if maximum > MAX_WORD:
-        message = f"primitive backend result outside classic domain: {maximum}"
-        raise InvalidAcceleratorResultError(message)
 
 
 def _validate_primitive_values(values: tuple[int, ...]) -> None:

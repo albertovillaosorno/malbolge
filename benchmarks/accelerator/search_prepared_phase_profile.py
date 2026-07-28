@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.primitive_candidates import packed_primitive_validation_id
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CPU_BACKEND
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
@@ -112,6 +113,9 @@ def main() -> int:
         "cuda_prepared_session": asdict(measured.cuda_stats),
         "prepared_membership_count": measured.membership_count,
         "prepared_selection_count": measured.selection_count,
+        "packed_primitive_validation": _validated_packed_validation_id(
+            packed_primitive_validation_id()
+        ),
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
@@ -201,6 +205,14 @@ def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
     if observed != expected:
         message = "prepared CPU rotate did not use one full-domain lookup table"
         raise RuntimeError(message)
+
+
+def _validated_packed_validation_id(identifier: str) -> str:
+    expected = "u32le-broadword-domain-v1"
+    if identifier != expected:
+        message = "packed primitive validation identity drifted"
+        raise RuntimeError(message)
+    return identifier
 
 
 def _validated_membership_count(count: int) -> int:

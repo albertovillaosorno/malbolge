@@ -158,8 +158,13 @@ same bytes. Ordinary CUDA and CPU tuple routes remain unchanged. Benchmarks requ
 `benchmarks/accelerator/evidence/2026-07-28-packed-cuda-primitive-search-rtx4060/`
 records 2.036 ms CUDA prepared, 2.343x faster than the CPU-table baseline and
 1.621x faster than same-run CPU. The phase sibling lowers CUDA backend evaluation
-2.147x to 1.802 ms while CPU changes only about 0.5%. CPU result validation/packing
-and packed-domain validation are the next backend subphases.
+2.147x to 1.802 ms while CPU changes only about 0.5%. Packed-domain validation
+now uses `u32le-broadword-domain-v1`: repeated high-bit masks plus an independent
+per-lane threshold addition validate all u32le words in big-integer operations.
+Invalid first/last threshold or high-bit lanes retain descriptive fail-closed
+fallback. Benchmarks require the validator identity. Post-commit evidence is
+pending; CPU result validation/packing and the remaining CUDA backend phases are
+next.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

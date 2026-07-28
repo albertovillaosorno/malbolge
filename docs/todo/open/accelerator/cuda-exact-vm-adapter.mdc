@@ -137,7 +137,9 @@ batches.
   count, and every word domain. Benchmarks require 16 packed evaluations.
   Retained CUDA prepared median is 2.036 ms (2.343x better), and backend
   evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x faster than same-run CPU;
-  CPU phases stay effectively flat. Packed-domain validation and synthesis/search
-  remain open.
+  CPU phases stay effectively flat. Packed validation now uses
+  `u32le-broadword-domain-v1` repeated high-bit/threshold/carry masks; first/last
+  invalid lanes fail closed and benchmarks require the identity. Post-commit
+  evidence is pending; remaining CUDA phases and synthesis/search remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

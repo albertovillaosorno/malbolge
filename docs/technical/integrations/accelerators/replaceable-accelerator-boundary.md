@@ -152,8 +152,12 @@ tuple compatibility. Benchmarks require 16 packed evaluations. Retained CUDA
 prepared median improves 2.343x to 2.036 ms and CUDA backend evaluation improves
 2.147x to 1.802 ms. CPU prepared/backend and ordinary controls remain effectively
 flat, while CUDA prepared is 1.621x faster than same-run CPU. CPU result
-validation/packing and packed-domain validation are next, while resident/fused
-search remains later work.
+validation now uses stable `u32le-broadword-domain-v1` identity. Repeated masks
+reject high bits and detect values above 59,048 through lane-independent threshold
+addition; scalar fallback exists only to describe invalid output. First/last-lane
+threshold and high-bit corruption fail closed, and benchmark output requires the
+identity. Post-commit evidence is pending. CPU result validation/packing and the
+remaining CUDA phases are next, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

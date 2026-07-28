@@ -160,8 +160,13 @@ tuple-based. Benchmarks require 16 packed CUDA evaluations plus all prior proofs
 Retained CUDA prepared median falls from 4.769 to 2.036 ms (2.343x), and CUDA
 backend evaluation from 3.868 to 1.802 ms (2.147x). CPU prepared/backend change only
 1.004x/1.005x, and ordinary controls remain effectively flat. CUDA prepared is
-1.621x faster than same-run CPU. CPU result validation/packing and packed-domain
-validation are the next neutral subphases. Resident or
+1.621x faster than same-run CPU. Packed validation now has stable identity
+`u32le-broadword-domain-v1`. A repeated high-word mask establishes unsigned 16-bit
+lanes; adding `0xffff - 59048` independently in each 32-bit lane sets bit 16 exactly
+when a word exceeds the classic maximum. Failure falls back to scalar decoding only
+for diagnostics. First/last-lane threshold and high-bit adversaries fail closed, and
+benchmarks require the identity. Post-commit evidence is pending; CPU result
+validation/packing and remaining CUDA phases are next. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

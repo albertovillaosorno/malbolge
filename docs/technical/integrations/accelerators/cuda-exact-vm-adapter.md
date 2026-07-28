@@ -233,7 +233,12 @@ fails explicitly without changing correctness rules.
   require 16 packed evaluations. Retained CUDA prepared median falls from 4.769
   to 2.036 ms (2.343x), and backend evaluation from 3.868 to 1.802 ms (2.147x).
   Same-run CUDA prepared is 1.621x faster than CPU; CPU phases change only about
-  0.5%. Packed-domain validation is the next CUDA backend subphase.
+  0.5%. Packed-domain validation now uses `u32le-broadword-domain-v1`. Repeated
+  high-bit masks and lane-independent threshold addition validate all words through
+  big-integer operations; scalar decoding runs only after failure to report the
+  invalid maximum. First/last-lane threshold and high-bit adversaries fail closed,
+  and benchmarks require the identity. Post-commit evidence is pending; remaining
+  kernel, transfer, byte-copy, and validation costs must be reprofiled.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

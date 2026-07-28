@@ -817,8 +817,14 @@ acceptance. Ordinary CUDA and CPU tuple results remain unchanged. Benchmarks req
 falls from 4.769 to 2.036 ms (2.343x), while CUDA backend evaluation falls from
 3.868 to 1.802 ms (2.147x). CPU prepared changes only 1.004x to 3.300 ms, and
 ordinary controls remain effectively flat/slightly slower. CUDA prepared is 1.621x
-faster than same-run CPU. CPU result validation/packing and packed-domain validation
-are the next measured backend subphases.
+faster than same-run CPU. Packed-domain validation now uses
+`u32le-broadword-domain-v1`: one repeated mask rejects high 16-bit content, and a
+per-lane `0xffff - 59048` addition sets bit 16 exactly for words above the classic
+maximum without cross-lane carry. Invalid threshold/high-bit words in first and last
+lanes fail closed; descriptive scalar fallback runs only on failure. Benchmarks
+require the validator identity alongside every existing proof. Post-commit evidence
+is pending; CPU result validation/packing and the remaining CUDA backend phases are
+next.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -906,7 +912,10 @@ repacking while retaining full bridge validation. Benchmarks require 16 packed
 prepared evaluations. Retained CUDA prepared median is 2.036 ms, 2.343x faster
 than the CPU-table baseline and 1.621x faster than same-run CPU. CUDA backend
 evaluation improves 2.147x to 1.802 ms, while CPU phases change about 0.5%.
-Packed-domain validation is the next measured CUDA subphase.
+Packed-domain validation now uses repeated broadword masks and lane-independent
+threshold addition under identity `u32le-broadword-domain-v1`; first/last-lane
+threshold and high-bit adversaries fail closed. Post-commit evidence is pending;
+the remaining CUDA backend phases are the next measured subphase.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

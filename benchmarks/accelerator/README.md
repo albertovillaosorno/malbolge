@@ -263,3 +263,10 @@ CPU-table, membership, and selector proofs. Retained post-commit evidence is und
 prepared reaches 2.036 ms, a 2.343x improvement, and CUDA backend evaluation reaches
 1.802 ms, a 2.147x improvement. CUDA prepared is 1.621x faster than same-run CPU;
 CPU phases and ordinary controls remain effectively unchanged.
+
+Packed validation now emits and requires
+`packed_primitive_validation="u32le-broadword-domain-v1"`. Repeated high-bit,
+threshold-delta, and threshold-carry masks validate independent 32-bit lanes; scalar
+iteration is retained only to report an invalid maximum after failure. Tests reject
+threshold and high-bit corruption in both first and final lanes. A post-commit rerun
+is required before replacing the retained packed-result evidence.

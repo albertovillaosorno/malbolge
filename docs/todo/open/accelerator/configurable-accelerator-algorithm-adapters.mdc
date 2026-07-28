@@ -137,7 +137,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   16 packed evaluations. Retained CUDA prepared median is 2.036 ms (2.343x
   better), and CUDA backend evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x
   faster than same-run CPU, while CPU/ordinary controls stay effectively flat. CPU
-  result validation/packing and packed-domain validation are next. Synthesis/guided
+  packed validation now uses `u32le-broadword-domain-v1`: repeated high-bit and
+  threshold/carry masks validate independent u32le lanes; scalar iteration is only
+  the failure diagnostic. First/last-lane adversaries fail closed and benchmarks
+  require the identity. Post-commit evidence is pending. CPU result
+  validation/packing and remaining CUDA phases are next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

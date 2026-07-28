@@ -53,6 +53,9 @@ BAD_MODE_NEGATIVE = "negative"
 BAD_PACKED_MODE_CAPABILITY = "packed-capability"
 BAD_PACKED_MODE_COUNT = "packed-count"
 BAD_PACKED_MODE_DOMAIN = "packed-domain"
+BAD_PACKED_MODE_HIGH_BITS = "packed-high-bits"
+BAD_PACKED_MODE_LATE_DOMAIN = "packed-late-domain"
+BAD_PACKED_MODE_LATE_HIGH_BITS = "packed-late-high-bits"
 BAD_PACKED_MODE_MUTABLE = "packed-mutable"
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad",
@@ -176,20 +179,9 @@ class _BadPackedResultAdapter(ExactPrimitiveAdapter):
                 device_arch="bad",
                 device_name="bad",
             )
-        if self.mode == BAD_PACKED_MODE_COUNT:
-            payloads = b""
-        elif self.mode == BAD_PACKED_MODE_DOMAIN:
-            payloads = (MAX_WORD + 1).to_bytes(4, "little")
-        elif self.mode == BAD_PACKED_MODE_MUTABLE:
-            payloads = cast(
-                "bytes",
-                cast("object", bytearray(4 * len(batch.data))),
-            )
-        else:
-            payloads = b"".join((0).to_bytes(4, "little") for _ in batch.data)
         return PackedPrimitiveResult(
             capability=capability,
-            words_u32le=payloads,
+            words_u32le=_bad_packed_payloads(self.mode, len(batch.data)),
         )
 
     @override
@@ -198,6 +190,29 @@ class _BadPackedResultAdapter(ExactPrimitiveAdapter):
         prepared: PreparedPrimitiveBatch,
     ) -> PackedPrimitiveResult:
         return self.evaluate(prepared.validated_batch())
+
+
+def _bad_packed_payloads(mode: str, count: int) -> bytes:
+    fixed = {
+        BAD_PACKED_MODE_COUNT: b"",
+        BAD_PACKED_MODE_DOMAIN: (MAX_WORD + 1).to_bytes(4, "little"),
+        BAD_PACKED_MODE_HIGH_BITS: (1 << 16).to_bytes(4, "little"),
+    }
+    late = {
+        BAD_PACKED_MODE_LATE_DOMAIN: MAX_WORD + 1,
+        BAD_PACKED_MODE_LATE_HIGH_BITS: 1 << 16,
+    }
+    if mode in fixed:
+        payloads = fixed[mode]
+    elif mode in late:
+        payloads = (b"\0" * (4 * (count - 1))) + late[mode].to_bytes(
+            4, "little"
+        )
+    elif mode == BAD_PACKED_MODE_MUTABLE:
+        payloads = cast("bytes", cast("object", bytearray(4 * count)))
+    else:
+        payloads = b"".join((0).to_bytes(4, "little") for _ in range(count))
+    return payloads
 
 
 def test_cpu_candidate_bridge_preserves_exact_crazy_results() -> None:
@@ -456,8 +471,46 @@ def test_malformed_packed_primitive_results_fail_closed() -> None:
             "primitive backend result outside classic domain",
         ),
         (
+            BAD_PACKED_MODE_HIGH_BITS,
+            "primitive backend result outside classic domain: 65536",
+        ),
+        (
             BAD_PACKED_MODE_MUTABLE,
             "packed primitive result must use immutable bytes",
+        ),
+    )
+    for mode, message in cases:
+        adapter = PrimitiveCandidateEvaluationAdapter(
+            _BadPackedResultAdapter(mode),
+            PrimitiveKind.ROTATE,
+        )
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda adapter=adapter: adapter.evaluate(batch),
+        )
+
+
+def test_packed_domain_validation_checks_late_lanes() -> None:
+    """Repeated masks reject threshold and high-bit drift in the final lane."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        items=tuple(
+            CandidateWorkItem(
+                logical_id=f"word-{index}",
+                payload=encode_rotate_candidate(index),
+            )
+            for index in range(3)
+        ),
+    )
+    cases = (
+        (
+            BAD_PACKED_MODE_LATE_DOMAIN,
+            "primitive backend result outside classic domain: 59049",
+        ),
+        (
+            BAD_PACKED_MODE_LATE_HIGH_BITS,
+            "primitive backend result outside classic domain: 65536",
         ),
     )
     for mode, message in cases:
