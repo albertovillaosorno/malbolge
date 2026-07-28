@@ -9,6 +9,12 @@ license = "MIT"
 description = "Modern deterministic Malbolge toolchain and execution engine"
 repository = "https://github.com/albertovillaosorno/malbolge"
 
+[[bin]]
+name = "malbolge"
+path = "cli/main.rs"
+test = false
+bench = false
+doc = false
 [workspace]
 resolver = "3"
 members = ["."]
