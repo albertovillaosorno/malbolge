@@ -240,9 +240,14 @@ fails explicitly without changing correctness rules.
   and benchmarks require the identity. Retained CUDA prepared median falls from
   2.036 to 1.175 ms (1.733x), backend evaluation from 1.802 to 0.860 ms (2.095x),
   and total from 1.824 to 0.886 ms (2.057x). CUDA is 2.706x faster than same-run CPU.
-  CPU phase regressions remain controls. Remaining kernel launch/synchronization,
-  D-to-H transfer, immutable byte-copy, and broadword-validation costs require
-  measured decomposition.
+  CPU phase regressions remain controls. `CudaPreparedPrimitivePhaseProfile`
+  exposes launch/synchronization, D-to-H transfer, immutable-byte copy, and total
+  diagnostics from the exact resident route. The neutral packed profile separately
+  exposes contract, mask lookup, integer decode, high-mask, threshold, diagnostic,
+  result construction, and total. The dedicated full-domain benchmark requires
+  byte-identical CPU evidence, validator identity, 1/16/16/15 session counters, and
+  at least 95% samplewise named coverage. The ordinary path is unchanged.
+  Post-commit evidence is pending before selecting the next measured CUDA subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

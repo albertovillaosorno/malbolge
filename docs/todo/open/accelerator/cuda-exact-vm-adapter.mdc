@@ -142,7 +142,11 @@ batches.
   invalid lanes fail closed and benchmarks require the identity. Retained CUDA
   prepared median is 1.175 ms (1.733x better), backend evaluation is 0.860 ms
   (2.095x better), and total is 0.886 ms (2.057x better). CUDA is 2.706x faster than
-  same-run CPU; CPU phase regressions remain controls. Remaining CUDA phase
-  decomposition and synthesis/search remain open.
+  same-run CPU; CPU phase regressions remain controls. Public resident-CUDA and
+  neutral packed-encoding profiles now expose launch/sync, D-to-H, immutable bytes,
+  validation subphases, and totals. The full-domain profiler requires byte-identical
+  CPU evidence, validator identity, 1/16/16/15 counters, and at least 95% named
+  coverage. Post-commit evidence is pending before selecting another CUDA subphase;
+  synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

@@ -31,6 +31,7 @@ from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
 from accelerator.primitive_candidates import primitive_evidence_value_at
+from accelerator.primitive_candidates import profile_packed_primitive_result
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -491,6 +492,47 @@ def test_malformed_packed_primitive_results_fail_closed() -> None:
         )
 
 
+def test_profiled_packed_encoding_matches_normal_bridge() -> None:
+    """Profiled encoding preserves the ordinary candidate result exactly."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        items=tuple(
+            CandidateWorkItem(
+                logical_id=f"word-{index}",
+                payload=encode_rotate_candidate(index),
+            )
+            for index in range(3)
+        ),
+    )
+    primitive = PackedPrimitiveResult(
+        capability=BAD_CAPABILITY,
+        words_u32le=b"\0" * (3 * EVIDENCE_WORD_BYTES),
+    )
+    expected = PrimitiveCandidateEvaluationAdapter(
+        _BadPackedResultAdapter("valid"),
+        PrimitiveKind.ROTATE,
+    ).evaluate(batch)
+
+    observed, profile = profile_packed_primitive_result(
+        batch,
+        primitive,
+        BAD_CAPABILITY,
+    )
+
+    assert observed == expected
+    assert profile.diagnostic_ns == 0
+    components = (
+        profile.contract_ns,
+        profile.high_mask_ns,
+        profile.int_decode_ns,
+        profile.mask_lookup_ns,
+        profile.result_build_ns,
+        profile.threshold_ns,
+    )
+    assert all(value >= 0 for value in components)
+    assert profile.total_ns >= sum(components)
+
+
 def test_packed_domain_validation_checks_late_lanes() -> None:
     """Repeated masks reject threshold and high-bit drift in the final lane."""
     batch = CandidateEvaluationBatch(
@@ -523,6 +565,40 @@ def test_packed_domain_validation_checks_late_lanes() -> None:
             message,
             lambda adapter=adapter: adapter.evaluate(batch),
         )
+
+
+def test_live_cuda_profiled_prepared_matches_normal_result() -> None:
+    """Profiled resident CUDA preserves exact packed output and counters."""
+    values = _words(CORPUS_SIZE)
+    prepared = prepare_primitive_batch(
+        PrimitiveBatch(
+            accumulators=(),
+            data=values,
+            kind=PrimitiveKind.ROTATE,
+        )
+    )
+    with _cuda() as cuda:
+        ordinary = cuda.evaluate_prepared(prepared)
+        profiled, phases = cuda.profile_prepared(prepared)
+        stats = cuda.prepared_stats()
+
+    assert isinstance(ordinary, PackedPrimitiveResult)
+    assert profiled == ordinary
+    assert (
+        stats.builds,
+        stats.evaluations,
+        stats.packed_evaluations,
+        stats.reuses,
+        stats.resident_count,
+        stats.resident_kind,
+    ) == (1, 2, 2, 1, CORPUS_SIZE, PrimitiveKind.ROTATE)
+    components = (
+        phases.download_ns,
+        phases.immutable_bytes_ns,
+        phases.launch_sync_ns,
+    )
+    assert all(value >= 0 for value in components)
+    assert phases.total_ns >= sum(components)
 
 
 def test_live_cuda_prepared_session_reuses_exact_input() -> None:

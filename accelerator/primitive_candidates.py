@@ -8,6 +8,7 @@ from array import array
 from dataclasses import dataclass
 from functools import lru_cache
 import sys
+from time import perf_counter_ns
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -45,6 +46,28 @@ _PACKED_LANE_MAX = (1 << 16) - 1
 _PACKED_DOMAIN_DELTA = _PACKED_LANE_MAX - MAX_WORD
 _PACKED_HIGH_MASK = 0xFFFF_0000
 _PACKED_CARRY_MASK = 0x0001_0000
+
+
+@dataclass(frozen=True, slots=True)
+class PackedPrimitiveEncodingPhaseProfile:
+    """Diagnostic phases for validating and encoding packed primitive words."""
+
+    contract_ns: int
+    diagnostic_ns: int
+    high_mask_ns: int
+    int_decode_ns: int
+    mask_lookup_ns: int
+    result_build_ns: int
+    threshold_ns: int
+    total_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PackedWordPhaseProfile:
+    high_mask_ns: int
+    int_decode_ns: int
+    mask_lookup_ns: int
+    threshold_ns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +207,116 @@ def packed_primitive_validation_id() -> str:
 
     """
     return PACKED_PRIMITIVE_VALIDATION_ID
+
+
+def profile_packed_primitive_result(
+    batch: CandidateEvaluationBatch,
+    primitive: PackedPrimitiveResult,
+    capability: AcceleratorCapability,
+) -> tuple[CandidateEvaluationResult, PackedPrimitiveEncodingPhaseProfile]:
+    """Encode one packed result while recording exact validation phases.
+
+    Returns:
+        Candidate evidence plus immutable per-phase timing diagnostics.
+
+    """
+    total_start = perf_counter_ns()
+    contract_start = perf_counter_ns()
+    payloads = _profile_validated_packed_payloads(
+        batch,
+        primitive,
+        capability,
+    )
+    contract_ns = perf_counter_ns() - contract_start
+    words = _profile_packed_words(payloads)
+    result_start = perf_counter_ns()
+    result = CandidateEvaluationResult(
+        capability=capability,
+        evaluator_id=batch.evaluator_id,
+        packed=PackedCandidateEvidence(
+            payload_width=_WORD_BYTES,
+            payloads=payloads,
+        ),
+    )
+    result_build_ns = perf_counter_ns() - result_start
+    return result, PackedPrimitiveEncodingPhaseProfile(
+        contract_ns=contract_ns,
+        diagnostic_ns=0,
+        high_mask_ns=words.high_mask_ns,
+        int_decode_ns=words.int_decode_ns,
+        mask_lookup_ns=words.mask_lookup_ns,
+        result_build_ns=result_build_ns,
+        threshold_ns=words.threshold_ns,
+        total_ns=perf_counter_ns() - total_start,
+    )
+
+
+def _profile_validated_packed_payloads(
+    batch: CandidateEvaluationBatch,
+    primitive: PackedPrimitiveResult,
+    capability: AcceleratorCapability,
+) -> bytes:
+    if primitive.capability != capability:
+        message = "primitive backend changed capability identity"
+        raise InvalidAcceleratorResultError(message)
+    if type(primitive.words_u32le) is not bytes:
+        message = "packed primitive result must use immutable bytes"
+        raise InvalidAcceleratorResultError(message)
+    if len(primitive.words_u32le) != len(batch.items) * _WORD_BYTES:
+        message = "packed primitive result count does not match candidate batch"
+        raise InvalidAcceleratorResultError(message)
+    return primitive.words_u32le
+
+
+def _profile_packed_words(payloads: bytes) -> _PackedWordPhaseProfile:
+    if not payloads:
+        return _PackedWordPhaseProfile(0, 0, 0, 0)
+    masks, mask_lookup_ns = _timed_packed_masks(len(payloads) // _WORD_BYTES)
+    packed, int_decode_ns = _timed_packed_decode(payloads)
+    high_valid, high_mask_ns = _timed_high_mask(packed, masks[0])
+    threshold_valid, threshold_ns = _timed_threshold(
+        packed,
+        masks[1],
+        masks[2],
+    )
+    if not high_valid or not threshold_valid:
+        maximum = max(_iter_u32le_words(payloads), default=0)
+        message = f"primitive backend result outside classic domain: {maximum}"
+        raise InvalidAcceleratorResultError(message)
+    return _PackedWordPhaseProfile(
+        high_mask_ns=high_mask_ns,
+        int_decode_ns=int_decode_ns,
+        mask_lookup_ns=mask_lookup_ns,
+        threshold_ns=threshold_ns,
+    )
+
+
+def _timed_packed_masks(word_count: int) -> tuple[tuple[int, int, int], int]:
+    start = perf_counter_ns()
+    masks = _packed_domain_masks(word_count)
+    return masks, perf_counter_ns() - start
+
+
+def _timed_packed_decode(payloads: bytes) -> tuple[int, int]:
+    start = perf_counter_ns()
+    packed = int.from_bytes(payloads, _LITTLE_ENDIAN)
+    return packed, perf_counter_ns() - start
+
+
+def _timed_high_mask(packed: int, high_mask: int) -> tuple[bool, int]:
+    start = perf_counter_ns()
+    valid = not packed & high_mask
+    return valid, perf_counter_ns() - start
+
+
+def _timed_threshold(
+    packed: int,
+    delta_lanes: int,
+    carry_mask: int,
+) -> tuple[bool, int]:
+    start = perf_counter_ns()
+    valid = not (packed + delta_lanes) & carry_mask
+    return valid, perf_counter_ns() - start
 
 
 def prepare_rotate_candidate_batch(
@@ -442,7 +575,8 @@ def _validate_packed_primitive_words(payloads: bytes) -> None:
     high_mask, delta_lanes, carry_mask = _packed_domain_masks(word_count)
     packed = int.from_bytes(payloads, _LITTLE_ENDIAN)
     # High bits first establish unsigned 16-bit lanes. Adding 0xffff-MAX_WORD
-    # cannot cross a 32-bit lane; bit 16 is set exactly when that lane is too large.
+    # cannot cross a 32-bit lane; bit 16 is set exactly when that lane is
+    # too large.
     if not packed & high_mask and not (packed + delta_lanes) & carry_mask:
         return
     maximum = max(_iter_u32le_words(payloads), default=0)

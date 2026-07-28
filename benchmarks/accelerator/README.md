@@ -275,3 +275,18 @@ CUDA prepared reaches 1.175 ms, a 1.733x improvement, while CUDA backend evaluat
 reaches 0.860 ms (2.095x) and CUDA total 0.886 ms (2.057x). CUDA prepared is 2.706x
 faster than same-run CPU. CPU phase regressions are retained as controls and are not
 attributed to this CUDA-targeted validator change.
+
+Run the active prepared CUDA primitive subphase profiler with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m benchmarks.accelerator.prepared_cuda_primitive_phase_profile
+```
+
+It composes public resident-CUDA and neutral packed-encoding diagnostic APIs without
+altering the ordinary execution path. Every retained profile must match exact CPU
+packed evidence, preserve validator identity and session counters, and retain at
+least 95% samplewise named coverage. Reported phases include launch/sync, D-to-H,
+immutable byte creation, packed contract, mask lookup, integer decode, high-mask,
+threshold, diagnostics, result construction, layer totals, and end-to-end total.
+A clean post-commit run is required before retaining or interpreting subphase
+medians.

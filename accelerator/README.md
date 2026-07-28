@@ -167,8 +167,13 @@ fallback. Benchmarks require the validator identity. Retained evidence under
 records 1.175 ms CUDA prepared, 1.733x faster than scalar packed validation and
 2.706x faster than same-run CPU. The phase sibling lowers CUDA backend evaluation
 2.095x to 0.860 ms and CUDA total 2.057x to 0.886 ms; CPU phase regressions remain
-controls. CPU result validation/packing and measured decomposition of the remaining
-CUDA backend phases are next.
+controls. `CudaPreparedPrimitivePhaseProfile` now records resident launch/sync,
+D-to-H, immutable bytes, and total time. `PackedPrimitiveEncodingPhaseProfile`
+records contract, masks, integer decode, high-mask, threshold, diagnostic,
+result-build, and total time. The new prepared CUDA primitive profiler requires
+exact CPU evidence equality, `u32le-broadword-domain-v1`, session counters, and at
+least 95% named coverage. Post-commit evidence is pending before selecting another
+optimization.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

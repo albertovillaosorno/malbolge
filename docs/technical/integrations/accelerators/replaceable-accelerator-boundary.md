@@ -159,8 +159,13 @@ threshold and high-bit corruption fail closed, and benchmark output requires the
 identity. Retained CUDA prepared median improves 1.733x to 1.175 ms, CUDA backend
 evaluation improves 2.095x to 0.860 ms, and CUDA total improves 2.057x to 0.886 ms.
 CUDA is 2.706x faster than same-run CPU; CPU phase regressions remain contextual
-controls. CPU result validation/packing and measured decomposition of the remaining
-CUDA phases are next, while resident/fused search remains later work.
+controls. Public diagnostic phase records now cross the replaceable boundary
+without carrying semantic authority: resident CUDA reports launch/sync, transfer,
+immutable bytes, and total; neutral packed encoding reports contract, masks, integer
+decode, high-mask, threshold, diagnostics, result construction, and total. The
+full-domain profiler requires exact CPU equality, validator identity, resident proof
+counters, and at least 95% samplewise coverage. Post-commit evidence is pending,
+while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

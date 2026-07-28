@@ -826,9 +826,13 @@ require the validator identity alongside every existing proof. Retained CUDA
 prepared median falls from 2.036 to 1.175 ms (1.733x), while CUDA backend evaluation
 falls from 1.802 to 0.860 ms (2.095x) and CUDA total from 1.824 to 0.886 ms (2.057x).
 Same-run CUDA prepared is 2.706x faster than CPU. CPU phase regressions are retained
-as controls and are not attributed to this CUDA-targeted change. CPU result
-validation/packing and measured decomposition of the remaining CUDA backend phases
-are next.
+as controls and are not attributed to this CUDA-targeted change. Public diagnostic
+profiles now split resident CUDA launch/synchronization, D-to-H transfer, immutable
+byte materialization, and total time from neutral packed contract, mask lookup,
+integer decode, high-mask, threshold, diagnostic, result-build, and total phases.
+`prepared_cuda_primitive_phase_profile.py` requires exact CPU packed equality,
+validator identity, session counters, and at least 95% samplewise named coverage.
+Post-commit evidence is pending; no subphase is promoted from exploratory timing.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -920,9 +924,13 @@ Packed-domain validation now uses repeated broadword masks and lane-independent
 threshold addition under identity `u32le-broadword-domain-v1`; first/last-lane
 threshold and high-bit adversaries fail closed. Retained CUDA prepared median is
 1.175 ms (1.733x better), backend evaluation is 0.860 ms (2.095x better), and total
-is 0.886 ms (2.057x better). CUDA is 2.706x faster than same-run CPU. Remaining
-kernel launch/synchronization, D-to-H transfer, immutable byte copy, and broadword
-validation costs require measured decomposition.
+is 0.886 ms (2.057x better). CUDA is 2.706x faster than same-run CPU. Public
+resident-CUDA and neutral packed-encoding phase profiles now preserve exact output
+while decomposing kernel launch/synchronization, D-to-H transfer, immutable byte
+copy, contract, masks, integer decode, high-mask, threshold, diagnostics, and result
+construction. The benchmark requires exact CPU equality, validator identity,
+1/16/16/15 session proof, and at least 95% named coverage. Post-commit evidence is
+pending before selecting the next CUDA subphase.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

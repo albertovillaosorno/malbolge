@@ -136,8 +136,11 @@ directly on CUDA APIs.
   identity. Retained CUDA prepared median improves 1.733x to 1.175 ms, backend
   evaluation improves 2.095x to 0.860 ms, and total improves 2.057x to 0.886 ms.
   CUDA is 2.706x faster than same-run CPU; CPU phase regressions remain controls.
-  CPU result validation/packing and measured CUDA decomposition are next.
-  Synthesis/guided search,
+  Public resident-CUDA and neutral packed-encoding phase records now expose
+  launch/sync, transfer, immutable bytes, validation subphases, and totals without
+  semantic authority. The full-domain profiler requires CPU equality,
+  validator/session proof identity, and at least 95% coverage. Post-commit evidence
+  is pending before selecting the next subphase. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

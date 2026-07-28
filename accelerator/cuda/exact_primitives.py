@@ -7,6 +7,7 @@ from __future__ import annotations
 from array import array
 import ctypes
 from dataclasses import dataclass
+from time import perf_counter_ns
 from typing import Final
 from typing import Self
 from typing import TYPE_CHECKING
@@ -89,6 +90,16 @@ class CudaPreparedPrimitiveStats:
     resident_count: int
     resident_kind: PrimitiveKind | None
     reuses: int
+
+
+@dataclass(frozen=True, slots=True)
+class CudaPreparedPrimitivePhaseProfile:
+    """Diagnostic wall-clock phases for one resident prepared evaluation."""
+
+    download_ns: int
+    immutable_bytes_ns: int
+    launch_sync_ns: int
+    total_ns: int
 
 
 @dataclass(slots=True)
@@ -179,6 +190,74 @@ class _CudaPreparedPrimitiveSession:
         count = len(self.batch.data)
         if count == 0:
             return b""
+        self._launch(
+            runtime,
+            crazy=crazy,
+            rotate=rotate,
+            count=count,
+        )
+        if self.device_output is None:
+            message = "prepared CUDA primitive session has no output buffer"
+            raise AcceleratorExecutionError(message)
+        runtime.copy_from_device(self.host_output, self.device_output)
+        return bytes(self.host_output)
+
+    def profile_evaluate(
+        self,
+        runtime: CudaRuntime,
+        crazy: ctypes.c_void_p,
+        rotate: ctypes.c_void_p,
+    ) -> tuple[bytes, CudaPreparedPrimitivePhaseProfile]:
+        """Evaluate the same resident path with diagnostic phase timings.
+
+        Returns:
+            Packed words plus immutable per-phase timing evidence.
+
+        Raises:
+            AcceleratorExecutionError: If resident buffers or CUDA fail.
+
+        """
+        total_start = perf_counter_ns()
+        count = len(self.batch.data)
+        if count == 0:
+            return b"", CudaPreparedPrimitivePhaseProfile(
+                download_ns=0,
+                immutable_bytes_ns=0,
+                launch_sync_ns=0,
+                total_ns=perf_counter_ns() - total_start,
+            )
+        launch_start = perf_counter_ns()
+        self._launch(
+            runtime,
+            crazy=crazy,
+            rotate=rotate,
+            count=count,
+        )
+        launch_sync_ns = perf_counter_ns() - launch_start
+        if self.device_output is None:
+            message = "prepared CUDA primitive session has no output buffer"
+            raise AcceleratorExecutionError(message)
+        download_start = perf_counter_ns()
+        runtime.copy_from_device(self.host_output, self.device_output)
+        download_ns = perf_counter_ns() - download_start
+        bytes_start = perf_counter_ns()
+        words_u32le = bytes(self.host_output)
+        immutable_bytes_ns = perf_counter_ns() - bytes_start
+        return words_u32le, CudaPreparedPrimitivePhaseProfile(
+            download_ns=download_ns,
+            immutable_bytes_ns=immutable_bytes_ns,
+            launch_sync_ns=launch_sync_ns,
+            total_ns=perf_counter_ns() - total_start,
+        )
+
+    def _launch(
+        self,
+        runtime: CudaRuntime,
+        *,
+        crazy: ctypes.c_void_p,
+        rotate: ctypes.c_void_p,
+        count: int,
+    ) -> None:
         if self.device_data is None or self.device_output is None:
             message = "prepared CUDA primitive session has missing buffers"
             raise AcceleratorExecutionError(message)
@@ -188,21 +267,19 @@ class _CudaPreparedPrimitiveSession:
                 (self.device_data, self.device_output),
                 count,
             )
-        else:
-            if self.device_accumulator is None:
-                message = "prepared CUDA crazy session has no accumulator"
-                raise AcceleratorExecutionError(message)
-            runtime.launch(
-                crazy,
-                (
-                    self.device_data,
-                    self.device_accumulator,
-                    self.device_output,
-                ),
-                count,
-            )
-        runtime.copy_from_device(self.host_output, self.device_output)
-        return bytes(self.host_output)
+            return
+        if self.device_accumulator is None:
+            message = "prepared CUDA crazy session has no accumulator"
+            raise AcceleratorExecutionError(message)
+        runtime.launch(
+            crazy,
+            (
+                self.device_data,
+                self.device_accumulator,
+                self.device_output,
+            ),
+            count,
+        )
 
 
 @final
@@ -343,6 +420,40 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         return PackedPrimitiveResult(
             capability=self._capability,
             words_u32le=words_u32le,
+        )
+
+    def profile_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> tuple[PackedPrimitiveResult, CudaPreparedPrimitivePhaseProfile]:
+        """Evaluate prepared input while recording resident CUDA phases.
+
+        Returns:
+            Packed exact output plus launch/download/materialization timings.
+
+        Raises:
+            AcceleratorExecutionError: If the adapter/session cannot execute.
+
+        """
+        self._ensure_open()
+        session = self._prepared_session_for(prepared)
+        try:
+            words_u32le, profile = session.profile_evaluate(
+                self._runtime,
+                self._crazy,
+                self._rotate,
+            )
+        except AcceleratorExecutionError:
+            self._release_prepared_session()
+            raise
+        self._prepared_evaluations += 1
+        self._prepared_packed_evaluations += 1
+        return (
+            PackedPrimitiveResult(
+                capability=self._capability,
+                words_u32le=words_u32le,
+            ),
+            profile,
         )
 
     def prepared_stats(self) -> CudaPreparedPrimitiveStats:

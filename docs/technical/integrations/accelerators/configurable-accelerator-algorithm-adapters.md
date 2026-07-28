@@ -168,8 +168,13 @@ for diagnostics. First/last-lane threshold and high-bit adversaries fail closed,
 benchmarks require the identity. Retained CUDA prepared median falls from 2.036
 to 1.175 ms (1.733x), CUDA backend evaluation from 1.802 to 0.860 ms (2.095x), and
 CUDA total from 1.824 to 0.886 ms (2.057x). CUDA is 2.706x faster than same-run CPU.
-CPU phase regressions remain contextual controls. CPU result validation/packing and
-measured decomposition of remaining CUDA phases are next. Resident or
+CPU phase regressions remain contextual controls. Public diagnostic records now
+cover resident CUDA launch/sync, transfer, immutable-byte materialization, and total
+plus neutral packed contract, masks, integer decode, high-mask, threshold,
+diagnostic, result construction, and total. The dedicated full-domain profiler
+requires exact CPU packed equality, validator identity, resident proof counters, and
+at least 95% named coverage. Post-commit evidence is pending before another CUDA or
+neutral subphase is selected. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
