@@ -156,7 +156,7 @@ __declspec(dllimport) HWND __stdcall GetForegroundWindow(void);
 __declspec(dllimport) HWND __stdcall SetCapture(HWND);
 __declspec(dllimport) BOOL __stdcall ReleaseCapture(void);
 __declspec(dllimport) HWND __stdcall GetCapture(void);
-__declspec(dllimport) int __stdcall ShowCursor(BOOL);
+__declspec(dllimport) HCURSOR __stdcall SetCursor(HCURSOR);
 __declspec(dllimport) BOOL __stdcall SetCursorPos(int, int);
 __declspec(dllimport) BOOL __stdcall PeekMessageA(MSG *, HWND, UINT, UINT, UINT);
 __declspec(dllimport) LRESULT __stdcall DispatchMessageA(const MSG *);
@@ -200,6 +200,8 @@ __declspec(dllimport) UINT __stdcall waveOutClose(HWAVEOUT);
 #define CW_USEDEFAULT ((int)0x80000000U)
 #define PM_REMOVE 0x0001U
 #define WM_CLOSE 0x0010U
+#define WM_ACTIVATEAPP 0x001CU
+#define WM_SETCURSOR 0x0020U
 #define WM_SETFOCUS 0x0007U
 #define WM_KILLFOCUS 0x0008U
 #define WM_PAINT 0x000FU
@@ -216,6 +218,7 @@ __declspec(dllimport) UINT __stdcall waveOutClose(HWAVEOUT);
 #define WM_RBUTTONUP 0x0205U
 #define WM_MBUTTONDOWN 0x0207U
 #define WM_MBUTTONUP 0x0208U
+#define WM_CAPTURECHANGED 0x0215U
 #define VK_BACK 0x08U
 #define VK_TAB 0x09U
 #define VK_RETURN 0x0DU
@@ -345,6 +348,7 @@ static char *debug_arguments[MAX_DEBUG_ARGUMENTS];
 static char fatal_error_message[4096];
 static HWND window_handle;
 static HINSTANCE instance_handle;
+static HCURSOR arrow_cursor;
 static doom_host_video_config_t video_config;
 static BITMAPINFO *bitmap_info;
 static unsigned char bitmap_info_storage[sizeof(BITMAPINFOHEADER) + 256U * sizeof(RGBQUAD)];
@@ -370,6 +374,7 @@ static uint64_t last_present_ns;
 static uint64_t fps_window_start_ns;
 static int fps_window_frames;
 static int displayed_fps;
+static char execution_source_override[64];
 static char trace_language[24] = "HOST";
 static char trace_source[64] = "startup";
 static char trace_instruction[128] = "initializing";
@@ -555,6 +560,12 @@ static void LoadDebugSettings(void)
     DWORD bytes_read = 0;
     int width;
     int height;
+    const DWORD source_length = GetEnvironmentVariableA(
+        "MALBOLGE_DOOM_EXECUTION_SOURCE", execution_source_override,
+        (DWORD)sizeof(execution_source_override));
+
+    if (source_length >= (DWORD)sizeof(execution_source_override))
+        execution_source_override[0] = '\0';
 
     file = CreateFileA("settings.json", GENERIC_READ, FILE_SHARE_READ, NULL,
                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -799,7 +810,10 @@ void DoomHost_DebugExecutionActivity(const char *language,
     const uint64_t now = DoomHost_MonotonicNanoseconds();
 
     CopyText(trace_language, (int)sizeof(trace_language), language);
-    CopyText(trace_source, (int)sizeof(trace_source), SourceBasename(source));
+    CopyText(trace_source, (int)sizeof(trace_source),
+             execution_source_override[0] != '\0'
+                 ? execution_source_override
+                 : SourceBasename(source));
     CopyText(trace_instruction, (int)sizeof(trace_instruction), instruction);
     trace_location = location;
     if (trace_title_update_ns == 0 ||
@@ -893,24 +907,32 @@ static void CenterMouse(void)
     (void)SetCursorPos(center.x, center.y);
 }
 
+static void UpdateCursorVisibility(void)
+{
+    (void)SetCursor(mouse_captured ? NULL : arrow_cursor);
+}
+
 static void SetMouseCaptured(boolean capture)
 {
     if (capture == mouse_captured)
+    {
+        UpdateCursorVisibility();
         return;
+    }
 
     mouse_captured = capture;
     mouse_centering = false;
     if (capture)
     {
         (void)SetCapture(window_handle);
-        while (ShowCursor(FALSE) >= 0) {}
+        UpdateCursorVisibility();
         CenterMouse();
     }
     else
     {
         if (GetCapture() == window_handle)
             (void)ReleaseCapture();
-        while (ShowCursor(TRUE) < 0) {}
+        UpdateCursorVisibility();
     }
 }
 
@@ -936,6 +958,14 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
             QueueEvent(&event);
             return 0;
 
+        case WM_ACTIVATEAPP:
+            window_has_focus = wparam != 0;
+            if (window_has_focus)
+                UpdateMouseCapture();
+            else
+                SetMouseCaptured(false);
+            return 0;
+
         case WM_SETFOCUS:
             window_has_focus = true;
             UpdateMouseCapture();
@@ -944,6 +974,19 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
         case WM_KILLFOCUS:
             window_has_focus = false;
             SetMouseCaptured(false);
+            return 0;
+
+        case WM_SETCURSOR:
+            UpdateCursorVisibility();
+            return 1;
+
+        case WM_CAPTURECHANGED:
+            if ((HWND)(uintptr_t)lparam != window_handle)
+            {
+                mouse_captured = false;
+                mouse_centering = false;
+                UpdateCursorVisibility();
+            }
             return 0;
 
         case WM_KEYDOWN:
@@ -1101,8 +1144,9 @@ boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config)
     window_class.cbSize = sizeof(window_class);
     window_class.style = CS_OWNDC;
     window_class.lpfnWndProc = DoomWindowProc;
+    arrow_cursor = LoadCursorA(NULL, IDC_ARROW);
     window_class.hInstance = instance_handle;
-    window_class.hCursor = LoadCursorA(NULL, IDC_ARROW);
+    window_class.hCursor = NULL;
     window_class.lpszClassName = "MalbolgeDoomWindow";
     if (!RegisterClassExA(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
         return false;
@@ -1126,6 +1170,7 @@ boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config)
 
     ShowWindow(window_handle, debug_settings.maximized ? SW_MAXIMIZE : SW_SHOW);
     (void)UpdateWindow(window_handle);
+    UpdateCursorVisibility();
     UpdateFpsTitle();
     (void)SetForegroundWindow(window_handle);
     window_has_focus = GetForegroundWindow() == window_handle;

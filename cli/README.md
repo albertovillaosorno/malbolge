@@ -56,13 +56,46 @@ The Windows adapter reads `iwad`, `wads`, `language`, `maximized`, `resolution`,
 `vsync`, and `show_fps` from `settings.json`. Gameplay uses centered relative
 mouse capture; pause, menus, automap, demos, and focus loss release the cursor.
 When `show_fps` is enabled, language-neutral execution telemetry drives titles
-such as `FPS 93 - C d_main.c:309 M_Drawer()` and, for the future capability-linked
-artifact, `FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
+such as `FPS 232 - C doom.c:258 R_RenderPlayerView(...)` and, for the
+future capability-linked artifact,
+`FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
 
 `cli/adapters/doom/abi.malbolge` and `windows.malbolge` currently reserve the
 annotated module contracts with intentionally empty canonical payloads. They are
 not executable adapters yet. The open capability-runner TODO requires automatic
 loading only when a `.malbolge` capsule explicitly declares `doom.host.v1`.
+
+## Debug DOOM with Clang sanitizers
+
+The Windows debugging launcher validates both `doom.c` and the host adapter with
+standalone pinned Clang 22.1.8 using strict warnings and `-Werror`. It then uses
+Zig's Clang frontend and Windows linker support to build one local executable with
+AddressSanitizer, UndefinedBehaviorSanitizer, symbols, and frame pointers. Debug
+executables and logs stay beside `doom.c` under the ignored `.debug/` directory.
+
+Validate and build without launching:
+
+```powershell
+.dependencies\python\3.14.6\Scripts\python.exe `
+  scripts\debug\doom.py --build-only
+```
+
+Play normally while recording a sanitizer report:
+
+```powershell
+.dependencies\python\3.14.6\Scripts\python.exe scripts\debug\doom.py
+```
+
+Launch under LLDB and forward ordinary DOOM arguments after `--`:
+
+```powershell
+.dependencies\python\3.14.6\Scripts\python.exe `
+  scripts\debug\doom.py --lldb -- -warp 1 1
+```
+
+If LLDB stops on a failure, use `bt all` to print every thread's stack. The IWAD
+remains external and is discovered with the same local-data policy as the normal
+CLI; use `--iwad <path>` to select one explicitly.
 
 ## Build the CLI
 

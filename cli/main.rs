@@ -190,14 +190,20 @@ fn build_doom_run_plan(
             format!("cannot create DOOM run directory: {error}")
         })?;
     let resolved_arguments = doom_arguments(arguments)?;
-    let environment = discover_doom_iwad(&root, &working_directory)
-        .map(|path| {
-            vec![(
-                OsString::from("MALBOLGE_DOOM_FALLBACK_IWAD"),
-                path.into_os_string(),
-            )]
-        })
-        .unwrap_or_default();
+    let mut environment = Vec::new();
+    if let Some(path) = discover_doom_iwad(&root, &working_directory) {
+        environment.push((
+            OsString::from("MALBOLGE_DOOM_FALLBACK_IWAD"),
+            path.into_os_string(),
+        ));
+    }
+    let source_name = source
+        .file_name()
+        .ok_or_else(|| String::from("doom.c has no file name"))?;
+    environment.push((
+        OsString::from("MALBOLGE_DOOM_EXECUTION_SOURCE"),
+        source_name.to_os_string(),
+    ));
     Ok(CRunPlan {
         arguments: resolved_arguments,
         compiler_arguments: vec![OsString::from("-Dmain=DoomGuestMain")],
