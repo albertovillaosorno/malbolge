@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-preparation-crossover-v4"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does proof-bound packed primitive input remove retained Python word tuples without degrading prepared CPU/CUDA search or strict crossover?"
+hypothesis = "At full domain, packed primitive input reduces retained prepared memory, preserves one-run crossover, builds one reusable CPU decode session, and does not regress prepared CPU/CUDA throughput against the immediate indexed-batch baseline."
+baseline = "retained version-3 crossover evidence plus clean throughput and phase runs from commit 81d82cf0e10404c7b234ddfc27a1b1e4ba286815"
+rejection_observation = "Packed storage identity or exact proofs drift, CPU/CUDA session counts differ from 1 build and 15 reuses, full-domain retained memory does not fall, crossover exceeds one run, or prepared CPU/CUDA medians regress against the clean baseline."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup; one resident build plus one reuse warmup; CPU and CUDA prepared sessions each require one build and fifteen measured reuses"
+ordering = "fixed"
+stopping_rule = "fifteen retained timing samples and five retained memory samples per crossover scale; fifteen throughput and phase samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "crossover_runs", "session_builds", "session_reuses"]
+tradeoff_policy = "storage, membership, primitive validation, proposal, admission, cardinality, CPU/CUDA session, and result proofs precede memory, route, phase, and crossover interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

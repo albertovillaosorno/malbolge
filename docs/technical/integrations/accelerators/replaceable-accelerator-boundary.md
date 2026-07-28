@@ -209,21 +209,24 @@ from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
 miss lookup. The promotion is not universal: one-candidate memory grows slightly,
 and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
 out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
-cross-batch proofs, and payload substitution still fail closed. The next memory slice is active under
-`proof-bound-u32le-primitive-input-v1`. Prepared primitive input retains canonical
-immutable u32 little-endian bytes instead of a 59,049-element Python integer tuple.
-The indexed rotate bridge reuses candidate payload bytes directly; tuple-based and
-crazy callers validate then pack through the compatibility constructor. CUDA copies
-packed data/accumulator bytes directly into its resident session. CPU owns a local
-proof-identity decode session so the first prepared evaluation materializes one
-tuple and later evaluations reuse the existing rotate-table path. Benchmarks require
-exactly one CPU decode build, 16 evaluations, 15 reuses, 59,049 resident words, and
-the full-domain rotate table. Malformed byte widths, out-of-domain words, shape
-mismatch, and forged proof fail closed. Exploratory full-domain retained prepared
-state falls from 2.923 MiB to about 0.681 MiB; CPU prepared first use is about 7.25
-ms and hot reuse about 3.21 ms. Crossover protocol v4 records the packed-storage
-identity. Clean post-commit memory, route, CPU-session, and crossover evidence is
-pending before promotion and before selecting the next retained component.
+cross-batch proofs, and payload substitution still fail closed. Retained version-4 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/`
+promotes `proof-bound-u32le-primitive-input-v1`. At 59,049 candidates,
+incremental retained prepared state falls from 3,064,623 to 713,791 bytes, a
+76.709% reduction and 12.088 bytes per candidate. Peak allocation remains exactly
+8,802,328 bytes (8.395 MiB): preparation still builds a temporary CPU
+reference/decode tuple, so the result removes retained ownership rather than the
+transient peak. Full-domain cold/warm crossover remains 1/1. Against the immediate
+clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
+132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
+152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
+CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
+build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
+also proves 16 packed evaluations and CPU proves the full rotate table. The packed
+representation is promoted because no clean route regresses. The unchanged
+temporary reference/decode tuple is the next peak-memory boundary; it may be
+removed only while preserving an independently generated exact reference and the
+same first/last corruption, forged-proof, and fabricated-proposal failures.
 Resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
