@@ -1,0 +1,1518 @@
+{
+  "benchmark_id": "rotate-target-preparation-crossover-v2",
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "measurement": {
+    "adapter_setup_timed": false,
+    "cold_process_per_sample": true,
+    "crossover_formula": "prepare + first_build + (runs - 1) * reuse < runs * ordinary",
+    "fresh_build_scope": "resident allocate/upload plus one exact search; adapter and NVRTC setup excluded",
+    "lookup_iterations_per_sample": 4096,
+    "lookup_scope": "same proof-bound compact index and copied-tuple frozenset; exact hit/miss result checked after each timed loop",
+    "membership_component_ordering": "compact prepare, legacy prepare, compact memory, legacy memory, compact hit/miss, legacy hit/miss",
+    "memory_sample_count": 5,
+    "memory_scope": "incremental tracemalloc allocations with workload and global rotate table outside tracing; CUDA/native excluded",
+    "ordering": "ascending corpus size; cold, warm, memory, ordinary/reuse, fresh build",
+    "result_validation_timed": false,
+    "sample_count": 15,
+    "warm_prepare_scope": "global rotate table prewarmed",
+    "warmup_count": 1,
+    "workload_build_timed": false
+  },
+  "proof": {
+    "legacy_membership_index_id": "copied-identity-payload-frozenset-v1",
+    "membership_index_id": "identity-sorted-candidate-reference-binary-search-v1",
+    "ordinary_validation_id": "u32le-broadword-domain-v1",
+    "prepared_validation_id": "cpu-reference-packed-equality-v1",
+    "strict_crossover": true
+  },
+  "scales": [
+    {
+      "cold_prepare": {
+        "max_ns": 12434800,
+        "median_ns": 12027800,
+        "min_ns": 11844800,
+        "pstdev_ns": 142504.96693098103,
+        "raw_ns": [
+          12174500,
+          12183100,
+          11933100,
+          11844800,
+          12086700,
+          12022200,
+          12003500,
+          12027800,
+          12299800,
+          11993300,
+          12065100,
+          11991600,
+          12009200,
+          12034800,
+          12434800
+        ]
+      },
+      "corpus_size": 1,
+      "crossover": {
+        "cold_runs": 108,
+        "warm_runs": 7
+      },
+      "cuda": {
+        "capability": {
+          "backend_id": "cuda",
+          "device_arch": "sm_89",
+          "device_name": "NVIDIA GeForce RTX 4060"
+        },
+        "first_build": {
+          "max_ns": 966700,
+          "median_ns": 756100,
+          "min_ns": 681700,
+          "pstdev_ns": 69527.50886439762,
+          "raw_ns": [
+            767200,
+            826400,
+            744400,
+            711700,
+            759600,
+            688300,
+            698200,
+            681700,
+            966700,
+            721700,
+            756100,
+            738000,
+            757800,
+            831300,
+            786200
+          ]
+        },
+        "ordinary": {
+          "max_ns": 362600,
+          "median_ns": 232600,
+          "min_ns": 222700,
+          "pstdev_ns": 34401.55422845505,
+          "raw_ns": [
+            257700,
+            226400,
+            223300,
+            238500,
+            252000,
+            231200,
+            228400,
+            232600,
+            222700,
+            258000,
+            362600,
+            230900,
+            277400,
+            238700,
+            226400
+          ]
+        },
+        "reuse": {
+          "max_ns": 223000,
+          "median_ns": 114600,
+          "min_ns": 108300,
+          "pstdev_ns": 35895.62399822884,
+          "raw_ns": [
+            117400,
+            114700,
+            108300,
+            121900,
+            119100,
+            114600,
+            109400,
+            113200,
+            109200,
+            112000,
+            215300,
+            223000,
+            128500,
+            110700,
+            112500
+          ]
+        },
+        "reuse_stats": {
+          "builds": 1,
+          "evaluations": 17,
+          "packed_evaluations": 17,
+          "resident_count": 1,
+          "resident_kind": "rotate",
+          "reuses": 16
+        }
+      },
+      "cuda_device_bytes": 8,
+      "cuda_host_output_bytes": 4,
+      "membership": {
+        "compact_memory": {
+          "peak": {
+            "max_bytes": 888,
+            "median_bytes": 888,
+            "min_bytes": 888,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              888,
+              888,
+              888,
+              888,
+              888
+            ]
+          },
+          "retained": {
+            "max_bytes": 848,
+            "median_bytes": 848,
+            "min_bytes": 848,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              848,
+              848,
+              848,
+              848,
+              848
+            ]
+          }
+        },
+        "compact_prepare": {
+          "max_ns": 26500,
+          "median_ns": 12200,
+          "min_ns": 11500,
+          "pstdev_ns": 3616.038347879255,
+          "raw_ns": [
+            14500,
+            13800,
+            12500,
+            12200,
+            12200,
+            11900,
+            26500,
+            13600,
+            11700,
+            11900,
+            11600,
+            12800,
+            11500,
+            11700,
+            12000
+          ]
+        },
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 704,
+            "median_bytes": 704,
+            "min_bytes": 704,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              704,
+              704,
+              704,
+              704,
+              704
+            ]
+          },
+          "retained": {
+            "max_bytes": 328,
+            "median_bytes": 328,
+            "min_bytes": 328,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              328,
+              328,
+              328,
+              328,
+              328
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 4300,
+          "median_ns": 2800,
+          "min_ns": 2700,
+          "pstdev_ns": 413.8706185378335,
+          "raw_ns": [
+            4300,
+            3600,
+            2900,
+            2800,
+            2900,
+            2800,
+            3200,
+            3000,
+            2800,
+            2700,
+            2800,
+            2800,
+            2800,
+            2800,
+            2700
+          ]
+        },
+        "lookup": {
+          "compact_hit": {
+            "max_ns": 2545400,
+            "median_ns": 2365600,
+            "min_ns": 2359800,
+            "pstdev_ns": 44538.8140340036,
+            "raw_ns": [
+              2378700,
+              2364900,
+              2365400,
+              2363400,
+              2365600,
+              2373500,
+              2375100,
+              2545400,
+              2365100,
+              2368100,
+              2365200,
+              2363400,
+              2378200,
+              2368300,
+              2359800
+            ]
+          },
+          "compact_miss": {
+            "max_ns": 2016000,
+            "median_ns": 1950800,
+            "min_ns": 1941500,
+            "pstdev_ns": 22327.555471509488,
+            "raw_ns": [
+              1950900,
+              1955600,
+              1945900,
+              1941500,
+              2016000,
+              1944800,
+              1944500,
+              1949700,
+              1953400,
+              1949200,
+              1946500,
+              1950800,
+              2011400,
+              1952000,
+              1951200
+            ]
+          },
+          "iterations_per_sample": 4096,
+          "legacy_hit": {
+            "max_ns": 1168300,
+            "median_ns": 1080700,
+            "min_ns": 1070200,
+            "pstdev_ns": 25056.2265492809,
+            "raw_ns": [
+              1075400,
+              1104000,
+              1080700,
+              1089800,
+              1083100,
+              1081300,
+              1070200,
+              1088200,
+              1076100,
+              1168300,
+              1080300,
+              1078300,
+              1080500,
+              1073500,
+              1128600
+            ]
+          },
+          "legacy_miss": {
+            "max_ns": 876200,
+            "median_ns": 841500,
+            "min_ns": 832600,
+            "pstdev_ns": 10295.33659263045,
+            "raw_ns": [
+              845100,
+              876200,
+              836600,
+              835600,
+              832600,
+              838500,
+              845500,
+              841500,
+              839900,
+              855300,
+              846800,
+              840700,
+              839900,
+              843200,
+              853200
+            ]
+          }
+        }
+      },
+      "membership_count": 1,
+      "memory": {
+        "peak": {
+          "max_bytes": 2471,
+          "median_bytes": 2471,
+          "min_bytes": 2471,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            2471,
+            2471,
+            2471,
+            2471,
+            2471
+          ]
+        },
+        "retained": {
+          "max_bytes": 2191,
+          "median_bytes": 2191,
+          "min_bytes": 2191,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            2191,
+            2191,
+            2191,
+            2191,
+            2191
+          ]
+        }
+      },
+      "problem_sha256": "8778ba80046445185d377cc17ef9b3691abc1535868624549e1027b6f3d1edaf",
+      "reference_bytes": 4,
+      "reference_word_count": 1,
+      "selection_count": 1,
+      "warm_prepare": {
+        "max_ns": 119300,
+        "median_ns": 76500,
+        "min_ns": 73900,
+        "pstdev_ns": 10899.826706063826,
+        "raw_ns": [
+          119300,
+          80100,
+          75700,
+          76100,
+          77800,
+          78400,
+          73900,
+          75000,
+          77200,
+          75100,
+          77200,
+          84200,
+          76500,
+          73900,
+          74600
+        ]
+      }
+    },
+    {
+      "cold_prepare": {
+        "max_ns": 12734400,
+        "median_ns": 12244900,
+        "min_ns": 11987500,
+        "pstdev_ns": 202067.62630367093,
+        "raw_ns": [
+          12600500,
+          12144700,
+          12170700,
+          12223300,
+          12544300,
+          12313900,
+          12244900,
+          12259400,
+          12166200,
+          12518600,
+          12130200,
+          11987500,
+          12423300,
+          12173400,
+          12734400
+        ]
+      },
+      "corpus_size": 64,
+      "crossover": {
+        "cold_runs": 38,
+        "warm_runs": 3
+      },
+      "cuda": {
+        "capability": {
+          "backend_id": "cuda",
+          "device_arch": "sm_89",
+          "device_name": "NVIDIA GeForce RTX 4060"
+        },
+        "first_build": {
+          "max_ns": 825000,
+          "median_ns": 753000,
+          "min_ns": 681900,
+          "pstdev_ns": 39831.96371425006,
+          "raw_ns": [
+            776600,
+            764900,
+            749000,
+            698200,
+            698300,
+            747800,
+            782200,
+            776200,
+            754200,
+            816200,
+            715100,
+            681900,
+            751900,
+            825000,
+            753000
+          ]
+        },
+        "ordinary": {
+          "max_ns": 504700,
+          "median_ns": 459200,
+          "min_ns": 445800,
+          "pstdev_ns": 14157.291015193863,
+          "raw_ns": [
+            479200,
+            453300,
+            465700,
+            461000,
+            445800,
+            458600,
+            459200,
+            446800,
+            504700,
+            448700,
+            457500,
+            461300,
+            452400,
+            461400,
+            463400
+          ]
+        },
+        "reuse": {
+          "max_ns": 210000,
+          "median_ns": 114500,
+          "min_ns": 110700,
+          "pstdev_ns": 23974.425262488916,
+          "raw_ns": [
+            120100,
+            114500,
+            110700,
+            115400,
+            114200,
+            114400,
+            115000,
+            114800,
+            114300,
+            129000,
+            113800,
+            117900,
+            111400,
+            110900,
+            210000
+          ]
+        },
+        "reuse_stats": {
+          "builds": 1,
+          "evaluations": 17,
+          "packed_evaluations": 17,
+          "resident_count": 64,
+          "resident_kind": "rotate",
+          "reuses": 16
+        }
+      },
+      "cuda_device_bytes": 512,
+      "cuda_host_output_bytes": 256,
+      "membership": {
+        "compact_memory": {
+          "peak": {
+            "max_bytes": 3568,
+            "median_bytes": 3568,
+            "min_bytes": 3568,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              3568,
+              3568,
+              3568,
+              3568,
+              3568
+            ]
+          },
+          "retained": {
+            "max_bytes": 1408,
+            "median_bytes": 1408,
+            "min_bytes": 1408,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1408,
+              1408,
+              1408,
+              1408,
+              1408
+            ]
+          }
+        },
+        "compact_prepare": {
+          "max_ns": 48300,
+          "median_ns": 31200,
+          "min_ns": 30800,
+          "pstdev_ns": 4245.918301406919,
+          "raw_ns": [
+            32800,
+            32200,
+            31600,
+            31100,
+            31000,
+            31100,
+            30800,
+            31500,
+            31400,
+            30900,
+            31200,
+            48300,
+            31100,
+            31000,
+            32200
+          ]
+        },
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 6784,
+            "median_bytes": 6784,
+            "min_bytes": 6784,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              6784,
+              6784,
+              6784,
+              6784,
+              6784
+            ]
+          },
+          "retained": {
+            "max_bytes": 6408,
+            "median_bytes": 6408,
+            "min_bytes": 6408,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              6408,
+              6408,
+              6408,
+              6408,
+              6408
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 25500,
+          "median_ns": 12500,
+          "min_ns": 12300,
+          "pstdev_ns": 3265.7549748190777,
+          "raw_ns": [
+            15100,
+            15200,
+            12800,
+            12500,
+            12700,
+            12700,
+            12500,
+            12500,
+            12600,
+            12400,
+            12300,
+            25500,
+            12400,
+            12500,
+            12500
+          ]
+        },
+        "lookup": {
+          "compact_hit": {
+            "max_ns": 5371500,
+            "median_ns": 5295600,
+            "min_ns": 5256100,
+            "pstdev_ns": 33727.08506032899,
+            "raw_ns": [
+              5301400,
+              5299800,
+              5371500,
+              5278700,
+              5295600,
+              5318800,
+              5262400,
+              5270500,
+              5335200,
+              5265000,
+              5258200,
+              5327200,
+              5327800,
+              5261000,
+              5256100
+            ]
+          },
+          "compact_miss": {
+            "max_ns": 4572300,
+            "median_ns": 4425500,
+            "min_ns": 4405500,
+            "pstdev_ns": 46033.942066938194,
+            "raw_ns": [
+              4423200,
+              4426300,
+              4406300,
+              4459100,
+              4425500,
+              4490000,
+              4477700,
+              4405500,
+              4411800,
+              4505600,
+              4410600,
+              4412300,
+              4432700,
+              4572300,
+              4415900
+            ]
+          },
+          "iterations_per_sample": 4096,
+          "legacy_hit": {
+            "max_ns": 1133500,
+            "median_ns": 1089800,
+            "min_ns": 1076100,
+            "pstdev_ns": 14015.096622333123,
+            "raw_ns": [
+              1090500,
+              1098400,
+              1094700,
+              1096000,
+              1076100,
+              1089900,
+              1086400,
+              1086600,
+              1084200,
+              1080000,
+              1112900,
+              1082300,
+              1089800,
+              1133500,
+              1082000
+            ]
+          },
+          "legacy_miss": {
+            "max_ns": 864100,
+            "median_ns": 830000,
+            "min_ns": 825700,
+            "pstdev_ns": 10489.563066845698,
+            "raw_ns": [
+              853400,
+              825800,
+              838900,
+              834400,
+              829100,
+              825700,
+              835700,
+              830200,
+              829800,
+              833800,
+              864100,
+              829300,
+              827000,
+              826100,
+              830000
+            ]
+          }
+        }
+      },
+      "membership_count": 64,
+      "memory": {
+        "peak": {
+          "max_bytes": 15463,
+          "median_bytes": 15463,
+          "min_bytes": 15463,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            15463,
+            15463,
+            15463,
+            15463,
+            15463
+          ]
+        },
+        "retained": {
+          "max_bytes": 12487,
+          "median_bytes": 12487,
+          "min_bytes": 12487,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            12487,
+            12487,
+            12487,
+            12487,
+            12487
+          ]
+        }
+      },
+      "problem_sha256": "52ad48ca971fb8b3ea55756f8bec1df7fdbc3bb8865c0c3ab10b3839a4627f79",
+      "reference_bytes": 256,
+      "reference_word_count": 64,
+      "selection_count": 1,
+      "warm_prepare": {
+        "max_ns": 323500,
+        "median_ns": 278300,
+        "min_ns": 269700,
+        "pstdev_ns": 13350.166041414366,
+        "raw_ns": [
+          323500,
+          297000,
+          276700,
+          288600,
+          270400,
+          278300,
+          274100,
+          291200,
+          279100,
+          275900,
+          276200,
+          290900,
+          269700,
+          273600,
+          283100
+        ]
+      }
+    },
+    {
+      "cold_prepare": {
+        "max_ns": 15733800,
+        "median_ns": 15212900,
+        "min_ns": 14997000,
+        "pstdev_ns": 235059.3519376188,
+        "raw_ns": [
+          15023200,
+          15201900,
+          15149300,
+          15126800,
+          15358100,
+          15589400,
+          15439600,
+          15529700,
+          15212900,
+          14997000,
+          15731800,
+          15234500,
+          15196800,
+          15094000,
+          15733800
+        ]
+      },
+      "corpus_size": 1024,
+      "crossover": {
+        "cold_runs": 5,
+        "warm_runs": 2
+      },
+      "cuda": {
+        "capability": {
+          "backend_id": "cuda",
+          "device_arch": "sm_89",
+          "device_name": "NVIDIA GeForce RTX 4060"
+        },
+        "first_build": {
+          "max_ns": 986400,
+          "median_ns": 938500,
+          "min_ns": 868500,
+          "pstdev_ns": 38081.77983702384,
+          "raw_ns": [
+            931200,
+            927800,
+            907800,
+            873900,
+            938500,
+            948900,
+            964100,
+            868500,
+            872900,
+            872000,
+            954300,
+            986400,
+            963400,
+            952900,
+            957500
+          ]
+        },
+        "ordinary": {
+          "max_ns": 3908900,
+          "median_ns": 3822200,
+          "min_ns": 3779400,
+          "pstdev_ns": 41673.11630082663,
+          "raw_ns": [
+            3822200,
+            3908900,
+            3884000,
+            3779400,
+            3785900,
+            3852500,
+            3860200,
+            3798400,
+            3784600,
+            3836400,
+            3863300,
+            3781600,
+            3785100,
+            3796600,
+            3867000
+          ]
+        },
+        "reuse": {
+          "max_ns": 213000,
+          "median_ns": 140600,
+          "min_ns": 131100,
+          "pstdev_ns": 28739.145583835456,
+          "raw_ns": [
+            143900,
+            208800,
+            131100,
+            140600,
+            140000,
+            207500,
+            131600,
+            144800,
+            140100,
+            213000,
+            143100,
+            142000,
+            139900,
+            131500,
+            136400
+          ]
+        },
+        "reuse_stats": {
+          "builds": 1,
+          "evaluations": 17,
+          "packed_evaluations": 17,
+          "resident_count": 1024,
+          "resident_kind": "rotate",
+          "reuses": 16
+        }
+      },
+      "cuda_device_bytes": 8192,
+      "cuda_host_output_bytes": 4096,
+      "membership": {
+        "compact_memory": {
+          "peak": {
+            "max_bytes": 50288,
+            "median_bytes": 50288,
+            "min_bytes": 50288,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              50288,
+              50288,
+              50288,
+              50288,
+              50288
+            ]
+          },
+          "retained": {
+            "max_bytes": 9152,
+            "median_bytes": 9152,
+            "min_bytes": 9152,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              9152,
+              9152,
+              9152,
+              9152,
+              9152
+            ]
+          }
+        },
+        "compact_prepare": {
+          "max_ns": 287600,
+          "median_ns": 279600,
+          "min_ns": 268900,
+          "pstdev_ns": 5771.1004149988585,
+          "raw_ns": [
+            268900,
+            274100,
+            287600,
+            269000,
+            273800,
+            280300,
+            284500,
+            283400,
+            279600,
+            273000,
+            281300,
+            279200,
+            271500,
+            284900,
+            280100
+          ]
+        },
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 98944,
+            "median_bytes": 98944,
+            "min_bytes": 98944,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              98944,
+              98944,
+              98944,
+              98944,
+              98944
+            ]
+          },
+          "retained": {
+            "max_bytes": 98568,
+            "median_bytes": 98568,
+            "min_bytes": 98568,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              98568,
+              98568,
+              98568,
+              98568,
+              98568
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 168600,
+          "median_ns": 156400,
+          "min_ns": 143200,
+          "pstdev_ns": 5334.816460447975,
+          "raw_ns": [
+            143200,
+            165400,
+            161500,
+            155400,
+            155400,
+            156200,
+            157000,
+            155700,
+            168600,
+            156800,
+            156100,
+            155400,
+            157000,
+            156700,
+            156400
+          ]
+        },
+        "lookup": {
+          "compact_hit": {
+            "max_ns": 7441200,
+            "median_ns": 7378800,
+            "min_ns": 7319900,
+            "pstdev_ns": 32268.72169764399,
+            "raw_ns": [
+              7414200,
+              7403100,
+              7441200,
+              7379000,
+              7386100,
+              7378800,
+              7390400,
+              7373600,
+              7363800,
+              7342700,
+              7344400,
+              7394800,
+              7339200,
+              7333400,
+              7319900
+            ]
+          },
+          "compact_miss": {
+            "max_ns": 8843400,
+            "median_ns": 8191000,
+            "min_ns": 8144100,
+            "pstdev_ns": 165247.49303864053,
+            "raw_ns": [
+              8144100,
+              8159400,
+              8166700,
+              8149600,
+              8191000,
+              8180200,
+              8166100,
+              8232400,
+              8243000,
+              8189000,
+              8210100,
+              8206900,
+              8222500,
+              8226200,
+              8843400
+            ]
+          },
+          "iterations_per_sample": 4096,
+          "legacy_hit": {
+            "max_ns": 1122400,
+            "median_ns": 1087600,
+            "min_ns": 1080200,
+            "pstdev_ns": 12880.883337549314,
+            "raw_ns": [
+              1088500,
+              1090700,
+              1088800,
+              1119300,
+              1080200,
+              1086400,
+              1085900,
+              1082300,
+              1106900,
+              1122400,
+              1089100,
+              1087600,
+              1081800,
+              1086200,
+              1081700
+            ]
+          },
+          "legacy_miss": {
+            "max_ns": 877300,
+            "median_ns": 835900,
+            "min_ns": 827900,
+            "pstdev_ns": 14041.835904024643,
+            "raw_ns": [
+              828700,
+              835000,
+              827900,
+              837000,
+              842100,
+              837600,
+              838500,
+              871000,
+              877300,
+              830400,
+              829800,
+              833600,
+              834600,
+              835900,
+              841300
+            ]
+          }
+        }
+      },
+      "membership_count": 1024,
+      "memory": {
+        "peak": {
+          "max_bytes": 241387,
+          "median_bytes": 241387,
+          "min_bytes": 241387,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            241387,
+            241387,
+            241387,
+            241387,
+            241387
+          ]
+        },
+        "retained": {
+          "max_bytes": 191819,
+          "median_bytes": 191819,
+          "min_bytes": 191819,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            191819,
+            191819,
+            191819,
+            191819,
+            191819
+          ]
+        }
+      },
+      "problem_sha256": "473104e526f1dc5c7bf024217f9fab18ae189ff89956249d878699e1014b0975",
+      "reference_bytes": 4096,
+      "reference_word_count": 1024,
+      "selection_count": 1,
+      "warm_prepare": {
+        "max_ns": 3331400,
+        "median_ns": 3249600,
+        "min_ns": 3206000,
+        "pstdev_ns": 31534.31288119164,
+        "raw_ns": [
+          3282400,
+          3331400,
+          3267800,
+          3206000,
+          3282000,
+          3244800,
+          3262200,
+          3236500,
+          3218600,
+          3236300,
+          3249600,
+          3206500,
+          3259900,
+          3243500,
+          3274000
+        ]
+      }
+    },
+    {
+      "cold_prepare": {
+        "max_ns": 212180300,
+        "median_ns": 207760900,
+        "min_ns": 205773800,
+        "pstdev_ns": 1531826.1956240337,
+        "raw_ns": [
+          205773800,
+          208415400,
+          206408400,
+          206213700,
+          207840400,
+          207760900,
+          208535800,
+          208338800,
+          207473000,
+          207021100,
+          207070400,
+          209297900,
+          208255000,
+          206204800,
+          212180300
+        ]
+      },
+      "corpus_size": 59049,
+      "crossover": {
+        "cold_runs": 1,
+        "warm_runs": 1
+      },
+      "cuda": {
+        "capability": {
+          "backend_id": "cuda",
+          "device_arch": "sm_89",
+          "device_name": "NVIDIA GeForce RTX 4060"
+        },
+        "first_build": {
+          "max_ns": 17980700,
+          "median_ns": 12142900,
+          "min_ns": 11724700,
+          "pstdev_ns": 1815792.3708275557,
+          "raw_ns": [
+            11745800,
+            11966300,
+            11724700,
+            11955400,
+            12234200,
+            12964800,
+            15723300,
+            12405900,
+            12142900,
+            15595400,
+            12055300,
+            17980700,
+            13090300,
+            11916700,
+            11818900
+          ]
+        },
+        "ordinary": {
+          "max_ns": 233597100,
+          "median_ns": 222517700,
+          "min_ns": 219545600,
+          "pstdev_ns": 4389478.669090442,
+          "raw_ns": [
+            224266100,
+            233597100,
+            220966500,
+            220766300,
+            219545600,
+            220692900,
+            228556400,
+            220665900,
+            219692100,
+            221595000,
+            233227300,
+            224434000,
+            222517700,
+            223235000,
+            225452200
+          ]
+        },
+        "reuse": {
+          "max_ns": 778700,
+          "median_ns": 414700,
+          "min_ns": 380100,
+          "pstdev_ns": 119985.06462611642,
+          "raw_ns": [
+            386000,
+            778700,
+            406500,
+            384900,
+            648000,
+            380100,
+            390500,
+            392100,
+            664800,
+            414700,
+            417100,
+            451600,
+            414300,
+            425200,
+            436100
+          ]
+        },
+        "reuse_stats": {
+          "builds": 1,
+          "evaluations": 17,
+          "packed_evaluations": 17,
+          "resident_count": 59049,
+          "resident_kind": "rotate",
+          "reuses": 16
+        }
+      },
+      "cuda_device_bytes": 472392,
+      "cuda_host_output_bytes": 236196,
+      "membership": {
+        "compact_memory": {
+          "peak": {
+            "max_bytes": 3121872,
+            "median_bytes": 3121872,
+            "min_bytes": 3121872,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              3121872,
+              3121872,
+              3121872,
+              3121872,
+              3121872
+            ]
+          },
+          "retained": {
+            "max_bytes": 473352,
+            "median_bytes": 473352,
+            "min_bytes": 473352,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              473352,
+              473352,
+              473352,
+              473352,
+              473352
+            ]
+          }
+        },
+        "compact_prepare": {
+          "max_ns": 16252800,
+          "median_ns": 15850700,
+          "min_ns": 15574300,
+          "pstdev_ns": 188838.6217558968,
+          "raw_ns": [
+            15574300,
+            15761900,
+            16252800,
+            16054400,
+            15725300,
+            15927800,
+            15816900,
+            15801800,
+            15850700,
+            15889100,
+            16049800,
+            16004300,
+            15637400,
+            15813200,
+            16219700
+          ]
+        },
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 5876928,
+            "median_bytes": 5876928,
+            "min_bytes": 5876928,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              5876928,
+              5876928,
+              5876928,
+              5876928,
+              5876928
+            ]
+          },
+          "retained": {
+            "max_bytes": 5876552,
+            "median_bytes": 5876552,
+            "min_bytes": 5876552,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              5876552,
+              5876552,
+              5876552,
+              5876552,
+              5876552
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 18741200,
+          "median_ns": 18026600,
+          "min_ns": 10107800,
+          "pstdev_ns": 2008687.218680123,
+          "raw_ns": [
+            10107800,
+            16567200,
+            18741200,
+            18026600,
+            17404300,
+            17848800,
+            18161400,
+            17832500,
+            18124500,
+            18056600,
+            18299700,
+            18125400,
+            18208500,
+            17948200,
+            17905600
+          ]
+        },
+        "lookup": {
+          "compact_hit": {
+            "max_ns": 10847700,
+            "median_ns": 10752700,
+            "min_ns": 10572400,
+            "pstdev_ns": 71649.99806156468,
+            "raw_ns": [
+              10847700,
+              10637100,
+              10752700,
+              10695400,
+              10779600,
+              10794200,
+              10759800,
+              10735800,
+              10758900,
+              10792800,
+              10740800,
+              10777400,
+              10694900,
+              10572400,
+              10620000
+            ]
+          },
+          "compact_miss": {
+            "max_ns": 11553300,
+            "median_ns": 11407700,
+            "min_ns": 11328800,
+            "pstdev_ns": 47252.58370360997,
+            "raw_ns": [
+              11553300,
+              11432100,
+              11395100,
+              11407700,
+              11328800,
+              11417000,
+              11441900,
+              11413000,
+              11435400,
+              11406500,
+              11391200,
+              11384200,
+              11450100,
+              11370300,
+              11399900
+            ]
+          },
+          "iterations_per_sample": 4096,
+          "legacy_hit": {
+            "max_ns": 1105500,
+            "median_ns": 1086300,
+            "min_ns": 1075400,
+            "pstdev_ns": 7814.789397887402,
+            "raw_ns": [
+              1086300,
+              1078800,
+              1089900,
+              1076400,
+              1088200,
+              1083200,
+              1087500,
+              1081300,
+              1083100,
+              1097500,
+              1075400,
+              1088000,
+              1077200,
+              1105500,
+              1088400
+            ]
+          },
+          "legacy_miss": {
+            "max_ns": 859200,
+            "median_ns": 823300,
+            "min_ns": 819500,
+            "pstdev_ns": 12671.420160695836,
+            "raw_ns": [
+              819900,
+              825900,
+              825100,
+              825600,
+              859100,
+              835100,
+              823000,
+              823300,
+              821200,
+              820500,
+              819500,
+              819500,
+              824100,
+              859200,
+              823000
+            ]
+          }
+        }
+      },
+      "membership_count": 59049,
+      "memory": {
+        "peak": {
+          "max_bytes": 14763580,
+          "median_bytes": 14763580,
+          "min_bytes": 14763580,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            14763580,
+            14763580,
+            14763580,
+            14763580,
+            14763580
+          ]
+        },
+        "retained": {
+          "max_bytes": 11439693,
+          "median_bytes": 11439693,
+          "min_bytes": 11439693,
+          "pstdev_bytes": 0.0,
+          "raw_bytes": [
+            11439693,
+            11439693,
+            11439693,
+            11439693,
+            11439693
+          ]
+        }
+      },
+      "problem_sha256": "68215df6ec0f00ab5fa8a720737c1e52f59252ee5c0a344bc2802d648dd677a1",
+      "reference_bytes": 236196,
+      "reference_word_count": 59049,
+      "selection_count": 1,
+      "warm_prepare": {
+        "max_ns": 198251400,
+        "median_ns": 194916600,
+        "min_ns": 193870200,
+        "pstdev_ns": 1172630.5864451374,
+        "raw_ns": [
+          198251400,
+          197253200,
+          194673700,
+          194748900,
+          194916600,
+          195467100,
+          197141000,
+          194737700,
+          193870200,
+          194604700,
+          194723300,
+          196301200,
+          195376000,
+          195576200,
+          194871100
+        ]
+      }
+    }
+  ]
+}

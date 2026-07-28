@@ -197,10 +197,14 @@ compaction. Prepared membership now uses
 `identity-sorted-candidate-reference-binary-search-v1`, a proof-bound sorted tuple of
 references to the original immutable batch items. Binary search locates logical IDs
 and exact payload equality preserves anti-fabrication semantics. Forged/cross-batch
-indexes fail closed. Version 2 of the benchmark records compact and historical
-index identities and compares same-run component preparation, retained/peak memory,
-and exact hit/miss lookup in 4,096-operation samples. A clean post-commit run is
-pending. Resident or fused evaluation-selection remains a later
+indexes fail closed. Retained version-2 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
+shows 91.945% lower full-domain component retention and 1.137x faster component
+preparation. Complete prepared retention/peak fall 32.083%/26.051%. Binary hit/miss
+lookup regresses 9.898x/13.856x versus the copied set, so promotion is explicitly for
+scale memory/preparation. Warm/cold crossover is 7/3/2/1 and 108/38/5/1. Validated
+candidate-batch/item layout is the next memory boundary. Resident or fused
+evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
 orchestration, and broader representative benchmark evidence remain open.

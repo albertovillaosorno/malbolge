@@ -266,10 +266,14 @@ fails explicitly without changing correctness rules.
   first compaction. The replacement retains sorted references to the original batch,
   is proof-bound to that batch, and checks binary-searched logical IDs with exact
   payload equality. Forged/cross-batch indexes and proposal substitution fail
-  closed. Version 2 of the crossover benchmark records
-  `identity-sorted-candidate-reference-binary-search-v1` and the copied-tuple
-  baseline, then compares component preparation, retained/peak memory, and exact
-  hit/miss lookup in 4,096-operation samples. A clean post-commit run is pending.
+  closed. Retained version-2 evidence under
+  `benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
+  records 473,352 bytes compact component retention versus 5,876,552 bytes copied
+  (91.945% lower), 15.851/18.027 ms preparation (1.137x compact advantage), and
+  32.083%/26.051% lower complete prepared retention/peak. Exact compact hit/miss
+  lookup is 9.898x/13.856x slower, so promotion is for memory/preparation rather than
+  lookup speed. Warm/cold crossover is 7/3/2/1 and 108/38/5/1. Validated candidate
+  batch/item layout is the next prepared-state memory boundary.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

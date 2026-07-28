@@ -183,10 +183,14 @@ warm/cold crossover is 6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves
 compaction. The replacement is a proof-bound identity-sorted tuple of references to
 the original immutable batch items. Binary search plus exact payload equality keeps
 anti-fabrication checks outside accelerator authority, while forged/cross-batch
-indexes fail closed. Version 2 of the benchmark records the compact and copied-set
-identities, then compares component preparation, retained/peak memory, and exact
-hit/miss lookup in 4,096-operation samples. A clean post-commit run is pending,
-while resident/fused search remains later work.
+indexes fail closed. Retained version-2 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
+records 91.945% lower full-domain component retention, 1.137x faster component
+preparation, and 32.083%/26.051% lower complete prepared retention/peak. Exact
+compact hit/miss lookup is 9.898x/13.856x slower than the copied set, so the
+representation is promoted for scale memory/preparation rather than lookup speed.
+Warm/cold crossover is 7/3/2/1 and 108/38/5/1. Validated candidate-batch/item layout
+is the next memory boundary, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-preparation-crossover-v2"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does proof-bound sorted-reference membership reduce prepared memory enough to preserve strict CUDA crossover, and what preparation/lookup tradeoff does it introduce?"
+hypothesis = "At full domain, the compact index reduces component and complete prepared memory, preserves a finite strict crossover, and retains any lookup regression with all exact proofs."
+baseline = "same-run copied identity/payload frozenset for component metrics plus the retained version-1 prepared-search run for full-state context"
+rejection_observation = "Any exact proof drifts, compact full-domain retained memory is not lower than the copied-set model, no finite crossover exists, or exact hit/miss behavior differs."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup; one resident build plus one reuse warmup; component lookup models validated before timing"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained timing samples and five retained memory samples per scale; each lookup sample contains 4096 operations"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "lookup_block_ns", "crossover_runs"]
+tradeoff_policy = "exact validator, proposal, admission, membership identity, state-count, and CUDA session proofs precede memory, preparation, lookup, and crossover interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

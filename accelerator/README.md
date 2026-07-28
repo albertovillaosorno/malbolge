@@ -199,11 +199,17 @@ compaction target. Prepared search now uses
 `identity-sorted-candidate-reference-binary-search-v1`: an immutable, proof-bound,
 identity-sorted tuple of references to the original batch items. Membership uses
 binary search by logical ID followed by byte-exact payload equality; forged indexes,
-cross-batch reuse, missing IDs, and payload substitution fail closed. Version 2 of
-the crossover benchmark records both the compact and historical index identities,
-then compares component preparation, retained/peak memory, and exact hit/miss lookup
-in 4,096-operation samples. A clean post-commit run is pending; the trusted verifier
-remains the sole proposal-admission authority.
+cross-batch reuse, missing IDs, and payload substitution fail closed. Retained
+version-2 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
+records 473,352 bytes retained for the compact component versus 5,876,552 bytes for
+the copied set at full domain (91.945% lower), with 15.851/18.027 ms preparation
+(1.137x compact advantage). Complete prepared state falls from 16.063 to 10.910 MiB
+retained and from 19.040 to 14.080 MiB peak. Exact hit/miss lookup regresses
+9.898x/13.856x, so the index is promoted for scale memory/preparation rather than
+lookup speed. Warm/cold crossover is 7/3/2/1 and 108/38/5/1. The trusted verifier
+remains the sole proposal-admission authority; validated candidate-batch/item layout
+is the next memory boundary.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

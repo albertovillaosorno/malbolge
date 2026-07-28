@@ -336,9 +336,13 @@ on run two. Incremental traced Python state retains 16.063 MiB and peaks at
 target. The active index identity is
 `identity-sorted-candidate-reference-binary-search-v1`: it stores sorted references
 to existing immutable candidate items and checks exact ID/payload membership by
-binary search. Version 2 emits and validates this identity plus
-`copied-identity-payload-frozenset-v1` alongside both primitive validators and all
-state/session proofs. Component preparation, retained/peak allocation, and exact
-hit/miss lookup are measured in the same run. A clean post-commit rerun is required
-before replacing the retained 16.063/19.040 MiB memory result or interpreting the
-lookup/crossover trade-off.
+binary search. Retained version-2 evidence is under
+`evidence/2026-07-28-compact-membership-crossover-rtx4060/`. At full domain the
+compact component retains 473,352 bytes versus 5,876,552 bytes for the copied set
+(91.945% lower) and prepares in 15.851 ms versus 18.027 ms (1.137x faster). Complete
+prepared state falls from 16.063/19.040 MiB retained/peak to 10.910/14.080 MiB.
+Compact hit/miss lookup is 2.625/2.785 microseconds versus 0.265/0.201 microseconds,
+9.898x/13.856x slower. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1.
+The result promotes compact membership for scale memory/preparation while retaining
+the lookup regression; validated candidate-batch/item layout is the next measured
+memory boundary.

@@ -866,11 +866,18 @@ candidate in addition to the validated batch. The active
 identity-sorted tuple of references to the existing immutable `CandidateWorkItem`
 objects. It is proof-bound to the original batch, compares logical ID and payload
 exactly, and rejects forged or cross-batch indexes. Generic fabrication checks remain
-active. Version 2 of the crossover protocol records both membership identities and
-adds same-run component preparation, retained/peak memory, and exact hit/miss lookup
-for the compact index versus the copied-tuple `frozenset`. Lookup samples execute
-4,096 operations each and preserve exact results. A clean post-commit run is pending
-before promoting the compaction result.
+active. Retained version-2 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
+compares both membership identities in the same process. At 59,049 candidates the
+compact component retains 473,352 bytes versus 5,876,552 bytes for the copied set,
+a 91.945% reduction, and prepares in 15.851 ms versus 18.027 ms (1.137x faster).
+Complete prepared state falls from 16.063 to 10.910 MiB retained (32.083%) and from
+19.040 to 14.080 MiB peak (26.051%). Exact lookup is the retained cost: compact hit
+and miss are 2.625/2.785 microseconds versus 0.265/0.201 microseconds, regressions of
+9.898x/13.856x. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1; the
+full-domain warm route saves 15.458 ms on its first execution. The compact index is
+promoted for scale memory/preparation, not lookup speed. Validated candidate-batch
+and `CandidateWorkItem` layout is the next prepared-state memory boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -986,10 +993,14 @@ cold crosses on run two. Incremental Python state retains/peaks at
 16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. Component tracing selected the duplicate prepared membership frozenset for the first
 compaction. The active proof-bound index stores sorted references to existing batch
 items and uses binary search plus exact payload equality; forged/cross-batch indexes
-and fabricated proposals fail closed. Version 2 of the crossover protocol records
-both index identities and measures same-run component preparation, retained/peak
-memory, and exact hit/miss lookup in 4,096-operation samples. A clean post-commit run
-is pending before the next state component is selected.
+and fabricated proposals fail closed. Retained version-2 evidence records the
+compact component at 473,352 bytes versus 5,876,552 bytes copied (91.945% lower) and
+15.851 ms versus 18.027 ms preparation (1.137x faster) at full domain. Complete
+prepared state falls 32.083% retained and 26.051% peak. Binary hit/miss lookup is
+9.898x/13.856x slower than the copied set, so this is explicitly a scale-memory and
+preparation promotion rather than a lookup-speed claim. Warm/cold crossover is
+7/3/2/1 and 108/38/5/1. The validated candidate batch and item-object layout is the
+next state component selected for measurement.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
