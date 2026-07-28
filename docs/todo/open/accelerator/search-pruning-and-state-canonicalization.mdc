@@ -1,6 +1,6 @@
 ---
 id: "search-pruning-and-state-canonicalization"
-status: "pending"
+status: "active"
 lane: "13"
 area: "accelerator"
 task: "TODO - Search pruning and state canonicalization"
@@ -56,6 +56,10 @@ raw hardware scale.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `deterministic-cpu-optimizer`,
   `malbolge-specific-optimization-mathematics`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Active exploratory evidence: exact pre-identity byte duplicate pruning retains
+  stable first representatives and rejects every stronger equality shortcut. The
+  duplicate-rich fixture maps eight inputs to five representatives, while the
+  all-unique null fixture remains four-to-four. One-byte and prefix/length
+  adversarial cases remain distinct. This is correctness/evaluation-count
+  evidence only; stronger canonicalization, dominance, admissible heuristics, and
+  preregistered performance evidence remain open.

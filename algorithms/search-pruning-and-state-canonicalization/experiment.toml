@@ -1,14 +1,17 @@
 [experiment]
 id = "search-pruning-and-state-canonicalization"
 seed = 0
+method_class = "exploratory"
 
 [challenge]
-family = "unassigned"
-difficulty = 1
+family = "exact-duplicate-byte-corpus"
+difficulty = 8
 
 [budget]
 seconds = 1
 memory_mib = 128
+candidate_evaluations = 8
 
 [verification]
 required = true
+cargo_test = "search_pruning_research"

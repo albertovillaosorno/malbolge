@@ -12,6 +12,21 @@ vector. Search may rank or generate candidates arbitrarily, but only
 \]
 is eligible for comparison. Optimization therefore selects verified candidates
 under explicit resource budgets rather than treating the search heuristic as a
-correctness authority. This file will be refined with algorithm-specific
-equations before the first claimed result.
+correctness authority.
+
+For the first conservative pre-identity pruning rule, let $b_i$ be the complete
+byte sequence of raw candidate $i$. Define
+\[
+  i \sim_{\mathrm{bytes}} j \iff b_i=b_j.
+\]
+The canonical representative of index $i$ is the least earlier index in its exact
+byte-equivalence class,
+\[
+  r(i)=\min\{j\mid j\le i\land b_j=b_i\}.
+\]
+The retained set is $R=\{i\mid r(i)=i\}$, so the number of required downstream
+candidate evaluations is $|R|\le |C|$. Equality of hashes, prefixes, lengths, or
+other reduced descriptors is not sufficient for $\sim_{\mathrm{bytes}}$. Thus
+this rule is exact but provides zero reduction when every candidate byte sequence
+is unique.
 \end{document}

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active exploratory research
 
 ## Research Question
 
@@ -16,7 +16,7 @@ Develop exact pruning, dominance rules, partial-equivalence checks, canonical
 states, admissible heuristics, and profile-aware constraints before relying on
 raw hardware scale.
 
-- Status: Proposed
+- Status: Active exploratory research
 - Research ID: `search-pruning-and-state-canonicalization`
 - Last reviewed: 2026-07-26
 
@@ -43,6 +43,15 @@ versioned configuration, explicit seeds where stochastic behavior exists, fixed
 resource budgets, parametric challenge identities, and the same verifier used
 for baselines. Raw regenerable output stays in the mirror's Git-ignored `out/`.
 
+The first slice is exploratory correctness work rather than a preregistered
+performance comparison. Its baseline evaluates every pre-identity candidate byte
+sequence. The candidate rule partitions that same ordered corpus by complete byte
+equality and retains the first occurrence of each class. Hash equality, prefix
+relations, similar lengths, and heuristic state keys are explicitly excluded.
+The rule is rejected as unsound if any two byte-distinct inputs share a
+representative. A corpus with no duplicates is the required null case and must
+show zero reduction in candidate evaluations.
+
 ## Evidence
 
 Candidate generation, heuristics, models, and accelerators are untrusted. A
@@ -63,7 +72,16 @@ verifier accepts the candidate under the declared target profile.
 
 ## Results
 
-No experiment result is recorded yet.
+The exploratory exact-duplicate correctness fixtures pass. On the fixed
+duplicate-rich eight-item corpus, five exact representatives remain, so three
+redundant candidate evaluations are removed by construction. On the four-item
+all-unique corpus, all four representatives remain and the measured evaluation
+reduction is zero. One-byte differences, shared prefixes, nearby lengths, and an
+empty corpus all preserve the required exact partition.
+
+These are deterministic evaluation-count observations, not wall-time speedup
+measurements. The fixture-specific plan was not committed before the first run,
+so no confirmatory performance conclusion is claimed from this slice.
 
 ## Threats to Validity
 
@@ -73,7 +91,12 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-No conclusion is accepted before reproducible evidence exists.
+Exact byte-duplicate pruning is supported as a conservative correctness rule for
+pre-identity candidate sequences and is retained experimentally. It cannot help
+an all-unique corpus, and this evidence does not justify stronger semantic state
+canonicalization, dominance rules, or a general performance claim. The broader
+research hypothesis remains inconclusive pending preregistered challenge and
+performance experiments.
 
 ## References
 
