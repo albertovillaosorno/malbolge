@@ -398,18 +398,24 @@ large deterministic batches, not universal small-batch memory. All builder,
 storage, validator, membership, proposal, admission, cardinality, and CPU/CUDA
 session proofs pass. Component attribution now places the remaining peak in the
 batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes as
-representative, selected-index, and payload arrays coexist. Protocol version 6 is
-active under `classic-u32le-bitset-inplace-first-representatives-v2`. The builder
-reuses the representative array as final logical-index storage, rotates it in place
-through overlapping native-word memoryviews plus only the wrapped prefix, truncates
-to the evaluation budget, materializes immutable index bytes, releases the mutable
-array, and only then builds payload bytes. First-representative order, seed/budget
-rotation, strict packed-rotation proof, scalar packed reference, and fail-closed
-admission remain unchanged. Exploratory full-domain results lower warm/cold
-preparation from 76.584/76.130 to 64.580/64.631 ms (1.186x/1.178x), peak Python
-allocation from 1,183,023 to 962,052 bytes (18.679%), and ordinary CUDA search from
-102.850 to 90.783 ms (1.133x), while retained state stays 710,647 bytes and
-crossover remains 1/1. At 64 and 1,024 candidates the same route also lowers peak,
-preparation, and ordinary time; one-candidate peak is unchanged at 8,391 bytes.
-Clean post-commit crossover, throughput, phase, and component evidence is pending
-before the next measured boundary is selected.
+representative, selected-index, and payload arrays coexist. Retained version-6 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/`
+promotes `classic-u32le-bitset-inplace-first-representatives-v2`. At 59,049
+candidates, cold/warm preparation falls from 76.130/76.584 to 64.606/65.101 ms
+(1.178x/1.176x), peak Python allocation falls from 1,183,023 to 962,052 bytes
+(18.679%), retained state remains 710,647 bytes, and full-domain crossover remains
+1/1. CPU/CUDA ordinary routes improve from 90.869/103.562 to 79.943/92.133 ms
+(1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput is
+3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
+(1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
+2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
+the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
+8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at 1,024
+candidates peak falls 22,155 to 19,116 bytes and ordinary CUDA improves. All
+builder, storage, validator, membership, proposal, admission, cardinality, and
+CPU/CUDA session proofs pass. Component attribution now places the builder phase
+near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
+occurs when that retained batch coexists with candidate-state creation (~237 KiB
+incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
+coexistence without weakening exact reference, selection, membership, or admission
+proofs is the next measured boundary.

@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-preparation-crossover-v6"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does reusing and rotating first-representative storage in place reduce preparation peak and latency without changing exact rotate-target proofs?"
+hypothesis = "At full domain, the v6 builder lowers peak memory and preparation time, preserves one-run crossover, and improves ordinary CPU/CUDA routes while prepared routes remain contextual controls."
+baseline = "retained version-5 packed rotate-target builder evidence from source commit fef2558600b2449892b8d68e4d95f19e869fc55a"
+rejection_observation = "Builder identity or exact proofs drift, full-domain peak or preparation does not improve, ordinary routes regress materially, or crossover changes. Prepared-route variation is a contextual control because the builder is outside those timed intervals."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup; one resident build plus one reuse warmup; CPU and CUDA prepared sessions each require one build and fifteen measured reuses"
+ordering = "fixed"
+stopping_rule = "fifteen retained timing samples and five retained memory samples per crossover scale; fifteen throughput and phase samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "crossover_runs", "session_builds", "session_reuses"]
+tradeoff_policy = "builder, storage, membership, validators, proposal, admission, cardinality, and CPU/CUDA session proofs precede memory, route, phase, and crossover interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
