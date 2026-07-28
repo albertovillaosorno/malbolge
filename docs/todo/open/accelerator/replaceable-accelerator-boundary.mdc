@@ -146,8 +146,10 @@ directly on CUDA APIs.
   existing table/session/membership/selector proofs. Retained CUDA prepared is
   0.488 ms (2.407x), backend/total are 0.215/0.238 ms (3.999x/3.729x), validation is
   0.0278 ms (23.590x), and primitive end-to-end is 0.1935 ms (4.488x). The
-  236,196-byte reference and construction remain untimed preparation costs;
-  preparation/memory/reuse crossover are next. Synthesis/guided search,
+  236,196-byte reference and construction remain untimed preparation costs. The
+  active four-scale benchmark measures cold/warm preparation, incremental Python
+  memory, fresh resident build, reuse, and strict crossover with all exact proofs.
+  Post-commit evidence is pending. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

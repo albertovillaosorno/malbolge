@@ -185,8 +185,11 @@ broadword validation and 6.786x faster than same-run CPU. CUDA backend/total imp
 3.999x/3.729x to 0.215/0.238 ms. Exact prepared validation improves 23.590x to
 0.0278 ms, including 0.0180 ms equality; primitive end-to-end improves 4.488x to
 0.1935 ms. The 236,196-byte reference and its construction are preparation costs,
-not timed execution. Preparation latency, memory scaling, and reuse crossover are
-next. Resident or
+not timed execution. The active crossover benchmark measures fresh-process and
+warm-process preparation, incremental Python memory, first resident execution,
+steady reuse, and strict amortization at four corpus sizes. Validator identities,
+exact proposal/admission, reference/membership/selector counts, and CUDA counters
+remain required. Post-commit evidence is pending. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

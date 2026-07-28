@@ -256,8 +256,11 @@ fails explicitly without changing correctness rules.
   (2.407x better), CUDA backend/total reach 0.215/0.238 ms (3.999x/3.729x), and exact
   prepared validation reaches 0.0278 ms (23.590x) with 0.0180 ms comparison.
   Primitive end-to-end reaches 0.1935 ms (4.488x). The reference image is 236,196
-  bytes and construction remains outside timed execution. Preparation latency,
-  memory scaling, and reuse crossover are the next CUDA measurements.
+  bytes and construction remains outside timed execution. The active four-scale
+  benchmark measures cold/warm preparation, incremental Python memory, fresh
+  resident build, steady reuse, and strict crossover while requiring validator,
+  proposal/admission, state-count, and session proofs. Post-commit evidence is
+  pending.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

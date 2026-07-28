@@ -174,8 +174,10 @@ proofs. Retained evidence records 0.488 ms CUDA prepared search (2.407x), 0.215 
 backend evaluation (3.999x), 0.238 ms search total (3.729x), 0.0278 ms exact
 validation (23.590x), and 0.1935 ms primitive end-to-end (4.488x). Same-run CUDA is
 6.786x faster than CPU prepared. The reference image is 236,196 bytes and construction
-is excluded, so preparation latency, memory scaling, and reuse crossover are the
-next replaceable-boundary evidence, while resident/fused search remains later work.
+is excluded. A four-scale benchmark now measures fresh-process and warm-process
+preparation, incremental Python memory, first resident execution, reuse, and strict
+crossover while retaining every identity/admission/session proof. Post-commit
+evidence is pending, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

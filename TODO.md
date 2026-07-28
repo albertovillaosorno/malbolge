@@ -847,8 +847,13 @@ falls from 0.6558 to 0.0278 ms (23.590x), with exact comparison at 0.0180 ms;
 primitive end-to-end falls from 0.8684 to 0.1935 ms (4.488x). Ordinary controls move
 about 1.5%, while CPU prepared regresses about 4%, so neither is attributed. The
 one-time reference generation and 236,196-byte reference image are excluded from
-retained intervals. Preparation latency, memory scaling, and reuse crossover are the
-next measured boundary.
+retained intervals. `search_preparation_crossover.py` now preregisters scales 1, 64,
+1,024, and 59,049 with fresh-process cold preparation, warm preparation, incremental
+Python memory, ordinary CUDA, fresh resident build, and reused resident execution.
+It computes the first strictly profitable run count while preserving validator,
+proposal, admission, reference/membership/selector, and CUDA-session proofs.
+Post-commit evidence is pending; no exploratory crossover or memory result is
+promoted yet.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -956,7 +961,10 @@ first/last corruption fails closed. Retained CUDA prepared search is 0.488 ms
 0.238 ms (3.729x better). Exact prepared validation is 0.0278 ms, including a
 0.0180 ms byte comparison, versus 0.6558 ms broadword validation (23.590x). Primitive
 end-to-end improves 4.488x to 0.1935 ms. Reference construction remains untimed and
-requires 236,196 bytes here; preparation latency/memory/reuse crossover are next.
+requires 236,196 bytes here. The active preparation-crossover benchmark now measures
+cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
+strict amortization at four scales with all exact proofs. Post-commit evidence is
+pending before selecting the next memory or orchestration optimization.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

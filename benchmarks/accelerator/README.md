@@ -301,3 +301,28 @@ and search total reaches 0.238 ms (3.729x). Exact validation reaches 0.0278 ms
 (23.590x), exact compare 0.0180 ms, and primitive end-to-end 0.1935 ms (4.488x).
 The one-time 236,196-byte CPU reference is outside retained intervals. A dedicated
 preparation/memory/crossover benchmark is the next protocol step.
+
+Run the active preparation, memory, and reuse-crossover benchmark with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m benchmarks.accelerator.search_preparation_crossover
+```
+
+`search_preparation_crossover.py` measures preregistered candidate counts 1, 64,
+1,024, and 59,049. For every scale it retains 15 fresh-process cold preparations,
+15 warm-process preparations after the global rotate table is built, five
+incremental `tracemalloc` memory observations, 15 ordinary CUDA calls, 15 fresh
+resident-build calls, and 15 resident reuses after one build and one warmup.
+Workload construction, CUDA/NVRTC adapter setup, and trusted result admission are
+outside timed intervals. Fresh-build timing includes resident allocation/upload and
+one exact search. Memory tracing excludes the prebuilt workload, global rotate
+table, CUDA allocations, and other native allocations; exact reference, host-output,
+and device-buffer byte counts are reported separately.
+
+The strict crossover is the first positive `runs` satisfying
+`prepare + first_build + (runs - 1) * reuse < runs * ordinary`. Cold preparation is
+sampled in a new Python process each time; warm preparation shares the process-wide
+exact rotate table. Every sample preserves ordinary/prepared validator IDs, one
+exact admitted proposal, proof-bound reference/membership/selector counts, and
+fresh/reused CUDA session counters. Post-commit evidence is pending, so exploratory
+crossover or memory observations are not retained claims.

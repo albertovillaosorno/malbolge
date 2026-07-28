@@ -185,8 +185,12 @@ same-run CPU. The search-phase sibling records 0.215 ms CUDA backend evaluation
 (3.999x) and 0.238 ms total (3.729x). The primitive profile records 0.0278 ms exact
 validation (23.590x better), 0.0180 ms byte comparison, and 0.1935 ms end-to-end
 (4.488x). Reference construction is untimed and the full-domain image consumes
-236,196 bytes. Preparation latency, memory scaling, and reuse crossover are next;
-the trusted verifier remains the sole proposal-admission authority.
+236,196 bytes. `search_preparation_crossover.py` now measures cold/warm preparation,
+incremental Python allocation, fresh resident build, steady reuse, and strict
+ordinary/prepared crossover at 1/64/1,024/59,049 candidates. It preserves both
+validator IDs, exact proposals/admission, state cardinalities, and CUDA session
+proofs. Post-commit evidence is pending; the trusted verifier remains the sole
+proposal-admission authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

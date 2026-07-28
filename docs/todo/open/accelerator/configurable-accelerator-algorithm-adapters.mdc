@@ -155,7 +155,9 @@ by-side comparison without recompiling or modifying compiler semantics.
   0.488 ms (2.407x better), backend/total are 0.215/0.238 ms (3.999x/3.729x), and
   exact validation is 0.0278 ms (23.590x) with 0.0180 ms comparison. Primitive
   end-to-end is 0.1935 ms (4.488x). The 236,196-byte reference and construction are
-  untimed preparation costs; preparation/memory/reuse crossover are next.
+  untimed preparation costs. The active four-scale crossover benchmark measures
+  cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
+  strict amortization with every exact proof. Post-commit evidence is pending.
   Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
