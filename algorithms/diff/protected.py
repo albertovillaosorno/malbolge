@@ -39,7 +39,7 @@ _PAYLOAD_KEY_BYTES = 32
 _SINGLE_MESSAGE_NONCE = bytes(12)
 _FRAME_BYTES = 8
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v1\0"
-_KEY_DOMAIN = b"source-bound-exact-plan-key-v1\0"
+_KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
 
 
@@ -288,18 +288,34 @@ def _protect_instruction(
     )
 
 
-def _derive_payload_key(plaintext: bytes, aad: bytes, context: bytes) -> bytes:
+def _source_identity_digest(reference_identity: IdentityTree) -> bytes:
     digest = hashlib.sha256()
-    digest.update(_KEY_DOMAIN)
-    digest.update(_frame_bytes(context))
-    digest.update(_frame_bytes(hashlib.sha256(aad).digest()))
-    digest.update(_frame_bytes(hashlib.sha256(plaintext).digest()))
-    material = digest.digest()
-    salt = hashlib.sha256(_KEY_DOMAIN + _frame_bytes(context)).digest()
-    pseudorandom_key = hkdf_extract_sha256(salt, material)
+    digest.update(b"source-bound-exact-plan-identity-v1\0")
+    digest.update(_u64(len(reference_identity.files)))
+    for identity_file in reference_identity.files:
+        digest.update(_frame_text(identity_file.path))
+        digest.update(_frame_bytes(identity_file.canonical))
+    return digest.digest()
+
+
+def _derive_payload_key(
+    reference_identity: IdentityTree,
+    *,
+    plaintext: bytes,
+    aad: bytes,
+    context: bytes,
+) -> bytes:
+    source_material = _source_identity_digest(reference_identity)
+    aad_digest = hashlib.sha256(aad).digest()
+    plaintext_digest = hashlib.sha256(plaintext).digest()
+    salt = hashlib.sha256(
+        _KEY_DOMAIN + _frame_bytes(context) + _frame_bytes(aad_digest)
+    ).digest()
+    pseudorandom_key = hkdf_extract_sha256(salt, source_material)
+    info = b"literal-payload-key-v2" + _frame_bytes(plaintext_digest)
     return hkdf_expand_sha256(
         pseudorandom_key,
-        b"literal-payload-key-v1" + hashlib.sha256(aad).digest(),
+        info,
         _PAYLOAD_KEY_BYTES,
     )
 
@@ -321,9 +337,10 @@ def protect_exact_plan(
 ) -> ProtectedExactPlan:
     """Protect all exact-plan oracle literals behind source-bound AEAD material.
 
-    One plan derives one 256-bit payload key and uses it for exactly one RFC
-    8439 AEAD message, so the all-zero nonce is never reused for a different
-    under that key inside this construction.
+    One plan derives one 256-bit payload key from canonical source evidence,
+    authenticated metadata, and the literal-stream digest. The all-zero nonce
+    is therefore never reused for a different plaintext under the same derived
+    key inside this deterministic construction.
 
     Returns:
         Deterministic exact plan containing no plaintext oracle literals.
@@ -341,7 +358,12 @@ def protect_exact_plan(
         instructions,
         context=context,
     )
-    key = _derive_payload_key(plaintext, aad, context)
+    key = _derive_payload_key(
+        reference_identity,
+        plaintext=plaintext,
+        aad=aad,
+        context=context,
+    )
     payload = chacha20_poly1305_encrypt(
         key,
         _SINGLE_MESSAGE_NONCE,

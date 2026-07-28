@@ -153,6 +153,31 @@ def test_protection_is_deterministic_and_contains_no_plaintext_literals(
     _expect(source.is_dir() and oracle.is_dir(), "fixture roots disappeared")
 
 
+def test_payload_key_schedule_depends_on_unserialized_source_bytes(
+    tmp_path: Path,
+) -> None:
+    """Require source bytes, not only emitted source hashes, for keying."""
+    source, _, source_files, exact, first = _protected(tmp_path)
+    changed_files = dict(source_files)
+    changed_files["keep.bin"] = _source_bytes("different-source-identity")
+    second = protect_exact_plan(
+        exact,
+        _identity(changed_files),
+        binding_policy=_policy(),
+        context=_CONTEXT,
+    )
+
+    _expect(
+        first.payload != second.payload,
+        "payload encryption ignored canonical source identity bytes",
+    )
+    _expect(
+        first.binding.secret_commitment != second.binding.secret_commitment,
+        "source identity change did not change bound payload key",
+    )
+    _expect(source.is_dir(), "source fixture disappeared")
+
+
 def test_source_plus_protected_plan_reconstructs_oracle_without_oracle_runtime(
     tmp_path: Path,
 ) -> None:

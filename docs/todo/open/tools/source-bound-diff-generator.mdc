@@ -86,9 +86,15 @@ format.
   independent cryptographic review.
 - RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD vector.
   Protected exact plans move all oracle literals into one authenticated ciphertext
-  and bind its plan-specific key to distributed source anchors.
+  and bind its plan-specific key to distributed source anchors. The deterministic key
+  schedule includes canonical source identity bytes that are not serialized into the
+  transform, so transform metadata plus a guessed plaintext cannot derive the key by
+  itself.
 - A read-only DOOM smoke protected 2,116,232 literal bytes across 152 instructions
-  and materialized an exact 152-file oracle snapshot from the original source.
+  and materialized an exact 152-file oracle snapshot from the original source. The
+  source-dependent key schedule rerun again matched exactly, left source/oracle
+  snapshots unchanged, and its 4,655,420-byte generated Rust compiled to an object
+  with Rust 1.97.1 and `-D warnings`.
 - Exact protected plans now emit as standalone std-only Rust. Synthetic compile/run
   tests use Rust 1.97.1 with `-D warnings`; a full read-only DOOM smoke emitted a
   4,655,376-byte transform and reproduced the 152-file oracle exactly.

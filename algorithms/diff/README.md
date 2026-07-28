@@ -210,14 +210,18 @@ The recovered plaintext exists only in the temporary in-memory exact plan passed
 to the already-transactional materializer.
 
 The construction remains deliberately scoped. Polynomial coefficients and the
-payload key are derived deterministically from authoring material so repeated
-generation is byte-stable; this is computational source binding and authenticated
-reconstruction, not information-theoretic secrecy or protection against an attacker
-who already knows/guesses the target bytes. The Python Poly1305 path is reference
-code only. The emitted exact runtime derives raw anchor evidence directly from the
-actual source tree rather than accepting caller-supplied identity. The current GF(256)
-source-binding recovery is **not** yet claimed to be side-channel hardened; that is a
-separate review requirement from functional correctness.
+payload key are derived deterministically so repeated generation is byte-stable. The
+payload key schedule now includes a digest over canonical source identity bytes that
+is never serialized into the transform, plus authenticated-plan and literal-stream
+digests. Transform metadata plus a guessed target plaintext is therefore insufficient
+to reproduce the payload key without source evidence. This is still computational
+source binding and authenticated reconstruction, not information-theoretic secrecy or
+DRM; an actor who already possesses the admitted source is intentionally able to
+recover the key. The Python Poly1305 path is reference code only. The emitted exact
+runtime derives raw anchor evidence directly from the actual source tree rather than
+accepting caller-supplied identity. The current GF(256) source-binding recovery is
+**not** yet claimed to be side-channel hardened; that is a separate review requirement
+from functional correctness.
 
 ## Implemented Exact Rust Emission
 
