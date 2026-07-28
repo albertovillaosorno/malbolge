@@ -105,8 +105,12 @@ Ordinary one-shot search still prepares locally. Retained evidence under
 records 43.129 ms CPU and 57.296 ms CUDA prepared medians, 1.792x/1.592x faster
 than the packed baseline. Ordinary routes regress 6.6%/3.7%, and prepared CUDA
 remains 32.8% slower than prepared CPU. The phase bundle lowers backend evaluation
-2.801x CPU and 2.083x CUDA. Primitive arithmetic is now the CPU boundary; resident
-input/allocation/transfer is the CUDA boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+2.801x CPU and 2.083x CUDA. `PreparedPrimitiveBatch` now carries reusable exact
+validation proof. CPU consumes it directly; CUDA prepared execution keeps one
+proof-bound input/output allocation resident and rebuilds only when proof identity
+changes. Ordinary CUDA stays one-shot. `CudaPreparedPrimitiveStats` and the prepared
+benchmarks require one build, 16 evaluations, 15 reuses, and 59,049 resident rotate
+words. Post-commit performance evidence is pending. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

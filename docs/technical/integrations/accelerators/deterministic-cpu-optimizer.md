@@ -118,7 +118,9 @@ fails explicitly without changing correctness rules.
   no longer pays candidate batch validation or payload decode. Retained CPU prepared
   median falls from 77.309 to 43.129 ms (1.792x), and backend evaluation from
   53.907 to 19.246 ms (2.801x). Ordinary CPU regresses 6.6% because it constructs
-  the proof locally. Primitive arithmetic is now the next CPU target.
+  the proof locally. `PreparedPrimitiveBatch` now seals validation once and the CPU
+  prepared port consumes it without a second scan. Post-commit comparative evidence
+  is pending; primitive arithmetic remains the next CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

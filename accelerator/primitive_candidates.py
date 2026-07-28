@@ -14,6 +14,7 @@ from typing import override
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.work_ports import CandidateEvaluationAdapter
 from accelerator.work_ports import CandidateEvaluationResult
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.exact_primitives import ExactPrimitiveAdapter
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveResult
     from accelerator.work_ports import CandidateEvaluationBatch
 
@@ -48,7 +50,7 @@ class PreparedPrimitiveCandidateEvaluation:
     """Decoded primitive input reusable by matching exact backends."""
 
     batch: CandidateEvaluationBatch
-    primitive: PrimitiveBatch
+    primitive: PreparedPrimitiveBatch
     evaluator_id: str
     kind: PrimitiveKind
     _proof: object
@@ -57,7 +59,7 @@ class PreparedPrimitiveCandidateEvaluation:
         self,
         evaluator_id: str,
         kind: PrimitiveKind,
-    ) -> tuple[CandidateEvaluationBatch, PrimitiveBatch]:
+    ) -> tuple[CandidateEvaluationBatch, PreparedPrimitiveBatch]:
         """Return decoded state only to a matching primitive strategy.
 
         Returns:
@@ -117,7 +119,18 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
 
         """
         prepared = _prepare_primitive_candidate_batch(batch, self._kind)
-        return self.evaluate_prepared(prepared)
+        candidate_batch, primitive_batch = prepared.for_adapter(
+            self._evaluator_id,
+            self._kind,
+        )
+        primitive = self._adapter.evaluate(
+            primitive_batch.validated_batch(),
+        )
+        return _encode_result(
+            candidate_batch,
+            primitive,
+            self.capability(),
+        )
 
     def evaluate_prepared(
         self,
@@ -139,7 +152,7 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
             self._evaluator_id,
             self._kind,
         )
-        primitive = self._adapter.evaluate(primitive_batch)
+        primitive = self._adapter.evaluate_prepared(primitive_batch)
         return _encode_result(batch, primitive, self.capability())
 
 
@@ -255,11 +268,13 @@ def _prepare_primitive_candidate_batch(
         message = "candidate batch selects a different primitive evaluator"
         raise InvalidAcceleratorWorkError(message)
     decoded = _decode_batch(validated, kind)
-    primitive = PrimitiveBatch(
-        accumulators=decoded.accumulators,
-        data=decoded.data,
-        kind=kind,
-    ).validated()
+    primitive = prepare_primitive_batch(
+        PrimitiveBatch(
+            accumulators=decoded.accumulators,
+            data=decoded.data,
+            kind=kind,
+        )
+    )
     return PreparedPrimitiveCandidateEvaluation(
         batch=validated,
         primitive=primitive,

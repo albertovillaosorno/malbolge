@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from array import array
 import ctypes
+from dataclasses import dataclass
 from typing import Final
 from typing import Self
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
 
 if TYPE_CHECKING:
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
 
 KERNEL_SOURCE: Final = r"""
@@ -75,6 +77,131 @@ extern "C" __global__ void malbolge_rotate_batch(
 """
 
 
+@dataclass(frozen=True, slots=True)
+class CudaPreparedPrimitiveStats:
+    """Observable proof that prepared CUDA input is built and reused."""
+
+    builds: int
+    evaluations: int
+    resident_count: int
+    resident_kind: PrimitiveKind | None
+    reuses: int
+
+
+@dataclass(slots=True)
+class _PreparedPointerOwner:
+    runtime: CudaRuntime
+    pointers: list[int]
+
+    def allocate(self, byte_count: int) -> int:
+        pointer = self.runtime.allocate(byte_count)
+        self.pointers.append(pointer)
+        return pointer
+
+    def copy(self, host: ctypes.Array[ctypes.c_uint32]) -> int:
+        pointer = _copy_words(self.runtime, host)
+        self.pointers.append(pointer)
+        return pointer
+
+    def close(self) -> None:
+        _free_all(self.runtime, self.pointers)
+
+
+@dataclass(slots=True)
+class _CudaPreparedPrimitiveSession:
+    prepared: PreparedPrimitiveBatch
+    batch: PrimitiveBatch
+    device_accumulator: int | None
+    device_data: int | None
+    device_output: int | None
+    host_output: ctypes.Array[ctypes.c_uint32]
+    _closed: bool = False
+
+    @classmethod
+    def build(
+        cls,
+        runtime: CudaRuntime,
+        prepared: PreparedPrimitiveBatch,
+        batch: PrimitiveBatch,
+    ) -> _CudaPreparedPrimitiveSession:
+        count = len(batch.data)
+        host_output = _empty_host_words(count)
+        if count == 0:
+            return cls(
+                prepared=prepared,
+                batch=batch,
+                device_accumulator=None,
+                device_data=None,
+                device_output=None,
+                host_output=host_output,
+            )
+        owner = _PreparedPointerOwner(runtime=runtime, pointers=[])
+        try:
+            device_data = owner.copy(_host_words(batch.data))
+            device_accumulator = _prepared_accumulator(owner, batch)
+            device_output = owner.allocate(ctypes.sizeof(host_output))
+            return cls(
+                prepared=prepared,
+                batch=batch,
+                device_accumulator=device_accumulator,
+                device_data=device_data,
+                device_output=device_output,
+                host_output=host_output,
+            )
+        except AcceleratorExecutionError:
+            owner.close()
+            raise
+
+    def close(self, runtime: CudaRuntime) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        pointers = [
+            pointer
+            for pointer in (
+                self.device_data,
+                self.device_accumulator,
+                self.device_output,
+            )
+            if pointer is not None
+        ]
+        _free_all(runtime, pointers)
+
+    def evaluate(
+        self,
+        runtime: CudaRuntime,
+        crazy: ctypes.c_void_p,
+        rotate: ctypes.c_void_p,
+    ) -> tuple[int, ...]:
+        count = len(self.batch.data)
+        if count == 0:
+            return ()
+        if self.device_data is None or self.device_output is None:
+            message = "prepared CUDA primitive session has missing buffers"
+            raise AcceleratorExecutionError(message)
+        if self.batch.kind is PrimitiveKind.ROTATE:
+            runtime.launch(
+                rotate,
+                (self.device_data, self.device_output),
+                count,
+            )
+        else:
+            if self.device_accumulator is None:
+                message = "prepared CUDA crazy session has no accumulator"
+                raise AcceleratorExecutionError(message)
+            runtime.launch(
+                crazy,
+                (
+                    self.device_data,
+                    self.device_accumulator,
+                    self.device_output,
+                ),
+                count,
+            )
+        runtime.copy_from_device(self.host_output, self.device_output)
+        return _host_values(self.host_output)
+
+
 @final
 class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     """Exact integer CUDA batch adapter with no semantic authority."""
@@ -82,6 +209,10 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _closed: bool
     _crazy: ctypes.c_void_p
     _module: ctypes.c_void_p
+    _prepared_builds: int
+    _prepared_evaluations: int
+    _prepared_reuses: int
+    _prepared_session: _CudaPreparedPrimitiveSession | None
     _rotate: ctypes.c_void_p
     _runtime: CudaRuntime
 
@@ -109,6 +240,10 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._closed = False
         self._crazy = crazy
         self._module = module
+        self._prepared_builds = 0
+        self._prepared_evaluations = 0
+        self._prepared_reuses = 0
+        self._prepared_session = None
         self._rotate = rotate
         self._runtime = runtime
 
@@ -141,12 +276,15 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         return self._capability
 
     def close(self) -> None:
-        """Release the loaded module and CUDA context exactly once."""
+        """Release resident buffers, module, and CUDA context exactly once."""
         if self._closed:
             return
         self._closed = True
         try:
-            self._runtime.unload_module(self._module)
+            try:
+                self._release_prepared_session()
+            finally:
+                self._runtime.unload_module(self._module)
         finally:
             self._runtime.close()
 
@@ -157,13 +295,8 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         Returns:
             Exact integer outputs copied back in input order.
 
-        Raises:
-            AcceleratorExecutionError: If the adapter has already been closed.
-
         """
-        if self._closed:
-            message = "CUDA adapter is closed"
-            raise AcceleratorExecutionError(message)
+        self._ensure_open()
         validated = batch.validated()
         if not validated.data:
             return PrimitiveResult(capability=self._capability, values=())
@@ -174,6 +307,81 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
                 validated.data, validated.accumulators
             )
         return PrimitiveResult(capability=self._capability, values=values)
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        """Evaluate immutable prepared input through one resident CUDA session.
+
+        Returns:
+            Exact integer outputs copied back in input order.
+
+        Raises:
+            AcceleratorExecutionError: If the adapter/session cannot execute.
+
+        """
+        self._ensure_open()
+        session = self._prepared_session_for(prepared)
+        try:
+            values = session.evaluate(
+                self._runtime,
+                self._crazy,
+                self._rotate,
+            )
+        except AcceleratorExecutionError:
+            self._release_prepared_session()
+            raise
+        self._prepared_evaluations += 1
+        return PrimitiveResult(capability=self._capability, values=values)
+
+    def prepared_stats(self) -> CudaPreparedPrimitiveStats:
+        """Return resident prepared-session build and reuse evidence.
+
+        Returns:
+            Immutable counters plus current resident batch identity.
+
+        """
+        session = self._prepared_session
+        return CudaPreparedPrimitiveStats(
+            builds=self._prepared_builds,
+            evaluations=self._prepared_evaluations,
+            resident_count=(0 if session is None else len(session.batch.data)),
+            resident_kind=(None if session is None else session.batch.kind),
+            reuses=self._prepared_reuses,
+        )
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            message = "CUDA adapter is closed"
+            raise AcceleratorExecutionError(message)
+
+    def _prepared_session_for(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> _CudaPreparedPrimitiveSession:
+        current = self._prepared_session
+        if current is not None and current.prepared is prepared:
+            self._prepared_reuses += 1
+            return current
+        batch = prepared.validated_batch()
+        self._release_prepared_session()
+        session = _CudaPreparedPrimitiveSession.build(
+            self._runtime,
+            prepared,
+            batch,
+        )
+        self._prepared_session = session
+        self._prepared_builds += 1
+        return session
+
+    def _release_prepared_session(self) -> None:
+        session = self._prepared_session
+        if session is None:
+            return
+        self._prepared_session = None
+        session.close(self._runtime)
 
     def _evaluate_crazy(
         self,
@@ -221,6 +429,15 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             _free_all(self._runtime, pointers)
 
 
+def _prepared_accumulator(
+    owner: _PreparedPointerOwner,
+    batch: PrimitiveBatch,
+) -> int | None:
+    if batch.kind is PrimitiveKind.ROTATE:
+        return None
+    return owner.copy(_host_words(batch.accumulators))
+
+
 def _copy_words(
     runtime: CudaRuntime,
     host: ctypes.Array[ctypes.c_uint32],
@@ -243,6 +460,11 @@ def _host_values(host: ctypes.Array[ctypes.c_uint32]) -> tuple[int, ...]:
     words = array("I")
     words.frombytes(bytes(host))
     return tuple(words)
+
+
+def _empty_host_words(count: int) -> ctypes.Array[ctypes.c_uint32]:
+    host_type = ctypes.c_uint32 * count
+    return host_type()
 
 
 def _host_words(values: tuple[int, ...]) -> ctypes.Array[ctypes.c_uint32]:

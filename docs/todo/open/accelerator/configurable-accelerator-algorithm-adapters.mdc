@@ -103,8 +103,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   mismatched state fails closed, and generic strategies remain compatible.
   Retained prepared medians are 43.129 ms CPU and 57.296 ms CUDA,
   1.792x/1.592x faster than the packed baseline. Ordinary routes regress
-  6.6%/3.7%, and CUDA remains 32.8% slower than CPU prepared. Primitive execution
-  and resident transfer are the next measured boundaries. Synthesis/guided
+  6.6%/3.7%, and CUDA remains 32.8% slower than CPU prepared. Exact primitive
+  preparation now carries sealed validation proof. CUDA prepared execution retains
+  one proof-bound input/output allocation, rebuilds on proof identity change, and
+  reports build/evaluation/reuse/resident counters. Ordinary execution remains
+  one-shot. Post-commit evidence is pending. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

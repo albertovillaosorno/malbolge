@@ -15,6 +15,7 @@ from typing import Final
 from typing import TYPE_CHECKING
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.exact_primitives import PrimitiveKind
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CPU_BACKEND
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
@@ -32,6 +33,7 @@ from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
+    from accelerator.cuda import CudaPreparedPrimitiveStats
     from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
     from accelerator.evaluated_search import PreparedEvaluatedSearch
     from accelerator.evaluated_search import PreparedSearchPhaseProfile
@@ -78,6 +80,8 @@ def main() -> int:
             workload=workload,
         )
         capability = primitive.capability()
+        prepared_stats = primitive.prepared_stats()
+        _validate_prepared_stats(prepared_stats)
     payload = {
         "benchmark_id": "rotate-target-prepared-search-phase-profile-v1",
         "workload": {
@@ -103,6 +107,7 @@ def main() -> int:
         },
         "cpu": {name: asdict(value) for name, value in cpu_phases.items()},
         "cuda": {name: asdict(value) for name, value in cuda_phases.items()},
+        "cuda_prepared_session": asdict(prepared_stats),
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
@@ -153,6 +158,27 @@ def _measure_pair(
         {name: _timing(samples) for name, samples in cpu_raw.items()},
         {name: _timing(samples) for name, samples in cuda_raw.items()},
     )
+
+
+def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:
+    expected_evaluations = WARMUP_COUNT + SAMPLE_COUNT
+    observed = (
+        stats.builds,
+        stats.evaluations,
+        stats.resident_count,
+        stats.resident_kind,
+        stats.reuses,
+    )
+    expected = (
+        1,
+        expected_evaluations,
+        CORPUS_SIZE,
+        PrimitiveKind.ROTATE,
+        expected_evaluations - 1,
+    )
+    if observed != expected:
+        message = "prepared phase profile did not use one resident CUDA session"
+        raise RuntimeError(message)
 
 
 def _profile(

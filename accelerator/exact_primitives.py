@@ -11,6 +11,7 @@ from typing import Protocol
 MAX_WORD = 59_048
 ROTATE_HIGH_TRIT_WEIGHT = 19_683
 TRIT_COUNT = 10
+_PREPARED_PRIMITIVE_PROOF = object()
 
 
 class AcceleratorError(RuntimeError):
@@ -79,6 +80,42 @@ class PrimitiveBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedPrimitiveBatch:
+    """Validated immutable primitive input reusable across exact backends."""
+
+    batch: PrimitiveBatch
+    _proof: object
+
+    def validated_batch(self) -> PrimitiveBatch:
+        """Return the validated batch only for repository-created state.
+
+        Returns:
+            The immutable primitive batch validated during preparation.
+
+        Raises:
+            InvalidPrimitiveBatchError: If this state was forged.
+
+        """
+        if self._proof is not _PREPARED_PRIMITIVE_PROOF:
+            message = "prepared primitive batch was not created by prepare"
+            raise InvalidPrimitiveBatchError(message)
+        return self.batch
+
+
+def prepare_primitive_batch(batch: PrimitiveBatch) -> PreparedPrimitiveBatch:
+    """Validate one immutable batch and retain reusable proof.
+
+    Returns:
+        Hardware-neutral prepared primitive input.
+
+    """
+    return PreparedPrimitiveBatch(
+        batch=batch.validated(),
+        _proof=_PREPARED_PRIMITIVE_PROOF,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class PrimitiveResult:
     """Exact adapter result bound to one backend capability."""
 
@@ -99,7 +136,19 @@ class ExactPrimitiveAdapter(Protocol):
         ...
 
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
-        """Evaluate one validated batch without changing acceptance rules.
+        """Evaluate one batch with one-shot validation and execution.
+
+        Returns:
+            Exact results in input order with backend identity.
+
+        """
+        ...
+
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        """Evaluate repository-prepared immutable input.
 
         Returns:
             Exact results in input order with backend identity.

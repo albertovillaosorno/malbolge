@@ -17,6 +17,7 @@ from accelerator.exact_primitives import ROTATE_HIGH_TRIT_WEIGHT
 from accelerator.exact_primitives import TRIT_COUNT
 
 if TYPE_CHECKING:
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
 
 CPU_CAPABILITY = AcceleratorCapability(
@@ -53,17 +54,33 @@ class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
             Exact classic-word results in input order.
 
         """
-        validated = batch.validated()
-        if validated.kind is PrimitiveKind.ROTATE:
-            values = tuple(_rotate(value) for value in validated.data)
-        else:
-            pairs = zip(
-                validated.data,
-                validated.accumulators,
-                strict=True,
-            )
-            values = tuple(starmap(_crazy, pairs))
-        return PrimitiveResult(capability=CPU_CAPABILITY, values=values)
+        return _evaluate_validated(batch.validated())
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        """Evaluate previously validated immutable primitive input.
+
+        Returns:
+            Exact classic-word results in input order.
+
+        """
+        return _evaluate_validated(prepared.validated_batch())
+
+
+def _evaluate_validated(batch: PrimitiveBatch) -> PrimitiveResult:
+    if batch.kind is PrimitiveKind.ROTATE:
+        values = tuple(_rotate(value) for value in batch.data)
+    else:
+        pairs = zip(
+            batch.data,
+            batch.accumulators,
+            strict=True,
+        )
+        values = tuple(starmap(_crazy, pairs))
+    return PrimitiveResult(capability=CPU_CAPABILITY, values=values)
 
 
 def _crazy(data: int, accumulator: int) -> int:

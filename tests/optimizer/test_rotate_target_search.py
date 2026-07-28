@@ -30,6 +30,7 @@ from optimizer.rotate_target import rotate_target_search_adapter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
 
 CPU_BACKEND = "cpu-reference"
@@ -87,6 +88,13 @@ class _MalformedPrimitiveAdapter(ExactPrimitiveAdapter):
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
         _ = batch.validated()
         return PrimitiveResult(capability=BAD_CAPABILITY, values=())
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
 
 
 def test_rotate_target_problem_roundtrips_canonically() -> None:

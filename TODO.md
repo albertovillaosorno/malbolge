@@ -763,9 +763,14 @@ closed. Retained evidence records CPU/CUDA prepared medians of 43.129/57.296 ms,
 than the same implementation's ordinary routes. Ordinary CPU/CUDA medians regress
 6.6%/3.7% because they construct the explicit proof locally; this negative
 one-shot result is retained. Backend evaluation falls 2.801x CPU and 2.083x CUDA,
-while selection remains essentially unchanged. Primitive execution is now the CPU
-boundary; resident device input/allocation/transfer is the CUDA boundary.
-Synthesis/guided
+while selection remains essentially unchanged. `PreparedPrimitiveBatch` now seals
+validated exact input at the primitive boundary. CPU consumes that proof directly;
+CUDA prepared execution retains one proof-bound input/output allocation and rebuilds
+only for a different proof identity. Ordinary CUDA remains one-shot. Observable
+session counters and both prepared benchmarks require one build, 16 evaluations,
+15 reuses, and 59,049 resident rotate words. Post-commit performance evidence is
+pending; primitive arithmetic remains the CPU boundary and output
+materialization/selection the next prepared-search boundary. Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -819,9 +824,12 @@ preparation, and the same validated `PrimitiveBatch` crosses matching CPU/CUDA
 capacity. Forged or mismatched prepared primitive state fails before backend
 execution. Retained CUDA prepared median falls from 91.199 to 57.296 ms (1.592x),
 and backend evaluation from 67.202 to 32.264 ms (2.083x). Ordinary CUDA regresses
-3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Persistent device
-input/allocation/transfer still precedes resident or
-fused evaluation-selection is the later measured path. Broader hardware evidence,
+3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Prepared CUDA now
+retains proof-bound input and output buffers across repeated calls; ordinary CUDA
+still allocates/transfers per call. Session counters prove build/reuse identity and
+benchmarks fail unless one full-domain session is reused exactly. Post-commit
+performance evidence is pending; output materialization/selection now precedes
+resident or fused evaluation-selection. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer

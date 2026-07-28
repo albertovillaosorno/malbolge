@@ -32,6 +32,8 @@ from accelerator.work_ports import request_verification_hints
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
+
 VERIFIER_ID = "classic-rotate-check-v1"
 CUDA_BACKEND = "cuda"
 CORPUS_SIZE = 257
@@ -110,6 +112,13 @@ class _MalformedPrimitiveAdapter(ExactPrimitiveAdapter):
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
         _ = batch.validated()
         return PrimitiveResult(capability=BAD_CAPABILITY, values=())
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
 
 
 def test_cpu_verification_assist_matches_exact_primitive_evidence() -> None:

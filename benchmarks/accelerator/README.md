@@ -200,3 +200,10 @@ post-change throughput and phase evidence is under
 `evidence/2026-07-28-prepared-primitive-search-rtx4060/` and
 `evidence/2026-07-28-prepared-primitive-search-phase-profile-rtx4060/`. Prepared
 CPU/CUDA medians improve 1.792x/1.592x, while ordinary routes regress 6.6%/3.7%.
+
+The active prepared CUDA implementation now retains one proof-bound input/output
+allocation across repeated calls. Both prepared benchmark programs emit and check
+`cuda_prepared_session`: the full-domain protocol must observe one build, 16
+successful evaluations, 15 identity reuses, and 59,049 resident rotate words.
+These scripts are ready for a post-commit rerun; the retained records above remain
+the pre-resident baseline until that evidence is checked in.

@@ -114,8 +114,12 @@ capacity consumes it without repeated request-order validation or payload decode
 Forged type/kind/evaluator state fails closed; strategies without a preparer retain
 the ordinary adapter path. Retained prepared medians improve 1.792x CPU and 1.592x
 CUDA, while ordinary routes regress 6.6%/3.7%. Prepared CUDA remains 32.8% slower
-than prepared CPU. Primitive arithmetic and resident device transfer are now the
-next neutral boundaries; resident/fused search remains later work.
+than prepared CPU. `PreparedPrimitiveBatch` now seals validated immutable input at
+the exact primitive port. CPU consumes it directly; CUDA retains one proof-bound
+input/output session and rebuilds only for different proof identity. Ordinary
+execution remains one-shot. Explicit session statistics make residence observable.
+Post-commit performance evidence is pending; resident/fused search remains later
+work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

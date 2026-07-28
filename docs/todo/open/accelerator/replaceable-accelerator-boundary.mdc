@@ -102,8 +102,10 @@ directly on CUDA APIs.
   `PrimitiveBatch` across matching CPU/CUDA capacity; forged/mismatched state fails
   closed and generic strategies remain compatible. Retained prepared medians improve
   1.792x CPU and 1.592x CUDA; ordinary routes regress 6.6%/3.7%, and CUDA remains
-  32.8% slower than CPU prepared. Primitive arithmetic and resident device transfer
-  are the next neutral boundaries. Synthesis/guided search,
+  32.8% slower than CPU prepared. The exact primitive port now accepts sealed
+  prepared proof. CUDA keeps one proof-bound input/output session with observable
+  build/reuse counters, while ordinary execution remains one-shot. Post-commit
+  evidence is pending. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

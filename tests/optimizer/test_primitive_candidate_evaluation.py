@@ -14,10 +14,13 @@ from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import ExactPrimitiveAdapter
+from accelerator.exact_primitives import InvalidPrimitiveBatchError
 from accelerator.exact_primitives import MAX_WORD
+from accelerator.exact_primitives import PreparedPrimitiveBatch
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
+from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.primitive_candidates import CRAZY_EVALUATOR_ID
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
@@ -33,6 +36,7 @@ from accelerator.work_ports import evaluate_candidates
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
 
 CUDA_BACKEND = "cuda"
 CPU_BACKEND = "cpu-reference"
@@ -137,6 +141,13 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
             values=(MAX_WORD + 1,) * count,
         )
 
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
+
 
 def test_cpu_candidate_bridge_preserves_exact_crazy_results() -> None:
     """Candidate evidence matches the exact CPU crazy primitive."""
@@ -198,6 +209,24 @@ def test_prepared_rotate_candidate_state_matches_ordinary_result() -> None:
     prepared = adapter.evaluate_prepared(state)
 
     assert prepared == ordinary
+
+
+def test_prepared_primitive_batch_rejects_forged_proof() -> None:
+    """Raw dataclass construction cannot forge validated primitive input."""
+    batch = PrimitiveBatch(
+        accumulators=(),
+        data=(1,),
+        kind=PrimitiveKind.ROTATE,
+    )
+    forged = PreparedPrimitiveBatch(batch=batch, _proof=object())
+
+    _expect_error(
+        InvalidPrimitiveBatchError,
+        "prepared primitive batch was not created by prepare",
+        forged.validated_batch,
+    )
+    prepared = prepare_primitive_batch(batch)
+    assert prepared.validated_batch() is batch
 
 
 def test_prepared_primitive_state_rejects_wrong_type_and_kind() -> None:
@@ -290,6 +319,63 @@ def test_malformed_primitive_results_fail_closed() -> None:
             message,
             lambda adapter=adapter: adapter.evaluate(batch),
         )
+
+
+def test_live_cuda_prepared_session_reuses_exact_input() -> None:
+    """Ordinary stays one-shot while prepared CUDA reuses resident input."""
+    batch = _rotate_batch()
+    state = prepare_rotate_candidate_batch(batch)
+    expected = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.ROTATE,
+    ).evaluate(batch)
+
+    with _cuda() as cuda:
+        adapter = PrimitiveCandidateEvaluationAdapter(
+            cuda,
+            PrimitiveKind.ROTATE,
+        )
+        ordinary = adapter.evaluate(batch)
+        assert cuda.prepared_stats().builds == 0
+        first = adapter.evaluate_prepared(state)
+        first_stats = cuda.prepared_stats()
+        second = adapter.evaluate_prepared(state)
+        second_stats = cuda.prepared_stats()
+
+    assert ordinary.packed == expected.packed
+    assert first.packed == expected.packed
+    assert second.packed == expected.packed
+    assert (
+        first_stats.builds,
+        first_stats.evaluations,
+        first_stats.reuses,
+        first_stats.resident_count,
+        first_stats.resident_kind,
+    ) == (1, 1, 0, CORPUS_SIZE, PrimitiveKind.ROTATE)
+    assert (
+        second_stats.builds,
+        second_stats.evaluations,
+        second_stats.reuses,
+    ) == (1, 2, 1)
+
+
+def test_live_cuda_prepared_session_rebuilds_new_proof() -> None:
+    """Equal content under another proof replaces resident CUDA input."""
+    batch = _rotate_batch()
+    first = prepare_rotate_candidate_batch(batch)
+    replacement = prepare_rotate_candidate_batch(batch)
+
+    with _cuda() as cuda:
+        adapter = PrimitiveCandidateEvaluationAdapter(
+            cuda,
+            PrimitiveKind.ROTATE,
+        )
+        first_result = adapter.evaluate_prepared(first)
+        replacement_result = adapter.evaluate_prepared(replacement)
+        stats = cuda.prepared_stats()
+
+    assert replacement_result.packed == first_result.packed
+    assert (stats.builds, stats.evaluations, stats.reuses) == (2, 2, 0)
 
 
 def test_cuda_candidate_crazy_port_matches_cpu_reference() -> None:

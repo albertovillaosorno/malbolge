@@ -112,8 +112,13 @@ state or a distinct preparer fails closed. Generic strategies without candidate
 state retain their previous behavior. Retained prepared medians are 43.129 ms CPU
 and 57.296 ms CUDA, 1.792x/1.592x faster than the packed prepared baseline.
 Ordinary routes regress 6.6%/3.7%, and prepared CUDA remains 32.8% slower than CPU.
-Backend evaluation falls 2.801x/2.083x while selection is unchanged. Primitive
-execution and resident transfer are the next neutral boundaries. Resident or
+Backend evaluation falls 2.801x/2.083x while selection is unchanged.
+`PreparedPrimitiveBatch` now adds repository-sealed validation proof below the
+candidate strategy. CPU prepared evaluation consumes it directly; CUDA keeps one
+proof-bound input/output allocation resident and rebuilds only for a different
+proof object. Ordinary execution remains one-shot. Session statistics and benchmark
+assertions expose actual build/reuse counts rather than inferring residence from
+timing. Post-commit evidence is pending. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

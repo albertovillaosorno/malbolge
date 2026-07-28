@@ -195,8 +195,12 @@ fails explicitly without changing correctness rules.
   forged type/kind/evaluator state fails before device work. Retained CUDA prepared
   median falls from 91.199 to 57.296 ms (1.592x), and backend evaluation falls from
   67.202 to 32.264 ms (2.083x). Ordinary CUDA regresses 3.7%; prepared CUDA remains
-  32.8% slower than prepared CPU. Device allocation, upload, download, and release
-  still occur per call and now precede resident or fused search. Broader live-hardware evidence, synthesis/search
+  32.8% slower than prepared CPU. Prepared exact primitives now retain one
+  proof-bound device input/output allocation and host output buffer. The same proof
+  reuses that session; a different proof releases/rebuilds it, and close releases it
+  before module/context teardown. Ordinary evaluation keeps per-call allocation and
+  transfer. Benchmarks require explicit one-build/15-reuse counters. Post-commit
+  performance evidence is pending. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

@@ -16,6 +16,7 @@ from typing import Final
 from typing import TYPE_CHECKING
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.exact_primitives import PrimitiveKind
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CPU_BACKEND
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
@@ -35,6 +36,7 @@ from optimizer.rotate_target import rotate_target_search_adapter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.cuda import CudaPreparedPrimitiveStats
     from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
     from accelerator.evaluated_search import PreparedEvaluatedSearch
     from accelerator.work_ports import SearchResult
@@ -79,6 +81,8 @@ def main() -> int:
             workload=workload,
         )
         capability = primitive.capability()
+        prepared_stats = primitive.prepared_stats()
+        _validate_prepared_stats(prepared_stats)
     by_route = {row.route_id: row for row in rows}
     payload = {
         "benchmark_id": "rotate-target-prepared-search-throughput-v1",
@@ -107,6 +111,7 @@ def main() -> int:
             "name": capability.device_name,
         },
         "routes": {row.route_id: asdict(row) for row in rows},
+        "cuda_prepared_session": asdict(prepared_stats),
         "speedups_at_median": {
             "cpu_prepared_over_ordinary": (
                 by_route[CPU_ORDINARY].median_ns
@@ -173,6 +178,27 @@ def _measure_routes(
                 )
             )
     return tuple(_timing(route_id, raw[route_id]) for route_id in raw)
+
+
+def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:
+    expected_evaluations = WARMUP_COUNT + SAMPLE_COUNT
+    observed = (
+        stats.builds,
+        stats.evaluations,
+        stats.resident_count,
+        stats.resident_kind,
+        stats.reuses,
+    )
+    expected = (
+        1,
+        expected_evaluations,
+        CORPUS_SIZE,
+        PrimitiveKind.ROTATE,
+        expected_evaluations - 1,
+    )
+    if observed != expected:
+        message = "prepared throughput did not use one resident CUDA session"
+        raise RuntimeError(message)
 
 
 def _timed_search(
