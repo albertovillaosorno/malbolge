@@ -1,11 +1,15 @@
+schema_version = 1
+
 [experiment]
 id = "search-pruning-and-state-canonicalization"
+record_kind = "plan"
 seed = 0
 method_class = "exploratory"
 
 [challenge]
 family = "exact-duplicate-byte-corpus"
 difficulty = 8
+target_profile = "profile-independent"
 
 [budget]
 seconds = 1
@@ -14,4 +18,10 @@ candidate_evaluations = 8
 
 [verification]
 required = true
+oracle = "exact-byte-equality-fixtures"
 cargo_test = "search_pruning_research"
+
+[provenance]
+configuration = "algorithms/search-pruning-and-state-canonicalization/experiment.toml"
+implementation = "algorithms/search-pruning-and-state-canonicalization/"
+output = "algorithms/search-pruning-and-state-canonicalization/out/"

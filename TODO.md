@@ -238,14 +238,6 @@ TODO by TODO with its governing documents already available.
 
 ## Research methodology and experiment infrastructure
 
-### TODO - Reproducible experiment identity and manifest
-
-Define a versioned experiment manifest that records algorithm identity, exact
-implementation/configuration, target profile, workload hashes, seeds, stopping
-rules, host/accelerator identity, memory budget, compiler/tool versions, and
-output location so any reported experiment can be reconstructed without editing
-source constants.
-
 ### TODO - Benchmark and statistical evidence protocol
 
 Define fair-comparison workloads, warmup, repetitions, confidence/dispersion

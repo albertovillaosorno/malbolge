@@ -1,10 +1,15 @@
+schema_version = 1
+
 [experiment]
 id = "compact-guest-bytecode-strategy"
+record_kind = "plan"
 seed = 0
+method_class = "exploratory"
 
 [challenge]
-family = "unassigned"
+family = "guest-bytecode-baseline"
 difficulty = 1
+target_profile = "malbolge-2026.2"
 
 [budget]
 seconds = 1
@@ -12,3 +17,9 @@ memory_mib = 128
 
 [verification]
 required = true
+oracle = "trusted-semantic-verifier"
+
+[provenance]
+configuration = "algorithms/compact-guest-bytecode-strategy/experiment.toml"
+implementation = "algorithms/compact-guest-bytecode-strategy/"
+output = "algorithms/compact-guest-bytecode-strategy/out/"

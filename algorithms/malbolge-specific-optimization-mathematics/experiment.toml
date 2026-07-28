@@ -1,11 +1,15 @@
+schema_version = 1
+
 [experiment]
 id = "malbolge-specific-optimization-mathematics"
+record_kind = "plan"
 seed = 0
 method_class = "optimization"
 
 [challenge]
 family = "classic-vm-table-factorization"
 difficulty = 59049
+target_profile = "malbolge-1998"
 
 [budget]
 samples_per_implementation = 15
@@ -14,5 +18,11 @@ rotate_full_domain_repetitions = 128
 
 [verification]
 required = true
+oracle = "exhaustive-math-correspondence"
 correspondence = "math/specification/correspondence.toml"
 raw_evidence = "benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/raw.csv"
+
+[provenance]
+configuration = "algorithms/malbolge-specific-optimization-mathematics/experiment.toml"
+implementation = "algorithms/malbolge-specific-optimization-mathematics/"
+output = "algorithms/malbolge-specific-optimization-mathematics/out/"

@@ -1,11 +1,15 @@
+schema_version = 1
+
 [experiment]
 id = "self-modification-state-graph-optimizer"
+record_kind = "plan"
 seed = 0
 method_class = "optimization"
 
 [challenge]
 family = "classic-exact-state-baseline"
 difficulty = 59049
+target_profile = "multi-profile"
 
 [budget]
 step_budget = 8
@@ -13,6 +17,7 @@ profile = "malbolge-1998"
 
 [verification]
 required = true
+oracle = "safe-rust-profile-vm"
 correspondence = "math/specification/correspondence.toml"
 rejection_condition = "any exact-state hash collision that merges unequal snapshots, or any reduced-key merge with divergent future observations"
 
@@ -159,3 +164,8 @@ payload = "before-after-input-output-memory-delta"
 verifier_evidence_not_payload = "decoded-instruction-and-semantic-read-set"
 deopt = "same-normative-region-fallback"
 next_risk = "production-execution-ir-and-native-code-artifact"
+
+[provenance]
+configuration = "algorithms/self-modification-state-graph-optimizer/experiment.toml"
+implementation = "algorithms/self-modification-state-graph-optimizer/"
+output = "algorithms/self-modification-state-graph-optimizer/out/"
