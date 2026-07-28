@@ -76,6 +76,7 @@ from optimizer.rotate_target import count_prepared_rotate_target_positions
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
 from optimizer.rotate_target import rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_selection_preparer_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -90,6 +91,7 @@ EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
 EXPECTED_ROTATION_PIVOT = 2
+EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad-search",
     device_arch="bad",
@@ -239,6 +241,13 @@ def test_problem_rejects_invalid_domain_and_encoding() -> None:
     _expect_problem_error(
         "rotate target outside classic domain",
         lambda: RotateTargetProblem.decode_target(invalid_target),
+    )
+
+
+def test_rotate_target_selection_preparer_has_stable_identity() -> None:
+    """Benchmark provenance names native-view preimage preparation."""
+    assert (
+        rotate_target_selection_preparer_id() == EXPECTED_SELECTION_PREPARER_ID
     )
 
 

@@ -50,6 +50,12 @@ from __future__ import annotations
 from accelerator.exact_primitives import prepared_primitive_storage_id
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import indexed_candidate_items_id
+from benchmarks.accelerator.rotate_target_selection_preparer_comparison import (
+    SelectionMeasurementPlan,
+)
+from benchmarks.accelerator.rotate_target_selection_preparer_comparison import (
+    measure_selection_preparer_comparison,
+)
 from benchmarks.accelerator.search_preparation_crossover import CORPUS_SIZES
 from benchmarks.accelerator.search_preparation_crossover import (
     MembershipMeasurementPlan,
@@ -67,11 +73,14 @@ from benchmarks.accelerator.search_preparation_crossover import (
     validate_prepared_scale,
 )
 from optimizer.rotate_target import RotateTargetProblem
+from optimizer.rotate_target import build_rotate_target_batch
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
+from optimizer.rotate_target import rotate_target_selection_preparer_id
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
 EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
+EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
@@ -134,6 +143,13 @@ def test_scale_workloads_keep_one_exact_admissible_candidate() -> None:
         )
 
 
+def test_benchmark_uses_native_view_selection_preparer_identity() -> None:
+    """Protocol identity tracks allocation-free indexed preimage scanning."""
+    assert (
+        rotate_target_selection_preparer_id() == EXPECTED_SELECTION_PREPARER_ID
+    )
+
+
 def test_benchmark_uses_packed_rotate_batch_builder_identity() -> None:
     """Protocol identity tracks packed first-representative construction."""
     assert rotate_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
@@ -191,3 +207,31 @@ def test_membership_comparison_preserves_exact_hit_and_miss() -> None:
     assert comparison.lookup.compact_miss.median_ns > 0
     assert comparison.lookup.legacy_hit.median_ns > 0
     assert comparison.lookup.legacy_miss.median_ns > 0
+
+
+def test_selection_preparer_comparison_preserves_positions_and_samples() -> (
+    None
+):
+    """Native view preserves exact positions with lower component peak."""
+    workload = build_scale_workload(64)
+    batch = build_rotate_target_batch(workload.request).validated()
+    plan = SelectionMeasurementPlan(
+        memory_sample_count=TEST_SAMPLE_COUNT,
+        sample_count=TEST_SAMPLE_COUNT,
+    )
+
+    comparison = measure_selection_preparer_comparison(
+        workload.request,
+        batch,
+        plan,
+    )
+
+    assert comparison.position_count == 1
+    assert len(comparison.legacy_prepare.raw_ns) == TEST_SAMPLE_COUNT
+    assert len(comparison.native_prepare.raw_ns) == TEST_SAMPLE_COUNT
+    assert len(comparison.legacy_memory.peak.raw_bytes) == TEST_SAMPLE_COUNT
+    assert len(comparison.native_memory.peak.raw_bytes) == TEST_SAMPLE_COUNT
+    assert (
+        comparison.native_memory.peak.median_bytes
+        < comparison.legacy_memory.peak.median_bytes
+    )

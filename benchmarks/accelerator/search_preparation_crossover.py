@@ -86,6 +86,7 @@ from optimizer.rotate_target import RotateTargetVerifier
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
 from optimizer.rotate_target import rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_selection_preparer_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -110,6 +111,9 @@ CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
 PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
 ROTATE_TARGET_BATCH_BUILDER_ID: Final = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
+)
+ROTATE_TARGET_SELECTION_PREPARER_ID: Final = (
+    "classic-u32le-native-view-preimage-v2"
 )
 MEMBERSHIP_INDEX_ID: Final = (
     "u32-rotation-or-pair-or-reference-binary-search-v1"
@@ -255,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v6",
+        "benchmark_id": "rotate-target-preparation-crossover-v7",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -303,6 +307,9 @@ def main(argv: list[str] | None = None) -> int:
             "prepared_primitive_storage_id": _prepared_primitive_storage_id(),
             "prepared_validation_id": _prepared_validation_id(),
             "rotate_target_batch_builder_id": _rotate_target_batch_builder_id(),
+            "rotate_target_selection_preparer_id": (
+                _rotate_target_selection_preparer_id()
+            ),
             "strict_crossover": True,
         },
         "scales": [asdict(item) for item in measurements],
@@ -921,6 +928,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _rotate_target_selection_preparer_id() -> str:
+    observed = rotate_target_selection_preparer_id()
+    if observed != ROTATE_TARGET_SELECTION_PREPARER_ID:
+        message = "rotate-target selection preparer identity drifted"
+        raise RuntimeError(message)
+    return observed
 
 
 def _rotate_target_batch_builder_id() -> str:

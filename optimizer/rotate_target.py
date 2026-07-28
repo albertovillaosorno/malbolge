@@ -93,6 +93,7 @@ ROTATE_TARGET_ALGORITHM_ID = "classic-rotate-target-search-v1"
 ROTATE_TARGET_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
+ROTATE_TARGET_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
@@ -414,6 +415,16 @@ def _validate_target(target: int) -> None:
         raise InvalidRotateTargetProblemError(message)
 
 
+def rotate_target_selection_preparer_id() -> str:
+    """Return the active packed rotate-target selector-preparation identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return ROTATE_TARGET_SELECTION_PREPARER_ID
+
+
 def prepare_rotate_target_selection(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
@@ -601,20 +612,10 @@ def _indexed_rotate_positions(
         message = "indexed rotate payload width changed"
         raise InvalidAcceleratorWorkError(message)
     target = int.from_bytes(payload, _LITTLE_ENDIAN)
-    values = array("I")
-    if values.itemsize == _U32.size:
-        values.frombytes(items.payloads)
-        if sys.byteorder != _LITTLE_ENDIAN:
-            values.byteswap()
-        positions = tuple(
-            index for index, value in enumerate(values) if value == target
-        )
-    else:
-        positions = tuple(
-            index
-            for index in range(len(items))
-            if int.from_bytes(items.payload_at(index), _LITTLE_ENDIAN) == target
-        )
+    values = _native_u32_values(items.payloads, 0)
+    positions = tuple(
+        index for index, value in enumerate(values) if value == target
+    )
     if len(positions) > 1:
         message = "rotate candidate batch retained duplicate payload"
         raise InvalidAcceleratorWorkError(message)

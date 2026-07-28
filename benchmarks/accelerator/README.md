@@ -313,7 +313,7 @@ Run the active preparation, membership-index, and reuse-crossover benchmark with
 15 warm-process preparations after the global rotate table is built, five
 incremental `tracemalloc` memory observations, 15 ordinary CUDA calls, 15 fresh
 resident-build calls, and 15 resident reuses after one build and one warmup. Version
-6 retains 15 component preparations and five component memory samples for the active
+7 retains 15 component preparations and five component memory samples for the active
 index and copied-tuple `frozenset`, plus 15 exact hit and miss timing blocks of 4,096
 lookups per index. It requires indexed-candidate, membership, proof-bound packed
 primitive-storage, scalar packed-reference, and in-place rotate-target batch-builder
@@ -419,3 +419,22 @@ occurs when that retained batch coexists with candidate-state creation (~237 KiB
 incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
 coexistence without weakening exact reference, selection, membership, or admission
 proofs is the next measured boundary.
+The active post-builder slice now removes the selector's copied native u32 array.
+`classic-u32le-native-view-preimage-v2` scans the already validated immutable
+payload bytes through a native-endian u32 view, retains the same exact preimage
+positions, rejects duplicate payloads, and leaves ordinary/prepared admission
+authority unchanged. Crossover protocol v7 records the selector-preparer identity.
+`rotate_target_selection_preparer_comparison.py` also compares the historical
+array-copy preparer against the active full preparer with identical request/batch
+validation, target decode, inverse encoding, state construction, and exact-position
+checks. Exploratory full-domain component tracing lowers selector peak from about
+252.6 KiB to 1.9 KiB while timing remains approximately flat; one-candidate peak
+is slightly higher. Clean post-commit crossover and component evidence is pending
+before promotion and before selecting the remaining candidate-state coexistence.
+
+Run the dedicated selector comparison with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.rotate_target_selection_preparer_comparison
+```
