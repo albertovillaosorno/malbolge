@@ -1,5 +1,31 @@
 {
   "after": {
+    "acceptance": {
+      "combined_status": "not-clean",
+      "combined_unique_findings": 36686,
+      "general_profile": {
+        "profile": ".clang-tidy",
+        "raw_findings": 96861,
+        "status": "not-clean",
+        "unique_findings": 36686
+      },
+      "guest_c_bootstrap": {
+        "failed_translation_units": 0,
+        "profile": "tools/tidy/malbolge-clang-tidy.yaml",
+        "status": "clean",
+        "translation_units": 65,
+        "unique_findings": 0
+      },
+      "strict_compiler_matrix": {
+        "checks": 390,
+        "compiler": "LLVM/Clang 22.1.8",
+        "failed_checks": 0,
+        "status": "clean",
+        "targets": 6,
+        "translation_units_per_target": 65,
+        "unique_findings": 0
+      }
+    },
     "corpus": {
       "asset_bytes": 28795076,
       "asset_files": 1,
@@ -7,33 +33,76 @@
       "c_files": 65,
       "files": 151,
       "headers": 84,
-      "nonblank_source_lines": 70182,
-      "physical_source_lines": 78605,
-      "source_bytes": 2474438,
-      "source_sha256": "e123684b1a51b66a15921e49c1c0b087db3c60c45ce53c3c77ae674d90e7a478"
+      "nonblank_source_lines": 70249,
+      "physical_source_lines": 78676,
+      "source_bytes": 2478346,
+      "source_sha256": "b05238614b21080b55a4e0e113a1369a69548217bded480dcdacdae5af3f1d70"
+    },
+    "dominant_general_rules": {
+      "clang-format": 697,
+      "cppcoreguidelines-avoid-non-const-global-variables": 1244,
+      "cppcoreguidelines-init-variables": 1456,
+      "hicpp-signed-bitwise": 1461,
+      "misc-include-cleaner": 1717,
+      "readability-braces-around-statements": 1962,
+      "readability-identifier-length": 909,
+      "readability-identifier-naming": 2404,
+      "readability-magic-numbers": 22304
+    },
+    "finding_classification": {
+      "historical_identifier_shape": {
+        "count": 3313,
+        "disposition": "real naming-policy debt",
+        "rationale": "Names and short identifiers are embedded throughout the historical source and interfaces. Repair is a large source/linkage migration."
+      },
+      "initialization_and_mutable_global_architecture": {
+        "count": 2700,
+        "disposition": "real structural modernization debt",
+        "rationale": "Defensive initialization and global-state restrictions require architectural changes beyond source compatibility normalization."
+      },
+      "literal_and_table_constants": {
+        "count": 22304,
+        "disposition": "real strict-policy debt; not independent bugs",
+        "rationale": "Mostly renderer tables, fixed-point constants, protocol values, and historical game data. Repair requires named domain constants or generated tables rather than suppressions."
+      },
+      "mechanical_layout_and_include_hygiene": {
+        "count": 4746,
+        "disposition": "actionable mechanical debt",
+        "rationale": "Mandatory braces, direct includes, formatting, and text layout can be repaired mechanically but are not runtime correctness defects."
+      },
+      "remaining_rules": {
+        "count": 2162,
+        "disposition": "mixed review debt",
+        "rationale": "Includes complexity, function size, macro modernization, analyzer, bugprone, header-guard, and heuristic interoperability findings."
+      },
+      "signed_bitwise": {
+        "count": 1461,
+        "disposition": "priority correctness and portability review",
+        "rationale": "Many operations are deliberate fixed-point or bit-level code, but each signed operand still needs an unsigned-domain proof or rewrite."
+      }
     },
     "path": "algorithms/doom/quality/out/doom_fixed",
     "validation": {
       "by_gate": {
-        "clang-format": 661,
-        "clang-tidy": 35603,
+        "clang-format": 697,
+        "clang-tidy": 35616,
         "editorconfig": 370,
         "interop": 3
       },
       "by_rule_family": {
         "analyzer": 20,
         "bugprone": 278,
-        "format": 661,
-        "hicpp": 1553,
-        "interop/other": 2923,
-        "misc": 1744,
+        "format": 697,
+        "hicpp": 1552,
+        "interop/other": 2922,
+        "misc": 1746,
         "modernize": 742,
         "performance": 1,
-        "readability": 28345,
+        "readability": 28358,
         "text": 370
       },
-      "raw_findings": 96413,
-      "unique_findings": 36637
+      "raw_findings": 96861,
+      "unique_findings": 36686
     }
   },
   "before": {
@@ -75,6 +144,17 @@
       "raw_findings": 201160,
       "unique_findings": 143662
     }
+  },
+  "comparison_policy": {
+    "combined_policy": "general host/native profile plus guest-C bootstrap plus strict six-target compiler matrix",
+    "general_profile": ".clang-tidy",
+    "guest_profile": "tools/tidy/malbolge-clang-tidy.yaml",
+    "interpretation": [
+      "Malbolge-specific checks are additive and never erase general findings.",
+      "Zero guest-C findings does not make the general profile clean.",
+      "Counts are policy diagnostics, not independent confirmed runtime bugs."
+    ],
+    "malbolge_plugin_status": "not yet implemented"
   },
   "generator": "algorithms/doom/quality/comparison/generate.py",
   "llvm_version": "22.1.8"

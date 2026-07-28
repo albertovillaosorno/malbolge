@@ -123,9 +123,28 @@ I reran acceptance on the generated tree rather than assuming path equivalence: 
 real guest validator accepts all 65 translation units, the six-target matrix is
 390/390 clean, the fixed-point behavior transcript matches source/oracle/generated,
 repeated materialization is identical, wrong/no-source runs fail before publication,
-and the source LICENSE plus all 124 historical C/header attributions survive. The
-compact comparison report now uses generated `out/doom_fixed/` as its after corpus and
-measures 143,662 to 36,637 unique broad-repository findings, a 74.50% reduction.
+and the source LICENSE plus all 124 historical C/header attributions survive.
+
+### Comparison policy is additive, not a zero-by-redefinition shortcut
+
+I regenerated the compact comparison against the current generated
+`out/doom_fixed/` tree. The guest-C bootstrap remains 65/65 clean and the strict
+compiler matrix remains 390/390 clean. The general host/native profile is not
+replaced by either gate: it now measures 143,662 to 36,686 unique findings, a
+74.46% reduction, and the combined current policy is therefore not clean.
+
+The prior 36,637 value was stale. The current 36,686 findings are retained and
+classified rather than hidden. The dominant groups are 22,304 literal/table
+constants, 3,313 historical naming findings, 4,746 mechanical layout/include
+findings, 1,461 signed-bitwise findings, 2,700 initialization/global-state
+findings, and 2,162 findings across the remaining rules.
+
+These are policy diagnostics, not 36,686 independent confirmed runtime bugs.
+Mechanical format/include debt is directly actionable; signed-bitwise, analyzer,
+and bugprone findings require correctness review; naming, literal-table, mutable
+state, complexity, and function-size findings require larger source or
+architectural migrations. No blanket suppression was added, and future
+`malbolge-*` checks remain additive to this total.
 
 Historical commit-message repair now leaves zero `JIG-COMMIT-*`
 diagnostics. Remaining Jig findings concern current repository files, are tracked

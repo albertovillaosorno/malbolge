@@ -475,8 +475,11 @@ native baseline. Deliberate bug fixes or platform changes are recorded as such
 and require explicit behavioral evidence instead of being disguised as
 normalization.
 
-The quality stage is complete only when the generated multi-translation-unit
-tree is stable, reproducible, and accepted by all required gates.
+The source-bound compatibility stage is complete only when the generated
+multi-translation-unit tree is stable, reproducible, and clean under the guest-C,
+strict compiler, behavior, provenance, and runtime acceptance gates. The general
+host/native `.clang-tidy` profile remains additive modernization evidence and is
+not currently clean.
 
 ## Generated Quality Acceptance Evidence
 
@@ -503,9 +506,14 @@ Acceptance was rerun on the generated tree itself:
 - the output `LICENSE` is byte-identical to the pinned source license, all 124
   historical C/header files retain id Software attribution, and the derived runtime
   language tables carry explicit provenance; and
-- the compact comparison report now measures `doom/` versus generated
-  `out/doom_fixed/`: unique broad-repository findings fall from 143,662 to 36,637
-  (74.50%), while the strict compiler gates used for portability are clean.
+- the compact comparison report now uses an additive policy: the guest-C
+  bootstrap is 65/65 clean and the strict compiler matrix is 390/390 clean, but
+  the general host/native profile still reports 36,686 unique findings after a
+  reduction from 143,662 (74.46%); and
+- the remaining general-profile findings are retained rather than relabeled as
+  zero. The dominant classes are 22,304 literal/table constants, 3,313 historical
+  naming findings, 4,746 mechanical layout/include findings, 1,461 signed-bitwise
+  findings, and 2,700 initialization/global-state findings.
 
 A final sanitizer-driven follow-up regenerated the transform at SHA-256
 `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81` after correcting explicit fixed-point wrap/shift paths and adding
@@ -523,10 +531,17 @@ current repository files and are unrelated to this corpus.
 
 ## Completion Criteria
 
-The quality stage is accepted only at zero findings across every applicable
-quality, compiler, portability, and interoperability gate. Passing lint alone is
-not sufficient: the generated tree must also be a deliberately modernized,
-runnable interoperability corpus rather than a mechanically reformatted copy.
+The generated corpus is accepted for the completed source-bound compatibility
+stage only when its guest-C bootstrap, strict compiler matrix, behavior,
+portability, provenance, and runtime gates are clean. Those gates currently have
+zero findings.
+
+The repository's general host/native profile is additive rather than replaced by
+the Malbolge profile. It currently has 36,686 unique findings, so the combined
+quality policy is explicitly **not clean**. Closing that debt requires source
+transformations or narrowly justified applicability changes; blanket suppression
+and reporting the combined result as zero are not accepted. Passing compatibility
+checks alone is not equivalent to completing full general-profile modernization.
 
 The accepted result must:
 
