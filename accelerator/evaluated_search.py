@@ -38,6 +38,7 @@ type SearchStrategyKey = tuple[
     SearchProposalSelector,
     SearchBatchPreparer | None,
 ]
+type CandidateMembershipIndex = frozenset[tuple[str, bytes]]
 
 _PREPARED_PROOF = object()
 _NO_CANDIDATE_STATE = object()
@@ -67,17 +68,23 @@ class PreparedEvaluatedSearch:
     request: SearchRequest
     batch: CandidateEvaluationBatch
     _candidate_state: object = field(repr=False)
+    _membership_index: CandidateMembershipIndex = field(repr=False)
     _proof: object = field(repr=False)
     _strategy_key: SearchStrategyKey = field(repr=False)
 
     def for_strategy(
         self,
         strategy_key: SearchStrategyKey,
-    ) -> tuple[SearchRequest, CandidateEvaluationBatch, object]:
+    ) -> tuple[
+        SearchRequest,
+        CandidateEvaluationBatch,
+        object,
+        CandidateMembershipIndex,
+    ]:
         """Return state only to the exact strategy that prepared it.
 
         Returns:
-            Immutable validated request and candidate batch.
+            Validated request, batch, candidate state, and membership index.
 
         Raises:
             InvalidAcceleratorWorkError: If this state is forged or belongs to a
@@ -90,7 +97,12 @@ class PreparedEvaluatedSearch:
         if self._strategy_key != strategy_key:
             message = "prepared search state belongs to a different strategy"
             raise InvalidAcceleratorWorkError(message)
-        return (self.request, self.batch, self._candidate_state)
+        return (
+            self.request,
+            self.batch,
+            self._candidate_state,
+            self._membership_index,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +209,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             request=validated,
             batch=batch,
             _candidate_state=self._prepare_candidate_state(batch),
+            _membership_index=_candidate_membership_index(batch),
             _proof=_PREPARED_PROOF,
             _strategy_key=self._strategy_key,
         )
@@ -223,12 +236,34 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             Structurally validated untrusted proposals.
 
         """
-        request, batch, candidate_state = self._prepared(prepared)
+        request, batch, candidate_state, membership_index = self._prepared(
+            prepared
+        )
         return self._search_prepared_validated(
             request,
             batch,
             candidate_state,
+            membership_index=membership_index,
         )
+
+    def prepared_membership_count(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> int:
+        """Return exact candidate membership count after strategy validation.
+
+        Returns:
+            Number of immutable candidate identity/payload pairs in the index.
+
+        Raises:
+            InvalidAcceleratorWorkError: If state/strategy/index identity fails.
+
+        """
+        _, batch, _, membership_index = self._prepared(prepared)
+        if len(membership_index) != len(batch.items):
+            message = "prepared membership index does not cover candidate batch"
+            raise InvalidAcceleratorWorkError(message)
+        return len(membership_index)
 
     def profile_search(self, request: SearchRequest) -> ProfiledSearchResult:
         """Execute one ordinary search with wall-clock phase diagnostics.
@@ -279,7 +314,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
 
         """
         recorder = _PhaseRecorder()
-        request, batch, candidate_state = recorder.measure(
+        request, batch, candidate_state, membership_index = recorder.measure(
             "prepared_validation_ns",
             lambda: self._prepared(prepared),
         )
@@ -294,7 +329,12 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         )
         proposals = recorder.measure(
             "proposal_selection_ns",
-            lambda: self._selected(request, batch, evidence),
+            lambda: self._selected(
+                request,
+                batch,
+                evidence,
+                membership_index=membership_index,
+            ),
         )
         result = recorder.measure(
             "result_validation_ns",
@@ -308,7 +348,12 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     def _prepared(
         self,
         prepared: PreparedEvaluatedSearch,
-    ) -> tuple[SearchRequest, CandidateEvaluationBatch, object]:
+    ) -> tuple[
+        SearchRequest,
+        CandidateEvaluationBatch,
+        object,
+        CandidateMembershipIndex,
+    ]:
         return prepared.for_strategy(self._strategy_key)
 
     def _prepare_candidate_state(
@@ -351,6 +396,8 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         request: SearchRequest,
         batch: CandidateEvaluationBatch,
         candidate_state: object,
+        *,
+        membership_index: CandidateMembershipIndex,
     ) -> SearchResult:
         capability = self.capability()
         evidence = self._evaluated_prepared(
@@ -358,7 +405,12 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             candidate_state,
             capability,
         )
-        proposals = self._selected(request, batch, evidence)
+        proposals = self._selected(
+            request,
+            batch,
+            evidence,
+            membership_index=membership_index,
+        )
         return self._result(request, capability, proposals)
 
     def _evaluated_prepared(
@@ -392,9 +444,15 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         request: SearchRequest,
         batch: CandidateEvaluationBatch,
         evidence: CandidateEvaluationResult,
+        *,
+        membership_index: CandidateMembershipIndex | None = None,
     ) -> tuple[CandidateProposal, ...]:
         proposals = self._proposal_selector(request, batch, evidence)
-        _validate_proposal_membership(proposals, batch)
+        _validate_proposal_membership(
+            proposals,
+            batch,
+            membership_index=membership_index,
+        )
         return proposals
 
     def _result(
@@ -482,15 +540,39 @@ def _validate_batch(
     return validated
 
 
+def _candidate_membership_index(
+    batch: CandidateEvaluationBatch,
+) -> CandidateMembershipIndex:
+    return frozenset((item.logical_id, item.payload) for item in batch.items)
+
+
 def _validate_proposal_membership(
     proposals: tuple[CandidateProposal, ...],
     batch: CandidateEvaluationBatch,
+    *,
+    membership_index: CandidateMembershipIndex | None = None,
 ) -> None:
+    if not proposals:
+        return
+    if membership_index is not None:
+        _validate_indexed_membership(proposals, membership_index)
+        return
     candidates = {item.logical_id: item.payload for item in batch.items}
     for proposal in proposals:
         payload = candidates.get(proposal.logical_id)
         if payload is None or payload != proposal.payload:
-            message = (
-                "evaluated search proposal was not in evaluated candidate batch"
-            )
-            raise InvalidAcceleratorWorkError(message)
+            _raise_invalid_proposal_membership()
+
+
+def _validate_indexed_membership(
+    proposals: tuple[CandidateProposal, ...],
+    membership_index: CandidateMembershipIndex,
+) -> None:
+    for proposal in proposals:
+        if (proposal.logical_id, proposal.payload) not in membership_index:
+            _raise_invalid_proposal_membership()
+
+
+def _raise_invalid_proposal_membership() -> None:
+    message = "evaluated search proposal was not in evaluated candidate batch"
+    raise InvalidAcceleratorWorkError(message)

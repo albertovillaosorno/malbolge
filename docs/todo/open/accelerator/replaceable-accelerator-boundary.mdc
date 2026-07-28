@@ -107,7 +107,10 @@ directly on CUDA APIs.
   build/reuse counters, while ordinary execution remains one-shot. Retained CUDA
   prepared throughput is 34.132 ms versus 46.232 ms CPU prepared (1.355x). Backend
   evaluation improves 3.252x, but total phase time does not due to selection cost.
-  Proposal selection/membership validation is next. Synthesis/guided search,
+  Prepared state now carries an immutable exact 59,049-member proposal index shared
+  across matching CPU/CUDA routes. Ordinary execution remains one-shot and forged
+  payloads fail closed. Post-commit evidence is pending; packed evidence scanning is
+  next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

@@ -112,6 +112,9 @@ def main() -> int:
         },
         "routes": {row.route_id: asdict(row) for row in rows},
         "cuda_prepared_session": asdict(prepared_stats),
+        "prepared_membership_count": _validated_membership_count(
+            cpu.prepared_membership_count(prepared)
+        ),
         "speedups_at_median": {
             "cpu_prepared_over_ordinary": (
                 by_route[CPU_ORDINARY].median_ns
@@ -178,6 +181,13 @@ def _measure_routes(
                 )
             )
     return tuple(_timing(route_id, raw[route_id]) for route_id in raw)
+
+
+def _validated_membership_count(count: int) -> int:
+    if count != CORPUS_SIZE:
+        message = "prepared membership index does not cover full corpus"
+        raise RuntimeError(message)
+    return count
 
 
 def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:

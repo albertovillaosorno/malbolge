@@ -121,8 +121,11 @@ fails explicitly without changing correctness rules.
   the proof locally. `PreparedPrimitiveBatch` now seals validation once and the CPU
   prepared port consumes it without a second scan. In the resident-session run CPU
   prepared records 46.232 ms, 7.2% slower than the prior run amid broader control
-  regressions; no CPU improvement is claimed. Primitive arithmetic and proposal
-  selection remain CPU targets.
+  regressions; no CPU improvement is claimed. Prepared state now stores an immutable
+  exact candidate membership index, so repeated CPU proposal validation no longer
+  rebuilds the 59,049-entry dictionary. Ordinary execution is unchanged and forged
+  payloads still fail closed. Post-commit evidence is pending; primitive arithmetic
+  and packed evidence scanning remain CPU targets.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

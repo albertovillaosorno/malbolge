@@ -108,6 +108,9 @@ def main() -> int:
         "cpu": {name: asdict(value) for name, value in cpu_phases.items()},
         "cuda": {name: asdict(value) for name, value in cuda_phases.items()},
         "cuda_prepared_session": asdict(prepared_stats),
+        "prepared_membership_count": _validated_membership_count(
+            cpu.prepared_membership_count(prepared)
+        ),
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
@@ -158,6 +161,13 @@ def _measure_pair(
         {name: _timing(samples) for name, samples in cpu_raw.items()},
         {name: _timing(samples) for name, samples in cuda_raw.items()},
     )
+
+
+def _validated_membership_count(count: int) -> int:
+    if count != CORPUS_SIZE:
+        message = "prepared membership index does not cover full corpus"
+        raise RuntimeError(message)
+    return count
 
 
 def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:

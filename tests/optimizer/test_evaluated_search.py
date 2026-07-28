@@ -188,6 +188,7 @@ def test_prepared_state_builds_once_and_reuses_exact_result() -> None:
     request = _request(budget=1)
 
     prepared = adapter.prepare(request)
+    assert adapter.prepared_membership_count(prepared) == 1
     first = adapter.search_prepared(prepared)
     second = adapter.search_prepared(prepared)
 
@@ -294,6 +295,17 @@ def test_selector_cannot_fabricate_candidate_payload() -> None:
     _expect_error(
         "proposal was not in evaluated candidate batch",
         lambda: _adapter(_one_item, _fabricate).search(_request(budget=1)),
+    )
+
+
+def test_prepared_index_rejects_fabricated_candidate_payload() -> None:
+    """Prepared membership proof rejects selector payload substitution."""
+    adapter = _adapter(_one_item, _fabricate)
+    prepared = adapter.prepare(_request(budget=1))
+
+    _expect_error(
+        "proposal was not in evaluated candidate batch",
+        lambda: adapter.search_prepared(prepared),
     )
 
 

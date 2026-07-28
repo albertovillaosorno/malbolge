@@ -86,8 +86,10 @@ baseline for accelerator implementations.
   evaluation improves 2.801x. Ordinary CPU regresses 6.6%. Exact primitive
   preparation now seals validation once, and the CPU prepared port consumes that
   proof directly. The resident-session run records 46.232 ms CPU prepared, 7.2%
-  slower amid broader control regressions; no new CPU speedup is claimed. Primitive
-  arithmetic and proposal selection are next.
+  slower amid broader control regressions; no new CPU speedup is claimed. Prepared
+  CPU state now reuses an immutable exact 59,049-member proposal index instead of
+  rebuilding a dictionary; ordinary execution and fail-closed payload checks remain.
+  Post-commit evidence is pending. Primitive arithmetic and packed scanning are next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

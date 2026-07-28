@@ -110,7 +110,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   one-shot. Retained CUDA prepared median is 34.132 ms versus 46.232 ms CPU
   (1.355x), and CUDA improves 1.679x over its pre-resident baseline. CUDA backend
   evaluation improves 3.252x, but total phase time does not because selection rises
-  to 46.331 ms. Proposal selection/membership validation is next. Synthesis/guided
+  to 46.331 ms. Prepared state now includes an immutable exact membership index;
+  CPU/CUDA proposal checks reuse 59,049 validated identity/payload pairs instead of
+  rebuilding a dictionary. Ordinary execution stays one-shot and forged payloads
+  fail closed. Post-commit evidence is pending; packed evidence scanning is next.
+  Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

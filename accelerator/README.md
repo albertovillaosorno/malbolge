@@ -116,7 +116,12 @@ records 34.132 ms CUDA prepared versus 46.232 ms CPU prepared: a 1.355x same-run
 CUDA advantage and 1.679x CUDA improvement over the pre-resident baseline. The
 phase sibling lowers CUDA backend evaluation 3.252x to 9.922 ms, but complete phase
 total stays at 55.910 ms because selection rises to 46.331 ms. Proposal
-selection/membership validation is the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+selection/membership validation selected the next boundary.
+`PreparedEvaluatedSearch` now stores a `frozenset` of exact `(logical_id, payload)`
+pairs built after batch validation. Prepared CPU/CUDA validation reuses it; ordinary
+search remains one-shot, and forged payloads fail closed. Both prepared benchmarks
+require exactly 59,049 indexed members. Post-commit performance evidence is pending;
+the packed result scan is the next candidate boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

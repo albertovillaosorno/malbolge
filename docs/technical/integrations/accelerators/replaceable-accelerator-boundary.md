@@ -121,8 +121,12 @@ execution remains one-shot. Explicit session statistics make residence observabl
 Retained CUDA prepared throughput is 34.132 ms versus 46.232 ms CPU prepared,
 showing a 1.355x same-run CUDA advantage. CUDA backend evaluation improves 3.252x,
 while complete phase total does not improve because selection rises to 46.331 ms.
-Proposal selection/membership validation is the next boundary; resident/fused
-search remains later work.
+Prepared state now includes an immutable exact membership index constructed after
+candidate batch validation. Matching CPU/CUDA routes reuse 59,049 identity/payload
+pairs; ordinary execution keeps the one-shot dictionary path and forged payloads
+remain rejected. Benchmarks expose/require the indexed count. Post-commit evidence
+is pending; packed evidence scanning is next, while resident/fused search remains
+later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

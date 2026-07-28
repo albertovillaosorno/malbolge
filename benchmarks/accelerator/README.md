@@ -211,3 +211,9 @@ Retained post-commit evidence is under
 prepared reaches 34.132 ms versus 46.232 ms CPU prepared, while CUDA backend
 evaluation falls to 9.922 ms. The complete CUDA phase profile does not improve
 because proposal selection rises to 46.331 ms; that negative result is retained.
+
+The active prepared-search proof now also carries an immutable exact membership
+index. Both benchmark programs emit and validate `prepared_membership_count=59049`
+so prepared proposal checks cannot silently rebuild the full candidate dictionary.
+A post-commit rerun is still required before claiming the exploratory selection
+reduction.

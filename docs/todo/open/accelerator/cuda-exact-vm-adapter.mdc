@@ -117,6 +117,9 @@ batches.
   remains one-shot. Retained CUDA prepared median is 34.132 ms, 1.679x faster than
   the pre-resident baseline and 1.355x faster than same-run CPU. Backend evaluation
   improves 3.252x, but total phase time does not because selection rises to
-  46.331 ms. Proposal selection and synthesis/search strategies remain open.
+  46.331 ms. Prepared CPU/CUDA search now shares an immutable exact 59,049-member
+  proposal index, eliminating repeated dictionary construction without weakening
+  payload membership. Post-commit performance evidence is pending; packed evidence
+  scanning and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

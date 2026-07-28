@@ -122,8 +122,12 @@ timing. Retained resident evidence records 34.132 ms CUDA prepared versus
 46.232 ms CPU prepared (1.355x CUDA/CPU) and a 1.679x improvement over the prior
 CUDA prepared baseline. CUDA backend evaluation improves 3.252x to 9.922 ms, but
 complete phase total stays flat/slightly worse because proposal selection rises to
-46.331 ms. Proposal selection/membership validation is the next neutral boundary.
-Resident or
+46.331 ms. `PreparedEvaluatedSearch` now builds an immutable exact membership
+index from the validated candidate `(logical_id, payload)` pairs. Prepared CPU/CUDA
+proposal validation reuses the index, while ordinary execution retains the one-shot
+dictionary path. Fabricated payloads still fail closed, and benchmarks require
+59,049 indexed members. Post-commit evidence is pending; packed evidence scanning
+is the next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

@@ -204,7 +204,11 @@ fails explicitly without changing correctness rules.
   baseline and 1.355x faster than same-run CPU prepared. CUDA backend evaluation
   falls from 32.264 to 9.922 ms (3.252x). Complete CUDA phase total changes from
   55.300 to 55.910 ms because selection rises to 46.331 ms; no total phase speedup
-  is claimed. Broader live-hardware evidence, synthesis/search
+  is claimed. The shared prepared-search proof now also carries an immutable exact
+  59,049-member proposal index. CUDA and CPU prepared routes reuse it after evidence
+  selection; ordinary routes retain one-shot membership construction, and forged
+  payloads fail closed. Post-commit performance evidence is pending; the packed
+  evidence scan remains host-side. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

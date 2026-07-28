@@ -775,7 +775,12 @@ Control routes are slower by 14.7% CPU ordinary, 7.2% CPU prepared, and 17.2% CU
 ordinary, so those changes are retained as run-context noise. The CUDA backend
 phase falls from 32.264 to 9.922 ms (3.252x), but complete CUDA phase total changes
 from 55.300 to 55.910 ms because proposal selection rises from 22.913 to 46.331 ms.
-Proposal selection/membership validation is now the next measured boundary.
+`PreparedEvaluatedSearch` now builds one immutable exact membership index from the
+validated `(logical_id, payload)` pairs. Prepared proposal validation reuses that
+index without rebuilding a 59,049-entry dictionary; ordinary execution keeps the
+one-shot path. Fabricated payloads still fail closed, and both benchmarks require a
+59,049-member index alongside exact CUDA session counters. Post-commit performance
+evidence is pending; the packed result scan is the next candidate boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -837,8 +842,11 @@ benchmarks fail unless one full-domain session is reused exactly. Retained CUDA
 prepared throughput is 34.132 ms, 1.679x faster than the pre-resident baseline and
 1.355x faster than same-run CPU prepared. CUDA backend evaluation improves 3.252x,
 while complete phase total does not improve because selection rises to 46.331 ms.
-Proposal selection/membership validation now precedes resident or fused
-evaluation-selection. Broader hardware evidence,
+Prepared search now reuses one exact immutable membership index across CPU/CUDA
+selection, eliminating per-call dictionary reconstruction while preserving payload
+membership checks. Benchmarks require 59,049 indexed members; fabricated proposals
+fail closed. Post-commit performance evidence is pending, and the packed evidence
+scan now precedes resident or fused evaluation-selection. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer
