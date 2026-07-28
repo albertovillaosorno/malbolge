@@ -207,8 +207,11 @@ fails explicitly without changing correctness rules.
   is claimed. The shared prepared-search proof now also carries an immutable exact
   59,049-member proposal index. CUDA and CPU prepared routes reuse it after evidence
   selection; ordinary routes retain one-shot membership construction, and forged
-  payloads fail closed. Post-commit performance evidence is pending; the packed
-  evidence scan remains host-side. Broader live-hardware evidence, synthesis/search
+  payloads fail closed. Retained CUDA prepared median reaches 17.970 ms, 1.899x
+  faster than the resident baseline and 1.491x faster than same-run CPU. CUDA
+  proposal selection falls from 46.331 to 11.761 ms (3.939x). Improved ordinary and
+  backend controls bound cross-run attribution; the packed evidence scan remains
+  host-side. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

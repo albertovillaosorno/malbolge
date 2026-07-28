@@ -126,8 +126,11 @@ complete phase total stays flat/slightly worse because proposal selection rises 
 index from the validated candidate `(logical_id, payload)` pairs. Prepared CPU/CUDA
 proposal validation reuses the index, while ordinary execution retains the one-shot
 dictionary path. Fabricated payloads still fail closed, and benchmarks require
-59,049 indexed members. Post-commit evidence is pending; packed evidence scanning
-is the next neutral boundary. Resident or
+59,049 indexed members. Retained prepared medians are 26.797 ms CPU and 17.970 ms
+CUDA, improvements of 1.725x/1.899x over the resident baseline; CUDA is 1.491x
+faster in the same run. Selection improves 3.519x/3.939x to 11.801/11.761 ms.
+Ordinary/backend controls also improve, so the direct phase change bounds causal
+attribution. Packed evidence scanning is the next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -191,6 +194,9 @@ fails explicitly without changing correctness rules.
   and its phase sibling retain 60 throughput plus 150 phase samples and explicit
   session counters. CUDA prepared reaches 34.132 ms, 1.355x faster than same-run
   CPU; CUDA backend evaluation improves 3.252x, while total phase time does not.
+- `benchmarks/accelerator/evidence/2026-07-28-indexed-membership-search-rtx4060/`
+  and its phase sibling retain full index/session identity. Prepared medians improve
+  1.725x CPU and 1.899x CUDA; proposal selection improves 3.519x/3.939x.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

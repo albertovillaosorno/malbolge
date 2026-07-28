@@ -109,8 +109,9 @@ directly on CUDA APIs.
   evaluation improves 3.252x, but total phase time does not due to selection cost.
   Prepared state now carries an immutable exact 59,049-member proposal index shared
   across matching CPU/CUDA routes. Ordinary execution remains one-shot and forged
-  payloads fail closed. Post-commit evidence is pending; packed evidence scanning is
-  next. Synthesis/guided search,
+  payloads fail closed. Retained prepared medians improve 1.725x CPU and 1.899x
+  CUDA; selection improves 3.519x/3.939x. CUDA is 1.491x faster than same-run CPU.
+  Packed evidence scanning is next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

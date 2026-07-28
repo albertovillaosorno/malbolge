@@ -215,5 +215,9 @@ because proposal selection rises to 46.331 ms; that negative result is retained.
 The active prepared-search proof now also carries an immutable exact membership
 index. Both benchmark programs emit and validate `prepared_membership_count=59049`
 so prepared proposal checks cannot silently rebuild the full candidate dictionary.
-A post-commit rerun is still required before claiming the exploratory selection
-reduction.
+Retained post-commit evidence is under
+`evidence/2026-07-28-indexed-membership-search-rtx4060/` and
+`evidence/2026-07-28-indexed-membership-search-phase-profile-rtx4060/`. Prepared
+CPU/CUDA medians reach 26.797/17.970 ms, and proposal selection reaches
+11.801/11.761 ms. Ordinary/backend controls also improve, so the phase comparison
+is the direct membership-index evidence.

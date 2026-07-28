@@ -119,7 +119,8 @@ batches.
   improves 3.252x, but total phase time does not because selection rises to
   46.331 ms. Prepared CPU/CUDA search now shares an immutable exact 59,049-member
   proposal index, eliminating repeated dictionary construction without weakening
-  payload membership. Post-commit performance evidence is pending; packed evidence
-  scanning and synthesis/search strategies remain open.
+  payload membership. Retained CUDA prepared median is 17.970 ms, 1.899x faster
+  than the resident baseline and 1.491x faster than CPU; selection improves 3.939x
+  to 11.761 ms. Packed evidence scanning and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

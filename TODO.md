@@ -779,8 +779,13 @@ from 55.300 to 55.910 ms because proposal selection rises from 22.913 to 46.331 
 validated `(logical_id, payload)` pairs. Prepared proposal validation reuses that
 index without rebuilding a 59,049-entry dictionary; ordinary execution keeps the
 one-shot path. Fabricated payloads still fail closed, and both benchmarks require a
-59,049-member index alongside exact CUDA session counters. Post-commit performance
-evidence is pending; the packed result scan is the next candidate boundary.
+59,049-member index alongside exact CUDA session counters. Retained indexed
+evidence records CPU/CUDA prepared medians of 26.797/17.970 ms, improvements of
+1.725x/1.899x over the resident baseline; CUDA is 1.491x faster in the same run.
+Proposal selection falls from 41.529 to 11.801 ms CPU (3.519x) and from 46.331 to
+11.761 ms CUDA (3.939x). Ordinary controls and backend medians also improve, so
+cross-run total changes are not attributed solely to the index. The packed result
+scan is now the next measured boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -845,8 +850,11 @@ while complete phase total does not improve because selection rises to 46.331 ms
 Prepared search now reuses one exact immutable membership index across CPU/CUDA
 selection, eliminating per-call dictionary reconstruction while preserving payload
 membership checks. Benchmarks require 59,049 indexed members; fabricated proposals
-fail closed. Post-commit performance evidence is pending, and the packed evidence
-scan now precedes resident or fused evaluation-selection. Broader hardware evidence,
+fail closed. Retained CUDA prepared throughput reaches 17.970 ms versus 26.797 ms
+CPU prepared (1.491x), and CUDA selection improves 3.939x to 11.761 ms. Improved
+ordinary/backend controls bound attribution to the direct selection phase. The
+packed evidence scan now precedes resident or fused evaluation-selection. Broader
+hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer

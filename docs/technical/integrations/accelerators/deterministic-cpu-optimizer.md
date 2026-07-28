@@ -124,8 +124,10 @@ fails explicitly without changing correctness rules.
   regressions; no CPU improvement is claimed. Prepared state now stores an immutable
   exact candidate membership index, so repeated CPU proposal validation no longer
   rebuilds the 59,049-entry dictionary. Ordinary execution is unchanged and forged
-  payloads still fail closed. Post-commit evidence is pending; primitive arithmetic
-  and packed evidence scanning remain CPU targets.
+  payloads still fail closed. Retained CPU prepared median reaches 26.797 ms,
+  1.725x faster than the resident baseline, while selection falls from 41.529 to
+  11.801 ms (3.519x). Improved ordinary/backend controls bound total attribution.
+  Primitive arithmetic and packed evidence scanning remain CPU targets.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

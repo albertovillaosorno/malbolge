@@ -113,8 +113,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   to 46.331 ms. Prepared state now includes an immutable exact membership index;
   CPU/CUDA proposal checks reuse 59,049 validated identity/payload pairs instead of
   rebuilding a dictionary. Ordinary execution stays one-shot and forged payloads
-  fail closed. Post-commit evidence is pending; packed evidence scanning is next.
-  Synthesis/guided
+  fail closed. Retained prepared medians are 26.797 ms CPU and 17.970 ms CUDA,
+  1.725x/1.899x faster than the resident baseline; selection improves
+  3.519x/3.939x. Improved controls bound attribution. Packed evidence scanning is
+  next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

@@ -120,8 +120,13 @@ selection/membership validation selected the next boundary.
 `PreparedEvaluatedSearch` now stores a `frozenset` of exact `(logical_id, payload)`
 pairs built after batch validation. Prepared CPU/CUDA validation reuses it; ordinary
 search remains one-shot, and forged payloads fail closed. Both prepared benchmarks
-require exactly 59,049 indexed members. Post-commit performance evidence is pending;
-the packed result scan is the next candidate boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+require exactly 59,049 indexed members. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-indexed-membership-search-rtx4060/`
+records 26.797 ms CPU prepared and 17.970 ms CUDA prepared, 1.725x/1.899x faster
+than the resident baseline. CUDA prepared is 1.491x faster than same-run CPU. The
+phase sibling lowers proposal selection 3.519x CPU and 3.939x CUDA to
+11.801/11.761 ms. Improved controls bound total attribution; the packed result scan
+is the next candidate boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
