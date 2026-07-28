@@ -75,7 +75,9 @@ directly on CUDA APIs.
   malformed primitive capability/count/domain evidence falls back safely. Exact
   candidate evidence can also traverse a live CUDA verification-assist adapter;
   hints remain untrusted and malformed optional evidence becomes no hint. Direct
-  snapshot materialization removes redundant packed host staging.
+  snapshot materialization removes redundant packed host staging. The resident
+  snapshot diagnostic path now attributes fresh result arrays, three D-to-H phases,
+  decode, and total while preserving ordinary independent mutable result ownership.
   `EvaluatedSearchExecutionAdapter` now composes bounded candidate evaluation into
   search without allowing selectors to fabricate unevaluated payloads. The same
   `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA

@@ -1307,9 +1307,18 @@ device states, and persistent scalable sessions avoid repeated full-state
 movement between bounded segments. `ProfileMemoryImage` now validates and owns
 reusable geometry-bound input once, reducing repeated current-profile validation
 to sub-millisecond planning in retained evidence. Direct complete snapshots now
-download into final result arrays without redundant packed host staging.
-Unavoidable final-array transfer/page commitment and broader live-device evidence
-remain open.
+download into final result arrays without redundant packed host staging. A public
+`ProfileSnapshotPhaseProfile` diagnostic path leaves ordinary `snapshot()` unchanged
+and separates fresh host-array allocation, scalar-state D-to-H, full-memory D-to-H,
+output D-to-H, decode, and inclusive total. The formal resident-snapshot profiler
+covers batches 1/8/32 with one excluded warmup and 15 exact retained samples.
+Exploratory medians are 3.1599/65.9398/271.6625 ms total. Batch 1 is 96.557%
+full-memory transfer; batches 8/32 are 62.463%/63.967% fresh Python array allocation
+and 37.229%/35.913% memory transfer. Decode stays below 0.11%, and named coverage is
+above 99.8%. The existing result contract requires independent mutable `array('I')`
+memories, so buffer reuse or pinned allocation cannot be introduced silently.
+Clean post-commit evidence is pending before selecting an explicit streaming or
+caller-owned snapshot contract. Broader live-device evidence remains open.
 
 ### TODO - Compilation latency performance budget
 

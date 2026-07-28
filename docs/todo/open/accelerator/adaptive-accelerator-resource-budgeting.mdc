@@ -124,6 +124,14 @@ example probe points, not supported-range endpoints.
   `ProfileMemoryImage` now validates/owns reusable geometry-bound inputs once;
   retained batch-32 validation/planning falls from about 62.40 ms to 0.23 ms
   and complete throughput reaches about 93.68 VMs/s. Direct snapshot output now
-  removes redundant packed host staging; unavoidable final-array transfer/page
-  commitment and broader live-hardware measurements remain required.
-  Persistent classic continuation is tracked by its own retained session evidence.
+  removes redundant packed host staging. `ProfileSnapshotPhaseProfile` and
+  `profile_resident_snapshot_phase_profile.py` add a diagnostic-only decomposition
+  of fresh host arrays, scalar-state/full-memory/output D-to-H, decode, and total.
+  Exploratory 1/8/32 totals are 3.1599/65.9398/271.6625 ms. Batch 1 is 96.557%
+  memory transfer; batches 8/32 are 62.463%/63.967% allocation and
+  37.229%/35.913% transfer. Decode stays below 0.11% and named coverage exceeds
+  99.8%. Ordinary snapshot semantics remain unchanged. Independent mutable result
+  arrays prohibit silent buffer reuse, so clean evidence is required before an
+  explicit streaming or caller-owned snapshot contract is selected. Broader
+  live-hardware measurements remain required. Persistent classic continuation is
+  tracked by its own retained session evidence.

@@ -121,8 +121,13 @@ private states resident across bounded launches and reach about 2.00 million
 outside the timed region. Validated `ProfileMemoryImage` inputs additionally
 reuse their geometry/domain proof across calls: retained batch-32 validation and
 planning falls to about 0.23 ms and complete-snapshot throughput reaches about
-93.68 VMs/s. These are backend measurements, not CPU-relative or cross-device
-speedup claims.
+93.68 VMs/s. Resident sessions now expose diagnostic `profile_snapshot()` without
+changing ordinary snapshot semantics. It separates fresh host-array allocation,
+state/memory/output D-to-H, decode, and total; exploratory batches 8/32 place about
+62--64% in allocation and 36--37% in memory transfer, while batch 1 is 96.6%
+transfer. The result contract still requires independent mutable arrays, so reusable
+host storage needs a separately admitted ownership surface. These are backend
+measurements, not CPU-relative or cross-device speedup claims.
 
 ## Invariants
 

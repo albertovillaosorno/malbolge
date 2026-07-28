@@ -198,6 +198,31 @@ def test_cuda_profile_session_matches_contiguous_execution() -> None:
     )
 
 
+def test_cuda_profile_session_snapshot_phases_preserve_exact_results() -> None:
+    """Snapshot profiling separates host allocation, transfers, and decode."""
+    request = _resident_session_request()
+    with _cuda() as adapter, adapter.open_session(
+        (request, request),
+        max_runs=SESSION_RUNS,
+    ) as session:
+        for _ in range(SESSION_RUNS):
+            session.advance()
+        expected = session.snapshot()
+        observed, profile = session.profile_snapshot()
+
+    assert observed == expected
+    assert profile.chunks == 1
+    components = (
+        profile.host_memory_allocate_ns,
+        profile.state_download_ns,
+        profile.memory_download_ns,
+        profile.output_download_ns,
+        profile.decode_ns,
+    )
+    assert all(value >= 0 for value in components)
+    assert profile.total_ns >= sum(components)
+
+
 def test_cuda_profile_accepts_validated_memory_image() -> None:
     """Immutable validated memory images preserve exact CUDA execution."""
     request = _request()

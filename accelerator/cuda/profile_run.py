@@ -109,6 +109,50 @@ class ProfileRunPhaseProfile:
     validation_plan_ns: int
 
 
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotPhaseProfile:
+    """Diagnostic wall-clock phases for one explicit resident snapshot."""
+
+    chunks: int
+    decode_ns: int
+    host_memory_allocate_ns: int
+    memory_download_ns: int
+    output_download_ns: int
+    state_download_ns: int
+    total_ns: int
+
+
+@dataclass(slots=True)
+class _SnapshotPhaseCounter:
+    decode_ns: int = 0
+    host_memory_allocate_ns: int = 0
+    memory_download_ns: int = 0
+    output_download_ns: int = 0
+    state_download_ns: int = 0
+
+    def freeze(
+        self,
+        *,
+        chunks: int,
+        total_ns: int,
+    ) -> ProfileSnapshotPhaseProfile:
+        """Freeze snapshot counters into public diagnostic evidence.
+
+        Returns:
+            Immutable aggregate snapshot timing evidence.
+
+        """
+        return ProfileSnapshotPhaseProfile(
+            chunks=chunks,
+            decode_ns=self.decode_ns,
+            host_memory_allocate_ns=self.host_memory_allocate_ns,
+            memory_download_ns=self.memory_download_ns,
+            output_download_ns=self.output_download_ns,
+            state_download_ns=self.state_download_ns,
+            total_ns=total_ns,
+        )
+
+
 @dataclass(slots=True)
 class _PhaseCounter:
     allocate_ns: int = 0
@@ -712,6 +756,34 @@ class CudaProfileRunSession:
             results.extend(_decode_results(chunk.hosts, memories))
         return tuple(results)
 
+    def profile_snapshot(
+        self,
+    ) -> tuple[tuple[ProfileRunResult, ...], ProfileSnapshotPhaseProfile]:
+        """Materialize one snapshot with phase-separated diagnostics.
+
+        Returns:
+            Complete results plus host allocation, transfer, and decode timing.
+
+        """
+        total_start = perf_counter_ns()
+        self._ensure_usable()
+        phase = _SnapshotPhaseCounter()
+        results: list[ProfileRunResult] = []
+        for chunk in self._chunks:
+            memories = _profile_snapshot_downloads(
+                self._context,
+                chunk,
+                phase,
+            )
+            start = perf_counter_ns()
+            results.extend(_decode_results(chunk.hosts, memories))
+            phase.decode_ns += perf_counter_ns() - start
+        total_ns = perf_counter_ns() - total_start
+        return tuple(results), phase.freeze(
+            chunks=len(self._chunks),
+            total_ns=total_ns,
+        )
+
     def _ensure_usable(self) -> None:
         if self._closed:
             message = "resident CUDA profile session is closed"
@@ -983,6 +1055,36 @@ def _download_result_memories(
             _word_buffer(memory).view,
             device_pointer + (index * stride_bytes),
         )
+
+
+def _profile_snapshot_downloads(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+    phase: _SnapshotPhaseCounter,
+) -> tuple[array[int], ...]:
+    start = perf_counter_ns()
+    memories = _result_memories(context.geometry, chunk.hosts)
+    phase.host_memory_allocate_ns += perf_counter_ns() - start
+
+    start = perf_counter_ns()
+    context.runtime.copy_from_device(chunk.hosts.states.view, chunk.pointers[0])
+    phase.state_download_ns += perf_counter_ns() - start
+
+    start = perf_counter_ns()
+    _download_result_memories(
+        context.runtime,
+        context.geometry,
+        device_pointer=chunk.pointers[1],
+        memories=memories,
+    )
+    phase.memory_download_ns += perf_counter_ns() - start
+
+    start = perf_counter_ns()
+    context.runtime.copy_from_device(
+        chunk.hosts.outputs.view, chunk.pointers[3]
+    )
+    phase.output_download_ns += perf_counter_ns() - start
+    return memories
 
 
 def _download_complete_results(

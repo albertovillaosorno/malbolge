@@ -31,8 +31,14 @@ batch 32 reaches about 51.67 VMs/s, while resident batch 128 reaches about
 region. `ProfileMemoryImage` now carries reusable geometry-bound validation proof;
 retained batch-32 complete-snapshot throughput reaches about 93.68 VMs/s and
 validation/planning falls to about 0.23 ms. Direct complete-snapshot materialization now downloads into final result
-arrays without redundant packed host staging; full-state transfer/page commitment
-remains a measured cost. `work_ports.py` now defines hardware-neutral candidate
+arrays without redundant packed host staging. `CudaProfileRunSession.profile_snapshot()`
+adds a diagnostic-only decomposition of fresh host-array allocation, state/memory/output
+D-to-H, decode, and inclusive total while ordinary `snapshot()` remains unchanged.
+Exploratory current-profile batches 8/32 place about 62--64% in fresh array allocation
+and 36--37% in full-memory transfer; batch 1 is about 96.6% transfer. Because results
+must own independent mutable `array('I')` memories, any reusable or pinned host-storage
+surface requires a separate explicit ownership contract. `work_ports.py` now defines
+hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution
 capacity while search proposals and verification hints remain untrusted.

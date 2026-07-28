@@ -90,6 +90,22 @@ This session benchmark answers a different question from
 complete VM state resident, not end-to-end complete-snapshot latency. Do not use
 its launch-only rate as a direct CPU-relative or complete-run speedup claim.
 
+`profile_resident_snapshot_phase_profile.py` measures the explicit full-snapshot
+boundary after state is already resident. One ordinary snapshot warmup is excluded;
+15 retained snapshots for batches 1, 8, and 32 validate every complete result and
+record fresh host-memory allocation, scalar-state D-to-H, complete-memory D-to-H,
+output D-to-H, decode, inclusive total, and named-phase coverage. Session setup and
+one 64-step `advance()` occur outside the timed region. The allocation phase includes
+observable Python/OS page-commit effects but does not claim a lower-level allocator
+breakdown.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_resident_snapshot_phase_profile
+```
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One
