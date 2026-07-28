@@ -97,8 +97,11 @@ directly on CUDA APIs.
   item-form compatibility, fail-closed shape checks, and explicit materialization.
   Retained packed evidence lowers all four route medians; backend evaluation falls
   2.326x on CPU and 2.058x on CUDA. Packed CUDA prepared remains about 18.0%
-  slower than CPU. Request decode/validation and primitive transfer are the next
-  neutral boundary. Synthesis/guided search,
+  slower than CPU. Prepared candidate state now extends the neutral proof under
+  exact preparer identity. Rotate search reuses one validated decoded
+  `PrimitiveBatch` across matching CPU/CUDA capacity; forged/mismatched state fails
+  closed and generic strategies remain compatible. Post-commit evidence is pending,
+  while primitive transfer remains the next neutral boundary. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

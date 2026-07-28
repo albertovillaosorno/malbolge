@@ -12,6 +12,8 @@ from typing import override
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
+from accelerator.evaluated_search import EvaluatedSearchStrategy
+from accelerator.evaluated_search import PreparedCandidateExecution
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
@@ -19,6 +21,7 @@ from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
+from accelerator.primitive_candidates import prepare_rotate_candidate_batch
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -131,8 +134,14 @@ def rotate_target_search_adapter(
     return EvaluatedSearchExecutionAdapter(
         ROTATE_TARGET_ALGORITHM_ID,
         evaluator,
-        batch_builder=build_rotate_target_batch,
-        proposal_selector=select_rotate_target_proposals,
+        EvaluatedSearchStrategy(
+            batch_builder=build_rotate_target_batch,
+            proposal_selector=select_rotate_target_proposals,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=prepare_rotate_candidate_batch,
+                evaluator=evaluator.evaluate_prepared,
+            ),
+        ),
     )
 
 

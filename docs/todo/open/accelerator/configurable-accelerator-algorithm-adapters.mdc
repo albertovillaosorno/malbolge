@@ -97,8 +97,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   boundary. Retained packed evidence lowers CPU ordinary/prepared medians to
   211.693/77.309 ms and CUDA medians to 230.144/91.199 ms. Packed backend
   evaluation falls 2.326x on CPU and 2.058x on CUDA, while packed CUDA prepared
-  remains about 18.0% slower than CPU. Request decode/validation and primitive
-  transfer are the next measured boundary. Synthesis/guided
+  remains about 18.0% slower than CPU. Prepared candidate execution now stores one
+  validated decoded state under exact preparer identity. Rotate search reuses a
+  hardware-neutral `PrimitiveBatch` through matching CPU/CUDA evaluators; forged or
+  mismatched state fails closed, and generic strategies remain compatible.
+  Post-commit evidence is pending; primitive transfer remains the next measured
+  boundary. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

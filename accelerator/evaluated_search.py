@@ -30,13 +30,34 @@ type SearchProposalSelector = Callable[
     [SearchRequest, CandidateEvaluationBatch, CandidateEvaluationResult],
     tuple[CandidateProposal, ...],
 ]
+type SearchBatchPreparer = Callable[[CandidateEvaluationBatch], object]
+type SearchPreparedEvaluator = Callable[[object], CandidateEvaluationResult]
 type SearchStrategyKey = tuple[
     str,
     SearchBatchBuilder,
     SearchProposalSelector,
+    SearchBatchPreparer | None,
 ]
 
 _PREPARED_PROOF = object()
+_NO_CANDIDATE_STATE = object()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCandidateExecution:
+    """Strategy preparation plus backend-specific prepared evaluation."""
+
+    batch_preparer: SearchBatchPreparer
+    evaluator: SearchPreparedEvaluator
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluatedSearchStrategy:
+    """Hardware-neutral evaluated-search strategy callbacks."""
+
+    batch_builder: SearchBatchBuilder
+    proposal_selector: SearchProposalSelector
+    prepared_execution: PreparedCandidateExecution | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,13 +66,14 @@ class PreparedEvaluatedSearch:
 
     request: SearchRequest
     batch: CandidateEvaluationBatch
+    _candidate_state: object = field(repr=False)
     _proof: object = field(repr=False)
     _strategy_key: SearchStrategyKey = field(repr=False)
 
     def for_strategy(
         self,
         strategy_key: SearchStrategyKey,
-    ) -> tuple[SearchRequest, CandidateEvaluationBatch]:
+    ) -> tuple[SearchRequest, CandidateEvaluationBatch, object]:
         """Return state only to the exact strategy that prepared it.
 
         Returns:
@@ -68,7 +90,7 @@ class PreparedEvaluatedSearch:
         if self._strategy_key != strategy_key:
             message = "prepared search state belongs to a different strategy"
             raise InvalidAcceleratorWorkError(message)
-        return (self.request, self.batch)
+        return (self.request, self.batch, self._candidate_state)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +141,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         self,
         algorithm_id: str,
         adapter: CandidateEvaluationAdapter,
-        *,
-        batch_builder: SearchBatchBuilder,
-        proposal_selector: SearchProposalSelector,
+        strategy: EvaluatedSearchStrategy,
     ) -> None:
         """Bind one strategy to one replaceable evidence backend.
 
@@ -134,12 +154,23 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             raise InvalidAcceleratorWorkError(message)
         self._adapter = adapter
         self._algorithm_id = algorithm_id
-        self._batch_builder = batch_builder
-        self._proposal_selector = proposal_selector
+        self._batch_builder = strategy.batch_builder
+        self._batch_preparer = (
+            None
+            if strategy.prepared_execution is None
+            else strategy.prepared_execution.batch_preparer
+        )
+        self._prepared_evaluator = (
+            None
+            if strategy.prepared_execution is None
+            else strategy.prepared_execution.evaluator
+        )
+        self._proposal_selector = strategy.proposal_selector
         self._strategy_key: SearchStrategyKey = (
             algorithm_id,
-            batch_builder,
-            proposal_selector,
+            strategy.batch_builder,
+            strategy.proposal_selector,
+            self._batch_preparer,
         )
 
     @override
@@ -165,6 +196,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         return PreparedEvaluatedSearch(
             request=validated,
             batch=batch,
+            _candidate_state=self._prepare_candidate_state(batch),
             _proof=_PREPARED_PROOF,
             _strategy_key=self._strategy_key,
         )
@@ -191,8 +223,12 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             Structurally validated untrusted proposals.
 
         """
-        request, batch = self._prepared(prepared)
-        return self._search_validated(request, batch)
+        request, batch, candidate_state = self._prepared(prepared)
+        return self._search_prepared_validated(
+            request,
+            batch,
+            candidate_state,
+        )
 
     def profile_search(self, request: SearchRequest) -> ProfiledSearchResult:
         """Execute one ordinary search with wall-clock phase diagnostics.
@@ -243,14 +279,18 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
 
         """
         recorder = _PhaseRecorder()
-        request, batch = recorder.measure(
+        request, batch, candidate_state = recorder.measure(
             "prepared_validation_ns",
             lambda: self._prepared(prepared),
         )
         capability = self.capability()
         evidence = recorder.measure(
             "backend_evaluation_ns",
-            lambda: self._evaluated(batch, capability),
+            lambda: self._evaluated_prepared(
+                batch,
+                candidate_state,
+                capability,
+            ),
         )
         proposals = recorder.measure(
             "proposal_selection_ns",
@@ -268,8 +308,20 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     def _prepared(
         self,
         prepared: PreparedEvaluatedSearch,
-    ) -> tuple[SearchRequest, CandidateEvaluationBatch]:
+    ) -> tuple[SearchRequest, CandidateEvaluationBatch, object]:
         return prepared.for_strategy(self._strategy_key)
+
+    def _prepare_candidate_state(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> object:
+        if self._batch_preparer is None:
+            return _NO_CANDIDATE_STATE
+        state = self._batch_preparer(batch)
+        if state is _NO_CANDIDATE_STATE:
+            message = "candidate batch preparer returned reserved state"
+            raise InvalidAcceleratorWorkError(message)
+        return state
 
     def _validated_request(self, request: SearchRequest) -> SearchRequest:
         validated = request.validated()
@@ -293,6 +345,37 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         evidence = self._evaluated(batch, capability)
         proposals = self._selected(request, batch, evidence)
         return self._result(request, capability, proposals)
+
+    def _search_prepared_validated(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+        candidate_state: object,
+    ) -> SearchResult:
+        capability = self.capability()
+        evidence = self._evaluated_prepared(
+            batch,
+            candidate_state,
+            capability,
+        )
+        proposals = self._selected(request, batch, evidence)
+        return self._result(request, capability, proposals)
+
+    def _evaluated_prepared(
+        self,
+        batch: CandidateEvaluationBatch,
+        candidate_state: object,
+        capability: AcceleratorCapability,
+    ) -> CandidateEvaluationResult:
+        if candidate_state is _NO_CANDIDATE_STATE:
+            return self._evaluated(batch, capability)
+        if self._prepared_evaluator is None:
+            message = "prepared candidate state has no evaluator"
+            raise InvalidAcceleratorWorkError(message)
+        return self._prepared_evaluator(candidate_state).validated_against(
+            batch,
+            capability,
+        )
 
     def _evaluated(
         self,

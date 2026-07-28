@@ -194,4 +194,6 @@ medians; candidate-evaluation result transport/materialization selected the next
 measured optimization boundary. The active implementation now supports fixed-width
 packed candidate evidence. The retained post-change throughput and phase bundles
 are under `evidence/2026-07-28-packed-search-rtx4060/` and
-`evidence/2026-07-28-packed-search-phase-profile-rtx4060/`.
+`evidence/2026-07-28-packed-search-phase-profile-rtx4060/`. The active prepared
+rotate path now also stores one validated decoded `PrimitiveBatch`; these packed
+records remain the pre-change baseline until a post-commit rerun is retained.

@@ -80,7 +80,9 @@ baseline for accelerator implementations.
   path while preserving generic item compatibility and request-order identity.
   Retained CPU ordinary/prepared medians are now 211.693/77.309 ms,
   1.387x/1.922x faster than pre-packed. Backend evaluation falls 2.326x and
-  selection 1.369x. Request decode/validation and primitive execution are next.
+  selection 1.369x. Prepared rotate state now stores one validated decoded
+  `PrimitiveBatch`, removing repeated candidate validation/decode from the CPU
+  path. Post-commit evidence is pending; primitive execution is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

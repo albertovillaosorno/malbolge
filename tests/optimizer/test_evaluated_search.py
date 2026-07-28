@@ -9,6 +9,8 @@ from typing import final
 
 from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
+from accelerator.evaluated_search import EvaluatedSearchStrategy
+from accelerator.evaluated_search import PreparedCandidateExecution
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -70,6 +72,23 @@ def _two_items(request: SearchRequest) -> CandidateEvaluationBatch:
     )
 
 
+def _prepare_identity_batch(batch: CandidateEvaluationBatch) -> object:
+    return batch
+
+
+def _prepare_identity_batch_other(batch: CandidateEvaluationBatch) -> object:
+    return batch
+
+
+def _evaluate_identity_state(state: object) -> CandidateEvaluationResult:
+    if not isinstance(state, CandidateEvaluationBatch):
+        message = "identity prepared state must be a candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+    return CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity).evaluate(
+        state
+    )
+
+
 def _select_first(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
@@ -118,8 +137,10 @@ def _adapter(
     return EvaluatedSearchExecutionAdapter(
         ALGORITHM_ID,
         evaluator,
-        batch_builder=batch_builder,
-        proposal_selector=selector,
+        EvaluatedSearchStrategy(
+            batch_builder=batch_builder,
+            proposal_selector=selector,
+        ),
     )
 
 
@@ -203,6 +224,64 @@ def test_prepared_state_rejects_different_strategy_functions() -> None:
     """Algorithm identity alone cannot authorize another strategy binding."""
     prepared = _adapter(_one_item, _select_first).prepare(_request(budget=1))
     different = _adapter(_one_item, _select_none)
+
+    _expect_error(
+        "prepared search state belongs to a different strategy",
+        lambda: different.search_prepared(prepared),
+    )
+
+
+def test_prepared_candidate_execution_reuses_explicit_state() -> None:
+    """A strategy-owned prepared state drives repeated candidate execution."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    adapter = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=_prepare_identity_batch,
+                evaluator=_evaluate_identity_state,
+            ),
+        ),
+    )
+    request = _request(budget=1)
+
+    prepared = adapter.prepare(request)
+    result = adapter.search_prepared(prepared)
+
+    assert result == adapter.search(request)
+
+
+def test_prepared_candidate_preparer_is_strategy_identity() -> None:
+    """Distinct preparers cannot consume another strategy proof."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    first = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=_prepare_identity_batch,
+                evaluator=_evaluate_identity_state,
+            ),
+        ),
+    )
+    different = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=_prepare_identity_batch_other,
+                evaluator=_evaluate_identity_state,
+            ),
+        ),
+    )
+    prepared = first.prepare(_request(budget=1))
 
     _expect_error(
         "prepared search state belongs to a different strategy",

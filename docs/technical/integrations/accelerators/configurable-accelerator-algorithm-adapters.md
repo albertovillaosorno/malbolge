@@ -104,8 +104,13 @@ Retained packed evidence lowers CPU ordinary/prepared medians to
 routes, the improvements are 1.387x/1.922x for CPU and 1.333x/1.784x for CUDA.
 Packed backend evaluation falls to 53.907 ms CPU and 67.202 ms CUDA; selection
 falls to 22.502/22.288 ms. Packed CUDA prepared remains about 18.0% slower than
-packed CPU prepared. Request decode/batch validation and primitive transfer are the
-next neutral boundary. Resident or
+packed CPU prepared. `PreparedCandidateExecution` now extends strategy identity
+with an optional candidate-state preparer and backend-specific prepared evaluator.
+Rotate preparation validates and decodes one hardware-neutral `PrimitiveBatch`
+once; matching CPU/CUDA strategies reuse it, while forged type/kind/evaluator
+state or a distinct preparer fails closed. Generic strategies without candidate
+state retain their previous behavior. Post-commit evidence is pending; primitive
+transfer remains the next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

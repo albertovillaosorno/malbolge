@@ -112,8 +112,12 @@ fails explicitly without changing correctness rules.
   item results and explicit hint materialization remain supported. Retained packed
   evidence lowers CPU ordinary/prepared medians from 293.564/148.590 to
   211.693/77.309 ms (1.387x/1.922x). Backend evaluation falls from 125.412 to
-  53.907 ms (2.326x) and selection from 30.796 to 22.502 ms (1.369x). Request
-  payload decode/batch validation and primitive execution are the next CPU targets.
+  53.907 ms (2.326x) and selection from 30.796 to 22.502 ms (1.369x). Rotate
+  preparation now validates/decodes the exact candidate batch once and stores a
+  hardware-neutral `PrimitiveBatch` in the strategy proof. Repeated CPU execution
+  no longer pays candidate batch validation or payload decode; ordinary one-shot
+  execution remains unchanged. Post-commit evidence is pending, and primitive
+  execution is the next CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

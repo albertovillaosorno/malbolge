@@ -24,6 +24,7 @@ from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_crazy_candidate
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
+from accelerator.primitive_candidates import prepare_rotate_candidate_batch
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -182,6 +183,45 @@ def test_cpu_candidate_bridge_preserves_exact_rotate_results() -> None:
         )
     )
     assert observed == expected.values
+
+
+def test_prepared_rotate_candidate_state_matches_ordinary_result() -> None:
+    """Decoded rotate input is reusable without changing packed evidence."""
+    batch = _rotate_batch()
+    adapter = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.ROTATE,
+    )
+
+    state = prepare_rotate_candidate_batch(batch)
+    ordinary = adapter.evaluate(batch)
+    prepared = adapter.evaluate_prepared(state)
+
+    assert prepared == ordinary
+
+
+def test_prepared_primitive_state_rejects_wrong_type_and_kind() -> None:
+    """Prepared primitive state fails closed when forged or cross-operated."""
+    rotate = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.ROTATE,
+    )
+    crazy = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.CRAZY,
+    )
+    state = prepare_rotate_candidate_batch(_rotate_batch())
+
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "prepared primitive candidate state has wrong type",
+        lambda: rotate.evaluate_prepared(object()),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "prepared primitive candidate state selects another evaluator",
+        lambda: crazy.evaluate_prepared(state),
+    )
 
 
 def test_malformed_candidate_payload_fails_before_primitive_backend() -> None:

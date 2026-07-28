@@ -34,12 +34,51 @@ _WORD_BYTES = 4
 _CRAZY_PAYLOAD_BYTES = 8
 _LITTLE_ENDIAN = "little"
 _NATIVE_WORD_FORMAT = "I"
+_PREPARED_PRIMITIVE_PROOF = object()
 
 
 @dataclass(frozen=True, slots=True)
 class _DecodedBatch:
     accumulators: tuple[int, ...]
     data: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedPrimitiveCandidateEvaluation:
+    """Decoded primitive input reusable by matching exact backends."""
+
+    batch: CandidateEvaluationBatch
+    primitive: PrimitiveBatch
+    evaluator_id: str
+    kind: PrimitiveKind
+    _proof: object
+
+    def for_adapter(
+        self,
+        evaluator_id: str,
+        kind: PrimitiveKind,
+    ) -> tuple[CandidateEvaluationBatch, PrimitiveBatch]:
+        """Return decoded state only to a matching primitive strategy.
+
+        Returns:
+            Original candidate batch and validated primitive batch.
+
+        Raises:
+            InvalidAcceleratorWorkError: If state is forged or mismatched.
+
+        """
+        if self._proof is not _PREPARED_PRIMITIVE_PROOF:
+            message = "prepared primitive candidate state is forged"
+            raise InvalidAcceleratorWorkError(message)
+        if self.evaluator_id != evaluator_id or self.kind is not kind:
+            message = (
+                "prepared primitive candidate state selects another evaluator"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        if self.batch.evaluator_id != evaluator_id:
+            message = "prepared primitive candidate batch identity changed"
+            raise InvalidAcceleratorWorkError(message)
+        return (self.batch, self.primitive)
 
 
 @final
@@ -76,23 +115,56 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
         Returns:
             Ordered four-byte little-endian exact evidence per candidate.
 
+        """
+        prepared = _prepare_primitive_candidate_batch(batch, self._kind)
+        return self.evaluate_prepared(prepared)
+
+    def evaluate_prepared(
+        self,
+        state: object,
+    ) -> CandidateEvaluationResult:
+        """Evaluate already decoded primitive candidate state.
+
+        Returns:
+            Ordered fixed-width exact evidence in request order.
+
         Raises:
-            InvalidAcceleratorWorkError: If evaluator identity is malformed.
+            InvalidAcceleratorWorkError: If state is forged or mismatched.
 
         """
-        validated = batch.validated()
-        if validated.evaluator_id != self._evaluator_id:
-            message = "candidate batch selects a different primitive evaluator"
+        if not isinstance(state, PreparedPrimitiveCandidateEvaluation):
+            message = "prepared primitive candidate state has wrong type"
             raise InvalidAcceleratorWorkError(message)
-        decoded = _decode_batch(validated, self._kind)
-        primitive = self._adapter.evaluate(
-            PrimitiveBatch(
-                accumulators=decoded.accumulators,
-                data=decoded.data,
-                kind=self._kind,
-            )
+        batch, primitive_batch = state.for_adapter(
+            self._evaluator_id,
+            self._kind,
         )
-        return _encode_result(validated, primitive, self.capability())
+        primitive = self._adapter.evaluate(primitive_batch)
+        return _encode_result(batch, primitive, self.capability())
+
+
+def prepare_crazy_candidate_batch(
+    batch: CandidateEvaluationBatch,
+) -> object:
+    """Prepare decoded crazy inputs for matching CPU/CUDA execution.
+
+    Returns:
+        Hardware-neutral immutable primitive candidate state.
+
+    """
+    return _prepare_primitive_candidate_batch(batch, PrimitiveKind.CRAZY)
+
+
+def prepare_rotate_candidate_batch(
+    batch: CandidateEvaluationBatch,
+) -> object:
+    """Prepare decoded rotate inputs for matching CPU/CUDA execution.
+
+    Returns:
+        Hardware-neutral immutable primitive candidate state.
+
+    """
+    return _prepare_primitive_candidate_batch(batch, PrimitiveKind.ROTATE)
 
 
 def encode_crazy_candidate(data: int, accumulator: int) -> bytes:
@@ -171,6 +243,30 @@ def _iter_packed_primitive_values(
         )
         _validate_evidence_word(value)
         yield value
+
+
+def _prepare_primitive_candidate_batch(
+    batch: CandidateEvaluationBatch,
+    kind: PrimitiveKind,
+) -> PreparedPrimitiveCandidateEvaluation:
+    validated = batch.validated()
+    evaluator_id = _evaluator_id(kind)
+    if validated.evaluator_id != evaluator_id:
+        message = "candidate batch selects a different primitive evaluator"
+        raise InvalidAcceleratorWorkError(message)
+    decoded = _decode_batch(validated, kind)
+    primitive = PrimitiveBatch(
+        accumulators=decoded.accumulators,
+        data=decoded.data,
+        kind=kind,
+    ).validated()
+    return PreparedPrimitiveCandidateEvaluation(
+        batch=validated,
+        primitive=primitive,
+        evaluator_id=evaluator_id,
+        kind=kind,
+        _proof=_PREPARED_PRIMITIVE_PROOF,
+    )
 
 
 def _decode_batch(

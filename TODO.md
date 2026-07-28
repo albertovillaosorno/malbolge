@@ -753,8 +753,14 @@ Retained packed evidence lowers CPU ordinary/prepared medians to
 230.144/91.199 ms (1.333x/1.784x). Packed CUDA prepared remains about 18.0%
 slower than packed CPU prepared. The packed phase profile lowers CPU/CUDA backend
 evaluation to 53.907/67.202 ms (2.326x/2.058x versus pre-packed) and selection to
-22.502/22.288 ms. The next boundary is request payload decode/batch validation and
-primitive transfer, not evidence-object materialization. Synthesis/guided
+22.502/22.288 ms. Prepared search state now optionally carries a validated,
+decoded candidate execution state bound to the strategy preparer. Rotate search
+stores one hardware-neutral `PrimitiveBatch` during preparation and matching CPU or
+CUDA adapters reuse it without revalidating candidate IDs or decoding 59,049
+payloads. Forged type/kind/evaluator state and different preparer identity fail
+closed. Ordinary one-shot execution still prepares locally. Post-commit evidence
+is pending before claiming the exploratory reduction; primitive transfer remains
+open. Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -802,8 +808,12 @@ preserving request-order identity and verifier-only acceptance. Retained packed
 CUDA ordinary/prepared medians are 230.144/91.199 ms, improving 1.333x/1.784x
 over the pre-packed routes. Backend evaluation falls from 138.320 to 67.202 ms
 (2.058x), while selection falls from 31.912 to 22.288 ms (1.432x). Packed CUDA
-remains about 18.0% slower than packed CPU prepared; request decode/validation and
-primitive transfer now precede resident or
+remains about 18.0% slower than packed CPU prepared. Prepared rotate state now
+moves candidate batch validation and payload decode into one-time strategy
+preparation, and the same validated `PrimitiveBatch` crosses matching CPU/CUDA
+capacity. Forged or mismatched prepared primitive state fails before backend
+execution. Post-commit evidence is pending; primitive transfer still precedes
+resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

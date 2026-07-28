@@ -189,8 +189,12 @@ fails explicitly without changing correctness rules.
   from 306.872/162.693 to 230.144/91.199 ms (1.333x/1.784x). Backend evaluation
   falls from 138.320 to 67.202 ms (2.058x), and selection from 31.912 to
   22.288 ms (1.432x). Packed CUDA prepared remains about 18.0% slower than packed
-  CPU prepared. Request decode/validation and primitive transfer now precede
-  resident or fused search. Broader live-hardware evidence, synthesis/search
+  CPU prepared. Rotate prepared state now includes one validated decoded
+  `PrimitiveBatch` produced independently of CUDA identity. Matching CUDA execution
+  consumes that state without repeating candidate ID validation or payload decode;
+  forged type/kind/evaluator state fails before device work. Ordinary search still
+  prepares locally. Post-commit evidence is pending, while primitive transfer now
+  precedes resident or fused search. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

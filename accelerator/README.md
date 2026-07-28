@@ -95,8 +95,13 @@ ordinary/prepared medians to 211.693/77.309 ms and CUDA medians to
 230.144/91.199 ms, improvements of 1.387x/1.922x and 1.333x/1.784x over the
 pre-packed routes. The sibling packed phase profile lowers backend evaluation to
 53.907 ms CPU and 67.202 ms CUDA. Packed CUDA prepared remains about 18.0% slower
-than packed CPU prepared. Request payload decode/batch validation and primitive
-transfer are now the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+than packed CPU prepared. `PreparedCandidateExecution` now lets a strategy attach
+hardware-neutral decoded candidate state to the existing proof. Rotate search
+prepares one validated `PrimitiveBatch`; matching CPU/CUDA adapters consume it
+without repeated candidate batch validation or payload decode. The preparer is
+part of strategy identity, and forged type/kind/evaluator state fails closed.
+Ordinary one-shot search still prepares locally. Post-commit performance evidence
+is pending; primitive transfer remains the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
