@@ -146,11 +146,13 @@ by-side comparison without recompiling or modifying compiler semantics.
   remain controls. Public resident-CUDA and neutral packed-encoding diagnostic
   records now split launch/sync, transfer, immutable bytes, contract, masks, integer
   decode, high-mask, threshold, diagnostics, result construction, and totals. The
-  full-domain profiler requires CPU equality, validator/session proof identity, and
-  at least 95% named coverage. Retained coverage is 97.35% median/95.40% minimum.
-  Resident CUDA total is 0.1965 ms versus 0.6558 ms neutral encoding/validation;
-  integer decode plus high-mask/threshold checks represent about 73.6% of median
-  total. Exact big-integer validation is the next measured boundary. Synthesis/guided
+  prepared candidate state now retains immutable exact CPU bytes once and validates
+  prepared backend output under `cpu-reference-packed-equality-v1`; ordinary output
+  retains `u32le-broadword-domain-v1`. Capability/representation/count checks precede
+  equality, and first/final in-domain corruption fails closed. Generic prepared
+  state counting exposes all 59,049 reference words. Benchmarks require both IDs and
+  all CPU-table/session/membership/selector proofs. Post-commit evidence is pending.
+  Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

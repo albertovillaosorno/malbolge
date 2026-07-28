@@ -24,14 +24,22 @@ from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
 from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.primitive_candidates import CRAZY_EVALUATOR_ID
+from accelerator.primitive_candidates import (
+    PreparedPrimitiveCandidateEvaluation,
+)
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_crazy_candidate
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import (
+    prepared_primitive_reference_word_count,
+)
+from accelerator.primitive_candidates import prepared_primitive_validation_id
 from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.primitive_candidates import profile_packed_primitive_result
+from accelerator.primitive_candidates import profile_prepared_primitive_result
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -47,6 +55,7 @@ CPU_BACKEND = "cpu-reference"
 CORPUS_SIZE = 257
 EVIDENCE_WORD_BYTES = 4
 ROTATE_ONE = 19_683
+PREPARED_VALIDATION_ID = "cpu-reference-packed-equality-v1"
 BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
 BAD_MODE_DOMAIN = "domain"
@@ -183,6 +192,37 @@ class _BadPackedResultAdapter(ExactPrimitiveAdapter):
         return PackedPrimitiveResult(
             capability=capability,
             words_u32le=_bad_packed_payloads(self.mode, len(batch.data)),
+        )
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PackedPrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
+
+
+@dataclass(frozen=True, slots=True)
+class _CorruptPreparedPackedAdapter(ExactPrimitiveAdapter):
+    index: int
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PackedPrimitiveResult:
+        validated = batch.validated()
+        result = CpuExactPrimitiveAdapter().evaluate(validated)
+        values = list(result.values)
+        observed = values[self.index]
+        values[self.index] = (observed + 1) % (MAX_WORD + 1)
+        return PackedPrimitiveResult(
+            capability=BAD_CAPABILITY,
+            words_u32le=b"".join(
+                value.to_bytes(EVIDENCE_WORD_BYTES, "little")
+                for value in values
+            ),
         )
 
     @override
@@ -334,6 +374,103 @@ def test_prepared_rotate_candidate_state_matches_ordinary_result() -> None:
     prepared = adapter.evaluate_prepared(state)
 
     assert prepared == ordinary
+
+
+def test_prepared_state_retains_exact_cpu_reference_identity() -> None:
+    """Preparation retains one exact CPU word for every candidate."""
+    batch = _rotate_batch()
+    state = prepare_rotate_candidate_batch(batch)
+
+    assert prepared_primitive_validation_id() == PREPARED_VALIDATION_ID
+    assert prepared_primitive_reference_word_count(state) == CORPUS_SIZE
+
+
+def test_prepared_reference_rejects_first_and_last_in_domain_drift() -> None:
+    """Exact prepared equality rejects valid-domain corruption at both ends."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        items=tuple(
+            CandidateWorkItem(
+                logical_id=f"word-{value}",
+                payload=encode_rotate_candidate(value),
+            )
+            for value in (1, 4, 7)
+        ),
+    )
+    state = prepare_rotate_candidate_batch(batch)
+    cases = (
+        (0, "word 0: expected 19683, observed 19684"),
+        (2, "word 2: expected 19685, observed 19686"),
+    )
+    for index, message in cases:
+        adapter = PrimitiveCandidateEvaluationAdapter(
+            _CorruptPreparedPackedAdapter(index),
+            PrimitiveKind.ROTATE,
+        )
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda adapter=adapter: adapter.evaluate_prepared(state),
+        )
+
+
+def test_profiled_prepared_reference_matches_normal_exact_result() -> None:
+    """Prepared profiling preserves exact reference validation and output."""
+    batch = _rotate_batch()
+    state = prepare_rotate_candidate_batch(batch)
+    primitive = CpuExactPrimitiveAdapter().evaluate(
+        PrimitiveBatch(
+            accumulators=(),
+            data=_words(CORPUS_SIZE),
+            kind=PrimitiveKind.ROTATE,
+        )
+    )
+    expected = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.ROTATE,
+    ).evaluate_prepared(state)
+
+    observed, profile = profile_prepared_primitive_result(
+        state,
+        primitive,
+        primitive.capability,
+    )
+
+    assert observed == expected
+    assert profile.diagnostic_ns == 0
+    components = (
+        profile.contract_ns,
+        profile.exact_compare_ns,
+        profile.result_build_ns,
+    )
+    assert all(value >= 0 for value in components)
+    assert profile.total_ns >= sum(components)
+
+
+def test_forged_prepared_reference_state_fails_closed() -> None:
+    """Raw state construction cannot replace the trusted exact reference."""
+    batch = _rotate_batch()
+    primitive = prepare_primitive_batch(
+        PrimitiveBatch(
+            accumulators=(),
+            data=_words(CORPUS_SIZE),
+            kind=PrimitiveKind.ROTATE,
+        )
+    )
+    forged = PreparedPrimitiveCandidateEvaluation(
+        batch=batch,
+        primitive=primitive,
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        expected_words_u32le=b"\0" * (CORPUS_SIZE * EVIDENCE_WORD_BYTES),
+        kind=PrimitiveKind.ROTATE,
+        _proof=object(),
+    )
+
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "prepared primitive candidate state is forged",
+        lambda: prepared_primitive_reference_word_count(forged),
+    )
 
 
 def test_prepared_primitive_batch_rejects_forged_proof() -> None:

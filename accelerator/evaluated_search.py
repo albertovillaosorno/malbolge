@@ -33,6 +33,7 @@ type SearchProposalSelector = Callable[
 ]
 type SearchBatchPreparer = Callable[[CandidateEvaluationBatch], object]
 type SearchPreparedEvaluator = Callable[[object], CandidateEvaluationResult]
+type SearchCandidateStateCount = Callable[[object], int]
 type SearchSelectionPreparer = Callable[
     [SearchRequest, CandidateEvaluationBatch],
     object,
@@ -60,6 +61,7 @@ type SearchStrategyKey = tuple[
     SearchBatchBuilder,
     SearchProposalSelector,
     SearchBatchPreparer | None,
+    SearchCandidateStateCount | None,
     SearchSelectionPreparer | None,
     SearchPreparedProposalSelector | None,
     SearchSelectionStateCount | None,
@@ -77,6 +79,7 @@ class PreparedCandidateExecution:
 
     batch_preparer: SearchBatchPreparer
     evaluator: SearchPreparedEvaluator
+    state_count: SearchCandidateStateCount | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +230,11 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             if strategy.prepared_execution is None
             else strategy.prepared_execution.evaluator
         )
+        self._candidate_state_count = (
+            None
+            if strategy.prepared_execution is None
+            else strategy.prepared_execution.state_count
+        )
         self._proposal_selector = strategy.proposal_selector
         self._selection_preparer = (
             None
@@ -248,6 +256,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             strategy.batch_builder,
             strategy.proposal_selector,
             self._batch_preparer,
+            self._candidate_state_count,
             self._selection_preparer,
             self._prepared_proposal_selector,
             self._selection_state_count,
@@ -307,6 +316,32 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         """
         resolved = self._prepared(prepared)
         return self._search_prepared_validated(resolved)
+
+    def prepared_candidate_state_count(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> int:
+        """Return strategy-defined prepared candidate-state cardinality.
+
+        Returns:
+            Nonnegative candidate-state item count, or zero when unavailable.
+
+        Raises:
+            InvalidAcceleratorWorkError: If strategy/count identity fails.
+
+        """
+        resolved = self._prepared(prepared)
+        if resolved.candidate_state is _NO_CANDIDATE_STATE:
+            return 0
+        if self._candidate_state_count is None:
+            return 0
+        count = self._candidate_state_count(resolved.candidate_state)
+        if type(count) is not int or count < 0:
+            message = (
+                "prepared candidate state count must be nonnegative integer"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        return count
 
     def prepared_membership_count(
         self,

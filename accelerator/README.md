@@ -169,16 +169,17 @@ records 1.175 ms CUDA prepared, 1.733x faster than scalar packed validation and
 2.095x to 0.860 ms and CUDA total 2.057x to 0.886 ms; CPU phase regressions remain
 controls. `CudaPreparedPrimitivePhaseProfile` now records resident launch/sync,
 D-to-H, immutable bytes, and total time. `PackedPrimitiveEncodingPhaseProfile`
-records contract, masks, integer decode, high-mask, threshold, diagnostic,
-result-build, and total time. The new prepared CUDA primitive profiler requires
-exact CPU evidence equality, `u32le-broadword-domain-v1`, session counters, and at
-least 95% named coverage. Retained evidence under
-`benchmarks/accelerator/evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060/`
-records 97.35% median and 95.40% minimum coverage. CUDA launch/sync, D-to-H, and
-immutable-copy medians are 0.0605/0.0934/0.0332 ms; integer decode, high-mask, and
-threshold medians are 0.2993/0.0784/0.2615 ms. Big-integer validation represents
-about 73.6% of median total versus 21.5% for GPU/transfer/copy. Exact validation is
-the next boundary; ordinary execution and trust remain unchanged.
+records the historical broadword contract, masks, integer decode, checks,
+diagnostics, result build, and total. Prepared candidate state now additionally
+retains immutable CPU truth under `cpu-reference-packed-equality-v1`; ordinary
+results continue to use `u32le-broadword-domain-v1`. Prepared CPU/CUDA output must
+match all retained bytes after capability, representation, and exact-count checks,
+so incorrect in-domain first or final words fail closed. The generic search adapter
+exposes proof-bound candidate-state cardinality, and full-domain benchmarks require
+59,049 reference words plus all existing table/session/membership/selector proofs.
+The prepared profiler now records contract, exact compare, result build, visible
+layer residuals, CUDA phases, and end-to-end total. Post-commit evidence is pending;
+the trusted verifier remains the sole proposal-admission authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

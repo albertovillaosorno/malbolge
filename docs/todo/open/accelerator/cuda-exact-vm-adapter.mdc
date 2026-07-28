@@ -145,10 +145,11 @@ batches.
   same-run CPU; CPU phase regressions remain controls. Public resident-CUDA and
   neutral packed-encoding profiles now expose launch/sync, D-to-H, immutable bytes,
   validation subphases, and totals. The full-domain profiler requires byte-identical
-  CPU evidence, validator identity, 1/16/16/15 counters, and at least 95% named
-  coverage. Retained coverage is 97.35% median/95.40% minimum. Resident CUDA total
-  is 0.1965 ms versus 0.6558 ms neutral encoding/validation; integer decode plus
-  high-mask/threshold checks represent about 73.6% of median total. Exact validation
-  is the next CUDA subphase; synthesis/search remains open.
+  CPU evidence and 1/16/16/15 counters. Prepared state now retains immutable CPU
+  truth and requires `cpu-reference-packed-equality-v1`; ordinary CUDA retains
+  `u32le-broadword-domain-v1`. First/final in-domain drift fails closed, and search
+  proofs require all 59,049 reference words plus existing counters. The profiler now
+  measures exact compare and visible residuals. Post-commit evidence is pending;
+  synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

@@ -19,6 +19,7 @@ from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import packed_primitive_validation_id
+from accelerator.primitive_candidates import prepared_primitive_validation_id
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CPU_BACKEND
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
@@ -71,6 +72,7 @@ class _MeasuredSearch:
     cpu_stats: CpuPreparedPrimitiveStats
     cuda_stats: CudaPreparedPrimitiveStats
     membership_count: int
+    reference_word_count: int
     rows: tuple[SearchTiming, ...]
     selection_count: int
 
@@ -116,9 +118,13 @@ def main() -> int:
         "cuda_prepared_session": asdict(measured.cuda_stats),
         "prepared_membership_count": measured.membership_count,
         "prepared_selection_count": measured.selection_count,
-        "packed_primitive_validation": _validated_packed_validation_id(
+        "ordinary_packed_validation": _validated_packed_validation_id(
             packed_primitive_validation_id()
         ),
+        "prepared_primitive_validation": _validated_prepared_validation_id(
+            prepared_primitive_validation_id()
+        ),
+        "prepared_reference_word_count": measured.reference_word_count,
         "speedups_at_median": {
             "cpu_prepared_over_ordinary": (
                 by_route[CPU_ORDINARY].median_ns
@@ -160,6 +166,9 @@ def _measure_search(workload: SearchBenchmarkWorkload) -> _MeasuredSearch:
             cuda_stats=cuda_stats,
             membership_count=_validated_membership_count(
                 cpu.prepared_membership_count(prepared)
+            ),
+            reference_word_count=_validated_reference_count(
+                cpu.prepared_candidate_state_count(prepared)
             ),
             rows=rows,
             selection_count=_validated_selection_count(
@@ -231,6 +240,21 @@ def _validated_packed_validation_id(identifier: str) -> str:
         message = "packed primitive validation identity drifted"
         raise RuntimeError(message)
     return identifier
+
+
+def _validated_prepared_validation_id(identifier: str) -> str:
+    expected = "cpu-reference-packed-equality-v1"
+    if identifier != expected:
+        message = "prepared primitive validation identity drifted"
+        raise RuntimeError(message)
+    return identifier
+
+
+def _validated_reference_count(count: int) -> int:
+    if count != CORPUS_SIZE:
+        message = "prepared CPU reference does not cover full candidate corpus"
+        raise RuntimeError(message)
+    return count
 
 
 def _validated_membership_count(count: int) -> int:

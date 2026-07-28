@@ -81,6 +81,18 @@ def _prepare_identity_batch_other(batch: CandidateEvaluationBatch) -> object:
     return batch
 
 
+def _count_invalid_identity_state(state: object) -> int:
+    _ = state
+    return -1
+
+
+def _count_identity_state(state: object) -> int:
+    if not isinstance(state, CandidateEvaluationBatch):
+        message = "identity prepared state must be a candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+    return len(state.items)
+
+
 def _evaluate_identity_state(state: object) -> CandidateEvaluationResult:
     if not isinstance(state, CandidateEvaluationBatch):
         message = "identity prepared state must be a candidate batch"
@@ -344,6 +356,7 @@ def test_prepared_candidate_execution_reuses_explicit_state() -> None:
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=_prepare_identity_batch,
                 evaluator=_evaluate_identity_state,
+                state_count=_count_identity_state,
             ),
         ),
     )
@@ -352,7 +365,32 @@ def test_prepared_candidate_execution_reuses_explicit_state() -> None:
     prepared = adapter.prepare(request)
     result = adapter.search_prepared(prepared)
 
+    assert adapter.prepared_candidate_state_count(prepared) == 1
     assert result == adapter.search(request)
+
+
+def test_prepared_candidate_state_rejects_invalid_count() -> None:
+    """Prepared candidate proof count must be a nonnegative integer."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    adapter = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=_prepare_identity_batch,
+                evaluator=_evaluate_identity_state,
+                state_count=_count_invalid_identity_state,
+            ),
+        ),
+    )
+    prepared = adapter.prepare(_request(budget=1))
+
+    _expect_error(
+        "prepared candidate state count must be nonnegative integer",
+        lambda: adapter.prepared_candidate_state_count(prepared),
+    )
 
 
 def test_prepared_candidate_preparer_is_strategy_identity() -> None:
@@ -367,6 +405,7 @@ def test_prepared_candidate_preparer_is_strategy_identity() -> None:
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=_prepare_identity_batch,
                 evaluator=_evaluate_identity_state,
+                state_count=_count_identity_state,
             ),
         ),
     )

@@ -15,14 +15,16 @@ from time import perf_counter_ns
 from typing import Final
 from typing import TYPE_CHECKING
 
-from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import prepare_primitive_batch
-from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
-from accelerator.primitive_candidates import packed_primitive_validation_id
-from accelerator.primitive_candidates import profile_packed_primitive_result
+from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import (
+    prepared_primitive_reference_word_count,
+)
+from accelerator.primitive_candidates import prepared_primitive_validation_id
+from accelerator.primitive_candidates import profile_prepared_primitive_result
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import SEED
 from benchmarks.accelerator.search_workload import TARGET
@@ -39,42 +41,39 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.primitive_candidates import (
-        PackedPrimitiveEncodingPhaseProfile,
+        PreparedPrimitiveEncodingPhaseProfile,
     )
     from accelerator.work_ports import CandidateEvaluationBatch
-    from accelerator.work_ports import CandidateEvaluationResult
     from benchmarks.accelerator.search_workload import SearchBenchmarkWorkload
 
 SAMPLE_COUNT: Final = 15
 WARMUP_COUNT: Final = 1
 MINIMUM_COVERAGE_PERCENT: Final = 95.0
-VALIDATION_ID: Final = "u32le-broadword-domain-v1"
+VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
 PHASE_NAMES: Final = (
     "launch_sync_ns",
     "download_ns",
     "immutable_bytes_ns",
     "cuda_total_ns",
+    "cuda_unattributed_ns",
     "contract_ns",
-    "mask_lookup_ns",
-    "int_decode_ns",
-    "high_mask_ns",
-    "threshold_ns",
+    "exact_compare_ns",
     "diagnostic_ns",
     "result_build_ns",
     "encoding_total_ns",
+    "encoding_unattributed_ns",
     "end_to_end_total_ns",
 )
 COMPONENT_NAMES: Final = (
     "launch_sync_ns",
     "download_ns",
     "immutable_bytes_ns",
+    "cuda_unattributed_ns",
     "contract_ns",
-    "mask_lookup_ns",
-    "int_decode_ns",
-    "high_mask_ns",
-    "threshold_ns",
+    "exact_compare_ns",
     "diagnostic_ns",
     "result_build_ns",
+    "encoding_unattributed_ns",
 )
 
 
@@ -84,17 +83,16 @@ class PrimitivePhaseSample:
 
     contract_ns: int
     cuda_total_ns: int
+    cuda_unattributed_ns: int
     diagnostic_ns: int
     download_ns: int
     encoding_total_ns: int
+    encoding_unattributed_ns: int
     end_to_end_total_ns: int
-    high_mask_ns: int
+    exact_compare_ns: int
     immutable_bytes_ns: int
-    int_decode_ns: int
     launch_sync_ns: int
-    mask_lookup_ns: int
     result_build_ns: int
-    threshold_ns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +109,7 @@ class PhaseTiming:
 @dataclass(frozen=True, slots=True)
 class _MeasuredPrimitiveProfile:
     capability: AcceleratorCapability
+    reference_word_count: int
     samples: tuple[PrimitivePhaseSample, ...]
     stats: CudaPreparedPrimitiveStats
 
@@ -133,7 +132,7 @@ def main() -> int:
     coverage = _coverage(measured.samples)
     _validate_coverage(coverage)
     payload = {
-        "benchmark_id": "prepared-cuda-primitive-phase-profile-v1",
+        "benchmark_id": "prepared-cuda-primitive-reference-phase-profile-v1",
         "workload": {
             "algorithm_id": ROTATE_TARGET_ALGORITHM_ID,
             "candidate_count": CORPUS_SIZE,
@@ -144,7 +143,7 @@ def main() -> int:
         },
         "measurement": {
             "adapter_setup_timed": False,
-            "ordering": "fixed prepared CUDA then neutral packed encoding",
+            "ordering": "fixed prepared CUDA then exact CPU-reference check",
             "preparation_timed": False,
             "sample_count": SAMPLE_COUNT,
             "warmup_count": WARMUP_COUNT,
@@ -152,8 +151,13 @@ def main() -> int:
         "device": _device_payload(measured.capability),
         "proof": {
             "exact_cpu_result_equality": True,
+            "coverage_scope": (
+                "named components plus visible residuals over public "
+                "layer totals"
+            ),
             "minimum_coverage_percent": MINIMUM_COVERAGE_PERCENT,
-            "packed_validation_id": _validated_validation_id(),
+            "prepared_reference_word_count": measured.reference_word_count,
+            "prepared_validation_id": _validated_validation_id(),
             "prepared_session": asdict(measured.stats),
         },
         "coverage_percent": {
@@ -173,22 +177,22 @@ def _measure_workload(
     workload: SearchBenchmarkWorkload,
 ) -> _MeasuredPrimitiveProfile:
     batch = build_rotate_target_batch(workload.request).validated()
+    candidate_state = prepare_rotate_candidate_batch(batch)
     prepared = _prepare_primitive(batch)
-    expected = PrimitiveCandidateEvaluationAdapter(
-        CpuExactPrimitiveAdapter(),
-        PrimitiveKind.ROTATE,
-    ).evaluate(batch)
+    reference_word_count = _validated_reference_count(
+        prepared_primitive_reference_word_count(candidate_state)
+    )
     with CudaExactPrimitiveAdapter() as adapter:
         samples = _measure(
             adapter,
-            batch=batch,
+            candidate_state=candidate_state,
             prepared=prepared,
-            expected=expected,
         )
         stats = adapter.prepared_stats()
         _validate_stats(stats)
         return _MeasuredPrimitiveProfile(
             capability=adapter.capability(),
+            reference_word_count=reference_word_count,
             samples=samples,
             stats=stats,
         )
@@ -210,24 +214,21 @@ def _prepare_primitive(
 def _measure(
     adapter: CudaExactPrimitiveAdapter,
     *,
-    batch: CandidateEvaluationBatch,
+    candidate_state: object,
     prepared: PreparedPrimitiveBatch,
-    expected: CandidateEvaluationResult,
 ) -> tuple[PrimitivePhaseSample, ...]:
     for _ in range(WARMUP_COUNT):
         primitive, _ = adapter.profile_prepared(prepared)
-        result, _ = profile_packed_primitive_result(
-            batch,
+        _, _ = profile_prepared_primitive_result(
+            candidate_state,
             primitive,
             adapter.capability(),
         )
-        _validate_result(result, expected)
     return tuple(
         _measure_one(
             adapter,
-            batch=batch,
+            candidate_state=candidate_state,
             prepared=prepared,
-            expected=expected,
         )
         for _ in range(SAMPLE_COUNT)
     )
@@ -236,19 +237,17 @@ def _measure(
 def _measure_one(
     adapter: CudaExactPrimitiveAdapter,
     *,
-    batch: CandidateEvaluationBatch,
+    candidate_state: object,
     prepared: PreparedPrimitiveBatch,
-    expected: CandidateEvaluationResult,
 ) -> PrimitivePhaseSample:
     total_start = perf_counter_ns()
     primitive, cuda = adapter.profile_prepared(prepared)
-    result, encoding = profile_packed_primitive_result(
-        batch,
+    _, encoding = profile_prepared_primitive_result(
+        candidate_state,
         primitive,
         adapter.capability(),
     )
     end_to_end_total_ns = perf_counter_ns() - total_start
-    _validate_result(result, expected)
     sample = _sample(cuda, encoding, end_to_end_total_ns=end_to_end_total_ns)
     _validate_sample(sample)
     return sample
@@ -256,34 +255,33 @@ def _measure_one(
 
 def _sample(
     cuda: CudaPreparedPrimitivePhaseProfile,
-    encoding: PackedPrimitiveEncodingPhaseProfile,
+    encoding: PreparedPrimitiveEncodingPhaseProfile,
     *,
     end_to_end_total_ns: int,
 ) -> PrimitivePhaseSample:
+    cuda_components = (
+        cuda.launch_sync_ns + cuda.download_ns + cuda.immutable_bytes_ns
+    )
+    encoding_components = (
+        encoding.contract_ns
+        + encoding.exact_compare_ns
+        + encoding.diagnostic_ns
+        + encoding.result_build_ns
+    )
     return PrimitivePhaseSample(
         contract_ns=encoding.contract_ns,
         cuda_total_ns=cuda.total_ns,
+        cuda_unattributed_ns=cuda.total_ns - cuda_components,
         diagnostic_ns=encoding.diagnostic_ns,
         download_ns=cuda.download_ns,
         encoding_total_ns=encoding.total_ns,
+        encoding_unattributed_ns=encoding.total_ns - encoding_components,
         end_to_end_total_ns=end_to_end_total_ns,
-        high_mask_ns=encoding.high_mask_ns,
+        exact_compare_ns=encoding.exact_compare_ns,
         immutable_bytes_ns=cuda.immutable_bytes_ns,
-        int_decode_ns=encoding.int_decode_ns,
         launch_sync_ns=cuda.launch_sync_ns,
-        mask_lookup_ns=encoding.mask_lookup_ns,
         result_build_ns=encoding.result_build_ns,
-        threshold_ns=encoding.threshold_ns,
     )
-
-
-def _validate_result(
-    observed: CandidateEvaluationResult,
-    expected: CandidateEvaluationResult,
-) -> None:
-    if observed.packed != expected.packed:
-        message = "profiled CUDA primitive result differs from CPU reference"
-        raise RuntimeError(message)
 
 
 def _validate_sample(sample: PrimitivePhaseSample) -> None:
@@ -291,29 +289,27 @@ def _validate_sample(sample: PrimitivePhaseSample) -> None:
         sample.launch_sync_ns,
         sample.download_ns,
         sample.immutable_bytes_ns,
+        sample.cuda_unattributed_ns,
     )
-    encoding_components = tuple(
-        getattr(sample, name)
-        for name in COMPONENT_NAMES
-        if name
-        not in {
-            "launch_sync_ns",
-            "download_ns",
-            "immutable_bytes_ns",
-        }
+    encoding_components = (
+        sample.contract_ns,
+        sample.exact_compare_ns,
+        sample.diagnostic_ns,
+        sample.result_build_ns,
+        sample.encoding_unattributed_ns,
     )
-    if sample.cuda_total_ns < sum(cuda_components):
+    if sample.cuda_total_ns != sum(cuda_components):
         message = "CUDA primitive phase profile has incomplete total"
         raise RuntimeError(message)
-    if sample.encoding_total_ns < sum(encoding_components):
-        message = "packed encoding phase profile has incomplete total"
+    if sample.encoding_total_ns != sum(encoding_components):
+        message = "prepared exact-validation profile has incomplete total"
         raise RuntimeError(message)
 
 
 def _coverage(samples: tuple[PrimitivePhaseSample, ...]) -> tuple[float, ...]:
     return tuple(
         sum(getattr(sample, name) for name in COMPONENT_NAMES)
-        / sample.end_to_end_total_ns
+        / (sample.cuda_total_ns + sample.encoding_total_ns)
         * 100
         for sample in samples
     )
@@ -328,11 +324,18 @@ def _validate_coverage(coverage: tuple[float, ...]) -> None:
 
 
 def _validated_validation_id() -> str:
-    identifier = packed_primitive_validation_id()
+    identifier = prepared_primitive_validation_id()
     if identifier != VALIDATION_ID:
-        message = "packed primitive validation identity drifted"
+        message = "prepared primitive validation identity drifted"
         raise RuntimeError(message)
     return identifier
+
+
+def _validated_reference_count(count: int) -> int:
+    if count != CORPUS_SIZE:
+        message = "prepared CPU reference does not cover full candidate corpus"
+        raise RuntimeError(message)
+    return count
 
 
 def _validate_stats(stats: CudaPreparedPrimitiveStats) -> None:

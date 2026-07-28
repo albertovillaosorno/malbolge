@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
+from accelerator.cpu.exact_primitives import CpuExactPrimitiveAdapter
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveBatch
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
 CRAZY_EVALUATOR_ID = "classic-crazy-u32le-v1"
 ROTATE_EVALUATOR_ID = "classic-rotate-u32le-v1"
 PACKED_PRIMITIVE_VALIDATION_ID = "u32le-broadword-domain-v1"
+PREPARED_PRIMITIVE_VALIDATION_ID = "cpu-reference-packed-equality-v1"
 _WORD_BYTES = 4
 _CRAZY_PAYLOAD_BYTES = 8
 _LITTLE_ENDIAN = "little"
@@ -63,6 +65,25 @@ class PackedPrimitiveEncodingPhaseProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedPrimitiveEncodingPhaseProfile:
+    """Diagnostic phases for exact prepared-reference evidence validation."""
+
+    contract_ns: int
+    diagnostic_ns: int
+    exact_compare_ns: int
+    result_build_ns: int
+    total_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedProfileMeasurement:
+    contract_ns: int
+    exact_compare_ns: int
+    result: CandidateEvaluationResult
+    result_build_ns: int
+
+
+@dataclass(frozen=True, slots=True)
 class _PackedWordPhaseProfile:
     high_mask_ns: int
     int_decode_ns: int
@@ -83,6 +104,7 @@ class PreparedPrimitiveCandidateEvaluation:
     batch: CandidateEvaluationBatch
     primitive: PreparedPrimitiveBatch
     evaluator_id: str
+    expected_words_u32le: bytes | None
     kind: PrimitiveKind
     _proof: object
 
@@ -90,11 +112,12 @@ class PreparedPrimitiveCandidateEvaluation:
         self,
         evaluator_id: str,
         kind: PrimitiveKind,
-    ) -> tuple[CandidateEvaluationBatch, PreparedPrimitiveBatch]:
+    ) -> tuple[CandidateEvaluationBatch, PreparedPrimitiveBatch, bytes | None]:
         """Return decoded state only to a matching primitive strategy.
 
         Returns:
-            Original candidate batch and validated primitive batch.
+            Original candidate batch, validated primitive batch, and optional
+            trusted prepared-reference words.
 
         Raises:
             InvalidAcceleratorWorkError: If state is forged or mismatched.
@@ -111,7 +134,7 @@ class PreparedPrimitiveCandidateEvaluation:
         if self.batch.evaluator_id != evaluator_id:
             message = "prepared primitive candidate batch identity changed"
             raise InvalidAcceleratorWorkError(message)
-        return (self.batch, self.primitive)
+        return (self.batch, self.primitive, self.expected_words_u32le)
 
 
 @final
@@ -149,8 +172,12 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
             Ordered four-byte little-endian exact evidence per candidate.
 
         """
-        prepared = _prepare_primitive_candidate_batch(batch, self._kind)
-        candidate_batch, primitive_batch = prepared.for_adapter(
+        prepared = _prepare_primitive_candidate_batch(
+            batch,
+            self._kind,
+            include_reference=False,
+        )
+        candidate_batch, primitive_batch, _ = prepared.for_adapter(
             self._evaluator_id,
             self._kind,
         )
@@ -179,12 +206,22 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
         if not isinstance(state, PreparedPrimitiveCandidateEvaluation):
             message = "prepared primitive candidate state has wrong type"
             raise InvalidAcceleratorWorkError(message)
-        batch, primitive_batch = state.for_adapter(
+        batch, primitive_batch, expected_words = state.for_adapter(
             self._evaluator_id,
             self._kind,
         )
+        if expected_words is None:
+            message = (
+                "prepared primitive candidate state has no trusted reference"
+            )
+            raise InvalidAcceleratorWorkError(message)
         primitive = self._adapter.evaluate_prepared(primitive_batch)
-        return _encode_result(batch, primitive, self.capability())
+        return _encode_prepared_result(
+            batch,
+            primitive,
+            self.capability(),
+            expected_words_u32le=expected_words,
+        )
 
 
 def prepare_crazy_candidate_batch(
@@ -196,7 +233,11 @@ def prepare_crazy_candidate_batch(
         Hardware-neutral immutable primitive candidate state.
 
     """
-    return _prepare_primitive_candidate_batch(batch, PrimitiveKind.CRAZY)
+    return _prepare_primitive_candidate_batch(
+        batch,
+        PrimitiveKind.CRAZY,
+        include_reference=True,
+    )
 
 
 def packed_primitive_validation_id() -> str:
@@ -207,6 +248,97 @@ def packed_primitive_validation_id() -> str:
 
     """
     return PACKED_PRIMITIVE_VALIDATION_ID
+
+
+def prepared_primitive_validation_id() -> str:
+    """Return the active exact prepared-result validation identity.
+
+    Returns:
+        Stable trusted-reference equality algorithm identifier.
+
+    """
+    return PREPARED_PRIMITIVE_VALIDATION_ID
+
+
+def prepared_primitive_reference_word_count(state: object) -> int:
+    """Return the proof-bound prepared CPU reference cardinality.
+
+    Returns:
+        Number of exact u32le reference words retained by preparation.
+
+    """
+    prepared = _prepared_candidate_state(state)
+    expected = _required_expected_words(prepared)
+    return len(expected) // _WORD_BYTES
+
+
+def profile_prepared_primitive_result(
+    state: object,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+) -> tuple[CandidateEvaluationResult, PreparedPrimitiveEncodingPhaseProfile]:
+    """Validate one prepared result against its exact trusted CPU reference.
+
+    Returns:
+        Candidate evidence plus immutable exact-comparison phase diagnostics.
+
+    """
+    total_start = perf_counter_ns()
+    measured = _profile_prepared_result(state, primitive, capability)
+    return measured.result, PreparedPrimitiveEncodingPhaseProfile(
+        contract_ns=measured.contract_ns,
+        diagnostic_ns=0,
+        exact_compare_ns=measured.exact_compare_ns,
+        result_build_ns=measured.result_build_ns,
+        total_ns=perf_counter_ns() - total_start,
+    )
+
+
+def _profile_prepared_result(
+    state: object,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+) -> _PreparedProfileMeasurement:
+    prepared = _prepared_candidate_state(state)
+    expected = _required_expected_words(prepared)
+    payloads, contract_ns = _timed_prepared_payloads(
+        prepared,
+        primitive,
+        capability,
+    )
+    matches, exact_compare_ns = _timed_exact_compare(payloads, expected)
+    if not matches:
+        message = _prepared_mismatch_message(payloads, expected)
+        raise InvalidAcceleratorResultError(message)
+    result_start = perf_counter_ns()
+    result = _candidate_result(prepared.batch, capability, payloads)
+    return _PreparedProfileMeasurement(
+        contract_ns=contract_ns,
+        exact_compare_ns=exact_compare_ns,
+        result=result,
+        result_build_ns=perf_counter_ns() - result_start,
+    )
+
+
+def _timed_prepared_payloads(
+    prepared: PreparedPrimitiveCandidateEvaluation,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+) -> tuple[bytes, int]:
+    start = perf_counter_ns()
+    payloads = _validated_primitive_payloads(
+        prepared.batch,
+        primitive,
+        capability,
+        validate_domain=False,
+    )
+    return payloads, perf_counter_ns() - start
+
+
+def _timed_exact_compare(observed: bytes, expected: bytes) -> tuple[bool, int]:
+    start = perf_counter_ns()
+    matches = observed == expected
+    return matches, perf_counter_ns() - start
 
 
 def profile_packed_primitive_result(
@@ -328,7 +460,11 @@ def prepare_rotate_candidate_batch(
         Hardware-neutral immutable primitive candidate state.
 
     """
-    return _prepare_primitive_candidate_batch(batch, PrimitiveKind.ROTATE)
+    return _prepare_primitive_candidate_batch(
+        batch,
+        PrimitiveKind.ROTATE,
+        include_reference=True,
+    )
 
 
 def encode_crazy_candidate(data: int, accumulator: int) -> bytes:
@@ -457,6 +593,8 @@ def _iter_packed_primitive_values(
 def _prepare_primitive_candidate_batch(
     batch: CandidateEvaluationBatch,
     kind: PrimitiveKind,
+    *,
+    include_reference: bool,
 ) -> PreparedPrimitiveCandidateEvaluation:
     validated = batch.validated()
     evaluator_id = _evaluator_id(kind)
@@ -471,13 +609,46 @@ def _prepare_primitive_candidate_batch(
             kind=kind,
         )
     )
+    expected_words = (
+        _trusted_reference_words(primitive) if include_reference else None
+    )
     return PreparedPrimitiveCandidateEvaluation(
         batch=validated,
         primitive=primitive,
         evaluator_id=evaluator_id,
+        expected_words_u32le=expected_words,
         kind=kind,
         _proof=_PREPARED_PRIMITIVE_PROOF,
     )
+
+
+def _prepared_candidate_state(
+    state: object,
+) -> PreparedPrimitiveCandidateEvaluation:
+    if not isinstance(state, PreparedPrimitiveCandidateEvaluation):
+        message = "prepared primitive candidate state has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    _ = state.for_adapter(state.evaluator_id, state.kind)
+    return state
+
+
+def _required_expected_words(
+    state: PreparedPrimitiveCandidateEvaluation,
+) -> bytes:
+    expected = state.expected_words_u32le
+    if expected is None:
+        message = "prepared primitive candidate state has no trusted reference"
+        raise InvalidAcceleratorWorkError(message)
+    if len(expected) != len(state.batch.items) * _WORD_BYTES:
+        message = "prepared primitive trusted reference count changed"
+        raise InvalidAcceleratorWorkError(message)
+    return expected
+
+
+def _trusted_reference_words(prepared: PreparedPrimitiveBatch) -> bytes:
+    reference = CpuExactPrimitiveAdapter().evaluate_prepared(prepared)
+    _validate_primitive_values(reference.values)
+    return _pack_words(reference.values)
 
 
 def _decode_batch(
@@ -519,53 +690,121 @@ def _decode_rotate(payload: bytes) -> int:
     return value
 
 
+def _encode_prepared_result(
+    batch: CandidateEvaluationBatch,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+    *,
+    expected_words_u32le: bytes,
+) -> CandidateEvaluationResult:
+    payloads = _validated_primitive_payloads(
+        batch,
+        primitive,
+        capability,
+        validate_domain=False,
+    )
+    if payloads != expected_words_u32le:
+        message = _prepared_mismatch_message(payloads, expected_words_u32le)
+        raise InvalidAcceleratorResultError(message)
+    return _candidate_result(batch, capability, payloads)
+
+
+def _validated_primitive_payloads(
+    batch: CandidateEvaluationBatch,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+    *,
+    validate_domain: bool,
+) -> bytes:
+    if primitive.capability != capability:
+        message = "primitive backend changed capability identity"
+        raise InvalidAcceleratorResultError(message)
+    if isinstance(primitive, PackedPrimitiveResult):
+        return _validated_packed_payloads(
+            batch,
+            primitive.words_u32le,
+            validate_domain=validate_domain,
+        )
+    return _validated_tuple_payloads(batch, primitive.values)
+
+
+def _validated_packed_payloads(
+    batch: CandidateEvaluationBatch,
+    payloads: bytes,
+    *,
+    validate_domain: bool,
+) -> bytes:
+    if type(payloads) is not bytes:
+        message = "packed primitive result must use immutable bytes"
+        raise InvalidAcceleratorResultError(message)
+    if len(payloads) != len(batch.items) * _WORD_BYTES:
+        message = "packed primitive result count does not match candidate batch"
+        raise InvalidAcceleratorResultError(message)
+    if validate_domain:
+        _validate_packed_primitive_words(payloads)
+    return payloads
+
+
+def _validated_tuple_payloads(
+    batch: CandidateEvaluationBatch,
+    values: tuple[int, ...],
+) -> bytes:
+    if len(values) != len(batch.items):
+        message = (
+            "primitive backend result count does not match candidate batch"
+        )
+        raise InvalidAcceleratorResultError(message)
+    _validate_primitive_values(values)
+    return _pack_words(values)
+
+
+def _candidate_result(
+    batch: CandidateEvaluationBatch,
+    capability: AcceleratorCapability,
+    payloads: bytes,
+) -> CandidateEvaluationResult:
+    return CandidateEvaluationResult(
+        capability=capability,
+        evaluator_id=batch.evaluator_id,
+        packed=PackedCandidateEvidence(
+            payload_width=_WORD_BYTES,
+            payloads=payloads,
+        ),
+    )
+
+
+def _prepared_mismatch_message(observed: bytes, expected: bytes) -> str:
+    for index in range(0, len(expected), _WORD_BYTES):
+        observed_word = int.from_bytes(
+            observed[index : index + _WORD_BYTES],
+            _LITTLE_ENDIAN,
+        )
+        expected_word = int.from_bytes(
+            expected[index : index + _WORD_BYTES],
+            _LITTLE_ENDIAN,
+        )
+        if observed_word != expected_word:
+            word_index = index // _WORD_BYTES
+            return (
+                "prepared primitive result differs from trusted CPU reference "
+                f"at word {word_index}: expected {expected_word}, "
+                f"observed {observed_word}"
+            )
+    return "prepared primitive result differs from trusted CPU reference"
+
+
 def _encode_result(
     batch: CandidateEvaluationBatch,
     primitive: PrimitiveExecutionResult,
     capability: AcceleratorCapability,
 ) -> CandidateEvaluationResult:
-    if primitive.capability != capability:
-        message = "primitive backend changed capability identity"
-        raise InvalidAcceleratorResultError(message)
-    if isinstance(primitive, PackedPrimitiveResult):
-        return _encode_packed_result(batch, primitive, capability)
-    if len(primitive.values) != len(batch.items):
-        message = (
-            "primitive backend result count does not match candidate batch"
-        )
-        raise InvalidAcceleratorResultError(message)
-    _validate_primitive_values(primitive.values)
-    return CandidateEvaluationResult(
-        capability=capability,
-        evaluator_id=batch.evaluator_id,
-        packed=PackedCandidateEvidence(
-            payload_width=_WORD_BYTES,
-            payloads=_pack_words(primitive.values),
-        ),
+    payloads = _validated_primitive_payloads(
+        batch,
+        primitive,
+        capability,
+        validate_domain=True,
     )
-
-
-def _encode_packed_result(
-    batch: CandidateEvaluationBatch,
-    primitive: PackedPrimitiveResult,
-    capability: AcceleratorCapability,
-) -> CandidateEvaluationResult:
-    if type(primitive.words_u32le) is not bytes:
-        message = "packed primitive result must use immutable bytes"
-        raise InvalidAcceleratorResultError(message)
-    expected_bytes = len(batch.items) * _WORD_BYTES
-    if len(primitive.words_u32le) != expected_bytes:
-        message = "packed primitive result count does not match candidate batch"
-        raise InvalidAcceleratorResultError(message)
-    _validate_packed_primitive_words(primitive.words_u32le)
-    return CandidateEvaluationResult(
-        capability=capability,
-        evaluator_id=batch.evaluator_id,
-        packed=PackedCandidateEvidence(
-            payload_width=_WORD_BYTES,
-            payloads=primitive.words_u32le,
-        ),
-    )
+    return _candidate_result(batch, capability, payloads)
 
 
 def _validate_packed_primitive_words(payloads: bytes) -> None:

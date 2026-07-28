@@ -24,6 +24,9 @@ from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import (
+    prepared_primitive_reference_word_count,
+)
 from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
@@ -192,6 +195,7 @@ def rotate_target_search_adapter(
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=prepare_rotate_candidate_batch,
                 evaluator=evaluator.evaluate_prepared,
+                state_count=prepared_primitive_reference_word_count,
             ),
             prepared_selection=PreparedProposalSelection(
                 state_preparer=prepare_rotate_target_selection,

@@ -830,15 +830,17 @@ as controls and are not attributed to this CUDA-targeted change. Public diagnost
 profiles now split resident CUDA launch/synchronization, D-to-H transfer, immutable
 byte materialization, and total time from neutral packed contract, mask lookup,
 integer decode, high-mask, threshold, diagnostic, result-build, and total phases.
-`prepared_cuda_primitive_phase_profile.py` requires exact CPU packed equality,
-validator identity, session counters, and at least 95% samplewise named coverage.
-Retained decomposition records 97.35% median and 95.40% minimum coverage. Median
-launch/sync, D-to-H, and immutable-copy phases are 0.0605/0.0934/0.0332 ms, while
-`int.from_bytes`, high-mask, and threshold checks are 0.2993/0.0784/0.2615 ms.
-GPU/transfer/copy represent about 21.5% of median total; exact big-integer validation
-represents about 73.6%. The next optimization must target validation without
-weakening immutable bytes, count/capability checks, all-word rejection, validator
-identity, CPU equality, or independent admission.
+The prepared route now replaces hot-path broadword domain scanning with exact
+`cpu-reference-packed-equality-v1`. Preparation computes and retains immutable CPU
+truth for every candidate once; ordinary execution continues to use
+`u32le-broadword-domain-v1`. Prepared execution validates capability, representation,
+and exact count before byte-for-byte equality. First and final in-domain corruption
+fail closed with the first differing word reported. Generic prepared-search state
+counting exposes and requires all 59,049 reference words, while proposal admission
+remains independently trusted. The subphase, throughput, and phase benchmarks now
+require both validator identities, reference count, resident/session counters,
+membership, selector, and CPU-table proofs. Post-commit evidence is pending; no
+exploratory speedup is promoted yet.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -934,12 +936,15 @@ is 0.886 ms (2.057x better). CUDA is 2.706x faster than same-run CPU. Public
 resident-CUDA and neutral packed-encoding phase profiles now preserve exact output
 while decomposing kernel launch/synchronization, D-to-H transfer, immutable byte
 copy, contract, masks, integer decode, high-mask, threshold, diagnostics, and result
-construction. The benchmark requires exact CPU equality, validator identity,
-1/16/16/15 session proof, and at least 95% named coverage. Retained evidence records
-97.35% median/95.40% minimum coverage and 0.8684 ms end-to-end median. Resident CUDA
-total is 0.1965 ms; neutral encoding/validation total is 0.6558 ms. Integer decode
-plus high-mask/threshold validation account for about 73.6% of median total, so exact
-big-integer validation is the next measured CUDA subphase.
+construction. Prepared CUDA validation now uses immutable CPU-reference packed equality instead
+of repeating broadword domain validation. Preparation retains all 59,049 exact words
+outside timed execution; prepared CPU and CUDA results must match them byte for byte
+after capability/shape checks. Ordinary CUDA retains broadword validation. The
+profiler exposes exact-comparison, contract, result-build, public-layer residuals,
+and CUDA phases; throughput/phase profiles require both identities, reference count,
+1/16/16/15 session proof, CPU table, membership, and selector proofs. In-domain
+first/last corruption fails closed. Post-commit evidence is pending before promoting
+any performance claim.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

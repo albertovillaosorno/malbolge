@@ -282,16 +282,15 @@ Run the active prepared CUDA primitive subphase profiler with:
 .dependencies/python/3.14.6/Scripts/python.exe -m benchmarks.accelerator.prepared_cuda_primitive_phase_profile
 ```
 
-It composes public resident-CUDA and neutral packed-encoding diagnostic APIs without
-altering the ordinary execution path. Every retained profile must match exact CPU
-packed evidence, preserve validator identity and session counters, and retain at
-least 95% samplewise named coverage. Reported phases include launch/sync, D-to-H,
-immutable byte creation, packed contract, mask lookup, integer decode, high-mask,
-threshold, diagnostics, result construction, layer totals, and end-to-end total.
-Retained post-commit evidence is under
-`evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060/`. Coverage is
-97.35% median and 95.40% minimum. Median launch/sync, D-to-H, immutable-byte,
-integer-decode, high-mask, and threshold phases are respectively 0.0605, 0.0934,
-0.0332, 0.2993, 0.0784, and 0.2615 ms. The 0.6558 ms encoding/validation layer
-dominates the 0.1965 ms resident CUDA layer; exact big-integer validation is the
-next measured boundary.
+The historical retained profile composes public resident-CUDA and neutral
+broadword diagnostics. The active prepared route now uses immutable exact CPU truth
+under `cpu-reference-packed-equality-v1`; ordinary packed output retains
+`u32le-broadword-domain-v1`. Preparation is untimed and retains one expected u32le
+word per candidate. Prepared profiling reports launch/sync, D-to-H, immutable byte
+creation, capability/shape contract, exact byte comparison, result construction,
+visible residuals, layer totals, and end-to-end total. Search throughput and phase
+profiles emit and validate both identities plus `prepared_reference_word_count`.
+All full-domain runs must observe 59,049 reference words and the existing
+CPU-table/session/membership/selector proofs. First/last in-domain corruption tests
+fail closed. A clean post-commit rerun is required before replacing the historical
+broadword profile or interpreting new medians.

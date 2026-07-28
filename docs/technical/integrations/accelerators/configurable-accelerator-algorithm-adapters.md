@@ -172,13 +172,15 @@ CPU phase regressions remain contextual controls. Public diagnostic records now
 cover resident CUDA launch/sync, transfer, immutable-byte materialization, and total
 plus neutral packed contract, masks, integer decode, high-mask, threshold,
 diagnostic, result construction, and total. The dedicated full-domain profiler
-requires exact CPU packed equality, validator identity, resident proof counters, and
-at least 95% named coverage. Retained evidence records 97.35% median/95.40% minimum
-coverage. Resident CUDA launch/sync, transfer, immutable bytes, and total medians are
-0.0605/0.0934/0.0332/0.1965 ms; neutral integer decode, high-mask, threshold, and
-layer total are 0.2993/0.0784/0.2615/0.6558 ms. Big-integer validation accounts for
-about 73.6% of median end-to-end time, making exact validation the next neutral
-boundary. Resident or
+historically requires exact CPU packed equality around broadword validation. The
+active prepared strategy now retains immutable CPU-reference bytes once during
+preparation and validates every prepared backend result with
+`cpu-reference-packed-equality-v1`. Ordinary routes continue to use
+`u32le-broadword-domain-v1`. Capability, immutable representation, and exact count
+precede equality; first/final in-domain drift fails closed with a precise mismatch.
+A generic proof-bound candidate-state count exposes all 59,049 reference words.
+Benchmarks require both IDs and all existing CPU-table, CUDA-session, membership,
+and selector proofs. Post-commit evidence is pending. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

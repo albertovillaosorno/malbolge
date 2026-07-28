@@ -18,6 +18,7 @@ from accelerator.search_selection import SearchAdapterBinding
 from accelerator.search_selection import SearchSelection
 from accelerator.search_selection import resolve_search_execution
 from accelerator.work_ports import CandidateProposal
+from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
@@ -76,6 +77,19 @@ def _expect_work_error(
     try:
         _ = action()
     except InvalidAcceleratorWorkError as error:
+        if message not in str(error):
+            raise AssertionError from error
+        return
+    raise AssertionError
+
+
+def _expect_result_error(
+    message: str,
+    action: Callable[[], object],
+) -> None:
+    try:
+        _ = action()
+    except InvalidAcceleratorResultError as error:
         if message not in str(error):
             raise AssertionError from error
         return
@@ -241,14 +255,17 @@ def test_prepared_rotate_selection_tracks_seed_budget_and_absence() -> None:
         assert adapter.search_prepared(prepared) == adapter.search(request)
 
 
-def test_prepared_rotate_selection_requires_matching_evidence() -> None:
-    """Inverse position needs matching evidence before proposal."""
+def test_prepared_rotate_selection_rejects_wrong_exact_evidence() -> None:
+    """Prepared search rejects in-domain evidence differing from CPU truth."""
     problem = RotateTargetProblem(target=ROTATE_ONE, candidates=(1, 4, 7))
     adapter = rotate_target_search_adapter(_ZeroPrimitiveAdapter())
     prepared = adapter.prepare(_request(problem))
 
     assert adapter.prepared_selection_count(prepared) == 1
-    assert adapter.search_prepared(prepared).proposals == ()
+    _expect_result_error(
+        "trusted CPU reference at word 0: expected 19683, observed 0",
+        lambda: adapter.search_prepared(prepared),
+    )
 
 
 def test_prepared_rotate_selection_rejects_forged_state() -> None:
