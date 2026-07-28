@@ -21,9 +21,9 @@
 //   - Treat host scheduling as guest semantics or inspect private batch state.
 // - Allows:
 //   - Inputs: public batch/execution APIs and normative specification fixtures.
-// - Outputs:
+//   - Outputs:
 //   - Equality assertions across sequential and explicit host-worker execution.
-// - Side effects:
+//   - Side effects:
 //   - Test-process threads and memory only.
 // - Split-When:
 //   - Split when accelerator batch execution requires independent fixtures.
@@ -33,7 +33,7 @@
 //   - Proves input ordering, state isolation, and per-item failure identity.
 // - Description:
 //   - Hashes full final memory to compare sequential and parallel machine
-//     state.
+//   - state.
 // - Usage:
 //   - Runs under the Cargo VM integration-test composition target.
 // - Defaults:

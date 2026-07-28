@@ -41,6 +41,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Exact current-profile checkpoint graph fixtures.
 

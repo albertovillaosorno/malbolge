@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Generated canonical target-profile descriptors for Rust.
 

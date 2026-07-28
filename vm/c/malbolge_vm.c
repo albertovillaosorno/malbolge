@@ -27,14 +27,14 @@
 //   - Split when one semantic subsystem needs an independent audit boundary.
 // - Merge-When:
 //   - Merge when another C module owns the exact same transition semantics.
+// - Summary:
+//   - Specification-derived C oracle for classic Malbolge execution.
 // - Description:
 //   - Implements the written classic profile independently from the Rust VM.
 // - Usage:
 //   - Called through the public interface in `vm/c/malbolge_vm.h`.
 // - Defaults:
 //   - Executes only the normative classic profile with caller-owned I/O.
-// - Summary:
-//   - Specification-derived C oracle for classic Malbolge execution.
 //
 // Related documents:
 // - docs/technical/specification/malbolge-1998.md
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Independent specification-derived classic Malbolge VM oracle.
 

@@ -19,11 +19,11 @@
 //   - Collision-safe native artifact identity and cache-key assumptions.
 // - Must-Not:
 //   - Treat bucket hashes as identity, emit machine code, or trust unverified
-//     IR.
+//   - IR.
 // - Allows:
 //   - Inputs: portable effect programs and explicit host/backend assumptions.
 //   - Outputs: full-equality native artifact keys and non-authoritative
-//     buckets.
+//   - buckets.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when durable serialized cache storage needs independent ownership.
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Collision-safe native artifact identity over canonical execution IR.
 

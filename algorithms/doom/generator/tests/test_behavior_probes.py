@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_behavior_probes.py
+# Path:
+#   - algorithms/doom/generator/tests/test_behavior_probes.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for DOOM behavior probe programs.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for DOOM behavior probe programs."""
 
 from __future__ import annotations
@@ -39,24 +82,28 @@ def _require_pinned_windows_llvm(repository_root: Path) -> None:
 def _write_fixed_tree(root: Path, *, alternate: bool) -> None:
     code = root / "linuxdoom-1.10"
     code.mkdir(parents=True)
-    (code / "m_fixed.h").write_text(
-        "typedef int fixed_t;\n"
-        "fixed_t FixedMul(fixed_t a, fixed_t b);\n"
+    header_parts = (
+        "typedef int fixed_t;\n",
+        "fixed_t FixedMul(fixed_t a, fixed_t b);\n",
         "fixed_t FixedDiv(fixed_t a, fixed_t b);\n",
+    )
+    _ = (code / "m_fixed.h").write_text(
+        "".join(header_parts),
         encoding="utf-8",
     )
     if alternate:
-        implementation = (
-            '#include "m_fixed.h"\n'
-            "fixed_t FixedMul(fixed_t a, fixed_t b) {\n"
-            "    long long product = (long long)a * (long long)b;\n"
-            "    return (fixed_t)(product >> 16);\n"
-            "}\n"
-            "fixed_t FixedDiv(fixed_t a, fixed_t b) {\n"
-            "    long long numerator = (long long)a << 16;\n"
-            "    return (fixed_t)(numerator / b);\n"
-            "}\n"
+        implementation_parts = (
+            '#include "m_fixed.h"\n',
+            "fixed_t FixedMul(fixed_t a, fixed_t b) {\n",
+            "    long long product = (long long)a * (long long)b;\n",
+            "    return (fixed_t)(product >> 16);\n",
+            "}\n",
+            "fixed_t FixedDiv(fixed_t a, fixed_t b) {\n",
+            "    long long numerator = (long long)a << 16;\n",
+            "    return (fixed_t)(numerator / b);\n",
+            "}\n",
         )
+        implementation = "".join(implementation_parts)
     else:
         implementation = (
             '#include "m_fixed.h"\n'
@@ -67,7 +114,7 @@ def _write_fixed_tree(root: Path, *, alternate: bool) -> None:
             "    return (fixed_t)(((long long)a << 16) / b);\n"
             "}\n"
         )
-    (code / "m_fixed.c").write_text(implementation, encoding="utf-8")
+    _ = (code / "m_fixed.c").write_text(implementation, encoding="utf-8")
 
 
 def test_domain_module_exposes_behavior_programs() -> None:

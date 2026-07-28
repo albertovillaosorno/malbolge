@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - amalgamation_oracle.py
+# Path:
+#   - algorithms/doom/generator/amalgamation_oracle.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Build the local validated DOOM single-translation-unit authoring oracle.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Build the local validated DOOM single-translation-unit authoring oracle."""
 
 from __future__ import annotations
@@ -187,7 +230,7 @@ def _relative_project_path(code_root: Path, path: Path) -> str:
 
 def _project_include(base: Path, name: str, code_root: Path) -> Path:
     target = (base / name).resolve()
-    _relative_project_path(code_root, target)
+    _ = _relative_project_path(code_root, target)
     _require_regular(target, "project include")
     return target
 
@@ -337,8 +380,8 @@ def write_amalgamation_oracle(
     data, stats = build_amalgamation(code_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_suffix(output_path.suffix + ".tmp")
-    temporary.write_bytes(data)
-    temporary.replace(output_path)
+    _ = temporary.write_bytes(data)
+    _ = temporary.replace(output_path)
     return stats
 
 
@@ -361,7 +404,7 @@ def main() -> int:
 
     """
     stats = write_amalgamation_oracle()
-    sys.stdout.write("\n".join(_format_stats(stats)) + "\n")
+    _ = sys.stdout.write("\n".join(_format_stats(stats)) + "\n")
     return 0
 
 

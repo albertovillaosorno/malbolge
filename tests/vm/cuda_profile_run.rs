@@ -31,13 +31,13 @@
 //   - Checks current-profile resident CUDA runs against normative Rust states.
 // - Description:
 //   - Compares all 4,782,969 current memory words plus complete observable
-//     state.
+//   - state.
 // - Usage:
 //   - Composed by `tests/vm.rs`; unavailable CUDA remains an optional-path
-//     pass.
+//   - pass.
 // - Defaults:
 //   - `current_profile()` supplies geometry and safe Rust supplies every
-//     oracle.
+//   - oracle.
 //
 // Related documents:
 // - docs/technical/integrations/accelerators/cuda-exact-vm-adapter.md

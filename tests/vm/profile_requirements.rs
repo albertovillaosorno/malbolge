@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Runtime evidence for canonical profile and capacity preflight
-//     diagnostics.
+//   - diagnostics.
 // - Must-Not:
 //   - Execute unsupported scalable profiles or treat profile fallback as valid.
 // - Allows:
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Runtime target-profile capability and deterministic diagnostic fixtures.
 

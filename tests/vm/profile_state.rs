@@ -17,13 +17,13 @@
 // Boundary-Contract:
 // - Owns:
 //   - Validated profiled-state reconstruction and current pointer-wrap
-//     evidence.
+//   - evidence.
 // - Must-Not:
 //   - Depend on private VM decode/encryption helpers or admit unchecked state.
 // - Allows:
 //   - Inputs: public profile/state APIs and independent translation constants.
 //   - Outputs: exact construction errors and one current max-address
-//     transition.
+//   - transition.
 //   - Side effects: test-process allocation of canonical profile memory images.
 // - Split-When:
 //   - Split when native deoptimization state requires a serialized wire format.
@@ -33,7 +33,7 @@
 //   - Proves fail-closed state reconstruction and current max-address wrap.
 // - Description:
 //   - Builds current state directly without bypassing profile-domain
-//     validation.
+//   - validation.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal VM integration target.
 // - Defaults:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Validated state reconstruction and scalable pointer-wrap conformance.
 

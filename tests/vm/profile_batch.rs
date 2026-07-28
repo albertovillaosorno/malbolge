@@ -25,16 +25,16 @@
 //   - Side effects: test-process host threads and independently owned memory.
 // - Split-When:
 //   - Split when accelerator profile batches require independent lifecycle
-//     tests.
+//   - tests.
 // - Merge-When:
 //   - Merge when classic/profile batch result types become width-safe unified
-//     API.
+//   - API.
 // - Summary:
 //   - Proves current 14-trit batch execution preserves deterministic input
-//     order.
+//   - order.
 // - Description:
 //   - Compares sampled full-profile state while sharing the classic host
-//     scheduler.
+//   - scheduler.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Current-profile batch scheduling and per-request isolation fixtures.
 

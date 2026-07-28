@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_source_binding.py
+# Path:
+#   - algorithms/diff/tests/test_source_binding.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for deterministic threshold source binding.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for deterministic threshold source binding."""
 
 from dataclasses import replace
@@ -74,11 +117,12 @@ def test_hkdf_sha256_matches_rfc5869_test_case_1() -> None:
     expected_prk = bytes.fromhex(
         "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"
     )
-    expected_okm = bytes.fromhex(
-        "3cb25f25faacd57a90434f64d0362f2a"
-        "2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
-        "34007208d5b887185865"
+    expected_okm_parts = (
+        "3cb25f25faacd57a90434f64d0362f2a",
+        "2d2d0a90cf1a5a4c5db02d56ecc4c5bf",
+        "34007208d5b887185865",
     )
+    expected_okm = bytes.fromhex("".join(expected_okm_parts))
 
     pseudorandom_key = hkdf_extract_sha256(salt, input_key_material)
     output = hkdf_expand_sha256(pseudorandom_key, info, 42)
@@ -133,7 +177,7 @@ def test_below_threshold_fails_before_secret_recovery() -> None:
     with pytest.raises(
         SourceBindingError, match="insufficient source-bound anchors"
     ):
-        recover_secret(binding, candidate)
+        _ = recover_secret(binding, candidate)
 
 
 def test_empty_source_cannot_materialize_bound_secret() -> None:
@@ -145,7 +189,7 @@ def test_empty_source_cannot_materialize_bound_secret() -> None:
     with pytest.raises(
         SourceBindingError, match="insufficient source-bound anchors"
     ):
-        recover_secret(binding, identity_tree({}))
+        _ = recover_secret(binding, identity_tree({}))
 
 
 def test_enough_shares_from_too_few_files_still_fails_closed() -> None:
@@ -170,7 +214,7 @@ def test_enough_shares_from_too_few_files_still_fails_closed() -> None:
         SourceBindingError,
         match="insufficient distributed source-bound files",
     ):
-        recover_secret(binding, candidate)
+        _ = recover_secret(binding, candidate)
 
 
 def test_insertions_shift_offsets_without_breaking_bound_anchors() -> None:
@@ -204,7 +248,7 @@ def test_unrelated_same_shape_source_cannot_recover_secret() -> None:
     with pytest.raises(
         SourceBindingError, match="insufficient source-bound anchors"
     ):
-        recover_secret(binding, unrelated)
+        _ = recover_secret(binding, unrelated)
 
 
 def test_binding_is_deterministic_and_distributed() -> None:
@@ -237,7 +281,7 @@ def test_tampered_masked_share_fails_secret_commitment() -> None:
     tampered = replace(binding, shares=(tampered_share, *binding.shares[1:]))
 
     with pytest.raises(SourceBindingError, match="failed commitment"):
-        recover_secret(tampered, reference)
+        _ = recover_secret(tampered, reference)
 
 
 def test_stricter_fraction_changes_threshold_fail_closed() -> None:

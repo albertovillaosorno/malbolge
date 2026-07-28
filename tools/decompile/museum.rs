@@ -22,7 +22,7 @@
 // - Allows:
 //   - Inputs: one caller-supplied classic Malbolge file and one C output path.
 //   - Outputs: one local generated C view through the general decompiler
-//     backend.
+//   - backend.
 //   - Side effects: local filesystem reads/writes only.
 // - Split-When:
 //   - Split when museum provenance automation exceeds conversion policy.
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Museum-specific local conversion policy over the general C backend.
 

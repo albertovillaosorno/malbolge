@@ -22,18 +22,18 @@
 // - Allows:
 //   - Inputs: canonical profile descriptor, validated source bytes, byte input.
 //   - Outputs: deterministic profile-width state, I/O, termination,
-//     diagnostics.
+//   - diagnostics.
 //   - Side effects: caller-owned allocation and in-memory guest state only.
 // - Split-When:
 //   - Split when a later profile schema requires a different memory model.
 // - Merge-When:
 //   - Merge when the classic machine becomes a zero-cost specialization of this
-//     profile-driven transition engine without weakening classic type safety.
+//   - profile-driven transition engine without weakening classic type safety.
 // - Summary:
 //   - Executes N-trit single-word-modular Malbolge profiles in safe Rust.
 // - Description:
 //   - Generalizes word/address width while preserving normative sequential
-//     decode, crazy, rotate, self-modification, encryption, and byte I/O.
+//   - decode, crazy, rotate, self-modification, encryption, and byte I/O.
 // - Usage:
 //   - Use for canonical current/versioned profiles after explicit selection.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Profile-driven safe Rust execution for scalable ternary Malbolge machines.
 

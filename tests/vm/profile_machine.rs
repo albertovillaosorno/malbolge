@@ -17,10 +17,10 @@
 // Boundary-Contract:
 // - Owns:
 //   - Cross-profile execution, classic differential, and scalable-capacity
-//     tests.
+//   - tests.
 // - Must-Not:
 //   - Reuse production profile arithmetic to compute independent expected
-//     values.
+//   - values.
 // - Allows:
 //   - Inputs: canonical profile descriptors and public classic/profile VM APIs.
 //   - Outputs: exact state, memory, I/O, EOF, and address-boundary assertions.
@@ -31,7 +31,7 @@
 //   - Merge when classic/profile differential evidence gains one shared suite.
 // - Summary:
 //   - Proves 14-trit execution and 10-trit equivalence without host-width
-//     drift.
+//   - drift.
 // - Description:
 //   - Uses scalar ternary formulas as an independent current-profile oracle.
 // - Usage:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Profile-driven scalable VM execution and classic differential fixtures.
 

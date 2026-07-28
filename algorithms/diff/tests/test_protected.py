@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_protected.py
+# Path:
+#   - algorithms/diff/tests/test_protected.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic end-to-end tests for protected exact-baseline plans.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic end-to-end tests for protected exact-baseline plans."""
 
 from __future__ import annotations
@@ -52,7 +95,7 @@ def _source_bytes(label: str) -> bytes:
 def _write(root: Path, relative: str, data: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    _ = path.write_bytes(data)
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, bytes]]:
@@ -211,7 +254,7 @@ def test_transform_without_source_evidence_cannot_recover_literals(
         SourceBindingError,
         match="insufficient source-bound anchors",
     ):
-        recover_exact_plan(protected, identity_tree({}))
+        _ = recover_exact_plan(protected, identity_tree({}))
 
 
 def test_unrelated_source_identity_cannot_recover_literals(
@@ -228,7 +271,7 @@ def test_unrelated_source_identity_cannot_recover_literals(
         SourceBindingError,
         match="insufficient source-bound anchors",
     ):
-        recover_exact_plan(protected, _identity(unrelated))
+        _ = recover_exact_plan(protected, _identity(unrelated))
 
 
 def test_ciphertext_or_tag_tampering_fails_before_output(

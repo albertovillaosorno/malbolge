@@ -19,11 +19,11 @@
 //   - Persistent append-only committed-output storage for state-graph research.
 // - Must-Not:
 //   - Drop historical output from observable state or trust digest equality
-//     alone.
+//   - alone.
 // - Allows:
 //   - Inputs: validated initial output bytes and committed output-byte appends.
 //   - Outputs: shared output histories, exact equality, digest,
-//     materialization.
+//   - materialization.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when chunked/interened output storage needs independent evidence.
@@ -33,12 +33,12 @@
 //   - Replaces per-state output-vector copying with immutable append nodes.
 // - Description:
 //   - Exact equality uses shared-tail shortcuts and byte comparison on
-//     fallback.
+//   - fallback.
 // - Usage:
 //   - Consumed by incremental state identity in `state.rs`.
 // - Defaults:
 //   - Digest is an acceleration hint; complete output bytes remain
-//     authoritative.
+//   - authoritative.
 //
 // Related documents:
 // - algorithms/self-modification-state-graph-optimizer/state.rs
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Persistent append-only committed output for exact state identity.
 

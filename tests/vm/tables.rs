@@ -29,7 +29,7 @@
 //   - Merge when another VM test owns the same lookup-table equivalence proof.
 // - Summary:
 //   - Proves optimized word tables equal independent scalar ternary
-//     definitions.
+//   - definitions.
 // - Description:
 //   - Covers every rotate/crazy entry and every graphical decode position.
 // - Usage:

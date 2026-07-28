@@ -41,6 +41,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Cargo composition root for the state-graph research benchmark.
 

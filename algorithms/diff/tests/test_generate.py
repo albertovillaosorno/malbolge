@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_generate.py
+# Path:
+#   - algorithms/diff/tests/test_generate.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Public generation-mode tests for source-bound diff transforms.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Public generation-mode tests for source-bound diff transforms."""
 
 from __future__ import annotations
@@ -33,7 +76,7 @@ def _blocks(label: str) -> bytes:
 def _write(root: Path, relative: str, data: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    _ = path.write_bytes(data)
 
 
 def _recipe(
@@ -70,7 +113,7 @@ def _expect(condition: object, message: str) -> None:
 
 def _domain_module(tmp_path: Path) -> Path:
     module = tmp_path / "domain.py"
-    module.write_text(
+    _ = module.write_text(
         """\
 def validate_source_provenance(root):
     if (root / "reject-source").exists():

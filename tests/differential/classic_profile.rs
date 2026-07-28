@@ -25,7 +25,7 @@
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when another canonical profile has an independent differential
-//     peer.
+//   - peer.
 // - Merge-When:
 //   - Merge when runtime representations become one width-safe implementation.
 // - Summary:
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Seeded differential property over independently exposed 1998 runtimes.
 

@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Determinism, profile binding, source validation, and C-rendering
-//     fixtures.
+//   - fixtures.
 // - Must-Not:
 //   - Depend on historical third-party program bytes.
 // - Allows:
@@ -26,7 +26,7 @@
 //   - Side effects: test-process allocation only.
 // - Split-When:
 //   - Split when executable C differential tests need independent toolchain
-//     setup.
+//   - setup.
 // - Merge-When:
 //   - Merge when decompiler verification gains a unified product test suite.
 // - Summary:
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Product Malbolge decompiler conformance.
 

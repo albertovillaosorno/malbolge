@@ -21,13 +21,16 @@
 //   - Treat native C execution as Malbolge conformance or performance evidence.
 //   - Compile `.malbolge` into a persistent native executable.
 // - Allows:
-//   - Inputs: one source path and arguments forwarded only to native C debug runs.
+//   - Inputs: one source path and arguments forwarded only to native C debug
+//     runs.
 //   - Outputs: guest stdout or the directly executed C program's stdout/stderr.
 //   - Side effects: temporary native C artifacts removed after execution.
 // - Split-When:
-//   - Split when interactive Malbolge host capabilities require their own runner.
+//   - Split when interactive Malbolge host capabilities require their own
+//     runner.
 // - Merge-When:
-//   - Merge when another top-level executable owns identical dispatch semantics.
+//   - Merge when another top-level executable owns identical dispatch
+//     semantics.
 // - Summary:
 //   - Portable `malbolge <path>` command-line frontend.
 // - Description:
@@ -35,24 +38,28 @@
 // - Usage:
 //   - `malbolge program.malbolge` or `malbolge program.c`.
 // - Defaults:
-//   - Raw Malbolge uses classic semantics; capsules select their declared profile.
+//   - Raw Malbolge uses classic semantics; capsules select their declared
+//     profile.
 //
 // Related documents:
 // - cli/README.md
-// - docs/technical/runtime/execution/cross-platform-native-capability-runners.md
+// - docs/technical/runtime/execution/cross-platform-native-capability-runners.
+//   md
 //
 // Large file:
 //   - false
+//
 
 //! Portable top-level source runner.
 
-use malbolge::{Machine, ProfileMachine, RunOutcome, parse_capsule};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, DirBuilder};
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
+
+use malbolge::{Machine, ProfileMachine, RunOutcome, parse_capsule};
 
 const C_EXTENSION: &str = "c";
 const DOOM_HOST_MARKERS: [&[u8]; 2] =
@@ -319,7 +326,11 @@ fn dispatch(path: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
             }
         },
         _ => Err(format!(
-            "unsupported source extension '.{extension}'; expected .c or .malbolge",
+            concat!(
+                "unsupported source extension '.{}'; ",
+                "expected .c or .malbolge",
+            ),
+            extension,
         )),
     }
 }
@@ -521,7 +532,8 @@ fn write_usage() -> Result<(), String> {
         "Usage: malbolge <program.c|program.malbolge> [program args...]\n",
         "\n",
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
-        "  .c         Debug-run C directly on the host via a temporary binary.\n",
+        "  .c         Debug-run C directly on the host via a ",
+        "temporary binary.\n",
     );
     io::stdout()
         .lock()

@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_behavior_programs.py
+# Path:
+#   - algorithms/diff/tests/test_behavior_programs.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for authoring and observing portable behavior programs.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for authoring and observing portable behavior programs."""
 
 from __future__ import annotations
@@ -46,7 +89,7 @@ def _expect(condition: object, message: str) -> None:
 
 def _write(root: Path, name: str, data: bytes) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    (root / name).write_bytes(data)
+    _ = (root / name).write_bytes(data)
 
 
 def _context(root: Path, repository_root: Path) -> ProbeRunContext:
@@ -239,7 +282,7 @@ def test_bug_probe_must_distinguish_source_from_oracle(tmp_path: Path) -> None:
     _write(oracle, "bug-state.txt", b"present")
 
     with pytest.raises(BehaviorProgramError, match="cannot distinguish"):
-        author_behavior_programs(
+        _ = author_behavior_programs(
             _programs(),
             _context(source, tmp_path),
             _context(oracle, tmp_path),

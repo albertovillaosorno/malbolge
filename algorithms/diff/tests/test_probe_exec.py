@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_probe_exec.py
+# Path:
+#   - algorithms/diff/tests/test_probe_exec.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for portable behavior-probe process programs.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for portable behavior-probe process programs."""
 
 from __future__ import annotations
@@ -84,7 +127,7 @@ def test_structured_source_path_is_passed_without_shell(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
     unusual_name = "semi;colon.txt"
-    (source / unusual_name).write_bytes(b"payload")
+    _ = (source / unusual_name).write_bytes(b"payload")
     program = ProbeProgram(
         probe_id="path",
         commands=(
@@ -122,7 +165,7 @@ def _standalone_fixture(tmp_path: Path) -> tuple[Path, tuple[str, ...]]:
     if not executable.is_file():
         pytest.skip("no standalone executable fixture is available")
     fixture = tmp_path / f"fixture{executable.suffix}"
-    shutil.copy2(executable, fixture)
+    _ = shutil.copy2(executable, fixture)
     return fixture, arguments
 
 
@@ -197,7 +240,7 @@ def test_unexpected_exit_code_fails_closed(tmp_path: Path) -> None:
     program = _program("exit", "raise SystemExit(7)", digest_stdout=False)
 
     with pytest.raises(ProbeExecutionError, match="unexpected exit code"):
-        run_probe_program(program, _context(source, tmp_path))
+        _ = run_probe_program(program, _context(source, tmp_path))
 
 
 def test_timeout_fails_closed(tmp_path: Path) -> None:
@@ -216,7 +259,7 @@ def test_timeout_fails_closed(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ProbeExecutionError, match="timeout"):
-        run_probe_program(program, _context(source, tmp_path))
+        _ = run_probe_program(program, _context(source, tmp_path))
 
 
 def test_output_limit_fails_closed(tmp_path: Path) -> None:
@@ -235,7 +278,7 @@ def test_output_limit_fails_closed(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ProbeExecutionError, match="stdout limit"):
-        run_probe_program(program, _context(source, tmp_path))
+        _ = run_probe_program(program, _context(source, tmp_path))
 
 
 def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
@@ -243,7 +286,7 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
     target = source / "input.txt"
-    target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
     mutator = ProbeProgram(
         probe_id="mutator",
         commands=(
@@ -259,7 +302,7 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ProbeExecutionError, match="isolated source mirror"):
-        run_probe_programs((mutator,), _context(source, tmp_path))
+        _ = run_probe_programs((mutator,), _context(source, tmp_path))
     _expect(
         target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
         "source was mutated",

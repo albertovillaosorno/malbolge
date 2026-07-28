@@ -19,14 +19,14 @@
 //   - Canonical direct deopt/halt objects and byte-exact semantic admission.
 // - Must-Not:
 //   - Lower unsupported effects, bypass verifier guards, or trust compiler
-//     output.
+//   - output.
 // - Allows:
 //   - Inputs: portable region IR and exact Windows native target identity.
 //   - Outputs: canonical COFF candidates and verified deopt-only artifacts.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when general region-effect instruction selection outgrows
-//     templates.
+//   - templates.
 // - Merge-When:
 //   - Merge when all direct emitters share one reviewed instruction template.
 // - Summary:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - true
+//
 
 //! Canonical direct native templates with byte-exact semantic verification.
 

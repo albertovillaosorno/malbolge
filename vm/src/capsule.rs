@@ -31,12 +31,12 @@
 //   - Encodes modern payloads behind a classic-safe space/tab sideband.
 // - Description:
 //   - Keeps the historical loader surface exactly `QP` while modern runtimes
-//     validate profile identity, framing, lengths, and transport checksum.
+//   - validate profile identity, framing, lengths, and transport checksum.
 // - Usage:
 //   - Parse before classic source loading when capsule support is requested.
 // - Defaults:
 //   - Ordinary classic source remains ordinary source unless the exact magic
-//     sideband follows `QP`.
+//   - sideband follows `QP`.
 //
 // Related documents:
 // - docs/technical/compatibility/historical-interpreter-fallback-capsule.md
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Historical-safe fallback capsule framing for modern Malbolge payloads.
 

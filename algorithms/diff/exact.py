@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - exact.py
+# Path:
+#   - algorithms/diff/exact.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Exact deterministic tree planning and materialization for authoring.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Exact deterministic tree planning and materialization for authoring."""
 
 from __future__ import annotations
@@ -202,7 +245,7 @@ def _block_index(source: bytes) -> dict[bytes, int]:
     index: dict[bytes, int] = {}
     for offset in offsets:
         block = source[offset : offset + _MATCH_BLOCK_BYTES]
-        index.setdefault(block, offset)
+        _ = index.setdefault(block, offset)
     return index
 
 
@@ -419,7 +462,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        path.resolve().relative_to(root.resolve())
+        _ = path.resolve().relative_to(root.resolve())
     except ValueError as exc:
         message = f"path escapes tree root: {relative_path!r}"
         raise ExactTreeError(message) from exc
@@ -473,7 +516,7 @@ def _write_instruction(
         raise ExactTreeError(message)
     output_path = _safe_tree_path(staging_root, instruction.output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(data)
+    _ = output_path.write_bytes(data)
 
 
 def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
@@ -499,7 +542,7 @@ def _prepare_staging(output_root: Path) -> Path:
 
 def _copy_passthrough_file(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(source.read_bytes())
+    _ = target.write_bytes(source.read_bytes())
 
 
 def _copy_passthrough_directory(
@@ -595,7 +638,7 @@ def materialize_exact_plan(
     staging_root = _prepare_staging(resolved_output)
     try:
         _populate_staging(resolved_source, staging_root, plan)
-        staging_root.replace(resolved_output)
+        _ = staging_root.replace(resolved_output)
     except Exception:
         if staging_root.exists():
             shutil.rmtree(staging_root)

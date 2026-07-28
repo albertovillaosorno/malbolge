@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_domain.py
+# Path:
+#   - algorithms/diff/tests/test_domain.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic validation for consumer-domain module loading.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic validation for consumer-domain module loading."""
 
 from __future__ import annotations
@@ -40,7 +83,7 @@ def build_behavior_probe_context(source_root, repository_root):
 
 
 def _write(path: Path, text: str) -> None:
-    path.write_text(text, encoding="utf-8", newline="\n")
+    _ = path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _expect(condition: object, message: str) -> None:
@@ -91,14 +134,14 @@ def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:
     )
 
     with pytest.raises(DomainContractError, match="map_compatible_file"):
-        load_diff_domain(module)
+        _ = load_diff_domain(module)
 
 
 def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     """Require a concrete regular authoring-policy module."""
     missing = tmp_path / "missing.py"
     with pytest.raises(DomainContractError, match="regular file"):
-        load_diff_domain(missing)
+        _ = load_diff_domain(missing)
 
     target = tmp_path / "target.py"
     _write(target, _COMPLETE)
@@ -108,4 +151,4 @@ def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     except OSError:
         pytest.skip("symlink creation is unavailable")
     with pytest.raises(DomainContractError, match="regular file"):
-        load_diff_domain(link)
+        _ = load_diff_domain(link)

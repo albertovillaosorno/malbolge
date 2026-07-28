@@ -31,7 +31,7 @@
 //   - Requires CUDA one-step proposals to equal normative Rust StepTrace data.
 // - Description:
 //   - Exercises all classic instruction families, rejection, wrap, and
-//     aliasing.
+//   - aliasing.
 // - Usage:
 //   - Composed by `tests/vm.rs`; unavailable CUDA is an optional-path pass.
 // - Defaults:
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! CUDA compact-step proposals checked against normative classic Rust traces.
 

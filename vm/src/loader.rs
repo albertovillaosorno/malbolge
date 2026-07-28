@@ -19,11 +19,11 @@
 //   - Deterministic classic source validation, loading, and memory recurrence.
 // - Must-Not:
 //   - Depend on locale whitespace, host text encoding, or historical C
-//     overread.
+//   - overread.
 // - Allows:
 //   - Inputs: raw source bytes containing ASCII whitespace and graphical bytes.
 //   - Outputs: one exact initialized classic memory image or a typed
-//     diagnostic.
+//   - diagnostic.
 //   - Side effects: none.
 // - Split-When:
 //   - Split when extended image formats gain a separate loading contract.
@@ -37,7 +37,7 @@
 //   - Used before constructing the default classic VM execution state.
 // - Defaults:
 //   - Rejects fewer than two loaded words instead of reproducing C
-//     undefinedness.
+//   - undefinedness.
 //
 // Related documents:
 // - docs/technical/specification/malbolge-1998.md

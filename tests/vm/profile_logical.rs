@@ -22,25 +22,25 @@
 // - Allows:
 //   - Inputs: public profile logical APIs and canonical profile fixtures.
 //   - Outputs: exact logical IDs, profile identities, join bytes, typed
-//     failures.
+//   - failures.
 //   - Side effects: test-process host threads and independently owned memory.
 // - Split-When:
 //   - Split when cross-backend logical tasks require another join artifact
-//     type.
+//   - type.
 // - Merge-When:
 //   - Merge when classic/profile logical result types become width-safe
-//     unified.
+//   - unified.
 // - Summary:
 //   - Proves current and transition profiles coexist under deterministic join
-//     order.
+//   - order.
 // - Description:
 //   - Physical order is scrambled while logical IDs control profile-tagged
-//     output.
+//   - output.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Sequential profile logical execution is the deterministic artifact
-//     baseline.
+//   - baseline.
 //
 // Related documents:
 // - docs/technical/runtime/execution/deterministic-logical-concurrency.md
@@ -48,6 +48,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic logical ordering for current and transition profile tasks.
 

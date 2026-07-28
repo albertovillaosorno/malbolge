@@ -29,21 +29,22 @@
 //   - Merge when production graph identity owns the same correctness boundary.
 // - Summary:
 //   - Proves incremental state identity without full-memory hash per
-//     observation.
+//   - observation.
 // - Description:
 //   - Replays current traces, forces digest collisions, and rejects foreign
-//     roots.
+//   - roots.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
 //   - Complete runtime checkpoints remain the independent materialization
-//     oracle.
+//   - oracle.
 //
 // Related documents:
 // - algorithms/self-modification-state-graph-optimizer/state.rs
 //
 // Large file:
 //   - false
+//
 
 //! Correctness fixtures for incremental exact indexed-state identity.
 

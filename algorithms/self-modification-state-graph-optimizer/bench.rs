@@ -21,7 +21,7 @@
 //   - Claim a production index or include profile loading in timed regions.
 // - Allows:
 //   - Inputs: current profile, validated checkpoints, exact profile-state
-//     graph.
+//   - graph.
 //   - Outputs: raw nanosecond samples and deterministic checksums on stdout.
 //   - Side effects: benchmark-process allocation, CPU time, and stdout only.
 // - Split-When:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Raw cost samples for exact current-profile checkpoint graph identity.
 

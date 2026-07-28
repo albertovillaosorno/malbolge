@@ -41,6 +41,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Cargo composition root for deterministic property verification.
 

@@ -3,24 +3,30 @@
   "workload_proxy": {
     "artifact": "algorithms/doom/quality/comparison/metrics.json",
     "corpus": "after",
-    "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f",
-    "source_bytes": 1497009,
+    "source_sha256": "d0ec5aa5d38ba1c60b534f9586e41af5f7a25551dfd46c31ae41ceda7d1d2f40",
+    "source_bytes": 2479932,
     "meaning": "Tracked normalized-source size is a lower-bound capacity proxy only; it is not a prediction of compiled Malbolge size."
   },
   "candidate_widths": [
     {
       "trits": 13,
       "words": 1594323,
-      "headroom_over_proxy_words": 97314,
-      "decision": "rejected-near-saturation"
+      "headroom_over_proxy_words": -885609,
+      "decision": "rejected-insufficient-capacity"
     },
     {
       "trits": 14,
       "words": 4782969,
-      "headroom_over_proxy_words": 3285960,
-      "decision": "selected-initial-scalable-profile"
+      "headroom_over_proxy_words": 2303037,
+      "decision": "selected-and-currently-sufficient"
     }
   ],
   "selected_profile": "malbolge-2026.2",
-  "selection_rule": "Thirteen trits is the first ternary width exceeding the tracked source proxy but leaves only 97,314 words. Advance exactly one inherent ternary digit to fourteen trits; future compiler/runtime measurements may require another versioned width."
+  "selection_rule": "The current tracked normalized source proxy exceeds thirteen-trit capacity by 885,609 words. Fourteen trits is now the first inherent ternary width exceeding the proxy and leaves 2,303,037 words; compiled-size and runtime measurements remain authoritative for any future profile increase.",
+  "initial_selection_snapshot": {
+    "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f",
+    "source_bytes": 1497009,
+    "thirteen_trit_headroom_words": 97314,
+    "meaning": "Retains the tracked snapshot used when malbolge-2026.2 was selected; current capacity is revalidated separately below."
+  }
 }

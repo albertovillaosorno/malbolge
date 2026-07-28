@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_payload.py
+# Path:
+#   - algorithms/diff/tests/test_payload.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - RFC and synthetic tests for authenticated literal payload primitives.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """RFC and synthetic tests for authenticated literal payload primitives."""
 
 from dataclasses import replace
@@ -16,20 +59,23 @@ _RFC_KEY = bytes.fromhex(
 )
 _RFC_NONCE = bytes.fromhex("070000004041424344454647")
 _RFC_AAD = bytes.fromhex("50515253c0c1c2c3c4c5c6c7")
-_RFC_PLAINTEXT = (
+_RFC_PLAINTEXT_PREFIX = (
     b"Ladies and Gentlemen of the class of '99: If I could offer you only one "
+)
+_RFC_PLAINTEXT = _RFC_PLAINTEXT_PREFIX + (
     b"tip for the future, sunscreen would be it."
 )
-_RFC_CIPHERTEXT = bytes.fromhex(
-    "d31a8d34648e60db7b86afbc53ef7ec2"
-    "a4aded51296e08fea9e2b5a736ee62d6"
-    "3dbea45e8ca9671282fafb69da92728b"
-    "1a71de0a9e060b2905d6a5b67ecd3b36"
-    "92ddbd7f2d778b8c9803aee328091b58"
-    "fab324e4fad675945585808b4831d7bc"
-    "3ff4def08e4b7a9de576d26586cec64b"
-    "6116"
+_RFC_CIPHERTEXT_HEX = (
+    "d31a8d34648e60db7b86afbc53ef7ec2",
+    "a4aded51296e08fea9e2b5a736ee62d6",
+    "3dbea45e8ca9671282fafb69da92728b",
+    "1a71de0a9e060b2905d6a5b67ecd3b36",
+    "92ddbd7f2d778b8c9803aee328091b58",
+    "fab324e4fad675945585808b4831d7bc",
+    "3ff4def08e4b7a9de576d26586cec64b",
+    "6116",
 )
+_RFC_CIPHERTEXT = bytes.fromhex("".join(_RFC_CIPHERTEXT_HEX))
 _RFC_TAG = bytes.fromhex("1ae10b594f09e26a7e902ecbd0600691")
 
 
@@ -84,7 +130,7 @@ def test_ciphertext_tampering_fails_before_plaintext_release() -> None:
     )
 
     with pytest.raises(PayloadCryptoError, match="authentication failed"):
-        chacha20_poly1305_decrypt(key, nonce, tampered, aad=b"context")
+        _ = chacha20_poly1305_decrypt(key, nonce, tampered, aad=b"context")
 
 
 def test_tag_and_aad_tampering_fail_closed() -> None:
@@ -98,16 +144,16 @@ def test_tag_and_aad_tampering_fail_closed() -> None:
     )
 
     with pytest.raises(PayloadCryptoError, match="authentication failed"):
-        chacha20_poly1305_decrypt(key, nonce, wrong_tag, aad=b"metadata")
+        _ = chacha20_poly1305_decrypt(key, nonce, wrong_tag, aad=b"metadata")
     with pytest.raises(PayloadCryptoError, match="authentication failed"):
-        chacha20_poly1305_decrypt(key, nonce, payload, aad=b"different")
+        _ = chacha20_poly1305_decrypt(key, nonce, payload, aad=b"different")
 
 
 def test_key_nonce_and_tag_widths_fail_closed() -> None:
     """Reject malformed RFC 8439 key, nonce, and tag widths."""
     with pytest.raises(PayloadCryptoError, match="key must be 32 bytes"):
-        chacha20_poly1305_encrypt(b"short", bytes(12), b"")
+        _ = chacha20_poly1305_encrypt(b"short", bytes(12), b"")
     with pytest.raises(PayloadCryptoError, match="nonce must be 12 bytes"):
-        chacha20_poly1305_encrypt(bytes(32), b"short", b"")
+        _ = chacha20_poly1305_encrypt(bytes(32), b"short", b"")
     with pytest.raises(PayloadCryptoError, match="tag must be 16 bytes"):
-        AuthenticatedPayload(ciphertext=b"", tag=b"short")
+        _ = AuthenticatedPayload(ciphertext=b"", tag=b"short")

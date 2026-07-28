@@ -25,15 +25,15 @@
 //   - Side effects: test-process allocation of current-profile oracle images.
 // - Split-When:
 //   - Split when compaction/indexing strategies gain separate lifecycle
-//     evidence.
+//   - evidence.
 // - Merge-When:
 //   - Merge when runtime persistent memory owns the same reconstruction
-//     contract.
+//   - contract.
 // - Summary:
 //   - Reconstructs current memory exactly from one root plus semantic patches.
 // - Description:
 //   - Checks every traced step against the runtime's complete checkpoint
-//     memory.
+//   - memory.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Persistent-memory correctness fixtures over exact current-profile trace
 //! deltas.

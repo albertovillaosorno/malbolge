@@ -17,15 +17,15 @@
 // Boundary-Contract:
 // - Owns:
 //   - Persistent profile-memory research representation over exact trace
-//     deltas.
+//   - deltas.
 // - Must-Not:
 //   - Replace runtime memory, skip before-value validation, or claim production
-//     cost.
+//   - cost.
 // - Allows:
 //   - Inputs: validated `ProfileMachineState` roots and `ProfileMemoryDelta`
-//     steps.
+//   - steps.
 //   - Outputs: shared-root memory views, exact reads, and oracle
-//     materialization.
+//   - materialization.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when compaction/indexing strategies need independent evidence.
@@ -33,10 +33,10 @@
 //   - Merge when a production state graph adopts the proved persistent model.
 // - Summary:
 //   - Represents large profile memories as one root plus at-most-two-cell
-//     patches.
+//   - patches.
 // - Description:
 //   - Every patch checks trace `before` values against the current persistent
-//     view.
+//   - view.
 // - Usage:
 //   - Research baseline consumed by `tests/state_graph_research.rs`.
 // - Defaults:
@@ -48,6 +48,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Persistent large-memory research representation driven by exact VM deltas.
 

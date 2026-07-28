@@ -19,23 +19,23 @@
 //   - Complete-memory evidence for the per-step mutation-count bound.
 // - Must-Not:
 //   - Infer writes from private transition plans or trace implementation
-//     detail.
+//   - detail.
 // - Allows:
 //   - Inputs: public classic/profile state constructors and one-step execution.
 //   - Outputs: exact before/after changed-cell counts for every instruction
-//     family.
+//   - family.
 //   - Side effects: test-process allocation of complete current memory
-//     snapshots.
+//   - snapshots.
 // - Split-When:
 //   - Split when a persistent/delta representation gains independent evidence.
 // - Merge-When:
 //   - Merge when runtime traces expose a stable semantic memory-delta contract.
 // - Summary:
 //   - Proves every instruction family changes at most two memory cells per
-//     step.
+//   - step.
 // - Description:
 //   - Includes real two-cell crazy/rotate and zero-cell rejection/halt
-//     witnesses.
+//   - witnesses.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Complete-memory witnesses for the normative per-step mutation-count bound.
 

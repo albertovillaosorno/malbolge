@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - compatible.py
+# Path:
+#   - algorithms/diff/compatible.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - In-memory compatible tree planning and fail-closed materialization.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """In-memory compatible tree planning and fail-closed materialization."""
 
 from __future__ import annotations
@@ -20,7 +63,6 @@ from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
 from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 
@@ -229,7 +271,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        path.resolve().relative_to(root.resolve())
+        _ = path.resolve().relative_to(root.resolve())
     except ValueError as exc:
         message = f"compatible path escapes tree root: {relative_path!r}"
         raise CompatiblePlanError(message) from exc
@@ -380,9 +422,6 @@ def _exact_patch(candidate: bytes, instruction: ExactInstruction) -> bytes:
         if isinstance(segment, OracleLiteral):
             parts.append(segment.data)
             continue
-        if not isinstance(segment, SourceSlice):
-            message = "exact-gated patch contains unknown segment"
-            raise CompatiblePlanError(message)
         end = segment.offset + segment.length
         if end > len(candidate):
             message = "exact-gated source slice exceeds candidate file"
@@ -531,7 +570,7 @@ def _copy_candidate_only(
         source = _safe_path(candidate_root, path)
         output = _safe_path(staging, path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(source.read_bytes())
+        _ = output.write_bytes(source.read_bytes())
 
 
 def _require_literal_conflict_absent(
@@ -585,7 +624,7 @@ def _populate_staging(
         data = _instruction_bytes(context, instruction)
         output = _safe_path(staging, instruction.output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(data)
+        _ = output.write_bytes(data)
     _copy_candidate_only(
         request.candidate_root,
         staging,
@@ -629,7 +668,7 @@ def materialize_compatible_plan(
     try:
         _populate_staging(request, candidate, staging)
         _require_postcondition(request.postcondition, staging)
-        staging.replace(request.output_root)
+        _ = staging.replace(request.output_root)
     except Exception:
         if staging.exists():
             shutil.rmtree(staging)

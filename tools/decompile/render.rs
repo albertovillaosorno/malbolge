@@ -22,7 +22,7 @@
 // - Allows:
 //   - Inputs: source admitted by one explicit canonical Malbolge profile.
 //   - Outputs: caller-owned C source text and initial normalized decode
-//     comments.
+//   - comments.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when another output language gains an independent rendering model.
@@ -36,7 +36,7 @@
 //   - Called by `malbolge_decompile` and the museum conversion helper.
 // - Defaults:
 //   - Source/profile selection is explicit; generated C owns no host I/O
-//     policy.
+//   - policy.
 //
 // Related documents:
 // - docs/technical/specification/target-profile.md
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic Malbolge-to-C decompilation backend.
 

@@ -31,7 +31,7 @@
 //   - Proves a four-level sparse overlay reconstructs current memory exactly.
 // - Description:
 //   - Exercises real traces, 4096 distinct overrides, and forged-before
-//     rejection.
+//   - rejection.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Correctness fixtures for the bounded-read persistent radix candidate.
 

@@ -19,22 +19,22 @@
 //   - Bootstrap lowering from portable effect IR to untrusted native artifacts.
 // - Must-Not:
 //   - Admit machine code, replace verifier lineage guards, or define VM
-//     semantics.
+//   - semantics.
 // - Allows:
 //   - Inputs: portable region-effect IR and exact native target identity.
 //   - Outputs: deterministic C23 and opaque untrusted compiler object bytes.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when direct ISA emitters or native validation gain independent
-//     owners.
+//   - owners.
 // - Merge-When:
 //   - Merge when one native backend abstraction owns bootstrap and direct
-//     emitters.
+//   - emitters.
 // - Summary:
 //   - Produces the first real host-code candidate boundary without trusting it.
 // - Description:
 //   - Validates IR structure, renders atomic guarded C, and preserves exact
-//     keys.
+//   - keys.
 // - Usage:
 //   - Composed by tiered execution tests and future AOT/JIT orchestration.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! First untrusted native-artifact lowering boundary for portable effect IR.
 

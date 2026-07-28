@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_semantic.py
+# Path:
+#   - algorithms/diff/tests/test_semantic.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for mapped semantic compatible placement.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for mapped semantic compatible placement."""
 
 from __future__ import annotations
@@ -100,9 +143,9 @@ def test_changed_or_ambiguous_source_region_fails_closed() -> None:
     plan = build_semantic_plan(source, target, context_units=1)
 
     with pytest.raises(SemanticPlacementError, match="missing or ambiguous"):
-        apply_semantic_plan(_map(b"alpha = upstream ; omega"), plan, _map)
+        _ = apply_semantic_plan(_map(b"alpha = upstream ; omega"), plan, _map)
     with pytest.raises(SemanticPlacementError, match="missing or ambiguous"):
-        apply_semantic_plan(
+        _ = apply_semantic_plan(
             _map(b"alpha = old ; omega alpha = old ; omega"),
             plan,
             _map,
@@ -117,7 +160,7 @@ def test_retokenization_rejects_unsafe_insertion_seam() -> None:
     plan = build_semantic_plan(source, target, context_units=1)
 
     with pytest.raises(SemanticPlacementError, match="replacement seam"):
-        apply_semantic_plan(candidate, plan, _map)
+        _ = apply_semantic_plan(candidate, plan, _map)
 
 
 def test_semantic_authoring_is_deterministic() -> None:

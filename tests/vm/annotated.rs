@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Annotated-source canonicalization, formatting, source-map, and VM
-//     evidence.
+//   - evidence.
 // - Must-Not:
 //   - Redefine raw loader semantics or rely on compiler source-map machinery.
 // - Allows:
@@ -26,7 +26,7 @@
 //   - Side effects: test-local allocation only.
 // - Split-When:
 //   - Split when compiler/decompiler structural annotations gain independent
-//     tests.
+//   - tests.
 // - Merge-When:
 //   - Merge when all source frontend behavior has one integration-test owner.
 // - Summary:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Annotated Malbolge source presentation and semantic-inertness evidence.
 

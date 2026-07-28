@@ -19,10 +19,10 @@
 //   - Portable state-changing execution IR shared by future native tiers.
 // - Must-Not:
 //   - Verify optimizations, encode host ISA bytes, or define Malbolge
-//     semantics.
+//   - semantics.
 // - Allows:
 //   - Inputs: canonical profile identity, verified live-ins, and VM trace
-//     effects.
+//   - effects.
 //   - Outputs: architecture-neutral bounded-region effect programs.
 //   - Side effects: none.
 // - Split-When:
@@ -31,7 +31,7 @@
 //   - Merge when another execution module owns the same portable effect schema.
 // - Summary:
 //   - Defines the versioned portable IR consumed after deterministic
-//     verification.
+//   - verification.
 // - Description:
 //   - Carries only state-changing effects and verifier-bound region metadata.
 // - Usage:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Portable bounded-region effect IR for tiered execution.
 

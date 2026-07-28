@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_provenance.py
+# Path:
+#   - algorithms/diff/tests/test_provenance.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for exact external source revision pins.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for exact external source revision pins."""
 
 from __future__ import annotations
@@ -23,7 +66,7 @@ _EXPECTED_FILE_COUNT = 3
 def _write(root: Path, relative: str, data: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    _ = path.write_bytes(data)
 
 
 def _expect(condition: object, message: str) -> None:
@@ -66,12 +109,12 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
     _write(tmp_path, "src/a.c", b"int changed;\n")
 
     with pytest.raises(SourcePinError, match="snapshot mismatch"):
-        require_source_pin(tmp_path, pin)
+        _ = require_source_pin(tmp_path, pin)
 
     _write(tmp_path, "src/a.c", b"int a;\n")
     _write(tmp_path, "src/new.c", b"int new_file;\n")
     with pytest.raises(SourcePinError, match="file count mismatch"):
-        require_source_pin(tmp_path, pin)
+        _ = require_source_pin(tmp_path, pin)
 
 
 def test_missing_or_symlinked_selected_root_fails_closed(
@@ -88,4 +131,4 @@ def test_missing_or_symlinked_selected_root_fails_closed(
     )
 
     with pytest.raises(SourcePinError, match="missing pinned source root"):
-        require_source_pin(tmp_path, pin)
+        _ = require_source_pin(tmp_path, pin)

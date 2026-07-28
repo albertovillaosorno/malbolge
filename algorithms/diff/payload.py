@@ -1,6 +1,50 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
-"""Small RFC 8439 ChaCha20-Poly1305 reference implementation.
+# File:
+#   - payload.py
+# Path:
+#   - algorithms/diff/payload.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Small RFC 8439 ChaCha20-Poly1305 reference implementation.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
+"""
+Small RFC 8439 ChaCha20-Poly1305 reference implementation.
 
 This implementation exists so authoring tests and the future generated Rust
 materializer can share exact byte-level vectors without adding a package/runtime
@@ -153,8 +197,8 @@ def _chacha20_xor(
 
 def _poly1305_mac(message: bytes, one_time_key: bytes) -> bytes:
     if len(one_time_key) != _KEY_BYTES:
-        message = "Poly1305 one-time key must be 32 bytes"
-        raise PayloadCryptoError(message)
+        error_message = "Poly1305 one-time key must be 32 bytes"
+        raise PayloadCryptoError(error_message)
     r = int.from_bytes(one_time_key[:16], byteorder="little") & _POLY_R_MASK
     s = int.from_bytes(one_time_key[16:], byteorder="little")
     accumulator = _ZERO

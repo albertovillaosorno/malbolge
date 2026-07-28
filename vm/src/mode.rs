@@ -31,7 +31,7 @@
 //   - Names normative execution and the opt-in Ben compatibility mode.
 // - Description:
 //   - Provides one stable identity for traces, diagnostics, caches, and
-//     benches.
+//   - benches.
 // - Usage:
 //   - Passed explicitly to the execution facade; default is specification mode.
 // - Defaults:

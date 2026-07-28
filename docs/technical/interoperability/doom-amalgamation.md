@@ -11,6 +11,13 @@ Transform the accepted normalized multi-translation-unit DOOM source into one
 canonical `doom.c` without making the ignored single-file oracle a distributable
 dependency.
 
+## Scope
+
+This contract governs the deterministic source-bound transformation from the
+accepted normalized DOOM tree to the canonical single-file C artifact. It does
+not own later C-to-Malbolge compilation, host-capability execution, or native
+runner policy.
+
 ## Current Behavior
 
 `algorithms/doom/generator/amalgamation_oracle.py` constructs a deterministic
@@ -24,7 +31,7 @@ The transform consumes
 `quality/out/doom_fixed/linuxdoom-1.10/` and publishes exactly one ignored file,
 `amalgamate/out/doom.c`, without requiring the oracle.
 
-## Accepted Identity
+### Accepted Identity
 
 - transform SHA-256:
   `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`;
@@ -35,7 +42,24 @@ The transform consumes
 - wrong, absent, or mutated source rejection before publication: pass;
 - byte identity with local oracle and end-to-end fixture: pass.
 
-## Semantic Verification
+## Invariants
+
+- The user-owned root source is never modified.
+- Only accepted generated quality output is admitted.
+- WAD/data bytes do not enter amalgamation identity or payload.
+- The ignored oracle is authoring evidence only.
+- The generated transform remains source-bound.
+- Partial or mismatched output is never published as accepted.
+- Quality and amalgamation remain separate algorithms.
+
+## Failure Behavior
+
+This stage ends at canonical C. Guest-C acceptance is evidence that `doom.c` is
+prepared for the declared C surface, not proof that the entire program has been
+lowered or executed as Malbolge. Complete compatibility requires generating and
+running `doom.malbolge` with the versioned capability ABI.
+
+## Verification
 
 The generic diff encodes reconstruction but is not the C semantic authority.
 Pinned Clang and deterministic native evidence establish that the output
@@ -51,23 +75,6 @@ identical multi-TU and single-TU framebuffer/audio transcripts:
 4571f707b08d56cd
 912da30aff88aaed
 ```
-
-## Invariants
-
-- The user-owned root source is never modified.
-- Only accepted generated quality output is admitted.
-- WAD/data bytes do not enter amalgamation identity or payload.
-- The ignored oracle is authoring evidence only.
-- The generated transform remains source-bound.
-- Partial or mismatched output is never published as accepted.
-- Quality and amalgamation remain separate algorithms.
-
-## Malbolge Boundary
-
-This stage ends at canonical C. Guest-C acceptance is evidence that `doom.c` is
-prepared for the declared C surface, not proof that the entire program has been
-lowered or executed as Malbolge. Complete compatibility requires generating and
-running `doom.malbolge` with the versioned capability ABI.
 
 ## References
 

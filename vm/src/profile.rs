@@ -19,11 +19,11 @@
 //   - Runtime target-profile descriptors and fail-closed capability preflight.
 // - Must-Not:
 //   - Reinterpret profile JSON, guess missing capabilities, or execute
-//     fallback.
+//   - fallback.
 // - Allows:
 //   - Inputs: generated canonical profile descriptors and runtime capacities.
 //   - Outputs: exact profile identity and deterministic requirement
-//     diagnostics.
+//   - diagnostics.
 //   - Side effects: none.
 // - Split-When:
 //   - Split when another runtime family needs an independent capability model.
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Target-profile identity and deterministic runtime-capability preflight.
 

@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_gate.py
+# Path:
+#   - algorithms/diff/tests/test_gate.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Tests for conjunctive source-lineage and behavior admission.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Tests for conjunctive source-lineage and behavior admission."""
 
 from __future__ import annotations
@@ -96,7 +139,7 @@ def test_behavior_only_clone_cannot_replace_source_lineage() -> None:
     _expect(not source.admitted, "unrelated source unexpectedly passed lineage")
     _expect(behavior.admitted, "synthetic behavior clone did not pass behavior")
     with pytest.raises(AdmissionError, match="source lineage admission failed"):
-        require_transform_admission(source, behavior)
+        _ = require_transform_admission(source, behavior)
 
 
 def test_source_lineage_cannot_replace_failed_compatibility() -> None:

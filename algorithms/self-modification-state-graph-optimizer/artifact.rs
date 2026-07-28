@@ -19,7 +19,7 @@
 //   - Portable verifier-admitted effect artifacts for bounded regions.
 // - Must-Not:
 //   - Trust generated effects, encode host ISA bytes, or replace
-//     deoptimization.
+//   - deoptimization.
 // - Allows:
 //   - Inputs: verifier-produced regions and untrusted portable effect claims.
 //   - Outputs: verified effect artifacts and guarded tier execution results.
@@ -30,10 +30,10 @@
 //   - Merge when `execution/ir/` owns the same verified effect contract.
 // - Summary:
 //   - Verifies compact region effects before any accelerated execution can use
-//     them.
+//   - them.
 // - Description:
 //   - Recomputes portable effects from verified traces and preserves region
-//     deopt.
+//   - deopt.
 // - Usage:
 //   - Research precursor for the portable tiered-execution IR boundary.
 // - Defaults:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Portable untrusted-to-verified region effect artifact boundary.
 

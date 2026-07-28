@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_doom_identity.py
+# Path:
+#   - algorithms/doom/generator/tests/test_doom_identity.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for DOOM C source identity.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for DOOM C source identity."""
 
 from typing import TYPE_CHECKING
@@ -71,19 +114,19 @@ def test_backslash_newline_splicing_precedes_tokenization() -> None:
 def test_unterminated_comment_fails_closed() -> None:
     """Reject malformed C instead of guessing an identity stream."""
     with pytest.raises(DoomIdentityError, match="unterminated C block comment"):
-        canonicalize_c_identity(b"int x; /* missing end")
+        _ = canonicalize_c_identity(b"int x; /* missing end")
 
 
 def test_identity_tree_selects_linux_c_and_headers_only(tmp_path: Path) -> None:
     """Exclude WADs and non-Linux source families from DOOM source identity."""
     linux = tmp_path / "linuxdoom-1.10"
     linux.mkdir()
-    (linux / "main.c").write_bytes(b"int main(void){return 0;}\n")
-    (linux / "defs.H").write_bytes(b"#define VALUE 1\n")
-    (linux / "asset.wad").write_bytes(b"opaque")
+    _ = (linux / "main.c").write_bytes(b"int main(void){return 0;}\n")
+    _ = (linux / "defs.H").write_bytes(b"#define VALUE 1\n")
+    _ = (linux / "asset.wad").write_bytes(b"opaque")
     ipx = tmp_path / "ipx"
     ipx.mkdir()
-    (ipx / "DOOMNET.C").write_bytes(b"int ipx;\n")
+    _ = (ipx / "DOOMNET.C").write_bytes(b"int ipx;\n")
 
     tree = build_identity_tree(tmp_path)
     paths = tuple(item.path for item in tree.files)
@@ -177,7 +220,7 @@ def test_eof_directive_end_uses_zero_width_raw_marker() -> None:
 def _quality_oracle_fixture(root: Path) -> None:
     (root / "data").mkdir(parents=True)
     (root / "linuxdoom-1.10").mkdir()
-    (root / "LICENSE").write_bytes(b"license")
+    _ = (root / "LICENSE").write_bytes(b"license")
 
 
 def test_quality_oracle_preflight_accepts_exact_root_surface(
@@ -194,7 +237,7 @@ def test_quality_oracle_preflight_rejects_unexpected_root(
 ) -> None:
     """Never learn an accidental authoring artifact as target-only payload."""
     _quality_oracle_fixture(tmp_path)
-    (
+    _ = (
         tmp_path / "System.Management.Automation.Internal.Host.InternalHost"
     ).write_bytes(b"accidental")
 

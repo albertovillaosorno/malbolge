@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_compatible.py
+# Path:
+#   - algorithms/diff/tests/test_compatible.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for in-memory compatible tree planning.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for in-memory compatible tree planning."""
 
 from __future__ import annotations
@@ -47,7 +90,7 @@ def _expect(condition: object, message: str) -> None:
 def _write(root: Path, path: str, data: bytes) -> None:
     output = root / path
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(data)
+    _ = output.write_bytes(data)
 
 
 def _map_bytes(raw: bytes) -> MappedView:
@@ -189,11 +232,11 @@ def test_source_or_behavior_rejection_happens_before_output(
     )
 
     with pytest.raises(AdmissionError, match="source lineage admission failed"):
-        materialize_compatible_plan(lineage_request)
+        _ = materialize_compatible_plan(lineage_request)
     _expect(not output.exists(), "lineage-rejected output exists")
 
     with pytest.raises(AdmissionError, match="behavior admission failed"):
-        materialize_compatible_plan(
+        _ = materialize_compatible_plan(
             _request(
                 candidate, plan, output, behavior=_behavior(admitted=False)
             )
@@ -211,7 +254,7 @@ def test_opaque_candidate_change_fails_exact_gate(tmp_path: Path) -> None:
     with pytest.raises(
         CompatiblePlanError, match="opaque compatible source changed"
     ):
-        materialize_compatible_plan(_request(candidate, plan, output))
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "opaque-rejected output was published")
 
 
@@ -223,7 +266,7 @@ def test_target_only_path_conflict_fails_closed(tmp_path: Path) -> None:
     output = tmp_path / "out"
 
     with pytest.raises(CompatiblePlanError, match="conflicts"):
-        materialize_compatible_plan(_request(candidate, plan, output))
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "conflicting target-only output was published")
 
 
@@ -234,7 +277,7 @@ def test_bug_routing_fails_closed_until_edits_are_named(tmp_path: Path) -> None:
     output = tmp_path / "out"
 
     with pytest.raises(CompatiblePlanError, match="routing is not wired"):
-        materialize_compatible_plan(
+        _ = materialize_compatible_plan(
             _request(candidate, plan, output, behavior=_behavior(routed=True))
         )
     _expect(not output.exists(), "unwired bug routing published output")
@@ -261,5 +304,5 @@ def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:
     )
 
     with pytest.raises(CompatiblePlanError, match="postcondition"):
-        materialize_compatible_plan(request)
+        _ = materialize_compatible_plan(request)
     _expect(not output.exists(), "postcondition-rejected output was published")

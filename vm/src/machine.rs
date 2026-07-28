@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Atomic single-step transitions for the normative classic Malbolge
-//     machine.
+//   - machine.
 // - Must-Not:
 //   - Reproduce historical C undefined behavior or hide host execution helpers.
 // - Allows:
@@ -26,7 +26,7 @@
 //   - Side effects: mutation only of the owned VM state and output buffer.
 // - Split-When:
 //   - Split when tracing or execution scheduling gains an independent
-//     lifecycle.
+//   - lifecycle.
 // - Merge-When:
 //   - Merge when another module owns the same normative transition function.
 // - Summary:

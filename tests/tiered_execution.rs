@@ -29,7 +29,7 @@
 //   - Merge when product tiered execution tests own the same identity surface.
 // - Summary:
 //   - Proves portable IR and host-target cache identity are
-//     architecture-stable.
+//   - architecture-stable.
 // - Description:
 //   - Mutates semantic and target fields and forces bucket collisions.
 // - Usage:
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Product tiered-execution identity and cache-key conformance.
 

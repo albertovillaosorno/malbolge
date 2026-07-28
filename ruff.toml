@@ -55,6 +55,7 @@ task-tags = []
 ignore = [
   "missing-trailing-comma", # Formatter owns trailing-comma placement.
   "incorrect-blank-line-before-class", # Contradicts D211; D211 is authoritative.
+  "multi-line-summary-first-line", # Jig schema 10 requires standalone opening triple quotes.
   "multi-line-summary-second-line", # Contradicts D212; D212 is authoritative.
   "single-line-implicit-string-concatenation", # Formatter owns single-line implicit-string normalization.
 ]

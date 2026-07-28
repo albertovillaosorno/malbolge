@@ -21,7 +21,7 @@
 //   - Claim semantic equivalence, execute machine code, or invoke LLVM tools.
 // - Allows:
 //   - Inputs: untrusted native object bytes bound to an exact native target
-//     key.
+//   - key.
 //   - Outputs: structurally admitted object wrappers or typed rejection.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -30,7 +30,7 @@
 //   - Merge when one reviewed object-format validator owns all native formats.
 // - Summary:
 //   - Parses COFF directly and rejects host dependencies or malformed
-//     structure.
+//   - structure.
 // - Description:
 //   - Confirms ISA, sections, entry symbol, relocations, and symbol closure.
 // - Usage:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Structural Windows COFF admission for untrusted native bootstrap objects.
 

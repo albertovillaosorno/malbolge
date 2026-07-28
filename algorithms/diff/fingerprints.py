@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - fingerprints.py
+# Path:
+#   - algorithms/diff/fingerprints.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Content-defined stable fingerprints for source-lineage evidence.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Content-defined stable fingerprints for source-lineage evidence."""
 
 from __future__ import annotations
@@ -115,7 +158,7 @@ def _scan_anchor_windows(
             fallback_offset = offset
         if rolling % policy.selection_modulus == _ZERO:
             anchor = _selected_anchor(data, offset, policy.window_bytes)
-            selected.setdefault(anchor.digest, anchor)
+            _ = selected.setdefault(anchor.digest, anchor)
         if offset < last_offset:
             rolling = _roll_hash(
                 rolling,

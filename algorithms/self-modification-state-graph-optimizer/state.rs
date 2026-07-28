@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Incremental exact state identity over one indexed-memory execution
-//     lineage.
+//   - lineage.
 // - Must-Not:
 //   - Merge on digest alone or compare unrelated full roots implicitly.
 // - Allows:
@@ -26,20 +26,20 @@
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when cross-lineage content-addressed roots gain independent
-//     evidence.
+//   - evidence.
 // - Merge-When:
 //   - Merge when production graph/native tiers own the same exact state
-//     identity.
+//   - identity.
 // - Summary:
 //   - Deduplicates indexed states without per-observation full-memory hashing.
 // - Description:
 //   - Digests bucket candidates; shared lineage plus exact fields confirm
-//     merges.
+//   - merges.
 // - Usage:
 //   - Research candidate composed by `tests/state_graph_research.rs`.
 // - Defaults:
 //   - Foreign root/input lineages fail closed rather than trigger full
-//     compares.
+//   - compares.
 //
 // Related documents:
 // - algorithms/self-modification-state-graph-optimizer/index.rs
@@ -47,6 +47,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Incremental collision-safe state identity above bounded radix memory.
 

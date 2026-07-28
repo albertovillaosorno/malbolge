@@ -21,7 +21,7 @@
 //   - Reimplement Malbolge semantics or infer a target profile silently.
 // - Allows:
 //   - Inputs: exact profile ID, explicit representation, local source/output
-//     paths.
+//   - paths.
 //   - Outputs: rendered text on stdout or one selected local file.
 //   - Side effects: local filesystem reads/writes and stdout output.
 // - Split-When:
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! User-facing CLI policy for general Malbolge decompilation.
 

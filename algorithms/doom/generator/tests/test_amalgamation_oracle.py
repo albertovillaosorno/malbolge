@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_amalgamation_oracle.py
+# Path:
+#   - algorithms/doom/generator/tests/test_amalgamation_oracle.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for the DOOM single-TU oracle builder.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for the DOOM single-TU oracle builder."""
 
 from __future__ import annotations
@@ -26,40 +69,59 @@ def _expect(condition: object, message: str) -> None:
         raise AssertionError(message)
 
 
+def _source(*lines: str) -> str:
+    return "\n".join((*lines, ""))
+
+
 def _write(root: Path, relative: str, text: str) -> Path:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
+    _ = path.write_text(text, encoding="utf-8", newline="\n")
     return path
 
 
 def _required_headers(root: Path) -> None:
-    _write(
+    _ = _write(
         root,
         "dstrings.h",
-        "#ifndef __DSTRINGS__\n#define __DSTRINGS__\n"
-        "#define TXT value\n#endif\n",
+        _source(
+            "#ifndef __DSTRINGS__",
+            "#define __DSTRINGS__",
+            "#define TXT value",
+            "#endif",
+        ),
     )
-    _write(
+    _ = _write(
         root,
         "shared.h",
-        '#ifndef SHARED_H\n#define SHARED_H\n#include "cycle.h"\n'
-        "#include <stdint.h>\nint shared;\n#endif\n",
+        _source(
+            "#ifndef SHARED_H",
+            "#define SHARED_H",
+            '#include "cycle.h"',
+            "#include <stdint.h>",
+            "int shared;",
+            "#endif",
+        ),
     )
-    _write(
+    _ = _write(
         root,
         "cycle.h",
-        '#ifndef CYCLE_H\n#define CYCLE_H\n#include "shared.h"\n'
-        "int cycle;\n#endif\n",
+        _source(
+            "#ifndef CYCLE_H",
+            "#define CYCLE_H",
+            '#include "shared.h"',
+            "int cycle;",
+            "#endif",
+        ),
     )
 
 
 def _accepted_tree(root: Path) -> None:
     _required_headers(root)
-    _write(root, "p_spec.c", '#include "shared.h"\ntypedef int anim_t;\n')
-    _write(root, "wi_stuff.c", '#include "shared.h"\ntypedef int anim_t;\n')
-    _write(root, "m_string.c", '#include "shared.h"\nint string_unit;\n')
-    _write(
+    _ = _write(root, "p_spec.c", '#include "shared.h"\ntypedef int anim_t;\n')
+    _ = _write(root, "wi_stuff.c", '#include "shared.h"\ntypedef int anim_t;\n')
+    _ = _write(root, "m_string.c", '#include "shared.h"\nint string_unit;\n')
+    _ = _write(
         root,
         "d_language.c",
         '#include "dstrings.h"\nint language_unit;\n',
@@ -120,8 +182,8 @@ def test_build_amalgamation_rejects_missing_terminal_unit(
     tmp_path: Path,
 ) -> None:
     """Reject an incomplete macro-destructive terminal ordering."""
-    _write(tmp_path, "dstrings.h", "#define TXT value\n")
-    _write(tmp_path, "alpha.c", "int alpha;\n")
+    _ = _write(tmp_path, "dstrings.h", "#define TXT value\n")
+    _ = _write(tmp_path, "alpha.c", "int alpha;\n")
 
     with pytest.raises(oracle.DoomAmalgamationError, match=MISSING_TERMINAL):
-        oracle.build_amalgamation(tmp_path)
+        _ = oracle.build_amalgamation(tmp_path)

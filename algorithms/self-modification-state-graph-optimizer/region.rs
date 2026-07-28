@@ -19,14 +19,14 @@
 //   - Exact-state guarded region certificates for future native shortcuts.
 // - Must-Not:
 //   - Treat digest equality as a guard or trust unverified certificate
-//     contents.
+//   - contents.
 // - Allows:
 //   - Inputs: incremental exact states, bounded normative VM execution, traces.
 //   - Outputs: untrusted certificates and verifier-produced exact regions.
 //   - Side effects: verifier-local allocation and normative VM execution only.
 // - Split-When:
 //   - Split when broader dependency guards or native code artifacts gain
-//     ownership.
+//   - ownership.
 // - Merge-When:
 //   - Merge when a production tiered execution engine owns region verification.
 // - Summary:
@@ -35,7 +35,7 @@
 //   - Re-executes normative VM traces before a shortcut can become trusted.
 // - Usage:
 //   - Foundation for guarded native/JIT region specialization and
-//     deoptimization.
+//   - deoptimization.
 // - Defaults:
 //   - Rejected VM transitions are never admitted as verified shortcuts.
 //
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministically verified exact-state region certificates.
 

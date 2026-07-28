@@ -19,7 +19,7 @@
 //   - Explicit logical task ordering and deterministic host-side result joins.
 // - Must-Not:
 //   - Introduce guest threads, shared guest state, or completion-order
-//     semantics.
+//   - semantics.
 // - Allows:
 //   - Inputs: owned independent batch requests plus stable logical task IDs.
 //   - Outputs: task-ID-ordered results and deterministic joined output bytes.
@@ -30,10 +30,10 @@
 //   - Merge when batch execution itself gains explicit logical task identity.
 // - Summary:
 //   - Orders independent host work by logical identity before deterministic
-//     join.
+//   - join.
 // - Description:
 //   - Uses structural ownership as the independence boundary and never exposes
-//     host completion order to guest-visible or generated-artifact ordering.
+//   - host completion order to guest-visible or generated-artifact ordering.
 // - Usage:
 //   - Wrap independent `BatchRequest` values in `LogicalTask` and execute them.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic logical ordering over structurally independent host VM tasks.
 

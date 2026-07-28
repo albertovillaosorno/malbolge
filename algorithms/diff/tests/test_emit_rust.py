@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_emit_rust.py
+# Path:
+#   - algorithms/diff/tests/test_emit_rust.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic compile-and-run tests for emitted std-only Rust transforms.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic compile-and-run tests for emitted std-only Rust transforms."""
 
 from __future__ import annotations
@@ -60,7 +103,7 @@ def _blocks(label: str) -> bytes:
 def _write(root: Path, relative: str, data: bytes) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    _ = path.write_bytes(data)
 
 
 def _fixture(
@@ -195,7 +238,7 @@ def test_emitted_rust_compiles_and_materializes_exact_tree(
     rust_source = tmp_path / "generated.rs"
     executable = tmp_path / "transform.exe"
     output = tmp_path / "out"
-    rust_source.write_text(
+    _ = rust_source.write_text(
         emit_rust_transform(protected, _PROFILE),
         encoding="utf-8",
         newline="\n",
@@ -226,7 +269,7 @@ def test_emitted_rust_rejects_wrong_source_before_output(
     rust_source = tmp_path / "wrong.rs"
     executable = tmp_path / "wrong.exe"
     output = tmp_path / "wrong-out"
-    rust_source.write_text(
+    _ = rust_source.write_text(
         emit_rust_transform(protected, _PROFILE),
         encoding="utf-8",
         newline="\n",
@@ -249,7 +292,7 @@ def test_emitted_rust_rejects_existing_output_root(tmp_path: Path) -> None:
     output = tmp_path / "existing-out"
     output.mkdir()
     _write(output, "sentinel.txt", _SENTINEL)
-    rust_source.write_text(
+    _ = rust_source.write_text(
         emit_rust_transform(protected, _PROFILE),
         encoding="utf-8",
         newline="\n",
@@ -273,7 +316,7 @@ def test_emitted_rust_preserves_dynamic_passthrough_root(
     rust_source = tmp_path / "passthrough.rs"
     executable = tmp_path / "passthrough.exe"
     output = tmp_path / "passthrough-out"
-    rust_source.write_text(
+    _ = rust_source.write_text(
         emit_rust_transform(protected, _PROFILE),
         encoding="utf-8",
         newline="\n",

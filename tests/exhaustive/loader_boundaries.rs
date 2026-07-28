@@ -25,14 +25,14 @@
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when scalable-profile loader domains need separate exhaustive
-//     proof.
+//   - proof.
 // - Merge-When:
 //   - Merge when another suite owns identical source-admission boundaries.
 // - Summary:
 //   - Exhausts invalid bytes and all 94 decode phases around loader admission.
 // - Description:
 //   - Mutates one valid 94-word source at every phase to an invalid
-//     instruction.
+//   - instruction.
 // - Usage:
 //   - Runs under the deterministic property-verification Cargo target.
 // - Defaults:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Exhaustive classic loader byte and positional-decode admission checks.
 

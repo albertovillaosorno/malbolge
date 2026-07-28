@@ -1,5 +1,7 @@
 {
-  "include": ["."],
+  "include": [
+    "."
+  ],
   "exclude": [
     ".cache",
     ".dependencies",
@@ -50,5 +52,7 @@
   "reportInvalidAbstractMethod": "error",
   "reportSelfClsDefault": "error",
   "reportMissingSuperCall": "error",
-  "reportUninitializedInstanceVariable": "error"
+  "reportUninitializedInstanceVariable": "error",
+  "venvPath": ".dependencies/python",
+  "venv": "3.14.6"
 }

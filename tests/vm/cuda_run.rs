@@ -31,10 +31,10 @@
 //   - Checks resident CUDA bounded runs against normative Rust machine states.
 // - Description:
 //   - Compares every one of the 59049 classic memory words plus complete I/O
-//     and execution state after multi-step, resumed, and rejected runs.
+//   - and execution state after multi-step, resumed, and rejected runs.
 // - Usage:
 //   - Composed by `tests/vm.rs`; unavailable CUDA remains an optional-path
-//     pass.
+//   - pass.
 // - Defaults:
 //   - Normative safe Rust execution is always the expected-result oracle.
 //

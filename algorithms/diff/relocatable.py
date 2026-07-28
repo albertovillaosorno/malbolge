@@ -1,6 +1,50 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
-"""Relocatable compatible-placement authoring over exact source ranges.
+# File:
+#   - relocatable.py
+# Path:
+#   - algorithms/diff/relocatable.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Relocatable compatible-placement authoring over exact source ranges.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
+"""
+Relocatable compatible-placement authoring over exact source ranges.
 
 This layer is intentionally non-distributable. It proves that exact authoring
 source spans can be relocated in a later candidate without relying on absolute
@@ -233,7 +277,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        path.resolve().relative_to(root.resolve())
+        _ = path.resolve().relative_to(root.resolve())
     except ValueError as exc:
         message = f"relocatable path escapes tree root: {relative_path!r}"
         raise RelocationError(message) from exc
@@ -340,8 +384,8 @@ def materialize_relocatable_plan(
             data = _instruction_bytes(candidate_root, instruction)
             output = _safe_path(staging, instruction.output_path)
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(data)
-        staging.replace(output_root)
+            _ = output.write_bytes(data)
+        _ = staging.replace(output_root)
     except Exception:
         if staging.exists():
             shutil.rmtree(staging)

@@ -19,15 +19,15 @@
 //   - Executable conformance evidence for the first safe-Rust classic VM slice.
 // - Must-Not:
 //   - Treat historical C defects as normative or duplicate production
-//     internals.
+//   - internals.
 // - Allows:
 //   - Inputs: public VM APIs and versioned classic specification fixtures.
 //   - Outputs: deterministic assertions over loading, words, state, and byte
-//     I/O.
+//   - I/O.
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when one semantic family requires independently maintained
-//     fixtures.
+//   - fixtures.
 // - Merge-When:
 //   - Merge when another VM test owns the same public conformance obligation.
 // - Summary:
@@ -38,7 +38,7 @@
 //   - Runs under the `vm` Cargo integration-test composition target.
 // - Defaults:
 //   - Any mismatch with the active specification fixture is a hard test
-//     failure.
+//   - failure.
 //
 // Related documents:
 // - docs/technical/specification/malbolge-1998.md

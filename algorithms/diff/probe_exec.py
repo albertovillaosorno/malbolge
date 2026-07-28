@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - probe_exec.py
+# Path:
+#   - algorithms/diff/probe_exec.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Portable bounded process programs for behavior-probe observations.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Portable bounded process programs for behavior-probe observations."""
 
 from __future__ import annotations
@@ -13,6 +56,7 @@ from pathlib import PurePosixPath
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
 import tempfile
+from typing import Protocol
 
 from algorithms.diff.exact import snapshot_tree
 
@@ -23,6 +67,14 @@ _DEFAULT_OUTPUT_LIMIT = 1_048_576
 _FRAME_LENGTH_BYTES = 8
 _BACKSLASH = "\\"
 _PARENT = ".."
+
+
+class _HashUpdater(Protocol):
+    """Minimal digest-update boundary used by transcript framing."""
+
+    def update(self, data: bytes, /) -> None:
+        """Consume one exact byte fragment."""
+        ...
 
 
 class ProbeProgramError(ValueError):
@@ -215,7 +267,7 @@ def _rooted_path(
     root = _root_path(argument.root, context, scratch_root)
     candidate = root.joinpath(*PurePosixPath(argument.relative_path).parts)
     try:
-        candidate.resolve().relative_to(root)
+        _ = candidate.resolve().relative_to(root)
     except ValueError as exc:
         message = (
             f"probe path escapes authorized root: {argument.relative_path!r}"
@@ -307,7 +359,7 @@ def _run_command(
 
 
 def _update_stdout_digest(
-    hasher: hashlib._Hash,
+    hasher: _HashUpdater,
     command_index: int,
     stdout: bytes,
 ) -> None:
@@ -320,7 +372,7 @@ def _update_stdout_digest(
 
 
 def _update_exit_digest(
-    hasher: hashlib._Hash,
+    hasher: _HashUpdater,
     command_index: int,
     returncode: int,
 ) -> None:
@@ -384,8 +436,9 @@ def run_probe_programs(
     )
     with tempfile.TemporaryDirectory(prefix="diff-probe-batch-") as batch:
         batch_root = Path(batch)
-        mirror_root = batch_root / "source"
-        shutil.copytree(context.source_root, mirror_root)
+        mirror_root = Path(
+            shutil.copytree(context.source_root, batch_root / "source")
+        )
         isolated_context = replace(
             context,
             source_root=mirror_root,

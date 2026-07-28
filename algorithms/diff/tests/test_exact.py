@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_exact.py
+# Path:
+#   - algorithms/diff/tests/test_exact.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Exact-baseline tests for the generic source-bound diff authoring model.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Exact-baseline tests for the generic source-bound diff authoring model."""
 
 from typing import TYPE_CHECKING
@@ -34,7 +77,7 @@ def _expect(condition: object, message: str) -> None:
 def _write(root: Path, relative_path: str, data: bytes) -> None:
     path = root / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    _ = path.write_bytes(data)
 
 
 def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -161,7 +204,7 @@ def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
     root = tmp_path / "tree"
     root.mkdir()
     target = root / "target.txt"
-    target.write_bytes(b"target")
+    _ = target.write_bytes(b"target")
     link = root / "link.txt"
     try:
         link.symlink_to(target.name)
@@ -169,7 +212,7 @@ def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
         pytest.skip("symlink creation is unavailable on this host")
 
     with pytest.raises(ExactTreeError, match="symlinks"):
-        snapshot_tree(root)
+        _ = snapshot_tree(root)
 
 
 def test_passthrough_root_is_dynamic_after_exact_authoring(
@@ -215,7 +258,7 @@ def test_passthrough_authoring_requires_matching_source_and_oracle(
     _write(oracle, "external/game.bin", b"different-oracle-data")
 
     with pytest.raises(ExactTreeError, match="passthrough roots differ"):
-        build_exact_plan(
+        _ = build_exact_plan(
             source,
             oracle,
             passthrough_roots=("external",),

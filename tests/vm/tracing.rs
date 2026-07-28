@@ -22,7 +22,7 @@
 // - Allows:
 //   - Inputs: public traced execution APIs and specification fixtures.
 //   - Outputs: exact assertions over observed state, I/O, and rejection
-//     records.
+//   - records.
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when serialized trace formats require independent compatibility.

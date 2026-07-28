@@ -17,28 +17,28 @@
 // Boundary-Contract:
 // - Owns:
 //   - Explicit annotated-source presentation parsing, formatting, and source
-//     maps.
+//   - maps.
 // - Must-Not:
 //   - Redefine raw `.malbolge` loading or bypass selected-profile validation.
 // - Allows:
 //   - Inputs: ASCII annotated source or canonical graphical Malbolge bytes.
 //   - Outputs: canonical loaded bytes, deterministic formatting, source
-//     locations.
+//   - locations.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when rich compiler/decompiler annotations need a separate map
-//     format.
+//   - format.
 // - Merge-When:
 //   - Merge when raw and annotated source admission become one explicit
-//     frontend.
+//   - frontend.
 // - Summary:
 //   - Removes presentation-only whitespace/hash comments before normal loading.
 // - Description:
 //   - Keeps canonical Malbolge bytes authoritative while enabling readable
-//     views.
+//   - views.
 // - Usage:
 //   - Used by explicit annotated VM constructors and future compiler/tooling
-//     views.
+//   - views.
 // - Defaults:
 //   - Hash starts a comment only at line start when followed by space or tab.
 //
@@ -48,6 +48,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Explicit presentation-only syntax for readable Malbolge source.
 

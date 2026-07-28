@@ -1,5 +1,5 @@
 [jig]
-schema_version = 8
+schema_version = 10
 
 [documentation]
 path_style = "lower-kebab"
@@ -19,7 +19,7 @@ sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disad
 [documentation.profile.bibliography-catalog]
 decision_id = "none"
 kind = "markdown"
-paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/bibliography/languages/README.md", "docs/bibliography/organizations-and-projects/README.md", "docs/bibliography/platforms-and-runtimes/README.md", "docs/bibliography/platforms-and-runtimes/accelerators/README.md", "docs/bibliography/platforms-and-runtimes/compiler/README.md", "docs/bibliography/provenance-and-methodology/README.md", "docs/bibliography/provenance-and-methodology/repository/README.md", "docs/bibliography/provenance-and-methodology/research/README.md", "docs/bibliography/publications/README.md", "docs/bibliography/publications/superoptimization/README.md", "docs/bibliography/publications/verification/README.md", "docs/bibliography/specifications-and-standards/README.md", "docs/bibliography/specifications-and-standards/malbolge/README.md", "docs/bibliography/tooling/README.md"]
+paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/bibliography/languages/README.md", "docs/bibliography/legal-and-regulatory/README.md", "docs/bibliography/libraries/README.md", "docs/bibliography/organizations-and-projects/README.md", "docs/bibliography/platforms-and-runtimes/README.md", "docs/bibliography/platforms-and-runtimes/accelerators/README.md", "docs/bibliography/platforms-and-runtimes/compiler/README.md", "docs/bibliography/provenance-and-methodology/README.md", "docs/bibliography/provenance-and-methodology/repository/README.md", "docs/bibliography/provenance-and-methodology/research/README.md", "docs/bibliography/publications/README.md", "docs/bibliography/publications/superoptimization/README.md", "docs/bibliography/publications/verification/README.md", "docs/bibliography/specifications-and-standards/README.md", "docs/bibliography/specifications-and-standards/malbolge/README.md", "docs/bibliography/tooling/README.md"]
 section_mode = "exact"
 sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
 
@@ -147,14 +147,14 @@ mode = "only"
 selectors = ["directory:tests"]
 
 [header]
-adapters = ["c:c:slash-line", "rs:rust:slash-line"]
+adapters = ["c:c:slash-line", "cpp:cpp:slash-line", "cu:cuda:slash-line", "py:python:python", "rs:rust:slash-line", "tex:latex:percent-line"]
 confidential = false
 copyright = "Copyright (c) 2026 Alberto Villa Osorno."
-exempt_paths = ["tools/malbolge/main.c"]
-extensions = ["c", "rs"]
+exempt_paths = ["algorithms/search-pruning-and-state-canonicalization/exact_duplicate.rs", "algorithms/search-pruning-and-state-canonicalization/tests/exact_duplicate.rs", "cli/adapters/doom/windows.c", "linguist/sample.c", "tools/malbolge/main.c"]
+extensions = ["c", "cpp", "cu", "py", "rs", "tex"]
 max_lines = 96
 path_rule = "All paths in this header are repository-root relative."
-required_boundary_fields = ["Allows", "Defaults", "Description", "Merge-When", "Must-Not", "Owns", "Split-When", "Summary", "Usage"]
+required_boundary_fields = ["Owns", "Must-Not", "Allows", "Split-When", "Merge-When", "Summary", "Description", "Usage", "Defaults"]
 require_module_summary = true
 
 [license]
@@ -179,11 +179,23 @@ key = "exclude"
 value = ".cache\n.dependencies\n.git\n.temp\n.venv\nnode_modules\ntarget\n**/__pycache__\n**/.temp"
 reason = "Gitignored *.temp trees are non-authored scratch; Pyright must not validate concurrent disposable files outside the governed source surface."
 
+[linters.override.pyright_venv]
+linter = "pyright"
+key = "venv"
+value = "3.14.6"
+reason = "BasedPyright must resolve the repository-pinned Python environment and its typed pytest dependency instead of the unrelated host interpreter."
+
+[linters.override.pyright_venv_path]
+linter = "pyright"
+key = "venvPath"
+value = ".dependencies/python"
+reason = "The repository-pinned virtual environment is rooted below .dependencies/python and is the authoritative Python analysis environment."
+
 [linters.override.ruff_selector_names]
 linter = "ruff"
 key = "lint.ignore"
-value = "missing-trailing-comma\nincorrect-blank-line-before-class\nmulti-line-summary-second-line\nsingle-line-implicit-string-concatenation"
-reason = "Ruff 0.16 preview rejects the deprecated selector codes required by the reviewed profile; these long names are exact aliases and preserve the same ignored rules."
+value = "missing-trailing-comma\nincorrect-blank-line-before-class\nmulti-line-summary-first-line\nmulti-line-summary-second-line\nsingle-line-implicit-string-concatenation"
+reason = "Ruff 0.16 preview rejects deprecated selector codes, and Jig schema 10 requires standalone opening triple quotes for multiline Python module summaries; these reviewed long-name exceptions preserve the intended rules without weakening canonical header validation."
 
 [linters.override.ruff_test_assert_name]
 linter = "ruff"
@@ -439,7 +451,7 @@ paths = ["docs/README.md", "docs/bibliography/", "docs/legal/", "docs/research/"
 paths = ["integrations/"]
 
 [taxonomy.role.product]
-paths = ["accelerator/", "algorithms/", "benchmarks/", "compatibility/", "compiler/", "doom/", "examples/", "execution/", "interop/", "libc/", "math/", "optimizer/", "runtime/", "src/", "verifier/", "vm/"]
+paths = ["accelerator/", "algorithms/", "benchmarks/", "cli/", "compatibility/", "compiler/", "doom/", "examples/", "execution/", "interop/", "libc/", "linguist/", "math/", "optimizer/", "runtime/", "src/", "verifier/", "vm/"]
 
 [taxonomy.role.root_governance]
 paths = [".clang-format", ".clang-tidy", ".editorconfig", ".gitattributes", ".gitignore", ".markdownlint-cli2.jsonc", ".rustfmt.toml", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "Directory.Build.props", "LICENSE", "README.md", "TODO.md", "clippy.toml", "malbolge.json", "cspell.json", "jig.toml", "msvc-cpp.editorconfig", "pyrightconfig.json", "pytest.ini", "ruff.toml", "rust-toolchain.toml"]

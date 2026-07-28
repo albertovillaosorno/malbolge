@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Version-one capsule framing, fallback visibility, and runtime-boundary
-//     tests.
+//   - tests.
 // - Must-Not:
 //   - Claim scalable execution support or mutate the historical interpreter.
 // - Allows:
@@ -26,20 +26,20 @@
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when another capsule version needs independent compatibility
-//     evidence.
+//   - evidence.
 // - Merge-When:
 //   - Merge when capsule framing becomes ordinary profile-loading evidence.
 // - Summary:
 //   - Proves modern capsule recognition while historical tools see only the
-//     sentinel.
+//   - sentinel.
 // - Description:
 //   - Locks framing bytes, checksum failure, profile preflight, and fallback
-//     halt.
+//   - halt.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Current-profile payloads parse but remain non-executable on classic
-//     runtime.
+//   - runtime.
 //
 // Related documents:
 // - docs/technical/compatibility/historical-interpreter-fallback-capsule.md
@@ -47,6 +47,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Historical-fallback capsule compatibility and runtime-boundary fixtures.
 

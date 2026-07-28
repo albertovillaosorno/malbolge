@@ -27,14 +27,14 @@
 //   - Split when one conformance family requires independent executable evidence.
 // - Merge-When:
 //   - Merge when another C harness owns the same specification evidence.
+// - Summary:
+//   - C-level tests for loader, primitives, instructions, and atomic rejection.
 // - Description:
 //   - Exercises the pure-C VM without calling the Rust implementation.
 // - Usage:
 //   - Compile as a standalone test or export its conformance entry points.
 // - Defaults:
 //   - Uses deterministic classic fixtures and a fixed semantic fingerprint.
-// - Summary:
-//   - C-level tests for loader, primitives, instructions, and atomic rejection.
 //
 // Related documents:
 // - docs/technical/specification/malbolge-1998.md
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Independent C conformance harness for classic Malbolge semantics.
 

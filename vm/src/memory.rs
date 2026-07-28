@@ -25,14 +25,14 @@
 //   - Side effects: mutation only of the owned in-memory image.
 // - Split-When:
 //   - Split when extended memory profiles require independent storage
-//     semantics.
+//   - semantics.
 // - Merge-When:
 //   - Merge when another module owns the same fixed-memory invariant.
 // - Summary:
 //   - Encapsulates the exact 59049-word classic memory image.
 // - Description:
 //   - Keeps memory length invariant private while allowing verifier
-//     construction.
+//   - construction.
 // - Usage:
 //   - Used by the loader, machine, tests, and future differential verification.
 // - Defaults:

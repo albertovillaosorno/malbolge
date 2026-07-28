@@ -22,7 +22,7 @@
 // - Allows:
 //   - Inputs: public logical/batch APIs and normative roundtrip source fixture.
 //   - Outputs: equality assertions over task order, state, I/O, and
-//     diagnostics.
+//   - diagnostics.
 //   - Side effects: test-process host threads and memory only.
 // - Split-When:
 //   - Split when another logical artifact join requires independent fixtures.
@@ -30,10 +30,10 @@
 //   - Merge when batch tests own explicit logical identity and joins directly.
 // - Summary:
 //   - Proves logical identity dominates physical input and host completion
-//     order.
+//   - order.
 // - Description:
 //   - Compares full machine snapshots and joined output across worker
-//     schedules.
+//   - schedules.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic logical task ordering, joining, and independence fixtures.
 

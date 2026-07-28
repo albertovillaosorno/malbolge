@@ -21,7 +21,7 @@
 //   - Perform logging, scheduling, serialization, or mutate guest execution.
 // - Allows:
 //   - Inputs: profile identity, profile-width state, decoded bytes, and
-//     effects.
+//   - effects.
 //   - Outputs: deterministic trace records for verification and future tiers.
 //   - Side effects: none.
 // - Split-When:
@@ -36,7 +36,7 @@
 //   - Emitted by `ProfileMachine::step_traced` and `run_traced` observers.
 // - Defaults:
 //   - Profile tracing is specification-only; legacy behavior stays
-//     classic-only.
+//   - classic-only.
 //
 // Related documents:
 // - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Immutable trace evidence for profile-driven safe Rust execution.
 

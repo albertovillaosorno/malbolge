@@ -128,7 +128,7 @@ files and are not reported as a passing application validation.
   `clang-c-frontend-integration`, `tools-tidy-lowerability-contract`,
   `supported-libc-contract`, and the legal/provenance corpus.
 
-## Completion evidence - 2026-07-28
+**Completion evidence - 2026-07-28.**
 
 - Regenerated transform SHA-256:
   `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.

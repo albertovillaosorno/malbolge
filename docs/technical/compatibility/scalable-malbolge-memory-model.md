@@ -88,15 +88,16 @@ silently enlarges `malbolge-2026.2`.
 
 ### Why Fourteen Trits
 
-The tracked normalized DOOM development oracle currently contains 1,497,009
+The tracked normalized DOOM development oracle currently contains 2,479,932
 source bytes. This is only a lower-bound workload proxy: source bytes are not a
-prediction of compiled Malbolge words.
+prediction of compiled Malbolge words. The evidence artifact also retains the
+1,497,009-byte snapshot used when `malbolge-2026.2` was originally selected.
 
-Thirteen trits provide 1,594,323 words, only 97,314 words beyond that proxy.
-That first mathematically sufficient width is already nearly saturated before
-representing compiled code, runtime state, data, or compiler expansion. The
-project therefore advances exactly one additional native ternary digit. Fourteen
-trits provide 4,782,969 words.
+Thirteen trits provide 1,594,323 words and are now 885,609 words below the
+current source proxy. Fourteen trits provide 4,782,969 words and remain the first
+native ternary width above that proxy, with 2,303,037 words of current headroom.
+The original profile choice is therefore still sufficient under the larger
+tracked snapshot, without changing the immutable `malbolge-2026.2` geometry.
 
 This is not a claim that DOOM now fits after compilation. It is the first
 versioned scalable geometry with defensible workload evidence. Future compiler

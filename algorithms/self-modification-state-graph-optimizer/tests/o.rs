@@ -19,7 +19,7 @@
 //   - Persistent output materialization and exact-branch equality fixtures.
 // - Must-Not:
 //   - Treat digest equality as output equality or change runtime output
-//     semantics.
+//   - semantics.
 // - Allows:
 //   - Inputs: initial committed byte prefixes and append-only byte histories.
 //   - Outputs: exact materialization/equality evidence for persistent output.
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Exact persistent-output fixtures for incremental state identity.
 

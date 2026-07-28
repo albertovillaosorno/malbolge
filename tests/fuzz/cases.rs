@@ -29,7 +29,7 @@
 //   - Merge when one verifier owns identical replay/shrink identity.
 // - Summary:
 //   - Generates replayable valid classic inputs and deterministic smaller
-//     cases.
+//   - cases.
 // - Description:
 //   - Source bytes are valid by construction at every loaded code position.
 // - Usage:
@@ -42,6 +42,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic VM fuzz cases with exact replay and shrink identity.
 

@@ -17,23 +17,23 @@
 // Boundary-Contract:
 // - Owns:
 //   - Semantic profile-memory read-role conformance for every instruction
-//     family.
+//   - family.
 // - Must-Not:
 //   - Infer private transition plans or count diagnostic/instrumentation reads.
 // - Allows:
 //   - Inputs: public profile state construction and traced single-step
-//     execution.
+//   - execution.
 //   - Outputs: exact fetch/data/encryption read records, including rejection.
 //   - Side effects: test-process allocation only.
 // - Split-When:
 //   - Split when a future profile schema adds another semantic memory-read
-//     role.
+//   - role.
 // - Merge-When:
 //   - Merge when read roles become ordinary profile-tracing conformance
-//     fixtures.
+//   - fixtures.
 // - Summary:
 //   - Proves trace read roles come from the normative profile transition
-//     engine.
+//   - engine.
 // - Description:
 //   - Covers all instruction families plus rejected jump encryption atomically.
 // - Usage:
@@ -47,6 +47,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Exact semantic memory-read role fixtures for current-profile execution.
 

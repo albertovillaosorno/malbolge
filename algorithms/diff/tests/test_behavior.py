@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_behavior.py
+# Path:
+#   - algorithms/diff/tests/test_behavior.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic tests for generic behavior-probe admission semantics.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic tests for generic behavior-probe admission semantics."""
 
 import math
@@ -109,7 +152,7 @@ def test_behavior_similarity_fails_immediately_above_observed_score() -> None:
     with pytest.raises(
         BehaviorAdmissionError, match="behavior identity similarity"
     ):
-        require_behavior(_profile(), observations, above)
+        _ = require_behavior(_profile(), observations, above)
 
 
 def test_identity_probe_unavailable_fails_even_when_threshold_could_pass() -> (
@@ -127,7 +170,7 @@ def test_identity_probe_unavailable_fails_even_when_threshold_could_pass() -> (
     with pytest.raises(
         BehaviorAdmissionError, match="identity probe unavailable"
     ):
-        require_behavior(_profile(), unavailable, 0.0)
+        _ = require_behavior(_profile(), unavailable, 0.0)
 
 
 def test_compatibility_probe_failure_rejects_perfect_identity() -> None:
@@ -135,7 +178,7 @@ def test_compatibility_probe_failure_rejects_perfect_identity() -> None:
     with pytest.raises(
         BehaviorAdmissionError, match="compatibility probe failed"
     ):
-        require_behavior(
+        _ = require_behavior(
             _profile(),
             _observations(compatible=False),
             _MINIMUM_BEHAVIOR_SIMILARITY,
@@ -145,7 +188,7 @@ def test_compatibility_probe_failure_rejects_perfect_identity() -> None:
 def test_unknown_bug_state_fails_closed() -> None:
     """Do not guess whether a source correction should be applied."""
     with pytest.raises(BehaviorAdmissionError, match="bug probe unresolved"):
-        require_behavior(
+        _ = require_behavior(
             _profile(),
             _observations(bug_state=BugState.UNKNOWN),
             _MINIMUM_BEHAVIOR_SIMILARITY,

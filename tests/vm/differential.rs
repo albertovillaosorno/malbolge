@@ -21,21 +21,21 @@
 //   - Call C implementation code from Rust or share transition internals.
 // - Allows:
 //   - Inputs: public Rust VM API and specification-derived fingerprint
-//     protocol.
+//   - protocol.
 //   - Outputs: deterministic equality evidence against the independent C VM.
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when fingerprint families require independent lifecycle evidence.
 // - Merge-When:
 //   - Merge when one independent VM owns the same differential protocol.
+// - Summary:
+//   - Recomputes the independent C semantic signature through the Rust VM.
 // - Description:
 //   - Hashes specification-derived behavior through only the public Rust API.
 // - Usage:
 //   - Run by the Cargo VM integration-test target.
 // - Defaults:
 //   - Uses the fixed classic-profile fingerprint protocol and no C FFI.
-// - Summary:
-//   - Recomputes the independent C semantic signature through the Rust VM.
 //
 // Related documents:
 // - docs/technical/runtime/vm/independent-pure-c-malbolge-vm.md
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Differential semantic fingerprint shared with the independent pure-C VM.
 

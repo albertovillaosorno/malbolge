@@ -41,6 +41,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Verification fixtures for portable region effect artifacts.
 

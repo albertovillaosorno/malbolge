@@ -18,7 +18,7 @@
 *.mdc text eol=lf
 *.tex text eol=lf
 *.bib text eol=lf
-*.malbolge text eol=lf
+*.malbolge text eol=lf linguist-language=Malbolge linguist-detectable
 *.editorconfig text eol=lf
 *.props text eol=lf
 

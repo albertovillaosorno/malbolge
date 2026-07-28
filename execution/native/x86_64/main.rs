@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Canonical reviewed x86-64 instruction-byte templates for direct native
-//     IR.
+//   - IR.
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
@@ -26,14 +26,14 @@
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when register allocation/general instruction selection is
-//     introduced.
+//   - introduced.
 // - Merge-When:
 //   - Merge when one reviewed ISA encoder owns all x86-64 native templates.
 // - Summary:
 //   - Encodes the currently reviewed direct x86-64 template family.
 // - Description:
 //   - Supplies bytes only; semantic admission remains in
-//     `execution/native/direct.rs`.
+//   - `execution/native/direct.rs`.
 // - Usage:
 //   - Called by direct native object generation after exact IR-shape selection.
 // - Defaults:
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Reviewed x86-64 instruction templates for direct native execution.
 

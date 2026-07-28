@@ -29,15 +29,15 @@
 //   - Merge when another VM build generator owns identical table generation.
 // - Summary:
 //   - Generates finite classic-Malbolge VM lookup tables without const-eval
-//     cost.
+//   - cost.
 // - Description:
 //   - Streams exact rotate, crazy, decode, and code-phase tables into Rust
-//     source.
+//   - source.
 // - Usage:
 //   - Invoked automatically by Cargo before compiling the VM library.
 // - Defaults:
 //   - Generation uses only fixed 1998-profile constants and deterministic
-//     loops.
+//   - loops.
 //
 // Related documents:
 // - docs/technical/runtime/vm/cpu-vm-table-optimization.md

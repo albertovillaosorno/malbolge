@@ -17,13 +17,13 @@
 // Boundary-Contract:
 // - Owns:
 //   - Trace inertness, profile identity, current EOF, and rejection atomicity
-//     tests.
+//   - tests.
 // - Must-Not:
 //   - Treat trace formatting as semantics or inject private machine state.
 // - Allows:
 //   - Inputs: public profile-driven traced APIs and valid source fixtures.
 //   - Outputs: exact observations over state, I/O, profile, and typed
-//     rejection.
+//   - rejection.
 //   - Side effects: test-process memory only.
 // - Split-When:
 //   - Split when serialized profile traces gain compatibility fixtures.
@@ -31,7 +31,7 @@
 //   - Merge when classic/profile trace evidence shares one width-safe suite.
 // - Summary:
 //   - Proves current-profile tracing is complete, atomic, and observational
-//     only.
+//   - only.
 // - Description:
 //   - Exercises current EOF/output/halt and a real recurrence jump rejection.
 // - Usage:
@@ -45,6 +45,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Profile-driven trace conformance for current scalable Malbolge.
 

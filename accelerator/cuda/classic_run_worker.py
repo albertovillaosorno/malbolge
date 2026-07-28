@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - classic_run_worker.py
+# Path:
+#   - accelerator/cuda/classic_run_worker.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Binary process worker for resident CUDA classic bounded execution.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Binary process worker for resident CUDA classic bounded execution."""
 
 from __future__ import annotations
@@ -44,7 +87,7 @@ class _BinaryReader:
         if end > len(self.data):
             message = "truncated resident protocol payload"
             raise ClassicRunProtocolError(message)
-        value = self.data[self.offset:end]
+        value = self.data[self.offset : end]
         self.offset = end
         return value
 
@@ -164,19 +207,21 @@ def _write_result(
     write: Callable[[bytes], int],
     result: ClassicRunResult,
 ) -> None:
-    _ = write(_u32_bytes(
-        int(result.status),
-        int(result.error),
-        result.accumulator,
-        result.code_pointer,
-        result.data_pointer,
-        result.input_consumed,
-        len(result.output_bytes),
-        int(result.termination),
-        result.error_pointer,
-        result.error_value,
-        result.steps,
-    ))
+    _ = write(
+        _u32_bytes(
+            int(result.status),
+            int(result.error),
+            result.accumulator,
+            result.code_pointer,
+            result.data_pointer,
+            result.input_consumed,
+            len(result.output_bytes),
+            int(result.termination),
+            result.error_pointer,
+            result.error_value,
+            result.steps,
+        )
+    )
     _ = write(_word_bytes(result.memory))
     _ = write(bytes(result.output_bytes))
 

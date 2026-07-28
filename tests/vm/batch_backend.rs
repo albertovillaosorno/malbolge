@@ -17,7 +17,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - CPU fallback and checkpoint-preservation evidence for optional batch
-//     ports.
+//   - ports.
 // - Must-Not:
 //   - Depend on CUDA APIs or treat backend unavailability as guest failure.
 // - Allows:
@@ -30,7 +30,7 @@
 //   - Merge when backend fallback becomes part of ordinary batch fixtures.
 // - Summary:
 //   - Proves neutral backend completion and fallback preserve exact batch
-//     state.
+//   - state.
 // - Description:
 //   - Uses CPU-clone backends to exercise the product routing contract itself.
 // - Usage:

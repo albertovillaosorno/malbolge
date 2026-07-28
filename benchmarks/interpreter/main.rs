@@ -29,12 +29,12 @@
 //   - Merge when another interpreter benchmark owns the same word operations.
 // - Summary:
 //   - Measures rotate and crazy table paths against independent scalar
-//     formulas.
+//   - formulas.
 // - Description:
 //   - Emits raw samples so performance conclusions can retain dispersion data.
 // - Usage:
 //   - Run with `cargo run --release --bin interpreter_benchmark` on an
-//     identified host/toolchain.
+//   - identified host/toolchain.
 // - Defaults:
 //   - Uses fixed sample and repetition counts with black-boxed checksums.
 //

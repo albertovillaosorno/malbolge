@@ -1,5 +1,48 @@
-# Copyright (c) 2026 Alberto Villa Osorno.
-# SPDX-License-Identifier: MIT
+# File:
+#   - test_mapped.py
+# Path:
+#   - algorithms/diff/tests/test_mapped.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - The repository behavior implemented by this source file.
+# - Must-Not:
+#   - Bypass the contracts or authority boundaries of its owning package.
+# - Allows:
+#   - Inputs: values admitted by the file's public or internal interface.
+#   - Outputs: deterministic values or effects declared by that interface.
+#   - Side effects: only those explicitly owned by the implementation.
+# - Split-When:
+#   - Split when one responsibility gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another file owns the exact same responsibility.
+# - Summary:
+#   - Synthetic invariants for canonical units mapped to raw source spans.
+# - Description:
+#   - Implements the responsibility summarized by this module.
+# - Usage:
+#   - Used through the owning package, executable, or document boundary.
+# - Defaults:
+#   - Invalid inputs or broken invariants fail closed.
+#
+# Related documents:
+# - None.
+#
+# Large file:
+#   - false
+#
+
 """Synthetic invariants for canonical units mapped to raw source spans."""
 
 import pytest
@@ -52,7 +95,7 @@ def test_zero_width_marker_is_allowed_between_units() -> None:
 def test_overlapping_or_escaping_units_fail_closed() -> None:
     """Reject ambiguous raw mappings before compatible placement uses them."""
     with pytest.raises(MappedViewError, match="overlap"):
-        MappedView(
+        _ = MappedView(
             raw=b"abc",
             units=(
                 MappedUnit(canonical=b"A", raw_start=0, raw_end=2),
@@ -60,7 +103,7 @@ def test_overlapping_or_escaping_units_fail_closed() -> None:
             ),
         )
     with pytest.raises(MappedViewError, match="escapes"):
-        MappedView(
+        _ = MappedView(
             raw=b"abc",
             units=(MappedUnit(canonical=b"A", raw_start=0, raw_end=4),),
         )

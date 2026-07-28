@@ -27,7 +27,7 @@
 //   - Split when a generalized profile-width radix needs independent ownership.
 // - Merge-When:
 //   - Merge when production state graphs adopt the proved indexed
-//     representation.
+//   - representation.
 // - Summary:
 //   - Adds a four-level 64-way persistent override index above one shared root.
 // - Description:
@@ -36,7 +36,7 @@
 //   - Research candidate composed by `tests/state_graph_research.rs`.
 // - Defaults:
 //   - Every trace `before` value is validated before any overlay update
-//     commits.
+//   - commits.
 //
 // Related documents:
 // - math/algorithms/self-modification-state-graph-optimizer.tex
@@ -44,6 +44,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Four-level persistent radix overlay for current profile memory research.
 

@@ -19,7 +19,7 @@
 //   - Deterministic execution of independent classic/profiled machine batches.
 // - Must-Not:
 //   - Introduce guest-visible parallel semantics or share mutable machine
-//     state.
+//   - state.
 // - Allows:
 //   - Inputs: owned source/machine requests and explicit step budgets/workers.
 //   - Outputs: input-ordered completed or rejected per-instance results.
@@ -43,6 +43,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Deterministic batching for independent classic and profile-driven machines.
 

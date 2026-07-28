@@ -19,23 +19,23 @@
 //   - Exact-region verifier, guard invalidation, and rejection fixtures.
 // - Must-Not:
 //   - Trust recorded certificates without re-execution or use digest-only
-//     guards.
+//   - guards.
 // - Allows:
 //   - Inputs: current-profile exact states and bounded normative execution.
 //   - Outputs: verifier acceptance/rejection evidence for future native
-//     shortcuts.
+//   - shortcuts.
 //   - Side effects: test-process allocation and normative VM execution only.
 // - Split-When:
 //   - Split when broader dependency guards gain separate certification
-//     evidence.
+//   - evidence.
 // - Merge-When:
 //   - Merge when a tiered native engine owns equivalent verifier fixtures.
 // - Summary:
 //   - Proves exact-state region certificates fail closed around
-//     mutations/errors.
+//   - mutations/errors.
 // - Description:
 //   - Verifies current execution, tamper detection, guard invalidation,
-//     rejection.
+//   - rejection.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
@@ -46,6 +46,7 @@
 //
 // Large file:
 //   - false
+//
 
 //! Verification evidence for exact-state guarded future native regions.
 
