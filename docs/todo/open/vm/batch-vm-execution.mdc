@@ -50,8 +50,13 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   and current-profile bounded execution. Current geometry comes from canonical
   Rust profile identity, and full-state differential evidence compares every
   4,782,969 current memory word. Hardware-neutral Rust product ports now route
-  both resident workers with per-item/whole-batch safe-Rust fallback. The retained
-  RTX 4060 current-profile baseline reached about 40.08 VMs/s at complete-snapshot
+  both resident workers with per-item/whole-batch safe-Rust fallback. Reported
+  routing variants now retain one input-ordered execution origin per request:
+  accepted backend completion, safe-Rust fallback, or pre-backend admission
+  rejection. Live classic/current CUDA product tests require at least one accepted
+  backend completion, preventing configured CUDA from being mistaken for actual
+  CUDA execution when every item falls back. The retained RTX 4060
+  current-profile baseline reached about 40.08 VMs/s at complete-snapshot
   batch 32; device-side shared initialization reaches about 51.67 VMs/s, and
   reusable validated profile memory reaches about 93.68 VMs/s. Direct snapshot
   output removes redundant packed host staging. A persistent current-profile

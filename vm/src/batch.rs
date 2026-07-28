@@ -54,9 +54,11 @@ use std::thread;
 
 pub use backend::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
-    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
-    ProfileBatchExecutionBackend, execute_batch_with_backend,
+    BatchExecutionOrigin, BatchExecutionReport, ProfileBatchBackendCompletion,
+    ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
+    execute_batch_with_backend, execute_batch_with_backend_report,
     execute_profile_batch_with_backend,
+    execute_profile_batch_with_backend_report,
 };
 
 use crate::{

@@ -58,7 +58,7 @@ use malbolge::{
     BatchRequest, BatchResult, ExecutionMachine, ExecutionMode, MAX_WORD_VALUE,
     MEMORY_WORDS, Machine, MachineError, MachineIoState, MachineState, Memory,
     Registers, RunOutcome, StepOutcome, Termination, Word, execute_batch,
-    execute_batch_with_backend, historical_profile,
+    execute_batch_with_backend_report, historical_profile,
 };
 
 use crate::{TestResult, check_equal, normalize_result};
@@ -201,12 +201,18 @@ fn cuda_classic_routes_through_product_batch_port() -> TestResult {
     let requests = product_batch_requests()?;
     let expected = execute_batch(requests.clone());
     let mut backend = CudaProductBackend::new();
-    let observed = execute_batch_with_backend(requests, &mut backend);
+    let (observed, report) =
+        execute_batch_with_backend_report(requests, &mut backend);
     if let Some(error) = backend.error {
         return Err(format!("classic CUDA product backend: {error}"));
     }
     if !backend.used_cuda {
         return Ok(());
+    }
+    if report.backend_count() == 0 {
+        return Err(String::from(
+            "classic CUDA worker ran but no completion was accepted",
+        ));
     }
     compare_product_batch(&observed, &expected)
 }

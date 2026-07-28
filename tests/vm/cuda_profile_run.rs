@@ -60,7 +60,7 @@ use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileRegisters, RunOutcome, StepOutcome,
     Termination, current_profile, execute_profile_batch,
-    execute_profile_batch_with_backend,
+    execute_profile_batch_with_backend_report,
 };
 
 use crate::{TestResult, check_equal, normalize_result};
@@ -208,12 +208,18 @@ fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
     let requests = product_profile_requests()?;
     let expected = execute_profile_batch(requests.clone());
     let mut backend = CudaProfileProductBackend::new();
-    let observed = execute_profile_batch_with_backend(requests, &mut backend);
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(requests, &mut backend);
     if let Some(error) = backend.error {
         return Err(format!("profile CUDA product backend: {error}"));
     }
     if !backend.used_cuda {
         return Ok(());
+    }
+    if report.backend_count() == 0 {
+        return Err(String::from(
+            "profile CUDA worker ran but no completion was accepted",
+        ));
     }
     compare_profile_product_batch(&observed, &expected)
 }

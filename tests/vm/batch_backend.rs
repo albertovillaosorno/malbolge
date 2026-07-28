@@ -50,13 +50,14 @@
 
 use malbolge::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
-    BatchRequest, BatchResult, ExecutionMachine, ExecutionMode, MachineIoState,
-    MachineState, MachineStateError, ProfileBatchBackendCompletion,
-    ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
-    ProfileBatchRequest, ProfileBatchResult, ProfileMachineState, RunOutcome,
-    current_profile, execute_batch, execute_batch_with_backend,
-    execute_profile_batch, execute_profile_batch_with_backend,
-    historical_profile,
+    BatchExecutionOrigin, BatchRequest, BatchResult, ExecutionMachine,
+    ExecutionMode, MachineIoState, MachineState, MachineStateError,
+    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
+    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
+    ProfileMachineState, RunOutcome, current_profile, execute_batch,
+    execute_batch_with_backend_report, execute_profile_batch,
+    execute_profile_batch_with_backend,
+    execute_profile_batch_with_backend_report, historical_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -262,9 +263,27 @@ fn classic_backend_route_matches_sequential_complete_state() -> TestResult {
     let requests = classic_requests()?;
     let expected = classic_snapshots(&execute_batch(requests.clone()));
     let mut backend = CpuCloneBackend;
-    let observed =
-        classic_snapshots(&execute_batch_with_backend(requests, &mut backend));
-    check_equal(&observed, &expected, "classic backend complete state")
+    let (results, report) =
+        execute_batch_with_backend_report(requests, &mut backend);
+    let observed = classic_snapshots(&results);
+    check_equal(&observed, &expected, "classic backend complete state")?;
+    let expected_origins: &[BatchExecutionOrigin] = &[
+        BatchExecutionOrigin::Backend,
+        BatchExecutionOrigin::SafeRustAdmissionRejection,
+        BatchExecutionOrigin::Backend,
+    ];
+    check_equal(
+        &report.origins(),
+        &expected_origins,
+        "classic backend origin report",
+    )?;
+    check_equal(&report.backend_count(), &2usize, "classic backend count")?;
+    check_equal(&report.fallback_count(), &0usize, "classic fallback count")?;
+    check_equal(
+        &report.admission_rejection_count(),
+        &1usize,
+        "classic admission rejection count",
+    )
 }
 
 #[test]
@@ -273,31 +292,44 @@ fn unavailable_and_malformed_classic_backends_fall_back_exactly() -> TestResult
     let requests = classic_requests()?;
     let expected = classic_snapshots(&execute_batch(requests.clone()));
     let mut unavailable = UnavailableBackend;
-    let unavailable_results = classic_snapshots(&execute_batch_with_backend(
-        requests.clone(),
-        &mut unavailable,
-    ));
+    let (unavailable_items, unavailable_report) =
+        execute_batch_with_backend_report(requests.clone(), &mut unavailable);
+    let unavailable_results = classic_snapshots(&unavailable_items);
     check_equal(
         &unavailable_results,
         &expected,
         "unavailable backend CPU fallback",
     )?;
+    let expected_fallback_origins: &[BatchExecutionOrigin] = &[
+        BatchExecutionOrigin::SafeRustFallback,
+        BatchExecutionOrigin::SafeRustAdmissionRejection,
+        BatchExecutionOrigin::SafeRustFallback,
+    ];
+    check_equal(
+        &unavailable_report.origins(),
+        &expected_fallback_origins,
+        "unavailable backend origins",
+    )?;
     let mut malformed = MalformedBackend;
-    let malformed_results = classic_snapshots(&execute_batch_with_backend(
-        requests,
-        &mut malformed,
-    ));
+    let (malformed_items, malformed_report) =
+        execute_batch_with_backend_report(requests, &mut malformed);
+    let malformed_results = classic_snapshots(&malformed_items);
     check_equal(
         &malformed_results,
         &expected,
         "malformed backend CPU fallback",
+    )?;
+    check_equal(
+        &malformed_report.origins(),
+        &unavailable_report.origins(),
+        "malformed backend origins match full fallback",
     )
 }
 
 #[test]
 fn rejected_only_batches_never_invoke_optional_backend() -> TestResult {
     let mut classic_backend = CountingBackend { calls: 0 };
-    let classic = execute_batch_with_backend(
+    let (classic, classic_report) = execute_batch_with_backend_report(
         vec![BatchRequest::from_source(
             b"D".to_vec(),
             Vec::new(),
@@ -307,6 +339,13 @@ fn rejected_only_batches_never_invoke_optional_backend() -> TestResult {
         &mut classic_backend,
     );
     check_equal(&classic_backend.calls, &0usize, "classic backend calls")?;
+    let admission_only: &[BatchExecutionOrigin] =
+        &[BatchExecutionOrigin::SafeRustAdmissionRejection];
+    check_equal(
+        &classic_report.origins(),
+        &admission_only,
+        "classic rejected-only origin",
+    )?;
     check_equal(
         &classic.first().and_then(BatchResult::error).is_some(),
         &true,
@@ -314,7 +353,7 @@ fn rejected_only_batches_never_invoke_optional_backend() -> TestResult {
     )?;
 
     let mut profile_backend = CountingBackend { calls: 0 };
-    let profile = execute_profile_batch_with_backend(
+    let (profile, profile_report) = execute_profile_batch_with_backend_report(
         vec![ProfileBatchRequest::from_source(
             current_profile(),
             b"D".to_vec(),
@@ -324,6 +363,11 @@ fn rejected_only_batches_never_invoke_optional_backend() -> TestResult {
         &mut profile_backend,
     );
     check_equal(&profile_backend.calls, &0usize, "profile backend calls")?;
+    check_equal(
+        &profile_report.origins(),
+        &admission_only,
+        "profile rejected-only origin",
+    )?;
     check_equal(
         &profile
             .first()
@@ -340,17 +384,36 @@ fn profile_backend_route_and_unavailability_match_sequential_state()
     let requests = profile_requests();
     let expected = profile_snapshots(&execute_profile_batch(requests.clone()));
     let mut backend = CpuCloneBackend;
-    let observed = profile_snapshots(&execute_profile_batch_with_backend(
-        requests.clone(),
-        &mut backend,
-    ));
+    let (observed_items, observed_report) =
+        execute_profile_batch_with_backend_report(
+            requests.clone(),
+            &mut backend,
+        );
+    let observed = profile_snapshots(&observed_items);
     check_equal(&observed, &expected, "profile backend complete state")?;
+    let expected_profile_origins: &[BatchExecutionOrigin] = &[
+        BatchExecutionOrigin::Backend,
+        BatchExecutionOrigin::SafeRustAdmissionRejection,
+    ];
+    check_equal(
+        &observed_report.origins(),
+        &expected_profile_origins,
+        "profile backend origins",
+    )?;
     let mut unavailable = UnavailableBackend;
-    let fallback = profile_snapshots(&execute_profile_batch_with_backend(
-        requests,
-        &mut unavailable,
-    ));
-    check_equal(&fallback, &expected, "profile backend CPU fallback")
+    let (fallback_items, fallback_report) =
+        execute_profile_batch_with_backend_report(requests, &mut unavailable);
+    let fallback = profile_snapshots(&fallback_items);
+    check_equal(&fallback, &expected, "profile backend CPU fallback")?;
+    let expected_profile_fallback: &[BatchExecutionOrigin] = &[
+        BatchExecutionOrigin::SafeRustFallback,
+        BatchExecutionOrigin::SafeRustAdmissionRejection,
+    ];
+    check_equal(
+        &fallback_report.origins(),
+        &expected_profile_fallback,
+        "profile fallback origins",
+    )
 }
 
 #[test]

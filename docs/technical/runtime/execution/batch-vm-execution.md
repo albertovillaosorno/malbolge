@@ -72,14 +72,24 @@ parallelism or shared guest state. `tests/vm/cuda_run.rs` compares all 59,049
 classic words, while `tests/vm/cuda_profile_run.rs` compares all 4,782,969 current
 words and complete observable state to normative Rust.
 
-`execute_batch_with_backend` and `execute_profile_batch_with_backend` now expose
+`execute_batch_with_backend` and `execute_profile_batch_with_backend` expose
 hardware-neutral best-effort product routes. Source/profile admission stays on
 safe Rust; backends receive immutable prepared-state views, return complete
 checkpoints only for successful items, and may defer individual items or the
 whole batch. Unavailability, malformed result counts, deferred items, or
 inconsistent completion metadata execute from the untouched CPU state instead.
-Live integration tests route both classic and current-profile batches through the
-real CUDA workers and compare complete results with the sequential CPU baseline.
+
+The report variants `execute_batch_with_backend_report` and
+`execute_profile_batch_with_backend_report` preserve those result semantics while
+returning one input-ordered `BatchExecutionOrigin` per request:
+`Backend`, `SafeRustFallback`, or `SafeRustAdmissionRejection`. Counts are exposed
+for each origin. This separates configured backend intent from actual execution;
+a benchmark or accelerator claim must not label a fallback item as backend work.
+The existing non-report APIs remain compatibility wrappers that discard only this
+provenance. Live classic and current-profile CUDA integration tests now require
+at least one completion to be accepted with `Backend` origin before their product
+route counts as exercised, then compare complete results with the sequential CPU
+baseline.
 The original retained current-profile CUDA matrix reached about 40.08 VMs/s at
 batch 32 for a 64-step complete-snapshot workload. Shared-memory device
 replication now raises the retained batch-32 result to about 51.67 VMs/s while
@@ -125,6 +135,10 @@ deterministically without changing guest-visible state silently.
 - `tests/vm/cuda_profile_run.rs` verifies resident `malbolge-2026.2` execution
   against normative `ProfileMachine` across eight edge/real-program cases and every
   one of the 4,782,969 final memory words.
+- `tests/vm/batch_backend.rs` verifies input-ordered origin reports for accepted
+  backend checkpoints, whole-batch/malformed fallback, and admission rejection.
+  Live CUDA product-route tests additionally fail when a CUDA worker runs but no
+  completion is actually accepted by the backend port.
 - CPU performance evidence for the classic batch path only:
   `benchmarks/interpreter/evidence/2026-07-26-batch-windows-x86_64/` contains
   raw samples and exact commit/workload/toolchain/host provenance.

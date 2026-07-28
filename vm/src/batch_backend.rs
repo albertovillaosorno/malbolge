@@ -58,6 +58,64 @@ use crate::{
     RunOutcome, Termination,
 };
 
+/// Actual execution origin recorded for one product-routed batch item.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BatchExecutionOrigin {
+    /// A complete optional-backend checkpoint was accepted.
+    Backend,
+    /// Safe Rust rejected source/profile admission before backend submission.
+    SafeRustAdmissionRejection,
+    /// The request was valid but executed by safe Rust after backend fallback.
+    SafeRustFallback,
+}
+
+/// Input-ordered execution-origin evidence for one routed batch call.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchExecutionReport {
+    origins: Vec<BatchExecutionOrigin>,
+}
+
+impl BatchExecutionReport {
+    /// Returns the number of requests rejected before backend submission.
+    #[must_use]
+    pub fn admission_rejection_count(&self) -> usize {
+        self.origins
+            .iter()
+            .filter(|origin| {
+                **origin == BatchExecutionOrigin::SafeRustAdmissionRejection
+            })
+            .count()
+    }
+
+    /// Returns the number of items completed by the optional backend.
+    #[must_use]
+    pub fn backend_count(&self) -> usize {
+        self.origins
+            .iter()
+            .filter(|origin| **origin == BatchExecutionOrigin::Backend)
+            .count()
+    }
+
+    /// Returns the number of valid items executed by safe-Rust fallback.
+    #[must_use]
+    pub fn fallback_count(&self) -> usize {
+        self.origins
+            .iter()
+            .filter(|origin| **origin == BatchExecutionOrigin::SafeRustFallback)
+            .count()
+    }
+
+    const fn new(origins: Vec<BatchExecutionOrigin>) -> Self {
+        Self { origins }
+    }
+
+    /// Returns one execution origin for every input item, in exact input order.
+    #[must_use]
+    pub fn origins(&self) -> &[BatchExecutionOrigin] {
+        &self.origins
+    }
+}
+
 /// Immutable view of one prepared classic request offered to a backend.
 #[derive(Clone, Copy, Debug)]
 pub struct BatchBackendRequest<'machine> {
@@ -181,6 +239,16 @@ pub fn execute_batch_with_backend(
     requests: Vec<BatchRequest>,
     backend: &mut dyn BatchExecutionBackend,
 ) -> Vec<BatchResult> {
+    execute_batch_with_backend_report(requests, backend).0
+}
+
+/// Executes classic requests and returns exact per-item backend/fallback
+/// origin.
+#[must_use]
+pub fn execute_batch_with_backend_report(
+    requests: Vec<BatchRequest>,
+    backend: &mut dyn BatchExecutionBackend,
+) -> (Vec<BatchResult>, BatchExecutionReport) {
     let slots = prepare_classic(requests);
     let views = classic_views(&slots);
     let attempts = if views.is_empty() {
@@ -202,6 +270,16 @@ pub fn execute_profile_batch_with_backend(
     requests: Vec<ProfileBatchRequest>,
     backend: &mut dyn ProfileBatchExecutionBackend,
 ) -> Vec<ProfileBatchResult> {
+    execute_profile_batch_with_backend_report(requests, backend).0
+}
+
+/// Executes profile requests and returns exact per-item backend/fallback
+/// origin.
+#[must_use]
+pub fn execute_profile_batch_with_backend_report(
+    requests: Vec<ProfileBatchRequest>,
+    backend: &mut dyn ProfileBatchExecutionBackend,
+) -> (Vec<ProfileBatchResult>, BatchExecutionReport) {
     let slots = prepare_profile(requests);
     let views = profile_views(&slots);
     let attempts = if views.is_empty() {
@@ -248,45 +326,64 @@ fn valid_classic_attempts(
 fn collect_classic(
     slots: Vec<ClassicSlot>,
     attempts: Option<Vec<Option<BatchBackendCompletion>>>,
-) -> Vec<BatchResult> {
+) -> (Vec<BatchResult>, BatchExecutionReport) {
     let mut attempt_iter = attempts.into_iter().flatten();
-    slots
-        .into_iter()
-        .map(|slot| match slot {
-            ClassicSlot::Rejected(result) => result,
+    let mut results = Vec::with_capacity(slots.len());
+    let mut origins = Vec::with_capacity(slots.len());
+    for slot in slots {
+        match slot {
+            ClassicSlot::Rejected(result) => {
+                results.push(result);
+                origins.push(BatchExecutionOrigin::SafeRustAdmissionRejection);
+            },
             ClassicSlot::Prepared(request) => {
                 let completion = attempt_iter.next().flatten();
-                accept_classic(request, completion)
+                let (result, origin) = accept_classic(request, completion);
+                results.push(result);
+                origins.push(origin);
             },
-        })
-        .collect()
+        }
+    }
+    (results, BatchExecutionReport::new(origins))
 }
 
 fn accept_classic(
     request: BuiltRequest,
     maybe_completion: Option<BatchBackendCompletion>,
-) -> BatchResult {
+) -> (BatchResult, BatchExecutionOrigin) {
     let Some(completion) = maybe_completion else {
-        return execute_built(request);
+        return (
+            execute_built(request),
+            BatchExecutionOrigin::SafeRustFallback,
+        );
     };
     if !outcome_matches_state(
         completion.outcome,
         completion.state.io().termination(),
         request.step_budget,
     ) {
-        return execute_built(request);
+        return (
+            execute_built(request),
+            BatchExecutionOrigin::SafeRustFallback,
+        );
     }
     let mode = request.machine.mode();
     let profile = request.machine.profile();
     let Ok(machine) =
         ExecutionMachine::from_snapshot(completion.state, mode, profile)
     else {
-        return execute_built(request);
+        return (
+            execute_built(request),
+            BatchExecutionOrigin::SafeRustFallback,
+        );
     };
-    BatchResult::Completed {
-        machine,
-        outcome: completion.outcome,
-    }
+    (
+        BatchResult::Completed {
+            machine,
+            outcome: completion.outcome,
+        },
+        BatchExecutionOrigin::Backend,
+    )
 }
 
 fn prepare_profile(requests: Vec<ProfileBatchRequest>) -> Vec<ProfileSlot> {
@@ -327,26 +424,36 @@ fn valid_profile_attempts(
 fn collect_profile(
     slots: Vec<ProfileSlot>,
     attempts: Option<Vec<Option<ProfileBatchBackendCompletion>>>,
-) -> Vec<ProfileBatchResult> {
+) -> (Vec<ProfileBatchResult>, BatchExecutionReport) {
     let mut attempt_iter = attempts.into_iter().flatten();
-    slots
-        .into_iter()
-        .map(|slot| match slot {
-            ProfileSlot::Rejected(result) => result,
+    let mut results = Vec::with_capacity(slots.len());
+    let mut origins = Vec::with_capacity(slots.len());
+    for slot in slots {
+        match slot {
+            ProfileSlot::Rejected(result) => {
+                results.push(result);
+                origins.push(BatchExecutionOrigin::SafeRustAdmissionRejection);
+            },
             ProfileSlot::Prepared(request) => {
                 let completion = attempt_iter.next().flatten();
-                accept_profile(request, completion)
+                let (result, origin) = accept_profile(request, completion);
+                results.push(result);
+                origins.push(origin);
             },
-        })
-        .collect()
+        }
+    }
+    (results, BatchExecutionReport::new(origins))
 }
 
 fn accept_profile(
     request: BuiltProfileRequest,
     maybe_completion: Option<ProfileBatchBackendCompletion>,
-) -> ProfileBatchResult {
+) -> (ProfileBatchResult, BatchExecutionOrigin) {
     let Some(completion) = maybe_completion else {
-        return execute_profile_built(request);
+        return (
+            execute_profile_built(request),
+            BatchExecutionOrigin::SafeRustFallback,
+        );
     };
     if completion.state.profile() != request.machine.profile()
         || !outcome_matches_state(
@@ -355,12 +462,18 @@ fn accept_profile(
             request.step_budget,
         )
     {
-        return execute_profile_built(request);
+        return (
+            execute_profile_built(request),
+            BatchExecutionOrigin::SafeRustFallback,
+        );
     }
-    ProfileBatchResult::Completed {
-        machine: ProfileMachine::from_snapshot(completion.state),
-        outcome: completion.outcome,
-    }
+    (
+        ProfileBatchResult::Completed {
+            machine: ProfileMachine::from_snapshot(completion.state),
+            outcome: completion.outcome,
+        },
+        BatchExecutionOrigin::Backend,
+    )
 }
 
 fn outcome_matches_state(

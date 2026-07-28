@@ -55,9 +55,15 @@ typed errors; neither changes candidate validity or CPU-reference semantics. The
 CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
 classic and current-profile bounded execution are likewise checked against
-complete normative Rust states. Rust product batch routing now uses replaceable
-backend traits with safe-Rust fallback and live CUDA-worker integration. Retained
-current-profile performance evidence additionally covers the original complete
+complete normative Rust states. Rust product batch routing uses replaceable
+backend traits with safe-Rust fallback and live CUDA-worker integration. Reported
+routes expose per-item actual execution origin, distinguishing accepted backend
+checkpoints from safe-Rust fallback and pre-backend admission rejection. The
+legacy result-only routes remain wrappers that discard only that provenance. Live
+CUDA product tests now require at least one accepted backend completion, so merely
+configuring or invoking CUDA is not enough to claim the product route executed on
+the device. Retained current-profile performance evidence additionally covers the
+original complete
 snapshot baseline, device-side shared initialization, and persistent resident
 sessions; none changes semantic authority or establishes a CPU-relative speedup.
 Candidate evaluation/search/verification-assist ports are now active. The
@@ -105,8 +111,10 @@ fails explicitly without changing correctness rules.
   is geometry-driven rather than fixed to the published 10/14-trit profiles.
 - `tests/vm/batch_backend.rs` proves whole-batch unavailability, malformed
   backend shape, per-item deferral, and complete checkpoint restoration all fall
-  back deterministically to safe Rust. CUDA integration tests exercise the same
-  product ports against the real resident workers.
+  back deterministically to safe Rust, while preserving exact per-item execution
+  origin. CUDA integration tests exercise the same product ports against the real
+  resident workers and fail if the worker runs but no backend completion is
+  accepted.
 - Current-profile post-optimization evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`.
 - `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,

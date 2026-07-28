@@ -61,8 +61,11 @@ directly on CUDA APIs.
   covers compact classic transitions plus resident classic and current-profile
   complete-state bounded runs. A live five-trit/243-word CUDA test additionally
   proves the generated resident kernel is not fixed to canonical 10/14-trit
-  geometry. Hardware-neutral Rust batch ports now route both real resident CUDA
-  workers while safe Rust owns admission and fallback. RTX 4060 current-profile
+  geometry. Hardware-neutral Rust batch ports route both real resident CUDA
+  workers while safe Rust owns admission and fallback. Reported variants retain
+  actual per-item execution origin and live CUDA product tests require at least
+  one accepted backend completion, so configured acceleration cannot be confused
+  with complete CPU fallback. RTX 4060 current-profile
   baseline, shared-initialization, and persistent-session evidence is also
   retained. Geometry-bound `ProfileMemoryImage` inputs now carry reusable
   validation proof without weakening mutable-input checks. Hardware-neutral

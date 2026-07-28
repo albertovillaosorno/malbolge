@@ -320,8 +320,11 @@ The CPU baseline now has deterministic sequential and explicit host-parallel
 execution for classic and profile-driven machines through one scheduler. Retained
 worker-scaling evidence applies to the classic CPU workload only. Retained
 current-profile CUDA evidence now covers complete snapshots and persistent
-resident segments; additional hardware adapters remain separate accelerator
-work.
+resident segments. Product backend routes additionally expose input-ordered
+execution-origin reports distinguishing accepted backend completions, safe-Rust
+fallback, and pre-backend admission rejection; live classic/current CUDA tests
+require at least one accepted backend completion. Additional hardware adapters
+remain separate accelerator work.
 
 ### TODO - Explicit native-tier execution controls
 
@@ -678,9 +681,12 @@ directly on CUDA APIs. The active first slice now provides an immutable exact
 primitive request/result protocol with a mandatory scalar CPU implementation and
 optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
 fail before backend execution. Rust batch APIs now expose replaceable classic and
-profile execution ports with deterministic safe-Rust fallback, and live CUDA
-workers exercise both routes. Hardware-neutral candidate-evaluation, search, and
-verification-assist ports now preserve algorithm identity, seed/budget identity,
+profile execution ports with deterministic safe-Rust fallback. Reported routes
+now distinguish actual accepted backend completions from safe-Rust fallback and
+admission rejection, and live CUDA tests require real backend acceptance rather
+than inferring acceleration from configuration alone. Hardware-neutral
+candidate-evaluation, search, and verification-assist ports preserve algorithm
+identity, seed/budget identity,
 CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
 evaluation now exercises the same port through CPU and live CUDA backends.
 Additional search strategies, CUDA search/verification-assist implementations,

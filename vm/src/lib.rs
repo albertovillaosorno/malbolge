@@ -68,12 +68,14 @@ pub use annotated::{
 };
 pub use batch::{
     BatchBackendCompletion, BatchBackendRequest, BatchError,
-    BatchExecutionBackend, BatchRequest, BatchResult,
-    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
-    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
-    execute_batch, execute_batch_parallel, execute_batch_with_backend,
-    execute_profile_batch, execute_profile_batch_parallel,
-    execute_profile_batch_with_backend,
+    BatchExecutionBackend, BatchExecutionOrigin, BatchExecutionReport,
+    BatchRequest, BatchResult, ProfileBatchBackendCompletion,
+    ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
+    ProfileBatchRequest, ProfileBatchResult, execute_batch,
+    execute_batch_parallel, execute_batch_with_backend,
+    execute_batch_with_backend_report, execute_profile_batch,
+    execute_profile_batch_parallel, execute_profile_batch_with_backend,
+    execute_profile_batch_with_backend_report,
 };
 pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
