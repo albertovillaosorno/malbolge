@@ -1,18 +1,20 @@
 # Quality Comparison Report
 
-> **Historical development snapshot.** The checked-in `metrics.json` and
-> `report.tex` predate the current zero-finding manual oracle and the new
-> source-bound generation architecture. They remain progress evidence only. Final
-> comparison evidence will be regenerated after `quality/main.rs` materializes
-> accepted `out/doom_fixed/` from the lawful root source.
+> **Generated-output acceptance snapshot.** The checked-in `metrics.json` and
+> `report.tex` compare the untouched root source with the source-bound generated
+> `quality/out/doom_fixed/` tree. The compact report is aggregate evidence; the
+> dedicated guest validator and six-target matrix remain the hard acceptance gates.
 
 `generate.py` creates the compact, reproducible before/after report for the
 DOOM quality experiment.
 
-The default comparison is intentionally fixed to two different local trees:
+The accepted comparison is between two different local trees:
 
-- repository-root `doom/` is the untouched local baseline corpus;
-- `../in/doom` is the manually modernized working corpus.
+- repository-root `doom/` is the untouched pinned baseline corpus;
+- `../out/doom_fixed` is the generated normalized corpus.
+
+`generate.py` still defaults to the local oracle for authoring experiments, so final
+acceptance refreshes pass `--after algorithms/doom/quality/out/doom_fixed` explicitly.
 
 The generator runs the pinned LLVM 22.1.8 compiler, formatter, and repository
 clang-tidy policy over both trees. It emits aggregate counts only:

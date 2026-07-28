@@ -44,21 +44,23 @@ and transform emission remain application-agnostic.
 
 **Current implementation.**
 
-- The manual oracle under `algorithms/doom/quality/in/doom/` is the accepted
-  development target for generator work.
-- The oracle currently contains 65 C translation units, passes the real guest
-  validator, and passes 390/390 strict syntax checks across x86-64/AArch64 on
-  Windows, macOS, and Linux. Runtime/manual-play evidence is recorded in the
-  quality README and changelog.
+- The ignored manual oracle remains authoring evidence, but the accepted executable
+  result is now generated `algorithms/doom/quality/out/doom_fixed/`. The generated
+  tree contains 151 files and is byte-identical to the clean oracle.
+- Generated output contains 65 C translation units, passes the real guest validator,
+  and passes 390/390 strict syntax checks across x86-64/AArch64 on Windows, macOS,
+  and Linux. Runtime/manual-play evidence is recorded in the quality README and
+  changelog against the same byte-identical normalized corpus.
 - `algorithms/doom/generator/quality.py` now records the source/oracle/output
   recipe and exploratory 0.50/0.66/0.80 admission values.
 - `algorithms/diff/` now has exact authoring/source-span reconstruction, threshold
   source binding, authenticated payload protection, dynamic passthrough roots, and
   standalone Rust emission. Generic fuzzy identity/behavior/semantic-placement layers
   also exist but are not required for the pinned DOOM quality profile.
-- The checked-in comparison report still describes an older 143,662 to 38,462
-  findings snapshot. It is historical progress evidence and must not be refreshed
-  as final acceptance evidence until generated `out/doom_fixed/` exists.
+- The checked-in comparison evidence now measures root `doom/` versus generated
+  `out/doom_fixed/`: 143,662 to 36,637 unique broad-repository findings (74.50%
+  reduction). This comparison is descriptive; the guest validator and six-target
+  compiler matrix are the strict zero-diagnostic gates.
 
 - The DOOM product source boundary is now an exact pin to
   `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`. Generic fuzzy
@@ -66,10 +68,23 @@ and transform emission remain application-agnostic.
 - `algorithms/doom/generator/quality.py` now requests the implemented exact emitter
   with `passthrough_roots=("data",)`. The static engine source is exact-pinned while
   runtime game data remains external and is copied through dynamically.
-- A clean temporary oracle mirror excluding the detected accidental PowerShell root
-  generated a 4,646,568-byte Rust transform, compiled and ran with Rust GNU 1.97.1,
-  and reproduced the intended 151-file tree exactly. The real ignored oracle remains
-  intentionally untouched and therefore still fails preflight on that unexpected root.
+- The accidental PowerShell root was removed from the ignored oracle after its binary
+  metadata and unexpected root position were verified. The real recipe now generates
+  `quality/main.rs` successfully; its current SHA-256 is
+  `fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`.
+- Provenance review found two rewritten historical string files and two derived runtime
+  language files missing attribution. The ignored authoring corpus was corrected, then
+  the transform/output were regenerated. Final output preserves the source LICENSE,
+  all 124 historical C/header attributions, and explicit derived-language provenance.
+- Repeated generation and materialization are byte-identical; absent or mutated source
+  is rejected before publication; the fixed-point behavior transcript matches source,
+  oracle, and generated output.
+
+**Functional quality generation is accepted.** The TODO remains under `open/` because
+its declared repository prerequisites are not all completed and Jig currently fails
+while parsing schema-8 configuration before normal validation. Those planning/governance
+blocks do not prevent the accepted generated tree from serving as the input to the
+separate amalgamation experiment.
 
 ## Acceptance
 

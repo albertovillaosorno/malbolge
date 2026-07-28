@@ -34,6 +34,9 @@ _STD_MARKER = "use std::"
 _SENTINEL = b"preserve"
 _PASSTHROUGH_AUTHORING = b"authoring-external"
 _PASSTHROUGH_RUNTIME = b"runtime-external"
+_SINGLE_CHUNK_NONCE_MARKER = (
+    'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
+)
 
 
 def _expect(condition: object, message: str) -> None:
@@ -157,6 +160,10 @@ def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
     _expect(first == second, "repeated Rust emission changed")
     _expect(_TARGET_ONLY_TEXT not in first, "patch literal leaked into Rust")
     _expect(_NEW_TARGET_TEXT not in first, "new-file literal leaked into Rust")
+    _expect(
+        _SINGLE_CHUNK_NONCE_MARKER in first,
+        "single-chunk hex constant is not rustfmt-stable",
+    )
     _expect(
         _STD_MARKER in first, "generated runtime lost std-only implementation"
     )

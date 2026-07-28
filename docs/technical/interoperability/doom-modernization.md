@@ -110,6 +110,22 @@ A source revision that already fixes a known original bug may remain compatible
 when the generated postcondition is already true. Bug presence is not an identity
 requirement.
 
+### Generated quality acceptance
+
+The quality recipe now emits the real deterministic `algorithms/doom/quality/main.rs`
+from the exact pinned source revision, with `data/` outside the static source snapshot
+and authenticated as runtime passthrough policy. The generated transform materializes
+151 files under `quality/out/doom_fixed/` and the full tree matches the clean local
+oracle byte-for-byte. Its current transform SHA-256 is
+`fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`.
+
+Generated output passes the 65-unit guest validator and the 390/390 six-target strict
+syntax matrix. Repeated generation/materialization are deterministic, wrong or absent
+source fails before publication, fixed-point behavior matches the authoring source and
+oracle, and provenance checks preserve the source LICENSE plus historical attribution.
+The compact comparison evidence now uses the generated tree as the after corpus.
+
+
 ## Invariants
 
 - The ignored root source is never modified.

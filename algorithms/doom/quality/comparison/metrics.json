@@ -3,47 +3,44 @@
     "corpus": {
       "asset_bytes": 28795076,
       "asset_files": 1,
-      "asset_sha256": "4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711",
-      "c_files": 62,
-      "files": 128,
-      "headers": 64,
-      "nonblank_source_lines": 44026,
-      "physical_source_lines": 50851,
-      "source_bytes": 1497009,
-      "source_sha256": "be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f"
+      "asset_sha256": "23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa",
+      "c_files": 65,
+      "files": 151,
+      "headers": 84,
+      "nonblank_source_lines": 70182,
+      "physical_source_lines": 78605,
+      "source_bytes": 2474438,
+      "source_sha256": "e123684b1a51b66a15921e49c1c0b087db3c60c45ce53c3c77ae674d90e7a478"
     },
-    "path": "algorithms/doom/quality/in/doom",
+    "path": "algorithms/doom/quality/out/doom_fixed",
     "validation": {
       "by_gate": {
-        "clang-format": 1,
-        "clang-linux-arm64": 1,
-        "clang-linux-x86_64": 861,
-        "clang-tidy": 37373,
-        "editorconfig": 222,
-        "interop": 4
+        "clang-format": 661,
+        "clang-tidy": 35603,
+        "editorconfig": 370,
+        "interop": 3
       },
       "by_rule_family": {
-        "analyzer": 321,
-        "bugprone": 381,
-        "compiler": 1723,
-        "format": 1,
+        "analyzer": 20,
+        "bugprone": 278,
+        "format": 661,
         "hicpp": 1553,
-        "interop/other": 2950,
-        "misc": 2350,
-        "modernize": 692,
-        "performance": 5,
-        "readability": 28264,
-        "text": 222
+        "interop/other": 2923,
+        "misc": 1744,
+        "modernize": 742,
+        "performance": 1,
+        "readability": 28345,
+        "text": 370
       },
-      "raw_findings": 94085,
-      "unique_findings": 38462
+      "raw_findings": 96413,
+      "unique_findings": 36637
     }
   },
   "before": {
     "corpus": {
       "asset_bytes": 28795076,
       "asset_files": 1,
-      "asset_sha256": "4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711",
+      "asset_sha256": "23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa",
       "c_files": 72,
       "files": 166,
       "headers": 74,

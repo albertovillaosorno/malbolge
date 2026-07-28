@@ -478,6 +478,41 @@ normalization.
 The quality stage is complete only when the generated multi-translation-unit
 tree is stable, reproducible, and accepted by all required gates.
 
+## Generated Quality Acceptance Evidence
+
+The source-bound quality transform is now generated and executable. The accepted
+artifact is `algorithms/doom/quality/main.rs`, generated deterministically from the
+exact pinned id Software source and the ignored local oracle with `data/` as an
+authenticated runtime passthrough root. Its current SHA-256 is
+`fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`.
+
+Running that transform against the untouched root `doom/` materializes 151 files
+under `quality/out/doom_fixed/`; the complete generated tree is byte-identical to the
+clean local oracle and the WAD bytes come from runtime passthrough rather than static
+transform payload. A second independent materialization matched the first exactly.
+Missing and deliberately mutated source trees were rejected before output publication.
+
+Acceptance was rerun on the generated tree itself:
+
+- 65/65 C translation units pass the real guest validator;
+- 390/390 strict syntax checks are clean across x86-64/AArch64 Linux, Windows, and
+  macOS targets;
+- the fixed-point executable behavior probe matches source, oracle, and generated
+  output at transcript SHA-256
+  `f0b37d59c86384e4ee628ec0e637c60aaa7ca35e5ecdb826687fc35c37d133e2`;
+- the output `LICENSE` is byte-identical to the pinned source license, all 124
+  historical C/header files retain id Software attribution, and the derived runtime
+  language tables carry explicit provenance; and
+- the compact comparison report now measures `doom/` versus generated
+  `out/doom_fixed/`: unique broad-repository findings fall from 143,662 to 36,637
+  (74.50%), while the strict compiler gates used for portability are clean.
+
+The larger runtime/manual-play evidence recorded below was produced against the same
+byte-identical normalized corpus during oracle development, so generation introduces
+no code or data delta relative to that evidence. Jig repository validation remains an
+infrastructure exception because the pinned Jig binary currently rejects the
+repository's schema-8 `change_policy.architecture.mode` key before normal checks run.
+
 ## Completion Criteria
 
 The quality stage is accepted only at zero findings across every applicable

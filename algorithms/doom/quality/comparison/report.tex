@@ -9,17 +9,17 @@
 This report contains aggregate measurements only. Individual diagnostic paths and messages are intentionally excluded so report size does not scale with finding count.
 
 Before corpus: \texttt{doom}.\\
-After corpus: \texttt{algorithms/doom/quality/in/doom}.\\
+After corpus: \texttt{algorithms/doom/quality/out/doom\_fixed}.\\
 Pinned validator toolchain: LLVM/Clang 22.1.8.
 \subsection*{Corpus metrics}
 \begin{tabular}{lrr}
 \toprule Metric & Before & After \\
 \midrule
-C translation units & 72 & 62 \\
-Headers & 74 & 64 \\
-Physical source lines & 59110 & 50851 \\
-Nonblank source lines & 48963 & 44026 \\
-Source bytes & 1333724 & 1497009 \\
+C translation units & 72 & 65 \\
+Headers & 74 & 84 \\
+Physical source lines & 59110 & 78605 \\
+Nonblank source lines & 48963 & 70182 \\
+Source bytes & 1333724 & 2474438 \\
 Local WAD files & 1 & 1 \\
 Local WAD bytes & 28795076 & 28795076 \\
 \bottomrule
@@ -30,38 +30,38 @@ WAD files are reported separately and are excluded from source LOC and source-by
 \begin{tabular}{lrrr}
 \toprule Metric & Before & After & Reduction (\%) \\
 \midrule
-Unique findings & 143662 & 38462 & 73.23 \\
-Raw reports & 201160 & 94085 & 53.23 \\
-Findings / KLOC & 2430.42 & 756.37 & 68.88 \\
+Unique findings & 143662 & 36637 & 74.50 \\
+Raw reports & 201160 & 96413 & 52.07 \\
+Findings / KLOC & 2430.42 & 466.09 & 80.82 \\
 \bottomrule
 \end{tabular}
 \subsection*{Findings by gate}
 \begin{tabular}{lrr}
 \toprule Gate & Before & After \\
 \midrule
-clang-format & 75797 & 1 \\
-clang-linux-arm64 & 3 & 1 \\
-clang-linux-x86\_64 & 2497 & 861 \\
-clang-tidy & 43619 & 37373 \\
-editorconfig & 21720 & 222 \\
-interop & 26 & 4 \\
+clang-format & 75797 & 661 \\
+clang-linux-arm64 & 3 & 0 \\
+clang-linux-x86\_64 & 2497 & 0 \\
+clang-tidy & 43619 & 35603 \\
+editorconfig & 21720 & 370 \\
+interop & 26 & 3 \\
 \bottomrule
 \end{tabular}
 \subsection*{Findings by rule family}
 \begin{tabular}{lrr}
 \toprule Family & Before & After \\
 \midrule
-analyzer & 1 & 321 \\
-bugprone & 540 & 381 \\
-compiler & 4992 & 1723 \\
-format & 75797 & 1 \\
+analyzer & 1 & 20 \\
+bugprone & 540 & 278 \\
+compiler & 4992 & 0 \\
+format & 75797 & 661 \\
 hicpp & 1731 & 1553 \\
-interop/other & 3488 & 2950 \\
-misc & 2807 & 2350 \\
-modernize & 1755 & 692 \\
-performance & 26 & 5 \\
-readability & 30805 & 28264 \\
-text & 21720 & 222 \\
+interop/other & 3488 & 2923 \\
+misc & 2807 & 1744 \\
+modernize & 1755 & 742 \\
+performance & 26 & 1 \\
+readability & 30805 & 28345 \\
+text & 21720 & 370 \\
 \bottomrule
 \end{tabular}
 \subsection*{Visual comparison}
@@ -78,15 +78,15 @@ xtick=data,
 nodes near coords,
 ymin=0,
 ]
-\addplot coordinates {(Before,143662) (After,38462)};
+\addplot coordinates {(Before,143662) (After,36637)};
 \end{axis}
 \end{tikzpicture}
 \end{center}
 \subsection*{Reproducibility}
 Before source SHA-256: \texttt{a7c20cd5bcdad32c87a85d855b2a77c63be5591ebf8186550436e75587d72ec7}.\\
-After source SHA-256: \texttt{be5d56af7c2195582b004687a3dcab8d8e95295f636a75edf3f4dfc05096475f}.\\
-Before asset SHA-256: \texttt{4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711}.\\
-After asset SHA-256: \texttt{4c4be70ada080ac58c139e36c09b4ab89ff53bc06626fa3e417beffe39174711}.\\
+After source SHA-256: \texttt{e123684b1a51b66a15921e49c1c0b087db3c60c45ce53c3c77ae674d90e7a478}.\\
+Before asset SHA-256: \texttt{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
+After asset SHA-256: \texttt{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
 Machine-readable aggregate metrics: \texttt{algorithms/doom/quality/comparison/metrics.json}.
 The generator intentionally stores no per-finding ledger.
 \end{document}

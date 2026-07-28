@@ -69,6 +69,8 @@ def _hex_constant(name: str, data: bytes) -> str:
         encoded[offset : offset + _HEX_CHUNK]
         for offset in range(0, len(encoded), _HEX_CHUNK)
     ]
+    if len(chunks) == 1:
+        return f'const {name}: &str = concat!("{chunks[0]}",);'
     lines = [f"const {name}: &str = concat!("]
     lines.extend(f'    "{chunk}",' for chunk in chunks)
     lines.append(");")
