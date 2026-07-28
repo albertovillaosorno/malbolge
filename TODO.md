@@ -768,9 +768,15 @@ validated exact input at the primitive boundary. CPU consumes that proof directl
 CUDA prepared execution retains one proof-bound input/output allocation and rebuilds
 only for a different proof identity. Ordinary CUDA remains one-shot. Observable
 session counters and both prepared benchmarks require one build, 16 evaluations,
-15 reuses, and 59,049 resident rotate words. Post-commit performance evidence is
-pending; primitive arithmetic remains the CPU boundary and output
-materialization/selection the next prepared-search boundary. Synthesis/guided
+15 reuses, and 59,049 resident rotate words. Retained resident evidence records a
+46.232 ms CPU prepared median and 34.132 ms CUDA prepared median: CUDA is 1.355x
+faster in the same run and 1.679x faster than its 57.296 ms pre-resident baseline.
+Control routes are slower by 14.7% CPU ordinary, 7.2% CPU prepared, and 17.2% CUDA
+ordinary, so those changes are retained as run-context noise. The CUDA backend
+phase falls from 32.264 to 9.922 ms (3.252x), but complete CUDA phase total changes
+from 55.300 to 55.910 ms because proposal selection rises from 22.913 to 46.331 ms.
+Proposal selection/membership validation is now the next measured boundary.
+Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -827,9 +833,12 @@ and backend evaluation from 67.202 to 32.264 ms (2.083x). Ordinary CUDA regresse
 3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Prepared CUDA now
 retains proof-bound input and output buffers across repeated calls; ordinary CUDA
 still allocates/transfers per call. Session counters prove build/reuse identity and
-benchmarks fail unless one full-domain session is reused exactly. Post-commit
-performance evidence is pending; output materialization/selection now precedes
-resident or fused evaluation-selection. Broader hardware evidence,
+benchmarks fail unless one full-domain session is reused exactly. Retained CUDA
+prepared throughput is 34.132 ms, 1.679x faster than the pre-resident baseline and
+1.355x faster than same-run CPU prepared. CUDA backend evaluation improves 3.252x,
+while complete phase total does not improve because selection rises to 46.331 ms.
+Proposal selection/membership validation now precedes resident or fused
+evaluation-selection. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer

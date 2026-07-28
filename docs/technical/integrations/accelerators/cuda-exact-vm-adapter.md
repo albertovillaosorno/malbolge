@@ -199,8 +199,12 @@ fails explicitly without changing correctness rules.
   proof-bound device input/output allocation and host output buffer. The same proof
   reuses that session; a different proof releases/rebuilds it, and close releases it
   before module/context teardown. Ordinary evaluation keeps per-call allocation and
-  transfer. Benchmarks require explicit one-build/15-reuse counters. Post-commit
-  performance evidence is pending. Broader live-hardware evidence, synthesis/search
+  transfer. Benchmarks require explicit one-build/15-reuse counters. Retained CUDA
+  prepared median is 34.132 ms, 1.679x faster than the 57.296 ms pre-resident
+  baseline and 1.355x faster than same-run CPU prepared. CUDA backend evaluation
+  falls from 32.264 to 9.922 ms (3.252x). Complete CUDA phase total changes from
+  55.300 to 55.910 ms because selection rises to 46.331 ms; no total phase speedup
+  is claimed. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

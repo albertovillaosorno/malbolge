@@ -205,5 +205,9 @@ The active prepared CUDA implementation now retains one proof-bound input/output
 allocation across repeated calls. Both prepared benchmark programs emit and check
 `cuda_prepared_session`: the full-domain protocol must observe one build, 16
 successful evaluations, 15 identity reuses, and 59,049 resident rotate words.
-These scripts are ready for a post-commit rerun; the retained records above remain
-the pre-resident baseline until that evidence is checked in.
+Retained post-commit evidence is under
+`evidence/2026-07-28-resident-primitive-search-rtx4060/` and
+`evidence/2026-07-28-resident-primitive-search-phase-profile-rtx4060/`. CUDA
+prepared reaches 34.132 ms versus 46.232 ms CPU prepared, while CUDA backend
+evaluation falls to 9.922 ms. The complete CUDA phase profile does not improve
+because proposal selection rises to 46.331 ms; that negative result is retained.

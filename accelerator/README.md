@@ -110,7 +110,13 @@ validation proof. CPU consumes it directly; CUDA prepared execution keeps one
 proof-bound input/output allocation resident and rebuilds only when proof identity
 changes. Ordinary CUDA stays one-shot. `CudaPreparedPrimitiveStats` and the prepared
 benchmarks require one build, 16 evaluations, 15 reuses, and 59,049 resident rotate
-words. Post-commit performance evidence is pending. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+words. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-resident-primitive-search-rtx4060/`
+records 34.132 ms CUDA prepared versus 46.232 ms CPU prepared: a 1.355x same-run
+CUDA advantage and 1.679x CUDA improvement over the pre-resident baseline. The
+phase sibling lowers CUDA backend evaluation 3.252x to 9.922 ms, but complete phase
+total stays at 55.910 ms because selection rises to 46.331 ms. Proposal
+selection/membership validation is the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

@@ -118,8 +118,11 @@ than prepared CPU. `PreparedPrimitiveBatch` now seals validated immutable input 
 the exact primitive port. CPU consumes it directly; CUDA retains one proof-bound
 input/output session and rebuilds only for different proof identity. Ordinary
 execution remains one-shot. Explicit session statistics make residence observable.
-Post-commit performance evidence is pending; resident/fused search remains later
-work.
+Retained CUDA prepared throughput is 34.132 ms versus 46.232 ms CPU prepared,
+showing a 1.355x same-run CUDA advantage. CUDA backend evaluation improves 3.252x,
+while complete phase total does not improve because selection rises to 46.331 ms.
+Proposal selection/membership validation is the next boundary; resident/fused
+search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

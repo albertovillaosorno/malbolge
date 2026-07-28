@@ -85,7 +85,9 @@ baseline for accelerator implementations.
   path. Retained CPU prepared median is 43.129 ms (1.792x better), and backend
   evaluation improves 2.801x. Ordinary CPU regresses 6.6%. Exact primitive
   preparation now seals validation once, and the CPU prepared port consumes that
-  proof directly. Post-commit evidence is pending; primitive arithmetic is next.
+  proof directly. The resident-session run records 46.232 ms CPU prepared, 7.2%
+  slower amid broader control regressions; no new CPU speedup is claimed. Primitive
+  arithmetic and proposal selection are next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

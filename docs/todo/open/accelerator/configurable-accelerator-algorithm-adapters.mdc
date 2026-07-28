@@ -107,7 +107,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   preparation now carries sealed validation proof. CUDA prepared execution retains
   one proof-bound input/output allocation, rebuilds on proof identity change, and
   reports build/evaluation/reuse/resident counters. Ordinary execution remains
-  one-shot. Post-commit evidence is pending. Synthesis/guided
+  one-shot. Retained CUDA prepared median is 34.132 ms versus 46.232 ms CPU
+  (1.355x), and CUDA improves 1.679x over its pre-resident baseline. CUDA backend
+  evaluation improves 3.252x, but total phase time does not because selection rises
+  to 46.331 ms. Proposal selection/membership validation is next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

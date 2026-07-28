@@ -114,7 +114,9 @@ batches.
   remains 32.8% slower than CPU. Prepared exact primitives now retain one
   proof-bound device input/output allocation, rebuild only for different proof
   identity, and expose build/evaluation/reuse/resident counters. Ordinary evaluation
-  remains one-shot. Post-commit performance evidence and synthesis/search strategies
-  remain open.
+  remains one-shot. Retained CUDA prepared median is 34.132 ms, 1.679x faster than
+  the pre-resident baseline and 1.355x faster than same-run CPU. Backend evaluation
+  improves 3.252x, but total phase time does not because selection rises to
+  46.331 ms. Proposal selection and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

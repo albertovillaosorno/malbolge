@@ -118,7 +118,12 @@ candidate strategy. CPU prepared evaluation consumes it directly; CUDA keeps one
 proof-bound input/output allocation resident and rebuilds only for a different
 proof object. Ordinary execution remains one-shot. Session statistics and benchmark
 assertions expose actual build/reuse counts rather than inferring residence from
-timing. Post-commit evidence is pending. Resident or
+timing. Retained resident evidence records 34.132 ms CUDA prepared versus
+46.232 ms CPU prepared (1.355x CUDA/CPU) and a 1.679x improvement over the prior
+CUDA prepared baseline. CUDA backend evaluation improves 3.252x to 9.922 ms, but
+complete phase total stays flat/slightly worse because proposal selection rises to
+46.331 ms. Proposal selection/membership validation is the next neutral boundary.
+Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -178,6 +183,10 @@ fails explicitly without changing correctness rules.
   and its phase-profile sibling retain 60 throughput plus 150 phase samples.
   Prepared medians improve 1.792x CPU and 1.592x CUDA; ordinary-route regressions
   and the remaining 32.8% CUDA disadvantage are retained explicitly.
+- `benchmarks/accelerator/evidence/2026-07-28-resident-primitive-search-rtx4060/`
+  and its phase sibling retain 60 throughput plus 150 phase samples and explicit
+  session counters. CUDA prepared reaches 34.132 ms, 1.355x faster than same-run
+  CPU; CUDA backend evaluation improves 3.252x, while total phase time does not.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

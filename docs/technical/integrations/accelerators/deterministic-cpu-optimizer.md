@@ -119,8 +119,10 @@ fails explicitly without changing correctness rules.
   median falls from 77.309 to 43.129 ms (1.792x), and backend evaluation from
   53.907 to 19.246 ms (2.801x). Ordinary CPU regresses 6.6% because it constructs
   the proof locally. `PreparedPrimitiveBatch` now seals validation once and the CPU
-  prepared port consumes it without a second scan. Post-commit comparative evidence
-  is pending; primitive arithmetic remains the next CPU target.
+  prepared port consumes it without a second scan. In the resident-session run CPU
+  prepared records 46.232 ms, 7.2% slower than the prior run amid broader control
+  regressions; no CPU improvement is claimed. Primitive arithmetic and proposal
+  selection remain CPU targets.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References
