@@ -105,8 +105,8 @@ The major responsibility surfaces are:
   research;
 - `algorithms/` for executable research algorithms with mirrored academic
   records under `docs/research/algorithms/`;
-- `interop/` for product interoperability engineering such as the optional
-  user-supplied DOOM experiment;
+- `algorithms/doom/` for the optional user-supplied DOOM interoperability
+  suite;
 - `examples/` for project-owned examples plus a provenance-only historical
   museum that does not vendor unlicensed third-party programs; and
 - `tools/` for repository tools including the untouched historical interpreter,
@@ -221,36 +221,49 @@ See the source-verification ledger under
 
 ## Real-world stress tests
 
-DOOM is an optional interoperability and performance demonstration, not the
-scientific benchmark authority. A user may place a lawful source checkout in the
-ignored `doom/` input directory. Planned tooling then produces:
+DOOM is an optional interoperability stress test, not the project's scientific
+benchmark authority or primary architecture. It demonstrates progress on a
+large real C program while the parametric benchmark arena remains responsible
+for comparing compiler algorithms scientifically.
+
+The current source-level result is complete:
 
 ```text
-user DOOM source
+lawful user DOOM source
       |
       v
-quality recipe + source-bound diff
+source-bound quality transform -> normalized 151-file C tree
       |
       v
-algorithms/doom/quality/out/doom_fixed/
+source-bound amalgamation transform -> canonical doom.c
       |
       v
-optional amalgamation recipe + source-bound diff
-      |
-      v
-algorithms/doom/amalgamate/out/doom_amalgamated.c
-      |
-      v
-c2malbolge
-      |
-      v
-doom.malbolge
+future C-to-Malbolge lowering -> doom.malbolge
 ```
 
-The repository does not distribute DOOM source or game data. Generated artifacts
-retain whatever upstream obligations apply to their inputs. DOOM exists to prove
-that the pipeline can survive a large, old, inconvenient real C codebase; the
-parametric benchmark arena exists to distinguish algorithms scientifically.
+Current durable generated algorithms:
+
+- `algorithms/doom/quality/main.rs`: 5,223,836 bytes (4.98 MiB),
+  SHA-256 `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`;
+- `algorithms/doom/amalgamate/main.rs`: 5,744,748 bytes (5.48 MiB),
+  SHA-256 `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`.
+
+The ignored canonical output is `doom.c`: 2,505,975 bytes (2.39 MiB),
+79,313 lines, with SHA-256:
+
+`e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`
+
+It passes the current guest-C profile, a strict
+six-target Clang matrix, sanitizer builds, deterministic multi-TU/single-TU
+comparison, and native manual play.
+
+That is not yet complete Malbolge compatibility. The remaining work begins at
+C-to-Malbolge lowering, capability linking, generation of `doom.malbolge`, and
+execution/performance verification under Malbolge semantics.
+
+The repository does not distribute DOOM source or game data. See
+[`algorithms/doom/README.md`](algorithms/doom/README.md) for responsibilities,
+exact regeneration commands, artifact sizes, and validation evidence.
 
 ## Self-hosting
 

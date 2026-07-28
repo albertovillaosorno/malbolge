@@ -1,124 +1,83 @@
 # DOOM Amalgamation Algorithm
 
+## Status
+
+Accepted exact source stage. C-to-Malbolge lowering remains separate and open.
+
 ## Purpose
 
-This is the optional second DOOM source-transformation stage. It consumes only an
-accepted normalized multi-file C tree from quality and materializes one
-deterministic canonical C translation artifact without changing program
-semantics.
+This second DOOM source transformation consumes only the accepted normalized
+multi-file C tree from quality and materializes one deterministic canonical
+`doom.c` without changing program semantics.
 
-The final implementation is not a hand-written concatenator. The planned
-authoring flow reuses `algorithms/diff/`: a thin DOOM recipe compares accepted
-normalized input with a local semantically validated single-file oracle and emits
-source-bound `amalgamate/main.rs`.
-
-Pinned Clang evidence remains mandatory because a generic tree diff cannot decide
-C translation-unit semantics.
+The implementation is not a hand-written concatenator. A deterministic C-aware
+oracle builder establishes the accepted single-TU form; the thin
+`generator/amalgamate.py` recipe then uses generic `algorithms/diff/` source
+binding to emit `amalgamate/main.rs`.
 
 ## Local Development Layout
 
 ```text
 algorithms/doom/
-|-- generator/              # future amalgamation recipe/domain policy
+|-- generator/
+|   |-- amalgamation_oracle.py
+|   `-- amalgamate.py
 `-- amalgamate/
     |-- main.rs             # generated source-bound transform
-    |-- in/
-    |   `-- doom/           # accepted normalized input; ignored
-    `-- out/
-        `-- doom_amalgamated.c
+    |-- in/oracle/doom.c    # ignored authoring evidence
+    `-- out/doom.c          # ignored materialized product
 ```
 
-The input is **not** original DOOM. It is accepted generated output from the
-quality stage. The future single-file oracle is local authoring evidence and is
-not required by the generated transform.
+The source is `quality/out/doom_fixed/linuxdoom-1.10/`, not original DOOM and
+not WAD data. The generated transform does not require the local single-file
+oracle at materialization time.
 
-## Authoring Flow
+## Accepted Artifact
 
-1. Complete quality and materialize accepted `quality/out/doom_fixed/`.
-2. Build the normalized multi-file tree and record exact preprocessing, linkage,
-   symbol, provenance, and native behavior evidence.
-3. Construct and validate a local single-file oracle that preserves those
-   semantics.
-4. Configure a thin DOOM amalgamation recipe with normalized source, local
-   single-file oracle, domain probes, and admission policy.
-5. Use `algorithms/diff/` to emit source-bound `amalgamate/main.rs`.
-6. Materialize `out/doom_amalgamated.c` from the exact normalized baseline and
-   require byte identity with the local oracle.
-7. Compile both normalized multi-file and materialized single-file forms and run
-   differential behavior/provenance validation.
-8. Re-run recipe generation and materialization to prove determinism.
+- generated transform SHA-256:
+  `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`;
+- `doom.c` SHA-256:
+  `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`;
+- 2,505,975 bytes and 79,313 lines;
+- 65 translation units and 19 private bindings;
+- 83 unique embedded project headers;
+- 148 expanded includes, 564 duplicate-header elisions, one guarded cycle
+  elision.
 
-For later compatible normalized inputs, byte identity to the historical oracle is
-not mandatory when preserving legitimate upstream differences. All semantic and
-validation postconditions still are.
+Repeated recipe generation and materialization are byte-identical. Empty and
+mutated normalized source trees are rejected before publication. The accepted
+output is byte-identical to the ignored oracle and to
+`tests/applications/doom/out/doom.c`.
 
-## Why Plain Concatenation Is Incorrect
+## Semantic Evidence
 
-Independent C translation units can contain:
+Pinned Clang remains the authority for the C surface. The materialized file:
 
-- translation-unit-specific macro/preprocessor state;
-- declarations visible only in one unit;
-- internal-linkage names that collide after merging;
-- ordering dependencies between declarations and definitions;
-- file-local static objects/functions;
-- required copyright, license, and source provenance.
-
-Where these affect semantics, pinned Clang preprocessing/AST evidence or an
-explicitly equivalent semantic model is required. Generic diff machinery only
-encodes/reconstructs the accepted transformation; it does not prove C semantics.
+- passes strict Clang 22.1.8 with `-Werror` on Linux, Windows, and macOS for
+  x86-64 and AArch64;
+- builds with ASan+UBSan and links with the Windows host adapter;
+- produces the same deterministic framebuffer/audio transcript as the 65-TU
+  normalized build: `92ff55046afd3976`, `4571f707b08d56cd`,
+  `912da30aff88aaed`;
+- is byte-identical to the native artifact manually played for roughly 20
+  minutes without reproducing the reported autoaim crash.
 
 ## Source Binding
 
-The generated transform must retain the same source-bound property as quality:
-possessing `main.rs` alone is insufficient to materialize the accepted
-single-file source. Insufficient compatible normalized input fails before target
-publication.
+Possessing `main.rs` alone is insufficient to materialize `doom.c`. The exact
+normalized source snapshot must match and recover the authenticated payload.
+Wrong, missing, or mutated source fails before output publication.
 
-The source-binding mechanism is generic `algorithms/diff` responsibility. DOOM
-policy must not implement a second private version.
+## Malbolge Boundary
 
-## Separation from Quality
-
-Quality and amalgamation remain separate algorithms. The normalized multi-file
-tree is valid output in its own right, and future C frontends may accept multiple
-translation units directly. Single-file C must not become an accidental global
-architectural requirement.
-
-## Pipeline Position
-
-```text
-user-supplied DOOM
-        |
-        v
-quality recipe + diff -> quality/main.rs
-        |
-        v
-normalized multi-file C
-        |
-        v
-amalgamation recipe + diff -> amalgamate/main.rs
-        |
-        v
-canonical doom_amalgamated.c
-        |
-        v
-later C-to-Malbolge pipeline
-```
-
-The accepted `doom_amalgamated.c` is eventually copied byte-for-byte to the
-ignored `tests/applications/doom/out/doom.c` end-to-end fixture.
+Passing guest-C and Clang validation means `doom.c` is accepted input for the
+future compiler. It does **not** prove complete Malbolge compatibility. That
+requires C-to-Malbolge lowering, capability linking, generation of
+`doom.malbolge`, and execution under Malbolge semantics.
 
 ## Repository Boundary
 
-User-owned source, local oracles, and generated DOOM source remain ignored. The
-repository versions generator infrastructure, thin recipes, emitted transforms,
-contracts, tests, and aggregate evidence.
-
-Relevant authorities:
-
-- `docs/technical/tooling/source-bound-diff-generator.md`;
-- `docs/technical/interoperability/doom-amalgamation.md`;
-- `docs/technical/interoperability/doom-modernization.md`;
-- `docs/todo/open/applications/`
-  `user-supplied-doom-source-interoperability-generator.mdc`;
-- `docs/legal/adr/legal-research-and-repository-boundary.md`.
+User-owned source, WADs, local oracles, generated C, native executables,
+and debug
+logs remain ignored. The repository versions the recipes, builder, generated
+source-bound Rust transform, tests, contracts, and aggregate evidence.

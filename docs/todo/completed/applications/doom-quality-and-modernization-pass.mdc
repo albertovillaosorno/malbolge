@@ -1,6 +1,6 @@
 ---
 id: "doom-quality-and-modernization-pass"
-status: "active"
+status: "completed"
 lane: "12"
 area: "applications"
 task: "TODO - DOOM quality and modernization pass"
@@ -71,7 +71,7 @@ and transform emission remain application-agnostic.
 - The accidental PowerShell root was removed from the ignored oracle after its binary
   metadata and unexpected root position were verified. The real recipe now generates
   `quality/main.rs` successfully; its current SHA-256 is
-  `fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`.
+  `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
 - Provenance review found two rewritten historical string files and two derived runtime
   language files missing attribution. The ignored authoring corpus was corrected, then
   the transform/output were regenerated. Final output preserves the source LICENSE,
@@ -80,11 +80,12 @@ and transform emission remain application-agnostic.
   is rejected before publication; the fixed-point behavior transcript matches source,
   oracle, and generated output.
 
-**Functional quality generation is accepted.** The TODO remains under `open/` because
-its declared repository prerequisites are not all completed and Jig currently fails
-while parsing schema-8 configuration before normal validation. Those planning/governance
-blocks do not prevent the accepted generated tree from serving as the input to the
-separate amalgamation experiment.
+**Functional quality generation is accepted and this application task is
+completed.** Generic compiler, lowerability, legal-corpus, and Jig-governance work
+remains tracked by their own records rather than keeping the finished DOOM source
+stage open. The pinned Jig binary still fails before repository analysis on the
+schema-8 `change_policy.architecture.mode` key; that is retained as a governance
+tooling exception, not reported as a passing validation.
 
 ## Acceptance
 
@@ -126,3 +127,12 @@ separate amalgamation experiment.
 - Prerequisite completion evidence includes `source-bound-diff-generator`,
   `clang-c-frontend-integration`, `tools-tidy-lowerability-contract`,
   `supported-libc-contract`, and the legal/provenance corpus.
+
+## Completion evidence - 2026-07-28
+
+- Regenerated transform SHA-256: `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+- Exact materialization: 151/151 files equal to the accepted oracle.
+- Guest-C validation: 65/65 translation units.
+- Strict portability matrix: 390/390 source TUs and final 6/6 single-TU targets.
+- Final sanitizer fixes and roughly 20 minutes of manual play passed on the
+  byte-identical canonical C artifact.

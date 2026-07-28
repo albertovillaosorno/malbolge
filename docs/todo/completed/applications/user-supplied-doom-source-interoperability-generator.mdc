@@ -1,6 +1,6 @@
 ---
 id: "user-supplied-doom-source-interoperability-generator"
-status: "pending"
+status: "completed"
 lane: "13"
 area: "applications"
 task: "TODO - User-supplied DOOM source interoperability generator"
@@ -20,7 +20,7 @@ scope:
   - "algorithms/doom/generator/"
   - "algorithms/doom/amalgamate/main.rs"
   - "algorithms/doom/quality/out/doom_fixed/"
-  - "algorithms/doom/amalgamate/out/doom_amalgamated.c"
+  - "algorithms/doom/amalgamate/out/doom.c"
   - "tests/applications/doom/out/doom.c"
 validation:
   - "jig validate --root ."
@@ -31,9 +31,9 @@ validation:
 
 After quality output is accepted, use `algorithms/diff/` a second time to learn a
 source-bound deterministic amalgamation transform from the normalized multi-file
-DOOM tree and a local accepted single-file oracle. A thin DOOM recipe will emit
-`algorithms/doom/amalgamate/main.rs`; that transform will materialize one
-canonical `algorithms/doom/amalgamate/out/doom_amalgamated.c`.
+DOOM tree and a local accepted single-file oracle. The thin DOOM recipe emits
+`algorithms/doom/amalgamate/main.rs`; that transform materializes one
+canonical `algorithms/doom/amalgamate/out/doom.c`.
 
 The generic diff engine does not replace semantic amalgamation validation. DOOM
 and C-specific policy must still use pinned Clang evidence to resolve
@@ -60,7 +60,7 @@ DOOM C artifact through the Malbolge pipeline.
   materialize the single-file target.
 - The normalized multi-file native build and the generated single-file native
   build are compared differentially before admission.
-- The accepted `doom_amalgamated.c` is copied byte-for-byte to
+- The accepted `doom.c` is copied byte-for-byte to
   `tests/applications/doom/out/doom.c` for the end-to-end pipeline fixture.
 - Repeated recipe generation and materialization are deterministic.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/`.
@@ -70,10 +70,22 @@ DOOM C artifact through the Malbolge pipeline.
 - Expected durable artifact surface: `algorithms/diff/`, the DOOM generator
   recipe, `algorithms/doom/amalgamate/main.rs`, and relevant contracts/tests.
 - Local ignored evidence: accepted `quality/out/doom_fixed/`, the single-file
-  oracle, `amalgamate/out/doom_amalgamated.c`, and application runtime outputs.
+  oracle, `amalgamate/out/doom.c`, and application runtime outputs.
 - Required evidence: exact reconstruction hashes, normalized/amalgamated
   manifests, Clang semantic/provenance mapping, native differential traces,
   source-binding rejection tests, and Jig.
 - Prerequisite completion evidence: `doom-quality-and-modernization-pass`,
   `source-bound-diff-generator`, `clang-c-frontend-integration`, and the
   legal/provenance corpus.
+
+## Completion evidence - 2026-07-28
+
+- Generated transform SHA-256: `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`.
+- Canonical `doom.c` SHA-256: `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`.
+- Exact repeated materialization and local fixture identity: pass.
+- Empty and mutated source rejection before publication: pass.
+- Strict Clang six-target matrix: 6/6 with zero diagnostics.
+- Multi-TU/single-TU deterministic framebuffer/audio transcript: exact match.
+- ASan+UBSan build, Windows adapter link, and byte-identical manual play: pass.
+- This completion ends at C. C-to-Malbolge generation and execution remain open
+  under compiler, capability-runner, and generated-performance TODOs.

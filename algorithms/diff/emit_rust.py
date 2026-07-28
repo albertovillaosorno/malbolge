@@ -16,9 +16,11 @@ if TYPE_CHECKING:
     from algorithms.diff.source_binding import ThresholdBinding
 
 _RUNTIME_TEMPLATE = Path(__file__).with_name("rust_runtime.rs")
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_OUTPUT_PATH = Path("generated/main.rs")
 _BEGIN = "// BEGIN GENERATED CONSTANTS"
 _END = "// END GENERATED CONSTANTS"
-_HEX_CHUNK = 4096
+_HEX_CHUNK = 64
 
 
 class RustEmissionError(ValueError):
@@ -97,7 +99,73 @@ def _constants(plan: ProtectedExactPlan, profile: str) -> str:
     ))
 
 
-def emit_rust_transform(plan: ProtectedExactPlan, profile: str) -> str:
+def _display_path(output_path: Path) -> str:
+    if not output_path.is_absolute():
+        return output_path.as_posix()
+    try:
+        return output_path.resolve().relative_to(_REPOSITORY_ROOT).as_posix()
+    except ValueError:
+        return output_path.name
+
+
+def _generated_header(output_path: Path) -> str:
+    display_path = _display_path(output_path)
+    return "\n".join((
+        "// File:",
+        f"//   - {Path(display_path).name}",
+        "// Path:",
+        f"//   - {display_path}",
+        "//",
+        "// Copyright:",
+        "//   - Copyright (c) 2026 Alberto Villa Osorno.",
+        "// SPDX-License-Identifier:",
+        "//   - MIT",
+        "// Confidential:",
+        "//   - false",
+        "// License-File:",
+        "//   - LICENSE",
+        "// Path-Rule:",
+        "//   - All paths in this header are repository-root relative.",
+        "//",
+        "// Boundary-Contract:",
+        "// - Owns:",
+        "//   - One generated exact source-bound transformation.",
+        "// - Must-Not:",
+        "//   - Materialize target bytes without admitted source evidence.",
+        "//   - Be hand-edited; regenerate it through the owning recipe.",
+        "// - Allows:",
+        "//   - Inputs: one admitted source tree and output directory.",
+        "//   - Outputs: one authenticated deterministic target tree.",
+        "//   - Side effects: transactional target publication.",
+        "// - Split-When:",
+        "//   - Split when another transform has a distinct source contract.",
+        "// - Merge-When:",
+        "//   - Merge only when source identity and target semantics match.",
+        "// - Summary:",
+        "//   - Generated standalone source-bound exact transform.",
+        "// - Description:",
+        "//   - Recovers protected target bytes from admitted source evidence.",
+        "// - Usage:",
+        "//   - `<transform> <source-root> <output-root>`.",
+        "// - Defaults:",
+        "//   - Fails closed before publishing mismatched or partial output.",
+        "//",
+        "// Related documents:",
+        "// - algorithms/diff/README.md",
+        "// - docs/technical/tooling/source-bound-diff-generator.md",
+        "//",
+        "// Large file:",
+        "//   - true",
+        "",
+        "",
+    ))
+
+
+def emit_rust_transform(
+    plan: ProtectedExactPlan,
+    profile: str,
+    output_path: Path = _DEFAULT_OUTPUT_PATH,
+) -> str:
     """Render one standalone Rust exact-transform source file.
 
     Returns:
@@ -117,7 +185,8 @@ def emit_rust_transform(plan: ProtectedExactPlan, profile: str) -> str:
         message = "Rust runtime template lost generated-constant markers"
         raise RustEmissionError(message)
     end += len(_END)
-    rendered = template[:start] + _constants(plan, profile) + template[end:]
+    body = template[:start] + _constants(plan, profile) + template[end:]
+    rendered = _generated_header(output_path) + body
     return rendered.replace("\r\n", "\n")
 
 
@@ -127,7 +196,7 @@ def write_rust_transform(
     output_path: Path,
 ) -> None:
     """Write one generated transform atomically."""
-    source = emit_rust_transform(plan, profile)
+    source = emit_rust_transform(plan, profile, output_path)
     parent = output_path.parent
     parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_name(f".{output_path.name}.temp")

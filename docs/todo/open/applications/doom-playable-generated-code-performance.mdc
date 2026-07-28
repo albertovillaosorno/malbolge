@@ -35,7 +35,9 @@ under the modern runtime. Measure compile latency, frame pacing, input latency,
 VM instructions per game tick, memory footprint, and generated-code size rather
 than declaring success merely because the program eventually runs. Preserve the
 same game semantics while optimizing; performance-specific substitutions require
-explicit equivalence evidence.
+explicit equivalence evidence. The accepted native `doom.c` is the comparison
+oracle; no performance claim starts until the compiler generates
+`doom.malbolge` and the runtime executes that artifact under Malbolge semantics.
 
 ## Acceptance
 

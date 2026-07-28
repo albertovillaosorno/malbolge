@@ -1,6 +1,5 @@
-// Copyright (c) 2026 Alberto Villa Osorno.
-// SPDX-License-Identifier: MIT
-//! Standalone std-only runtime template for emitted exact source-bound transforms.
+//! Standalone std-only runtime template for emitted exact source-bound
+//! transforms.
 
 use std::collections::BTreeSet;
 use std::env;

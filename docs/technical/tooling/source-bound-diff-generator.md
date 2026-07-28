@@ -276,8 +276,9 @@ oracle mirror excluding the already-detected accidental PowerShell root produced
 4,646,568-byte Rust transform. Rust GNU 1.97.1 compiled and executed it successfully
 against the untouched root `doom/`; the output contained 151 files and matched the
 clean mirror byte-for-byte, while the WAD was copied from the runtime input. The
-temporary mirror, transform, executable, and output were deleted afterward. The real
-oracle remains fail-closed until its unexpected root entry is removed explicitly.
+temporary mirror, transform, executable, and output were deleted afterward. The
+unexpected entry was subsequently removed explicitly, and the accepted real oracle
+and transform were regenerated.
 
 Shamir coefficients and the payload key are derived deterministically to preserve
 byte-identical generation. The payload key schedule includes a digest over the
@@ -388,7 +389,7 @@ algorithms/doom/generator/quality.py
 algorithms/doom/quality/main.rs
 ```
 
-A later consumer reuses the same generic engine for deterministic amalgamation:
+The second exact consumer now reuses the same generic engine for deterministic amalgamation:
 normalized multi-file DOOM plus a local accepted single-file oracle produces the
 source-bound transformation used to materialize canonical `doom.c`.
 

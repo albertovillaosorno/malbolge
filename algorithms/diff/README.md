@@ -250,12 +250,16 @@ source anchors, authenticates/decrypts the RFC 8439 literal stream, reconstructs
 instruction into a staging tree, verifies the complete target snapshot, and publishes
 only by a final rename. It never requires Python or the local oracle at runtime.
 
-Synthetic tests compile emitted source with Rust 1.97.1 and `-D warnings`, execute it,
-verify exact target reconstruction, reject a changed source before output, reject an
-existing output root, and verify that target-only plaintext strings do not occur in the
-emitted source. Exact emission deliberately uses raw source bytes because exact mode
-already requires a byte-identical source snapshot. A future compatible/fuzzy emitter
-must instead reproduce the consumer-selected canonical identity and behavior gates.
+Synthetic tests compile emitted source with Rust 1.97.1 and `-D warnings`,
+execute it, verify exact target reconstruction, reject a changed source before
+output, reject an existing output root, and verify that target-only plaintext
+strings do not occur in the emitted source. The emitter also writes the canonical
+repository file/boundary header and splits protected hex payloads into 64-character
+chunks. Regression tests require every generated physical line to remain at or
+below 80 characters; generated consumers do not need a line-length exception.
+Exact emission deliberately uses raw source bytes because exact mode already
+requires a byte-identical source snapshot. A future compatible/fuzzy emitter must
+instead reproduce the consumer-selected canonical identity and behavior gates.
 
 Required negative tests include:
 

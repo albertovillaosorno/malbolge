@@ -77,11 +77,11 @@ scoring. Generic behavior admission and portable process-probe execution now als
 exist. The DOOM domain has its first executable fixed-point identity probe, while
 `algorithms/diff` now also protects exact-plan oracle literals behind source-bound
 authenticated payload recovery and emits the exact plan as standalone std-only Rust.
-`write_algorithm()` now exposes explicit exact and compatible modes. Exact mode is a
-working public generation path; the DOOM `quality.py` recipe deliberately selects
-`COMPATIBLE`, which remains fail-closed until the emitted runtime owns canonical
-identity, admission, and broader behavior/bug evidence. This prevents a working exact
-baseline from silently narrowing the product contract.
+`write_algorithm()` now exposes explicit exact and compatible modes. At this point in
+the investigation the DOOM `quality.py` recipe deliberately selected `COMPATIBLE`,
+which remained fail-closed until the emitted runtime could own canonical identity,
+admission, and broader behavior/bug evidence. The final pinned product profile later
+moved to the implemented `EXACT_BASELINE` emitter with `data/` passthrough.
 
 The standalone Rust exact-transform smoke is now end to end. The generated source
 was 4,655,376 bytes, compiled warning-free with Rust 1.97.1, ran directly against
@@ -115,7 +115,7 @@ evidence.
 The source-bound recipe now generates the real checked-in `quality/main.rs`. After a
 provenance pass restored attribution on rewritten `dstrings.*` and derived
 `d_language.*`, deterministic regeneration produced transform SHA-256
-`fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`. Running it
+`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`. Running it
 against untouched root `doom/` materializes 151 files that match the clean local oracle
 byte-for-byte, with `data/` supplied by authenticated runtime passthrough.
 
@@ -1285,6 +1285,23 @@ The repository-local Python under `.dependencies/python` is preferred for these
 scripts so the experiments do not silently depend on whichever Python happens to
 be installed globally.
 
-Commit history is not acceptance evidence by itself. Quality remains open until
-the generated source-bound transformation reproduces and validates the manual
-oracle from admitted source.
+Commit history is not acceptance evidence by itself. The generated
+source-bound quality transform now reproduces and validates the accepted oracle
+from admitted source. Its current SHA-256 is `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+
+## Final source-level acceptance
+
+The final sanitizer/playtest pass added explicit fixed-point wrap semantics,
+corrected two signed-shift paths, fixed the periodic tangent-table boundary, and
+stabilized mouse focus/capture plus execution-source titles. The regenerated
+quality transform remains deterministic and materializes the same accepted
+151-file tree.
+
+The source-bound amalgamation stage is now complete as well. It generates
+`amalgamate/main.rs` and materializes one canonical `doom.c` with SHA-256
+`e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`. Multi-TU and single-TU deterministic framebuffer/audio hashes are
+identical, and the byte-identical native artifact was played for roughly 20
+minutes without reproducing the reported long-range autoaim crash.
+
+This closes source quality and amalgamation. It does not claim that DOOM has been
+compiled to or executed as Malbolge; that remains the next pipeline stage.

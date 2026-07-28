@@ -1,78 +1,173 @@
 # DOOM Algorithm Suite
 
-`algorithms/doom/` owns the repository's DOOM application algorithms. DOOM is a
-demanding interoperability corpus, not a new repository architecture layer and
-not a general-purpose source port.
+`algorithms/doom/` is an optional large-program interoperability suite. It is
+not the main architecture of the repository and it is not a general-purpose
+DOOM source port. Its job is to prove that the source-bound C pipeline can
+survive a real, old, inconvenient codebase.
 
-The user-supplied source remains external and ignored. Durable repository content
-contains only algorithms, recipes, contracts, tests, and aggregate evidence
-needed to reproduce admitted transformations.
+## Progress at a glance
 
-## Layout
-
-```text
-algorithms/doom/
-|-- generator/
-|   |-- quality.py
-|   `-- doom.py
-|-- quality/
-|   |-- main.rs
-|   |-- in/
-|   `-- out/
-|-- amalgamate/
-|   |-- main.rs
-|   |-- in/
-|   `-- out/
-`-- adapters/
-```
-
-`generator/` contains thin DOOM recipes and domain policy. Its C identity adapter
-selects Linux DOOM C/header source only; opaque assets such as the WAD do not enter
-structural lineage scoring. Generic source-tree matching, source binding, and
-transformation emission belong in `algorithms/diff/`.
-
-`quality/` is the first product stage. Its ignored `in/doom/` tree is the manual
-modernization oracle used while generating `quality/main.rs`; its ignored
-`out/doom_fixed/` tree is the normalized result materialized from the lawful
-root `doom/` source.
-
-`amalgamate/` is a later optional stage. It consumes only accepted quality output
-and eventually uses the same generic diff infrastructure to generate the
-source-bound transformation that materializes one canonical `doom.c`.
-
-`adapters/` reserves application-side capability integration that must remain
-outside the guest. Native runner implementations still belong to the runtime or
-platform responsibility that owns them.
-
-## Pipeline
+The source-level pipeline is complete:
 
 ```text
-local root doom/
-      |
-      v
-generator/quality.py + algorithms/diff
-      |
-      v
+lawful ignored root doom/
+        |
+        v
+quality.py + algorithms/diff
+        |
+        v
 quality/main.rs
-      |
-      v
+        |
+        v
 quality/out/doom_fixed/
-      |
-      v
-future amalgamation recipe + algorithms/diff
-      |
-      v
+        |
+        v
+amalgamation_oracle.py
+        |
+        v
+amalgamate.py + algorithms/diff
+        |
+        v
 amalgamate/main.rs
-      |
-      v
-one canonical doom.c
+        |
+        v
+amalgamate/out/doom.c
 ```
 
-The exact baseline used to author a generated transform must reproduce its local
-oracle byte-for-byte. Compatible later source variants may preserve legitimate
-upstream differences only when all configured postconditions and validation gates
-still pass.
+The next stage is still open: compile the accepted `doom.c` to
+`doom.malbolge`, link the versioned host capabilities, execute it under
+Malbolge semantics, and measure generated-code performance.
 
-See `docs/technical/tooling/source-bound-diff-generator.md`,
-`docs/technical/interoperability/doom-modernization.md`, and
-`docs/technical/interoperability/doom-amalgamation.md`.
+## Responsibilities
+
+| Component | Responsibility |
+| --- | --- |
+| `generator/doom.py` | Exact DOOM source identity, provenance, and probes. |
+| `generator/quality.py` | Configure source-to-normalized-tree generation. |
+| `quality/main.rs` | Materialize the accepted 151-file normalized tree. |
+| `generator/amalgamation_oracle.py` | Build the ignored single-TU oracle. |
+| `generator/amalgamate.py` | Configure normalized-tree-to-`doom.c`. |
+| `amalgamate/main.rs` | Materialize exactly one canonical `doom.c`. |
+| `cli/adapters/doom/` | Native debugging and capability scaffolds. |
+| `algorithms/diff/` | Generic binding, protection, and Rust emission. |
+
+The generated `main.rs` files are not hand-edited. Their headers identify the
+real artifact path and their payload literals are wrapped to the repository's
+80-column limit.
+
+## Required local inputs
+
+These inputs are intentionally Git ignored:
+
+- `doom/`: exact pinned id Software source plus optional external `data/`;
+- `algorithms/doom/quality/in/doom/`: accepted modernization oracle;
+- `algorithms/doom/amalgamate/in/oracle/doom.c`: accepted single-TU oracle;
+- WADs, generated C trees, native executables, sanitizer logs, and play data.
+
+No WAD bytes are stored in either generated Rust transform.
+
+## Regenerate the algorithms
+
+Run from the repository root with the repository Python:
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+$python = ".dependencies/python/3.14.6/Scripts/python.exe"
+
+& $python -m algorithms.doom.generator.quality
+& $python -m algorithms.doom.generator.amalgamation_oracle
+& $python -m algorithms.doom.generator.amalgamate
+```
+
+The commands have separate responsibilities:
+
+1. `quality` verifies the exact pinned source/oracle and rewrites
+   `algorithms/doom/quality/main.rs`.
+2. `amalgamation_oracle` consumes accepted generated quality output and rewrites
+   only the ignored local `in/oracle/doom.c` authoring evidence.
+3. `amalgamate` binds the normalized source/oracle pair and rewrites
+   `algorithms/doom/amalgamate/main.rs`.
+
+Running each recipe twice must produce identical SHA-256 values.
+
+## Materialize the generated outputs
+
+Compile the generated transforms with the pinned Rust toolchain. The example
+uses clean temporary output roots, so it is safe when canonical local outputs
+already exist:
+
+```powershell
+$rustRoot = "C:/Repos/mit/jig/.dependencies/rust"
+$rust = "$rustRoot/stable-1.97.1-x86_64-pc-windows-gnu/bin/rustc.exe"
+
+Remove-Item .temp/doom-quality-output -Recurse -Force `
+  -ErrorAction SilentlyContinue
+Remove-Item .temp/doom-amalgamate-output -Recurse -Force `
+  -ErrorAction SilentlyContinue
+
+& $rust --edition 2024 -D warnings -C opt-level=2 `
+  algorithms/doom/quality/main.rs `
+  -o .temp/doom-quality-transform.exe
+
+& .temp/doom-quality-transform.exe `
+  doom `
+  .temp/doom-quality-output
+
+& $rust --edition 2024 -D warnings -C opt-level=2 `
+  algorithms/doom/amalgamate/main.rs `
+  -o .temp/doom-amalgamate-transform.exe
+
+& .temp/doom-amalgamate-transform.exe `
+  .temp/doom-quality-output/linuxdoom-1.10 `
+  .temp/doom-amalgamate-output
+```
+
+The quality transform publishes one normalized tree. The amalgamation transform
+publishes one file named `doom.c`. Existing output roots are rejected rather
+than merged.
+
+## Current artifact identity
+
+### Quality transform
+
+- Path: `algorithms/doom/quality/main.rs`
+- Size: 5,223,836 bytes (4.98 MiB)
+- Lines: 73,276
+- SHA-256:
+  `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`
+
+### Amalgamation transform
+
+- Path: `algorithms/doom/amalgamate/main.rs`
+- Size: 5,744,748 bytes (5.48 MiB)
+- Lines: 80,510
+- SHA-256:
+  `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`
+
+### Canonical C output
+
+- Path: `algorithms/doom/amalgamate/out/doom.c` (ignored)
+- Size: 2,505,975 bytes (2.39 MiB)
+- Lines: 79,313
+- SHA-256:
+  `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`
+
+The two Rust artifacts have a maximum physical line length of 80 characters.
+The canonical `doom.c`, its ignored oracle, repeated materialization, and the
+ignored application fixture are byte-identical.
+
+## Validation summary
+
+- 65/65 normalized C translation units pass the guest-C validator.
+- Final `doom.c` passes strict Clang 22.1.8 on six target combinations.
+- Generated Rust compiles with Rust 1.97.1 and `-D warnings`.
+- Multi-TU and single-TU framebuffer/audio transcripts are identical.
+- ASan+UBSan and the Windows adapter build successfully.
+- Roughly 20 minutes of native play did not reproduce the autoaim crash.
+- Missing or mutated source fails before target publication.
+
+This proves source-level guest-C readiness. It does not prove complete Malbolge
+compatibility because `doom.malbolge` has not been generated or executed.
+
+See `amalgamate/CHANGELOG.md`, `quality/CHANGELOG.md`, and the contracts
+under `docs/technical/interoperability/` for detailed history and evidence.

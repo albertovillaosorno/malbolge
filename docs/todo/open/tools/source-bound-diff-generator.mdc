@@ -163,8 +163,8 @@ format.
 - Expected durable artifact surface: `algorithms/diff/`,
   `docs/technical/tooling/source-bound-diff-generator.md`, and synthetic tests.
 - First integration consumer: `algorithms/doom/generator/quality.py`.
-- Future second consumer: the DOOM amalgamation recipe that emits the canonical
-  single-file C transformation.
+- Second integration consumer: `algorithms/doom/generator/amalgamate.py`,
+  which emits the canonical source-bound single-file C transformation.
 - Required evidence: exact reconstruction hashes, threshold-boundary fixtures,
   wrong/no-source rejection, behavior-probe fixtures, deterministic generation,
   source-binding negative tests, and `jig validate --root .`.

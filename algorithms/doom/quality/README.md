@@ -484,7 +484,7 @@ The source-bound quality transform is now generated and executable. The accepted
 artifact is `algorithms/doom/quality/main.rs`, generated deterministically from the
 exact pinned id Software source and the ignored local oracle with `data/` as an
 authenticated runtime passthrough root. Its current SHA-256 is
-`fbf261eae2747b87f43945bc15e057cc7f9177b658f825e3b56fc85a59c66fe0`.
+`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
 
 Running that transform against the untouched root `doom/` materializes 151 files
 under `quality/out/doom_fixed/`; the complete generated tree is byte-identical to the
@@ -506,6 +506,14 @@ Acceptance was rerun on the generated tree itself:
 - the compact comparison report now measures `doom/` versus generated
   `out/doom_fixed/`: unique broad-repository findings fall from 143,662 to 36,637
   (74.50%), while the strict compiler gates used for portability are clean.
+
+A final sanitizer-driven follow-up regenerated the transform at SHA-256
+`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81` after correcting explicit fixed-point wrap/shift paths and adding
+state-aware mouse capture plus artifact-level execution telemetry. The accepted
+normalized output remains byte-identical to its oracle. The generated downstream
+`doom.c` has SHA-256 `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1` and is validated separately by the completed
+amalgamation stage. Guest-C acceptance is source-level readiness, not proof that
+`doom.malbolge` has been generated or executed.
 
 The larger runtime/manual-play evidence recorded below was produced against the same
 byte-identical normalized corpus during oracle development, so generation introduces
@@ -589,6 +597,6 @@ tests, manifests, and validation logic.
 Relevant authorities:
 
 - `docs/technical/interoperability/doom-modernization.md`
-- `docs/todo/open/applications/doom-quality-and-modernization-pass.mdc`
+- `docs/todo/completed/applications/doom-quality-and-modernization-pass.mdc`
 - `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
 - `docs/legal/adr/legal-research-and-repository-boundary.md`

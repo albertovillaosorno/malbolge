@@ -32,9 +32,9 @@ explicitly excluded from that code pin.
 but DOOM quality no longer needs fuzzy source admission. `validate_authoring_oracle()`
 requires the normalized oracle root to contain exactly `data/`, `linuxdoom-1.10/`,
 and `LICENSE`. Unexpected authoring artifacts fail closed rather than becoming
-target-only payload. The current local oracle intentionally remains untouched; its
-unexpected `System.Management.Automation.Internal.Host.InternalHost` root entry is
-therefore detected and rejected until the authoring corpus itself is corrected.
+target-only payload. The previously detected accidental PowerShell root entry was
+removed from the ignored authoring corpus before the accepted transform was
+regenerated.
 
 The domain facade now also exposes the first executable behavior program.
 `behavior_probes.py` defines a Windows x86-64 / pinned LLVM 22.1.8 fixed-point
@@ -45,15 +45,23 @@ DOOM source. Additional compatibility/bug probes stay in the DOOM domain. Generi
 matching, probe execution, source binding, reconstruction, and Rust emission remain
 under `algorithms/diff/`.
 
-`amalgamate.py` reserves the second consumer. It remains intentionally
-unconfigured until normalized quality output and a semantically accepted local
-single-file oracle exist. At that point the same generic engine can generate
-`amalgamate/main.rs` without teaching `algorithms/diff` anything about DOOM.
+`amalgamation_oracle.py` deterministically constructs the ignored accepted
+single-TU authoring oracle from generated quality output. It preserves source
+provenance, embeds project headers once, keeps system headers external, orders
+macro-destructive translation units last, and isolates known private-name
+collisions.
 
-The intended invocation is from the repository root:
+`amalgamate.py` is the completed second consumer. It binds accepted
+`quality/out/doom_fixed/linuxdoom-1.10/` source to the ignored one-file oracle
+and generates `algorithms/doom/amalgamate/main.rs` through the same generic exact
+emitter used by quality.
+
+The intended invocations are from the repository root:
 
 ```text
 python -m algorithms.doom.generator.quality
+python -m algorithms.doom.generator.amalgamation_oracle
+python -m algorithms.doom.generator.amalgamate
 ```
 
 `algorithms/diff` now implements exact authoring, source-span reuse, exact source

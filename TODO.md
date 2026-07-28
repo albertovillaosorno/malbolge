@@ -1044,39 +1044,9 @@ fragile whole-tree hash. The emitted transformation alone must not be sufficient
 to materialize target-only source; wrong/no-source and behavior-only clones fail
 closed before target publication. Consumer thresholds are calibrated technical
 policy, not legal rules. Generic tests use only repository-owned synthetic trees.
-The first consumer is `algorithms/doom/generator/quality.py`; the future DOOM
-amalgamation stage is the second consumer.
-
-### TODO - DOOM quality and modernization pass
-
-Treat the ignored manually modernized
-`algorithms/doom/quality/in/doom/` tree as the accepted local oracle and use the
-thin `algorithms/doom/generator/quality.py` recipe plus `algorithms/diff/` to
-generate `algorithms/doom/quality/main.rs`. The root `doom/` tree remains the
-lawful source input and is never modified. On the exact authoring baseline,
-materialization into `algorithms/doom/quality/out/doom_fixed/` must reproduce the
-oracle byte-for-byte; compatible later variants may preserve legitimate upstream
-changes only when all postconditions and validation gates pass. The current oracle
-has 65 C translation units, passes the real validator and 390/390 six-target
-strict checks, and has runtime/manual-play evidence. Quality remains open because
-the generic diff engine and generated materialization are not implemented yet.
-Do not regenerate the stale comparison snapshot as final evidence until generated
-`out/doom_fixed/` exists.
-
-### TODO - User-supplied DOOM source interoperability generator
-
-After generated quality output is accepted, reuse `algorithms/diff/` with a thin
-DOOM amalgamation recipe to generate source-bound
-`algorithms/doom/amalgamate/main.rs` from the normalized multi-file tree and a
-local accepted single-file oracle. Pinned Clang remains the semantic authority for
-translation-unit boundaries, internal-linkage collisions, preprocessing
-environments, declarations, includes, and provenance. The generated transform
-materializes one deterministic
-`algorithms/doom/amalgamate/out/doom_amalgamated.c`; the normalized multi-file and
-single-file native builds are compared differentially before the accepted artifact
-is copied byte-for-byte to `tests/applications/doom/out/doom.c`. This is the
-planned second source-bound diff consumer and the source-level handoff toward the
-later single-file C-to-Malbolge pipeline.
+The first two exact consumers are `algorithms/doom/generator/quality.py` and
+`algorithms/doom/generator/amalgamate.py`. Compatible/fuzzy emission remains open
+as generic research infrastructure.
 
 ### TODO - Cross-platform native capability runners
 

@@ -8,7 +8,9 @@ import hashlib
 import os
 from pathlib import Path
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed local compiler/executable argv; shell disabled.
+
+# Used only with fixed local argv and shell=False.
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
 
 import pytest
@@ -34,6 +36,10 @@ _STD_MARKER = "use std::"
 _SENTINEL = b"preserve"
 _PASSTHROUGH_AUTHORING = b"authoring-external"
 _PASSTHROUGH_RUNTIME = b"runtime-external"
+_MAX_GENERATED_LINE_LENGTH = 80
+_GENERATED_PATH = "generated/main.rs"
+_BOUNDARY_HEADER = "// Boundary-Contract:"
+_LARGE_FILE_HEADER = "// Large file:\n//   - true\n\n//!"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
@@ -115,10 +121,9 @@ def _rustc() -> Path:
     return path
 
 
-def _compile(
-    rust_source: Path, executable: Path
-) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit rustc argv; no shell.
+def _compile(rust_source: Path, executable: Path) -> sp.CompletedProcess[bytes]:
+    # Fixed local compiler argv; no shell interpolation.
+    return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [
             str(_rustc()),
             "--edition",
@@ -139,8 +144,9 @@ def _run(
     executable: Path,
     source: Path,
     output: Path,
-) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - generated executable argv; no shell.
+) -> sp.CompletedProcess[bytes]:
+    # Generated executable plus explicit paths; no shell interpolation.
+    return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [str(executable), str(source), str(output)],
         check=False,
         capture_output=True,
@@ -166,6 +172,18 @@ def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
     )
     _expect(
         _STD_MARKER in first, "generated runtime lost std-only implementation"
+    )
+    _expect(first.startswith("// File:\n//   - main.rs\n"), "header missing")
+    _expect(
+        f"//   - {_GENERATED_PATH}" in first,
+        "generated header path is incorrect",
+    )
+    _expect(_BOUNDARY_HEADER in first, "boundary header missing")
+    _expect(_LARGE_FILE_HEADER in first, "large-file flag missing")
+    longest = max(len(line) for line in first.splitlines())
+    _expect(
+        longest <= _MAX_GENERATED_LINE_LENGTH,
+        f"generated Rust line length is {longest}",
     )
 
 
