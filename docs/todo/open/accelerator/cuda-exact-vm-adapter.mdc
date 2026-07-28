@@ -79,7 +79,10 @@ batches.
   93.68 VMs/s while validation/planning falls to about 0.23 ms. Direct snapshot
   output removes redundant packed host staging. Exact classic crazy/rotate
   candidate evaluation now traverses the hardware-neutral work port on live CUDA
-  and matches CPU evidence over 257-item deterministic corpora. Broader live
-  hardware and CUDA search/verification-assist implementations remain open.
+  and matches CPU evidence over 257-item deterministic corpora. Exact candidate
+  evidence can now feed verification-assist hints through live CUDA over a
+  deterministic 257-item rotate corpus while trusted admission remains separate;
+  malformed optional evidence becomes no hint. Broader live hardware and CUDA
+  search execution remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

@@ -156,8 +156,11 @@ fails explicitly without changing correctness rules.
   validated-memory, direct-snapshot, and persistent-session evidence are retained.
   The hardware-neutral exact-primitive candidate bridge also executes 257-item
   classic crazy and rotate corpora on live CUDA and matches CPU evidence exactly.
-  Broader live-hardware evidence plus CUDA search/verification-assist ports remain
-  before this TODO can complete.
+  Verification-assist now reuses exact candidate evidence through the same live
+  CUDA backend over a deterministic 257-item rotate corpus; those results remain
+  untrusted hints and malformed optional evidence becomes no hint. Broader
+  live-hardware evidence plus CUDA search execution remain before this TODO can
+  complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

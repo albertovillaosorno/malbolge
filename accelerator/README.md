@@ -43,9 +43,11 @@ TOML base selection with fail-closed schema/identity validation and durable sour
 identity; explicit overrides produce a new effective selection without mutating
 the loaded configuration. `primitive_candidates.py` binds
 classic crazy/rotate candidate payloads to any exact primitive adapter; the same
-bridge is differentially exercised through CPU and live CUDA backends. Additional
-search strategies, CLI front-end wiring, CUDA search/verification-assist, ROCm
-work ports and VM execution, broader hardware evidence, and orchestration remain
-follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
+bridge is differentially exercised through CPU and live CUDA backends.
+`evidence_verification.py` reuses candidate evidence as optional verification
+hints without introducing backend acceptance authority, and live CUDA hints match
+the CPU reference over a deterministic 257-item corpus. Additional search
+strategies, CLI front-end wiring, CUDA search execution, ROCm work ports and VM
+execution, broader hardware evidence, and orchestration remain follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

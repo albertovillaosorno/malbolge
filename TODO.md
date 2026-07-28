@@ -688,9 +688,11 @@ than inferring acceleration from configuration alone. Hardware-neutral
 candidate-evaluation, search, and verification-assist ports preserve algorithm
 identity, seed/budget identity,
 CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
-evaluation now exercises the same port through CPU and live CUDA backends.
-Additional search strategies, CUDA search/verification-assist implementations,
-ROCm work ports, and ROCm VM execution remain open.
+evaluation now exercises the same port through CPU and live CUDA backends. The
+same exact evidence can now traverse a verification-assist adapter on live CUDA;
+hints remain untrusted and malformed optional evidence becomes no hint rather
+than admission. Additional search strategies, CUDA search execution, ROCm work
+ports, and ROCm VM execution remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -728,8 +730,10 @@ batches now route classic and current-profile states through hardware-neutral
 backend ports with safe-Rust fallback. Current-profile throughput is now
 retained through direct complete-snapshot materialization and persistent sessions.
 A hardware-neutral exact-primitive candidate bridge now differentially matches
-CPU and live CUDA for classic crazy/rotate batches. Broader hardware evidence plus
-CUDA search/verification-assist and ROCm implementations remain open.
+CPU and live CUDA for classic crazy/rotate batches. Candidate evidence can also
+feed verification-assist hints through live CUDA while trusted admission remains
+CPU-owned. Broader hardware evidence plus CUDA search execution and ROCm
+implementations remain open.
 
 ### TODO - CUDA superoptimizer
 

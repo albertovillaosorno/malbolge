@@ -50,9 +50,11 @@ with independent `algorithm_id`/`backend_id`, fail-closed unknown keys, durable
 configuration-source identity, and explicit caller overrides that never mutate
 the loaded base configuration. The first concrete strategy is
 `deterministic-corpus-enumeration-v1`, bound to the mandatory CPU reference
-through the same registry. User-facing CLI wiring, additional research
-strategies, CUDA/ROCm search implementations, and comparative benchmark evidence
-remain open.
+through the same registry. Candidate evidence can independently feed optional
+verification-assist hints through CPU or CUDA without granting either backend
+acceptance authority. User-facing CLI wiring, additional research strategies,
+CUDA/ROCm search implementations, and comparative benchmark evidence remain
+open.
 
 ## Invariants
 

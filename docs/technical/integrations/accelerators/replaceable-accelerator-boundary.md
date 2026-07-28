@@ -74,9 +74,12 @@ independently and records configured versus actual backend identity after
 fallback. `accelerator/primitive_candidates.py` now maps exact classic crazy and
 rotate candidate payloads into the existing primitive contract; the identical
 bridge runs through mandatory CPU and optional CUDA adapters, and malformed
-backend capability/count/domain evidence falls back before admission. Additional
-search algorithms, CUDA search/verification-assist implementations, asynchronous
-submission, and ROCm remain open.
+backend capability/count/domain evidence falls back before admission.
+`EvidenceVerificationAssistAdapter` can expose that evidence as ordered optional
+hints while preserving verifier-only acceptance. A live CUDA 257-item rotate
+corpus matches CPU hints exactly; malformed optional evidence produces no hints.
+Additional search algorithms, CUDA search execution, asynchronous submission, and
+ROCm remain open.
 
 ## Invariants
 
