@@ -75,6 +75,7 @@ from optimizer.rotate_target import build_rotate_target_batch
 from optimizer.rotate_target import count_prepared_rotate_target_positions
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
+from optimizer.rotate_target import rotate_target_projected_evaluation_id
 from optimizer.rotate_target import rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_selection_preparer_id
 
@@ -90,6 +91,7 @@ ROTATE_ONE = 19_683
 EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
+EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
 EXPECTED_ROTATION_PIVOT = 2
 EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 BAD_CAPABILITY = AcceleratorCapability(
@@ -201,6 +203,28 @@ class _MalformedPrimitiveAdapter(ExactPrimitiveAdapter):
         return self.evaluate(prepared.validated_batch())
 
 
+@dataclass(frozen=True, slots=True)
+class _ExplodingPrimitiveAdapter(ExactPrimitiveAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        _ = batch
+        message = "empty projection unexpectedly invoked evaluation"
+        raise AssertionError(message)
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        _ = prepared
+        message = "empty projection unexpectedly invoked evaluation"
+        raise AssertionError(message)
+
+
 def test_rotate_target_problem_roundtrips_canonically() -> None:
     """Target/corpus identity is stable across canonical binary roundtrip."""
     problem = RotateTargetProblem(
@@ -303,6 +327,14 @@ def test_rotate_batch_rotates_first_representatives_packed() -> None:
     ) == (4, 9, 7)
 
 
+def test_rotate_target_projection_has_stable_identity() -> None:
+    """Prepared projection identity is explicit benchmark provenance."""
+    assert (
+        rotate_target_projected_evaluation_id()
+        == EXPECTED_PROJECTED_EVALUATION_ID
+    )
+
+
 def test_rotate_target_batch_uses_indexed_fixed_width_storage() -> None:
     """Rotate candidate identity and payload remain packed until requested."""
     request = _request(
@@ -386,8 +418,27 @@ def test_prepared_rotate_selection_tracks_seed_budget_and_absence() -> None:
     for problem, budget, seed, expected_count in cases:
         request = _request(problem, budget=budget, seed=seed)
         prepared = adapter.prepare(request)
+        batch = build_rotate_target_batch(request).validated()
+        assert (
+            adapter.prepared_candidate_state_count(prepared) == expected_count
+        )
+        assert adapter.prepared_membership_count(prepared) == len(batch.items)
         assert adapter.prepared_selection_count(prepared) == expected_count
         assert adapter.search_prepared(prepared) == adapter.search(request)
+
+
+def test_empty_rotate_projection_skips_primitive_backend() -> None:
+    """No exact preimage yields empty evidence without backend execution."""
+    problem = RotateTargetProblem(target=ROTATE_ONE, candidates=(0, 2, 4))
+    adapter = rotate_target_search_adapter(_ExplodingPrimitiveAdapter())
+    request = _request(problem)
+
+    prepared = adapter.prepare(request)
+    result = adapter.search_prepared(prepared)
+
+    assert adapter.prepared_candidate_state_count(prepared) == 0
+    assert adapter.prepared_selection_count(prepared) == 0
+    assert result.proposals == ()
 
 
 def test_prepared_rotate_selection_rejects_wrong_exact_evidence() -> None:
@@ -478,7 +529,13 @@ def test_prepared_cpu_state_executes_unchanged_on_live_cuda() -> None:
 
     with _cuda() as cuda:
         observed = rotate_target_search_adapter(cuda).search_prepared(prepared)
+        stats = cuda.prepared_stats()
 
+    assert stats.builds == 1
+    assert stats.evaluations == 1
+    assert stats.packed_evaluations == 1
+    assert stats.resident_count == 1
+    assert stats.reuses == 0
     assert observed.capability.backend_id == CUDA_BACKEND
     assert observed.proposals == expected.proposals
     assert (

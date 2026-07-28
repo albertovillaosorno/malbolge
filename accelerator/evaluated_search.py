@@ -60,6 +60,8 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
+from accelerator.work_ports import CandidateEvaluationResult
+from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchExecutionAdapter
@@ -69,8 +71,6 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import CandidateEvaluationAdapter
     from accelerator.work_ports import CandidateEvaluationBatch
-    from accelerator.work_ports import CandidateEvaluationResult
-    from accelerator.work_ports import CandidateProposal
     from accelerator.work_ports import CandidateWorkItem
     from accelerator.work_ports import SearchRequest
 
@@ -81,7 +81,15 @@ type SearchProposalSelector = Callable[
     tuple[CandidateProposal, ...],
 ]
 type SearchBatchPreparer = Callable[[CandidateEvaluationBatch], object]
+type SearchSelectionAwareBatchPreparer = Callable[
+    [SearchRequest, CandidateEvaluationBatch, object],
+    object,
+]
 type SearchPreparedEvaluator = Callable[[object], CandidateEvaluationResult]
+type SearchPreparedEvaluationBatch = Callable[
+    [object],
+    CandidateEvaluationBatch,
+]
 type SearchCandidateStateCount = Callable[[object], int]
 type SearchSelectionPreparer = Callable[
     [SearchRequest, CandidateEvaluationBatch],
@@ -110,6 +118,8 @@ type SearchStrategyKey = tuple[
     SearchBatchBuilder,
     SearchProposalSelector,
     SearchBatchPreparer | None,
+    SearchSelectionAwareBatchPreparer | None,
+    SearchPreparedEvaluationBatch | None,
     SearchCandidateStateCount | None,
     SearchSelectionPreparer | None,
     SearchPreparedProposalSelector | None,
@@ -241,8 +251,10 @@ class PreparedCandidateMembershipIndex:
 class PreparedCandidateExecution:
     """Strategy preparation plus backend-specific prepared evaluation."""
 
-    batch_preparer: SearchBatchPreparer
+    batch_preparer: SearchBatchPreparer | None
     evaluator: SearchPreparedEvaluator
+    evaluation_batch: SearchPreparedEvaluationBatch | None = None
+    selection_aware_preparer: SearchSelectionAwareBatchPreparer | None = None
     state_count: SearchCandidateStateCount | None = None
 
 
@@ -272,6 +284,7 @@ class PreparedEvaluatedSearch:
     request: SearchRequest
     batch: CandidateEvaluationBatch
     _candidate_state: object = field(repr=False)
+    _evaluation_batch: CandidateEvaluationBatch = field(repr=False)
     _membership_index: PreparedCandidateMembershipIndex = field(repr=False)
     _proof: object = field(repr=False)
     _selection_state: object = field(repr=False)
@@ -284,14 +297,15 @@ class PreparedEvaluatedSearch:
         SearchRequest,
         CandidateEvaluationBatch,
         object,
+        CandidateEvaluationBatch,
         PreparedCandidateMembershipIndex,
         object,
     ]:
         """Return state only to the exact strategy that prepared it.
 
         Returns:
-            Validated request, batch, candidate state, membership index, and
-            prepared proposal-selection state.
+            Validated request, full batch, candidate state, exact evaluation
+            sub-batch, membership index, and prepared proposal-selection state.
 
         Raises:
             InvalidAcceleratorWorkError: If this state is forged or belongs to a
@@ -308,6 +322,7 @@ class PreparedEvaluatedSearch:
             self.request,
             self.batch,
             self._candidate_state,
+            self._evaluation_batch,
             self._membership_index,
             self._selection_state,
         )
@@ -358,6 +373,7 @@ class _ResolvedPreparedSearch:
     request: SearchRequest
     batch: CandidateEvaluationBatch
     candidate_state: object
+    evaluation_batch: CandidateEvaluationBatch
     membership_index: PreparedCandidateMembershipIndex
     selection_state: object
 
@@ -394,11 +410,30 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             if strategy.prepared_execution is None
             else strategy.prepared_execution.evaluator
         )
+        self._prepared_evaluation_batch = (
+            None
+            if strategy.prepared_execution is None
+            else strategy.prepared_execution.evaluation_batch
+        )
+        self._selection_aware_batch_preparer = (
+            None
+            if strategy.prepared_execution is None
+            else strategy.prepared_execution.selection_aware_preparer
+        )
         self._candidate_state_count = (
             None
             if strategy.prepared_execution is None
             else strategy.prepared_execution.state_count
         )
+        if strategy.prepared_execution is not None:
+            preparer_count = int(self._batch_preparer is not None) + int(
+                self._selection_aware_batch_preparer is not None
+            )
+            if preparer_count != 1:
+                message = (
+                    "prepared candidate execution requires exactly one preparer"
+                )
+                raise InvalidAcceleratorWorkError(message)
         self._proposal_selector = strategy.proposal_selector
         self._selection_preparer = (
             None
@@ -420,6 +455,8 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             strategy.batch_builder,
             strategy.proposal_selector,
             self._batch_preparer,
+            self._selection_aware_batch_preparer,
+            self._prepared_evaluation_batch,
             self._candidate_state_count,
             self._selection_preparer,
             self._prepared_proposal_selector,
@@ -446,13 +483,26 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         """
         validated = self._validated_request(request)
         batch = self._validated_batch(validated)
+        membership_index = _candidate_membership_index(batch)
+        selection_state = self._prepare_selection_state(validated, batch)
+        candidate_state = self._prepare_candidate_state(
+            validated,
+            batch,
+            selection_state,
+        )
+        evaluation_batch = self._evaluation_batch_for(
+            batch,
+            candidate_state,
+            membership_index,
+        )
         return PreparedEvaluatedSearch(
             request=validated,
             batch=batch,
-            _candidate_state=self._prepare_candidate_state(batch),
-            _membership_index=_candidate_membership_index(batch),
+            _candidate_state=candidate_state,
+            _evaluation_batch=evaluation_batch,
+            _membership_index=membership_index,
             _proof=_PREPARED_PROOF,
-            _selection_state=self._prepare_selection_state(validated, batch),
+            _selection_state=selection_state,
             _strategy_key=self._strategy_key,
         )
 
@@ -604,7 +654,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         evidence = recorder.measure(
             "backend_evaluation_ns",
             lambda: self._evaluated_prepared(
-                resolved.batch,
+                resolved.evaluation_batch,
                 resolved.candidate_state,
                 capability,
             ),
@@ -630,28 +680,62 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         self,
         prepared: PreparedEvaluatedSearch,
     ) -> _ResolvedPreparedSearch:
-        request, batch, candidate_state, membership_index, selection_state = (
-            prepared.for_strategy(self._strategy_key)
-        )
+        (
+            request,
+            batch,
+            candidate_state,
+            evaluation_batch,
+            membership_index,
+            selection_state,
+        ) = prepared.for_strategy(self._strategy_key)
         return _ResolvedPreparedSearch(
             request=request,
             batch=batch,
             candidate_state=candidate_state,
+            evaluation_batch=evaluation_batch,
             membership_index=membership_index,
             selection_state=selection_state,
         )
 
     def _prepare_candidate_state(
         self,
+        request: SearchRequest,
         batch: CandidateEvaluationBatch,
+        selection_state: object,
     ) -> object:
-        if self._batch_preparer is None:
+        if self._selection_aware_batch_preparer is not None:
+            state = self._selection_aware_batch_preparer(
+                request,
+                batch,
+                selection_state,
+            )
+        elif self._batch_preparer is not None:
+            state = self._batch_preparer(batch)
+        else:
             return _NO_CANDIDATE_STATE
-        state = self._batch_preparer(batch)
         if state is _NO_CANDIDATE_STATE:
             message = "candidate batch preparer returned reserved state"
             raise InvalidAcceleratorWorkError(message)
         return state
+
+    def _evaluation_batch_for(
+        self,
+        full_batch: CandidateEvaluationBatch,
+        candidate_state: object,
+        membership_index: PreparedCandidateMembershipIndex,
+    ) -> CandidateEvaluationBatch:
+        if (
+            candidate_state is _NO_CANDIDATE_STATE
+            or self._prepared_evaluation_batch is None
+        ):
+            return full_batch
+        projected = self._prepared_evaluation_batch(candidate_state).validated()
+        _validate_evaluation_projection(
+            full_batch,
+            projected,
+            membership_index,
+        )
+        return projected
 
     def _prepare_selection_state(
         self,
@@ -695,7 +779,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     ) -> SearchResult:
         capability = self.capability()
         evidence = self._evaluated_prepared(
-            resolved.batch,
+            resolved.evaluation_batch,
             resolved.candidate_state,
             capability,
         )
@@ -704,17 +788,22 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
 
     def _evaluated_prepared(
         self,
-        batch: CandidateEvaluationBatch,
+        evaluation_batch: CandidateEvaluationBatch,
         candidate_state: object,
         capability: AcceleratorCapability,
     ) -> CandidateEvaluationResult:
         if candidate_state is _NO_CANDIDATE_STATE:
-            return self._evaluated(batch, capability)
+            return self._evaluated(evaluation_batch, capability)
+        if not evaluation_batch.items:
+            return CandidateEvaluationResult(
+                capability=capability,
+                evaluator_id=evaluation_batch.evaluator_id,
+            )
         if self._prepared_evaluator is None:
             message = "prepared candidate state has no evaluator"
             raise InvalidAcceleratorWorkError(message)
         return self._prepared_evaluator(candidate_state).validated_against(
-            batch,
+            evaluation_batch,
             capability,
         )
 
@@ -855,6 +944,44 @@ def _validate_batch(
         message = "evaluated search batch exceeds declared evaluation budget"
         raise InvalidAcceleratorWorkError(message)
     return validated
+
+
+def _validate_evaluation_projection(
+    full_batch: CandidateEvaluationBatch,
+    projected: CandidateEvaluationBatch,
+    membership_index: PreparedCandidateMembershipIndex,
+) -> None:
+    if projected is full_batch:
+        return
+    _validate_projection_shape(full_batch, projected)
+    _validate_projection_membership(full_batch, projected, membership_index)
+
+
+def _validate_projection_shape(
+    full_batch: CandidateEvaluationBatch,
+    projected: CandidateEvaluationBatch,
+) -> None:
+    if projected.evaluator_id != full_batch.evaluator_id:
+        message = "prepared evaluation projection changed evaluator identity"
+        raise InvalidAcceleratorWorkError(message)
+    if len(projected.items) > len(full_batch.items):
+        message = "prepared evaluation projection exceeds candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validate_projection_membership(
+    full_batch: CandidateEvaluationBatch,
+    projected: CandidateEvaluationBatch,
+    membership_index: PreparedCandidateMembershipIndex,
+) -> None:
+    for item in projected.items:
+        proposal = CandidateProposal(
+            logical_id=item.logical_id,
+            payload=item.payload,
+        )
+        if not membership_index.contains(full_batch, proposal):
+            message = "prepared evaluation projection fabricated a candidate"
+            raise InvalidAcceleratorWorkError(message)
 
 
 def _contains_sorted_items(

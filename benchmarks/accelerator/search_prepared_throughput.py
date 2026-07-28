@@ -76,6 +76,7 @@ from benchmarks.accelerator.search_workload import (
     validate_search_benchmark_result,
 )
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
+from optimizer.rotate_target import rotate_target_projected_evaluation_id
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
@@ -131,7 +132,7 @@ def main() -> int:
     measured = _measure_search(workload)
     by_route = {row.route_id: row for row in measured.rows}
     payload = {
-        "benchmark_id": "rotate-target-prepared-search-throughput-v1",
+        "benchmark_id": "rotate-target-prepared-search-throughput-v2",
         "workload": {
             "algorithm_id": ROTATE_TARGET_ALGORITHM_ID,
             "corpus_size": CORPUS_SIZE,
@@ -160,6 +161,9 @@ def main() -> int:
         "cpu_prepared_rotate": asdict(measured.cpu_stats),
         "cuda_prepared_session": asdict(measured.cuda_stats),
         "prepared_membership_count": measured.membership_count,
+        "prepared_projection": _validated_projection_id(
+            rotate_target_projected_evaluation_id()
+        ),
         "prepared_selection_count": measured.selection_count,
         "ordinary_packed_validation": _validated_packed_validation_id(
             packed_primitive_validation_id()
@@ -274,7 +278,7 @@ def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
     expected = (
         1,
         evaluations,
-        CORPUS_SIZE,
+        1,
         PrimitiveKind.ROTATE,
         evaluations - 1,
         CORPUS_SIZE,
@@ -311,8 +315,8 @@ def _validated_prepared_validation_id(identifier: str) -> str:
 
 
 def _validated_reference_count(count: int) -> int:
-    if count != CORPUS_SIZE:
-        message = "prepared CPU reference does not cover full candidate corpus"
+    if count != 1:
+        message = "prepared reference does not cover exact projection"
         raise RuntimeError(message)
     return count
 
@@ -322,6 +326,14 @@ def _validated_membership_count(count: int) -> int:
         message = "prepared membership index does not cover full corpus"
         raise RuntimeError(message)
     return count
+
+
+def _validated_projection_id(identifier: str) -> str:
+    expected = "classic-rotate-preimage-projection-v1"
+    if identifier != expected:
+        message = "prepared rotate projection identity drifted"
+        raise RuntimeError(message)
+    return identifier
 
 
 def _validated_selection_count(count: int) -> int:
@@ -345,7 +357,7 @@ def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:
         1,
         expected_evaluations,
         expected_evaluations,
-        CORPUS_SIZE,
+        1,
         PrimitiveKind.ROTATE,
         expected_evaluations - 1,
     )

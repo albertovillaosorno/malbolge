@@ -76,10 +76,12 @@ from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import build_rotate_target_batch
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
+from optimizer.rotate_target import rotate_target_projected_evaluation_id
 from optimizer.rotate_target import rotate_target_selection_preparer_id
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
 EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
+EXPECTED_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
 EXPECTED_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
 EXPECTED_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
@@ -143,6 +145,14 @@ def test_scale_workloads_keep_one_exact_admissible_candidate() -> None:
         )
 
 
+def test_benchmark_uses_projected_evaluation_identity() -> None:
+    """Protocol identity tracks the exact selection-aware projection."""
+    assert (
+        rotate_target_projected_evaluation_id()
+        == EXPECTED_PROJECTED_EVALUATION_ID
+    )
+
+
 def test_benchmark_uses_native_view_selection_preparer_identity() -> None:
     """Protocol identity tracks allocation-free indexed preimage scanning."""
     assert (
@@ -169,13 +179,13 @@ def test_benchmark_uses_indexed_candidate_storage_identity() -> None:
 
 
 def test_prepared_scale_proofs_match_candidate_count() -> None:
-    """Reference, membership, and selector proofs bind the measured size."""
+    """Projection, membership, and selector proofs bind measured scope."""
     size = 64
     workload = build_scale_workload(size)
     adapter = cpu_rotate_target_search_adapter()
     prepared = adapter.prepare(workload.request)
 
-    assert validate_prepared_scale(adapter, prepared, size) == (size, size, 1)
+    assert validate_prepared_scale(adapter, prepared, size) == (1, size, 1)
 
 
 def test_membership_comparison_preserves_exact_hit_and_miss() -> None:

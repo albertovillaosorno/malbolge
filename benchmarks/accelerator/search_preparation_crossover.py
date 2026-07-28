@@ -85,6 +85,7 @@ from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import RotateTargetVerifier
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_batch_builder_id
+from optimizer.rotate_target import rotate_target_projected_evaluation_id
 from optimizer.rotate_target import rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_selection_preparer_id
 
@@ -111,6 +112,10 @@ CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
 PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
 ROTATE_TARGET_BATCH_BUILDER_ID: Final = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
+)
+PROJECTED_EVALUATION_COUNT: Final = 1
+ROTATE_TARGET_PROJECTED_EVALUATION_ID: Final = (
+    "classic-rotate-preimage-projection-v1"
 )
 ROTATE_TARGET_SELECTION_PREPARER_ID: Final = (
     "classic-u32le-native-view-preimage-v2"
@@ -259,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v7",
+        "benchmark_id": "rotate-target-preparation-crossover-v8",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -307,6 +312,9 @@ def main(argv: list[str] | None = None) -> int:
             "prepared_primitive_storage_id": _prepared_primitive_storage_id(),
             "prepared_validation_id": _prepared_validation_id(),
             "rotate_target_batch_builder_id": _rotate_target_batch_builder_id(),
+            "rotate_target_projected_evaluation_id": (
+                _rotate_target_projected_evaluation_id()
+            ),
             "rotate_target_selection_preparer_id": (
                 _rotate_target_selection_preparer_id()
             ),
@@ -331,7 +339,7 @@ def _measure_size(size: int) -> ScaleMeasurement:
         prepared.batch,
         workload.expected[0],
     )
-    cuda = _cuda_timings(workload, prepared, size)
+    cuda = _cuda_timings(workload, prepared)
     crossover = Crossover(
         cold_runs=preparation_crossover_runs(
             preparation_ns=cold_prepare.median_ns,
@@ -351,13 +359,13 @@ def _measure_size(size: int) -> ScaleMeasurement:
         corpus_size=size,
         crossover=crossover,
         cuda=cuda,
-        cuda_device_bytes=size * WORD_BYTES * 2,
-        cuda_host_output_bytes=size * WORD_BYTES,
+        cuda_device_bytes=proofs[0] * WORD_BYTES * 2,
+        cuda_host_output_bytes=proofs[0] * WORD_BYTES,
         memory=memory,
         membership=membership,
         membership_count=proofs[1],
         problem_sha256=sha256(workload.problem).hexdigest(),
-        reference_bytes=size * WORD_BYTES,
+        reference_bytes=proofs[0] * WORD_BYTES,
         reference_word_count=proofs[0],
         selection_count=proofs[2],
         warm_prepare=warm_prepare,
@@ -730,7 +738,6 @@ def _legacy_contains(
 def _cuda_timings(
     workload: ScaleWorkload,
     prepared: PreparedEvaluatedSearch,
-    size: int,
 ) -> _CudaTimings:
     with CudaExactPrimitiveAdapter() as primitive:
         ordinary = rotate_target_search_adapter(primitive)
@@ -752,10 +759,9 @@ def _cuda_timings(
             )
         reuse_stats = primitive.prepared_stats()
         capability = primitive.capability()
-        _validate_reuse_stats(reuse_stats, size)
+        _validate_reuse_stats(reuse_stats)
     first_samples = [
-        _fresh_build_sample(workload, prepared, size)
-        for _ in range(SAMPLE_COUNT)
+        _fresh_build_sample(workload, prepared) for _ in range(SAMPLE_COUNT)
     ]
     return _CudaTimings(
         capability=capability,
@@ -769,7 +775,6 @@ def _cuda_timings(
 def _fresh_build_sample(
     workload: ScaleWorkload,
     prepared: PreparedEvaluatedSearch,
-    size: int,
 ) -> int:
     with CudaExactPrimitiveAdapter() as primitive:
         adapter = rotate_target_search_adapter(primitive)
@@ -777,7 +782,7 @@ def _fresh_build_sample(
             lambda: adapter.search_prepared(prepared),
             workload,
         )
-        _validate_fresh_stats(primitive.prepared_stats(), size)
+        _validate_fresh_stats(primitive.prepared_stats())
         return elapsed
 
 
@@ -817,13 +822,13 @@ def validate_prepared_scale(
     prepared: PreparedEvaluatedSearch,
     size: int,
 ) -> tuple[int, int, int]:
-    """Validate reference, membership, and selector cardinality.
+    """Validate projected reference, full membership, and selector counts.
 
     Returns:
-        Exact proof counts in reference, membership, selector order.
+        Exact proof counts in projection, membership, selector order.
 
     Raises:
-        RuntimeError: If any prepared proof count differs from ``size``.
+        RuntimeError: If projection or full-corpus proof counts drift.
 
     """
     observed = (
@@ -831,17 +836,14 @@ def validate_prepared_scale(
         adapter.prepared_membership_count(prepared),
         adapter.prepared_selection_count(prepared),
     )
-    expected = (size, size, 1)
+    expected = (PROJECTED_EVALUATION_COUNT, size, 1)
     if observed != expected:
         message = "prepared crossover state proof counts drifted"
         raise RuntimeError(message)
     return observed
 
 
-def _validate_reuse_stats(
-    stats: CudaPreparedPrimitiveStats,
-    size: int,
-) -> None:
+def _validate_reuse_stats(stats: CudaPreparedPrimitiveStats) -> None:
     expected_evaluations = 2 + SAMPLE_COUNT
     observed = (
         stats.builds,
@@ -855,7 +857,7 @@ def _validate_reuse_stats(
         1,
         expected_evaluations,
         expected_evaluations,
-        size,
+        PROJECTED_EVALUATION_COUNT,
         PrimitiveKind.ROTATE,
         expected_evaluations - 1,
     )
@@ -864,10 +866,7 @@ def _validate_reuse_stats(
         raise RuntimeError(message)
 
 
-def _validate_fresh_stats(
-    stats: CudaPreparedPrimitiveStats,
-    size: int,
-) -> None:
+def _validate_fresh_stats(stats: CudaPreparedPrimitiveStats) -> None:
     observed = (
         stats.builds,
         stats.evaluations,
@@ -876,7 +875,14 @@ def _validate_fresh_stats(
         stats.resident_kind,
         stats.reuses,
     )
-    expected = (1, 1, 1, size, PrimitiveKind.ROTATE, 0)
+    expected = (
+        1,
+        1,
+        1,
+        PROJECTED_EVALUATION_COUNT,
+        PrimitiveKind.ROTATE,
+        0,
+    )
     if observed != expected:
         message = "prepared crossover fresh-session proof drifted"
         raise RuntimeError(message)
@@ -928,6 +934,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _rotate_target_projected_evaluation_id() -> str:
+    observed = rotate_target_projected_evaluation_id()
+    if observed != ROTATE_TARGET_PROJECTED_EVALUATION_ID:
+        message = "rotate-target projected evaluation identity drifted"
+        raise RuntimeError(message)
+    return observed
 
 
 def _rotate_target_selection_preparer_id() -> str:

@@ -69,6 +69,7 @@ from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import prepared_primitive_candidate_batch
 from accelerator.primitive_candidates import (
     prepared_primitive_reference_word_count,
 )
@@ -94,6 +95,7 @@ ROTATE_TARGET_BATCH_BUILDER_ID = (
     "classic-u32le-bitset-inplace-first-representatives-v2"
 )
 ROTATE_TARGET_SELECTION_PREPARER_ID = "classic-u32le-native-view-preimage-v2"
+ROTATE_TARGET_PROJECTED_EVALUATION_ID = "classic-rotate-preimage-projection-v1"
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
@@ -248,8 +250,12 @@ def rotate_target_search_adapter(
             batch_builder=build_rotate_target_batch,
             proposal_selector=select_rotate_target_proposals,
             prepared_execution=PreparedCandidateExecution(
-                batch_preparer=prepare_rotate_candidate_batch,
+                batch_preparer=None,
                 evaluator=evaluator.evaluate_prepared,
+                evaluation_batch=prepared_primitive_candidate_batch,
+                selection_aware_preparer=(
+                    prepare_projected_rotate_candidate_batch
+                ),
                 state_count=prepared_primitive_reference_word_count,
             ),
             prepared_selection=PreparedProposalSelection(
@@ -425,6 +431,16 @@ def rotate_target_selection_preparer_id() -> str:
     return ROTATE_TARGET_SELECTION_PREPARER_ID
 
 
+def rotate_target_projected_evaluation_id() -> str:
+    """Return the active selection-aware evaluation projection identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return ROTATE_TARGET_PROJECTED_EVALUATION_ID
+
+
 def prepare_rotate_target_selection(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
@@ -464,6 +480,32 @@ def prepare_rotate_target_selection(
     )
 
 
+def prepare_projected_rotate_candidate_batch(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    """Prepare only exact selector-relevant rotate candidates.
+
+    Returns:
+        Proof-bound primitive state for zero or one exact preimage candidate.
+
+    Raises:
+        InvalidAcceleratorWorkError: If selector state is forged or mismatched.
+
+    """
+    if not isinstance(selection_state, PreparedRotateTargetSelection):
+        message = "prepared rotate projection has wrong selector state"
+        raise InvalidAcceleratorWorkError(message)
+    _, positions = selection_state.for_selection(request, batch)
+    projected_items = tuple(batch.items[index] for index in positions)
+    projected = CandidateEvaluationBatch(
+        evaluator_id=batch.evaluator_id,
+        items=projected_items,
+    ).validated()
+    return prepare_rotate_candidate_batch(projected)
+
+
 def count_prepared_rotate_target_positions(state: object) -> int:
     """Return proof-validated prepared rotate candidate-position count.
 
@@ -501,10 +543,10 @@ def select_prepared_rotate_target_proposals(
         raise InvalidAcceleratorWorkError(message)
     target, positions = state.for_selection(request, batch)
     proposals: list[CandidateProposal] = []
-    for index in positions:
-        if primitive_evidence_value_at(evidence, index) != target:
+    for evidence_index, candidate_index in enumerate(positions):
+        if primitive_evidence_value_at(evidence, evidence_index) != target:
             continue
-        item = batch.items[index]
+        item = batch.items[candidate_index]
         proposals.append(
             CandidateProposal(
                 logical_id=item.logical_id,

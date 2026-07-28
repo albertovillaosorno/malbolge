@@ -189,6 +189,113 @@ def _count_prepared_selection(state: object) -> int:
     return len(state.items)
 
 
+def _project_first_candidate(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    if selection_state is not batch:
+        message = "projection selector state changed candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+    _ = request
+    return CandidateEvaluationBatch(
+        evaluator_id=batch.evaluator_id,
+        items=(batch.items[0],),
+    )
+
+
+def _project_first_candidate_other(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    return _project_first_candidate(request, batch, selection_state)
+
+
+def _project_fabricated_candidate(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    _ = (request, selection_state)
+    return CandidateEvaluationBatch(
+        evaluator_id=batch.evaluator_id,
+        items=(CandidateWorkItem(logical_id="fabricated", payload=b"fake"),),
+    )
+
+
+def _project_wrong_evaluator(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    _ = (request, selection_state)
+    return CandidateEvaluationBatch(
+        evaluator_id="different-evaluator",
+        items=(batch.items[0],),
+    )
+
+
+def _project_oversized_batch(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    _ = (request, selection_state)
+    return CandidateEvaluationBatch(
+        evaluator_id=batch.evaluator_id,
+        items=(
+            CandidateWorkItem(logical_id="first", payload=b"first"),
+            CandidateWorkItem(logical_id="second", payload=b"second"),
+        ),
+    )
+
+
+def _projected_evaluation_batch(state: object) -> CandidateEvaluationBatch:
+    if not isinstance(state, CandidateEvaluationBatch):
+        message = "projected state must be a candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+    return state
+
+
+def _projected_evaluation_batch_other(
+    state: object,
+) -> CandidateEvaluationBatch:
+    return _projected_evaluation_batch(state)
+
+
+def _projected_adapter(
+    projection: Callable[
+        [SearchRequest, CandidateEvaluationBatch, object], object
+    ],
+    *,
+    evaluation_batch: Callable[[object], CandidateEvaluationBatch] = (
+        _projected_evaluation_batch
+    ),
+) -> EvaluatedSearchExecutionAdapter:
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    return EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_two_items,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=None,
+                evaluator=_evaluate_identity_state,
+                evaluation_batch=evaluation_batch,
+                selection_aware_preparer=projection,
+                state_count=_count_identity_state,
+            ),
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=_prepare_first_selection,
+                selector=_select_prepared_first,
+                state_count=_count_prepared_selection,
+            ),
+        ),
+    )
+
+
 def _select_first(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
@@ -393,6 +500,124 @@ def test_prepared_selection_preparer_is_strategy_identity() -> None:
         "prepared search state belongs to a different strategy",
         lambda: different.search_prepared(prepared),
     )
+
+
+def test_selection_aware_projection_evaluates_exact_sub_batch() -> None:
+    """Projected evidence preserves full-batch membership."""
+    adapter = _projected_adapter(_project_first_candidate)
+    request = _request(budget=TWO_ITEM_COUNT)
+
+    prepared = adapter.prepare(request)
+    result = adapter.search_prepared(prepared)
+
+    assert adapter.prepared_candidate_state_count(prepared) == 1
+    assert adapter.prepared_membership_count(prepared) == TWO_ITEM_COUNT
+    assert result.proposals == (
+        CandidateProposal(logical_id="one", payload=b"one"),
+    )
+
+
+def test_selection_aware_projection_rejects_fabricated_candidate() -> None:
+    """Projection cannot invent identity or payload outside the full batch."""
+    adapter = _projected_adapter(_project_fabricated_candidate)
+
+    _expect_error(
+        "prepared evaluation projection fabricated a candidate",
+        lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
+    )
+
+
+def test_selection_aware_projection_rejects_evaluator_drift() -> None:
+    """Projection cannot redirect prepared execution to another evaluator."""
+    adapter = _projected_adapter(_project_wrong_evaluator)
+
+    _expect_error(
+        "prepared evaluation projection changed evaluator identity",
+        lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
+    )
+
+
+def test_selection_aware_projection_rejects_oversized_batch() -> None:
+    """Projection cardinality cannot exceed the validated full batch."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    adapter = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=None,
+                evaluator=_evaluate_identity_state,
+                evaluation_batch=_projected_evaluation_batch,
+                selection_aware_preparer=_project_oversized_batch,
+            ),
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=_prepare_first_selection,
+                selector=_select_prepared_first,
+                state_count=_count_prepared_selection,
+            ),
+        ),
+    )
+
+    _expect_error(
+        "prepared evaluation projection exceeds candidate batch",
+        lambda: adapter.prepare(_request(budget=1)),
+    )
+
+
+def test_projection_callbacks_are_strategy_identity() -> None:
+    """Another projection callback cannot consume an existing prepared proof."""
+    first = _projected_adapter(_project_first_candidate)
+    different_preparer = _projected_adapter(_project_first_candidate_other)
+    different_batch = _projected_adapter(
+        _project_first_candidate,
+        evaluation_batch=_projected_evaluation_batch_other,
+    )
+    prepared = first.prepare(_request(budget=TWO_ITEM_COUNT))
+
+    for adapter in (different_preparer, different_batch):
+        _expect_error(
+            "prepared search state belongs to a different strategy",
+            lambda adapter=adapter: adapter.search_prepared(prepared),
+        )
+
+
+def test_prepared_execution_requires_exactly_one_preparer() -> None:
+    """Generic preparation rejects missing or competing preparers."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    for batch_preparer, selection_preparer in (
+        (None, None),
+        (_prepare_identity_batch, _project_first_candidate),
+    ):
+
+        def construct_adapter(
+            batch_preparer: Callable[[CandidateEvaluationBatch], object]
+            | None = (batch_preparer),
+            selection_preparer: Callable[
+                [SearchRequest, CandidateEvaluationBatch, object],
+                object,
+            ]
+            | None = selection_preparer,
+        ) -> object:
+            return EvaluatedSearchExecutionAdapter(
+                ALGORITHM_ID,
+                evaluator,
+                EvaluatedSearchStrategy(
+                    batch_builder=_two_items,
+                    proposal_selector=_select_first,
+                    prepared_execution=PreparedCandidateExecution(
+                        batch_preparer=batch_preparer,
+                        evaluator=_evaluate_identity_state,
+                        selection_aware_preparer=selection_preparer,
+                    ),
+                ),
+            )
+
+        _expect_error(
+            "prepared candidate execution requires exactly one preparer",
+            construct_adapter,
+        )
 
 
 def test_prepared_candidate_execution_reuses_explicit_state() -> None:

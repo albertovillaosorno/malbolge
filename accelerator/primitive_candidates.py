@@ -305,6 +305,18 @@ def prepared_primitive_validation_id() -> str:
     return PREPARED_PRIMITIVE_VALIDATION_ID
 
 
+def prepared_primitive_candidate_batch(
+    state: object,
+) -> CandidateEvaluationBatch:
+    """Return the exact candidate sub-batch bound to prepared primitive state.
+
+    Returns:
+        Proof-validated candidate batch evaluated by the prepared backend.
+
+    """
+    return _prepared_candidate_state(state).batch
+
+
 def prepared_primitive_reference_word_count(state: object) -> int:
     """Return the proof-bound prepared CPU reference cardinality.
 

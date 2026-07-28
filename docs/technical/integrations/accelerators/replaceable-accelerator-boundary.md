@@ -278,6 +278,24 @@ is outside execution intervals. Candidate-state creation, approximately 237 KiB
 incremental beside the retained batch, is the next measured preparation-memory
 boundary; exact reference, selection, membership, proposal, and admission proofs
 remain mandatory.
+The active prepared rotate path now uses selection-aware exact projection under
+`classic-rotate-preimage-projection-v1`. Generic evaluated search prepares the
+selector proof first, requires the projected sub-batch to preserve evaluator
+identity and exact full-batch membership, binds projection callbacks into strategy
+identity, and validates backend evidence against only that sub-batch. Proposal
+membership and trusted admission still use the complete evaluated batch. The
+classic rotate inverse has zero or one exact preimage, so prepared CPU/CUDA state
+retains zero or one reference word while membership continues to cover every
+candidate. Empty projections skip backend execution. Crossover protocol v8 and
+prepared throughput/phase protocol v2 record the projection identity and require
+one projected reference word, 59,049 membership entries, one selected position,
+and resident CPU/CUDA count one for the canonical full-domain workload. Exploratory
+full-domain results lower retained state from 710,647 to 475,010 bytes, peak from
+946,675 to 710,126 bytes, and warm preparation from 64.780 to 46.581 ms. CPU/CUDA
+prepared search measure about 0.094/0.268 ms while ordinary remains full-domain.
+The one-candidate cold/warm crossover moves from 6/6 to 7/7, so projection is not
+a universal tiny-batch win. Clean post-commit crossover, throughput, and phase
+evidence is pending before promotion and before choosing the next boundary.
 Resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
