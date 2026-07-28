@@ -1,5 +1,5 @@
 [jig]
-schema_version = 10
+schema_version = 11
 
 [documentation]
 path_style = "lower-kebab"
@@ -281,6 +281,18 @@ language = "en-US"
 min_word_length = 3
 schema = "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json"
 version = "0.2"
+
+[cspell.dictionary.english]
+name = "jig-english"
+path = "integrations/cspell/english.txt"
+
+[cspell.dictionary.named-entities]
+name = "jig-named-entities"
+path = "integrations/cspell/named-entities.txt"
+
+[cspell.dictionary.technical]
+name = "jig-technical"
+path = "integrations/cspell/technical.txt"
 
 [tool.basedpyright]
 path = ".dependencies/python/3.14.6/Scripts/basedpyright.exe"
