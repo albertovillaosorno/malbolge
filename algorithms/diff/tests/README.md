@@ -20,3 +20,7 @@ Exact Rust-emission tests compile generated standalone source with `rustc -D
 warnings`, execute the binary, verify exact reconstruction, and exercise wrong-source
 and existing-output rejection. Compatible-variant placement/emission remains
 unfinished.
+
+Relocatable compatible placement tests preserve candidate insertions inside source-
+backed ranges, preserve whole-file candidate changes, reject missing/ambiguous
+boundaries transactionally, and lock the current byte-boundary reformat limitation.

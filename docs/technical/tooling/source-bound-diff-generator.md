@@ -282,6 +282,24 @@ distributable exact-baseline format. Compatible/fuzzy emission remains fail-clos
 until the runtime can reproduce consumer-selected canonical identity, structural and
 anchor admission, behavior probes, bug routing, and compatible placement semantics.
 
+### First Compatible Placement Primitive
+
+`relocatable.py` now removes absolute-offset dependence from source-backed exact
+segments. Authoring stores only SHA-256 boundary-window locators for each source
+range. A candidate materializer requires each boundary to resolve uniquely and copies
+the current candidate bytes between the resolved boundaries. This preserves insertions
+inside an otherwise stable source range and preserves whole-file candidate differences
+for source-copy instructions. Missing, duplicate, reversed, or contracted placement
+evidence rejects transactionally.
+
+This is deliberately a placement primitive, not compatible admission. Synthetic tests
+also prove a byte change at a required boundary still rejects. That negative fixture
+locks the reason for the next domain-mapped token layer: C comments and formatting may
+be irrelevant to identity while changing raw boundary bytes, so semantic placement
+must locate canonical units and map them back to candidate byte spans. Target-only
+literals remain local authoring material until compatible protection/emission wraps
+this layer.
+
 ### Exact Baseline and Compatible Variants
 
 For the exact source tree used during generation:

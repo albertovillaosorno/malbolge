@@ -101,6 +101,11 @@ format.
 - Compatible/fuzzy Rust emission remains unfinished: consumer canonical identity,
   thresholds, behavior probes, and bug-routing still need runtime representation.
 
+- Hash-only relocatable byte-range placement now preserves insertions inside stable
+  source ranges and rejects missing/ambiguous boundaries before output. A synthetic
+  boundary-change test deliberately still fails, defining the next mapped-token C
+  placement milestone rather than pretending byte relocation solves reformatting.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

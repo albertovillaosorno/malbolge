@@ -24,6 +24,7 @@ algorithms/diff/
 |-- source_binding.py # threshold-bound reconstruction key material
 |-- payload.py        # RFC 8439 authenticated payload primitive
 |-- protected.py      # source-bound authenticated exact plans
+|-- relocatable.py    # hash-only compatible byte-range placement
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
@@ -252,6 +253,22 @@ Required negative tests include:
 - unrelated source cannot materialize the target;
 - a behavioral clone without sufficient source anchors cannot materialize it;
 - anchor coverage below threshold fails before target files are written.
+
+## Implemented Relocatable Placement Primitive
+
+`relocatable.py` is the first compatible-placement layer. It converts exact
+`SourceSlice` offsets into hash-only range locators using source-range boundary
+windows. Materialization locates those boundaries in a later candidate and copies
+the candidate bytes between them, so insertions inside an unchanged range are
+preserved instead of shifting absolute offsets. Whole-file source copies likewise
+preserve candidate bytes. Missing, duplicate, reversed, or contracted boundaries
+fail before the staging tree is published.
+
+This layer is intentionally **not** the public compatible transform yet. Oracle
+literals are still local authoring bytes, and byte-window boundaries deliberately
+fail when a reformat/comment edit changes those boundary bytes. The next placement
+layer supplies domain-mapped canonical units so compatible C placement can ignore
+presentation changes while retaining raw candidate bytes outside transformed regions.
 
 ## Exact and Compatible Modes
 
