@@ -116,3 +116,54 @@ is intentionally negative: CPU median 401.185 ms, CUDA median 412.570 ms, and
 0.972x CUDA/CPU. Every sample preserves exact proposal equality and independent
 CPU admission, so the evidence rejects a performance hypothesis without weakening
 correctness.
+
+`search_phase_profile.py` runs the same complete-domain workload through the
+adapter diagnostic path and retains request validation, batch construction, batch
+validation, backend evaluation, proposal selection, result validation, and total
+wall time separately. It uses the same one-warmup/15-sample policy and validates
+exact proposals plus independent CPU admission after every profile.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_phase_profile
+```
+
+Phase diagnostics are attribution evidence only. They do not change search
+semantics and must not be compared with the ordinary throughput run unless the
+workload, commit, device, warmup, and sample policy are identical.
+
+`search_phase_profile.py` runs the same complete-domain workload through the
+adapter diagnostic path and retains request validation, batch construction, batch
+validation, backend evaluation, proposal selection, result validation, and total
+wall time separately. It uses the same one-warmup/15-sample policy and validates
+exact proposals plus independent CPU admission after every profile.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_phase_profile
+```
+
+Phase diagnostics are attribution evidence only. They do not change search
+semantics and must not be compared with the ordinary throughput run unless the
+workload, commit, device, warmup, and sample policy are identical.
+
+`search_phase_profile.py` runs the same complete-domain workload through the
+adapter diagnostic path and retains request validation, batch construction, batch
+validation, backend evaluation, proposal selection, result validation, and total
+wall time separately. It uses the same one-warmup/15-sample policy and validates
+exact proposals plus independent CPU admission after every profile.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_phase_profile
+```
+
+Phase diagnostics are attribution evidence only. They do not change search
+semantics and must not be compared with the ordinary throughput run unless the
+workload, commit, device, warmup, and sample policy are identical.

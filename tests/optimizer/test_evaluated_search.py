@@ -111,6 +111,33 @@ def test_valid_selector_returns_only_evaluated_candidate() -> None:
     )
 
 
+def test_profiled_search_matches_ordinary_result_and_retains_phases() -> None:
+    """Diagnostics preserve ordinary search semantics and phase identity."""
+    adapter = _adapter(_one_item, _select_first)
+    request = _request(budget=1)
+
+    ordinary = adapter.search(request)
+    profiled = adapter.profile_search(request)
+
+    assert profiled.result == ordinary
+    phases = profiled.phases
+    assert phases.total_ns >= 0
+    assert phases.request_validation_ns >= 0
+    assert phases.batch_build_ns >= 0
+    assert phases.batch_validation_ns >= 0
+    assert phases.backend_evaluation_ns >= 0
+    assert phases.proposal_selection_ns >= 0
+    assert phases.result_validation_ns >= 0
+    assert phases.total_ns >= sum((
+        phases.request_validation_ns,
+        phases.batch_build_ns,
+        phases.batch_validation_ns,
+        phases.backend_evaluation_ns,
+        phases.proposal_selection_ns,
+        phases.result_validation_ns,
+    ))
+
+
 def test_selector_cannot_fabricate_candidate_payload() -> None:
     """Selection cannot change payloads after candidate evaluation."""
     _expect_error(

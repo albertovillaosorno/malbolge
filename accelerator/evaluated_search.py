@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from time import perf_counter_ns
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -27,6 +29,27 @@ type SearchProposalSelector = Callable[
     [SearchRequest, CandidateEvaluationBatch, CandidateEvaluationResult],
     tuple[CandidateProposal, ...],
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluatedSearchPhaseProfile:
+    """Wall-clock phase diagnostics for one evaluated-search execution."""
+
+    backend_evaluation_ns: int
+    batch_build_ns: int
+    batch_validation_ns: int
+    proposal_selection_ns: int
+    request_validation_ns: int
+    result_validation_ns: int
+    total_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProfiledSearchResult:
+    """One search result paired with non-authoritative timing diagnostics."""
+
+    phases: EvaluatedSearchPhaseProfile
+    result: SearchResult
 
 
 @final
@@ -72,34 +95,150 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         Returns:
             Structurally validated proposals selected from evaluated candidates.
 
-        Raises:
-            InvalidAcceleratorWorkError: If request identity or budget is
-                invalid.
+        """
+        validated = self._validated_request(request)
+        batch = self._validated_batch(validated)
+        capability = self.capability()
+        evidence = self._evaluated(batch, capability)
+        proposals = self._selected(validated, batch, evidence)
+        return self._result(validated, capability, proposals)
+
+    def profile_search(self, request: SearchRequest) -> ProfiledSearchResult:
+        """Execute one search while retaining wall-clock phase diagnostics.
+
+        Returns:
+            The ordinary validated result plus diagnostic phase durations.
 
         """
+        recorder = _PhaseRecorder()
+        validated = recorder.measure(
+            "request_validation_ns",
+            lambda: self._validated_request(request),
+        )
+        batch = recorder.measure(
+            "batch_build_ns",
+            lambda: self._batch_builder(validated),
+        )
+        batch = recorder.measure(
+            "batch_validation_ns",
+            lambda: _validate_batch(validated, batch),
+        )
+        capability = self.capability()
+        evidence = recorder.measure(
+            "backend_evaluation_ns",
+            lambda: self._evaluated(batch, capability),
+        )
+        proposals = recorder.measure(
+            "proposal_selection_ns",
+            lambda: self._selected(validated, batch, evidence),
+        )
+        result = recorder.measure(
+            "result_validation_ns",
+            lambda: self._result(validated, capability, proposals),
+        )
+        return ProfiledSearchResult(phases=recorder.finish(), result=result)
+
+    def _validated_request(self, request: SearchRequest) -> SearchRequest:
         validated = request.validated()
         if validated.algorithm_id != self._algorithm_id:
             message = "search request selects a different algorithm"
             raise InvalidAcceleratorWorkError(message)
-        batch = self._batch_builder(validated).validated()
-        if len(batch.items) > validated.evaluation_budget:
-            message = (
-                "evaluated search batch exceeds declared evaluation budget"
-            )
-            raise InvalidAcceleratorWorkError(message)
-        capability = self.capability()
-        evidence = self._adapter.evaluate(batch).validated_against(
+        return validated
+
+    def _validated_batch(
+        self,
+        request: SearchRequest,
+    ) -> CandidateEvaluationBatch:
+        return _validate_batch(request, self._batch_builder(request))
+
+    def _evaluated(
+        self,
+        batch: CandidateEvaluationBatch,
+        capability: AcceleratorCapability,
+    ) -> CandidateEvaluationResult:
+        return self._adapter.evaluate(batch).validated_against(
             batch,
             capability,
         )
-        proposals = self._proposal_selector(validated, batch, evidence)
+
+    def _selected(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+        evidence: CandidateEvaluationResult,
+    ) -> tuple[CandidateProposal, ...]:
+        proposals = self._proposal_selector(request, batch, evidence)
         _validate_proposal_membership(proposals, batch)
+        return proposals
+
+    def _result(
+        self,
+        request: SearchRequest,
+        capability: AcceleratorCapability,
+        proposals: tuple[CandidateProposal, ...],
+    ) -> SearchResult:
         return SearchResult(
             algorithm_id=self._algorithm_id,
             capability=capability,
             proposals=proposals,
-            seed=validated.seed,
-        ).validated_against(validated, capability)
+            seed=request.seed,
+        ).validated_against(request, capability)
+
+
+@final
+class _PhaseRecorder:
+    """Collect named wall-clock intervals without affecting ordinary search."""
+
+    def __init__(self) -> None:
+        self._durations: dict[str, int] = {}
+        self._total_start = perf_counter_ns()
+
+    def measure[T](self, name: str, action: Callable[[], T]) -> T:
+        """Run one action and retain its elapsed wall-clock duration.
+
+        Returns:
+            The action result unchanged.
+
+        """
+        start = perf_counter_ns()
+        result = action()
+        self._durations[name] = perf_counter_ns() - start
+        return result
+
+    def finish(self) -> EvaluatedSearchPhaseProfile:
+        """Materialize immutable phase diagnostics.
+
+        Returns:
+            Complete phase durations plus inclusive total wall time.
+
+        """
+        return EvaluatedSearchPhaseProfile(
+            backend_evaluation_ns=self._duration("backend_evaluation_ns"),
+            batch_build_ns=self._duration("batch_build_ns"),
+            batch_validation_ns=self._duration("batch_validation_ns"),
+            proposal_selection_ns=self._duration("proposal_selection_ns"),
+            request_validation_ns=self._duration("request_validation_ns"),
+            result_validation_ns=self._duration("result_validation_ns"),
+            total_ns=perf_counter_ns() - self._total_start,
+        )
+
+    def _duration(self, name: str) -> int:
+        value = self._durations.get(name)
+        if value is None:
+            message = f"evaluated search phase was not measured: {name}"
+            raise RuntimeError(message)
+        return value
+
+
+def _validate_batch(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+) -> CandidateEvaluationBatch:
+    validated = batch.validated()
+    if len(validated.items) > request.evaluation_budget:
+        message = "evaluated search batch exceeds declared evaluation budget"
+        raise InvalidAcceleratorWorkError(message)
+    return validated
 
 
 def _validate_proposal_membership(
