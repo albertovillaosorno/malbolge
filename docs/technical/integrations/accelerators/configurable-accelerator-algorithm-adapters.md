@@ -130,7 +130,14 @@ dictionary path. Fabricated payloads still fail closed, and benchmarks require
 CUDA, improvements of 1.725x/1.899x over the resident baseline; CUDA is 1.491x
 faster in the same run. Selection improves 3.519x/3.939x to 11.801/11.761 ms.
 Ordinary/backend controls also improve, so the direct phase change bounds causal
-attribution. Packed evidence scanning is the next neutral boundary. Resident or
+attribution. `PreparedProposalSelection` now adds strategy-owned preparation,
+selection, and state-count callbacks to the strategy identity. Rotate target state
+uses the exact inverse of the classic rotate bijection and records only preimage
+positions that survive pruning, seed order, and budget. Prepared selection reads
+and validates packed evidence only at those positions; ordinary search retains the
+full scan. Missing/excluded positions, forged state, and nonmatching evidence remain
+fail-closed. Benchmarks require one canonical position. Post-commit evidence is
+pending; primitive backend execution is the next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

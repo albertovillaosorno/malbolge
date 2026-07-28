@@ -210,8 +210,13 @@ fails explicitly without changing correctness rules.
   payloads fail closed. Retained CUDA prepared median reaches 17.970 ms, 1.899x
   faster than the resident baseline and 1.491x faster than same-run CPU. CUDA
   proposal selection falls from 46.331 to 11.761 ms (3.939x). Improved ordinary and
-  backend controls bound cross-run attribution; the packed evidence scan remains
-  host-side. Broader live-hardware evidence, synthesis/search
+  backend controls bound cross-run attribution. The neutral prepared proof now
+  also contains exact rotate-preimage positions after pruning/seed/budget. CUDA
+  prepared selection reads and validates only those packed words; ordinary CUDA
+  search retains the full host scan. Benchmarks require one selector position
+  alongside membership and resident-session identity. Post-commit performance
+  evidence is pending; the remaining prepared cost is primitive backend execution.
+  Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

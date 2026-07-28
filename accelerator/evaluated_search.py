@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
 from time import perf_counter_ns
+from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -32,16 +33,42 @@ type SearchProposalSelector = Callable[
 ]
 type SearchBatchPreparer = Callable[[CandidateEvaluationBatch], object]
 type SearchPreparedEvaluator = Callable[[object], CandidateEvaluationResult]
+type SearchSelectionPreparer = Callable[
+    [SearchRequest, CandidateEvaluationBatch],
+    object,
+]
+
+
+class SearchPreparedProposalSelector(Protocol):
+    """Prepared proposal callback with explicit selector state."""
+
+    def __call__(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+        evidence: CandidateEvaluationResult,
+        *,
+        state: object,
+    ) -> tuple[CandidateProposal, ...]:
+        """Return untrusted proposals from prepared selector state."""
+        ...
+
+
+type SearchSelectionStateCount = Callable[[object], int]
 type SearchStrategyKey = tuple[
     str,
     SearchBatchBuilder,
     SearchProposalSelector,
     SearchBatchPreparer | None,
+    SearchSelectionPreparer | None,
+    SearchPreparedProposalSelector | None,
+    SearchSelectionStateCount | None,
 ]
 type CandidateMembershipIndex = frozenset[tuple[str, bytes]]
 
 _PREPARED_PROOF = object()
 _NO_CANDIDATE_STATE = object()
+_NO_SELECTION_STATE = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,12 +80,22 @@ class PreparedCandidateExecution:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedProposalSelection:
+    """Strategy-owned preparation and exact prepared proposal selection."""
+
+    state_preparer: SearchSelectionPreparer
+    selector: SearchPreparedProposalSelector
+    state_count: SearchSelectionStateCount
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluatedSearchStrategy:
     """Hardware-neutral evaluated-search strategy callbacks."""
 
     batch_builder: SearchBatchBuilder
     proposal_selector: SearchProposalSelector
     prepared_execution: PreparedCandidateExecution | None = None
+    prepared_selection: PreparedProposalSelection | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +107,7 @@ class PreparedEvaluatedSearch:
     _candidate_state: object = field(repr=False)
     _membership_index: CandidateMembershipIndex = field(repr=False)
     _proof: object = field(repr=False)
+    _selection_state: object = field(repr=False)
     _strategy_key: SearchStrategyKey = field(repr=False)
 
     def for_strategy(
@@ -80,11 +118,13 @@ class PreparedEvaluatedSearch:
         CandidateEvaluationBatch,
         object,
         CandidateMembershipIndex,
+        object,
     ]:
         """Return state only to the exact strategy that prepared it.
 
         Returns:
-            Validated request, batch, candidate state, and membership index.
+            Validated request, batch, candidate state, membership index, and
+            prepared proposal-selection state.
 
         Raises:
             InvalidAcceleratorWorkError: If this state is forged or belongs to a
@@ -102,6 +142,7 @@ class PreparedEvaluatedSearch:
             self.batch,
             self._candidate_state,
             self._membership_index,
+            self._selection_state,
         )
 
 
@@ -145,6 +186,15 @@ class ProfiledPreparedSearchResult:
     result: SearchResult
 
 
+@dataclass(frozen=True, slots=True)
+class _ResolvedPreparedSearch:
+    request: SearchRequest
+    batch: CandidateEvaluationBatch
+    candidate_state: object
+    membership_index: CandidateMembershipIndex
+    selection_state: object
+
+
 @final
 class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     """Run one search strategy through a replaceable candidate evaluator."""
@@ -178,11 +228,29 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             else strategy.prepared_execution.evaluator
         )
         self._proposal_selector = strategy.proposal_selector
+        self._selection_preparer = (
+            None
+            if strategy.prepared_selection is None
+            else strategy.prepared_selection.state_preparer
+        )
+        self._prepared_proposal_selector = (
+            None
+            if strategy.prepared_selection is None
+            else strategy.prepared_selection.selector
+        )
+        self._selection_state_count = (
+            None
+            if strategy.prepared_selection is None
+            else strategy.prepared_selection.state_count
+        )
         self._strategy_key: SearchStrategyKey = (
             algorithm_id,
             strategy.batch_builder,
             strategy.proposal_selector,
             self._batch_preparer,
+            self._selection_preparer,
+            self._prepared_proposal_selector,
+            self._selection_state_count,
         )
 
     @override
@@ -211,6 +279,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             _candidate_state=self._prepare_candidate_state(batch),
             _membership_index=_candidate_membership_index(batch),
             _proof=_PREPARED_PROOF,
+            _selection_state=self._prepare_selection_state(validated, batch),
             _strategy_key=self._strategy_key,
         )
 
@@ -236,15 +305,8 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             Structurally validated untrusted proposals.
 
         """
-        request, batch, candidate_state, membership_index = self._prepared(
-            prepared
-        )
-        return self._search_prepared_validated(
-            request,
-            batch,
-            candidate_state,
-            membership_index=membership_index,
-        )
+        resolved = self._prepared(prepared)
+        return self._search_prepared_validated(resolved)
 
     def prepared_membership_count(
         self,
@@ -259,11 +321,38 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             InvalidAcceleratorWorkError: If state/strategy/index identity fails.
 
         """
-        _, batch, _, membership_index = self._prepared(prepared)
-        if len(membership_index) != len(batch.items):
+        resolved = self._prepared(prepared)
+        if len(resolved.membership_index) != len(resolved.batch.items):
             message = "prepared membership index does not cover candidate batch"
             raise InvalidAcceleratorWorkError(message)
-        return len(membership_index)
+        return len(resolved.membership_index)
+
+    def prepared_selection_count(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> int:
+        """Return strategy-defined prepared selector state cardinality.
+
+        Returns:
+            Nonnegative selector-state item count, or zero when disabled.
+
+        Raises:
+            InvalidAcceleratorWorkError: If state/strategy/count identity fails.
+
+        """
+        resolved = self._prepared(prepared)
+        if resolved.selection_state is _NO_SELECTION_STATE:
+            return 0
+        if self._selection_state_count is None:
+            message = "prepared selection state has no count function"
+            raise InvalidAcceleratorWorkError(message)
+        count = self._selection_state_count(resolved.selection_state)
+        if type(count) is not int or count < 0:
+            message = (
+                "prepared selection state count must be nonnegative integer"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        return count
 
     def profile_search(self, request: SearchRequest) -> ProfiledSearchResult:
         """Execute one ordinary search with wall-clock phase diagnostics.
@@ -314,7 +403,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
 
         """
         recorder = _PhaseRecorder()
-        request, batch, candidate_state, membership_index = recorder.measure(
+        resolved = recorder.measure(
             "prepared_validation_ns",
             lambda: self._prepared(prepared),
         )
@@ -322,23 +411,22 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         evidence = recorder.measure(
             "backend_evaluation_ns",
             lambda: self._evaluated_prepared(
-                batch,
-                candidate_state,
+                resolved.batch,
+                resolved.candidate_state,
                 capability,
             ),
         )
         proposals = recorder.measure(
             "proposal_selection_ns",
-            lambda: self._selected(
-                request,
-                batch,
-                evidence,
-                membership_index=membership_index,
-            ),
+            lambda: self._selected_prepared(resolved, evidence),
         )
         result = recorder.measure(
             "result_validation_ns",
-            lambda: self._result(request, capability, proposals),
+            lambda: self._result(
+                resolved.request,
+                capability,
+                proposals,
+            ),
         )
         return ProfiledPreparedSearchResult(
             phases=recorder.finish_prepared(),
@@ -348,13 +436,17 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
     def _prepared(
         self,
         prepared: PreparedEvaluatedSearch,
-    ) -> tuple[
-        SearchRequest,
-        CandidateEvaluationBatch,
-        object,
-        CandidateMembershipIndex,
-    ]:
-        return prepared.for_strategy(self._strategy_key)
+    ) -> _ResolvedPreparedSearch:
+        request, batch, candidate_state, membership_index, selection_state = (
+            prepared.for_strategy(self._strategy_key)
+        )
+        return _ResolvedPreparedSearch(
+            request=request,
+            batch=batch,
+            candidate_state=candidate_state,
+            membership_index=membership_index,
+            selection_state=selection_state,
+        )
 
     def _prepare_candidate_state(
         self,
@@ -365,6 +457,19 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         state = self._batch_preparer(batch)
         if state is _NO_CANDIDATE_STATE:
             message = "candidate batch preparer returned reserved state"
+            raise InvalidAcceleratorWorkError(message)
+        return state
+
+    def _prepare_selection_state(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+    ) -> object:
+        if self._selection_preparer is None:
+            return _NO_SELECTION_STATE
+        state = self._selection_preparer(request, batch)
+        if state is _NO_SELECTION_STATE:
+            message = "proposal selection preparer returned reserved state"
             raise InvalidAcceleratorWorkError(message)
         return state
 
@@ -393,25 +498,16 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
 
     def _search_prepared_validated(
         self,
-        request: SearchRequest,
-        batch: CandidateEvaluationBatch,
-        candidate_state: object,
-        *,
-        membership_index: CandidateMembershipIndex,
+        resolved: _ResolvedPreparedSearch,
     ) -> SearchResult:
         capability = self.capability()
         evidence = self._evaluated_prepared(
-            batch,
-            candidate_state,
+            resolved.batch,
+            resolved.candidate_state,
             capability,
         )
-        proposals = self._selected(
-            request,
-            batch,
-            evidence,
-            membership_index=membership_index,
-        )
-        return self._result(request, capability, proposals)
+        proposals = self._selected_prepared(resolved, evidence)
+        return self._result(resolved.request, capability, proposals)
 
     def _evaluated_prepared(
         self,
@@ -452,6 +548,34 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             proposals,
             batch,
             membership_index=membership_index,
+        )
+        return proposals
+
+    def _selected_prepared(
+        self,
+        resolved: _ResolvedPreparedSearch,
+        evidence: CandidateEvaluationResult,
+    ) -> tuple[CandidateProposal, ...]:
+        if resolved.selection_state is _NO_SELECTION_STATE:
+            return self._selected(
+                resolved.request,
+                resolved.batch,
+                evidence,
+                membership_index=resolved.membership_index,
+            )
+        if self._prepared_proposal_selector is None:
+            message = "prepared selection state has no selector"
+            raise InvalidAcceleratorWorkError(message)
+        proposals = self._prepared_proposal_selector(
+            resolved.request,
+            resolved.batch,
+            evidence,
+            state=resolved.selection_state,
+        )
+        _validate_proposal_membership(
+            proposals,
+            resolved.batch,
+            membership_index=resolved.membership_index,
         )
         return proposals
 

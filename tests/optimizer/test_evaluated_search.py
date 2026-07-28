@@ -11,6 +11,7 @@ from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
 from accelerator.evaluated_search import EvaluatedSearchStrategy
 from accelerator.evaluated_search import PreparedCandidateExecution
+from accelerator.evaluated_search import PreparedProposalSelection
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -87,6 +88,42 @@ def _evaluate_identity_state(state: object) -> CandidateEvaluationResult:
     return CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity).evaluate(
         state
     )
+
+
+def _prepare_first_selection(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+) -> object:
+    _ = request
+    return batch
+
+
+def _prepare_first_selection_other(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+) -> object:
+    _ = request
+    return batch
+
+
+def _select_prepared_first(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    evidence: CandidateEvaluationResult,
+    *,
+    state: object,
+) -> tuple[CandidateProposal, ...]:
+    if state is not batch:
+        message = "prepared selector state changed candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+    return _select_first(request, batch, evidence)
+
+
+def _count_prepared_selection(state: object) -> int:
+    if not isinstance(state, CandidateEvaluationBatch):
+        message = "prepared selector state has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    return len(state.items)
 
 
 def _select_first(
@@ -225,6 +262,69 @@ def test_prepared_state_rejects_different_strategy_functions() -> None:
     """Algorithm identity alone cannot authorize another strategy binding."""
     prepared = _adapter(_one_item, _select_first).prepare(_request(budget=1))
     different = _adapter(_one_item, _select_none)
+
+    _expect_error(
+        "prepared search state belongs to a different strategy",
+        lambda: different.search_prepared(prepared),
+    )
+
+
+def test_prepared_proposal_selection_reuses_explicit_state() -> None:
+    """Prepared selector state replaces ordinary selection only when reused."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    adapter = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_none,
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=_prepare_first_selection,
+                selector=_select_prepared_first,
+                state_count=_count_prepared_selection,
+            ),
+        ),
+    )
+    request = _request(budget=1)
+    prepared = adapter.prepare(request)
+
+    assert adapter.search(request).proposals == ()
+    assert adapter.prepared_selection_count(prepared) == 1
+    assert adapter.search_prepared(prepared).proposals == (
+        CandidateProposal(logical_id="one", payload=b"payload"),
+    )
+
+
+def test_prepared_selection_preparer_is_strategy_identity() -> None:
+    """Distinct selector preparers cannot consume another strategy proof."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    first = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_none,
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=_prepare_first_selection,
+                selector=_select_prepared_first,
+                state_count=_count_prepared_selection,
+            ),
+        ),
+    )
+    different = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_none,
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=_prepare_first_selection_other,
+                selector=_select_prepared_first,
+                state_count=_count_prepared_selection,
+            ),
+        ),
+    )
+    prepared = first.prepare(_request(budget=1))
 
     _expect_error(
         "prepared search state belongs to a different strategy",

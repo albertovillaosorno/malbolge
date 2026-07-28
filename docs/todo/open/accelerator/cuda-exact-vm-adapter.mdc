@@ -121,6 +121,10 @@ batches.
   proposal index, eliminating repeated dictionary construction without weakening
   payload membership. Retained CUDA prepared median is 17.970 ms, 1.899x faster
   than the resident baseline and 1.491x faster than CPU; selection improves 3.939x
-  to 11.761 ms. Packed evidence scanning and synthesis/search strategies remain open.
+  to 11.761 ms. Prepared rotate selection now stores exact preimage positions and
+  validates only those packed evidence words, while ordinary CUDA retains the full
+  scan. Benchmarks require one selector position alongside existing proofs.
+  Post-commit evidence is pending; primitive execution and synthesis/search remain
+  open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

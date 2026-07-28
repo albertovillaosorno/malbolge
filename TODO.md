@@ -784,8 +784,16 @@ evidence records CPU/CUDA prepared medians of 26.797/17.970 ms, improvements of
 1.725x/1.899x over the resident baseline; CUDA is 1.491x faster in the same run.
 Proposal selection falls from 41.529 to 11.801 ms CPU (3.519x) and from 46.331 to
 11.761 ms CUDA (3.939x). Ordinary controls and backend medians also improve, so
-cross-run total changes are not attributed solely to the index. The packed result
-scan is now the next measured boundary.
+cross-run total changes are not attributed solely to the index.
+`PreparedProposalSelection` now lets a strategy bind selector state to the same
+prepared proof. Rotate target preparation uses the exact inverse of the classic
+rotate bijection after pruning, seed rotation, and budget selection, retaining only
+evaluated preimage positions. Prepared selection reads and validates evidence only
+at those positions; ordinary search keeps the full packed scan. Missing/excluded
+preimages, forged state, and nonmatching evidence produce no proposal or fail
+closed. Both benchmarks require one prepared position for the canonical workload.
+Post-commit performance evidence is pending; primitive backend execution is the
+next measured boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -852,8 +860,12 @@ selection, eliminating per-call dictionary reconstruction while preserving paylo
 membership checks. Benchmarks require 59,049 indexed members; fabricated proposals
 fail closed. Retained CUDA prepared throughput reaches 17.970 ms versus 26.797 ms
 CPU prepared (1.491x), and CUDA selection improves 3.939x to 11.761 ms. Improved
-ordinary/backend controls bound attribution to the direct selection phase. The
-packed evidence scan now precedes resident or fused evaluation-selection. Broader
+ordinary/backend controls bound attribution to the direct selection phase. Prepared
+rotate search now stores exact preimage positions and reads only their packed
+backend evidence, while ordinary search retains the full scan. The canonical
+benchmarks require exactly one prepared position plus the existing membership and
+resident-session proofs. Post-commit performance evidence is pending; primitive
+backend execution now precedes resident or fused evaluation-selection. Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

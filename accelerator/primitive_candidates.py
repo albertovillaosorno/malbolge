@@ -221,6 +221,30 @@ def decode_primitive_evidence(payload: bytes) -> int:
     return value
 
 
+def primitive_evidence_value_at(
+    result: CandidateEvaluationResult,
+    index: int,
+) -> int:
+    """Read one exact primitive word by request-order index.
+
+    Returns:
+        Classic-domain primitive result word at ``index``.
+
+    Raises:
+        InvalidAcceleratorResultError: If index or evidence encoding is invalid.
+
+    """
+    if type(index) is not int or index < 0:
+        message = "primitive evidence index must be nonnegative integer"
+        raise InvalidAcceleratorResultError(message)
+    if result.packed is not None:
+        return _packed_primitive_value_at(result.packed, index)
+    if index >= len(result.items):
+        message = "primitive evidence index outside item result"
+        raise InvalidAcceleratorResultError(message)
+    return decode_primitive_evidence(result.items[index].payload)
+
+
 def iter_primitive_evidence_values(
     result: CandidateEvaluationResult,
 ) -> Iterator[int]:
@@ -235,6 +259,27 @@ def iter_primitive_evidence_values(
         return
     for item in result.items:
         yield decode_primitive_evidence(item.payload)
+
+
+def _packed_primitive_value_at(
+    packed: PackedCandidateEvidence,
+    index: int,
+) -> int:
+    if packed.payload_width != _WORD_BYTES:
+        message = "primitive packed evidence must use four-byte payloads"
+        raise InvalidAcceleratorResultError(message)
+    if len(packed.payloads) % _WORD_BYTES != 0:
+        message = "primitive packed evidence has incomplete word payload"
+        raise InvalidAcceleratorResultError(message)
+    count = len(packed.payloads) // _WORD_BYTES
+    if index >= count:
+        message = "primitive evidence index outside packed result"
+        raise InvalidAcceleratorResultError(message)
+    start = index * _WORD_BYTES
+    payload = memoryview(packed.payloads)[start : start + _WORD_BYTES]
+    value = int.from_bytes(payload, _LITTLE_ENDIAN)
+    _validate_evidence_word(value)
+    return value
 
 
 def _iter_packed_primitive_values(

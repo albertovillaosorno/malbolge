@@ -111,7 +111,10 @@ directly on CUDA APIs.
   across matching CPU/CUDA routes. Ordinary execution remains one-shot and forged
   payloads fail closed. Retained prepared medians improve 1.725x CPU and 1.899x
   CUDA; selection improves 3.519x/3.939x. CUDA is 1.491x faster than same-run CPU.
-  Packed evidence scanning is next. Synthesis/guided search,
+  Prepared strategy state now stores exact rotate-preimage positions after
+  pruning/seed/budget and validates only their evidence. Ordinary execution retains
+  the full scan; forged state/nonmatching evidence fail closed. Post-commit evidence
+  is pending; primitive execution is next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

@@ -18,12 +18,16 @@ from accelerator.search_selection import SearchAdapterBinding
 from accelerator.search_selection import SearchSelection
 from accelerator.search_selection import resolve_search_execution
 from accelerator.work_ports import CandidateProposal
+from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
 from optimizer.rotate_target import InvalidRotateTargetProblemError
+from optimizer.rotate_target import PreparedRotateTargetSelection
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import RotateTargetVerifier
+from optimizer.rotate_target import build_rotate_target_batch
+from optimizer.rotate_target import count_prepared_rotate_target_positions
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_search_adapter
 
@@ -65,6 +69,19 @@ def _request(
     )
 
 
+def _expect_work_error(
+    message: str,
+    action: Callable[[], object],
+) -> None:
+    try:
+        _ = action()
+    except InvalidAcceleratorWorkError as error:
+        if message not in str(error):
+            raise AssertionError from error
+        return
+    raise AssertionError
+
+
 def _expect_problem_error(
     message: str,
     action: Callable[[], object],
@@ -76,6 +93,28 @@ def _expect_problem_error(
             raise AssertionError from error
         return
     raise AssertionError
+
+
+@dataclass(frozen=True, slots=True)
+class _ZeroPrimitiveAdapter(ExactPrimitiveAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        validated = batch.validated()
+        return PrimitiveResult(
+            capability=BAD_CAPABILITY,
+            values=(0,) * len(validated.data),
+        )
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +213,66 @@ def test_seed_and_budget_bound_evaluated_search_order() -> None:
     assert tuple(item.logical_id for item in found.proposals) == ("corpus-0",)
 
 
+def test_prepared_rotate_selection_tracks_seed_budget_and_absence() -> None:
+    """Prepared inverse positions match ordinary exact search cases."""
+    cases = (
+        (
+            RotateTargetProblem(
+                target=ROTATE_ONE,
+                candidates=(0, 1, 2, 1, 4),
+            ),
+            8,
+            0,
+            1,
+        ),
+        (RotateTargetProblem(target=ROTATE_ONE, candidates=(0, 2, 4)), 8, 0, 0),
+        (
+            RotateTargetProblem(target=ROTATE_ONE, candidates=(1, 4, 7, 1)),
+            1,
+            1,
+            0,
+        ),
+    )
+    adapter = cpu_rotate_target_search_adapter()
+    for problem, budget, seed, expected_count in cases:
+        request = _request(problem, budget=budget, seed=seed)
+        prepared = adapter.prepare(request)
+        assert adapter.prepared_selection_count(prepared) == expected_count
+        assert adapter.search_prepared(prepared) == adapter.search(request)
+
+
+def test_prepared_rotate_selection_requires_matching_evidence() -> None:
+    """Inverse position needs matching evidence before proposal."""
+    problem = RotateTargetProblem(target=ROTATE_ONE, candidates=(1, 4, 7))
+    adapter = rotate_target_search_adapter(_ZeroPrimitiveAdapter())
+    prepared = adapter.prepare(_request(problem))
+
+    assert adapter.prepared_selection_count(prepared) == 1
+    assert adapter.search_prepared(prepared).proposals == ()
+
+
+def test_prepared_rotate_selection_rejects_forged_state() -> None:
+    """Raw rotate selector state construction cannot forge prepared identity."""
+    request = _request(RotateTargetProblem(target=ROTATE_ONE, candidates=(1,)))
+    batch = build_rotate_target_batch(request)
+    forged = PreparedRotateTargetSelection(
+        request=request,
+        batch=batch,
+        target=ROTATE_ONE,
+        positions=(0,),
+        _proof=object(),
+    )
+
+    _expect_work_error(
+        "prepared rotate selection state is forged",
+        lambda: count_prepared_rotate_target_positions(forged),
+    )
+    _expect_work_error(
+        "prepared rotate selection state has wrong type",
+        lambda: count_prepared_rotate_target_positions(object()),
+    )
+
+
 def test_live_cuda_search_matches_cpu_and_records_backend_identity() -> None:
     """Live CUDA evaluates candidates inside the neutral search port."""
     problem = RotateTargetProblem(
@@ -222,6 +321,7 @@ def test_prepared_cpu_state_executes_unchanged_on_live_cuda() -> None:
     request = _request(problem, budget=257, seed=17)
     reference = cpu_rotate_target_search_adapter()
     prepared = reference.prepare(request)
+    assert reference.prepared_selection_count(prepared) == 1
     expected = reference.search_prepared(prepared)
 
     with _cuda() as cuda:

@@ -90,7 +90,10 @@ baseline for accelerator implementations.
   CPU state now reuses an immutable exact 59,049-member proposal index instead of
   rebuilding a dictionary; ordinary execution and fail-closed payload checks remain.
   Retained CPU prepared median is 26.797 ms (1.725x better), and selection improves
-  3.519x to 11.801 ms. Primitive arithmetic and packed scanning are next.
+  3.519x to 11.801 ms. Prepared rotate state now stores exact preimage positions
+  after pruning/seed/budget and validates only their evidence; ordinary CPU search
+  retains the packed scan. Post-commit evidence is pending; primitive arithmetic is
+  next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

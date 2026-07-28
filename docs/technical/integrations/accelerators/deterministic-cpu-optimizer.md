@@ -127,7 +127,12 @@ fails explicitly without changing correctness rules.
   payloads still fail closed. Retained CPU prepared median reaches 26.797 ms,
   1.725x faster than the resident baseline, while selection falls from 41.529 to
   11.801 ms (3.519x). Improved ordinary/backend controls bound total attribution.
-  Primitive arithmetic and packed evidence scanning remain CPU targets.
+  Prepared rotate selection now computes the unique inverse candidate and stores
+  only positions that survive pruning/seed/budget. It reads/verifies evidence at
+  those positions instead of scanning every packed word; ordinary CPU search keeps
+  the scan. Missing/excluded candidates and nonmatching evidence produce no
+  proposal. Post-commit evidence is pending; primitive arithmetic remains the CPU
+  target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

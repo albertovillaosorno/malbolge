@@ -127,7 +127,12 @@ pairs; ordinary execution keeps the one-shot dictionary path and forged payloads
 remain rejected. Benchmarks expose/require the indexed count. Retained prepared
 medians improve 1.725x CPU and 1.899x CUDA; selection improves 3.519x/3.939x to
 11.801/11.761 ms. CUDA is 1.491x faster than same-run CPU. Improved controls bound
-cross-run attribution. Packed evidence scanning is next, while resident/fused
+cross-run attribution. Prepared strategy state now optionally includes a
+proof-bound selector preparer, selector, and count function. Rotate target uses the
+exact classic inverse and stores only evaluated preimage positions; prepared
+CPU/CUDA read and validate evidence there, while ordinary execution retains the
+full scan. Forged/mismatched selector state and nonmatching evidence fail closed.
+Post-commit evidence is pending; primitive execution is next, while resident/fused
 search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.

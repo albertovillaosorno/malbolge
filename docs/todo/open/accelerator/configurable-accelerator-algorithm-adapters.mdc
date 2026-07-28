@@ -115,8 +115,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   rebuilding a dictionary. Ordinary execution stays one-shot and forged payloads
   fail closed. Retained prepared medians are 26.797 ms CPU and 17.970 ms CUDA,
   1.725x/1.899x faster than the resident baseline; selection improves
-  3.519x/3.939x. Improved controls bound attribution. Packed evidence scanning is
-  next. Synthesis/guided
+  3.519x/3.939x. Improved controls bound attribution. Prepared strategy selection
+  now stores exact rotate-preimage positions after pruning/seed/budget and validates
+  only their packed evidence. Ordinary search retains the full scan; forged state,
+  missing/excluded positions, and nonmatching evidence fail closed. Benchmarks
+  require one canonical position. Post-commit evidence is pending; primitive
+  backend execution is next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

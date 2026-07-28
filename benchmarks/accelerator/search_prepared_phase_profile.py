@@ -111,6 +111,9 @@ def main() -> int:
         "prepared_membership_count": _validated_membership_count(
             cpu.prepared_membership_count(prepared)
         ),
+        "prepared_selection_count": _validated_selection_count(
+            cpu.prepared_selection_count(prepared)
+        ),
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
@@ -166,6 +169,13 @@ def _measure_pair(
 def _validated_membership_count(count: int) -> int:
     if count != CORPUS_SIZE:
         message = "prepared membership index does not cover full corpus"
+        raise RuntimeError(message)
+    return count
+
+
+def _validated_selection_count(count: int) -> int:
+    if count != 1:
+        message = "prepared rotate selector must retain one exact position"
         raise RuntimeError(message)
     return count
 

@@ -125,8 +125,15 @@ require exactly 59,049 indexed members. Retained evidence under
 records 26.797 ms CPU prepared and 17.970 ms CUDA prepared, 1.725x/1.899x faster
 than the resident baseline. CUDA prepared is 1.491x faster than same-run CPU. The
 phase sibling lowers proposal selection 3.519x CPU and 3.939x CUDA to
-11.801/11.761 ms. Improved controls bound total attribution; the packed result scan
-is the next candidate boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+11.801/11.761 ms. Improved controls bound total attribution.
+`PreparedProposalSelection` now binds strategy-specific selector state into the
+prepared proof. Rotate target preparation computes the unique classic rotate
+preimage after pruning/seed/budget and retains its evaluated positions. Prepared
+selection validates only those packed evidence words; ordinary search keeps the
+full scan. Missing/excluded positions, forged state, and nonmatching evidence fail
+closed, and benchmarks require one prepared position. Post-commit performance
+evidence is pending; primitive backend execution is the next candidate boundary.
+Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

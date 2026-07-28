@@ -28,6 +28,7 @@ from accelerator.primitive_candidates import encode_crazy_candidate
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
@@ -194,6 +195,30 @@ def test_cpu_candidate_bridge_preserves_exact_rotate_results() -> None:
         )
     )
     assert observed == expected.values
+
+
+def test_packed_primitive_evidence_supports_exact_index_lookup() -> None:
+    """Packed primitive evidence exposes bounded request-order word lookup."""
+    batch = _rotate_batch()
+    adapter = PrimitiveCandidateEvaluationAdapter(
+        CpuExactPrimitiveAdapter(),
+        PrimitiveKind.ROTATE,
+    )
+    result = adapter.evaluate(batch)
+    expected = tuple(iter_primitive_evidence_values(result))
+
+    assert primitive_evidence_value_at(result, 0) == expected[0]
+    assert primitive_evidence_value_at(result, CORPUS_SIZE - 1) == expected[-1]
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "primitive evidence index outside packed result",
+        lambda: primitive_evidence_value_at(result, CORPUS_SIZE),
+    )
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "primitive evidence index must be nonnegative integer",
+        lambda: primitive_evidence_value_at(result, -1),
+    )
 
 
 def test_prepared_rotate_candidate_state_matches_ordinary_result() -> None:

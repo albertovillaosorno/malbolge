@@ -221,3 +221,10 @@ Retained post-commit evidence is under
 CPU/CUDA medians reach 26.797/17.970 ms, and proposal selection reaches
 11.801/11.761 ms. Ordinary/backend controls also improve, so the phase comparison
 is the direct membership-index evidence.
+
+The active rotate prepared selector now records the exact evaluated position of the
+unique classic rotate preimage after pruning, seed rotation, and budget selection.
+Both benchmark programs emit and require `prepared_selection_count=1` together with
+`prepared_membership_count=59049` and the CUDA session counters. Prepared selection
+still reads/validates backend evidence at that position; ordinary search retains the
+full scan. A post-commit rerun is required before claiming the exploratory reduction.

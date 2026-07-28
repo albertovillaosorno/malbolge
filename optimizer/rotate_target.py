@@ -14,14 +14,17 @@ from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
 from accelerator.evaluated_search import EvaluatedSearchStrategy
 from accelerator.evaluated_search import PreparedCandidateExecution
+from accelerator.evaluated_search import PreparedProposalSelection
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import ROTATE_HIGH_TRIT_WEIGHT
 from accelerator.primitive_candidates import PrimitiveCandidateEvaluationAdapter
 from accelerator.primitive_candidates import ROTATE_EVALUATOR_ID
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import iter_primitive_evidence_values
 from accelerator.primitive_candidates import prepare_rotate_candidate_batch
+from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -39,6 +42,55 @@ ROTATE_TARGET_ALGORITHM_ID = "classic-rotate-target-search-v1"
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
+_PREPARED_ROTATE_SELECTION_PROOF = object()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRotateTargetSelection:
+    """Proof-bound exact candidate positions for one rotate target."""
+
+    request: SearchRequest
+    batch: CandidateEvaluationBatch
+    target: int
+    positions: tuple[int, ...]
+    _proof: object
+
+    def for_selection(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+    ) -> tuple[int, tuple[int, ...]]:
+        """Return positions only for the request/batch that prepared them.
+
+        Returns:
+            Exact target and evaluated request-order candidate positions.
+
+        Raises:
+            InvalidAcceleratorWorkError: If state is forged or mismatched.
+
+        """
+        if self._proof is not _PREPARED_ROTATE_SELECTION_PROOF:
+            message = "prepared rotate selection state is forged"
+            raise InvalidAcceleratorWorkError(message)
+        if self.request is not request or self.batch is not batch:
+            message = "prepared rotate selection state changed request or batch"
+            raise InvalidAcceleratorWorkError(message)
+        return (self.target, self.positions)
+
+    def position_count(self) -> int:
+        """Return proof-validated exact candidate-position count.
+
+        Returns:
+            Number of evaluated positions that can rotate to the target.
+
+        Raises:
+            InvalidAcceleratorWorkError: If this state was forged.
+
+        """
+        if self._proof is not _PREPARED_ROTATE_SELECTION_PROOF:
+            message = "prepared rotate selection state is forged"
+            raise InvalidAcceleratorWorkError(message)
+        return len(self.positions)
 
 
 class InvalidRotateTargetProblemError(ValueError):
@@ -141,6 +193,11 @@ def rotate_target_search_adapter(
                 batch_preparer=prepare_rotate_candidate_batch,
                 evaluator=evaluator.evaluate_prepared,
             ),
+            prepared_selection=PreparedProposalSelection(
+                state_preparer=prepare_rotate_target_selection,
+                selector=select_prepared_rotate_target_proposals,
+                state_count=count_prepared_rotate_target_positions,
+            ),
         ),
     )
 
@@ -195,6 +252,93 @@ def build_rotate_target_batch(
             for index in selected
         ),
     )
+
+
+def prepare_rotate_target_selection(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+) -> object:
+    """Prepare exact request-order positions for the rotate target preimage.
+
+    Returns:
+        Strategy-bound immutable selector state.
+
+    Raises:
+        InvalidAcceleratorWorkError: If algorithm/evaluator identity mismatches.
+
+    """
+    validated_request = request.validated()
+    if validated_request.algorithm_id != ROTATE_TARGET_ALGORITHM_ID:
+        message = "rotate target selection selects a different algorithm"
+        raise InvalidAcceleratorWorkError(message)
+    validated_batch = batch.validated()
+    if validated_batch.evaluator_id != ROTATE_EVALUATOR_ID:
+        message = "rotate target selection uses a different evaluator"
+        raise InvalidAcceleratorWorkError(message)
+    target = RotateTargetProblem.decode_target(validated_request.problem)
+    payload = encode_rotate_candidate(_inverse_rotate(target))
+    positions = tuple(
+        index
+        for index, item in enumerate(validated_batch.items)
+        if item.payload == payload
+    )
+    return PreparedRotateTargetSelection(
+        request=validated_request,
+        batch=validated_batch,
+        target=target,
+        positions=positions,
+        _proof=_PREPARED_ROTATE_SELECTION_PROOF,
+    )
+
+
+def count_prepared_rotate_target_positions(state: object) -> int:
+    """Return proof-validated prepared rotate candidate-position count.
+
+    Returns:
+        Number of exact preimage positions in the evaluated batch.
+
+    Raises:
+        InvalidAcceleratorWorkError: If selector state has wrong type/proof.
+
+    """
+    if not isinstance(state, PreparedRotateTargetSelection):
+        message = "prepared rotate selection state has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    return state.position_count()
+
+
+def select_prepared_rotate_target_proposals(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    evidence: CandidateEvaluationResult,
+    *,
+    state: object,
+) -> tuple[CandidateProposal, ...]:
+    """Verify exact evidence only at prepared rotate-target positions.
+
+    Returns:
+        Untrusted matching proposals in evaluation order.
+
+    Raises:
+        InvalidAcceleratorWorkError: If selector state is forged/mismatched.
+
+    """
+    if not isinstance(state, PreparedRotateTargetSelection):
+        message = "prepared rotate selection state has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    target, positions = state.for_selection(request, batch)
+    proposals: list[CandidateProposal] = []
+    for index in positions:
+        if primitive_evidence_value_at(evidence, index) != target:
+            continue
+        item = batch.items[index]
+        proposals.append(
+            CandidateProposal(
+                logical_id=item.logical_id,
+                payload=item.payload,
+            )
+        )
+    return tuple(proposals)
 
 
 def select_rotate_target_proposals(
@@ -257,6 +401,13 @@ class RotateTargetVerifier(TrustedCandidateVerifier):
             )
         )
         return result.values == (self._target,)
+
+
+def _inverse_rotate(target: int) -> int:
+    # For x = 3q + r, rotate(x) = q + r * 3^9.
+    low_trit = target // ROTATE_HIGH_TRIT_WEIGHT
+    quotient = target % ROTATE_HIGH_TRIT_WEIGHT
+    return (quotient * 3) + low_trit
 
 
 def _decode_header(payload: bytes) -> tuple[int, int, int]:
