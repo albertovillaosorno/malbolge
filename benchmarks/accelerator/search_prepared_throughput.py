@@ -270,10 +270,27 @@ def _measure_routes(
 
 
 def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
-    expected = (WARMUP_COUNT + SAMPLE_COUNT, CORPUS_SIZE)
-    observed = (stats.evaluations, stats.rotate_table_entries)
+    evaluations = WARMUP_COUNT + SAMPLE_COUNT
+    expected = (
+        1,
+        evaluations,
+        CORPUS_SIZE,
+        PrimitiveKind.ROTATE,
+        evaluations - 1,
+        CORPUS_SIZE,
+    )
+    observed = (
+        stats.builds,
+        stats.evaluations,
+        stats.resident_count,
+        stats.resident_kind,
+        stats.reuses,
+        stats.rotate_table_entries,
+    )
     if observed != expected:
-        message = "prepared CPU rotate did not use one full-domain lookup table"
+        message = (
+            "prepared CPU rotate did not build and reuse one decode session"
+        )
         raise RuntimeError(message)
 
 

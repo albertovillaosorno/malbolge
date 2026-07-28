@@ -160,6 +160,11 @@ class _PreparedPointerOwner:
         self.pointers.append(pointer)
         return pointer
 
+    def copy_packed(self, words_u32le: bytes) -> int:
+        pointer = _copy_words(self.runtime, _host_packed_words(words_u32le))
+        self.pointers.append(pointer)
+        return pointer
+
     def close(self) -> None:
         _free_all(self.runtime, self.pointers)
 
@@ -167,7 +172,8 @@ class _PreparedPointerOwner:
 @dataclass(slots=True)
 class _CudaPreparedPrimitiveSession:
     prepared: PreparedPrimitiveBatch
-    batch: PrimitiveBatch
+    count: int
+    kind: PrimitiveKind
     device_accumulator: int | None
     device_data: int | None
     device_output: int | None
@@ -179,14 +185,15 @@ class _CudaPreparedPrimitiveSession:
         cls,
         runtime: CudaRuntime,
         prepared: PreparedPrimitiveBatch,
-        batch: PrimitiveBatch,
     ) -> _CudaPreparedPrimitiveSession:
-        count = len(batch.data)
+        storage = prepared.validated_storage()
+        count = storage.count()
         host_output = _empty_host_words(count)
         if count == 0:
             return cls(
                 prepared=prepared,
-                batch=batch,
+                count=0,
+                kind=storage.kind,
                 device_accumulator=None,
                 device_data=None,
                 device_output=None,
@@ -194,12 +201,13 @@ class _CudaPreparedPrimitiveSession:
             )
         owner = _PreparedPointerOwner(runtime=runtime, pointers=[])
         try:
-            device_data = owner.copy(_host_words(batch.data))
-            device_accumulator = _prepared_accumulator(owner, batch)
+            device_data = owner.copy_packed(storage.data_u32le)
+            device_accumulator = _prepared_packed_accumulator(owner, storage)
             device_output = owner.allocate(ctypes.sizeof(host_output))
             return cls(
                 prepared=prepared,
-                batch=batch,
+                count=count,
+                kind=storage.kind,
                 device_accumulator=device_accumulator,
                 device_data=device_data,
                 device_output=device_output,
@@ -230,7 +238,7 @@ class _CudaPreparedPrimitiveSession:
         crazy: ctypes.c_void_p,
         rotate: ctypes.c_void_p,
     ) -> bytes:
-        count = len(self.batch.data)
+        count = self.count
         if count == 0:
             return b""
         self._launch(
@@ -261,7 +269,7 @@ class _CudaPreparedPrimitiveSession:
 
         """
         total_start = perf_counter_ns()
-        count = len(self.batch.data)
+        count = self.count
         if count == 0:
             return b"", CudaPreparedPrimitivePhaseProfile(
                 download_ns=0,
@@ -304,7 +312,7 @@ class _CudaPreparedPrimitiveSession:
         if self.device_data is None or self.device_output is None:
             message = "prepared CUDA primitive session has missing buffers"
             raise AcceleratorExecutionError(message)
-        if self.batch.kind is PrimitiveKind.ROTATE:
+        if self.kind is PrimitiveKind.ROTATE:
             runtime.launch(
                 rotate,
                 (self.device_data, self.device_output),
@@ -511,8 +519,8 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             builds=self._prepared_builds,
             evaluations=self._prepared_evaluations,
             packed_evaluations=self._prepared_packed_evaluations,
-            resident_count=(0 if session is None else len(session.batch.data)),
-            resident_kind=(None if session is None else session.batch.kind),
+            resident_count=(0 if session is None else session.count),
+            resident_kind=(None if session is None else session.kind),
             reuses=self._prepared_reuses,
         )
 
@@ -529,12 +537,11 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         if current is not None and current.prepared is prepared:
             self._prepared_reuses += 1
             return current
-        batch = prepared.validated_batch()
+        _ = prepared.validated_storage()
         self._release_prepared_session()
         session = _CudaPreparedPrimitiveSession.build(
             self._runtime,
             prepared,
-            batch,
         )
         self._prepared_session = session
         self._prepared_builds += 1
@@ -593,13 +600,13 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             _free_all(self._runtime, pointers)
 
 
-def _prepared_accumulator(
+def _prepared_packed_accumulator(
     owner: _PreparedPointerOwner,
-    batch: PrimitiveBatch,
+    prepared: PreparedPrimitiveBatch,
 ) -> int | None:
-    if batch.kind is PrimitiveKind.ROTATE:
+    if prepared.kind is PrimitiveKind.ROTATE:
         return None
-    return owner.copy(_host_words(batch.accumulators))
+    return owner.copy_packed(prepared.accumulators_u32le)
 
 
 def _copy_words(
@@ -618,6 +625,14 @@ def _copy_words(
 def _free_all(runtime: CudaRuntime, pointers: list[int]) -> None:
     while pointers:
         runtime.free(pointers.pop())
+
+
+def _host_packed_words(
+    words_u32le: bytes,
+) -> ctypes.Array[ctypes.c_uint32]:
+    count = len(words_u32le) // ctypes.sizeof(ctypes.c_uint32)
+    host_type = ctypes.c_uint32 * count
+    return host_type.from_buffer_copy(words_u32le)
 
 
 def _host_values(host: ctypes.Array[ctypes.c_uint32]) -> tuple[int, ...]:

@@ -47,13 +47,22 @@
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 from enum import StrEnum
+import sys
 from typing import Protocol
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 MAX_WORD = 59_048
 ROTATE_HIGH_TRIT_WEIGHT = 19_683
 TRIT_COUNT = 10
+PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
+_WORD_BYTES = 4
+_LITTLE_ENDIAN = "little"
 _PREPARED_PRIMITIVE_PROOF = object()
 
 
@@ -124,16 +133,18 @@ class PrimitiveBatch:
 
 @dataclass(frozen=True, slots=True)
 class PreparedPrimitiveBatch:
-    """Validated immutable primitive input reusable across exact backends."""
+    """Proof-bound packed primitive input reusable across exact backends."""
 
-    batch: PrimitiveBatch
+    accumulators_u32le: bytes
+    data_u32le: bytes
+    kind: PrimitiveKind
     _proof: object
 
-    def validated_batch(self) -> PrimitiveBatch:
-        """Return the validated batch only for repository-created state.
+    def validated_storage(self) -> PreparedPrimitiveBatch:
+        """Return packed state only for repository-created preparation.
 
         Returns:
-            The immutable primitive batch validated during preparation.
+            This immutable proof-bound packed primitive input.
 
         Raises:
             InvalidPrimitiveBatchError: If this state was forged.
@@ -142,20 +153,133 @@ class PreparedPrimitiveBatch:
         if self._proof is not _PREPARED_PRIMITIVE_PROOF:
             message = "prepared primitive batch was not created by prepare"
             raise InvalidPrimitiveBatchError(message)
-        return self.batch
+        return self
+
+    def validated_batch(self) -> PrimitiveBatch:
+        """Materialize the compatibility tuple batch on explicit request.
+
+        Returns:
+            Exact tuple-based primitive batch reconstructed from packed storage.
+
+        """
+        validated = self.validated_storage()
+        return PrimitiveBatch(
+            accumulators=_unpack_words(validated.accumulators_u32le),
+            data=_unpack_words(validated.data_u32le),
+            kind=validated.kind,
+        )
+
+    def count(self) -> int:
+        """Return the exact prepared primitive cardinality.
+
+        Returns:
+            Number of packed data words.
+
+        """
+        _ = self.validated_storage()
+        return len(self.data_u32le) // _WORD_BYTES
+
+
+def prepared_primitive_storage_id() -> str:
+    """Return the active proof-bound primitive input storage identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PREPARED_PRIMITIVE_STORAGE_ID
 
 
 def prepare_primitive_batch(batch: PrimitiveBatch) -> PreparedPrimitiveBatch:
-    """Validate one immutable batch and retain reusable proof.
+    """Validate one tuple batch and retain packed reusable proof.
 
     Returns:
-        Hardware-neutral prepared primitive input.
+        Hardware-neutral packed prepared primitive input.
 
     """
+    validated = batch.validated()
+    return prepare_packed_primitive_batch(
+        accumulators_u32le=_pack_words(validated.accumulators),
+        data_u32le=_pack_words(validated.data),
+        kind=validated.kind,
+    )
+
+
+def prepare_packed_primitive_batch(
+    *,
+    accumulators_u32le: bytes,
+    data_u32le: bytes,
+    kind: PrimitiveKind,
+) -> PreparedPrimitiveBatch:
+    """Validate canonical packed words and retain reusable proof.
+
+    Returns:
+        Hardware-neutral packed prepared primitive input.
+
+    """
+    _validate_packed_prepared_shape(accumulators_u32le, data_u32le, kind)
+    _validate_packed_words(data_u32le)
+    _validate_packed_words(accumulators_u32le)
     return PreparedPrimitiveBatch(
-        batch=batch.validated(),
+        accumulators_u32le=accumulators_u32le,
+        data_u32le=data_u32le,
+        kind=kind,
         _proof=_PREPARED_PRIMITIVE_PROOF,
     )
+
+
+def _validate_packed_prepared_shape(
+    accumulators_u32le: bytes,
+    data_u32le: bytes,
+    kind: PrimitiveKind,
+) -> None:
+    if type(data_u32le) is not bytes or type(accumulators_u32le) is not bytes:
+        message = "prepared primitive words must use immutable bytes"
+        raise InvalidPrimitiveBatchError(message)
+    if len(data_u32le) % _WORD_BYTES or len(accumulators_u32le) % _WORD_BYTES:
+        message = "prepared primitive words must contain complete u32 values"
+        raise InvalidPrimitiveBatchError(message)
+    if kind is PrimitiveKind.ROTATE and accumulators_u32le:
+        message = "rotate batch must not carry accumulators"
+        raise InvalidPrimitiveBatchError(message)
+    if kind is PrimitiveKind.CRAZY and len(accumulators_u32le) != len(
+        data_u32le
+    ):
+        message = "crazy batch arrays must have equal length"
+        raise InvalidPrimitiveBatchError(message)
+
+
+def _validate_packed_words(words_u32le: bytes) -> None:
+    for value in _iter_words(words_u32le):
+        if value > MAX_WORD:
+            message = f"word outside classic domain: {value}"
+            raise InvalidPrimitiveBatchError(message)
+
+
+def _pack_words(values: tuple[int, ...]) -> bytes:
+    words = array("I", values)
+    if words.itemsize != _WORD_BYTES:
+        return b"".join(
+            value.to_bytes(_WORD_BYTES, _LITTLE_ENDIAN) for value in values
+        )
+    if sys.byteorder != _LITTLE_ENDIAN:
+        words.byteswap()
+    return words.tobytes()
+
+
+def _unpack_words(words_u32le: bytes) -> tuple[int, ...]:
+    return tuple(_iter_words(words_u32le))
+
+
+def _iter_words(words_u32le: bytes) -> Iterator[int]:
+    if sys.byteorder == _LITTLE_ENDIAN:
+        yield from memoryview(words_u32le).cast("I")
+        return
+    for offset in range(0, len(words_u32le), _WORD_BYTES):
+        yield int.from_bytes(
+            words_u32le[offset : offset + _WORD_BYTES],
+            _LITTLE_ENDIAN,
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -67,6 +67,7 @@ from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.evaluated_search import PreparedCandidateMembershipIndex
 from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import prepared_primitive_storage_id
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import packed_primitive_validation_id
 from accelerator.primitive_candidates import prepared_primitive_validation_id
@@ -105,6 +106,7 @@ COLD_CHILD_ARGUMENT_COUNT: Final = 2
 ORDINARY_VALIDATION_ID: Final = "u32le-broadword-domain-v1"
 PREPARED_VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
 CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
+PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
 MEMBERSHIP_INDEX_ID: Final = (
     "u32-rotation-or-pair-or-reference-binary-search-v1"
 )
@@ -249,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v3",
+        "benchmark_id": "rotate-target-preparation-crossover-v4",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -294,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
             "legacy_membership_index_id": LEGACY_MEMBERSHIP_INDEX_ID,
             "membership_index_id": _membership_index_id(),
             "ordinary_validation_id": _ordinary_validation_id(),
+            "prepared_primitive_storage_id": _prepared_primitive_storage_id(),
             "prepared_validation_id": _prepared_validation_id(),
             "strict_crossover": True,
         },
@@ -913,6 +916,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _prepared_primitive_storage_id() -> str:
+    observed = prepared_primitive_storage_id()
+    if observed != PREPARED_PRIMITIVE_STORAGE_ID:
+        message = "prepared primitive storage identity drifted"
+        raise RuntimeError(message)
+    return observed
 
 
 def _candidate_items_id() -> str:

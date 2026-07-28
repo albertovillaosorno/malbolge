@@ -82,23 +82,39 @@ CRAZY_TRIT_TABLE = (
 
 @dataclass(frozen=True, slots=True)
 class CpuPreparedPrimitiveStats:
-    """Observable prepared CPU rotate-table usage."""
+    """Observable prepared CPU decode-session and rotate-table usage."""
 
+    builds: int
     evaluations: int
+    resident_count: int
+    resident_kind: PrimitiveKind | None
+    reuses: int
     rotate_table_entries: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CpuPreparedPrimitiveSession:
+    prepared: PreparedPrimitiveBatch
+    batch: PrimitiveBatch
 
 
 @final
 class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
     """Mandatory exact scalar reference implementation."""
 
-    _prepared_rotate_evaluations: int
+    _prepared_builds: int
+    _prepared_evaluations: int
+    _prepared_reuses: int
     _prepared_rotate_table_entries: int
+    _prepared_session: _CpuPreparedPrimitiveSession | None
 
     def __init__(self) -> None:
         """Create one CPU adapter with empty prepared-use diagnostics."""
-        self._prepared_rotate_evaluations = 0
+        self._prepared_builds = 0
+        self._prepared_evaluations = 0
+        self._prepared_reuses = 0
         self._prepared_rotate_table_entries = 0
+        self._prepared_session = None
 
     @override
     def capability(self) -> AcceleratorCapability:
@@ -131,12 +147,11 @@ class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
             Exact classic-word results in input order.
 
         """
-        validated = prepared.validated_batch()
-        result = _evaluate_prepared_validated(validated)
-        if validated.kind is PrimitiveKind.ROTATE:
-            self._prepared_rotate_evaluations += 1
-            if validated.data:
-                self._prepared_rotate_table_entries = len(_rotate_table())
+        session = self._prepared_session_for(prepared)
+        result = _evaluate_prepared_validated(session.batch)
+        self._prepared_evaluations += 1
+        if session.batch.kind is PrimitiveKind.ROTATE and session.batch.data:
+            self._prepared_rotate_table_entries = len(_rotate_table())
         return result
 
     def prepared_stats(self) -> CpuPreparedPrimitiveStats:
@@ -146,10 +161,31 @@ class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
             Immutable evaluation count and observed table cardinality.
 
         """
+        session = self._prepared_session
         return CpuPreparedPrimitiveStats(
-            evaluations=self._prepared_rotate_evaluations,
+            builds=self._prepared_builds,
+            evaluations=self._prepared_evaluations,
+            resident_count=(0 if session is None else len(session.batch.data)),
+            resident_kind=(None if session is None else session.batch.kind),
+            reuses=self._prepared_reuses,
             rotate_table_entries=self._prepared_rotate_table_entries,
         )
+
+    def _prepared_session_for(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> _CpuPreparedPrimitiveSession:
+        current = self._prepared_session
+        if current is not None and current.prepared is prepared:
+            self._prepared_reuses += 1
+            return current
+        session = _CpuPreparedPrimitiveSession(
+            prepared=prepared,
+            batch=prepared.validated_batch(),
+        )
+        self._prepared_session = session
+        self._prepared_builds += 1
+        return session
 
 
 def _evaluate_prepared_validated(batch: PrimitiveBatch) -> PrimitiveResult:

@@ -61,6 +61,7 @@ from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import prepare_packed_primitive_batch
 from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.work_ports import CandidateEvaluationAdapter
 from accelerator.work_ports import CandidateEvaluationResult
@@ -645,14 +646,7 @@ def _prepare_primitive_candidate_batch(
     if validated.evaluator_id != evaluator_id:
         message = "candidate batch selects a different primitive evaluator"
         raise InvalidAcceleratorWorkError(message)
-    decoded = _decode_batch(validated, kind)
-    primitive = prepare_primitive_batch(
-        PrimitiveBatch(
-            accumulators=decoded.accumulators,
-            data=decoded.data,
-            kind=kind,
-        )
-    )
+    primitive = _prepared_primitive_input(validated, kind)
     expected_words = (
         _trusted_reference_words(primitive) if include_reference else None
     )
@@ -663,6 +657,34 @@ def _prepare_primitive_candidate_batch(
         expected_words_u32le=expected_words,
         kind=kind,
         _proof=_PREPARED_PRIMITIVE_PROOF,
+    )
+
+
+def _prepared_primitive_input(
+    batch: CandidateEvaluationBatch,
+    kind: PrimitiveKind,
+) -> PreparedPrimitiveBatch:
+    if (
+        isinstance(batch.items, IndexedCandidateWorkItems)
+        and kind is PrimitiveKind.ROTATE
+    ):
+        if batch.items.payload_width != _WORD_BYTES:
+            message = (
+                "rotate candidate payload must contain exactly one u32 word"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        return prepare_packed_primitive_batch(
+            accumulators_u32le=b"",
+            data_u32le=batch.items.payloads,
+            kind=kind,
+        )
+    decoded = _decode_batch(batch, kind)
+    return prepare_primitive_batch(
+        PrimitiveBatch(
+            accumulators=decoded.accumulators,
+            data=decoded.data,
+            kind=kind,
+        )
     )
 
 
@@ -700,7 +722,7 @@ def _decode_batch(
     kind: PrimitiveKind,
 ) -> _DecodedBatch:
     if isinstance(batch.items, IndexedCandidateWorkItems):
-        return _decode_indexed_batch(batch.items, kind)
+        return _decode_indexed_batch(batch.items)
     data: list[int] = []
     accumulators: list[int] = []
     for item in batch.items:
@@ -718,20 +740,7 @@ def _decode_batch(
 
 def _decode_indexed_batch(
     items: IndexedCandidateWorkItems,
-    kind: PrimitiveKind,
 ) -> _DecodedBatch:
-    if kind is PrimitiveKind.ROTATE:
-        if items.payload_width != _WORD_BYTES:
-            message = (
-                "rotate candidate payload must contain exactly one u32 word"
-            )
-            raise InvalidAcceleratorWorkError(message)
-        rotate_data = tuple(
-            value for (value,) in _iter_native_u32(items.payloads)
-        )
-        for value in rotate_data:
-            _validate_word(value)
-        return _DecodedBatch(accumulators=(), data=rotate_data)
     data: list[int] = []
     accumulators: list[int] = []
     for index in range(len(items)):
@@ -741,22 +750,6 @@ def _decode_indexed_batch(
     return _DecodedBatch(
         accumulators=tuple(accumulators),
         data=tuple(data),
-    )
-
-
-def _iter_native_u32(payloads: bytes) -> Iterator[tuple[int]]:
-    if sys.byteorder == _LITTLE_ENDIAN:
-        yield from (
-            (value,) for value in memoryview(payloads).cast(_NATIVE_WORD_FORMAT)
-        )
-        return
-    yield from (
-        (
-            int.from_bytes(
-                payloads[offset : offset + _WORD_BYTES], _LITTLE_ENDIAN
-            ),
-        )
-        for offset in range(0, len(payloads), _WORD_BYTES)
     )
 
 

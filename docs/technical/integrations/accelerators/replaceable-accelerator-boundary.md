@@ -209,8 +209,21 @@ from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
 miss lookup. The promotion is not universal: one-candidate memory grows slightly,
 and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
 out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
-cross-batch proofs, and payload substitution still fail closed. The retained
-prepared primitive Python integer tuple is the next measured memory boundary.
+cross-batch proofs, and payload substitution still fail closed. The next memory slice is active under
+`proof-bound-u32le-primitive-input-v1`. Prepared primitive input retains canonical
+immutable u32 little-endian bytes instead of a 59,049-element Python integer tuple.
+The indexed rotate bridge reuses candidate payload bytes directly; tuple-based and
+crazy callers validate then pack through the compatibility constructor. CUDA copies
+packed data/accumulator bytes directly into its resident session. CPU owns a local
+proof-identity decode session so the first prepared evaluation materializes one
+tuple and later evaluations reuse the existing rotate-table path. Benchmarks require
+exactly one CPU decode build, 16 evaluations, 15 reuses, 59,049 resident words, and
+the full-domain rotate table. Malformed byte widths, out-of-domain words, shape
+mismatch, and forged proof fail closed. Exploratory full-domain retained prepared
+state falls from 2.923 MiB to about 0.681 MiB; CPU prepared first use is about 7.25
+ms and hot reuse about 3.21 ms. Crossover protocol v4 records the packed-storage
+identity. Clean post-commit memory, route, CPU-session, and crossover evidence is
+pending before promotion and before selecting the next retained component.
 Resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.

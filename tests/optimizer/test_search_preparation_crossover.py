@@ -47,6 +47,7 @@
 
 from __future__ import annotations
 
+from accelerator.exact_primitives import prepared_primitive_storage_id
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import indexed_candidate_items_id
 from benchmarks.accelerator.search_preparation_crossover import CORPUS_SIZES
@@ -69,6 +70,7 @@ from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
+EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
 EXPECTED_CROSSOVER_RUNS = 5
 TEST_LOOKUP_ITERATIONS = 8
 TEST_SAMPLE_COUNT = 2
@@ -126,6 +128,14 @@ def test_scale_workloads_keep_one_exact_admissible_candidate() -> None:
                 payload=(1).to_bytes(4, "little"),
             ),
         )
+
+
+def test_benchmark_uses_packed_prepared_primitive_identity() -> None:
+    """Protocol identity tracks proof-bound packed primitive input."""
+    assert (
+        prepared_primitive_storage_id()
+        == EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID
+    )
 
 
 def test_benchmark_uses_indexed_candidate_storage_identity() -> None:

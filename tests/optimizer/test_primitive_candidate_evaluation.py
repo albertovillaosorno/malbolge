@@ -65,7 +65,9 @@ from accelerator.exact_primitives import PreparedPrimitiveBatch
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
+from accelerator.exact_primitives import prepare_packed_primitive_batch
 from accelerator.exact_primitives import prepare_primitive_batch
+from accelerator.exact_primitives import prepared_primitive_storage_id
 from accelerator.primitive_candidates import CRAZY_EVALUATOR_ID
 from accelerator.primitive_candidates import (
     PreparedPrimitiveCandidateEvaluation,
@@ -98,6 +100,7 @@ CPU_BACKEND = "cpu-reference"
 CORPUS_SIZE = 257
 EVIDENCE_WORD_BYTES = 4
 ROTATE_ONE = 19_683
+PREPARED_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
 PREPARED_VALIDATION_ID = "cpu-reference-packed-equality-v1"
 BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
@@ -350,8 +353,19 @@ def test_cpu_prepared_rotate_matches_exhaustive_scalar_reference() -> None:
     stats = primitive.prepared_stats()
 
     assert reused.packed == ordinary.packed
-    assert (stats.evaluations, stats.rotate_table_entries) == (
+    assert (
+        stats.builds,
+        stats.evaluations,
+        stats.resident_count,
+        stats.resident_kind,
+        stats.reuses,
+        stats.rotate_table_entries,
+    ) == (
         1,
+        1,
+        MAX_WORD + 1,
+        PrimitiveKind.ROTATE,
+        0,
         MAX_WORD + 1,
     )
     assert tuple(iter_primitive_evidence_values(reused)) == tuple(
@@ -523,7 +537,12 @@ def test_prepared_primitive_batch_rejects_forged_proof() -> None:
         data=(1,),
         kind=PrimitiveKind.ROTATE,
     )
-    forged = PreparedPrimitiveBatch(batch=batch, _proof=object())
+    forged = PreparedPrimitiveBatch(
+        accumulators_u32le=b"",
+        data_u32le=(1).to_bytes(EVIDENCE_WORD_BYTES, "little"),
+        kind=PrimitiveKind.ROTATE,
+        _proof=object(),
+    )
 
     _expect_error(
         InvalidPrimitiveBatchError,
@@ -531,7 +550,68 @@ def test_prepared_primitive_batch_rejects_forged_proof() -> None:
         forged.validated_batch,
     )
     prepared = prepare_primitive_batch(batch)
-    assert prepared.validated_batch() is batch
+    assert prepared.validated_batch() == batch
+
+
+def test_prepared_primitive_storage_identity_and_packed_validation() -> None:
+    """Packed preparation has stable identity and rejects malformed words."""
+    assert prepared_primitive_storage_id() == PREPARED_STORAGE_ID
+    prepared = prepare_packed_primitive_batch(
+        accumulators_u32le=b"",
+        data_u32le=(1).to_bytes(EVIDENCE_WORD_BYTES, "little"),
+        kind=PrimitiveKind.ROTATE,
+    )
+    assert prepared.count() == 1
+    assert prepared.validated_batch() == PrimitiveBatch(
+        accumulators=(),
+        data=(1,),
+        kind=PrimitiveKind.ROTATE,
+    )
+    cases = (
+        (
+            b"bad",
+            "prepared primitive words must contain complete u32 values",
+        ),
+        (
+            (MAX_WORD + 1).to_bytes(EVIDENCE_WORD_BYTES, "little"),
+            f"word outside classic domain: {MAX_WORD + 1}",
+        ),
+    )
+    for data, message in cases:
+        _expect_error(
+            InvalidPrimitiveBatchError,
+            message,
+            lambda data=data: prepare_packed_primitive_batch(
+                accumulators_u32le=b"",
+                data_u32le=data,
+                kind=PrimitiveKind.ROTATE,
+            ),
+        )
+
+
+def test_cpu_prepared_session_decodes_once_and_reuses_tuple() -> None:
+    """Packed input is decoded once per CPU adapter and prepared identity."""
+    prepared = prepare_primitive_batch(
+        PrimitiveBatch(
+            accumulators=(),
+            data=(1, 3, MAX_WORD),
+            kind=PrimitiveKind.ROTATE,
+        )
+    )
+    cpu = CpuExactPrimitiveAdapter()
+
+    first = cpu.evaluate_prepared(prepared)
+    second = cpu.evaluate_prepared(prepared)
+    stats = cpu.prepared_stats()
+
+    assert first == second
+    assert (
+        stats.builds,
+        stats.evaluations,
+        stats.resident_count,
+        stats.resident_kind,
+        stats.reuses,
+    ) == (1, 2, 3, PrimitiveKind.ROTATE, 1)
 
 
 def test_prepared_primitive_state_rejects_wrong_type_and_kind() -> None:
