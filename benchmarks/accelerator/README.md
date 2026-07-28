@@ -89,3 +89,23 @@ This session benchmark answers a different question from
 `profile_run_throughput.py`: it measures continuation when a caller can keep
 complete VM state resident, not end-to-end complete-snapshot latency. Do not use
 its launch-only rate as a direct CPU-relative or complete-run speedup claim.
+
+`search_throughput.py` compares the identical
+`classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
+live CUDA candidate evaluator over the complete 59,049-word classic domain. One
+untimed warmup per backend precedes 15 fixed interleaved CPU-then-CUDA retained
+samples. Adapter construction/NVRTC setup is outside the timed region; each timed
+search still includes canonical problem decode, exact-duplicate pruning, batch
+construction, candidate evaluation, and proposal selection. Proposal equality and
+independent CPU admission are checked after every timed call.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_throughput
+```
+
+Do not interpret the resulting ratio as compiler or superoptimizer speedup. It is
+one bounded exact-search workload comparing replaceable execution capacity under
+identical strategy semantics.
