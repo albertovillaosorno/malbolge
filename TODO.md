@@ -832,7 +832,13 @@ byte materialization, and total time from neutral packed contract, mask lookup,
 integer decode, high-mask, threshold, diagnostic, result-build, and total phases.
 `prepared_cuda_primitive_phase_profile.py` requires exact CPU packed equality,
 validator identity, session counters, and at least 95% samplewise named coverage.
-Post-commit evidence is pending; no subphase is promoted from exploratory timing.
+Retained decomposition records 97.35% median and 95.40% minimum coverage. Median
+launch/sync, D-to-H, and immutable-copy phases are 0.0605/0.0934/0.0332 ms, while
+`int.from_bytes`, high-mask, and threshold checks are 0.2993/0.0784/0.2615 ms.
+GPU/transfer/copy represent about 21.5% of median total; exact big-integer validation
+represents about 73.6%. The next optimization must target validation without
+weakening immutable bytes, count/capability checks, all-word rejection, validator
+identity, CPU equality, or independent admission.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -929,8 +935,11 @@ resident-CUDA and neutral packed-encoding phase profiles now preserve exact outp
 while decomposing kernel launch/synchronization, D-to-H transfer, immutable byte
 copy, contract, masks, integer decode, high-mask, threshold, diagnostics, and result
 construction. The benchmark requires exact CPU equality, validator identity,
-1/16/16/15 session proof, and at least 95% named coverage. Post-commit evidence is
-pending before selecting the next CUDA subphase.
+1/16/16/15 session proof, and at least 95% named coverage. Retained evidence records
+97.35% median/95.40% minimum coverage and 0.8684 ms end-to-end median. Resident CUDA
+total is 0.1965 ms; neutral encoding/validation total is 0.6558 ms. Integer decode
+plus high-mask/threshold validation account for about 73.6% of median total, so exact
+big-integer validation is the next measured CUDA subphase.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

@@ -139,8 +139,11 @@ directly on CUDA APIs.
   Public resident-CUDA and neutral packed-encoding phase records now expose
   launch/sync, transfer, immutable bytes, validation subphases, and totals without
   semantic authority. The full-domain profiler requires CPU equality,
-  validator/session proof identity, and at least 95% coverage. Post-commit evidence
-  is pending before selecting the next subphase. Synthesis/guided search,
+  validator/session proof identity, and at least 95% coverage. Retained coverage is
+  97.35% median/95.40% minimum. Resident CUDA total is 0.1965 ms, while neutral
+  packed encoding/validation is 0.6558 ms and exact big-integer checks represent
+  about 73.6% of median total. Exact validation is the next boundary.
+  Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

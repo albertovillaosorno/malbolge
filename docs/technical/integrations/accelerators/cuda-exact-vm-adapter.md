@@ -246,8 +246,13 @@ fails explicitly without changing correctness rules.
   exposes contract, mask lookup, integer decode, high-mask, threshold, diagnostic,
   result construction, and total. The dedicated full-domain benchmark requires
   byte-identical CPU evidence, validator identity, 1/16/16/15 session counters, and
-  at least 95% samplewise named coverage. The ordinary path is unchanged.
-  Post-commit evidence is pending before selecting the next measured CUDA subphase.
+  at least 95% samplewise named coverage. The ordinary path is unchanged. Retained
+  evidence records 97.35% median/95.40% minimum coverage and 0.8684 ms end-to-end
+  median. Launch/sync, D-to-H, immutable bytes, and resident total are
+  0.0605/0.0934/0.0332/0.1965 ms. Integer decode, high-mask, threshold, and neutral
+  encoding total are 0.2993/0.0784/0.2615/0.6558 ms. Big-integer validation is about
+  73.6% of median total, so exact validation—not GPU execution—is the next measured
+  CUDA subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

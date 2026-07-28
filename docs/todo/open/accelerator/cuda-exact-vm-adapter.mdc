@@ -146,7 +146,9 @@ batches.
   neutral packed-encoding profiles now expose launch/sync, D-to-H, immutable bytes,
   validation subphases, and totals. The full-domain profiler requires byte-identical
   CPU evidence, validator identity, 1/16/16/15 counters, and at least 95% named
-  coverage. Post-commit evidence is pending before selecting another CUDA subphase;
-  synthesis/search remains open.
+  coverage. Retained coverage is 97.35% median/95.40% minimum. Resident CUDA total
+  is 0.1965 ms versus 0.6558 ms neutral encoding/validation; integer decode plus
+  high-mask/threshold checks represent about 73.6% of median total. Exact validation
+  is the next CUDA subphase; synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

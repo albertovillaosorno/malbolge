@@ -147,8 +147,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   records now split launch/sync, transfer, immutable bytes, contract, masks, integer
   decode, high-mask, threshold, diagnostics, result construction, and totals. The
   full-domain profiler requires CPU equality, validator/session proof identity, and
-  at least 95% named coverage. Post-commit evidence is pending before choosing the
-  next subphase. Synthesis/guided
+  at least 95% named coverage. Retained coverage is 97.35% median/95.40% minimum.
+  Resident CUDA total is 0.1965 ms versus 0.6558 ms neutral encoding/validation;
+  integer decode plus high-mask/threshold checks represent about 73.6% of median
+  total. Exact big-integer validation is the next measured boundary. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

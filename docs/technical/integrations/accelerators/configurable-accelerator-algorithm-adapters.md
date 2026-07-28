@@ -173,8 +173,12 @@ cover resident CUDA launch/sync, transfer, immutable-byte materialization, and t
 plus neutral packed contract, masks, integer decode, high-mask, threshold,
 diagnostic, result construction, and total. The dedicated full-domain profiler
 requires exact CPU packed equality, validator identity, resident proof counters, and
-at least 95% named coverage. Post-commit evidence is pending before another CUDA or
-neutral subphase is selected. Resident or
+at least 95% named coverage. Retained evidence records 97.35% median/95.40% minimum
+coverage. Resident CUDA launch/sync, transfer, immutable bytes, and total medians are
+0.0605/0.0934/0.0332/0.1965 ms; neutral integer decode, high-mask, threshold, and
+layer total are 0.2993/0.0784/0.2615/0.6558 ms. Big-integer validation accounts for
+about 73.6% of median end-to-end time, making exact validation the next neutral
+boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

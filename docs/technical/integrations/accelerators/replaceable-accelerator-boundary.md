@@ -164,8 +164,12 @@ without carrying semantic authority: resident CUDA reports launch/sync, transfer
 immutable bytes, and total; neutral packed encoding reports contract, masks, integer
 decode, high-mask, threshold, diagnostics, result construction, and total. The
 full-domain profiler requires exact CPU equality, validator identity, resident proof
-counters, and at least 95% samplewise coverage. Post-commit evidence is pending,
-while resident/fused search remains later work.
+counters, and at least 95% samplewise coverage. Retained evidence records 97.35%
+median/95.40% minimum coverage and 0.8684 ms end-to-end median. Resident CUDA total
+is 0.1965 ms; neutral packed encoding/validation total is 0.6558 ms. Integer decode
+plus high-mask and threshold checks account for about 73.6% of median total. Exact
+validation is the next replaceable boundary, while resident/fused search remains
+later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

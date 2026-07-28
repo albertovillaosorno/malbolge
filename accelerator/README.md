@@ -172,8 +172,13 @@ D-to-H, immutable bytes, and total time. `PackedPrimitiveEncodingPhaseProfile`
 records contract, masks, integer decode, high-mask, threshold, diagnostic,
 result-build, and total time. The new prepared CUDA primitive profiler requires
 exact CPU evidence equality, `u32le-broadword-domain-v1`, session counters, and at
-least 95% named coverage. Post-commit evidence is pending before selecting another
-optimization.
+least 95% named coverage. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060/`
+records 97.35% median and 95.40% minimum coverage. CUDA launch/sync, D-to-H, and
+immutable-copy medians are 0.0605/0.0934/0.0332 ms; integer decode, high-mask, and
+threshold medians are 0.2993/0.0784/0.2615 ms. Big-integer validation represents
+about 73.6% of median total versus 21.5% for GPU/transfer/copy. Exact validation is
+the next boundary; ordinary execution and trust remain unchanged.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

@@ -288,5 +288,10 @@ packed evidence, preserve validator identity and session counters, and retain at
 least 95% samplewise named coverage. Reported phases include launch/sync, D-to-H,
 immutable byte creation, packed contract, mask lookup, integer decode, high-mask,
 threshold, diagnostics, result construction, layer totals, and end-to-end total.
-A clean post-commit run is required before retaining or interpreting subphase
-medians.
+Retained post-commit evidence is under
+`evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060/`. Coverage is
+97.35% median and 95.40% minimum. Median launch/sync, D-to-H, immutable-byte,
+integer-decode, high-mask, and threshold phases are respectively 0.0605, 0.0934,
+0.0332, 0.2993, 0.0784, and 0.2615 ms. The 0.6558 ms encoding/validation layer
+dominates the 0.1965 ms resident CUDA layer; exact big-integer validation is the
+next measured boundary.
