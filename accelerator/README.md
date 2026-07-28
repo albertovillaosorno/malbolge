@@ -100,8 +100,13 @@ hardware-neutral decoded candidate state to the existing proof. Rotate search
 prepares one validated `PrimitiveBatch`; matching CPU/CUDA adapters consume it
 without repeated candidate batch validation or payload decode. The preparer is
 part of strategy identity, and forged type/kind/evaluator state fails closed.
-Ordinary one-shot search still prepares locally. Post-commit performance evidence
-is pending; primitive transfer remains the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+Ordinary one-shot search still prepares locally. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-prepared-primitive-search-rtx4060/`
+records 43.129 ms CPU and 57.296 ms CUDA prepared medians, 1.792x/1.592x faster
+than the packed baseline. Ordinary routes regress 6.6%/3.7%, and prepared CUDA
+remains 32.8% slower than prepared CPU. The phase bundle lowers backend evaluation
+2.801x CPU and 2.083x CUDA. Primitive arithmetic is now the CPU boundary; resident
+input/allocation/transfer is the CUDA boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

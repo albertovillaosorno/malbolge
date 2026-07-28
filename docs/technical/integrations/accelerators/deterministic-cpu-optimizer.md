@@ -115,9 +115,10 @@ fails explicitly without changing correctness rules.
   53.907 ms (2.326x) and selection from 30.796 to 22.502 ms (1.369x). Rotate
   preparation now validates/decodes the exact candidate batch once and stores a
   hardware-neutral `PrimitiveBatch` in the strategy proof. Repeated CPU execution
-  no longer pays candidate batch validation or payload decode; ordinary one-shot
-  execution remains unchanged. Post-commit evidence is pending, and primitive
-  execution is the next CPU target.
+  no longer pays candidate batch validation or payload decode. Retained CPU prepared
+  median falls from 77.309 to 43.129 ms (1.792x), and backend evaluation from
+  53.907 to 19.246 ms (2.801x). Ordinary CPU regresses 6.6% because it constructs
+  the proof locally. Primitive arithmetic is now the next CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

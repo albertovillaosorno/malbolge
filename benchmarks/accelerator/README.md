@@ -195,5 +195,8 @@ measured optimization boundary. The active implementation now supports fixed-wid
 packed candidate evidence. The retained post-change throughput and phase bundles
 are under `evidence/2026-07-28-packed-search-rtx4060/` and
 `evidence/2026-07-28-packed-search-phase-profile-rtx4060/`. The active prepared
-rotate path now also stores one validated decoded `PrimitiveBatch`; these packed
-records remain the pre-change baseline until a post-commit rerun is retained.
+rotate path now also stores one validated decoded `PrimitiveBatch`. Retained
+post-change throughput and phase evidence is under
+`evidence/2026-07-28-prepared-primitive-search-rtx4060/` and
+`evidence/2026-07-28-prepared-primitive-search-phase-profile-rtx4060/`. Prepared
+CPU/CUDA medians improve 1.792x/1.592x, while ordinary routes regress 6.6%/3.7%.

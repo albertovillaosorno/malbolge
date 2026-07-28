@@ -101,8 +101,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   validated decoded state under exact preparer identity. Rotate search reuses a
   hardware-neutral `PrimitiveBatch` through matching CPU/CUDA evaluators; forged or
   mismatched state fails closed, and generic strategies remain compatible.
-  Post-commit evidence is pending; primitive transfer remains the next measured
-  boundary. Synthesis/guided
+  Retained prepared medians are 43.129 ms CPU and 57.296 ms CUDA,
+  1.792x/1.592x faster than the packed baseline. Ordinary routes regress
+  6.6%/3.7%, and CUDA remains 32.8% slower than CPU prepared. Primitive execution
+  and resident transfer are the next measured boundaries. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

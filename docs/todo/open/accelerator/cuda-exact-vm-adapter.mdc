@@ -108,8 +108,10 @@ batches.
   2.058x and selection 1.432x. Packed CUDA prepared remains about 18.0% slower than
   packed CPU. Prepared rotate state now carries one validated decoded
   `PrimitiveBatch` from CPU-neutral strategy preparation into matching CUDA
-  execution. Forged or mismatched state fails before backend work. Post-commit
-  evidence is pending; primitive transfer precedes resident and synthesis/search
-  strategies, which remain open.
+  execution. Forged or mismatched state fails before backend work. Retained CUDA
+  prepared median is 57.296 ms, 1.592x faster than the packed baseline; backend
+  evaluation improves 2.083x. Ordinary CUDA regresses 3.7%, and prepared CUDA
+  remains 32.8% slower than CPU. Resident transfer and synthesis/search strategies
+  remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

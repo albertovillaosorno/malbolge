@@ -100,8 +100,10 @@ directly on CUDA APIs.
   slower than CPU. Prepared candidate state now extends the neutral proof under
   exact preparer identity. Rotate search reuses one validated decoded
   `PrimitiveBatch` across matching CPU/CUDA capacity; forged/mismatched state fails
-  closed and generic strategies remain compatible. Post-commit evidence is pending,
-  while primitive transfer remains the next neutral boundary. Synthesis/guided search,
+  closed and generic strategies remain compatible. Retained prepared medians improve
+  1.792x CPU and 1.592x CUDA; ordinary routes regress 6.6%/3.7%, and CUDA remains
+  32.8% slower than CPU prepared. Primitive arithmetic and resident device transfer
+  are the next neutral boundaries. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

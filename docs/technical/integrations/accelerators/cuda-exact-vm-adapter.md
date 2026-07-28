@@ -192,9 +192,11 @@ fails explicitly without changing correctness rules.
   CPU prepared. Rotate prepared state now includes one validated decoded
   `PrimitiveBatch` produced independently of CUDA identity. Matching CUDA execution
   consumes that state without repeating candidate ID validation or payload decode;
-  forged type/kind/evaluator state fails before device work. Ordinary search still
-  prepares locally. Post-commit evidence is pending, while primitive transfer now
-  precedes resident or fused search. Broader live-hardware evidence, synthesis/search
+  forged type/kind/evaluator state fails before device work. Retained CUDA prepared
+  median falls from 91.199 to 57.296 ms (1.592x), and backend evaluation falls from
+  67.202 to 32.264 ms (2.083x). Ordinary CUDA regresses 3.7%; prepared CUDA remains
+  32.8% slower than prepared CPU. Device allocation, upload, download, and release
+  still occur per call and now precede resident or fused search. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

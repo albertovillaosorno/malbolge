@@ -109,8 +109,11 @@ with an optional candidate-state preparer and backend-specific prepared evaluato
 Rotate preparation validates and decodes one hardware-neutral `PrimitiveBatch`
 once; matching CPU/CUDA strategies reuse it, while forged type/kind/evaluator
 state or a distinct preparer fails closed. Generic strategies without candidate
-state retain their previous behavior. Post-commit evidence is pending; primitive
-transfer remains the next neutral boundary. Resident or
+state retain their previous behavior. Retained prepared medians are 43.129 ms CPU
+and 57.296 ms CUDA, 1.792x/1.592x faster than the packed prepared baseline.
+Ordinary routes regress 6.6%/3.7%, and prepared CUDA remains 32.8% slower than CPU.
+Backend evaluation falls 2.801x/2.083x while selection is unchanged. Primitive
+execution and resident transfer are the next neutral boundaries. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -166,6 +169,10 @@ fails explicitly without changing correctness rules.
   `2026-07-28-packed-search-phase-profile-rtx4060/` retain 60 throughput samples
   plus 150 phase samples. All four route medians improve; backend evaluation falls
   2.326x on CPU and 2.058x on CUDA, while exact proposals/admission remain stable.
+- `benchmarks/accelerator/evidence/2026-07-28-prepared-primitive-search-rtx4060/`
+  and its phase-profile sibling retain 60 throughput plus 150 phase samples.
+  Prepared medians improve 1.792x CPU and 1.592x CUDA; ordinary-route regressions
+  and the remaining 32.8% CUDA disadvantage are retained explicitly.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

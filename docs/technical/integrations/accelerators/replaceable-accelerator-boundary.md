@@ -112,8 +112,10 @@ under exact preparer identity. Rotate search validates and decodes one
 hardware-neutral `PrimitiveBatch` during preparation, and matching CPU/CUDA
 capacity consumes it without repeated request-order validation or payload decode.
 Forged type/kind/evaluator state fails closed; strategies without a preparer retain
-the ordinary adapter path. Post-commit evidence is pending, and primitive transfer
-remains the next neutral boundary; resident/fused search remains later work.
+the ordinary adapter path. Retained prepared medians improve 1.792x CPU and 1.592x
+CUDA, while ordinary routes regress 6.6%/3.7%. Prepared CUDA remains 32.8% slower
+than prepared CPU. Primitive arithmetic and resident device transfer are now the
+next neutral boundaries; resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

@@ -758,9 +758,14 @@ decoded candidate execution state bound to the strategy preparer. Rotate search
 stores one hardware-neutral `PrimitiveBatch` during preparation and matching CPU or
 CUDA adapters reuse it without revalidating candidate IDs or decoding 59,049
 payloads. Forged type/kind/evaluator state and different preparer identity fail
-closed. Ordinary one-shot execution still prepares locally. Post-commit evidence
-is pending before claiming the exploratory reduction; primitive transfer remains
-open. Synthesis/guided
+closed. Retained evidence records CPU/CUDA prepared medians of 43.129/57.296 ms,
+1.792x/1.592x faster than the packed prepared baseline and 5.234x/4.167x faster
+than the same implementation's ordinary routes. Ordinary CPU/CUDA medians regress
+6.6%/3.7% because they construct the explicit proof locally; this negative
+one-shot result is retained. Backend evaluation falls 2.801x CPU and 2.083x CUDA,
+while selection remains essentially unchanged. Primitive execution is now the CPU
+boundary; resident device input/allocation/transfer is the CUDA boundary.
+Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -812,8 +817,10 @@ remains about 18.0% slower than packed CPU prepared. Prepared rotate state now
 moves candidate batch validation and payload decode into one-time strategy
 preparation, and the same validated `PrimitiveBatch` crosses matching CPU/CUDA
 capacity. Forged or mismatched prepared primitive state fails before backend
-execution. Post-commit evidence is pending; primitive transfer still precedes
-resident or
+execution. Retained CUDA prepared median falls from 91.199 to 57.296 ms (1.592x),
+and backend evaluation from 67.202 to 32.264 ms (2.083x). Ordinary CUDA regresses
+3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Persistent device
+input/allocation/transfer still precedes resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

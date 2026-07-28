@@ -82,7 +82,9 @@ baseline for accelerator implementations.
   1.387x/1.922x faster than pre-packed. Backend evaluation falls 2.326x and
   selection 1.369x. Prepared rotate state now stores one validated decoded
   `PrimitiveBatch`, removing repeated candidate validation/decode from the CPU
-  path. Post-commit evidence is pending; primitive execution is next.
+  path. Retained CPU prepared median is 43.129 ms (1.792x better), and backend
+  evaluation improves 2.801x. Ordinary CPU regresses 6.6%; primitive arithmetic is
+  next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.
