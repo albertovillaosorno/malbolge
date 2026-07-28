@@ -257,5 +257,9 @@ exact byte count, and every packed u32 domain value before reusing those bytes a
 candidate evidence. Tuple results remain valid for CPU, ordinary CUDA, and test
 adapters. Both benchmark programs now require
 `cuda_prepared_session.packed_evaluations=16` together with the resident,
-CPU-table, membership, and selector proofs. A post-commit rerun is required before
-claiming the exploratory CUDA reduction.
+CPU-table, membership, and selector proofs. Retained post-commit evidence is under
+`evidence/2026-07-28-packed-cuda-primitive-search-rtx4060/` and
+`evidence/2026-07-28-packed-cuda-primitive-search-phase-profile-rtx4060/`. CUDA
+prepared reaches 2.036 ms, a 2.343x improvement, and CUDA backend evaluation reaches
+1.802 ms, a 2.147x improvement. CUDA prepared is 1.621x faster than same-run CPU;
+CPU phases and ordinary controls remain effectively unchanged.

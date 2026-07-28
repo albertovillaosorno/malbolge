@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-packed-cuda-phase-profile-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-packed-cuda-primitive-search-phase-profile-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does validated packed CUDA output lower CUDA backend-evaluation median while retaining at least 95 percent phase coverage?"
+hypothesis = "CUDA backend median is lower, coverage is at least 95 percent, and immutable/count/domain/resident proofs pass."
+baseline = "benchmarks/accelerator/evidence/2026-07-28-cpu-rotate-table-search-phase-profile-rtx4060/"
+rejection_observation = "CUDA backend median is not lower, coverage is below 95 percent, packed validation fails, or a proof counter drifts."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed prepared profile per backend"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained profiles per backend"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "phase_coverage_percent"]
+tradeoff_policy = "exactness and every prepared proof identity precede CUDA phase comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-packed-cuda-primitive-search-phase-profile-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

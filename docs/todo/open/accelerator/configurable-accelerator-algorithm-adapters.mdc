@@ -134,8 +134,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   canonical packed u32le bytes alongside tuples. Prepared CUDA returns resident host
   output directly; the bridge still validates capability, exact count, and every
   word domain. Ordinary CUDA/CPU remain tuple-based, and benchmarks require
-  16 packed evaluations. Post-commit evidence is pending. CPU result
-  validation/packing and packed-domain validation are next. Synthesis/guided
+  16 packed evaluations. Retained CUDA prepared median is 2.036 ms (2.343x
+  better), and CUDA backend evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x
+  faster than same-run CPU, while CPU/ordinary controls stay effectively flat. CPU
+  result validation/packing and packed-domain validation are next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

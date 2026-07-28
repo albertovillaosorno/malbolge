@@ -1,0 +1,272 @@
+{
+  "benchmark_id": "rotate-target-prepared-search-phase-profile-v1",
+  "cpu": {
+    "backend_evaluation_ns": {
+      "max_ns": 2936100,
+      "median_ns": 2891900,
+      "min_ns": 2872300,
+      "pstdev_ns": 16151.031614798549,
+      "raw_ns": [
+        2886700,
+        2887600,
+        2903200,
+        2872300,
+        2890100,
+        2929500,
+        2886300,
+        2936100,
+        2909900,
+        2891900,
+        2895000,
+        2900100,
+        2890700,
+        2892500,
+        2889300
+      ]
+    },
+    "prepared_validation_ns": {
+      "max_ns": 3700,
+      "median_ns": 2900,
+      "min_ns": 2700,
+      "pstdev_ns": 229.39534045447004,
+      "raw_ns": [
+        3700,
+        3200,
+        3000,
+        2900,
+        2800,
+        2900,
+        2900,
+        3000,
+        2700,
+        2800,
+        3000,
+        2900,
+        3100,
+        2800,
+        2900
+      ]
+    },
+    "proposal_selection_ns": {
+      "max_ns": 20100,
+      "median_ns": 9900,
+      "min_ns": 9500,
+      "pstdev_ns": 2593.5475489932487,
+      "raw_ns": [
+        11600,
+        12000,
+        10500,
+        9600,
+        9600,
+        10100,
+        9900,
+        20100,
+        9800,
+        10100,
+        9500,
+        9700,
+        11900,
+        9600,
+        9700
+      ]
+    },
+    "result_validation_ns": {
+      "max_ns": 7100,
+      "median_ns": 4600,
+      "min_ns": 4200,
+      "pstdev_ns": 669.1952048709122,
+      "raw_ns": [
+        5100,
+        4800,
+        4700,
+        4500,
+        4300,
+        4600,
+        4400,
+        7100,
+        4200,
+        4700,
+        4500,
+        4600,
+        4900,
+        4400,
+        4400
+      ]
+    },
+    "total_ns": {
+      "max_ns": 2978000,
+      "median_ns": 2914800,
+      "min_ns": 2894500,
+      "pstdev_ns": 19449.68894352812,
+      "raw_ns": [
+        2912900,
+        2912900,
+        2927100,
+        2894500,
+        2911900,
+        2952600,
+        2908500,
+        2978000,
+        2931500,
+        2914800,
+        2916900,
+        2922400,
+        2916300,
+        2914400,
+        2911400
+      ]
+    }
+  },
+  "cpu_prepared_rotate": {
+    "evaluations": 16,
+    "rotate_table_entries": 59049
+  },
+  "cuda": {
+    "backend_evaluation_ns": {
+      "max_ns": 1867900,
+      "median_ns": 1801700,
+      "min_ns": 1784500,
+      "pstdev_ns": 26658.218661835268,
+      "raw_ns": [
+        1824800,
+        1860800,
+        1798600,
+        1803700,
+        1860600,
+        1798800,
+        1813300,
+        1867900,
+        1795200,
+        1801700,
+        1800600,
+        1784500,
+        1798700,
+        1795100,
+        1839100
+      ]
+    },
+    "prepared_validation_ns": {
+      "max_ns": 3900,
+      "median_ns": 2700,
+      "min_ns": 2600,
+      "pstdev_ns": 309.40803695659446,
+      "raw_ns": [
+        3000,
+        3000,
+        2700,
+        2700,
+        3100,
+        2700,
+        2700,
+        3900,
+        2700,
+        2800,
+        2700,
+        2800,
+        2800,
+        2700,
+        2600
+      ]
+    },
+    "proposal_selection_ns": {
+      "max_ns": 10400,
+      "median_ns": 9300,
+      "min_ns": 8800,
+      "pstdev_ns": 482.3092599382913,
+      "raw_ns": [
+        10300,
+        9700,
+        9300,
+        9200,
+        10100,
+        9200,
+        10400,
+        9600,
+        8900,
+        9000,
+        9200,
+        8800,
+        9300,
+        9000,
+        9400
+      ]
+    },
+    "result_validation_ns": {
+      "max_ns": 14100,
+      "median_ns": 4600,
+      "min_ns": 4400,
+      "pstdev_ns": 2366.619717844185,
+      "raw_ns": [
+        5000,
+        4900,
+        4700,
+        4600,
+        4700,
+        4500,
+        4800,
+        4600,
+        4600,
+        4500,
+        4500,
+        14100,
+        4400,
+        4400,
+        4700
+      ]
+    },
+    "total_ns": {
+      "max_ns": 1892200,
+      "median_ns": 1823800,
+      "min_ns": 1815700,
+      "pstdev_ns": 26717.130584452116,
+      "raw_ns": [
+        1849100,
+        1884500,
+        1821000,
+        1826000,
+        1884100,
+        1821200,
+        1836700,
+        1892200,
+        1817400,
+        1823800,
+        1822400,
+        1815700,
+        1820800,
+        1816600,
+        1861600
+      ]
+    }
+  },
+  "cuda_prepared_session": {
+    "builds": 1,
+    "evaluations": 16,
+    "packed_evaluations": 16,
+    "resident_count": 59049,
+    "resident_kind": "rotate",
+    "reuses": 15
+  },
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "measurement": {
+    "adapter_setup_timed": false,
+    "ordering": "fixed interleaved CPU then CUDA",
+    "preparation_timed": false,
+    "sample_count": 15,
+    "warmup_count": 1
+  },
+  "prepared_membership_count": 59049,
+  "prepared_selection_count": 1,
+  "workload": {
+    "algorithm_id": "classic-rotate-target-search-v1",
+    "corpus_size": 59049,
+    "evaluation_budget": 59049,
+    "identity": "classic-rotate-target-full-domain-v1",
+    "problem_sha256": "68215df6ec0f00ab5fa8a720737c1e52f59252ee5c0a344bc2802d648dd677a1",
+    "seed": 17,
+    "target": 19683
+  }
+}

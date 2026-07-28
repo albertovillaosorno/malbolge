@@ -1,0 +1,141 @@
+{
+  "benchmark_id": "rotate-target-prepared-search-throughput-v1",
+  "cpu_prepared_rotate": {
+    "evaluations": 16,
+    "rotate_table_entries": 59049
+  },
+  "cuda_prepared_session": {
+    "builds": 1,
+    "evaluations": 16,
+    "packed_evaluations": 16,
+    "resident_count": 59049,
+    "resident_kind": "rotate",
+    "reuses": 15
+  },
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "measurement": {
+    "adapter_setup_timed": false,
+    "ordering": "fixed interleaved CPU ordinary, CPU prepared, CUDA ordinary, CUDA prepared",
+    "preparation_timed": false,
+    "sample_count": 15,
+    "warmup_count": 1
+  },
+  "prepared_membership_count": 59049,
+  "prepared_selection_count": 1,
+  "routes": {
+    "cpu-ordinary": {
+      "max_ns": 233773500,
+      "median_ns": 214581300,
+      "min_ns": 212048000,
+      "pstdev_ns": 7276219.947197858,
+      "raw_ns": [
+        229794900,
+        233773500,
+        227880800,
+        218623400,
+        216128300,
+        214379000,
+        212386400,
+        213814800,
+        212130700,
+        228694600,
+        212048000,
+        214582900,
+        213050100,
+        214386300,
+        214581300
+      ],
+      "route_id": "cpu-ordinary"
+    },
+    "cpu-prepared": {
+      "max_ns": 3702500,
+      "median_ns": 3300300,
+      "min_ns": 3136700,
+      "pstdev_ns": 158607.86865726428,
+      "raw_ns": [
+        3286800,
+        3261100,
+        3165700,
+        3299800,
+        3456200,
+        3416400,
+        3136700,
+        3550600,
+        3300300,
+        3702500,
+        3168700,
+        3522300,
+        3505800,
+        3236200,
+        3312900
+      ],
+      "route_id": "cpu-prepared"
+    },
+    "cuda-ordinary": {
+      "max_ns": 242771600,
+      "median_ns": 231443200,
+      "min_ns": 224337400,
+      "pstdev_ns": 5397303.373006437,
+      "raw_ns": [
+        238996100,
+        233827000,
+        231443200,
+        225935900,
+        236527800,
+        228809300,
+        240375400,
+        229924500,
+        232707700,
+        226569700,
+        230051800,
+        235306900,
+        224337400,
+        242771600,
+        227057000
+      ],
+      "route_id": "cuda-ordinary"
+    },
+    "cuda-prepared": {
+      "max_ns": 2757000,
+      "median_ns": 2035900,
+      "min_ns": 1971200,
+      "pstdev_ns": 197127.47370391802,
+      "raw_ns": [
+        2024900,
+        2026200,
+        2116200,
+        1982300,
+        1986700,
+        2259200,
+        2051200,
+        2190700,
+        2000400,
+        1971200,
+        2035900,
+        2000100,
+        2259400,
+        2250100,
+        2757000
+      ],
+      "route_id": "cuda-prepared"
+    }
+  },
+  "speedups_at_median": {
+    "cpu_prepared_over_ordinary": 65.0187255704027,
+    "cuda_prepared_over_cpu_prepared": 1.6210521145439363,
+    "cuda_prepared_over_ordinary": 113.68102559064788
+  },
+  "workload": {
+    "algorithm_id": "classic-rotate-target-search-v1",
+    "corpus_size": 59049,
+    "evaluation_budget": 59049,
+    "identity": "classic-rotate-target-full-domain-v1",
+    "problem_sha256": "68215df6ec0f00ab5fa8a720737c1e52f59252ee5c0a344bc2802d648dd677a1",
+    "seed": 17,
+    "target": 19683
+  }
+}

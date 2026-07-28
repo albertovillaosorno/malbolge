@@ -135,7 +135,9 @@ batches.
   now returns canonical packed u32le bytes directly after D-to-H, eliminating tuple
   materialization/repacking while the neutral bridge still validates capability,
   count, and every word domain. Benchmarks require 16 packed evaluations.
-  Post-commit evidence is pending; packed-domain validation and synthesis/search
+  Retained CUDA prepared median is 2.036 ms (2.343x better), and backend
+  evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x faster than same-run CPU;
+  CPU phases stay effectively flat. Packed-domain validation and synthesis/search
   remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

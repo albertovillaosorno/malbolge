@@ -127,7 +127,9 @@ directly on CUDA APIs.
   boundary. The result contract now accepts canonical packed u32le bytes alongside
   tuples; prepared CUDA returns the resident host buffer directly, but the bridge
   still validates capability, exact count, and every word domain. Benchmarks require
-  16 packed evaluations. Post-commit evidence is pending. CPU result
+  16 packed evaluations. Retained CUDA prepared median improves 2.343x to
+  2.036 ms and backend evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x
+  faster than same-run CPU; controls remain effectively flat. CPU result
   validation/packing and packed-domain validation are next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.

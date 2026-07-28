@@ -148,9 +148,12 @@ than same-run CUDA. The hardware-neutral result union now supports canonical
 packed u32le words in addition to tuples. Prepared CUDA returns the copied resident
 host buffer directly, while the neutral bridge remains authoritative for capability,
 count, and complete domain validation. Ordinary CUDA, CPU, and test adapters retain
-tuple compatibility. Benchmarks require 16 packed evaluations. Post-commit evidence
-is pending. CPU result validation/packing and packed-domain validation are next,
-while resident/fused search remains later work.
+tuple compatibility. Benchmarks require 16 packed evaluations. Retained CUDA
+prepared median improves 2.343x to 2.036 ms and CUDA backend evaluation improves
+2.147x to 1.802 ms. CPU prepared/backend and ordinary controls remain effectively
+flat, while CUDA prepared is 1.621x faster than same-run CPU. CPU result
+validation/packing and packed-domain validation are next, while resident/fused
+search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

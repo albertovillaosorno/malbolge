@@ -157,7 +157,10 @@ the resident host output without tuple materialization or repacking. The bridge
 still validates capability identity, exact result count, and every word's classic
 bound before candidate evidence acceptance. Ordinary CUDA and CPU paths remain
 tuple-based. Benchmarks require 16 packed CUDA evaluations plus all prior proofs.
-Post-commit evidence is pending; CPU result validation/packing and packed-domain
+Retained CUDA prepared median falls from 4.769 to 2.036 ms (2.343x), and CUDA
+backend evaluation from 3.868 to 1.802 ms (2.147x). CPU prepared/backend change only
+1.004x/1.005x, and ordinary controls remain effectively flat. CUDA prepared is
+1.621x faster than same-run CPU. CPU result validation/packing and packed-domain
 validation are the next neutral subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,

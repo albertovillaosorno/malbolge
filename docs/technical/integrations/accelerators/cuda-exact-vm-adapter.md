@@ -230,8 +230,10 @@ fails explicitly without changing correctness rules.
   repacking, but the neutral candidate bridge still validates capability, exact
   byte count, and every output word before acceptance. Ordinary CUDA remains
   tuple-based. `packed_evaluations` makes route use observable, and benchmarks
-  require 16 packed evaluations. Post-commit evidence is pending; packed-domain
-  validation is the next CUDA backend subphase.
+  require 16 packed evaluations. Retained CUDA prepared median falls from 4.769
+  to 2.036 ms (2.343x), and backend evaluation from 3.868 to 1.802 ms (2.147x).
+  Same-run CUDA prepared is 1.621x faster than CPU; CPU phases change only about
+  0.5%. Packed-domain validation is the next CUDA backend subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
