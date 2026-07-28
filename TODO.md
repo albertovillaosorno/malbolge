@@ -859,9 +859,16 @@ advantage; cold preparation plus first search is 227.767 ms and crosses on run t
 Incremental traced Python state retains 16.063 MiB and peaks at 19.040 MiB, versus
 0.901 MiB of exact reference/device/host buffers. Retained state is 285.249 bytes per
 candidate and 71.312x the reference bytes alone. `tracemalloc` excludes the prebuilt
-workload, global rotate table, CUDA/native storage, imports, and adapter setup. The
-next measured boundary is component-level prepared-state memory decomposition before
-any compaction change.
+workload, global rotate table, CUDA/native storage, imports, and adapter setup. Component-level tracing identified the historical prepared membership frozenset as
+the leading avoidable duplicate: it copied one `(logical_id, payload)` tuple per
+candidate in addition to the validated batch. The active
+`identity-sorted-candidate-reference-binary-search-v1` index instead retains one
+identity-sorted tuple of references to the existing immutable `CandidateWorkItem`
+objects. It is proof-bound to the original batch, compares logical ID and payload
+exactly, and rejects forged or cross-batch indexes. Generic fabrication checks remain
+active. The crossover benchmark now records membership-index identity. Post-commit
+memory, preparation, lookup, and crossover evidence is pending before promoting a
+compaction result.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -974,8 +981,12 @@ cold/warm preparation, incremental Python memory, fresh resident build, reuse, a
 strict amortization at four scales with all exact proofs. Retained warm crossover
 is 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm one-shot saves 10.703 ms;
 cold crosses on run two. Incremental Python state retains/peaks at
-16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. The next
-measurement decomposes prepared Python state by component before compaction.
+16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. Component tracing selected the duplicate prepared membership frozenset for the first
+compaction. The active proof-bound index stores sorted references to existing batch
+items and uses binary search plus exact payload equality; forged/cross-batch indexes
+and fabricated proposals fail closed. The crossover protocol records its stable
+identity. Clean post-commit memory and crossover evidence is pending before the next
+state component is selected.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

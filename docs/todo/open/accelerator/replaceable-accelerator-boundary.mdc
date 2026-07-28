@@ -151,8 +151,10 @@ directly on CUDA APIs.
   memory, fresh resident build, reuse, and strict crossover with all exact proofs.
   Retained warm/cold crossover is 6/3/2/1 and 106/38/5/2. Full-domain warm one-shot
   saves 10.703 ms; cold crosses on run two. Incremental Python state retains/peaks
-  at 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component-level memory
-  decomposition is next. Synthesis/guided search,
+  at 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component tracing selected
+  the duplicate membership frozenset. Its proof-bound sorted-reference replacement
+  performs binary ID search plus exact payload equality and records stable benchmark
+  identity. Clean memory/crossover evidence is pending. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

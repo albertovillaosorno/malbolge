@@ -194,9 +194,14 @@ proofs. Retained evidence under
 records warm crossover 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm
 preparation plus first search is 212.140 ms versus 222.842 ms ordinary; cold crosses
 on run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
-0.901 MiB exact reference/device/host buffers. Component-level Python state memory
-is the next measurement; the trusted verifier remains the sole proposal-admission
-authority.
+0.901 MiB exact reference/device/host buffers. Component tracing selected the historical membership frozenset as the first safe
+compaction target. Prepared search now uses
+`identity-sorted-candidate-reference-binary-search-v1`: an immutable, proof-bound,
+identity-sorted tuple of references to the original batch items. Membership uses
+binary search by logical ID followed by byte-exact payload equality; forged indexes,
+cross-batch reuse, missing IDs, and payload substitution fail closed. The crossover
+benchmark records this identity. Post-commit memory/crossover evidence is pending;
+the trusted verifier remains the sole proposal-admission authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

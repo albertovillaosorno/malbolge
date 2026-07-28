@@ -7,8 +7,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
+from operator import attrgetter
 from time import perf_counter_ns
 from typing import Protocol
+from typing import Self
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -23,6 +25,7 @@ if TYPE_CHECKING:
     from accelerator.work_ports import CandidateEvaluationBatch
     from accelerator.work_ports import CandidateEvaluationResult
     from accelerator.work_ports import CandidateProposal
+    from accelerator.work_ports import CandidateWorkItem
     from accelerator.work_ports import SearchRequest
 
 
@@ -66,11 +69,106 @@ type SearchStrategyKey = tuple[
     SearchPreparedProposalSelector | None,
     SearchSelectionStateCount | None,
 ]
-type CandidateMembershipIndex = frozenset[tuple[str, bytes]]
+PREPARED_MEMBERSHIP_INDEX_ID = (
+    "identity-sorted-candidate-reference-binary-search-v1"
+)
 
 _PREPARED_PROOF = object()
+_PREPARED_MEMBERSHIP_PROOF = object()
 _NO_CANDIDATE_STATE = object()
 _NO_SELECTION_STATE = object()
+
+
+def prepared_membership_index_id() -> str:
+    """Return the active exact prepared membership algorithm identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PREPARED_MEMBERSHIP_INDEX_ID
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCandidateMembershipIndex:
+    """Immutable membership references for one candidate batch."""
+
+    batch: CandidateEvaluationBatch
+    items_by_identity: tuple[CandidateWorkItem, ...]
+    _proof: object = field(repr=False)
+
+    @classmethod
+    def prepare(cls, batch: CandidateEvaluationBatch) -> Self:
+        """Build an exact proof-bound index from one validated batch.
+
+        Returns:
+            Identity-sorted references to the original candidate items.
+
+        """
+        validated = batch.validated()
+        return cls(
+            batch=validated,
+            items_by_identity=tuple(
+                sorted(validated.items, key=attrgetter("logical_id"))
+            ),
+            _proof=_PREPARED_MEMBERSHIP_PROOF,
+        )
+
+    def count_for(self, batch: CandidateEvaluationBatch) -> int:
+        """Return exact indexed candidate count for the original batch.
+
+        Returns:
+            Number of proof-bound candidate references.
+
+        """
+        _ = self._validated_for(batch)
+        return len(self.items_by_identity)
+
+    def contains(
+        self,
+        batch: CandidateEvaluationBatch,
+        proposal: CandidateProposal,
+    ) -> bool:
+        """Return whether one proposal exactly matches an indexed candidate.
+
+        Returns:
+            True only for byte-identical identity and payload membership.
+
+        """
+        items = self._validated_for(batch)
+        lower = 0
+        upper = len(items)
+        while lower < upper:
+            middle = (lower + upper) // 2
+            item = items[middle]
+            if item.logical_id < proposal.logical_id:
+                lower = middle + 1
+            else:
+                upper = middle
+        if lower == len(items):
+            return False
+        item = items[lower]
+        return (
+            item.logical_id == proposal.logical_id
+            and item.payload == proposal.payload
+        )
+
+    def _validated_for(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> tuple[CandidateWorkItem, ...]:
+        if self._proof is not _PREPARED_MEMBERSHIP_PROOF:
+            message = "prepared candidate membership index is forged"
+            raise InvalidAcceleratorWorkError(message)
+        if self.batch is not batch:
+            message = (
+                "prepared candidate membership index changed candidate batch"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        if len(self.items_by_identity) != len(batch.items):
+            message = "prepared membership index does not cover candidate batch"
+            raise InvalidAcceleratorWorkError(message)
+        return self.items_by_identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +206,7 @@ class PreparedEvaluatedSearch:
     request: SearchRequest
     batch: CandidateEvaluationBatch
     _candidate_state: object = field(repr=False)
-    _membership_index: CandidateMembershipIndex = field(repr=False)
+    _membership_index: PreparedCandidateMembershipIndex = field(repr=False)
     _proof: object = field(repr=False)
     _selection_state: object = field(repr=False)
     _strategy_key: SearchStrategyKey = field(repr=False)
@@ -120,7 +218,7 @@ class PreparedEvaluatedSearch:
         SearchRequest,
         CandidateEvaluationBatch,
         object,
-        CandidateMembershipIndex,
+        PreparedCandidateMembershipIndex,
         object,
     ]:
         """Return state only to the exact strategy that prepared it.
@@ -194,7 +292,7 @@ class _ResolvedPreparedSearch:
     request: SearchRequest
     batch: CandidateEvaluationBatch
     candidate_state: object
-    membership_index: CandidateMembershipIndex
+    membership_index: PreparedCandidateMembershipIndex
     selection_state: object
 
 
@@ -352,15 +450,9 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         Returns:
             Number of immutable candidate identity/payload pairs in the index.
 
-        Raises:
-            InvalidAcceleratorWorkError: If state/strategy/index identity fails.
-
         """
         resolved = self._prepared(prepared)
-        if len(resolved.membership_index) != len(resolved.batch.items):
-            message = "prepared membership index does not cover candidate batch"
-            raise InvalidAcceleratorWorkError(message)
-        return len(resolved.membership_index)
+        return resolved.membership_index.count_for(resolved.batch)
 
     def prepared_selection_count(
         self,
@@ -576,7 +668,7 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         batch: CandidateEvaluationBatch,
         evidence: CandidateEvaluationResult,
         *,
-        membership_index: CandidateMembershipIndex | None = None,
+        membership_index: PreparedCandidateMembershipIndex | None = None,
     ) -> tuple[CandidateProposal, ...]:
         proposals = self._proposal_selector(request, batch, evidence)
         _validate_proposal_membership(
@@ -701,20 +793,26 @@ def _validate_batch(
 
 def _candidate_membership_index(
     batch: CandidateEvaluationBatch,
-) -> CandidateMembershipIndex:
-    return frozenset((item.logical_id, item.payload) for item in batch.items)
+) -> PreparedCandidateMembershipIndex:
+    return PreparedCandidateMembershipIndex(
+        batch=batch,
+        items_by_identity=tuple(
+            sorted(batch.items, key=attrgetter("logical_id"))
+        ),
+        _proof=_PREPARED_MEMBERSHIP_PROOF,
+    )
 
 
 def _validate_proposal_membership(
     proposals: tuple[CandidateProposal, ...],
     batch: CandidateEvaluationBatch,
     *,
-    membership_index: CandidateMembershipIndex | None = None,
+    membership_index: PreparedCandidateMembershipIndex | None = None,
 ) -> None:
     if not proposals:
         return
     if membership_index is not None:
-        _validate_indexed_membership(proposals, membership_index)
+        _validate_indexed_membership(proposals, batch, membership_index)
         return
     candidates = {item.logical_id: item.payload for item in batch.items}
     for proposal in proposals:
@@ -725,10 +823,11 @@ def _validate_proposal_membership(
 
 def _validate_indexed_membership(
     proposals: tuple[CandidateProposal, ...],
-    membership_index: CandidateMembershipIndex,
+    batch: CandidateEvaluationBatch,
+    membership_index: PreparedCandidateMembershipIndex,
 ) -> None:
     for proposal in proposals:
-        if (proposal.logical_id, proposal.payload) not in membership_index:
+        if not membership_index.contains(batch, proposal):
             _raise_invalid_proposal_membership()
 
 

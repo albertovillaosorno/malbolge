@@ -160,8 +160,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   strict amortization with every exact proof. Retained warm/cold crossover is
   6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves 10.703 ms; cold crosses on
   run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
-  0.901 MiB exact buffers. Component-level memory decomposition is next.
-  Synthesis/guided
+  0.901 MiB exact buffers. Component tracing selected the duplicate membership
+  frozenset. The active proof-bound sorted-reference index performs binary ID search
+  plus exact payload equality and rejects forged/cross-batch reuse. The crossover
+  benchmark records its stable identity. Clean post-commit memory/crossover evidence
+  is pending. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

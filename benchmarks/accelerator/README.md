@@ -329,5 +329,11 @@ fresh/reused CUDA session counters. Retained evidence is under
 6/3/2/1 and cold crossover is 106/38/5/2 across the four scales. Full-domain warm
 preparation plus first search is 212.140 ms versus 222.842 ms ordinary; cold crosses
 on run two. Incremental traced Python state retains 16.063 MiB and peaks at
-19.040 MiB, while exact reference/device/host buffers total 0.901 MiB. The next
-protocol step decomposes prepared Python state by component before compaction.
+19.040 MiB, while exact reference/device/host buffers total 0.901 MiB. Component tracing selected the prepared membership frozenset as the first compaction
+target. The active index identity is
+`identity-sorted-candidate-reference-binary-search-v1`: it stores sorted references
+to existing immutable candidate items and checks exact ID/payload membership by
+binary search. `search_preparation_crossover.py` now emits and validates this identity
+alongside both primitive validators and all state/session proofs. A clean post-commit
+rerun is required before replacing the retained 16.063/19.040 MiB memory result or
+interpreting crossover changes.

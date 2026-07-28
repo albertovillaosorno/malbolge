@@ -11,7 +11,9 @@ from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
 from accelerator.evaluated_search import EvaluatedSearchStrategy
 from accelerator.evaluated_search import PreparedCandidateExecution
+from accelerator.evaluated_search import PreparedCandidateMembershipIndex
 from accelerator.evaluated_search import PreparedProposalSelection
+from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
@@ -27,6 +29,10 @@ if TYPE_CHECKING:
 ALGORITHM_ID = "evaluated-search-test-v1"
 EVALUATOR_ID = "identity-evaluator-v1"
 CPU_BACKEND = "cpu-reference"
+TWO_ITEM_COUNT = 2
+EXPECTED_MEMBERSHIP_INDEX_ID = (
+    "identity-sorted-candidate-reference-binary-search-v1"
+)
 
 
 def _identity(payload: bytes) -> bytes:
@@ -434,6 +440,61 @@ def test_selector_cannot_fabricate_candidate_payload() -> None:
     _expect_error(
         "proposal was not in evaluated candidate batch",
         lambda: _adapter(_one_item, _fabricate).search(_request(budget=1)),
+    )
+
+
+def test_prepared_membership_index_has_stable_identity() -> None:
+    """Benchmark provenance names the exact membership algorithm."""
+    assert prepared_membership_index_id() == EXPECTED_MEMBERSHIP_INDEX_ID
+
+
+def test_prepared_membership_index_matches_exact_identity_and_payload() -> None:
+    """Sorted membership references preserve exact ID and payload semantics."""
+    batch = _two_items(_request(budget=2)).validated()
+    index = PreparedCandidateMembershipIndex.prepare(batch)
+
+    assert index.count_for(batch) == TWO_ITEM_COUNT
+    assert index.contains(
+        batch,
+        CandidateProposal(logical_id="one", payload=b"one"),
+    )
+    assert not index.contains(
+        batch,
+        CandidateProposal(logical_id="one", payload=b"tampered"),
+    )
+    assert not index.contains(
+        batch,
+        CandidateProposal(logical_id="missing", payload=b"one"),
+    )
+
+
+def test_prepared_membership_index_rejects_forged_proof() -> None:
+    """Raw construction cannot forge prepared membership authority."""
+    batch = _one_item(_request(budget=1)).validated()
+    forged = PreparedCandidateMembershipIndex(
+        batch=batch,
+        items_by_identity=batch.items,
+        _proof=object(),
+    )
+
+    _expect_error(
+        "prepared candidate membership index is forged",
+        lambda: forged.count_for(batch),
+    )
+
+
+def test_prepared_membership_index_rejects_another_batch() -> None:
+    """Equal content under another batch identity cannot reuse the proof."""
+    batch = _one_item(_request(budget=1)).validated()
+    replacement = _one_item(_request(budget=1)).validated()
+    index = PreparedCandidateMembershipIndex.prepare(batch)
+
+    _expect_error(
+        "prepared candidate membership index changed candidate batch",
+        lambda: index.contains(
+            replacement,
+            CandidateProposal(logical_id="one", payload=b"payload"),
+        ),
     )
 
 

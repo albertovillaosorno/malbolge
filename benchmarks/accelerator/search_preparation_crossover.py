@@ -21,6 +21,7 @@ from typing import Final
 from typing import TYPE_CHECKING
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import packed_primitive_validation_id
@@ -55,6 +56,9 @@ WORD_BYTES: Final = 4
 COLD_CHILD_ARGUMENT_COUNT: Final = 2
 ORDINARY_VALIDATION_ID: Final = "u32le-broadword-domain-v1"
 PREPARED_VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
+MEMBERSHIP_INDEX_ID: Final = (
+    "identity-sorted-candidate-reference-binary-search-v1"
+)
 COLD_CHILD_FLAG: Final = "--cold-child"
 MODULE_NAME: Final = "benchmarks.accelerator.search_preparation_crossover"
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[2]
@@ -187,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             "name": capability.device_name,
         },
         "proof": {
+            "membership_index_id": _membership_index_id(),
             "ordinary_validation_id": _ordinary_validation_id(),
             "prepared_validation_id": _prepared_validation_id(),
             "strict_crossover": True,
@@ -552,6 +557,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _membership_index_id() -> str:
+    identifier = prepared_membership_index_id()
+    if identifier != MEMBERSHIP_INDEX_ID:
+        message = "prepared membership index identity drifted"
+        raise RuntimeError(message)
+    return identifier
 
 
 def _ordinary_validation_id() -> str:

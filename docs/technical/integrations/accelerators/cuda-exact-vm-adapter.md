@@ -262,8 +262,13 @@ fails explicitly without changing correctness rules.
   proposal/admission, state-count, and session proofs. Retained warm/cold crossover
   is 6/3/2/1 and 106/38/5/2. Full-domain warm preparation plus first search is
   212.140 ms versus 222.842 ms ordinary; cold crosses on run two. Incremental Python
-  state retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. The next
-  CUDA-boundary measurement decomposes prepared Python memory by component.
+  state retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers.   Component tracing selected the historical prepared membership frozenset for the
+  first compaction. The replacement retains sorted references to the original batch,
+  is proof-bound to that batch, and checks binary-searched logical IDs with exact
+  payload equality. Forged/cross-batch indexes and proposal substitution fail
+  closed. The crossover benchmark records
+  `identity-sorted-candidate-reference-binary-search-v1`; clean memory and crossover
+  evidence is pending.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

@@ -192,9 +192,13 @@ exact proposal/admission, reference/membership/selector counts, and CUDA counter
 remain required. Retained warm crossover is 6/3/2/1 and cold crossover is
 106/38/5/2. Full-domain warm preparation plus first search is 212.140 ms versus
 222.842 ms ordinary; cold crosses on run two. Incremental Python state
-retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. The next
-measurement decomposes prepared state memory by component before compaction.
-Resident or
+retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component tracing selected the duplicate membership frozenset for the first safe
+compaction. Prepared membership now uses
+`identity-sorted-candidate-reference-binary-search-v1`, a proof-bound sorted tuple of
+references to the original immutable batch items. Binary search locates logical IDs
+and exact payload equality preserves anti-fabrication semantics. Forged/cross-batch
+indexes fail closed, and benchmark proof records the index identity. Clean
+post-commit memory/crossover evidence is pending. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
