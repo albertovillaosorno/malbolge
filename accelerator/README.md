@@ -136,8 +136,11 @@ closed, and benchmarks require one prepared position. Retained evidence under
 records 15.266 ms CPU prepared and 6.182 ms CUDA prepared, improvements of
 1.755x/2.907x over indexed membership. CUDA is 2.470x faster in the same run. The
 phase sibling lowers selection to 13.2/12.4 us (894.008x/948.452x), while backend
-phases change only 1.034x/1.035x. Primitive backend execution is the next candidate
-boundary.
+phases change only 1.034x/1.035x. Primitive result validation now checks exact
+minimum/maximum tuple bounds rather than a Python per-value loop, preserving
+negative/overflow rejection before packing. Post-commit performance evidence is
+pending; CPU arithmetic and CUDA host tuple/materialization are the next backend
+subphases.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

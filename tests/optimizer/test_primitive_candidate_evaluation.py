@@ -47,6 +47,7 @@ ROTATE_ONE = 19_683
 BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
 BAD_MODE_DOMAIN = "domain"
+BAD_MODE_NEGATIVE = "negative"
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad",
     device_arch="bad",
@@ -128,19 +129,21 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
     @override
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
         count = len(batch.data)
+        capability = BAD_CAPABILITY
         if self.mode == BAD_MODE_CAPABILITY:
             capability = AcceleratorCapability(
                 backend_id="other",
                 device_arch="bad",
                 device_name="bad",
             )
-            return PrimitiveResult(capability=capability, values=(0,) * count)
-        if self.mode == BAD_MODE_COUNT:
-            return PrimitiveResult(capability=BAD_CAPABILITY, values=())
-        return PrimitiveResult(
-            capability=BAD_CAPABILITY,
-            values=(MAX_WORD + 1,) * count,
-        )
+            values = (0,) * count
+        elif self.mode == BAD_MODE_COUNT:
+            values = ()
+        elif self.mode == BAD_MODE_NEGATIVE:
+            values = (-1,) * count
+        else:
+            values = (MAX_WORD + 1,) * count
+        return PrimitiveResult(capability=capability, values=values)
 
     @override
     def evaluate_prepared(
@@ -333,6 +336,7 @@ def test_malformed_primitive_results_fail_closed() -> None:
             "primitive backend result count does not match candidate batch",
         ),
         ("domain", "primitive backend result outside classic domain"),
+        ("negative", "primitive backend result outside classic domain: -1"),
     )
     for mode, message in cases:
         adapter = PrimitiveCandidateEvaluationAdapter(

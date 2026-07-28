@@ -133,8 +133,10 @@ fails explicitly without changing correctness rules.
   the scan. Missing/excluded candidates and nonmatching evidence produce no
   proposal. Retained CPU prepared median reaches 15.266 ms, 1.755x faster than
   indexed membership, while selection falls from 11.801 ms to 13.2 us (894.008x).
-  Backend evaluation remains 14.387 ms and changes only 1.034x. Primitive arithmetic
-  remains the CPU target.
+  Backend evaluation remains 14.387 ms and changes only 1.034x. Primitive result
+  validation now uses exact tuple extrema instead of a Python per-value loop and
+  still rejects negative or above-domain output. Post-commit evidence is pending;
+  rotate arithmetic remains the CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

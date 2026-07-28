@@ -122,7 +122,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   require one canonical position. Retained prepared medians are 15.266 ms CPU and
   6.182 ms CUDA, 1.755x/2.907x faster than indexed membership; selection improves
   894.008x/948.452x to 13.2/12.4 us. Controls/backend phases change far less, so
-  primitive backend execution is next. Synthesis/guided
+  primitive backend execution selected the next boundary. Exact min/max validation
+  now replaces the Python value loop while retaining negative/overflow rejection.
+  Post-commit evidence is pending; CPU arithmetic and CUDA tuple/materialization are
+  next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

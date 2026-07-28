@@ -141,7 +141,11 @@ are 15.266 ms CPU and 6.182 ms CUDA, improvements of 1.755x/2.907x over indexed
 membership; CUDA is 2.470x faster in the same run. Selection improves
 894.008x/948.452x to 13.2/12.4 us. Ordinary controls improve only 1.022x/1.015x and
 backend phases only 1.034x/1.035x, strongly bounding attribution. Primitive backend
-execution is the next neutral boundary. Resident or
+execution selected the next neutral boundary. Primitive result validation now uses
+exact tuple minimum/maximum bounds rather than an interpreted per-value loop. Both
+negative and above-domain evidence still fail before packing. Post-commit evidence
+is pending; CPU arithmetic and CUDA host tuple/materialization are the next neutral
+subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

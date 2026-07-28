@@ -217,8 +217,10 @@ fails explicitly without changing correctness rules.
   alongside membership and resident-session identity. Retained CUDA prepared median
   is 6.182 ms, 2.907x faster than indexed membership and 2.470x faster than same-run
   CPU. CUDA selection falls from 11.761 ms to 12.4 us (948.452x), while backend
-  evaluation changes only 1.035x to 5.239 ms. The remaining prepared cost is
-  primitive backend execution.
+  evaluation changes only 1.035x to 5.239 ms. Primitive result validation now uses
+  exact tuple extrema and continues rejecting negative or above-domain output before
+  packing. Post-commit performance evidence is pending; host tuple/materialization
+  is the next CUDA backend subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

@@ -381,12 +381,7 @@ def _encode_result(
             "primitive backend result count does not match candidate batch"
         )
         raise InvalidAcceleratorResultError(message)
-    for value in primitive.values:
-        if not 0 <= value <= MAX_WORD:
-            message = (
-                f"primitive backend result outside classic domain: {value}"
-            )
-            raise InvalidAcceleratorResultError(message)
+    _validate_primitive_values(primitive.values)
     return CandidateEvaluationResult(
         capability=capability,
         evaluator_id=batch.evaluator_id,
@@ -395,6 +390,21 @@ def _encode_result(
             payloads=_pack_words(primitive.values),
         ),
     )
+
+
+def _validate_primitive_values(values: tuple[int, ...]) -> None:
+    if not values:
+        return
+    minimum = min(values)
+    maximum = max(values)
+    if minimum < 0:
+        invalid = minimum
+    elif maximum > MAX_WORD:
+        invalid = maximum
+    else:
+        return
+    message = f"primitive backend result outside classic domain: {invalid}"
+    raise InvalidAcceleratorResultError(message)
 
 
 def _pack_words(values: tuple[int, ...]) -> bytes:

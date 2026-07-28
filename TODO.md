@@ -797,8 +797,11 @@ Retained direct-selection evidence records CPU/CUDA prepared medians of
 2.470x faster in the same run. Selection falls from 11.801 ms to 13.2 us CPU
 (894.008x) and from 11.761 ms to 12.4 us CUDA (948.452x). Ordinary controls improve
 only 1.022x/1.015x and backend phases only 1.034x/1.035x, strongly bounding
-attribution to exact prepared selection. Primitive backend execution is the next
-measured boundary.
+attribution to exact prepared selection. Primitive result validation now checks
+both tuple extrema instead of scanning every value in Python, preserving rejection
+of negative and above-domain evidence before packing. Post-commit performance
+evidence is pending. CPU rotate arithmetic and CUDA host tuple/materialization are
+the next measured backend subphases.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -873,7 +876,9 @@ resident-session proofs. Retained CUDA prepared throughput reaches 6.182 ms vers
 15.266 ms CPU prepared (2.470x), while CUDA selection falls to 12.4 us (948.452x).
 Backend evaluation remains 5.239 ms and changes only 1.035x versus the indexed run,
 so primitive backend execution now precedes resident or fused evaluation-selection.
-Broader
+Primitive result validation now uses exact minimum/maximum bounds and still rejects
+negative or above-domain output before evidence packing. Post-commit evidence is
+pending; CUDA host tuple/materialization is the next measured subphase. Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

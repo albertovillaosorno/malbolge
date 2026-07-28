@@ -135,7 +135,11 @@ full scan. Forged/mismatched selector state and nonmatching evidence fail closed
 prepared medians improve 1.755x CPU and 2.907x CUDA; selection improves
 894.008x/948.452x to 13.2/12.4 us. CUDA is 2.470x faster than same-run CPU. Ordinary
 controls and backend phases change far less, bounding attribution. Primitive
-execution is next, while resident/fused search remains later work.
+execution selected the next boundary. The neutral bridge now validates primitive
+result tuples through exact minimum/maximum bounds, preserving negative and
+above-domain failure before packing. Post-commit evidence is pending; CPU arithmetic
+and CUDA tuple/materialization are next, while resident/fused search remains later
+work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

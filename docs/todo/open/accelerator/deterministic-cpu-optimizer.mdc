@@ -93,7 +93,9 @@ baseline for accelerator implementations.
   3.519x to 11.801 ms. Prepared rotate state now stores exact preimage positions
   after pruning/seed/budget and validates only their evidence; ordinary CPU search
   retains the packed scan. Retained CPU prepared median is 15.266 ms (1.755x
-  better), and selection improves 894.008x to 13.2 us. Primitive arithmetic is next.
+  better), and selection improves 894.008x to 13.2 us. Exact min/max validation now
+  replaces the Python value loop while preserving domain failure. Post-commit
+  evidence is pending; rotate arithmetic is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

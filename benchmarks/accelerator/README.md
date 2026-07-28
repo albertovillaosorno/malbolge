@@ -232,4 +232,6 @@ full scan. Retained post-commit evidence is under
 `evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060/`. Prepared
 CPU/CUDA medians reach 15.266/6.182 ms, while selection reaches 13.2/12.4 us.
 Backend phases move only about 3.5%, identifying primitive execution as the next
-boundary.
+boundary. The active bridge now validates primitive result domain through exact
+tuple extrema while preserving negative/overflow failure. These direct-selection
+records remain the pre-change baseline until a post-commit rerun is retained.
