@@ -19,7 +19,7 @@ const TAG_HEX: &str = "";
 
 const ANCHOR_BASE: u64 = 257;
 const GF_REDUCTION: u8 = 0x1b;
-const AAD_MAGIC: &[u8] = b"source-bound-exact-plan-aad-v1\0";
+const AAD_MAGIC: &[u8] = b"source-bound-exact-plan-aad-v2\0";
 const BINDING_CONTEXT_MAGIC: &[u8] = b"source-binding-context-v1\0";
 const BINDING_COMMITMENT_MAGIC: &[u8] =
     b"source-binding-secret-commitment-v1\0";
@@ -59,6 +59,7 @@ struct Instruction {
 struct Metadata {
     source: Snapshot,
     target: Snapshot,
+    passthrough_roots: Vec<String>,
     instructions: Vec<Instruction>,
 }
 #[derive(Clone, Debug)]
@@ -256,6 +257,12 @@ fn parse_metadata(aad: &[u8]) -> Result<Metadata, String> {
     }
     let source = parse_snapshot(c.frame()?)?;
     let target = parse_snapshot(c.frame()?)?;
+    let passthrough_count = c.usize_be()?;
+    let mut passthrough_roots = Vec::with_capacity(passthrough_count);
+    for _ in 0..passthrough_count {
+        passthrough_roots.push(c.text()?);
+    }
+    validate_passthrough_roots(&passthrough_roots)?;
     let count = c.usize_be()?;
     let mut instructions = Vec::with_capacity(count);
     for _ in 0..count {
@@ -265,6 +272,7 @@ fn parse_metadata(aad: &[u8]) -> Result<Metadata, String> {
     Ok(Metadata {
         source,
         target,
+        passthrough_roots,
         instructions,
     })
 }
@@ -496,6 +504,43 @@ fn relative_path(root: &Path, path: &Path) -> Result<String, String> {
     }
     Ok(parts.join("/"))
 }
+fn valid_relative_root(relative: &str) -> bool {
+    !relative.is_empty()
+        && !relative.starts_with('/')
+        && !relative.contains('\\')
+        && relative
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+fn path_in_roots(relative: &str, roots: &[String]) -> bool {
+    roots.iter().any(|root| {
+        relative == root
+            || relative
+                .strip_prefix(root)
+                .is_some_and(|tail| tail.starts_with('/'))
+    })
+}
+fn validate_passthrough_roots(roots: &[String]) -> Result<(), String> {
+    let mut previous: Option<&str> = None;
+    for root in roots {
+        if !valid_relative_root(root) {
+            return Err(String::from("invalid generated passthrough root"));
+        }
+        if let Some(prior) = previous {
+            if root.as_str() <= prior
+                || root
+                    .strip_prefix(prior)
+                    .is_some_and(|tail| tail.starts_with('/'))
+            {
+                return Err(String::from(
+                    "generated passthrough roots are unsorted or overlapping",
+                ));
+            }
+        }
+        previous = Some(root);
+    }
+    Ok(())
+}
 fn collect_files(
     root: &Path,
     current: &Path,
@@ -547,6 +592,16 @@ fn snapshot_tree(root: &Path) -> Result<Snapshot, String> {
         });
     }
     Ok(Snapshot { files })
+}
+fn snapshot_tree_excluding(
+    root: &Path,
+    excluded_roots: &[String],
+) -> Result<Snapshot, String> {
+    let mut snapshot = snapshot_tree(root)?;
+    snapshot
+        .files
+        .retain(|record| !path_in_roots(&record.path, excluded_roots));
+    Ok(snapshot)
 }
 fn rolling_power(window: usize) -> u64 {
     let mut v = 1u64;
@@ -1072,6 +1127,61 @@ fn prepare_staging(output: &Path) -> Result<PathBuf, String> {
         .map_err(|e| format!("cannot create staging: {e}"))?;
     Ok(staging)
 }
+fn copy_passthrough_entry(
+    source_root: &Path,
+    staging_root: &Path,
+    source: &Path,
+) -> Result<(), String> {
+    let meta = fs::symlink_metadata(source)
+        .map_err(|e| format!("cannot inspect {}: {e}", source.display()))?;
+    let kind = meta.file_type();
+    if kind.is_symlink() {
+        return Err(format!("symlink unsupported: {}", source.display()));
+    }
+    let relative = relative_path(source_root, source)?;
+    let output = safe_join(staging_root, &relative)?;
+    if kind.is_file() {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!("cannot create {}: {e}", parent.display())
+            })?;
+        }
+        fs::copy(source, &output).map_err(|e| {
+            format!(
+                "cannot copy passthrough {} to {}: {e}",
+                source.display(),
+                output.display()
+            )
+        })?;
+        return Ok(());
+    }
+    if !kind.is_dir() {
+        return Err(format!(
+            "non-regular passthrough entry unsupported: {}",
+            source.display()
+        ));
+    }
+    fs::create_dir_all(&output)
+        .map_err(|e| format!("cannot create {}: {e}", output.display()))?;
+    for item in fs::read_dir(source)
+        .map_err(|e| format!("cannot read {}: {e}", source.display()))?
+    {
+        let entry = item.map_err(|e| format!("directory entry failed: {e}"))?;
+        copy_passthrough_entry(source_root, staging_root, &entry.path())?;
+    }
+    Ok(())
+}
+fn copy_passthrough_roots(
+    source_root: &Path,
+    staging_root: &Path,
+    roots: &[String],
+) -> Result<(), String> {
+    for root in roots {
+        let source = safe_join(source_root, root)?;
+        copy_passthrough_entry(source_root, staging_root, &source)?;
+    }
+    Ok(())
+}
 fn populate_staging(
     source: &Path,
     staging: &Path,
@@ -1095,7 +1205,10 @@ fn populate_staging(
         fs::write(&output, data)
             .map_err(|e| format!("cannot write {}: {e}", output.display()))?;
     }
-    if snapshot_tree(staging)? != metadata.target {
+    copy_passthrough_roots(source, staging, &metadata.passthrough_roots)?;
+    if snapshot_tree_excluding(staging, &metadata.passthrough_roots)?
+        != metadata.target
+    {
         return Err(String::from(
             "materialized tree does not match target snapshot",
         ));
@@ -1135,7 +1248,9 @@ fn run() -> Result<(), String> {
     let ciphertext = decode_hex(CIPHERTEXT_HEX)?;
     let tag = decode_hex(TAG_HEX)?;
     let metadata = parse_metadata(&aad)?;
-    if snapshot_tree(&source)? != metadata.source {
+    if snapshot_tree_excluding(&source, &metadata.passthrough_roots)?
+        != metadata.source
+    {
         return Err(String::from(
             "source tree does not match exact transform snapshot",
         ));

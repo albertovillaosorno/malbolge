@@ -53,6 +53,13 @@ deterministic staging directory, verifies the complete target snapshot, and only
 then publishes the output tree. Symlinks and special filesystem entries fail
 closed. Empty directories are outside the version-one byte-tree model.
 
+Exact recipes may declare sorted, non-overlapping `passthrough_roots`. Those roots
+are required to match source/oracle during authoring so the baseline is reproducible,
+but are excluded from the static source/target snapshots afterward. Materialization
+copies the candidate passthrough subtree byte-for-byte into staging and verifies only
+the static target projection. The passthrough-root list is authenticated in protected
+plan AAD, so transform metadata cannot silently widen the dynamic-input boundary.
+
 `ExactAuthoringPlan` is intentionally non-distributable. Its target-only literal
 segments are local generator state. `protect_exact_plan()` moves those bytes into
 authenticated ciphertext and source-binds the plan key before `emit_rust.py` can

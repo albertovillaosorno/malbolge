@@ -22,6 +22,8 @@ _PATCH_PATH = "patch.txt"
 _PATCH_PREFIX = b"0123456789abcdef" * 8
 _PATCH_INSERTION = b"<inserted-target-only>"
 _PATCH_SUFFIX = b"fedcba9876543210" * 8
+_RUNTIME_DATA = b"runtime-data"
+_RUNTIME_EXTRA = b"runtime-extra"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -168,3 +170,53 @@ def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
 
     with pytest.raises(ExactTreeError, match="symlinks"):
         snapshot_tree(root)
+
+
+def test_passthrough_root_is_dynamic_after_exact_authoring(
+    tmp_path: Path,
+) -> None:
+    """Preserve external input while exact-gating the transformed tree."""
+    source, oracle = _synthetic_pair(tmp_path)
+    _write(source, "external/game.bin", b"authoring-data")
+    _write(oracle, "external/game.bin", b"authoring-data")
+    plan = build_exact_plan(
+        source,
+        oracle,
+        passthrough_roots=("external",),
+    )
+    _write(source, "external/game.bin", _RUNTIME_DATA)
+    _write(source, "external/extra.bin", _RUNTIME_EXTRA)
+    output = tmp_path / "passthrough-out"
+
+    materialize_exact_plan(source, plan, output)
+
+    _expect(
+        (output / "external/game.bin").read_bytes() == _RUNTIME_DATA,
+        "passthrough file was pinned to authoring bytes",
+    )
+    _expect(
+        (output / "external/extra.bin").read_bytes() == _RUNTIME_EXTRA,
+        "passthrough candidate-only file was lost",
+    )
+    _expect(
+        all(
+            not item.path.startswith("external/") for item in plan.source.files
+        ),
+        "passthrough path leaked into static source snapshot",
+    )
+
+
+def test_passthrough_authoring_requires_matching_source_and_oracle(
+    tmp_path: Path,
+) -> None:
+    """Prove the dynamic policy reproduces the authoring baseline initially."""
+    source, oracle = _synthetic_pair(tmp_path)
+    _write(source, "external/game.bin", b"source-data")
+    _write(oracle, "external/game.bin", b"different-oracle-data")
+
+    with pytest.raises(ExactTreeError, match="passthrough roots differ"):
+        build_exact_plan(
+            source,
+            oracle,
+            passthrough_roots=("external",),
+        )

@@ -10,7 +10,7 @@ import math
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
-from algorithms.diff.domain import load_compatible_domain
+from algorithms.diff.domain import load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.fingerprints import AnchorPolicy
@@ -40,6 +40,7 @@ class DiffRecipe:
     profile: str
     mode: TransformMode
     domain_module: Path | None = None
+    passthrough_roots: tuple[str, ...] = ()
     minimum_source_similarity: float = 0.50
     minimum_anchor_coverage: float = 0.66
     minimum_behavior_similarity: float = 0.80
@@ -108,7 +109,11 @@ def _raw_exact_identity(
 
 
 def _write_exact_algorithm(recipe: DiffRecipe) -> None:
-    exact = build_exact_plan(recipe.source_root, recipe.oracle_root)
+    exact = build_exact_plan(
+        recipe.source_root,
+        recipe.oracle_root,
+        passthrough_roots=recipe.passthrough_roots,
+    )
     source_paths = tuple(record.path for record in exact.source.files)
     identity = _raw_exact_identity(recipe, source_paths)
     policy = SourceBindingPolicy(
@@ -131,11 +136,11 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
     )
 
 
-def _preflight_compatible(recipe: DiffRecipe) -> None:
+def _preflight_domain(recipe: DiffRecipe) -> None:
     if recipe.domain_module is None:
-        message = "compatible generation requires a domain module"
+        message = "domain preflight requires a domain module"
         raise DiffGeneratorUnavailableError(message)
-    domain = load_compatible_domain(recipe.domain_module)
+    domain = load_diff_domain(recipe.domain_module)
     domain.validate_source_provenance(recipe.source_root)
     domain.validate_authoring_oracle(recipe.oracle_root)
 
@@ -143,9 +148,10 @@ def _preflight_compatible(recipe: DiffRecipe) -> None:
 def write_algorithm(recipe: DiffRecipe) -> None:
     """Generate one requested transform mode or fail closed.
 
-    Exact-baseline mode is implemented and intentionally binds raw source
-    bytes because it also requires the exact authoring source snapshot.
-    Compatible mode executes consumer source-provenance and oracle preflights.
+    Exact-baseline mode is implemented and may exclude explicit passthrough
+    roots from its static source snapshot. Domain-aware recipes execute source
+    provenance and oracle preflights before either mode continues.
+    Compatible mode executes those preflights and then remains unavailable.
     It then remains unavailable until compatible protected serialization and
     runtime emission are complete.
 
@@ -154,10 +160,14 @@ def write_algorithm(recipe: DiffRecipe) -> None:
 
     """
     _validate_recipe(recipe)
+    if recipe.domain_module is not None:
+        _preflight_domain(recipe)
+    elif recipe.mode is TransformMode.COMPATIBLE:
+        message = "compatible generation requires a domain module"
+        raise DiffGeneratorUnavailableError(message)
     if recipe.mode is TransformMode.EXACT_BASELINE:
         _write_exact_algorithm(recipe)
         return
-    _preflight_compatible(recipe)
     message = (
         "compatible source-bound Rust emission is not implemented; "
         "preflight passed but no output was materialized"

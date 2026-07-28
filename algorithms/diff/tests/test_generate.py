@@ -73,15 +73,13 @@ def _domain_module(tmp_path: Path) -> Path:
     module.write_text(
         """\
 def validate_source_provenance(root):
-    marker = root / "source-ok"
-    if not marker.exists():
+    if (root / "reject-source").exists():
         raise RuntimeError("source pin rejected")
     return None
 
 
 def validate_authoring_oracle(root):
-    marker = root / "oracle-ok"
-    if not marker.exists():
+    if (root / "reject-oracle").exists():
         raise RuntimeError("oracle preflight rejected")
 
 
@@ -126,8 +124,6 @@ def test_compatible_mode_runs_domain_preflight_then_fails_emission(
 ) -> None:
     """Require domain provenance checks before unfinished emission."""
     recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
-    _write(recipe.source_root, "source-ok", b"")
-    _write(recipe.oracle_root, "oracle-ok", b"")
     recipe = replace(recipe, domain_module=_domain_module(tmp_path))
 
     with pytest.raises(DiffGeneratorUnavailableError, match="preflight passed"):
@@ -142,7 +138,7 @@ def test_compatible_mode_propagates_source_preflight_failure(
 ) -> None:
     """Reject the candidate source before compatible emission is considered."""
     recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
-    _write(recipe.oracle_root, "oracle-ok", b"")
+    _write(recipe.source_root, "reject-source", b"")
     recipe = replace(recipe, domain_module=_domain_module(tmp_path))
 
     with pytest.raises(RuntimeError, match="source pin rejected"):
@@ -167,3 +163,24 @@ def test_exact_mode_writes_deterministic_standalone_rust(
     _expect(first == second, "exact generator output changed across runs")
     _expect(_STD_MARKER in first, "exact generator did not emit Rust runtime")
     _expect(_LITERAL_MARKER not in first, "plaintext oracle literal leaked")
+
+
+def test_exact_mode_runs_domain_preflight_with_passthrough(
+    tmp_path: Path,
+) -> None:
+    """Use domain gates while keeping external roots outside static identity."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    _write(recipe.source_root, "external/game.bin", b"external")
+    _write(recipe.oracle_root, "external/game.bin", b"external")
+    recipe = replace(
+        recipe,
+        domain_module=_domain_module(tmp_path),
+        passthrough_roots=("external",),
+    )
+
+    write_algorithm(recipe)
+
+    _expect(
+        recipe.output_algorithm.is_file(),
+        "domain-aware exact mode wrote nothing",
+    )

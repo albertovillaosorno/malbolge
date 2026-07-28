@@ -140,3 +140,4 @@ class ExactAuthoringPlan:
     source: TreeSnapshot
     target: TreeSnapshot
     instructions: tuple[ExactInstruction, ...]
+    passthrough_roots: tuple[str, ...] = ()

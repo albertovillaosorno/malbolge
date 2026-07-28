@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier: MIT
-"""Synthetic validation for compatible consumer-domain module loading."""
+"""Synthetic validation for consumer-domain module loading."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from algorithms.diff.domain import DomainContractError
-from algorithms.diff.domain import load_compatible_domain
+from algorithms.diff.domain import load_diff_domain
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,7 +53,7 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
     module = tmp_path / "domain.py"
     _write(module, _COMPLETE)
 
-    domain = load_compatible_domain(module)
+    domain = load_diff_domain(module)
 
     _expect(
         callable(domain.validate_source_provenance),
@@ -91,14 +91,14 @@ def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:
     )
 
     with pytest.raises(DomainContractError, match="map_compatible_file"):
-        load_compatible_domain(module)
+        load_diff_domain(module)
 
 
 def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     """Require a concrete regular authoring-policy module."""
     missing = tmp_path / "missing.py"
     with pytest.raises(DomainContractError, match="regular file"):
-        load_compatible_domain(missing)
+        load_diff_domain(missing)
 
     target = tmp_path / "target.py"
     _write(target, _COMPLETE)
@@ -108,4 +108,4 @@ def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     except OSError:
         pytest.skip("symlink creation is unavailable")
     with pytest.raises(DomainContractError, match="regular file"):
-        load_compatible_domain(link)
+        load_diff_domain(link)

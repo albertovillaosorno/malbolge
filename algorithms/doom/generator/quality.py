@@ -14,8 +14,9 @@ RECIPE = DiffRecipe(
     oracle_root=REPOSITORY_ROOT / "algorithms/doom/quality/in/doom",
     output_algorithm=REPOSITORY_ROOT / "algorithms/doom/quality/main.rs",
     profile="doom-quality-v1",
-    mode=TransformMode.COMPATIBLE,
+    mode=TransformMode.EXACT_BASELINE,
     domain_module=Path(__file__).with_name("doom.py"),
+    passthrough_roots=("data",),
     minimum_source_similarity=0.50,
     minimum_anchor_coverage=0.66,
     minimum_behavior_similarity=0.80,
@@ -28,11 +29,10 @@ RECIPE = DiffRecipe(
 
 
 def main() -> int:
-    """Write the compatible quality algorithm or fail closed.
+    """Write the pinned-source quality algorithm or fail closed.
 
     Returns:
-        Zero after successful compatible generation. The current implementation
-        raises before replacing the checked-in scaffold.
+        Zero after successful exact source-bound generation.
 
     """
     write_algorithm(RECIPE)

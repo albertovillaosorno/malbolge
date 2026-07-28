@@ -85,6 +85,38 @@ def _validate_relative_path(relative_path: str) -> str:
     return normalized
 
 
+def _normalized_roots(roots: tuple[str, ...]) -> tuple[str, ...]:
+    normalized = tuple(_validate_relative_path(root) for root in roots)
+    if normalized != tuple(sorted(set(normalized))):
+        message = "passthrough roots must be unique and sorted"
+        raise ExactTreeError(message)
+    for index, root in enumerate(normalized):
+        prefix = root + "/"
+        if any(other.startswith(prefix) for other in normalized[index + 1 :]):
+            message = "passthrough roots must not overlap"
+            raise ExactTreeError(message)
+    return normalized
+
+
+def _path_in_roots(path: str, roots: tuple[str, ...]) -> bool:
+    return any(path == root or path.startswith(root + "/") for root in roots)
+
+
+def _filter_snapshot(
+    snapshot: TreeSnapshot,
+    roots: tuple[str, ...],
+    *,
+    inside: bool,
+) -> TreeSnapshot:
+    return TreeSnapshot(
+        files=tuple(
+            record
+            for record in snapshot.files
+            if _path_in_roots(record.path, roots) is inside
+        )
+    )
+
+
 def _record_file(root: Path, path: Path) -> FileRecord | None:
     if path.is_symlink():
         message = f"symlinks are not supported: {path}"
@@ -123,6 +155,20 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
         if (record := _record_file(resolved_root, path)) is not None
     )
     return TreeSnapshot(files=tuple(sorted(records)))
+
+
+def snapshot_tree_excluding(
+    root: Path,
+    excluded_roots: tuple[str, ...],
+) -> TreeSnapshot:
+    """Snapshot one tree while excluding explicit root subtrees.
+
+    Returns:
+        Static snapshot containing no files under the excluded roots.
+
+    """
+    roots = _normalized_roots(excluded_roots)
+    return _filter_snapshot(snapshot_tree(root), roots, inside=False)
 
 
 def _source_paths_by_content(
@@ -327,6 +373,8 @@ def _instruction_for_target(
 def build_exact_plan(
     source_root: Path,
     oracle_root: Path,
+    *,
+    passthrough_roots: tuple[str, ...] = (),
 ) -> ExactAuthoringPlan:
     """Build a deterministic exact-baseline plan from two local trees.
 
@@ -336,9 +384,20 @@ def build_exact_plan(
     Returns:
         A deterministic, non-distributable authoring plan.
 
+    Raises:
+        ExactTreeError: Passthrough policy is invalid or differs at authoring.
+
     """
-    source = snapshot_tree(source_root)
-    target = snapshot_tree(oracle_root)
+    roots = _normalized_roots(passthrough_roots)
+    source_full = snapshot_tree(source_root)
+    target_full = snapshot_tree(oracle_root)
+    source_passthrough = _filter_snapshot(source_full, roots, inside=True)
+    target_passthrough = _filter_snapshot(target_full, roots, inside=True)
+    if source_passthrough != target_passthrough:
+        message = "passthrough roots differ between source and authoring oracle"
+        raise ExactTreeError(message)
+    source = _filter_snapshot(source_full, roots, inside=False)
+    target = _filter_snapshot(target_full, roots, inside=False)
     context = _PlanningContext(
         source_root=source_root,
         oracle_root=oracle_root,
@@ -352,6 +411,7 @@ def build_exact_plan(
         source=source,
         target=target,
         instructions=instructions,
+        passthrough_roots=roots,
     )
 
 
@@ -417,7 +477,8 @@ def _write_instruction(
 
 
 def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
-    if snapshot_tree(source_root) != plan.source:
+    current = snapshot_tree_excluding(source_root, plan.passthrough_roots)
+    if current != plan.source:
         message = "source tree does not match exact authoring snapshot"
         raise ExactTreeError(message)
 
@@ -436,6 +497,66 @@ def _prepare_staging(output_root: Path) -> Path:
     return staging_root
 
 
+def _copy_passthrough_file(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
+
+
+def _copy_passthrough_directory(
+    source_root: Path,
+    staging_root: Path,
+    source: Path,
+) -> None:
+    for path in sorted(source.rglob("*")):
+        relative = path.relative_to(source_root).as_posix()
+        if path.is_symlink():
+            message = (
+                f"symlink is not supported in passthrough root: {relative}"
+            )
+            raise ExactTreeError(message)
+        output = _safe_tree_path(staging_root, relative)
+        if path.is_dir():
+            output.mkdir(parents=True, exist_ok=True)
+            continue
+        if path.is_file():
+            _copy_passthrough_file(path, output)
+            continue
+        message = f"special passthrough entry is not supported: {relative}"
+        raise ExactTreeError(message)
+
+
+def _copy_passthrough_root(
+    source_root: Path,
+    staging_root: Path,
+    relative_root: str,
+) -> None:
+    source = _safe_tree_path(source_root, relative_root)
+    target = _safe_tree_path(staging_root, relative_root)
+    if source.is_symlink():
+        message = (
+            f"symlink is not supported in passthrough root: {relative_root}"
+        )
+        raise ExactTreeError(message)
+    if source.is_file():
+        _copy_passthrough_file(source, target)
+        return
+    if source.is_dir():
+        target.mkdir(parents=True, exist_ok=True)
+        _copy_passthrough_directory(source_root, staging_root, source)
+        return
+    message = f"missing passthrough root: {relative_root}"
+    raise ExactTreeError(message)
+
+
+def _copy_passthrough_roots(
+    source_root: Path,
+    staging_root: Path,
+    roots: tuple[str, ...],
+) -> None:
+    for root in roots:
+        _copy_passthrough_root(source_root, staging_root, root)
+
+
 def _populate_staging(
     source_root: Path,
     staging_root: Path,
@@ -443,7 +564,17 @@ def _populate_staging(
 ) -> None:
     for instruction in plan.instructions:
         _write_instruction(source_root, staging_root, instruction)
-    if snapshot_tree(staging_root) != plan.target:
+    _copy_passthrough_roots(
+        source_root,
+        staging_root,
+        plan.passthrough_roots,
+    )
+    static_output = _filter_snapshot(
+        snapshot_tree(staging_root),
+        plan.passthrough_roots,
+        inside=False,
+    )
+    if static_output != plan.target:
         message = "materialized tree does not match target snapshot"
         raise ExactTreeError(message)
 

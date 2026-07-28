@@ -10,7 +10,7 @@ import hashlib
 from typing import TYPE_CHECKING
 
 from algorithms.diff.exact import materialize_exact_plan
-from algorithms.diff.exact import snapshot_tree
+from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
@@ -38,7 +38,7 @@ _ONE = 1
 _PAYLOAD_KEY_BYTES = 32
 _SINGLE_MESSAGE_NONCE = bytes(12)
 _FRAME_BYTES = 8
-_AAD_MAGIC = b"source-bound-exact-plan-aad-v1\0"
+_AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
 
@@ -121,12 +121,23 @@ class ProtectedInstruction:
 
 
 @dataclass(frozen=True, slots=True)
+class ProtectedMetadata:
+    """Authenticated static metadata for one protected exact plan."""
+
+    source: TreeSnapshot
+    target: TreeSnapshot
+    instructions: tuple[ProtectedInstruction, ...]
+    passthrough_roots: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectedExactPlan:
     """Exact metadata with authenticated source-bound literals."""
 
     source: TreeSnapshot
     target: TreeSnapshot
     instructions: tuple[ProtectedInstruction, ...]
+    passthrough_roots: tuple[str, ...]
     context: bytes
     nonce: bytes
     payload: AuthenticatedPayload
@@ -214,10 +225,12 @@ def _instruction_bytes(instruction: ProtectedInstruction) -> bytes:
     ))
 
 
+def _roots_bytes(roots: tuple[str, ...]) -> bytes:
+    return b"".join((_u64(len(roots)), *(_frame_text(root) for root in roots)))
+
+
 def protected_plan_aad(
-    source: TreeSnapshot,
-    target: TreeSnapshot,
-    instructions: tuple[ProtectedInstruction, ...],
+    metadata: ProtectedMetadata,
     *,
     context: bytes,
 ) -> bytes:
@@ -234,16 +247,32 @@ def protected_plan_aad(
         message = "protected-plan context must be non-empty"
         raise ProtectedPlanError(message)
     instruction_bytes = b"".join(
-        _instruction_bytes(instruction) for instruction in instructions
+        _instruction_bytes(instruction) for instruction in metadata.instructions
     )
     return b"".join((
         _AAD_MAGIC,
         _frame_bytes(context),
-        _frame_bytes(_snapshot_bytes(source)),
-        _frame_bytes(_snapshot_bytes(target)),
-        _u64(len(instructions)),
+        _frame_bytes(_snapshot_bytes(metadata.source)),
+        _frame_bytes(_snapshot_bytes(metadata.target)),
+        _roots_bytes(metadata.passthrough_roots),
+        _u64(len(metadata.instructions)),
         instruction_bytes,
     ))
+
+
+def _metadata(
+    source: TreeSnapshot,
+    target: TreeSnapshot,
+    instructions: tuple[ProtectedInstruction, ...],
+    *,
+    passthrough_roots: tuple[str, ...],
+) -> ProtectedMetadata:
+    return ProtectedMetadata(
+        source=source,
+        target=target,
+        instructions=instructions,
+        passthrough_roots=passthrough_roots,
+    )
 
 
 def _protected_segment(
@@ -352,12 +381,13 @@ def protect_exact_plan(
         for instruction in plan.instructions
     )
     plaintext = bytes(builder.data)
-    aad = protected_plan_aad(
+    metadata = _metadata(
         plan.source,
         plan.target,
         instructions,
-        context=context,
+        passthrough_roots=plan.passthrough_roots,
     )
+    aad = protected_plan_aad(metadata, context=context)
     key = _derive_payload_key(
         reference_identity,
         plaintext=plaintext,
@@ -380,6 +410,7 @@ def protect_exact_plan(
         source=plan.source,
         target=plan.target,
         instructions=instructions,
+        passthrough_roots=plan.passthrough_roots,
         context=context,
         nonce=_SINGLE_MESSAGE_NONCE,
         payload=payload,
@@ -447,12 +478,13 @@ def recover_exact_plan(
         In-memory exact plan suitable for transactional materialization.
 
     """
-    aad = protected_plan_aad(
+    metadata = _metadata(
         plan.source,
         plan.target,
         plan.instructions,
-        context=plan.context,
+        passthrough_roots=plan.passthrough_roots,
     )
+    aad = protected_plan_aad(metadata, context=plan.context)
     key = recover_secret(plan.binding, candidate_identity)
     plaintext = chacha20_poly1305_decrypt(
         key,
@@ -468,6 +500,7 @@ def recover_exact_plan(
         source=plan.source,
         target=plan.target,
         instructions=instructions,
+        passthrough_roots=plan.passthrough_roots,
     )
 
 
@@ -484,7 +517,10 @@ def materialize_protected_exact_plan(
         ProtectedPlanError: The exact source snapshot changed.
 
     """
-    if snapshot_tree(source_root) != plan.source:
+    if (
+        snapshot_tree_excluding(source_root, plan.passthrough_roots)
+        != plan.source
+    ):
         message = "source tree does not match protected exact source snapshot"
         raise ProtectedPlanError(message)
     exact = recover_exact_plan(plan, candidate_identity)

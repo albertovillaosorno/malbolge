@@ -28,9 +28,8 @@ official files; the deterministic pinned snapshot digest is
 `20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`. `data/` is
 explicitly excluded from that code pin.
 
-The DOOM domain also owns authoring preflight and compatible file mapping.
-`map_compatible_file()` exposes only `linuxdoom-1.10` C/header files to semantic
-placement; WADs and other surfaces remain opaque. `validate_authoring_oracle()`
+`map_compatible_file()` remains available for generic semantic-placement research,
+but DOOM quality no longer needs fuzzy source admission. `validate_authoring_oracle()`
 requires the normalized oracle root to contain exactly `data/`, `linuxdoom-1.10/`,
 and `LICENSE`. Unexpected authoring artifacts fail closed rather than becoming
 target-only payload. The current local oracle intentionally remains untouched; its
@@ -57,11 +56,9 @@ The intended invocation is from the repository root:
 python -m algorithms.doom.generator.quality
 ```
 
-`algorithms/diff` now implements exact authoring, source-span reuse, canonical
-identity primitives, stable anchors, tree admission, behavior evaluation, portable
-process probes, exact source-revision pins, threshold key unlock, RFC 8439 payload
-protection, protected exact-plan materialization, and deterministic std-only Rust
-emission for the exact baseline. For compatible generation, `write_algorithm()` now
-loads the domain and executes the hard source-provenance and oracle preflights before
-reaching the still-unimplemented compatible Rust emitter. The DOOM profile therefore
-uses an exact source revision even though compatible-output/runtime work remains open.
+`algorithms/diff` now implements exact authoring, source-span reuse, exact source
+revision pins, authenticated dynamic passthrough roots, threshold key unlock, RFC 8439
+payload protection, protected materialization, and deterministic std-only Rust
+emission. `quality.py` uses that complete exact path with `data/` as passthrough. The
+generic fuzzy/semantic compatible path remains available as research infrastructure
+but is no longer a blocker for DOOM quality generation.

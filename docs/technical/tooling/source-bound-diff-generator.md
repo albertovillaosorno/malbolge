@@ -62,10 +62,14 @@ This local plan is verification evidence, not a distributable transform. Raw
 source-binding stage must convert them to recovery material that cannot be
 materialized without sufficient admitted source evidence.
 
-Exact materialization verifies the source snapshot before writing, constructs the
-result under a staging path, verifies the complete target snapshot, and publishes
-only after exact equality succeeds. The matcher used for source-span reuse is
-separate from future canonical identity and stable admission anchors.
+Exact materialization verifies the static source snapshot before writing, constructs
+the result under a staging path, verifies the static target snapshot, and publishes
+only after equality succeeds. Recipes may declare authenticated `passthrough_roots`
+for external runtime inputs. Such roots must match source/oracle during authoring, are
+then excluded from static snapshots/source binding, and are copied recursively from
+the runtime candidate into staging. Symlinks and special entries still fail closed.
+The matcher used for source-span reuse remains separate from canonical identity and
+stable admission anchors.
 
 ### Canonical Identity
 
@@ -265,6 +269,15 @@ exactly, while fresh source and oracle snapshots proved both input trees remaine
 unchanged. The generated 4,655,420-byte Rust source also compiled through Rust 1.97.1
 with `-D warnings --emit=obj`; executable linking on this workstation is blocked only
 by absent Windows SDK import libraries. All smoke outputs were deleted afterward.
+
+After the DOOM source revision was hard-pinned, the product recipe moved back to the
+exact emitter with `data/` as an authenticated passthrough root. A clean temporary
+oracle mirror excluding the already-detected accidental PowerShell root produced a
+4,646,568-byte Rust transform. Rust GNU 1.97.1 compiled and executed it successfully
+against the untouched root `doom/`; the output contained 151 files and matched the
+clean mirror byte-for-byte, while the WAD was copied from the runtime input. The
+temporary mirror, transform, executable, and output were deleted afterward. The real
+oracle remains fail-closed until its unexpected root entry is removed explicitly.
 
 Shamir coefficients and the payload key are derived deterministically to preserve
 byte-identical generation. The payload key schedule includes a digest over the

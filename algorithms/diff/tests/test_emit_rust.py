@@ -32,6 +32,8 @@ _TARGET_ONLY_TEXT = "TARGET-ONLY"
 _NEW_TARGET_TEXT = "new-target-only"
 _STD_MARKER = "use std::"
 _SENTINEL = b"preserve"
+_PASSTHROUGH_AUTHORING = b"authoring-external"
+_PASSTHROUGH_RUNTIME = b"runtime-external"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -77,7 +79,13 @@ def _fixture(
         "new.bin",
         _NEW_TARGET_TEXT.encode() + b"\x00binary\xffpayload",
     )
-    exact = build_exact_plan(source, oracle)
+    _write(source, "external/game.bin", _PASSTHROUGH_AUTHORING)
+    _write(oracle, "external/game.bin", _PASSTHROUGH_AUTHORING)
+    exact = build_exact_plan(
+        source,
+        oracle,
+        passthrough_roots=("external",),
+    )
     policy = SourceBindingPolicy(
         threshold_fraction=0.66,
         maximum_anchors=9,
@@ -229,4 +237,35 @@ def test_emitted_rust_rejects_existing_output_root(tmp_path: Path) -> None:
     _expect(completed.returncode != 0, "existing output root was overwritten")
     _expect(
         (output / "sentinel.txt").read_bytes() == _SENTINEL, "output mutated"
+    )
+
+
+def test_emitted_rust_preserves_dynamic_passthrough_root(
+    tmp_path: Path,
+) -> None:
+    """Keep external runtime input outside the exact static source snapshot."""
+    source, _, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / "passthrough.rs"
+    executable = tmp_path / "passthrough.exe"
+    output = tmp_path / "passthrough-out"
+    rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(compiled.returncode == 0, "passthrough fixture did not compile")
+    _write(source, "external/game.bin", _PASSTHROUGH_RUNTIME)
+    _write(source, "external/extra.bin", b"extra-runtime-input")
+
+    completed = _run(executable, source, output)
+
+    _expect(completed.returncode == 0, "passthrough runtime rejected input")
+    _expect(
+        (output / "external/game.bin").read_bytes() == _PASSTHROUGH_RUNTIME,
+        "generated runtime pinned passthrough bytes",
+    )
+    _expect(
+        (output / "external/extra.bin").is_file(),
+        "generated runtime lost passthrough-only file",
     )

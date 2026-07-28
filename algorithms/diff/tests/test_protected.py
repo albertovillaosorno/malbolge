@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 _CONTEXT = b"synthetic-protected-exact-v1"
 _BLOCK_COUNT = 48
+_PASSTHROUGH_RUNTIME_DATA = b"runtime-data"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -293,3 +294,38 @@ def test_exact_source_snapshot_is_checked_before_output(tmp_path: Path) -> None:
             output_root=output,
         )
     _expect(not output.exists(), "wrong exact source published output")
+
+
+def test_protected_passthrough_can_change_after_authoring(
+    tmp_path: Path,
+) -> None:
+    """Authenticate passthrough policy without pinning external bytes."""
+    source, oracle, source_files = _fixture(tmp_path)
+    _write(source, "external/game.bin", b"authoring-data")
+    _write(oracle, "external/game.bin", b"authoring-data")
+    exact = build_exact_plan(
+        source,
+        oracle,
+        passthrough_roots=("external",),
+    )
+    protected = protect_exact_plan(
+        exact,
+        _identity(source_files),
+        binding_policy=_policy(),
+        context=_CONTEXT,
+    )
+    _write(source, "external/game.bin", _PASSTHROUGH_RUNTIME_DATA)
+    output = tmp_path / "passthrough-protected-out"
+
+    materialize_protected_exact_plan(
+        source,
+        _identity(source_files),
+        plan=protected,
+        output_root=output,
+    )
+
+    _expect(
+        (output / "external/game.bin").read_bytes()
+        == _PASSTHROUGH_RUNTIME_DATA,
+        "protected passthrough pinned external bytes",
+    )

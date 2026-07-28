@@ -52,10 +52,10 @@ and transform emission remain application-agnostic.
   quality README and changelog.
 - `algorithms/doom/generator/quality.py` now records the source/oracle/output
   recipe and exploratory 0.50/0.66/0.80 admission values.
-- `algorithms/diff/` now has exact authoring/source-span reconstruction, stable
-  anchors, and distributed tree admission; `doom.py` supplies C-aware source
-  identity. Behavior admission, source binding, Rust emission, and the generated
-  quality transform remain unfinished.
+- `algorithms/diff/` now has exact authoring/source-span reconstruction, threshold
+  source binding, authenticated payload protection, dynamic passthrough roots, and
+  standalone Rust emission. Generic fuzzy identity/behavior/semantic-placement layers
+  also exist but are not required for the pinned DOOM quality profile.
 - The checked-in comparison report still describes an older 143,662 to 38,462
   findings snapshot. It is historical progress evidence and must not be refreshed
   as final acceptance evidence until generated `out/doom_fixed/` exists.
@@ -63,9 +63,13 @@ and transform emission remain application-agnostic.
 - The DOOM product source boundary is now an exact pin to
   `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`. Generic fuzzy
   admission remains engine infrastructure, not a requirement for this profile.
-- `algorithms/doom/generator/quality.py` still requests compatible output semantics so
-  external `data/` and future output policy are not accidentally folded into the code
-  revision pin. Compatible Rust emission remains the open generator boundary.
+- `algorithms/doom/generator/quality.py` now requests the implemented exact emitter
+  with `passthrough_roots=("data",)`. The static engine source is exact-pinned while
+  runtime game data remains external and is copied through dynamically.
+- A clean temporary oracle mirror excluding the detected accidental PowerShell root
+  generated a 4,646,568-byte Rust transform, compiled and ran with Rust GNU 1.97.1,
+  and reproduced the intended 151-file tree exactly. The real ignored oracle remains
+  intentionally untouched and therefore still fails preflight on that unexpected root.
 
 ## Acceptance
 

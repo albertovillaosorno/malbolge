@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import protected_plan_aad
 
 if TYPE_CHECKING:
@@ -75,12 +76,13 @@ def _hex_constant(name: str, data: bytes) -> str:
 
 
 def _constants(plan: ProtectedExactPlan, profile: str) -> str:
-    aad = protected_plan_aad(
-        plan.source,
-        plan.target,
-        plan.instructions,
-        context=plan.context,
+    metadata = ProtectedMetadata(
+        source=plan.source,
+        target=plan.target,
+        instructions=plan.instructions,
+        passthrough_roots=plan.passthrough_roots,
     )
+    aad = protected_plan_aad(metadata, context=plan.context)
     return "\n".join((
         _BEGIN,
         f"const PROFILE: &str = {_rust_string(profile)};",

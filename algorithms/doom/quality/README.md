@@ -76,11 +76,12 @@ now the oracle-discovery phase, not the final implementation strategy.
 4. Run `generator/quality.py`. The DOOM domain first requires the exact pinned
    upstream source revision and validates the local oracle surface; only then may the
    generic generator author transformation material.
-5. The generic diff engine learns file creation/deletion/movement/modification,
-   structural anchors, behavioral preconditions, and source-bound reconstruction
-   material, then emits `quality/main.rs`.
-6. Run generated `main.rs` against the exact root source.
-   `out/doom_fixed/` must match the manual oracle byte-for-byte.
+5. The generic diff engine authors the exact static code transformation, excludes
+   `data/` from the static snapshot, source-binds all target-only code bytes, and emits
+   `quality/main.rs`.
+6. Run generated `main.rs` against the exact pinned root source. The transform copies
+   `data/` from that runtime input. With the authoring test data unchanged,
+   `out/doom_fixed/` matches the manual oracle byte-for-byte.
 7. Run the full guest validator, six-target 64-bit compile matrix, behavior
    probes, native/runtime smokes, provenance checks, and Jig over generated
    output.
@@ -88,16 +89,12 @@ now the oracle-discovery phase, not the final implementation strategy.
 9. Only after generated output is accepted, refresh comparison evidence and
    retire the manual oracle as an implementation dependency.
 
-Canonical similarity may ignore comments and formatting **for identity only**.
-The transformation must still preserve required source comments and provenance.
-
-Identity, compatibility, and bug probes remain useful transformation and
-postcondition evidence, but they no longer widen source-version admission for this
-DOOM profile. A different upstream revision requires an explicit new pin/profile.
-
-The recipe still records the generic engine's exploratory `0.50` / `0.66` / `0.80`
-structural, anchor, and behavior thresholds for research and regression coverage. They
-are not the product source-admission boundary for DOOM quality; the exact source pin is.
+The current DOOM quality transform does not use fuzzy lineage to admit source
+revisions: the official code snapshot is exact. Canonical similarity, semantic
+placement, identity/compatibility/bug probes, and the exploratory `0.50` / `0.66` /
+`0.80` thresholds remain generic-engine research and regression capabilities. A
+different upstream revision requires an explicit new pin/profile. Required source
+comments and provenance remain part of exact output correctness.
 
 The source-binding and generator contract is documented in
 `docs/technical/tooling/source-bound-diff-generator.md`.
