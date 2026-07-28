@@ -85,8 +85,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   matching CPU/CUDA adapters can reuse it, while forged or mismatched strategy
   state fails closed. Prepared execution retains verifier-only acceptance and
   removes repeated batch build/validation from the amortized path. A four-route
-  ordinary/prepared CPU/CUDA benchmark is active; retained evidence remains
-  pending before a performance claim. Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  retained ordinary/prepared evidence records 293.564/148.590 ms CPU medians
+  (1.976x) and 306.872/162.693 ms CUDA medians (1.886x). Prepared CUDA remains
+  about 9.5% slower than prepared CPU, and preparation is outside timed intervals.
+  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

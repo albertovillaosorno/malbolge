@@ -158,5 +158,11 @@ Run with:
 ```
 
 Prepared measurements answer an amortized repeated-search question. They must not
-be substituted for one-shot ordinary search latency, and no improvement is claimed
-until a post-commit evidence bundle retains the raw samples.
+be substituted for one-shot ordinary search latency.
+
+The retained RTX 4060 evidence is under
+`evidence/2026-07-28-prepared-search-rtx4060/`. CPU ordinary/prepared medians are
+293.564/148.590 ms (1.976x), while CUDA ordinary/prepared medians are
+306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared
+CPU. Preparation is outside all timed samples, and every route preserves exact
+proposal identity plus independent CPU admission.

@@ -102,7 +102,10 @@ fails explicitly without changing correctness rules.
 - Prepared evaluated-search state now validates and builds this exact CPU batch
   once, supports repeated execution and post-preparation phase diagnostics, and
   can be consumed unchanged by the matching CUDA strategy. Rotate-target selection
-  decodes only the validated target/header. Comparative evidence remains pending.
+  decodes only the validated target/header. Retained repeated-search evidence records
+  a CPU ordinary median of 293.564 ms and prepared median of 148.590 ms (1.976x).
+  Preparation is outside timed intervals, and every sample preserves independent
+  admission.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

@@ -94,8 +94,11 @@ about 173.081 ms. The neutral boundary now includes
 algorithm, batch-builder, and selector identity. A CPU adapter may prepare it once
 and a matching CUDA adapter may consume it without semantic reinterpretation;
 forged or mismatched proof identity fails closed. Prepared execution preserves
-result/proposal validation and verifier-only acceptance. Comparative evidence is
-pending before performance conclusions; resident/fused search remains later work.
+result/proposal validation and verifier-only acceptance. Retained evidence records
+1.976x CPU and 1.886x CUDA same-backend prepared improvements, while prepared CUDA
+remains about 9.5% slower than prepared CPU. Preparation is outside timed intervals,
+so the result applies to repeated immutable search state; resident/fused search
+remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

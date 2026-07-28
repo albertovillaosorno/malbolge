@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-prepared-search-throughput-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-prepared-search-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does reusing validated prepared state reduce repeated full-domain search wall time on both CPU and CUDA?"
+hypothesis = "Prepared median wall time is lower than ordinary median wall time for both backends."
+baseline = "same-backend ordinary search"
+rejection_observation = "Either prepared median is not lower, proposals differ, or independent CPU admission fails."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed execution of each of the four routes"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "exact proposal identity and independent CPU admission precede repeated-search time comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-prepared-search-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

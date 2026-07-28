@@ -75,8 +75,12 @@ through CPU and reused unchanged through matching CPU or CUDA adapters; forged o
 mismatched strategy state fails closed. Prepared execution and diagnostics avoid
 repeated batch construction/validation, while rotate-target selection decodes only
 the validated header target instead of rebuilding the complete corpus. The
-ordinary-versus-prepared benchmark is active, but post-commit raw evidence remains
-pending before any speedup claim. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+ordinary-versus-prepared evidence is retained under
+`benchmarks/accelerator/evidence/2026-07-28-prepared-search-rtx4060/`. CPU median
+falls from 293.564 to 148.590 ms (1.976x), and CUDA median falls from 306.872 to
+162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared CPU
+(0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search results;
+preparation is outside the timed interval. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

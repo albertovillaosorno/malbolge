@@ -736,8 +736,12 @@ validates immutable request/batch state once, binds it to the exact algorithm,
 batch-builder, and selector identities, and permits the same proof to execute
 through CPU or CUDA without rebuilding the corpus. Rotate-target selection now
 validates only the target/header instead of materializing all candidates a second
-time. A new ordinary-versus-prepared benchmark is ready, but no speedup is claimed
-until post-commit evidence is retained. Synthesis/guided strategies, resident or
+time. The retained four-route comparison records CPU ordinary/prepared medians of
+293.564/148.590 ms (1.976x) and CUDA ordinary/prepared medians of
+306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared
+CPU (0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search
+measurements with preparation outside the timed interval. Synthesis/guided
+strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
@@ -772,8 +776,10 @@ and backend evaluation about 42.5%; batch construction plus proposal selection
 alone consume about 173.081 ms. Hardware-neutral prepared state is now active:
 one CPU-built immutable proof can execute through CPU or CUDA only when algorithm,
 batch-builder, and selector identities match exactly. Rotate-target selection no
-longer decodes the complete corpus a second time. Ordinary-versus-prepared
-performance evidence remains to be retained before claiming benefit; resident or
+longer decodes the complete corpus a second time. Retained repeated-search evidence
+shows 1.976x CPU and 1.886x CUDA same-backend median improvements, while prepared
+CUDA remains about 9.5% slower than prepared CPU. Preparation is outside the timed
+interval, so the result is not one-shot latency evidence; resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

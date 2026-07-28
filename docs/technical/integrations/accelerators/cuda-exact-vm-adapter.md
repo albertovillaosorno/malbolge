@@ -174,8 +174,11 @@ fails explicitly without changing correctness rules.
   unchanged through the matching CUDA strategy, while forged or mismatched proof
   identity fails closed. Prepared execution removes repeated batch build/validation
   from the timed repeated-search path, and rotate-target selection avoids a second
-  full corpus decode. The four-route benchmark is implemented, but post-commit raw
-  evidence remains pending before claiming improvement. Resident or fused search
+  full corpus decode. The retained four-route comparison records CUDA ordinary
+  and prepared medians of 306.872 and 162.693 ms (1.886x). CPU prepared reaches
+  148.590 ms, leaving prepared CUDA about 9.5% slower (0.913x
+  CPU-prepared/CUDA-prepared). Preparation is outside timed intervals, so this is
+  repeated-search evidence rather than one-shot latency. Resident or fused search
   remains a later measured option. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

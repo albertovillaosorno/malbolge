@@ -72,7 +72,8 @@ baseline for accelerator implementations.
   proposal selection dominate. Reusable prepared search state is now active for
   the CPU baseline: request/batch validation happens once, repeated execution
   preserves exact untrusted proposals, and matching CUDA capacity may consume the
-  same strategy-bound proof. Comparative evidence remains pending.
+  same strategy-bound proof. Retained CPU ordinary/prepared medians are
+  293.564/148.590 ms (1.976x), with preparation outside timed intervals.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

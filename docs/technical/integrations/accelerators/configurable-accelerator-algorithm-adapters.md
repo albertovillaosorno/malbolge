@@ -86,8 +86,12 @@ reuse that proof; forged or different strategy bindings fail closed.
 `search_prepared()` and `profile_prepared_search()` preserve untrusted proposal
 and result validation while removing repeated batch construction and validation
 from the amortized path. Rotate-target selection additionally decodes only the
-validated target/header. Comparative ordinary/prepared evidence is pending before
-a performance claim. Resident or fused evaluation-selection remains a later
+validated target/header. The retained four-route comparison records CPU
+ordinary/prepared medians of 293.564/148.590 ms (1.976x) and CUDA
+ordinary/prepared medians of 306.872/162.693 ms (1.886x). Prepared CUDA remains
+about 9.5% slower than prepared CPU, so reusable state is beneficial without
+establishing a CUDA advantage. Preparation is outside timed intervals. Resident or
+fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
 orchestration, and broader representative benchmark evidence remain open.
@@ -128,6 +132,11 @@ fails explicitly without changing correctness rules.
   exact source/workload identity, proposal equality, independent CPU admission,
   97.5% CPU named-phase coverage, 99.5% CUDA named-phase coverage, and the
   host-versus-backend split motivating prepared search state.
+- `benchmarks/accelerator/evidence/2026-07-28-prepared-search-rtx4060/`
+  retains Benchmark Protocol v1 metadata, 60 raw interleaved samples, exact
+  source/workload identity, proposal/admission checks, 1.976x CPU and 1.886x CUDA
+  same-backend prepared improvements, and the negative 0.913x prepared CUDA/CPU
+  comparison boundary.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References
