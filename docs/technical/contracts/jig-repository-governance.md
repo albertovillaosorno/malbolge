@@ -44,9 +44,13 @@ trust boundary, or ownership rules stated by its governing decisions.
   schema-8 validator.
 - Commit-message validation accepts compliant new commits with this
   configuration.
-- The source-linked validator parses schema 8 and reaches exhaustive policy
-  evaluation. Full validation remains fail-closed on inherited history-wide
-  commit-policy findings, including obsolete scopes and missing commit bodies.
+- Historical message repair plan
+  `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
+  208 linear unsigned commits. Every tree, author/committer identity, timestamp,
+  and chronological position remained unchanged.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics. Full validation
+  remains fail-closed only on current repository findings outside commit
+  history.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -62,9 +66,11 @@ selecting an implicit repository policy.
 ## Implementation
 
 The schema-8 `jig.toml` and installed commit-message hook accept the declared
-TODO workflow. The source-linked validator builds and reaches exhaustive policy
-evaluation. Completion still requires an explicit resolution for inherited
-history findings and a clean full-repository result without waived diagnostics.
+TODO workflow. Jig repaired historical messages transactionally from
+`b7686ed1ba2e6369eac124046158fb65ac667747` to
+`b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at
+`refs/jig/repair/backups/5f7e10afc710f9c47093d68f853d26657f8854aa`.
+Completion still requires a clean full-repository result for current findings.
 
 ## References
 

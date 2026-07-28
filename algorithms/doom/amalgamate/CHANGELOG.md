@@ -273,10 +273,9 @@ and materialize inside that suite.
 The repository guest-C validator accepts all 65 normalized input translation
 units. The final single-TU artifact passes the strict six-target Clang matrix.
 
-The canonical source-linked Jig launcher parses schema 8 and reaches
-exhaustive policy evaluation. Full repository validation still fails on
-inherited history-wide commit-policy findings; those are not an amalgamation
-diagnostic.
+Historical commit-message repair now leaves zero `JIG-COMMIT-*`
+diagnostics. Remaining Jig findings concern current repository files and are
+not an amalgamation diagnostic.
 
 ## Final Source-Level Acceptance
 

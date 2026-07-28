@@ -56,9 +56,11 @@ without weakening unrelated linter contracts.
 - `.dependencies/jig/bin/jig.cmd validate --root .` is the canonical command.
   It builds and runs the source-linked authority instead of the stale versioned
   release executable.
-- The source-linked validator now parses schema 8 and reaches exhaustive policy
-  evaluation. Full validation remains fail-closed on inherited history-wide
-  commit-policy findings, including obsolete scopes and missing commit bodies.
-- Completion remains blocked until those history findings have an explicit
-  governance resolution and the repository validates under the same authority.
+- Historical repair plan
+  `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
+  208 linear unsigned commits while preserving every tree, identity, timestamp,
+  and chronological position. The original tip remains under the Jig backup ref.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics. Completion remains
+  blocked only by current repository findings and requires a clean result under
+  the same authority.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.

@@ -517,9 +517,9 @@ amalgamation stage. Guest-C acceptance is source-level readiness, not proof that
 
 The larger runtime/manual-play evidence recorded below was produced against the same
 byte-identical normalized corpus during oracle development, so generation introduces
-no code or data delta relative to that evidence. The canonical source-linked Jig
-launcher parses schema 8 and reaches policy evaluation. Full repository validation
-still fails on inherited history-wide commit-policy findings, not on this corpus.
+no code or data delta relative to that evidence. Historical commit-message
+repair now leaves zero `JIG-COMMIT-*` diagnostics. Remaining Jig findings concern
+current repository files and are unrelated to this corpus.
 
 ## Completion Criteria
 

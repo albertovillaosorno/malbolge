@@ -127,10 +127,9 @@ and the source LICENSE plus all 124 historical C/header attributions survive. Th
 compact comparison report now uses generated `out/doom_fixed/` as its after corpus and
 measures 143,662 to 36,637 unique broad-repository findings, a 74.50% reduction.
 
-The canonical source-linked Jig launcher now parses schema 8 and reaches
-exhaustive policy evaluation. Full repository validation still fails on inherited
-history-wide commit-policy findings. Those findings are tracked by repository
-governance and are not a quality-output failure.
+Historical commit-message repair now leaves zero `JIG-COMMIT-*`
+diagnostics. Remaining Jig findings concern current repository files, are tracked
+by repository governance, and are not a quality-output failure.
 
 ## Bugs First
 

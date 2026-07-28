@@ -83,10 +83,9 @@ and transform emission remain application-agnostic.
 **Functional quality generation is accepted and this application task is
 completed.** Generic compiler, lowerability, legal-corpus, and Jig-governance work
 remains tracked by their own records rather than keeping the finished DOOM source
-stage open. The canonical source-linked Jig launcher parses schema 8 and reaches
-policy evaluation. Full validation still fails on inherited history-wide
-commit-policy findings; that governance result is not reported as a passing
-application validation.
+stage open. Historical commit-message repair now leaves zero
+`JIG-COMMIT-*` diagnostics. Remaining Jig findings concern current repository
+files and are not reported as a passing application validation.
 
 ## Acceptance
 
