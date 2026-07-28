@@ -17,6 +17,52 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-07-28: Analyzer Hardening and Full Regeneration
+
+I prioritized diagnostics with direct correctness or portability value rather
+than renaming the entire historical codebase or hiding strict rules.
+
+The most important fix is in the intermission map renderer. `WI_drawOnLnode()`
+assumed every caller supplied two patch candidates. The level-completion splat
+passed only one pointer, so a splat that did not fit the viewport caused the
+second attempt to read beyond that one-element input. The helper now receives
+an explicit candidate count; splats pass one and the animated pointer passes
+two.
+
+The same pass added bounds checks for automap markers, weapon-table indices,
+network player indices, and the fixed 32-entry boss-brain target table. Tic
+commands now use explicit low-bit reconstruction for signed 8-bit and 16-bit
+wrap instead of implementation-defined narrowing. Text bytes are promoted
+through `unsigned char`, pointer-offset products widen before multiplication,
+and side effects were removed from conditions.
+
+The focused analyzer/bugprone profile now reports zero findings for:
+
+- array bounds;
+- dead stores;
+- implementation-defined narrowing;
+- signed-character misuse;
+- assignments and increments hidden in conditions;
+- unparenthesized macro replacement lists; and
+- multiplication widened only after overflow could already occur.
+
+The additive general profile fell from 36,686 to 36,519 unique findings. The
+remaining 36,519 are still reported: no blanket suppression or profile
+replacement was introduced.
+
+The complete pipeline was regenerated from the corrected oracle:
+
+- `quality/main.rs`: 5,228,952 bytes, 73,347 lines, SHA-256
+  `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`;
+- `amalgamate/main.rs`: 5,748,320 bytes, 80,560 lines, SHA-256
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`;
+- canonical `doom.c`: 2,507,561 bytes, 79,336 lines, SHA-256
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
+
+Repeated generation is byte-identical. The quality transform materializes all
+151 oracle files exactly, guest-C remains 65/65 clean, the multi-TU matrix is
+390/390 clean, and the regenerated single TU passes all six targets.
+
 ## Architecture: Source-Bound Generation
 
 The manual modernization oracle is now good enough to stop being the place where
@@ -115,7 +161,7 @@ evidence.
 The source-bound recipe now generates the real checked-in `quality/main.rs`. After a
 provenance pass restored attribution on rewritten `dstrings.*` and derived
 `d_language.*`, deterministic regeneration produced transform SHA-256
-`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`. Running it
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`. Running it
 against untouched root `doom/` materializes 151 files that match the clean local oracle
 byte-for-byte, with `data/` supplied by authenticated runtime passthrough.
 
@@ -130,16 +176,17 @@ and the source LICENSE plus all 124 historical C/header attributions survive.
 I regenerated the compact comparison against the current generated
 `out/doom_fixed/` tree. The guest-C bootstrap remains 65/65 clean and the strict
 compiler matrix remains 390/390 clean. The general host/native profile is not
-replaced by either gate: it now measures 143,662 to 36,686 unique findings, a
-74.46% reduction, and the combined current policy is therefore not clean.
+replaced by either gate: it now measures 143,662 to 36,519 unique findings, a
+74.58% reduction, and the combined current policy is therefore not clean.
 
-The prior 36,637 value was stale. The current 36,686 findings are retained and
-classified rather than hidden. The dominant groups are 22,304 literal/table
-constants, 3,313 historical naming findings, 4,746 mechanical layout/include
-findings, 1,461 signed-bitwise findings, 2,700 initialization/global-state
-findings, and 2,162 findings across the remaining rules.
+The prior 36,686 value was superseded. The current 36,519 findings are retained
+and
+classified rather than hidden. The dominant groups are 22,303 literal/table
+constants, 3,314 historical naming findings, 4,667 mechanical layout/include
+findings, 1,461 signed-bitwise findings, 2,698 initialization/global-state
+findings, and 2,076 findings across the remaining rules.
 
-These are policy diagnostics, not 36,686 independent confirmed runtime bugs.
+These are policy diagnostics, not 36,519 independent confirmed runtime bugs.
 Mechanical format/include debt is directly actionable; signed-bitwise, analyzer,
 and bugprone findings require correctness review; naming, literal-table, mutable
 state, complexity, and function-size findings require larger source or
@@ -1305,7 +1352,9 @@ be installed globally.
 
 Commit history is not acceptance evidence by itself. The generated
 source-bound quality transform now reproduces and validates the accepted oracle
-from admitted source. Its current SHA-256 is `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+from admitted source. Its current SHA-256 is:
+
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`
 
 ## Final source-level acceptance
 
@@ -1317,8 +1366,9 @@ quality transform remains deterministic and materializes the same accepted
 
 The source-bound amalgamation stage is now complete as well. It generates
 `amalgamate/main.rs` and materializes one canonical `doom.c` with SHA-256
-`e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`. Multi-TU and single-TU deterministic framebuffer/audio hashes are
-identical, and the byte-identical native artifact was played for roughly 20
+`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
+Multi-TU and single-TU deterministic framebuffer/audio hashes are identical,
+and the byte-identical native artifact was played for roughly 20
 minutes without reproducing the reported long-range autoaim crash.
 
 This closes source quality and amalgamation. It does not claim that DOOM has been

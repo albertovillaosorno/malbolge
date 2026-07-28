@@ -117,7 +117,7 @@ from the exact pinned source revision, with `data/` outside the static source sn
 and authenticated as runtime passthrough policy. The generated transform materializes
 151 files under `quality/out/doom_fixed/` and the full tree matches the clean local
 oracle byte-for-byte. Its current transform SHA-256 is
-`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
 
 Generated output passes the 65-unit guest validator and the 390/390 six-target strict
 syntax matrix. Repeated generation/materialization are deterministic, wrong or absent
@@ -126,12 +126,12 @@ oracle, and provenance checks preserve the source LICENSE plus historical attrib
 The compact comparison evidence now uses the generated tree as the after corpus.
 The final regenerated quality transform SHA-256 is:
 
-`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`
 
 Its accepted output is the exact source for the completed amalgamation
 stage, whose canonical `doom.c` SHA-256 is:
 
-`e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`
+`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
 
 
 ## Invariants

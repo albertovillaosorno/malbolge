@@ -487,7 +487,7 @@ The source-bound quality transform is now generated and executable. The accepted
 artifact is `algorithms/doom/quality/main.rs`, generated deterministically from the
 exact pinned id Software source and the ignored local oracle with `data/` as an
 authenticated runtime passthrough root. Its current SHA-256 is
-`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
 
 Running that transform against the untouched root `doom/` materializes 151 files
 under `quality/out/doom_fixed/`; the complete generated tree is byte-identical to the
@@ -508,20 +508,26 @@ Acceptance was rerun on the generated tree itself:
   language tables carry explicit provenance; and
 - the compact comparison report now uses an additive policy: the guest-C
   bootstrap is 65/65 clean and the strict compiler matrix is 390/390 clean, but
-  the general host/native profile still reports 36,686 unique findings after a
-  reduction from 143,662 (74.46%); and
+  the general host/native profile still reports 36,519 unique findings after a
+  reduction from 143,662 (74.58%); and
 - the remaining general-profile findings are retained rather than relabeled as
-  zero. The dominant classes are 22,304 literal/table constants, 3,313 historical
-  naming findings, 4,746 mechanical layout/include findings, 1,461 signed-bitwise
-  findings, and 2,700 initialization/global-state findings.
+  zero. The dominant classes are 22,303 literal/table constants, 3,314
+  historical naming findings, 4,667 mechanical layout/include findings, 1,461
+  signed-bitwise findings, and 2,698 initialization/global-state findings.
 
-A final sanitizer-driven follow-up regenerated the transform at SHA-256
-`570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81` after correcting explicit fixed-point wrap/shift paths and adding
-state-aware mouse capture plus artifact-level execution telemetry. The accepted
-normalized output remains byte-identical to its oracle. The generated downstream
-`doom.c` has SHA-256 `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1` and is validated separately by the completed
-amalgamation stage. Guest-C acceptance is source-level readiness, not proof that
-`doom.malbolge` has been generated or executed.
+The analyzer-hardening regeneration produced transform SHA-256
+`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
+It fixes an intermission-map candidate-array overread, validates marker, weapon,
+network-player, and boss-target indices, makes tic-command narrowing explicit,
+widens pointer arithmetic before multiplication, and removes high-value dead
+stores and condition side effects. The accepted normalized output remains
+byte-identical to its oracle.
+
+The regenerated downstream `doom.c` has SHA-256
+`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
+and is validated separately by the completed amalgamation stage. Guest-C
+acceptance is source-level readiness, not proof that `doom.malbolge` has been
+generated or executed.
 
 The larger runtime/manual-play evidence recorded below was produced against the same
 byte-identical normalized corpus during oracle development, so generation introduces
@@ -537,7 +543,7 @@ portability, provenance, and runtime gates are clean. Those gates currently have
 zero findings.
 
 The repository's general host/native profile is additive rather than replaced by
-the Malbolge profile. It currently has 36,686 unique findings, so the combined
+the Malbolge profile. It currently has 36,519 unique findings, so the combined
 quality policy is explicitly **not clean**. Closing that debt requires source
 transformations or narrowly justified applicability changes; blanket suppression
 and reporting the combined result as zero are not accepted. Passing compatibility

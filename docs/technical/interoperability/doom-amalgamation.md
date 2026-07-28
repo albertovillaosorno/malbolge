@@ -27,10 +27,10 @@ The transform consumes
 ## Accepted Identity
 
 - transform SHA-256:
-  `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`;
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`;
 - canonical C SHA-256:
-  `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`;
-- output size: 2,505,975 bytes / 79,313 lines;
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`;
+- output size: 2,507,561 bytes / 79,336 lines;
 - deterministic repeated generation/materialization: pass;
 - wrong, absent, or mutated source rejection before publication: pass;
 - byte identity with local oracle and end-to-end fixture: pass.

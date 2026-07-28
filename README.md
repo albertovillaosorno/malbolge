@@ -243,15 +243,15 @@ future C-to-Malbolge lowering -> doom.malbolge
 
 Current durable generated algorithms:
 
-- `algorithms/doom/quality/main.rs`: 5,223,836 bytes (4.98 MiB),
-  SHA-256 `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`;
-- `algorithms/doom/amalgamate/main.rs`: 5,744,748 bytes (5.48 MiB),
-  SHA-256 `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`.
+- `algorithms/doom/quality/main.rs`: 5,228,952 bytes (4.99 MiB),
+  SHA-256 `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`;
+- `algorithms/doom/amalgamate/main.rs`: 5,748,320 bytes (5.48 MiB),
+  SHA-256 `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`.
 
-The ignored canonical output is `doom.c`: 2,505,975 bytes (2.39 MiB),
-79,313 lines, with SHA-256:
+The ignored canonical output is `doom.c`: 2,507,561 bytes (2.39 MiB),
+79,336 lines, with SHA-256:
 
-`e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`
+`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
 
 It passes the current guest-C profile, a strict
 six-target Clang matrix, sanitizer builds, deterministic multi-TU/single-TU

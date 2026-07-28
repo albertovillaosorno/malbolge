@@ -58,7 +58,7 @@ and transform emission remain application-agnostic.
   standalone Rust emission. Generic fuzzy identity/behavior/semantic-placement layers
   also exist but are not required for the pinned DOOM quality profile.
 - The checked-in comparison evidence now measures root `doom/` versus generated
-  `out/doom_fixed/`: 143,662 to 36,637 unique broad-repository findings (74.50%
+  `out/doom_fixed/`: 143,662 to 36,519 unique broad-repository findings (74.58%
   reduction). This comparison is descriptive; the guest validator and six-target
   compiler matrix are the strict zero-diagnostic gates.
 
@@ -71,7 +71,7 @@ and transform emission remain application-agnostic.
 - The accidental PowerShell root was removed from the ignored oracle after its binary
   metadata and unexpected root position were verified. The real recipe now generates
   `quality/main.rs` successfully; its current SHA-256 is
-  `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+  `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
 - Provenance review found two rewritten historical string files and two derived runtime
   language files missing attribution. The ignored authoring corpus was corrected, then
   the transform/output were regenerated. Final output preserves the source LICENSE,
@@ -130,7 +130,8 @@ files and are not reported as a passing application validation.
 
 ## Completion evidence - 2026-07-28
 
-- Regenerated transform SHA-256: `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`.
+- Regenerated transform SHA-256:
+  `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
 - Exact materialization: 151/151 files equal to the accepted oracle.
 - Guest-C validation: 65/65 translation units.
 - Strict portability matrix: 390/390 source TUs and final 6/6 single-TU targets.

@@ -80,8 +80,10 @@ DOOM C artifact through the Malbolge pipeline.
 
 ## Completion evidence - 2026-07-28
 
-- Generated transform SHA-256: `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`.
-- Canonical `doom.c` SHA-256: `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`.
+- Generated transform SHA-256:
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`.
+- Canonical `doom.c` SHA-256:
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
 - Exact repeated materialization and local fixture identity: pass.
 - Empty and mutated source rejection before publication: pass.
 - Strict Clang six-target matrix: 6/6 with zero diagnostics.

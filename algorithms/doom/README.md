@@ -131,26 +131,26 @@ than merged.
 ### Quality transform
 
 - Path: `algorithms/doom/quality/main.rs`
-- Size: 5,223,836 bytes (4.98 MiB)
-- Lines: 73,276
+- Size: 5,228,952 bytes (4.99 MiB)
+- Lines: 73,347
 - SHA-256:
-  `570274540651820dfb1fcb61daaf18034396e63a1bb5e2cc9a893a6a10ab2e81`
+  `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`
 
 ### Amalgamation transform
 
 - Path: `algorithms/doom/amalgamate/main.rs`
-- Size: 5,744,748 bytes (5.48 MiB)
-- Lines: 80,510
+- Size: 5,748,320 bytes (5.48 MiB)
+- Lines: 80,560
 - SHA-256:
-  `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`
 
 ### Canonical C output
 
 - Path: `algorithms/doom/amalgamate/out/doom.c` (ignored)
-- Size: 2,505,975 bytes (2.39 MiB)
-- Lines: 79,313
+- Size: 2,507,561 bytes (2.39 MiB)
+- Lines: 79,336
 - SHA-256:
-  `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
 
 The two Rust artifacts have a maximum physical line length of 80 characters.
 The canonical `doom.c`, its ignored oracle, repeated materialization, and the

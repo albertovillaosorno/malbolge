@@ -2,18 +2,26 @@
   "after": {
     "acceptance": {
       "combined_status": "not-clean",
-      "combined_unique_findings": 36686,
+      "combined_unique_findings": 36519,
       "general_profile": {
         "profile": ".clang-tidy",
-        "raw_findings": 96861,
+        "raw_findings": 96625,
         "status": "not-clean",
-        "unique_findings": 36686
+        "unique_findings": 36519
       },
       "guest_c_bootstrap": {
         "failed_translation_units": 0,
         "profile": "tools/tidy/malbolge-clang-tidy.yaml",
         "status": "clean",
         "translation_units": 65,
+        "unique_findings": 0
+      },
+      "single_translation_unit_matrix": {
+        "checks": 6,
+        "compiler": "LLVM/Clang 22.1.8",
+        "failed_checks": 0,
+        "status": "clean",
+        "targets": 6,
         "unique_findings": 0
       },
       "strict_compiler_matrix": {
@@ -33,45 +41,45 @@
       "c_files": 65,
       "files": 151,
       "headers": 84,
-      "nonblank_source_lines": 70249,
-      "physical_source_lines": 78676,
-      "source_bytes": 2478346,
-      "source_sha256": "b05238614b21080b55a4e0e113a1369a69548217bded480dcdacdae5af3f1d70"
+      "nonblank_source_lines": 70273,
+      "physical_source_lines": 78699,
+      "source_bytes": 2479932,
+      "source_sha256": "d0ec5aa5d38ba1c60b534f9586e41af5f7a25551dfd46c31ae41ceda7d1d2f40"
     },
     "dominant_general_rules": {
-      "clang-format": 697,
+      "clang-format": 623,
       "cppcoreguidelines-avoid-non-const-global-variables": 1244,
-      "cppcoreguidelines-init-variables": 1456,
+      "cppcoreguidelines-init-variables": 1454,
       "hicpp-signed-bitwise": 1461,
-      "misc-include-cleaner": 1717,
-      "readability-braces-around-statements": 1962,
-      "readability-identifier-length": 909,
-      "readability-identifier-naming": 2404,
-      "readability-magic-numbers": 22304
+      "misc-include-cleaner": 1715,
+      "readability-braces-around-statements": 1966,
+      "readability-identifier-length": 908,
+      "readability-identifier-naming": 2406,
+      "readability-magic-numbers": 22303
     },
     "finding_classification": {
       "historical_identifier_shape": {
-        "count": 3313,
+        "count": 3314,
         "disposition": "real naming-policy debt",
         "rationale": "Names and short identifiers are embedded throughout the historical source and interfaces. Repair is a large source/linkage migration."
       },
       "initialization_and_mutable_global_architecture": {
-        "count": 2700,
+        "count": 2698,
         "disposition": "real structural modernization debt",
         "rationale": "Defensive initialization and global-state restrictions require architectural changes beyond source compatibility normalization."
       },
       "literal_and_table_constants": {
-        "count": 22304,
+        "count": 22303,
         "disposition": "real strict-policy debt; not independent bugs",
         "rationale": "Mostly renderer tables, fixed-point constants, protocol values, and historical game data. Repair requires named domain constants or generated tables rather than suppressions."
       },
       "mechanical_layout_and_include_hygiene": {
-        "count": 4746,
+        "count": 4667,
         "disposition": "actionable mechanical debt",
         "rationale": "Mandatory braces, direct includes, formatting, and text layout can be repaired mechanically but are not runtime correctness defects."
       },
       "remaining_rules": {
-        "count": 2162,
+        "count": 2076,
         "disposition": "mixed review debt",
         "rationale": "Includes complexity, function size, macro modernization, analyzer, bugprone, header-guard, and heuristic interoperability findings."
       },
@@ -82,27 +90,37 @@
       }
     },
     "path": "algorithms/doom/quality/out/doom_fixed",
+    "resolved_priority_families": {
+      "bugprone-assignment-in-if-condition": 0,
+      "bugprone-implicit-widening-of-multiplication-result": 0,
+      "bugprone-inc-dec-in-conditions": 0,
+      "bugprone-macro-parentheses": 0,
+      "bugprone-narrowing-conversions": 0,
+      "bugprone-signed-char-misuse": 0,
+      "clang-analyzer-core.ArrayBound": 0,
+      "clang-analyzer-deadcode.DeadStores": 0
+    },
     "validation": {
       "by_gate": {
-        "clang-format": 697,
-        "clang-tidy": 35616,
-        "editorconfig": 370,
+        "clang-format": 623,
+        "clang-tidy": 35530,
+        "editorconfig": 363,
         "interop": 3
       },
       "by_rule_family": {
-        "analyzer": 20,
-        "bugprone": 278,
-        "format": 697,
+        "analyzer": 6,
+        "bugprone": 227,
+        "format": 623,
         "hicpp": 1552,
-        "interop/other": 2922,
-        "misc": 1746,
+        "interop/other": 2912,
+        "misc": 1744,
         "modernize": 742,
         "performance": 1,
-        "readability": 28358,
-        "text": 370
+        "readability": 28349,
+        "text": 363
       },
-      "raw_findings": 96861,
-      "unique_findings": 36686
+      "raw_findings": 96625,
+      "unique_findings": 36519
     }
   },
   "before": {

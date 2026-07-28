@@ -2,6 +2,27 @@
 
 This is the engineering log for the DOOM amalgamation stage inside Malbolge.
 
+## 2026-07-28 Regeneration from the Hardened Quality Corpus
+
+The accepted normalized tree gained bounds, narrowing, pointer-arithmetic, and
+control-flow hardening. I rebuilt the single-TU oracle from that exact 151-file
+tree and regenerated the source-bound Rust transform.
+
+The amalgamation architecture is unchanged: 65 translation units, 19 isolated
+private bindings, 83 unique project headers, 148 expanded includes, 564 guarded
+deduplications, and one cycle elision. The new transform is deterministic and
+materializes a `doom.c` byte-identical to the rebuilt oracle and local fixture.
+
+Current identities:
+
+- `amalgamate/main.rs`: 5,748,320 bytes, 80,560 lines, SHA-256
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`;
+- `doom.c`: 2,507,561 bytes, 79,336 lines, SHA-256
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
+
+The final C artifact passes strict Clang 22.1.8 for x86-64 and AArch64 on
+Linux, Windows, and macOS.
+
 The quality stage already owns modernization of the guest C corpus. This stage
 has a narrower responsibility: consume that accepted normalized tree and produce
 one deterministic, source-bound `doom.c` without changing program behavior.
@@ -63,7 +84,7 @@ The accepted builder currently processes:
 - one guarded include cycle;
 - 19 private-name bindings that require isolation.
 
-The final oracle contains 2,505,975 bytes and 79,313 lines.
+The final oracle contains 2,507,561 bytes and 79,336 lines.
 
 ### Translation-unit ordering
 
@@ -167,11 +188,11 @@ exception is used.
 The accepted generated transform is:
 
 - path: `algorithms/doom/amalgamate/main.rs`;
-- size: 5,744,748 bytes;
-- lines: 80,510;
+- size: 5,748,320 bytes;
+- lines: 80,560;
 - maximum line length: 80;
 - SHA-256:
-  `ec1ddf2ad07c8664f46739f878ec83b1a6690f45d5c1fbbb5025cb2a79208d1e`.
+  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`.
 
 Repeated recipe generation produces the same bytes.
 
@@ -185,10 +206,10 @@ publishes one file named `doom.c`.
 The accepted canonical C artifact is:
 
 - path: `algorithms/doom/amalgamate/out/doom.c` (ignored);
-- size: 2,505,975 bytes;
-- lines: 79,313;
+- size: 2,507,561 bytes;
+- lines: 79,336;
 - SHA-256:
-  `e1d8d2fc12f721815c6fc84e486e40e9d017fe858aeeda58df15b03df5d2b2b1`.
+  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
 
 The following copies are byte-identical:
 
