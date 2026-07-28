@@ -95,6 +95,10 @@ fails explicitly without changing correctness rules.
   retains the complete 59,049-word CPU/CUDA comparison. The CPU reference median
   is 401.185 ms versus 412.570 ms for CUDA, so this CPU baseline wins by median
   and the 0.972x CUDA/CPU result is retained as negative evidence.
+- `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`
+  retains diagnostic attribution. Named phases explain 97.5% of CPU median total
+  time and identify batch construction (132.653 ms), backend evaluation
+  (132.738 ms), and proposal selection (52.029 ms) as the dominant CPU phases.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

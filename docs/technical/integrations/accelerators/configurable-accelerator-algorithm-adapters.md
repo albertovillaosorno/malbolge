@@ -74,9 +74,15 @@ samples per backend, one warmup, fixed CPU-then-CUDA interleaving, retain-all
 outlier policy, exact proposal equality, and independent CPU admission. On the
 RTX 4060, CPU median is 401.185 ms and CUDA median is 412.570 ms, producing a
 0.972x CUDA/CPU ratio. The preregistered speedup hypothesis is therefore rejected
-for this host-heavy route; no CUDA performance benefit is claimed. Synthesis and
-guided strategies, ROCm search implementations, richer orchestration, and broader
-representative benchmark evidence remain open.
+for this host-heavy route; no CUDA performance benefit is claimed. A separate
+phase profile retains 15 profiles per backend and explains 97.5% of CPU and 99.5%
+of CUDA median total time through named phases. For CUDA, host-side phases account
+for about 57.0% of median total time while backend evaluation accounts for about
+42.5%; batch construction plus proposal selection consume about 173.081 ms. The
+next optimization target is reusable validated/prepared search state, followed by
+resident or fused evaluation-selection only if exact equivalence remains explicit.
+Synthesis and guided strategies, ROCm search implementations, richer
+orchestration, and broader representative benchmark evidence remain open.
 
 ## Invariants
 
@@ -109,6 +115,11 @@ fails explicitly without changing correctness rules.
   samples, structured output, exact source commit, workload SHA-256, device and
   toolchain identity, proposal-equality checks, and the negative 0.972x median
   CUDA/CPU result.
+- `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`
+  retains Benchmark Protocol v1 phase attribution with 210 raw phase samples,
+  exact source/workload identity, proposal equality, independent CPU admission,
+  97.5% CPU named-phase coverage, 99.5% CUDA named-phase coverage, and the
+  host-versus-backend split motivating prepared search state.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

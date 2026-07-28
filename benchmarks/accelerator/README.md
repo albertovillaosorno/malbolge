@@ -134,36 +134,10 @@ Phase diagnostics are attribution evidence only. They do not change search
 semantics and must not be compared with the ordinary throughput run unless the
 workload, commit, device, warmup, and sample policy are identical.
 
-`search_phase_profile.py` runs the same complete-domain workload through the
-adapter diagnostic path and retains request validation, batch construction, batch
-validation, backend evaluation, proposal selection, result validation, and total
-wall time separately. It uses the same one-warmup/15-sample policy and validates
-exact proposals plus independent CPU admission after every profile.
-
-Run with:
-
-```powershell
-.dependencies/python/3.14.6/Scripts/python-jig.cmd `
-  -m benchmarks.accelerator.search_phase_profile
-```
-
-Phase diagnostics are attribution evidence only. They do not change search
-semantics and must not be compared with the ordinary throughput run unless the
-workload, commit, device, warmup, and sample policy are identical.
-
-`search_phase_profile.py` runs the same complete-domain workload through the
-adapter diagnostic path and retains request validation, batch construction, batch
-validation, backend evaluation, proposal selection, result validation, and total
-wall time separately. It uses the same one-warmup/15-sample policy and validates
-exact proposals plus independent CPU admission after every profile.
-
-Run with:
-
-```powershell
-.dependencies/python/3.14.6/Scripts/python-jig.cmd `
-  -m benchmarks.accelerator.search_phase_profile
-```
-
-Phase diagnostics are attribution evidence only. They do not change search
-semantics and must not be compared with the ordinary throughput run unless the
-workload, commit, device, warmup, and sample policy are identical.
+The retained phase evidence is under
+`evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`. Named phases
+explain 97.5% of CPU median total time and 99.5% of CUDA median total time. For
+CUDA, host-side phases account for about 57.0% while backend evaluation accounts
+for about 42.5%; batch construction plus proposal selection consume about
+173.081 ms at their medians. This attribution motivates reusable prepared search
+state before additional kernel work.

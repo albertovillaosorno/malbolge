@@ -67,8 +67,11 @@ baseline for accelerator implementations.
   establish CPU search baselines, not general Malbolge synthesis. A retained
   full-domain comparison records a 401.185 ms CPU median versus 412.570 ms CUDA
   median on the RTX 4060, preserving the 0.972x CUDA/CPU negative result instead
-  of claiming acceleration. Translation-validation integration, real synthesis
-  generators, AArch64 execution evidence, and broader performance measurements
-  remain open.
+  of claiming acceleration. The companion phase profile attributes 97.5% of CPU
+  median total time to named phases; batch construction, backend evaluation, and
+  proposal selection dominate. Reusable prepared search state is therefore also
+  relevant to the CPU baseline. Translation-validation integration, real
+  synthesis generators, AArch64 execution evidence, and broader performance
+  measurements remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.

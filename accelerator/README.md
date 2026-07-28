@@ -64,9 +64,14 @@ contains 15 samples per backend under Benchmark Protocol v1. CPU median is
 0.972x CUDA/CPU ratio and rejecting the speedup hypothesis for this complete
 host-heavy route. Proposals remain identical and independently admitted. This
 negative result motivates larger or resident search designs rather than hidden
-benchmark filtering. Synthesis/guided search, ROCm work ports and VM execution,
-broader hardware evidence, richer orchestration, and additional representative
-comparisons remain follow-on work. `optimizer/enumerative.py` supplies the first
-concrete CPU-only
+benchmark filtering. The retained phase profile at
+`benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`
+shows 97.5% CPU and 99.5% CUDA named-phase coverage. CUDA host-side phases account
+for about 57.0% of median total time, backend evaluation about 42.5%, and batch
+construction plus proposal selection about 173.081 ms. Reusing validated prepared
+search state is therefore the next optimization target before additional kernel
+work. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+evidence, richer orchestration, and additional representative comparisons remain
+follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

@@ -167,8 +167,13 @@ fails explicitly without changing correctness rules.
   401.185 ms and CUDA median is 412.570 ms on the RTX 4060, yielding 0.972x
   CUDA/CPU and rejecting the speedup hypothesis for this complete host-heavy
   route. Exact proposal equality and CPU admission still pass for every sample.
-  Broader live-hardware evidence, synthesis/search strategies, resident search
-  designs, and ROCm work remain before this TODO can complete.
+  The companion phase profile attributes 99.5% of CUDA median total time to named
+  phases: about 57.0% host-side and 42.5% backend evaluation. Batch construction
+  plus proposal selection consume about 173.081 ms, so reusable prepared search
+  state precedes further kernel optimization; resident or fused search remains a
+  later measured option. Broader live-hardware evidence, synthesis/search
+  strategies, resident search designs, and ROCm work remain before this TODO can
+  complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

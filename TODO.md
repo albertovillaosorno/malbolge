@@ -724,9 +724,14 @@ explicitly. The first protocol-compliant side-by-side run over the complete
 59,049-word classic domain retains 15 CPU and 15 CUDA samples with identical
 proposals and independent CPU admission. CPU median is 401.185 ms and CUDA median
 is 412.570 ms on the RTX 4060, so the observed CUDA/CPU ratio is 0.972x and the
-speedup hypothesis is rejected for this route. Synthesis/guided strategies, ROCm
-search implementations, richer orchestration, and broader representative
-comparative evidence remain open.
+speedup hypothesis is rejected for this route. A separate 15-sample phase profile
+attributes 97.5% of CPU median total time and 99.5% of CUDA median total time to
+named phases. CUDA host-side phases account for about 57.0% of the median while
+backend evaluation accounts for about 42.5%; batch construction plus proposal
+selection consume about 173.081 ms. Reusable validated/prepared search state is
+therefore the next evidence-driven optimization target before additional kernel
+work. Synthesis/guided strategies, ROCm search implementations, richer
+orchestration, and broader representative comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
@@ -753,8 +758,13 @@ search route over a deterministic 257-word corpus and matches the CPU reference
 before independent trusted admission. A retained full-domain comparison over
 59,049 candidates records identical accepted proposals but a 401.185 ms CPU
 median versus 412.570 ms CUDA median on the RTX 4060 (0.972x CUDA/CPU), rejecting
-the speedup hypothesis for this host-heavy search route. Broader hardware
-evidence, synthesis/search algorithms, and ROCm implementations remain open.
+the speedup hypothesis for this host-heavy search route. The retained phase
+profile shows that CUDA host-side phases consume about 57.0% of median total time
+and backend evaluation about 42.5%; batch construction plus proposal selection
+alone consume about 173.081 ms. Reusable prepared search state and later
+resident/fused evaluation-selection are now the evidence-driven path, not blind
+kernel tuning. Broader hardware evidence, synthesis/search algorithms, and ROCm
+implementations remain open.
 
 ### TODO - CUDA superoptimizer
 

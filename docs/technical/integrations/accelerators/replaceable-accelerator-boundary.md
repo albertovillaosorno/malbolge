@@ -86,8 +86,12 @@ independent CPU verifier remains the only admission authority. A retained
 full-domain performance comparison over 59,049 candidates keeps 15 samples per
 backend and exact proposal checks. CPU median is 401.185 ms and CUDA median is
 412.570 ms on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup
-hypothesis for this route. Synthesis/guided search algorithms, resident search,
-asynchronous submission, and ROCm remain open.
+hypothesis for this route. The diagnostic phase profile explains 97.5% of CPU
+and 99.5% of CUDA median total time through named phases. CUDA host-side phases
+account for about 57.0%, and batch construction plus proposal selection consume
+about 173.081 ms. Reusable prepared search state is therefore the next neutral
+boundary extension before resident/fused search. Synthesis/guided search
+algorithms, asynchronous submission, and ROCm remain open.
 
 ## Invariants
 

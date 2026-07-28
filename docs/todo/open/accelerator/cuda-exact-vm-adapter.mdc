@@ -89,7 +89,11 @@ batches.
   verifier. The retained complete-domain benchmark covers 59,049 candidates with
   15 samples per backend. CPU median is 401.185 ms and CUDA median is 412.570 ms
   on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup hypothesis
-  for this host-heavy route while every proposal remains exact. Broader live
-  hardware, resident search, and synthesis/search strategies remain open.
+  for this host-heavy route while every proposal remains exact. The companion
+  phase profile attributes 99.5% of CUDA median total time to named phases, with
+  about 57.0% host-side and 42.5% backend evaluation. Batch construction plus
+  proposal selection consume about 173.081 ms, making reusable prepared search
+  state the next target before more kernel work. Broader live hardware, resident
+  search, and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

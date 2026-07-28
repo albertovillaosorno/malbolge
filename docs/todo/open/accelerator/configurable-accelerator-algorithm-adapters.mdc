@@ -76,7 +76,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   Benchmark Protocol v1 comparison covers the complete 59,049-word classic
   domain with 15 samples per backend. CPU median is 401.185 ms and CUDA median is
   412.570 ms on the RTX 4060, so the 0.972x CUDA/CPU result rejects the speedup
-  hypothesis while preserving exact proposals and independent CPU admission.
+  hypothesis while preserving exact proposals and independent CPU admission. A
+  separate 15-profile run explains 97.5% of CPU and 99.5% of CUDA median total
+  time through named phases. CUDA host-side phases account for about 57.0%, and
+  batch construction plus proposal selection consume about 173.081 ms. Reusable
+  validated/prepared search state is the next evidence-driven optimization target.
   Synthesis/guided strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
