@@ -1,0 +1,450 @@
+{
+  "benchmark_id": "rotate-target-selection-preparer-comparison-v1",
+  "measurement": {
+    "memory_sample_count": 5,
+    "memory_scope": "incremental tracemalloc allocation with request and validated candidate batch outside tracing",
+    "ordering": "ascending corpus size; legacy then native",
+    "sample_count": 15,
+    "timed_scope": "request/batch validation, target decode, inverse encoding, indexed preimage scan, and immutable selector-state construction",
+    "warmup_count": 1
+  },
+  "proof": {
+    "legacy_selection_preparer_id": "classic-u32le-array-copy-preimage-v1",
+    "native_selection_preparer_id": "classic-u32le-native-view-preimage-v2",
+    "positions_equal": true
+  },
+  "scales": [
+    {
+      "comparison": {
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 1545,
+            "median_bytes": 1545,
+            "min_bytes": 1545,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1545,
+              1545,
+              1545,
+              1545,
+              1545
+            ]
+          },
+          "retained": {
+            "max_bytes": 828,
+            "median_bytes": 828,
+            "min_bytes": 828,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              828,
+              828,
+              828,
+              828,
+              828
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 34300,
+          "median_ns": 25700,
+          "min_ns": 24600,
+          "pstdev_ns": 2327.3637924102504,
+          "raw_ns": [
+            28100,
+            25700,
+            26600,
+            25600,
+            25100,
+            24900,
+            24900,
+            26200,
+            34300,
+            25900,
+            24700,
+            24600,
+            26700,
+            25800,
+            25000
+          ]
+        },
+        "native_memory": {
+          "peak": {
+            "max_bytes": 1785,
+            "median_bytes": 1785,
+            "min_bytes": 1785,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1785,
+              1785,
+              1785,
+              1785,
+              1785
+            ]
+          },
+          "retained": {
+            "max_bytes": 884,
+            "median_bytes": 884,
+            "min_bytes": 884,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              884,
+              884,
+              884,
+              884,
+              884
+            ]
+          }
+        },
+        "native_prepare": {
+          "max_ns": 16700,
+          "median_ns": 15800,
+          "min_ns": 14800,
+          "pstdev_ns": 567.8810517079161,
+          "raw_ns": [
+            15800,
+            16500,
+            16300,
+            15500,
+            15700,
+            14800,
+            15000,
+            15200,
+            16400,
+            16700,
+            16000,
+            16100,
+            15200,
+            15200,
+            15900
+          ]
+        },
+        "position_count": 1
+      },
+      "corpus_size": 1
+    },
+    {
+      "comparison": {
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 1849,
+            "median_bytes": 1849,
+            "min_bytes": 1849,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1849,
+              1849,
+              1849,
+              1849,
+              1849
+            ]
+          },
+          "retained": {
+            "max_bytes": 864,
+            "median_bytes": 864,
+            "min_bytes": 864,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              864,
+              864,
+              864,
+              864,
+              864
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 37300,
+          "median_ns": 28300,
+          "min_ns": 27500,
+          "pstdev_ns": 2318.1793622486493,
+          "raw_ns": [
+            28300,
+            28800,
+            28900,
+            27900,
+            27900,
+            37300,
+            29100,
+            28200,
+            28400,
+            27800,
+            27500,
+            27700,
+            28300,
+            29400,
+            27600
+          ]
+        },
+        "native_memory": {
+          "peak": {
+            "max_bytes": 1821,
+            "median_bytes": 1821,
+            "min_bytes": 1821,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1821,
+              1821,
+              1821,
+              1821,
+              1821
+            ]
+          },
+          "retained": {
+            "max_bytes": 920,
+            "median_bytes": 920,
+            "min_bytes": 920,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              920,
+              920,
+              920,
+              920,
+              920
+            ]
+          }
+        },
+        "native_prepare": {
+          "max_ns": 20200,
+          "median_ns": 18800,
+          "min_ns": 17500,
+          "pstdev_ns": 701.3003794539271,
+          "raw_ns": [
+            18900,
+            18800,
+            20200,
+            17900,
+            17800,
+            19400,
+            19300,
+            18500,
+            18700,
+            18000,
+            17500,
+            17900,
+            18800,
+            19100,
+            18900
+          ]
+        },
+        "position_count": 1
+      },
+      "corpus_size": 64
+    },
+    {
+      "comparison": {
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 5993,
+            "median_bytes": 5993,
+            "min_bytes": 5993,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              5993,
+              5993,
+              5993,
+              5993,
+              5993
+            ]
+          },
+          "retained": {
+            "max_bytes": 928,
+            "median_bytes": 928,
+            "min_bytes": 928,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              928,
+              928,
+              928,
+              928,
+              928
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 98300,
+          "median_ns": 87500,
+          "min_ns": 86700,
+          "pstdev_ns": 2895.390973407372,
+          "raw_ns": [
+            88700,
+            90400,
+            87500,
+            87000,
+            87000,
+            86800,
+            98300,
+            87200,
+            91000,
+            86700,
+            86700,
+            88800,
+            87000,
+            88300,
+            87500
+          ]
+        },
+        "native_memory": {
+          "peak": {
+            "max_bytes": 1885,
+            "median_bytes": 1885,
+            "min_bytes": 1885,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1885,
+              1885,
+              1885,
+              1885,
+              1885
+            ]
+          },
+          "retained": {
+            "max_bytes": 984,
+            "median_bytes": 984,
+            "min_bytes": 984,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              984,
+              984,
+              984,
+              984,
+              984
+            ]
+          }
+        },
+        "native_prepare": {
+          "max_ns": 99700,
+          "median_ns": 79100,
+          "min_ns": 77500,
+          "pstdev_ns": 5509.853799229966,
+          "raw_ns": [
+            79300,
+            79000,
+            77500,
+            87600,
+            79600,
+            79400,
+            80500,
+            78700,
+            79900,
+            78400,
+            78300,
+            78600,
+            99700,
+            78100,
+            79100
+          ]
+        },
+        "position_count": 1
+      },
+      "corpus_size": 1024
+    },
+    {
+      "comparison": {
+        "legacy_memory": {
+          "peak": {
+            "max_bytes": 252597,
+            "median_bytes": 252597,
+            "min_bytes": 252597,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              252597,
+              252597,
+              252597,
+              252597,
+              252597
+            ]
+          },
+          "retained": {
+            "max_bytes": 928,
+            "median_bytes": 928,
+            "min_bytes": 928,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              928,
+              928,
+              928,
+              928,
+              928
+            ]
+          }
+        },
+        "legacy_prepare": {
+          "max_ns": 3878100,
+          "median_ns": 3764200,
+          "min_ns": 3728700,
+          "pstdev_ns": 37254.03721597015,
+          "raw_ns": [
+            3743900,
+            3764200,
+            3728700,
+            3748100,
+            3806300,
+            3819100,
+            3783700,
+            3788100,
+            3745500,
+            3878100,
+            3775400,
+            3755800,
+            3749000,
+            3764300,
+            3741700
+          ]
+        },
+        "native_memory": {
+          "peak": {
+            "max_bytes": 1885,
+            "median_bytes": 1885,
+            "min_bytes": 1885,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              1885,
+              1885,
+              1885,
+              1885,
+              1885
+            ]
+          },
+          "retained": {
+            "max_bytes": 984,
+            "median_bytes": 984,
+            "min_bytes": 984,
+            "pstdev_bytes": 0.0,
+            "raw_bytes": [
+              984,
+              984,
+              984,
+              984,
+              984
+            ]
+          }
+        },
+        "native_prepare": {
+          "max_ns": 4101000,
+          "median_ns": 3964400,
+          "min_ns": 3928100,
+          "pstdev_ns": 54842.07468318057,
+          "raw_ns": [
+            3944100,
+            4018700,
+            4101000,
+            4047700,
+            4087700,
+            3999100,
+            3990100,
+            3964400,
+            3943900,
+            3943400,
+            3934200,
+            4006400,
+            3928100,
+            3943800,
+            3936600
+          ]
+        },
+        "position_count": 1
+      },
+      "corpus_size": 59049
+    }
+  ]
+}

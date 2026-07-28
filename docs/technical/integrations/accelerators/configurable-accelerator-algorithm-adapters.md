@@ -275,18 +275,22 @@ occurs when that retained batch coexists with candidate-state creation (~237 KiB
 incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
 coexistence without weakening exact reference, selection, membership, or admission
 proofs is the next measured boundary.
-The active post-builder slice now removes the selector's copied native u32 array.
-`classic-u32le-native-view-preimage-v2` scans the already validated immutable
-payload bytes through a native-endian u32 view, retains the same exact preimage
-positions, rejects duplicate payloads, and leaves ordinary/prepared admission
-authority unchanged. Crossover protocol v7 records the selector-preparer identity.
-`rotate_target_selection_preparer_comparison.py` also compares the historical
-array-copy preparer against the active full preparer with identical request/batch
-validation, target decode, inverse encoding, state construction, and exact-position
-checks. Exploratory full-domain component tracing lowers selector peak from about
-252.6 KiB to 1.9 KiB while timing remains approximately flat; one-candidate peak
-is slightly higher. Clean post-commit crossover and component evidence is pending
-before promotion and before selecting the remaining candidate-state coexistence.
+Retained version-7 evidence under
+`benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/`
+promotes `classic-u32le-native-view-preimage-v2`. The same-run component
+comparison preserves the one exact preimage at all four scales. At 59,049
+candidates, selector peak falls from 252,597 to 1,885 bytes (99.254%), while
+selector preparation changes from 3.7642 to 3.9644 ms, a retained 5.318%
+regression. Complete preparation peak falls from 962,052 to 946,675 bytes
+(1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
+from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
+At one candidate, the native selector retains 56 bytes more and peaks 240 bytes
+higher; total one- and 64-candidate peaks are unchanged. CUDA ordinary, fresh
+build, and reuse timings remain contextual controls because selector preparation
+is outside execution intervals. Candidate-state creation, approximately 237 KiB
+incremental beside the retained batch, is the next measured preparation-memory
+boundary; exact reference, selection, membership, proposal, and admission proofs
+remain mandatory.
 Resident or fused
 evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,

@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "rotate-target-selection-preparer-crossover-v7"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 17
+
+[challenge]
+family = "classic-rotate-target-preparation-scales-v1"
+difficulty = 59049
+target_profile = "malbolge-1998-classic-word-domain"
+
+[budget]
+evaluations = 59049
+samples = 15
+
+[verification]
+required = true
+oracle = "native-view and historical selector exact-position equality, stable selector and builder identities, primitive storage and scalar packed equality, membership and ordinary validators, exact proposal and trusted admission, cardinality proofs, CUDA session proof, and unchanged full-domain crossover"
+
+[provenance]
+implementation = "benchmarks/accelerator/rotate_target_selection_preparer_comparison.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060"
+
+[run]
+commit = "fa65e6e8e0e26ca8247ad888218b396bf2f28dc6"
+workload_sha256 = "4448fd7594a50646c5da2ccea28b239fb80da4b16a005739f33db56ce5aa3777"
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/raw.csv"
