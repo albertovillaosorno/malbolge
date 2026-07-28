@@ -99,7 +99,13 @@ logical identity from validated request order. Existing item-based results remai
 valid; packed width/size/mixed representation failures are rejected. Primitive
 selectors iterate packed u32 evidence without materializing per-item bytes, while
 verification-assist materializes only when producing explicit hint objects.
-Post-commit comparative evidence remains pending. Resident or
+Retained packed evidence lowers CPU ordinary/prepared medians to
+211.693/77.309 ms and CUDA medians to 230.144/91.199 ms. Relative to pre-packed
+routes, the improvements are 1.387x/1.922x for CPU and 1.333x/1.784x for CUDA.
+Packed backend evaluation falls to 53.907 ms CPU and 67.202 ms CUDA; selection
+falls to 22.502/22.288 ms. Packed CUDA prepared remains about 18.0% slower than
+packed CPU prepared. Request decode/batch validation and primitive transfer are the
+next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -151,6 +157,10 @@ fails explicitly without changing correctness rules.
   79.9% of CPU and 81.2% of CUDA median total time; proposal selection accounts
   for 19.6% and 18.7%, selecting result representation/transport as the next
   measured boundary.
+- `benchmarks/accelerator/evidence/2026-07-28-packed-search-rtx4060/` and
+  `2026-07-28-packed-search-phase-profile-rtx4060/` retain 60 throughput samples
+  plus 150 phase samples. All four route medians improve; backend evaluation falls
+  2.326x on CPU and 2.058x on CUDA, while exact proposals/admission remain stable.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

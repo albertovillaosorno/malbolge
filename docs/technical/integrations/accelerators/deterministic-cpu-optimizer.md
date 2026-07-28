@@ -109,8 +109,11 @@ fails explicitly without changing correctness rules.
   total time, in backend evaluation and 30.796 ms, or 19.6%, in proposal selection.
   The CPU primitive bridge now emits fixed-width packed evidence, so search reads
   u32 results without constructing per-candidate evidence bytes/objects. Generic
-  item results and explicit hint materialization remain supported. Post-commit
-  baseline evidence remains pending.
+  item results and explicit hint materialization remain supported. Retained packed
+  evidence lowers CPU ordinary/prepared medians from 293.564/148.590 to
+  211.693/77.309 ms (1.387x/1.922x). Backend evaluation falls from 125.412 to
+  53.907 ms (2.326x) and selection from 30.796 to 22.502 ms (1.369x). Request
+  payload decode/batch validation and primitive execution are the next CPU targets.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

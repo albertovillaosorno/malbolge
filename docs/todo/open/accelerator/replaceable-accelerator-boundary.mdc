@@ -95,7 +95,10 @@ directly on CUDA APIs.
   of CUDA median total time to backend evaluation. Fixed-width packed candidate
   evidence now implements the next neutral boundary with request-order identity,
   item-form compatibility, fail-closed shape checks, and explicit materialization.
-  Post-commit performance evidence remains pending. Synthesis/guided search,
+  Retained packed evidence lowers all four route medians; backend evaluation falls
+  2.326x on CPU and 2.058x on CUDA. Packed CUDA prepared remains about 18.0%
+  slower than CPU. Request decode/validation and primitive transfer are the next
+  neutral boundary. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

@@ -192,5 +192,6 @@ selection. CUDA median total is 170.276 ms with 138.320 ms in backend evaluation
 and 31.912 ms in proposal selection. Named phases cover at least 99.6% of both
 medians; candidate-evaluation result transport/materialization selected the next
 measured optimization boundary. The active implementation now supports fixed-width
-packed candidate evidence, but these retained pre-change numbers remain the
-baseline until a post-commit rerun is checked in.
+packed candidate evidence. The retained post-change throughput and phase bundles
+are under `evidence/2026-07-28-packed-search-rtx4060/` and
+`evidence/2026-07-28-packed-search-phase-profile-rtx4060/`.

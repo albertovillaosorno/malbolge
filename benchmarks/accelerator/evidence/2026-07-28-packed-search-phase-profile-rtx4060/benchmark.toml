@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-packed-search-phase-profile-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-packed-search-phase-profile-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does packed evidence reduce prepared backend-evaluation medians on CPU and CUDA while named phases retain at least 95 percent coverage?"
+hypothesis = "Backend-evaluation medians are lower than the retained pre-packed profile and named phases cover at least 95 percent of total time."
+baseline = "benchmarks/accelerator/evidence/2026-07-28-prepared-search-phase-profile-rtx4060/"
+rejection_observation = "Either backend evaluation is not lower, coverage is below 95 percent, proposals differ, or CPU admission fails."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed prepared profile per backend"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained profiles per backend"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "phase_coverage_percent"]
+tradeoff_policy = "exact proposal identity and independent CPU admission precede phase comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-packed-search-phase-profile-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

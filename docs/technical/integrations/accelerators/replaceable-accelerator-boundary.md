@@ -104,8 +104,11 @@ representation/transport is now represented by `PackedCandidateEvidence`.
 Fixed-width opaque payloads share one byte buffer and inherit IDs only from validated
 request order; item-based adapters stay compatible, malformed width/size/mixed forms
 fail closed, and materialization is explicit for consumers that need objects.
-Post-commit performance evidence remains pending; resident/fused search remains
-later work.
+Retained packed evidence lowers every ordinary/prepared route median. The packed
+phase profile reduces backend evaluation 2.326x on CPU and 2.058x on CUDA while
+selection improves 1.369x/1.432x. Packed CUDA prepared remains about 18.0% slower
+than packed CPU. Request payload decode/batch validation and primitive transfer are
+now the next neutral boundary; resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

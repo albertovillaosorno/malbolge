@@ -78,7 +78,9 @@ baseline for accelerator implementations.
   evaluation and 19.6% in proposal selection. Fixed-width packed primitive evidence
   now removes per-candidate evidence object/materialization from the CPU search
   path while preserving generic item compatibility and request-order identity.
-  Post-commit baseline evidence remains pending.
+  Retained CPU ordinary/prepared medians are now 211.693/77.309 ms,
+  1.387x/1.922x faster than pre-packed. Backend evaluation falls 2.326x and
+  selection 1.369x. Request decode/validation and primitive execution are next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

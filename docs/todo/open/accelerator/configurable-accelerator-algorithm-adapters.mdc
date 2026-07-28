@@ -94,7 +94,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   byte buffer inherits logical IDs from validated request order; generic item
   results remain compatible, malformed packed shape fails closed, and search avoids
   per-candidate evidence objects. Verification-assist materializes only at the hint
-  boundary. Post-commit performance evidence remains pending. Synthesis/guided
+  boundary. Retained packed evidence lowers CPU ordinary/prepared medians to
+  211.693/77.309 ms and CUDA medians to 230.144/91.199 ms. Packed backend
+  evaluation falls 2.326x on CPU and 2.058x on CUDA, while packed CUDA prepared
+  remains about 18.0% slower than CPU. Request decode/validation and primitive
+  transfer are the next measured boundary. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

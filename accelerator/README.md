@@ -89,8 +89,14 @@ fixed-width opaque payload buffer whose logical identities are inherited from th
 validated batch order. Generic item results remain compatible; width, size, and
 mixed-form drift fail closed. Primitive search iterates packed u32 values without
 per-candidate bytes/objects, while verification-assist materializes only at the hint
-boundary. Post-commit performance evidence remains pending before claiming the
-exploratory reduction. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+boundary. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-packed-search-rtx4060/` lowers CPU
+ordinary/prepared medians to 211.693/77.309 ms and CUDA medians to
+230.144/91.199 ms, improvements of 1.387x/1.922x and 1.333x/1.784x over the
+pre-packed routes. The sibling packed phase profile lowers backend evaluation to
+53.907 ms CPU and 67.202 ms CUDA. Packed CUDA prepared remains about 18.0% slower
+than packed CPU prepared. Request payload decode/batch validation and primitive
+transfer are now the next measured boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

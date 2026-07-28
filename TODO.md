@@ -748,8 +748,13 @@ payloads in one byte buffer with logical IDs inherited from validated request
 order. Generic item-based adapters remain supported, malformed width/size/mixed
 forms fail closed, search consumes packed primitive u32 values without per-item
 bytes, and verification-assist materializes objects only when hints are requested.
-Post-commit prepared throughput/phase evidence remains pending before claiming the
-exploratory reduction. Synthesis/guided
+Retained packed evidence lowers CPU ordinary/prepared medians to
+211.693/77.309 ms (1.387x/1.922x versus pre-packed) and CUDA medians to
+230.144/91.199 ms (1.333x/1.784x). Packed CUDA prepared remains about 18.0%
+slower than packed CPU prepared. The packed phase profile lowers CPU/CUDA backend
+evaluation to 53.907/67.202 ms (2.326x/2.058x versus pre-packed) and selection to
+22.502/22.288 ms. The next boundary is request payload decode/batch validation and
+primitive transfer, not evidence-object materialization. Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -793,8 +798,12 @@ phase profile places 81.2% of CUDA median total time in backend evaluation and
 18.7% in proposal selection; proof/result validation is negligible. Fixed-width
 packed candidate evidence is now active across CPU/CUDA primitive evaluation and
 search, avoiding one `CandidateEvidence` plus bytes allocation per candidate while
-preserving request-order identity and verifier-only acceptance. Post-commit
-measurement remains pending; resident or
+preserving request-order identity and verifier-only acceptance. Retained packed
+CUDA ordinary/prepared medians are 230.144/91.199 ms, improving 1.333x/1.784x
+over the pre-packed routes. Backend evaluation falls from 138.320 to 67.202 ms
+(2.058x), while selection falls from 31.912 to 22.288 ms (1.432x). Packed CUDA
+remains about 18.0% slower than packed CPU prepared; request decode/validation and
+primitive transfer now precede resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

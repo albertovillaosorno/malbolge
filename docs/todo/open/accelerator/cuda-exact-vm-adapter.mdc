@@ -103,7 +103,10 @@ batches.
   validation is negligible. CUDA primitive results now use fixed-width packed
   evidence with request-order identity, eliminating per-candidate evidence objects
   from search while keeping malformed shape and verifier boundaries fail-closed.
-  Post-commit evidence remains pending before a performance claim. Resident and
-  synthesis/search strategies remain open.
+  Retained packed CUDA ordinary/prepared medians are 230.144/91.199 ms,
+  improvements of 1.333x/1.784x over pre-packed routes. Backend evaluation falls
+  2.058x and selection 1.432x. Packed CUDA prepared remains about 18.0% slower than
+  packed CPU. Request decode/validation and primitive transfer precede resident and
+  synthesis/search strategies, which remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
