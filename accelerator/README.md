@@ -145,9 +145,12 @@ records 14.058 ms CPU prepared and 4.929 ms CUDA prepared, improvements of
 ordinary controls remain nearly flat. Prepared CPU rotate now reuses a cached
 59,049-entry table generated from the scalar reference formula. Ordinary CPU stays
 scalar, the exhaustive test compares every classic word, and benchmarks require
-16 prepared evaluations plus the full table cardinality. Post-commit performance
-evidence is pending. CPU result validation/packing and CUDA host
-tuple/materialization are the next backend subphases.
+16 prepared evaluations plus the full table cardinality. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-cpu-rotate-table-search-rtx4060/`
+records 3.313 ms CPU prepared, 4.243x faster than extrema validation and 1.440x
+faster than same-run CUDA. The phase sibling lowers CPU backend evaluation 4.540x
+to 2.906 ms while CUDA changes only 1.018x. CPU result validation/packing and CUDA
+host materialization/packing are the next backend subphases.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

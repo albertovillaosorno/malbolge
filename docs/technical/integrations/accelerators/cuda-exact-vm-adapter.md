@@ -222,9 +222,10 @@ fails explicitly without changing correctness rules.
   packing. Retained CUDA prepared median falls from 6.182 to 4.929 ms (1.254x), and
   backend evaluation from 5.239 to 3.940 ms (1.330x). CUDA ordinary remains nearly
   flat/slightly slower. Prepared CPU rotate now has an exact scalar-derived lookup
-  table with explicit benchmark counters; post-commit comparative evidence is
-  pending, so the retained CPU/CUDA ordering is unchanged here. Host
-  tuple/materialization is the next CUDA backend subphase.
+  table with explicit benchmark counters. Retained CPU/CUDA prepared medians are
+  3.313/4.769 ms, so CPU prepared is 1.440x faster in the same run. CUDA backend
+  evaluation changes only 1.018x to 3.868 ms, so no CUDA-table speedup is claimed.
+  Host materialization/packing is the next CUDA backend subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

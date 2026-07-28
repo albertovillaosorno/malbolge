@@ -244,6 +244,9 @@ The active prepared CPU implementation now generates the complete classic rotate
 table once from the scalar reference and uses request-order table lookup only for
 prepared execution. Ordinary CPU remains scalar. Both benchmark programs emit and
 require `cpu_prepared_rotate` with 16 evaluations and 59,049 table entries, in
-addition to selector/index/CUDA-session proofs. A post-commit rerun is required
-before claiming the exploratory CPU reduction or changing the retained CPU/CUDA
-ordering.
+addition to selector/index/CUDA-session proofs. Retained post-commit evidence is
+under `evidence/2026-07-28-cpu-rotate-table-search-rtx4060/` and
+`evidence/2026-07-28-cpu-rotate-table-search-phase-profile-rtx4060/`. CPU prepared
+reaches 3.313 ms, a 4.243x improvement, and CPU backend evaluation reaches
+2.906 ms, a 4.540x improvement. CPU prepared is 1.440x faster than same-run CUDA;
+CPU ordinary remains effectively unchanged and CUDA phases move only about 1.8%.

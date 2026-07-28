@@ -128,8 +128,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   improve 1.091x/1.330x while ordinary controls stay nearly flat. Prepared CPU
   rotate now reuses an exact 59,049-entry scalar-derived table; ordinary CPU stays
   scalar, exhaustive equality covers the full domain, and benchmarks require
-  16 evaluations/full cardinality. Post-commit evidence is pending. CPU result
-  validation/packing and CUDA tuple/materialization are next. Synthesis/guided
+  16 evaluations/full cardinality. Retained CPU prepared median is 3.313 ms
+  (4.243x better), and CPU backend evaluation improves 4.540x to 2.906 ms. CPU is
+  1.440x faster than same-run CUDA. CPU result validation/packing and CUDA host
+  materialization/packing are next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

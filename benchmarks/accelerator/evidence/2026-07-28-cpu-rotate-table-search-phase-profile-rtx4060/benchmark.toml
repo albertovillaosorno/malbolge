@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-cpu-table-phase-profile-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-cpu-rotate-table-search-phase-profile-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does exact prepared CPU table lookup lower CPU backend-evaluation median while retaining at least 95 percent phase coverage?"
+hypothesis = "CPU backend median is lower, coverage is at least 95 percent, and exhaustive/table/prepared proofs pass."
+baseline = "benchmarks/accelerator/evidence/2026-07-28-extrema-validation-search-phase-profile-rtx4060/"
+rejection_observation = "CPU backend median is not lower, coverage is below 95 percent, exhaustive equality fails, or proof counters drift."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed prepared profile per backend"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained profiles per backend"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "phase_coverage_percent"]
+tradeoff_policy = "exactness and every prepared proof identity precede CPU phase comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-cpu-rotate-table-search-phase-profile-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

@@ -148,8 +148,11 @@ prepared medians improve 1.086x CPU and 1.254x CUDA; backend evaluation improves
 uses a cached 59,049-entry table generated exclusively from the scalar reference.
 Ordinary CPU evaluation remains scalar. An exhaustive classic-domain test and
 benchmark diagnostics require exact equality, 16 prepared evaluations, and full
-table cardinality. Post-commit evidence is pending; CPU result validation/packing
-and CUDA host tuple/materialization are the next neutral subphases. Resident or
+table cardinality. Retained CPU prepared median falls from 14.058 to 3.313 ms
+(4.243x), and CPU backend evaluation from 13.190 to 2.906 ms (4.540x). CPU ordinary
+is effectively unchanged; same-run CPU prepared is 1.440x faster than CUDA prepared.
+CPU result validation/packing and CUDA host materialization/packing are the next
+neutral subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

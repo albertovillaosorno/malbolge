@@ -140,8 +140,11 @@ fails explicitly without changing correctness rules.
   13.190 ms (1.091x). Prepared rotate now uses a cached 59,049-entry lookup table
   generated once from the scalar formula; ordinary CPU remains scalar. The
   exhaustive differential test compares every classic-domain input, and benchmark
-  diagnostics require 16 prepared evaluations plus full table cardinality.
-  Post-commit evidence is pending; result validation/packing is the next CPU target.
+  diagnostics require 16 prepared evaluations plus full table cardinality. Retained
+  CPU prepared median falls from 14.058 to 3.313 ms (4.243x), while backend
+  evaluation falls from 13.190 to 2.906 ms (4.540x). CPU ordinary is effectively
+  unchanged and CPU prepared is 1.440x faster than same-run CUDA. Result
+  validation/packing is the next CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

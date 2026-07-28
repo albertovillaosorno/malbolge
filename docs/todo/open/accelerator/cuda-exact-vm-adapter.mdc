@@ -130,7 +130,8 @@ batches.
   Python per-value loop without weakening domain checks. Retained CUDA prepared
   median is 4.929 ms (1.254x better), and backend evaluation improves 1.330x to
   3.940 ms. Prepared CPU now has a scalar-derived full-domain lookup table with
-  explicit counters; comparative evidence is pending. Host tuple/materialization
-  and synthesis/search remain open.
+  explicit counters. Retained CPU/CUDA prepared medians are 3.313/4.769 ms, making
+  CPU 1.440x faster; CUDA backend changes only 1.018x to 3.868 ms. CUDA host
+  materialization/packing and synthesis/search remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
