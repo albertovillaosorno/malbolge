@@ -149,7 +149,10 @@ batches.
   truth and requires `cpu-reference-packed-equality-v1`; ordinary CUDA retains
   `u32le-broadword-domain-v1`. First/final in-domain drift fails closed, and search
   proofs require all 59,049 reference words plus existing counters. The profiler now
-  measures exact compare and visible residuals. Post-commit evidence is pending;
-  synthesis/search remains open.
+  measures exact compare and visible residuals. Retained CUDA prepared is 0.488 ms
+  (2.407x), backend/total are 0.215/0.238 ms (3.999x/3.729x), validation is 0.0278 ms
+  (23.590x), and primitive end-to-end is 0.1935 ms (4.488x). Reference construction
+  and 236,196 bytes are untimed preparation costs; preparation/memory/reuse crossover
+  are next. Synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

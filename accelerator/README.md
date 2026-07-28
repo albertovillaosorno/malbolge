@@ -178,7 +178,14 @@ so incorrect in-domain first or final words fail closed. The generic search adap
 exposes proof-bound candidate-state cardinality, and full-domain benchmarks require
 59,049 reference words plus all existing table/session/membership/selector proofs.
 The prepared profiler now records contract, exact compare, result build, visible
-layer residuals, CUDA phases, and end-to-end total. Post-commit evidence is pending;
+layer residuals, CUDA phases, and end-to-end total. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-prepared-reference-search-rtx4060/`
+records 0.488 ms CUDA prepared, 2.407x better than broadword and 6.786x faster than
+same-run CPU. The search-phase sibling records 0.215 ms CUDA backend evaluation
+(3.999x) and 0.238 ms total (3.729x). The primitive profile records 0.0278 ms exact
+validation (23.590x better), 0.0180 ms byte comparison, and 0.1935 ms end-to-end
+(4.488x). Reference construction is untimed and the full-domain image consumes
+236,196 bytes. Preparation latency, memory scaling, and reuse crossover are next;
 the trusted verifier remains the sole proposal-admission authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain

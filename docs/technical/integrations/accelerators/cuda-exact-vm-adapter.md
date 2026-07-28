@@ -252,8 +252,12 @@ fails explicitly without changing correctness rules.
   exact count, and equality precede evidence acceptance. First/final in-domain drift
   fails closed. The profiler records exact compare instead of broadword decode/checks
   and exposes residual layer overhead; search benchmarks prove 59,049 reference
-  words plus all existing counters. Post-commit evidence is pending before any
-  speedup claim.
+  words plus all existing counters. Retained CUDA prepared search reaches 0.488 ms
+  (2.407x better), CUDA backend/total reach 0.215/0.238 ms (3.999x/3.729x), and exact
+  prepared validation reaches 0.0278 ms (23.590x) with 0.0180 ms comparison.
+  Primitive end-to-end reaches 0.1935 ms (4.488x). The reference image is 236,196
+  bytes and construction remains outside timed execution. Preparation latency,
+  memory scaling, and reuse crossover are the next CUDA measurements.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

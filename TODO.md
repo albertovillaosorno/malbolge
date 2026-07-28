@@ -839,8 +839,16 @@ fail closed with the first differing word reported. Generic prepared-search stat
 counting exposes and requires all 59,049 reference words, while proposal admission
 remains independently trusted. The subphase, throughput, and phase benchmarks now
 require both validator identities, reference count, resident/session counters,
-membership, selector, and CPU-table proofs. Post-commit evidence is pending; no
-exploratory speedup is promoted yet.
+membership, selector, and CPU-table proofs. Retained full-domain evidence records
+CUDA prepared at 0.488 ms, 2.407x better than broadword validation and 6.786x faster
+than same-run CPU prepared. CUDA backend evaluation falls from 0.860 to 0.215 ms
+(3.999x), and total falls from 0.886 to 0.238 ms (3.729x). Primitive validation
+falls from 0.6558 to 0.0278 ms (23.590x), with exact comparison at 0.0180 ms;
+primitive end-to-end falls from 0.8684 to 0.1935 ms (4.488x). Ordinary controls move
+about 1.5%, while CPU prepared regresses about 4%, so neither is attributed. The
+one-time reference generation and 236,196-byte reference image are excluded from
+retained intervals. Preparation latency, memory scaling, and reuse crossover are the
+next measured boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -943,8 +951,12 @@ after capability/shape checks. Ordinary CUDA retains broadword validation. The
 profiler exposes exact-comparison, contract, result-build, public-layer residuals,
 and CUDA phases; throughput/phase profiles require both identities, reference count,
 1/16/16/15 session proof, CPU table, membership, and selector proofs. In-domain
-first/last corruption fails closed. Post-commit evidence is pending before promoting
-any performance claim.
+first/last corruption fails closed. Retained CUDA prepared search is 0.488 ms
+(2.407x better), backend evaluation is 0.215 ms (3.999x better), and total is
+0.238 ms (3.729x better). Exact prepared validation is 0.0278 ms, including a
+0.0180 ms byte comparison, versus 0.6558 ms broadword validation (23.590x). Primitive
+end-to-end improves 4.488x to 0.1935 ms. Reference construction remains untimed and
+requires 236,196 bytes here; preparation latency/memory/reuse crossover are next.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

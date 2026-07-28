@@ -151,7 +151,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   retains `u32le-broadword-domain-v1`. Capability/representation/count checks precede
   equality, and first/final in-domain corruption fails closed. Generic prepared
   state counting exposes all 59,049 reference words. Benchmarks require both IDs and
-  all CPU-table/session/membership/selector proofs. Post-commit evidence is pending.
+  all CPU-table/session/membership/selector proofs. Retained CUDA prepared search is
+  0.488 ms (2.407x better), backend/total are 0.215/0.238 ms (3.999x/3.729x), and
+  exact validation is 0.0278 ms (23.590x) with 0.0180 ms comparison. Primitive
+  end-to-end is 0.1935 ms (4.488x). The 236,196-byte reference and construction are
+  untimed preparation costs; preparation/memory/reuse crossover are next.
   Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.

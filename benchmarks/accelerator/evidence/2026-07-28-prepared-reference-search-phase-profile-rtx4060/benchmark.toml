@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-prepared-reference-phase-profile-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-prepared-reference-search-phase-profile-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does exact prepared CPU-reference equality lower CUDA backend and total phase medians versus broadword validation?"
+hypothesis = "CUDA backend and total medians are lower while both identities, reference count, and all prior proofs pass."
+baseline = "benchmarks/accelerator/evidence/2026-07-28-broadword-packed-validation-search-phase-profile-rtx4060/"
+rejection_observation = "CUDA backend or total median is not lower, or an identity/count/result/admission proof fails."
+
+[workload]
+identity = "classic-rotate-target-full-domain-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed execution using the exact prepared state"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per measured route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "exact CPU truth and every execution/admission proof precede phase comparison"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-prepared-reference-search-phase-profile-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

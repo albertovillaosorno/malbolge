@@ -292,5 +292,12 @@ visible residuals, layer totals, and end-to-end total. Search throughput and pha
 profiles emit and validate both identities plus `prepared_reference_word_count`.
 All full-domain runs must observe 59,049 reference words and the existing
 CPU-table/session/membership/selector proofs. First/last in-domain corruption tests
-fail closed. A clean post-commit rerun is required before replacing the historical
-broadword profile or interpreting new medians.
+fail closed. Retained post-commit evidence is under
+`evidence/2026-07-28-prepared-reference-search-rtx4060/`,
+`evidence/2026-07-28-prepared-reference-search-phase-profile-rtx4060/`, and
+`evidence/2026-07-28-prepared-reference-primitive-phase-profile-rtx4060/`. CUDA
+prepared reaches 0.488 ms (2.407x), backend evaluation reaches 0.215 ms (3.999x),
+and search total reaches 0.238 ms (3.729x). Exact validation reaches 0.0278 ms
+(23.590x), exact compare 0.0180 ms, and primitive end-to-end 0.1935 ms (4.488x).
+The one-time 236,196-byte CPU reference is outside retained intervals. A dedicated
+preparation/memory/crossover benchmark is the next protocol step.

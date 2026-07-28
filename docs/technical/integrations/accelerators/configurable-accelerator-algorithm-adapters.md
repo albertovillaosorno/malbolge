@@ -180,7 +180,13 @@ preparation and validates every prepared backend result with
 precede equality; first/final in-domain drift fails closed with a precise mismatch.
 A generic proof-bound candidate-state count exposes all 59,049 reference words.
 Benchmarks require both IDs and all existing CPU-table, CUDA-session, membership,
-and selector proofs. Post-commit evidence is pending. Resident or
+and selector proofs. Retained CUDA prepared search is 0.488 ms, 2.407x better than
+broadword validation and 6.786x faster than same-run CPU. CUDA backend/total improve
+3.999x/3.729x to 0.215/0.238 ms. Exact prepared validation improves 23.590x to
+0.0278 ms, including 0.0180 ms equality; primitive end-to-end improves 4.488x to
+0.1935 ms. The 236,196-byte reference and its construction are preparation costs,
+not timed execution. Preparation latency, memory scaling, and reuse crossover are
+next. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

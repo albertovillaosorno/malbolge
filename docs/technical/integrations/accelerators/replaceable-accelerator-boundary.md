@@ -170,8 +170,12 @@ capability, immutable representation, exact count, full byte equality, proposal
 membership, and independent verifier admission remain outside hardware authority.
 First/final in-domain corruption fails closed. Generic state cardinality proves all
 59,049 reference words, and benchmarks require both IDs plus existing execution
-proofs. Post-commit evidence is pending, while resident/fused search remains later
-work.
+proofs. Retained evidence records 0.488 ms CUDA prepared search (2.407x), 0.215 ms
+backend evaluation (3.999x), 0.238 ms search total (3.729x), 0.0278 ms exact
+validation (23.590x), and 0.1935 ms primitive end-to-end (4.488x). Same-run CUDA is
+6.786x faster than CPU prepared. The reference image is 236,196 bytes and construction
+is excluded, so preparation latency, memory scaling, and reuse crossover are the
+next replaceable-boundary evidence, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 
