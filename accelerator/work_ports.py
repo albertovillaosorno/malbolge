@@ -47,17 +47,68 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from dataclasses import field
+from struct import Struct
 from typing import Protocol
 from typing import TYPE_CHECKING
+from typing import cast
+from typing import overload
+from typing import override
 
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from accelerator.exact_primitives import AcceleratorCapability
 
+INDEXED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
+MAX_U32 = (1 << 32) - 1
 MAX_U64 = (1 << 64) - 1
+_U32_BYTES = 4
+_U32_DECIMAL_DIGITS = 10
+_U32_LE = Struct("<I")
+_INDEXED_CANDIDATE_ITEMS_PROOF = object()
+
+
+def indexed_candidate_items_from_unique_u32(
+    *,
+    logical_id_prefix: str,
+    logical_indices: tuple[int, ...],
+    payload_width: int,
+    payloads: bytes,
+) -> IndexedCandidateWorkItems:
+    """Build proof-carrying fixed-width storage from unique u32 indexes.
+
+    Returns:
+        Fixed-width storage with validated uniqueness and rotation order.
+
+    """
+    _validate_identity(logical_id_prefix, "candidate logical ID prefix")
+    _validate_unique_u32_values(logical_indices)
+    item = IndexedCandidateWorkItems(
+        logical_id_prefix=logical_id_prefix,
+        logical_indices_u32le=_pack_u32_values(logical_indices),
+        payload_width=payload_width,
+        payloads=payloads,
+        logical_rotation_pivot=_rotation_pivot(logical_indices),
+        _proof=_INDEXED_CANDIDATE_ITEMS_PROOF,
+    )
+    _validate_indexed_storage(item)
+    return item
+
+
+def indexed_candidate_items_id() -> str:
+    """Return the active fixed-width indexed candidate storage identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return INDEXED_CANDIDATE_ITEMS_ID
 
 
 class InvalidAcceleratorWorkError(ValueError):
@@ -87,11 +138,167 @@ class CandidateWorkItem:
 
 
 @dataclass(frozen=True, slots=True)
+class IndexedCandidateWorkItems(Sequence[CandidateWorkItem]):
+    """Fixed-width candidates with u32-derived logical identities."""
+
+    logical_id_prefix: str
+    logical_indices_u32le: bytes
+    payload_width: int
+    payloads: bytes
+    logical_rotation_pivot: int | None = None
+    _proof: object | None = field(default=None, repr=False, compare=False)
+
+    def validated(self) -> IndexedCandidateWorkItems:
+        """Validate packed shape, identity derivation, and index uniqueness.
+
+        Returns:
+            This immutable indexed collection after every invariant succeeds.
+
+        """
+        if self._proof is _INDEXED_CANDIDATE_ITEMS_PROOF:
+            return self
+        _validate_identity(
+            self.logical_id_prefix, "candidate logical ID prefix"
+        )
+        _validate_indexed_storage(self)
+        logical_indices = _unpack_u32_values(self.logical_indices_u32le)
+        _validate_unique_u32_values(logical_indices)
+        _validate_rotation_pivot(self.logical_rotation_pivot, logical_indices)
+        return self
+
+    @override
+    def __len__(self) -> int:
+        """Return the exact candidate count.
+
+        Returns:
+            Number of fixed-width indexed candidates.
+
+        """
+        return len(self.logical_indices_u32le) // _U32_BYTES
+
+    @override
+    def __iter__(self) -> Iterator[CandidateWorkItem]:
+        """Yield materialized candidates in request order.
+
+        Yields:
+            Candidate objects derived from packed identity and payload storage.
+
+        """
+        for index in range(len(self)):
+            yield self.item_at(index)
+
+    @overload
+    def __getitem__(self, index: int) -> CandidateWorkItem: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[CandidateWorkItem, ...]: ...
+
+    @override
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> CandidateWorkItem | tuple[CandidateWorkItem, ...]:
+        """Materialize one candidate or an immutable request-order slice.
+
+        Returns:
+            One candidate for an integer or a tuple for a slice.
+
+        """
+        if isinstance(index, slice):
+            return tuple(
+                self.item_at(position)
+                for position in range(*index.indices(len(self)))
+            )
+        return self.item_at(index)
+
+    def item_at(self, index: int) -> CandidateWorkItem:
+        """Materialize one candidate object at an exact request-order index.
+
+        Returns:
+            Candidate identity and payload for the requested position.
+
+        """
+        return CandidateWorkItem(
+            logical_id=self.logical_id_at(index),
+            payload=self.payload_at(index),
+        )
+
+    def logical_index_at(self, index: int) -> int:
+        """Return the packed logical u32 index at one request-order position.
+
+        Returns:
+            Canonical logical index used to derive the candidate identity.
+
+        """
+        position = _normalized_item_index(index, len(self))
+        offset = position * _U32_BYTES
+        return cast(
+            "int",
+            _U32_LE.unpack_from(self.logical_indices_u32le, offset)[0],
+        )
+
+    def logical_id_at(self, index: int) -> str:
+        """Return one identity without retaining a string table.
+
+        Returns:
+            Prefix plus canonical decimal u32 index.
+
+        """
+        return f"{self.logical_id_prefix}{self.logical_index_at(index)}"
+
+    def payload_at(self, index: int) -> bytes:
+        """Materialize one fixed-width candidate payload.
+
+        Returns:
+            Exact payload bytes at the requested position.
+
+        """
+        position = _normalized_item_index(index, len(self))
+        start = position * self.payload_width
+        return self.payloads[start : start + self.payload_width]
+
+    def payload_matches(self, index: int, payload: bytes) -> bool:
+        """Return whether one position contains exact candidate payload bytes.
+
+        Returns:
+            True only when width and bytes match exactly.
+
+        """
+        if len(payload) != self.payload_width:
+            return False
+        position = _normalized_item_index(index, len(self))
+        start = position * self.payload_width
+        end = start + self.payload_width
+        return self.payloads.startswith(payload, start, end)
+
+    def parse_logical_id(self, logical_id: str) -> int | None:
+        """Parse one exact identity produced by this indexed collection.
+
+        Returns:
+            Canonical u32 suffix, or ``None`` for another identity grammar.
+
+        """
+        result: int | None = None
+        if logical_id.startswith(self.logical_id_prefix):
+            suffix = logical_id[len(self.logical_id_prefix) :]
+            if _is_canonical_u32_suffix(suffix):
+                value = int(suffix)
+                if value <= MAX_U32 and str(value) == suffix:
+                    result = value
+        return result
+
+
+type CandidateWorkItems = (
+    tuple[CandidateWorkItem, ...] | IndexedCandidateWorkItems
+)
+
+
+@dataclass(frozen=True, slots=True)
 class CandidateEvaluationBatch:
     """Candidate evidence request independent from accelerator hardware."""
 
     evaluator_id: str
-    items: tuple[CandidateWorkItem, ...]
+    items: CandidateWorkItems
 
     def validated(self) -> CandidateEvaluationBatch:
         """Validate evaluator and candidate identities.
@@ -518,9 +725,114 @@ def _try_search_backend(
         return None
 
 
-def _validate_candidate_items(items: tuple[CandidateWorkItem, ...]) -> None:
+def _validate_candidate_items(items: CandidateWorkItems) -> None:
+    if isinstance(items, IndexedCandidateWorkItems):
+        _ = items.validated()
+        return
     identities = [item.validated().logical_id for item in items]
     _validate_unique(identities, "candidate logical ID")
+
+
+def _validate_indexed_storage(items: IndexedCandidateWorkItems) -> None:
+    _validate_index_storage(items.logical_indices_u32le)
+    _validate_candidate_payload_storage(items)
+
+
+def _validate_index_storage(indexes_u32le: bytes) -> None:
+    if type(indexes_u32le) is not bytes:
+        message = "indexed candidate logical indexes must use immutable bytes"
+        raise InvalidAcceleratorWorkError(message)
+    if len(indexes_u32le) % _U32_BYTES != 0:
+        message = "indexed candidate logical indexes must contain complete u32s"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validate_candidate_payload_storage(
+    items: IndexedCandidateWorkItems,
+) -> None:
+    if type(items.payload_width) is not int or items.payload_width <= 0:
+        message = "indexed candidate payload width must be positive"
+        raise InvalidAcceleratorWorkError(message)
+    if type(items.payloads) is not bytes:
+        message = "indexed candidate payload storage must use immutable bytes"
+        raise InvalidAcceleratorWorkError(message)
+    if len(items.payloads) != len(items) * items.payload_width:
+        message = (
+            "indexed candidate payload size does not match logical indexes"
+        )
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _is_canonical_u32_suffix(suffix: str) -> bool:
+    if not suffix or len(suffix) > _U32_DECIMAL_DIGITS:
+        return False
+    return suffix.isascii() and suffix.isdigit()
+
+
+def _pack_u32_values(values: tuple[int, ...]) -> bytes:
+    packed = bytearray(len(values) * _U32_BYTES)
+    for index, value in enumerate(values):
+        packed[index * _U32_BYTES : (index + 1) * _U32_BYTES] = value.to_bytes(
+            _U32_BYTES,
+            "little",
+        )
+    return bytes(packed)
+
+
+def _unpack_u32_values(values_u32le: bytes) -> tuple[int, ...]:
+    return tuple(
+        int.from_bytes(
+            values_u32le[offset : offset + _U32_BYTES],
+            "little",
+        )
+        for offset in range(0, len(values_u32le), _U32_BYTES)
+    )
+
+
+def _validate_unique_u32_values(values: tuple[int, ...]) -> None:
+    if any(
+        type(value) is not int or value < 0 or value > MAX_U32
+        for value in values
+    ):
+        message = "indexed candidate logical index outside u32 domain"
+        raise InvalidAcceleratorWorkError(message)
+    if len(values) != len(set(values)):
+        message = "duplicate candidate logical ID"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _rotation_pivot(values: tuple[int, ...]) -> int | None:
+    pivot = 0
+    descents = 0
+    for index in range(1, len(values)):
+        if values[index] < values[index - 1]:
+            pivot = index
+            descents += 1
+    return pivot if descents <= 1 else None
+
+
+def _validate_rotation_pivot(
+    observed: int | None,
+    values: tuple[int, ...],
+) -> None:
+    if observed is None:
+        return
+    if observed != _rotation_pivot(values):
+        message = (
+            "indexed candidate rotation pivot does not match logical order"
+        )
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _normalized_item_index(index: int, count: int) -> int:
+    if type(index) is not int:
+        message = "candidate item index must be integer"
+        raise TypeError(message)
+    normalized = index + count if index < 0 else index
+    if normalized < 0 or normalized >= count:
+        message = "candidate item index outside request order"
+        raise IndexError(message)
+    return normalized
 
 
 def _validate_identity(value: str, label: str) -> None:

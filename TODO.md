@@ -876,8 +876,23 @@ Complete prepared state falls from 16.063 to 10.910 MiB retained (32.083%) and f
 and miss are 2.625/2.785 microseconds versus 0.265/0.201 microseconds, regressions of
 9.898x/13.856x. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1; the
 full-domain warm route saves 15.458 ms on its first execution. The compact index is
-promoted for scale memory/preparation, not lookup speed. Validated candidate-batch
-and `CandidateWorkItem` layout is the next prepared-state memory boundary.
+promoted for scale memory/preparation, not lookup speed. This is the retained
+version-2 baseline.
+The next slice is now active. Rotate-target batch construction uses proof-carrying
+`IndexedCandidateWorkItems` under
+`u32-index-fixed-width-payloads-rotation-v1`: original u32 logical indexes and
+fixed-width payloads remain in immutable bytes, while IDs and item objects
+materialize only at consumer boundaries. Exact duplicate pruning now admits generic
+hashable exact equality, so injective u32 encoding does not create temporary payload
+objects before pruning. A validated rotation pivot lets
+`u32-rotation-or-pair-or-reference-binary-search-v1` search two ordered regions
+without retaining a sorted reference or pair array; arbitrary indexed batches and
+ordinary tuple batches retain exact pair/reference fallbacks. Duplicate or
+out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged/cross-batch
+proofs, and payload substitution fail closed. Crossover protocol v3 records both
+storage identities. Clean post-commit memory, preparation, lookup, and crossover
+evidence is pending; the retained prepared primitive integer tuple is the next
+candidate only after this result is measured.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -999,8 +1014,22 @@ compact component at 473,352 bytes versus 5,876,552 bytes copied (91.945% lower)
 prepared state falls 32.083% retained and 26.051% peak. Binary hit/miss lookup is
 9.898x/13.856x slower than the copied set, so this is explicitly a scale-memory and
 preparation promotion rather than a lookup-speed claim. Warm/cold crossover is
-7/3/2/1 and 108/38/5/1. The validated candidate batch and item-object layout is the
-next state component selected for measurement.
+7/3/2/1 and 108/38/5/1. This is the retained version-2 baseline.
+The next slice is now active. Rotate-target batch construction uses proof-carrying
+`IndexedCandidateWorkItems` under
+`u32-index-fixed-width-payloads-rotation-v1`: original u32 logical indexes and
+fixed-width payloads remain in immutable bytes, while IDs and item objects
+materialize only at consumer boundaries. Exact duplicate pruning now admits generic
+hashable exact equality, so injective u32 encoding does not create temporary payload
+objects before pruning. A validated rotation pivot lets
+`u32-rotation-or-pair-or-reference-binary-search-v1` search two ordered regions
+without retaining a sorted reference or pair array; arbitrary indexed batches and
+ordinary tuple batches retain exact pair/reference fallbacks. Duplicate or
+out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged/cross-batch
+proofs, and payload substitution fail closed. Crossover protocol v3 records both
+storage identities. Clean post-commit memory, preparation, lookup, and crossover
+evidence is pending; the retained prepared primitive integer tuple is the next
+candidate only after this result is measured.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

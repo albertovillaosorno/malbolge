@@ -47,8 +47,10 @@
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 from struct import Struct
+import sys
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -73,9 +75,10 @@ from accelerator.primitive_candidates import (
 from accelerator.primitive_candidates import primitive_evidence_value_at
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
-from accelerator.work_ports import CandidateWorkItem
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import TrustedCandidateVerifier
+from accelerator.work_ports import indexed_candidate_items_from_unique_u32
 from optimizer.pruning import prune_exact_duplicates
 
 if TYPE_CHECKING:
@@ -89,6 +92,8 @@ _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
 _PREPARED_ROTATE_SELECTION_PROOF = object()
+_CORPUS_ID_PREFIX = "corpus-"
+_LITTLE_ENDIAN = "little"
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,10 +281,9 @@ def build_rotate_target_batch(
         message = "rotate target search request selects a different algorithm"
         raise InvalidAcceleratorWorkError(message)
     problem = RotateTargetProblem.decode(validated.problem)
-    encoded = tuple(
-        encode_rotate_candidate(value) for value in problem.candidates
-    )
-    representatives = prune_exact_duplicates(encoded).representative_indices
+    representatives = prune_exact_duplicates(
+        problem.candidates
+    ).representative_indices
     if not representatives:
         selected: tuple[int, ...] = ()
     else:
@@ -291,12 +295,11 @@ def build_rotate_target_batch(
         )
     return CandidateEvaluationBatch(
         evaluator_id=ROTATE_EVALUATOR_ID,
-        items=tuple(
-            CandidateWorkItem(
-                logical_id=f"corpus-{index}",
-                payload=encoded[index],
-            )
-            for index in selected
+        items=indexed_candidate_items_from_unique_u32(
+            logical_id_prefix=_CORPUS_ID_PREFIX,
+            logical_indices=selected,
+            payload_width=_U32.size,
+            payloads=_pack_selected_candidates(problem.candidates, selected),
         ),
     )
 
@@ -324,11 +327,13 @@ def prepare_rotate_target_selection(
         raise InvalidAcceleratorWorkError(message)
     target = RotateTargetProblem.decode_target(validated_request.problem)
     payload = encode_rotate_candidate(_inverse_rotate(target))
-    positions = tuple(
-        index
-        for index, item in enumerate(validated_batch.items)
-        if item.payload == payload
-    )
+    items = validated_batch.items
+    if isinstance(items, IndexedCandidateWorkItems):
+        positions = _indexed_rotate_positions(items, payload)
+    else:
+        positions = tuple(
+            index for index, item in enumerate(items) if item.payload == payload
+        )
     return PreparedRotateTargetSelection(
         request=validated_request,
         batch=validated_batch,
@@ -437,7 +442,7 @@ class RotateTargetVerifier(TrustedCandidateVerifier):
         _ = hint
         if len(candidate.payload) != _U32.size:
             return False
-        value = int.from_bytes(candidate.payload, "little")
+        value = int.from_bytes(candidate.payload, _LITTLE_ENDIAN)
         if value > MAX_WORD:
             return False
         result = CpuExactPrimitiveAdapter().evaluate(
@@ -448,6 +453,48 @@ class RotateTargetVerifier(TrustedCandidateVerifier):
             )
         )
         return result.values == (self._target,)
+
+
+def _pack_selected_candidates(
+    candidates: tuple[int, ...],
+    selected: tuple[int, ...],
+) -> bytes:
+    packed = bytearray(len(selected) * _U32.size)
+    for position, candidate_index in enumerate(selected):
+        _U32.pack_into(
+            packed,
+            position * _U32.size,
+            candidates[candidate_index],
+        )
+    return bytes(packed)
+
+
+def _indexed_rotate_positions(
+    items: IndexedCandidateWorkItems,
+    payload: bytes,
+) -> tuple[int, ...]:
+    if items.payload_width != _U32.size or len(payload) != _U32.size:
+        message = "indexed rotate payload width changed"
+        raise InvalidAcceleratorWorkError(message)
+    target = int.from_bytes(payload, _LITTLE_ENDIAN)
+    values = array("I")
+    if values.itemsize == _U32.size:
+        values.frombytes(items.payloads)
+        if sys.byteorder != _LITTLE_ENDIAN:
+            values.byteswap()
+        positions = tuple(
+            index for index, value in enumerate(values) if value == target
+        )
+    else:
+        positions = tuple(
+            index
+            for index in range(len(items))
+            if int.from_bytes(items.payload_at(index), _LITTLE_ENDIAN) == target
+        )
+    if len(positions) > 1:
+        message = "rotate candidate batch retained duplicate payload"
+        raise InvalidAcceleratorWorkError(message)
+    return positions
 
 
 def _inverse_rotate(target: int) -> int:

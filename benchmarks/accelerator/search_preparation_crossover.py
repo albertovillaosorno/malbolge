@@ -56,7 +56,7 @@ import os
 from pathlib import Path
 from statistics import median
 from statistics import pstdev
-import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed interpreter and argv only.
 import sys
 from time import perf_counter_ns
 import tracemalloc
@@ -71,8 +71,10 @@ from accelerator.primitive_candidates import encode_rotate_candidate
 from accelerator.primitive_candidates import packed_primitive_validation_id
 from accelerator.primitive_candidates import prepared_primitive_validation_id
 from accelerator.work_ports import CandidateProposal
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
+from accelerator.work_ports import indexed_candidate_items_id
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
 from benchmarks.accelerator.search_workload import CUDA_BACKEND
 from benchmarks.accelerator.search_workload import SEED
@@ -102,8 +104,9 @@ WORD_BYTES: Final = 4
 COLD_CHILD_ARGUMENT_COUNT: Final = 2
 ORDINARY_VALIDATION_ID: Final = "u32le-broadword-domain-v1"
 PREPARED_VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
+CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
 MEMBERSHIP_INDEX_ID: Final = (
-    "identity-sorted-candidate-reference-binary-search-v1"
+    "u32-rotation-or-pair-or-reference-binary-search-v1"
 )
 LEGACY_MEMBERSHIP_INDEX_ID: Final = "copied-identity-payload-frozenset-v1"
 MISSING_LOGICAL_ID: Final = "membership-benchmark-missing-candidate"
@@ -246,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v2",
+        "benchmark_id": "rotate-target-preparation-crossover-v3",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -287,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
             "name": capability.device_name,
         },
         "proof": {
+            "candidate_items_id": _candidate_items_id(),
             "legacy_membership_index_id": LEGACY_MEMBERSHIP_INDEX_ID,
             "membership_index_id": _membership_index_id(),
             "ordinary_validation_id": _ordinary_validation_id(),
@@ -306,6 +310,7 @@ def _measure_size(size: int) -> ScaleMeasurement:
     warm_prepare = _warm_prepare_timing(cpu, workload, size)
     memory = _memory_measurement(cpu, workload)
     prepared = cpu.prepare(workload.request)
+    _require_indexed_candidate_items(prepared)
     proofs = validate_prepared_scale(cpu, prepared, size)
     membership = measure_membership_index_comparison(
         prepared.batch,
@@ -403,7 +408,7 @@ def _cold_prepare_timing(size: int) -> Timing:
     environment["PYTHONHASHSEED"] = "0"
     samples: list[int] = []
     for _ in range(SAMPLE_COUNT):
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed module argv, no shell.
             [sys.executable, "-m", MODULE_NAME, COLD_CHILD_FLAG, str(size)],
             cwd=REPOSITORY_ROOT,
             env=environment,
@@ -784,6 +789,14 @@ def _validate_result(result: SearchResult, workload: ScaleWorkload) -> None:
         raise RuntimeError(message)
 
 
+def _require_indexed_candidate_items(
+    prepared: PreparedEvaluatedSearch,
+) -> None:
+    if not isinstance(prepared.batch.items, IndexedCandidateWorkItems):
+        message = "rotate preparation did not retain indexed candidate items"
+        raise TypeError(message)
+
+
 def validate_prepared_scale(
     adapter: EvaluatedSearchExecutionAdapter,
     prepared: PreparedEvaluatedSearch,
@@ -900,6 +913,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _candidate_items_id() -> str:
+    observed = indexed_candidate_items_id()
+    if observed != CANDIDATE_ITEMS_ID:
+        message = "indexed candidate item storage identity drifted"
+        raise RuntimeError(message)
+    return observed
 
 
 def _membership_index_id() -> str:

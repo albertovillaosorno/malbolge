@@ -61,6 +61,7 @@ from accelerator.search_selection import SearchAdapterBinding
 from accelerator.search_selection import SearchSelection
 from accelerator.search_selection import resolve_search_execution
 from accelerator.work_ports import CandidateProposal
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
@@ -234,6 +235,31 @@ def test_problem_rejects_invalid_domain_and_encoding() -> None:
         "rotate target outside classic domain",
         lambda: RotateTargetProblem.decode_target(invalid_target),
     )
+
+
+def test_rotate_target_batch_uses_indexed_fixed_width_storage() -> None:
+    """Rotate candidate identity and payload remain packed until requested."""
+    request = _request(
+        RotateTargetProblem(target=ROTATE_ONE, candidates=(7, 1, 7, 4)),
+    )
+
+    batch = build_rotate_target_batch(request).validated()
+
+    assert isinstance(batch.items, IndexedCandidateWorkItems)
+    assert tuple(batch.items) == (
+        batch.items.item_at(0),
+        batch.items.item_at(1),
+        batch.items.item_at(2),
+    )
+    assert tuple(item.logical_id for item in batch.items) == (
+        "corpus-0",
+        "corpus-1",
+        "corpus-3",
+    )
+    observed = tuple(
+        int.from_bytes(item.payload, "little") for item in batch.items
+    )
+    assert observed == (7, 1, 4)
 
 
 def test_cpu_rotate_target_search_prunes_duplicates_and_finds_matches() -> None:

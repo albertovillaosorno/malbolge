@@ -47,12 +47,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class ExactDuplicatePartition:
-    """Stable first-representative partition for exact candidate bytes."""
+    """Stable first-representative partition for exact candidate values."""
 
     canonical_indices: tuple[int, ...]
     representative_indices: tuple[int, ...]
@@ -67,16 +68,16 @@ class ExactDuplicatePartition:
         return len(self.canonical_indices) - len(self.representative_indices)
 
 
-def prune_exact_duplicates(
-    candidates: tuple[bytes, ...],
+def prune_exact_duplicates[CandidateT: Hashable](
+    candidates: tuple[CandidateT, ...],
 ) -> ExactDuplicatePartition:
-    """Partition candidate bytes by exact equality and stable first occurrence.
+    """Partition candidate values by exact equality and first occurrence.
 
     Returns:
         Representative indices and representative mapping for every input.
 
     """
-    first_indices: dict[bytes, int] = {}
+    first_indices: dict[CandidateT, int] = {}
     representatives: list[int] = []
     canonical: list[int] = []
     for index, candidate in enumerate(candidates):

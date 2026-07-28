@@ -51,6 +51,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
 from operator import attrgetter
+from operator import itemgetter
+from struct import Struct
 from time import perf_counter_ns
 from typing import Protocol
 from typing import Self
@@ -58,6 +60,7 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchResult
@@ -113,8 +116,10 @@ type SearchStrategyKey = tuple[
     SearchSelectionStateCount | None,
 ]
 PREPARED_MEMBERSHIP_INDEX_ID = (
-    "identity-sorted-candidate-reference-binary-search-v1"
+    "u32-rotation-or-pair-or-reference-binary-search-v1"
 )
+_INDEXED_MEMBERSHIP_PAIR = Struct("<II")
+_INDEXED_MEMBERSHIP_PAIR_BYTES = _INDEXED_MEMBERSHIP_PAIR.size
 
 _PREPARED_PROOF = object()
 _PREPARED_MEMBERSHIP_PROOF = object()
@@ -134,26 +139,39 @@ def prepared_membership_index_id() -> str:
 
 @dataclass(frozen=True, slots=True)
 class PreparedCandidateMembershipIndex:
-    """Immutable membership references for one candidate batch."""
+    """Immutable exact membership index for one candidate batch."""
 
     batch: CandidateEvaluationBatch
     items_by_identity: tuple[CandidateWorkItem, ...]
+    indexed_pairs_u32le: bytes
     _proof: object = field(repr=False)
 
     @classmethod
     def prepare(cls, batch: CandidateEvaluationBatch) -> Self:
-        """Build an exact proof-bound index from one validated batch.
+        """Build one proof-bound index from a validated batch.
 
         Returns:
-            Identity-sorted references to the original candidate items.
+            Packed u32 index/position pairs or sorted ordinary item references.
 
         """
         validated = batch.validated()
+        if isinstance(validated.items, IndexedCandidateWorkItems):
+            return cls(
+                batch=validated,
+                items_by_identity=(),
+                indexed_pairs_u32le=(
+                    b""
+                    if validated.items.logical_rotation_pivot is not None
+                    else _indexed_membership_pairs(validated.items)
+                ),
+                _proof=_PREPARED_MEMBERSHIP_PROOF,
+            )
         return cls(
             batch=validated,
             items_by_identity=tuple(
                 sorted(validated.items, key=attrgetter("logical_id"))
             ),
+            indexed_pairs_u32le=b"",
             _proof=_PREPARED_MEMBERSHIP_PROOF,
         )
 
@@ -161,11 +179,11 @@ class PreparedCandidateMembershipIndex:
         """Return exact indexed candidate count for the original batch.
 
         Returns:
-            Number of proof-bound candidate references.
+            Number of proof-bound candidate references or packed pairs.
 
         """
-        _ = self._validated_for(batch)
-        return len(self.items_by_identity)
+        self._validate_for(batch)
+        return len(batch.items)
 
     def contains(
         self,
@@ -178,28 +196,36 @@ class PreparedCandidateMembershipIndex:
             True only for byte-identical identity and payload membership.
 
         """
-        items = self._validated_for(batch)
-        lower = 0
-        upper = len(items)
-        while lower < upper:
-            middle = (lower + upper) // 2
-            item = items[middle]
-            if item.logical_id < proposal.logical_id:
-                lower = middle + 1
-            else:
-                upper = middle
-        if lower == len(items):
-            return False
-        item = items[lower]
-        return (
-            item.logical_id == proposal.logical_id
-            and item.payload == proposal.payload
-        )
+        self._validate_for(batch)
+        if isinstance(batch.items, IndexedCandidateWorkItems):
+            return self._contains_indexed(batch, proposal)
+        return _contains_sorted_items(self.items_by_identity, proposal)
 
-    def _validated_for(
+    def _contains_indexed(
         self,
         batch: CandidateEvaluationBatch,
-    ) -> tuple[CandidateWorkItem, ...]:
+        proposal: CandidateProposal,
+    ) -> bool:
+        items = batch.items
+        if not isinstance(items, IndexedCandidateWorkItems):
+            message = "packed membership index requires indexed candidate items"
+            raise InvalidAcceleratorWorkError(message)
+        logical_index = items.parse_logical_id(proposal.logical_id)
+        if logical_index is None:
+            return False
+        if items.logical_rotation_pivot is not None:
+            position = _find_rotated_index_position(items, logical_index)
+        else:
+            position = _find_indexed_membership_position(
+                self.indexed_pairs_u32le,
+                logical_index,
+            )
+        return position is not None and items.payload_matches(
+            position,
+            proposal.payload,
+        )
+
+    def _validate_for(self, batch: CandidateEvaluationBatch) -> None:
         if self._proof is not _PREPARED_MEMBERSHIP_PROOF:
             message = "prepared candidate membership index is forged"
             raise InvalidAcceleratorWorkError(message)
@@ -208,10 +234,7 @@ class PreparedCandidateMembershipIndex:
                 "prepared candidate membership index changed candidate batch"
             )
             raise InvalidAcceleratorWorkError(message)
-        if len(self.items_by_identity) != len(batch.items):
-            message = "prepared membership index does not cover candidate batch"
-            raise InvalidAcceleratorWorkError(message)
-        return self.items_by_identity
+        _validate_membership_representation(self, batch)
 
 
 @dataclass(frozen=True, slots=True)
@@ -834,16 +857,161 @@ def _validate_batch(
     return validated
 
 
+def _contains_sorted_items(
+    items: tuple[CandidateWorkItem, ...],
+    proposal: CandidateProposal,
+) -> bool:
+    lower = 0
+    upper = len(items)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if items[middle].logical_id < proposal.logical_id:
+            lower = middle + 1
+        else:
+            upper = middle
+    if lower == len(items):
+        return False
+    item = items[lower]
+    return (
+        item.logical_id == proposal.logical_id
+        and item.payload == proposal.payload
+    )
+
+
+def _find_rotated_index_position(
+    items: IndexedCandidateWorkItems,
+    logical_index: int,
+) -> int | None:
+    pivot = items.logical_rotation_pivot
+    if pivot is None:
+        message = "rotated index search requires a validated rotation pivot"
+        raise InvalidAcceleratorWorkError(message)
+    position = _binary_search_logical_index(
+        items,
+        logical_index,
+        lower=0,
+        upper=pivot,
+    )
+    if position is not None:
+        return position
+    return _binary_search_logical_index(
+        items,
+        logical_index,
+        lower=pivot,
+        upper=len(items),
+    )
+
+
+def _binary_search_logical_index(
+    items: IndexedCandidateWorkItems,
+    logical_index: int,
+    *,
+    lower: int,
+    upper: int,
+) -> int | None:
+    while lower < upper:
+        middle = (lower + upper) // 2
+        observed = items.logical_index_at(middle)
+        if observed < logical_index:
+            lower = middle + 1
+        else:
+            upper = middle
+    if lower == len(items) or items.logical_index_at(lower) != logical_index:
+        return None
+    return lower
+
+
+def _indexed_membership_pairs(items: IndexedCandidateWorkItems) -> bytes:
+    ordered = sorted(
+        (
+            (items.logical_index_at(position), position)
+            for position in range(len(items))
+        ),
+        key=itemgetter(0),
+    )
+    packed = bytearray(len(ordered) * _INDEXED_MEMBERSHIP_PAIR_BYTES)
+    for pair_index, pair in enumerate(ordered):
+        _INDEXED_MEMBERSHIP_PAIR.pack_into(
+            packed,
+            pair_index * _INDEXED_MEMBERSHIP_PAIR_BYTES,
+            *pair,
+        )
+    return bytes(packed)
+
+
+def _find_indexed_membership_position(
+    pairs_u32le: bytes,
+    logical_index: int,
+) -> int | None:
+    lower = 0
+    upper = len(pairs_u32le) // _INDEXED_MEMBERSHIP_PAIR_BYTES
+    while lower < upper:
+        middle = (lower + upper) // 2
+        observed, _ = _indexed_membership_pair_at(pairs_u32le, middle)
+        if observed < logical_index:
+            lower = middle + 1
+        else:
+            upper = middle
+    if lower == len(pairs_u32le) // _INDEXED_MEMBERSHIP_PAIR_BYTES:
+        return None
+    observed, position = _indexed_membership_pair_at(pairs_u32le, lower)
+    return position if observed == logical_index else None
+
+
+def _indexed_membership_pair_at(
+    pairs_u32le: bytes,
+    index: int,
+) -> tuple[int, int]:
+    return _INDEXED_MEMBERSHIP_PAIR.unpack_from(
+        pairs_u32le,
+        index * _INDEXED_MEMBERSHIP_PAIR_BYTES,
+    )
+
+
+def _validate_membership_representation(
+    index: PreparedCandidateMembershipIndex,
+    batch: CandidateEvaluationBatch,
+) -> None:
+    if isinstance(batch.items, IndexedCandidateWorkItems):
+        _validate_indexed_membership_representation(index, batch.items)
+        return
+    _validate_ordinary_membership_representation(index, len(batch.items))
+
+
+def _validate_indexed_membership_representation(
+    index: PreparedCandidateMembershipIndex,
+    items: IndexedCandidateWorkItems,
+) -> None:
+    if index.items_by_identity:
+        message = "indexed membership retained ordinary candidate references"
+        raise InvalidAcceleratorWorkError(message)
+    if items.logical_rotation_pivot is not None:
+        if index.indexed_pairs_u32le:
+            message = "rotated membership retained redundant packed pairs"
+            raise InvalidAcceleratorWorkError(message)
+        return
+    expected = len(items) * _INDEXED_MEMBERSHIP_PAIR_BYTES
+    if len(index.indexed_pairs_u32le) != expected:
+        message = "packed membership index does not cover candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validate_ordinary_membership_representation(
+    index: PreparedCandidateMembershipIndex,
+    count: int,
+) -> None:
+    if index.indexed_pairs_u32le:
+        message = "ordinary membership retained packed index pairs"
+        raise InvalidAcceleratorWorkError(message)
+    if len(index.items_by_identity) != count:
+        message = "prepared membership index does not cover candidate batch"
+        raise InvalidAcceleratorWorkError(message)
+
+
 def _candidate_membership_index(
     batch: CandidateEvaluationBatch,
 ) -> PreparedCandidateMembershipIndex:
-    return PreparedCandidateMembershipIndex(
-        batch=batch,
-        items_by_identity=tuple(
-            sorted(batch.items, key=attrgetter("logical_id"))
-        ),
-        _proof=_PREPARED_MEMBERSHIP_PROOF,
-    )
+    return PreparedCandidateMembershipIndex.prepare(batch)
 
 
 def _validate_proposal_membership(

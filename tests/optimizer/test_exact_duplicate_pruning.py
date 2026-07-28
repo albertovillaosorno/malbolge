@@ -122,3 +122,11 @@ def test_byte_distinct_candidates_can_be_distinguished_by_verification() -> (
 
     assert accepts(accepted, None)
     assert not accepts(rejected, None)
+
+
+def test_exact_duplicate_pruning_supports_injective_u32_values() -> None:
+    """Exact integer equality retains the same stable partition contract."""
+    pruning = prune_exact_duplicates((7, 1, 7, 4, 1))
+
+    assert pruning.representative_indices == (0, 1, 3)
+    assert pruning.canonical_indices == (0, 1, 0, 3, 1)

@@ -64,6 +64,7 @@ from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.work_ports import CandidateEvaluationAdapter
 from accelerator.work_ports import CandidateEvaluationResult
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import PackedCandidateEvidence
@@ -698,6 +699,8 @@ def _decode_batch(
     batch: CandidateEvaluationBatch,
     kind: PrimitiveKind,
 ) -> _DecodedBatch:
+    if isinstance(batch.items, IndexedCandidateWorkItems):
+        return _decode_indexed_batch(batch.items, kind)
     data: list[int] = []
     accumulators: list[int] = []
     for item in batch.items:
@@ -710,6 +713,50 @@ def _decode_batch(
     return _DecodedBatch(
         accumulators=tuple(accumulators),
         data=tuple(data),
+    )
+
+
+def _decode_indexed_batch(
+    items: IndexedCandidateWorkItems,
+    kind: PrimitiveKind,
+) -> _DecodedBatch:
+    if kind is PrimitiveKind.ROTATE:
+        if items.payload_width != _WORD_BYTES:
+            message = (
+                "rotate candidate payload must contain exactly one u32 word"
+            )
+            raise InvalidAcceleratorWorkError(message)
+        rotate_data = tuple(
+            value for (value,) in _iter_native_u32(items.payloads)
+        )
+        for value in rotate_data:
+            _validate_word(value)
+        return _DecodedBatch(accumulators=(), data=rotate_data)
+    data: list[int] = []
+    accumulators: list[int] = []
+    for index in range(len(items)):
+        word, accumulator = _decode_crazy(items.payload_at(index))
+        data.append(word)
+        accumulators.append(accumulator)
+    return _DecodedBatch(
+        accumulators=tuple(accumulators),
+        data=tuple(data),
+    )
+
+
+def _iter_native_u32(payloads: bytes) -> Iterator[tuple[int]]:
+    if sys.byteorder == _LITTLE_ENDIAN:
+        yield from (
+            (value,) for value in memoryview(payloads).cast(_NATIVE_WORD_FORMAT)
+        )
+        return
+    yield from (
+        (
+            int.from_bytes(
+                payloads[offset : offset + _WORD_BYTES], _LITTLE_ENDIAN
+            ),
+        )
+        for offset in range(0, len(payloads), _WORD_BYTES)
     )
 
 

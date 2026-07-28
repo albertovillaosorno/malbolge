@@ -63,6 +63,7 @@ from accelerator.work_ports import CandidateEvaluationResult
 from accelerator.work_ports import CandidateEvidence
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import PackedCandidateEvidence
@@ -77,10 +78,17 @@ from accelerator.work_ports import VerificationHint
 from accelerator.work_ports import admit_search_result
 from accelerator.work_ports import evaluate_candidates
 from accelerator.work_ports import execute_search
+from accelerator.work_ports import indexed_candidate_items_id
 from accelerator.work_ports import request_verification_hints
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+INDEXED_FIRST_LOGICAL_INDEX = 7
+EXPECTED_INDEXED_CANDIDATE_ITEMS_ID = (
+    "u32-index-fixed-width-payloads-rotation-v1"
+)
+INDEXED_ITEM_COUNT = 2
 
 TEST_CAPABILITY = AcceleratorCapability(
     backend_id="test-optional",
@@ -200,6 +208,100 @@ class _TrustedVerifier(TrustedCandidateVerifier):
     ) -> bool:
         expected_hint = candidate.payload[::-1]
         return hint is not None and hint.payload == expected_hint
+
+
+def test_indexed_candidate_items_have_stable_identity() -> None:
+    """Benchmark provenance names the exact candidate storage algorithm."""
+    assert indexed_candidate_items_id() == EXPECTED_INDEXED_CANDIDATE_ITEMS_ID
+
+
+def test_indexed_candidate_items_preserve_request_order_and_identity() -> None:
+    """Packed indexes and payloads materialize the exact candidate surface."""
+    items = IndexedCandidateWorkItems(
+        logical_id_prefix="corpus-",
+        logical_indices_u32le=(7).to_bytes(4, "little")
+        + (2).to_bytes(4, "little"),
+        payload_width=2,
+        payloads=b"AABB",
+    )
+
+    assert items.validated() is items
+    assert len(items) == INDEXED_ITEM_COUNT
+    assert tuple(items) == (
+        CandidateWorkItem(logical_id="corpus-7", payload=b"AA"),
+        CandidateWorkItem(logical_id="corpus-2", payload=b"BB"),
+    )
+    assert items[-1] == CandidateWorkItem(
+        logical_id="corpus-2",
+        payload=b"BB",
+    )
+    assert items[:1] == (
+        CandidateWorkItem(logical_id="corpus-7", payload=b"AA"),
+    )
+    assert items.parse_logical_id("corpus-7") == INDEXED_FIRST_LOGICAL_INDEX
+    assert items.parse_logical_id("corpus-07") is None
+    assert items.parse_logical_id("other-7") is None
+    assert items.payload_matches(1, b"BB")
+    assert not items.payload_matches(1, b"B")
+
+
+def test_indexed_candidate_items_reject_malformed_storage() -> None:
+    """Indexed item shape and logical uniqueness fail closed."""
+    cases = (
+        (
+            IndexedCandidateWorkItems(
+                logical_id_prefix="",
+                logical_indices_u32le=b"",
+                payload_width=1,
+                payloads=b"",
+            ),
+            "candidate logical ID prefix must not be empty",
+        ),
+        (
+            IndexedCandidateWorkItems(
+                logical_id_prefix="candidate-",
+                logical_indices_u32le=b"bad",
+                payload_width=1,
+                payloads=b"",
+            ),
+            "logical indexes must contain complete u32s",
+        ),
+        (
+            IndexedCandidateWorkItems(
+                logical_id_prefix="candidate-",
+                logical_indices_u32le=(1).to_bytes(4, "little"),
+                payload_width=2,
+                payloads=b"A",
+            ),
+            "payload size does not match logical indexes",
+        ),
+        (
+            IndexedCandidateWorkItems(
+                logical_id_prefix="candidate-",
+                logical_indices_u32le=(1).to_bytes(4, "little") * 2,
+                payload_width=1,
+                payloads=b"AB",
+            ),
+            "duplicate candidate logical ID",
+        ),
+        (
+            IndexedCandidateWorkItems(
+                logical_id_prefix="candidate-",
+                logical_indices_u32le=(1).to_bytes(4, "little")
+                + (2).to_bytes(4, "little"),
+                payload_width=1,
+                payloads=b"AB",
+                logical_rotation_pivot=1,
+            ),
+            "rotation pivot does not match logical order",
+        ),
+    )
+    for items, message in cases:
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            message,
+            items.validated,
+        )
 
 
 def test_candidate_evaluation_falls_back_to_cpu_reference() -> None:

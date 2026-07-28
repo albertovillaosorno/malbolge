@@ -313,9 +313,10 @@ Run the active preparation, membership-index, and reuse-crossover benchmark with
 15 warm-process preparations after the global rotate table is built, five
 incremental `tracemalloc` memory observations, 15 ordinary CUDA calls, 15 fresh
 resident-build calls, and 15 resident reuses after one build and one warmup. Version
-2 additionally retains 15 component preparations and five component memory samples
-for the compact index and copied-tuple `frozenset`, plus 15 exact hit and miss timing
-blocks of 4,096 lookups per index.
+3 retains 15 component preparations and five component memory samples for the active
+index and copied-tuple `frozenset`, plus 15 exact hit and miss timing blocks of 4,096
+lookups per index. It also requires the indexed-candidate storage identity and active
+membership identity in the proof record.
 Workload construction, CUDA/NVRTC adapter setup, and trusted result admission are
 outside timed intervals. Fresh-build timing includes resident allocation/upload and
 one exact search. Memory tracing excludes the prebuilt workload, global rotate
@@ -344,5 +345,20 @@ prepared state falls from 16.063/19.040 MiB retained/peak to 10.910/14.080 MiB.
 Compact hit/miss lookup is 2.625/2.785 microseconds versus 0.265/0.201 microseconds,
 9.898x/13.856x slower. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1.
 The result promotes compact membership for scale memory/preparation while retaining
-the lookup regression; validated candidate-batch/item layout is the next measured
-memory boundary.
+the lookup regression. This is the retained version-2 baseline.
+
+The next slice is now active. Rotate-target batch construction uses proof-carrying
+`IndexedCandidateWorkItems` under
+`u32-index-fixed-width-payloads-rotation-v1`: original u32 logical indexes and
+fixed-width payloads remain in immutable bytes, while IDs and item objects
+materialize only at consumer boundaries. Exact duplicate pruning now admits generic
+hashable exact equality, so injective u32 encoding does not create temporary payload
+objects before pruning. A validated rotation pivot lets
+`u32-rotation-or-pair-or-reference-binary-search-v1` search two ordered regions
+without retaining a sorted reference or pair array; arbitrary indexed batches and
+ordinary tuple batches retain exact pair/reference fallbacks. Duplicate or
+out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged/cross-batch
+proofs, and payload substitution fail closed. Crossover protocol v3 records both
+storage identities. Clean post-commit memory, preparation, lookup, and crossover
+evidence is pending; the retained prepared primitive integer tuple is the next
+candidate only after this result is measured.

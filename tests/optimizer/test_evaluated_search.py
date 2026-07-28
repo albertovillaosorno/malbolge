@@ -60,8 +60,10 @@ from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
+from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
+from accelerator.work_ports import indexed_candidate_items_from_unique_u32
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,7 +76,7 @@ EVALUATOR_ID = "identity-evaluator-v1"
 CPU_BACKEND = "cpu-reference"
 TWO_ITEM_COUNT = 2
 EXPECTED_MEMBERSHIP_INDEX_ID = (
-    "identity-sorted-candidate-reference-binary-search-v1"
+    "u32-rotation-or-pair-or-reference-binary-search-v1"
 )
 
 
@@ -511,12 +513,77 @@ def test_prepared_membership_index_matches_exact_identity_and_payload() -> None:
     )
 
 
+def test_rotated_indexed_membership_reuses_candidate_index_bytes() -> None:
+    """One rotation pivot replaces a duplicated sorted membership index."""
+    items = indexed_candidate_items_from_unique_u32(
+        logical_id_prefix="corpus-",
+        logical_indices=(7, 9, 1, 3),
+        payload_width=1,
+        payloads=b"ABCD",
+    )
+    batch = CandidateEvaluationBatch(
+        evaluator_id=EVALUATOR_ID,
+        items=items,
+    ).validated()
+
+    index = PreparedCandidateMembershipIndex.prepare(batch)
+
+    assert items.logical_rotation_pivot == TWO_ITEM_COUNT
+    assert not index.indexed_pairs_u32le
+    assert index.count_for(batch) == len(items)
+    assert index.contains(
+        batch,
+        CandidateProposal(logical_id="corpus-7", payload=b"A"),
+    )
+    assert index.contains(
+        batch,
+        CandidateProposal(logical_id="corpus-1", payload=b"C"),
+    )
+    assert not index.contains(
+        batch,
+        CandidateProposal(logical_id="corpus-1", payload=b"X"),
+    )
+    assert not index.contains(
+        batch,
+        CandidateProposal(logical_id="corpus-2", payload=b"C"),
+    )
+
+
+def test_unordered_indexed_membership_uses_packed_pair_fallback() -> None:
+    """Generic indexed batches retain exact lookup without rotation proof."""
+    items = IndexedCandidateWorkItems(
+        logical_id_prefix="candidate-",
+        logical_indices_u32le=(7).to_bytes(4, "little")
+        + (2).to_bytes(4, "little")
+        + (9).to_bytes(4, "little"),
+        payload_width=1,
+        payloads=b"ABC",
+    )
+    batch = CandidateEvaluationBatch(
+        evaluator_id=EVALUATOR_ID,
+        items=items,
+    ).validated()
+
+    index = PreparedCandidateMembershipIndex.prepare(batch)
+
+    assert len(index.indexed_pairs_u32le) == len(items) * 8
+    assert index.contains(
+        batch,
+        CandidateProposal(logical_id="candidate-2", payload=b"B"),
+    )
+    assert not index.contains(
+        batch,
+        CandidateProposal(logical_id="candidate-2", payload=b"A"),
+    )
+
+
 def test_prepared_membership_index_rejects_forged_proof() -> None:
     """Raw construction cannot forge prepared membership authority."""
     batch = _one_item(_request(budget=1)).validated()
     forged = PreparedCandidateMembershipIndex(
         batch=batch,
-        items_by_identity=batch.items,
+        items_by_identity=tuple(batch.items),
+        indexed_pairs_u32le=b"",
         _proof=object(),
     )
 
