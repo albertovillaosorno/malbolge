@@ -250,3 +250,12 @@ under `evidence/2026-07-28-cpu-rotate-table-search-rtx4060/` and
 reaches 3.313 ms, a 4.243x improvement, and CPU backend evaluation reaches
 2.906 ms, a 4.540x improvement. CPU prepared is 1.440x faster than same-run CUDA;
 CPU ordinary remains effectively unchanged and CUDA phases move only about 1.8%.
+
+The active prepared CUDA route now emits `PackedPrimitiveResult` directly from the
+resident host output buffer. The candidate bridge validates backend capability,
+exact byte count, and every packed u32 domain value before reusing those bytes as
+candidate evidence. Tuple results remain valid for CPU, ordinary CUDA, and test
+adapters. Both benchmark programs now require
+`cuda_prepared_session.packed_evaluations=16` together with the resident,
+CPU-table, membership, and selector proofs. A post-commit rerun is required before
+claiming the exploratory CUDA reduction.

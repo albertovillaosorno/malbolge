@@ -131,7 +131,11 @@ batches.
   median is 4.929 ms (1.254x better), and backend evaluation improves 1.330x to
   3.940 ms. Prepared CPU now has a scalar-derived full-domain lookup table with
   explicit counters. Retained CPU/CUDA prepared medians are 3.313/4.769 ms, making
-  CPU 1.440x faster; CUDA backend changes only 1.018x to 3.868 ms. CUDA host
-  materialization/packing and synthesis/search remain open.
+  CPU 1.440x faster; CUDA backend changes only 1.018x to 3.868 ms. Prepared CUDA
+  now returns canonical packed u32le bytes directly after D-to-H, eliminating tuple
+  materialization/repacking while the neutral bridge still validates capability,
+  count, and every word domain. Benchmarks require 16 packed evaluations.
+  Post-commit evidence is pending; packed-domain validation and synthesis/search
+  remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

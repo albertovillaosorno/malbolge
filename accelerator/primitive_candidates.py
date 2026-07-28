@@ -12,6 +12,7 @@ from typing import final
 from typing import override
 
 from accelerator.exact_primitives import MAX_WORD
+from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import prepare_primitive_batch
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.exact_primitives import PreparedPrimitiveBatch
-    from accelerator.exact_primitives import PrimitiveResult
+    from accelerator.exact_primitives import PrimitiveExecutionResult
     from accelerator.work_ports import CandidateEvaluationBatch
 
 CRAZY_EVALUATOR_ID = "classic-crazy-u32le-v1"
@@ -370,12 +371,14 @@ def _decode_rotate(payload: bytes) -> int:
 
 def _encode_result(
     batch: CandidateEvaluationBatch,
-    primitive: PrimitiveResult,
+    primitive: PrimitiveExecutionResult,
     capability: AcceleratorCapability,
 ) -> CandidateEvaluationResult:
     if primitive.capability != capability:
         message = "primitive backend changed capability identity"
         raise InvalidAcceleratorResultError(message)
+    if isinstance(primitive, PackedPrimitiveResult):
+        return _encode_packed_result(batch, primitive, capability)
     if len(primitive.values) != len(batch.items):
         message = (
             "primitive backend result count does not match candidate batch"
@@ -390,6 +393,50 @@ def _encode_result(
             payloads=_pack_words(primitive.values),
         ),
     )
+
+
+def _encode_packed_result(
+    batch: CandidateEvaluationBatch,
+    primitive: PackedPrimitiveResult,
+    capability: AcceleratorCapability,
+) -> CandidateEvaluationResult:
+    if type(primitive.words_u32le) is not bytes:
+        message = "packed primitive result must use immutable bytes"
+        raise InvalidAcceleratorResultError(message)
+    expected_bytes = len(batch.items) * _WORD_BYTES
+    if len(primitive.words_u32le) != expected_bytes:
+        message = "packed primitive result count does not match candidate batch"
+        raise InvalidAcceleratorResultError(message)
+    _validate_packed_primitive_words(primitive.words_u32le)
+    return CandidateEvaluationResult(
+        capability=capability,
+        evaluator_id=batch.evaluator_id,
+        packed=PackedCandidateEvidence(
+            payload_width=_WORD_BYTES,
+            payloads=primitive.words_u32le,
+        ),
+    )
+
+
+def _validate_packed_primitive_words(payloads: bytes) -> None:
+    if not payloads:
+        return
+    if sys.byteorder == _LITTLE_ENDIAN:
+        maximum = max(
+            memoryview(payloads).cast(_NATIVE_WORD_FORMAT),
+            default=0,
+        )
+    else:
+        maximum = max(
+            int.from_bytes(
+                payloads[offset : offset + _WORD_BYTES],
+                _LITTLE_ENDIAN,
+            )
+            for offset in range(0, len(payloads), _WORD_BYTES)
+        )
+    if maximum > MAX_WORD:
+        message = f"primitive backend result outside classic domain: {maximum}"
+        raise InvalidAcceleratorResultError(message)
 
 
 def _validate_primitive_values(values: tuple[int, ...]) -> None:

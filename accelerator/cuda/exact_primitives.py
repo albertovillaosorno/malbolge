@@ -17,12 +17,14 @@ from accelerator.cuda.runtime import CudaRuntime
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import ExactPrimitiveAdapter
+from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
+    from accelerator.exact_primitives import PrimitiveExecutionResult
 
 KERNEL_SOURCE: Final = r"""
 static __device__ unsigned int crazy_trit(
@@ -83,6 +85,7 @@ class CudaPreparedPrimitiveStats:
 
     builds: int
     evaluations: int
+    packed_evaluations: int
     resident_count: int
     resident_kind: PrimitiveKind | None
     reuses: int
@@ -172,10 +175,10 @@ class _CudaPreparedPrimitiveSession:
         runtime: CudaRuntime,
         crazy: ctypes.c_void_p,
         rotate: ctypes.c_void_p,
-    ) -> tuple[int, ...]:
+    ) -> bytes:
         count = len(self.batch.data)
         if count == 0:
-            return ()
+            return b""
         if self.device_data is None or self.device_output is None:
             message = "prepared CUDA primitive session has missing buffers"
             raise AcceleratorExecutionError(message)
@@ -199,7 +202,7 @@ class _CudaPreparedPrimitiveSession:
                 count,
             )
         runtime.copy_from_device(self.host_output, self.device_output)
-        return _host_values(self.host_output)
+        return bytes(self.host_output)
 
 
 @final
@@ -211,6 +214,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _module: ctypes.c_void_p
     _prepared_builds: int
     _prepared_evaluations: int
+    _prepared_packed_evaluations: int
     _prepared_reuses: int
     _prepared_session: _CudaPreparedPrimitiveSession | None
     _rotate: ctypes.c_void_p
@@ -242,6 +246,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._module = module
         self._prepared_builds = 0
         self._prepared_evaluations = 0
+        self._prepared_packed_evaluations = 0
         self._prepared_reuses = 0
         self._prepared_session = None
         self._rotate = rotate
@@ -312,7 +317,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     def evaluate_prepared(
         self,
         prepared: PreparedPrimitiveBatch,
-    ) -> PrimitiveResult:
+    ) -> PrimitiveExecutionResult:
         """Evaluate immutable prepared input through one resident CUDA session.
 
         Returns:
@@ -325,7 +330,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._ensure_open()
         session = self._prepared_session_for(prepared)
         try:
-            values = session.evaluate(
+            words_u32le = session.evaluate(
                 self._runtime,
                 self._crazy,
                 self._rotate,
@@ -334,7 +339,11 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             self._release_prepared_session()
             raise
         self._prepared_evaluations += 1
-        return PrimitiveResult(capability=self._capability, values=values)
+        self._prepared_packed_evaluations += 1
+        return PackedPrimitiveResult(
+            capability=self._capability,
+            words_u32le=words_u32le,
+        )
 
     def prepared_stats(self) -> CudaPreparedPrimitiveStats:
         """Return resident prepared-session build and reuse evidence.
@@ -347,6 +356,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         return CudaPreparedPrimitiveStats(
             builds=self._prepared_builds,
             evaluations=self._prepared_evaluations,
+            packed_evaluations=self._prepared_packed_evaluations,
             resident_count=(0 if session is None else len(session.batch.data)),
             resident_kind=(None if session is None else session.batch.kind),
             reuses=self._prepared_reuses,

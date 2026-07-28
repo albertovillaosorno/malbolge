@@ -225,7 +225,13 @@ fails explicitly without changing correctness rules.
   table with explicit benchmark counters. Retained CPU/CUDA prepared medians are
   3.313/4.769 ms, so CPU prepared is 1.440x faster in the same run. CUDA backend
   evaluation changes only 1.018x to 3.868 ms, so no CUDA-table speedup is claimed.
-  Host materialization/packing is the next CUDA backend subphase.
+  Prepared CUDA now returns canonical packed u32le output directly from the resident
+  host buffer after D-to-H transfer. This removes tuple materialization and array
+  repacking, but the neutral candidate bridge still validates capability, exact
+  byte count, and every output word before acceptance. Ordinary CUDA remains
+  tuple-based. `packed_evaluations` makes route use observable, and benchmarks
+  require 16 packed evaluations. Post-commit evidence is pending; packed-domain
+  validation is the next CUDA backend subphase.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

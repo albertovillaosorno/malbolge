@@ -123,6 +123,17 @@ class PrimitiveResult:
     values: tuple[int, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class PackedPrimitiveResult:
+    """Canonical little-endian u32 primitive words from one backend."""
+
+    capability: AcceleratorCapability
+    words_u32le: bytes
+
+
+type PrimitiveExecutionResult = PrimitiveResult | PackedPrimitiveResult
+
+
 class ExactPrimitiveAdapter(Protocol):
     """Replaceable exact primitive evaluation port."""
 
@@ -135,7 +146,7 @@ class ExactPrimitiveAdapter(Protocol):
         """
         ...
 
-    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveExecutionResult:
         """Evaluate one batch with one-shot validation and execution.
 
         Returns:
@@ -147,7 +158,7 @@ class ExactPrimitiveAdapter(Protocol):
     def evaluate_prepared(
         self,
         prepared: PreparedPrimitiveBatch,
-    ) -> PrimitiveResult:
+    ) -> PrimitiveExecutionResult:
         """Evaluate repository-prepared immutable input.
 
         Returns:

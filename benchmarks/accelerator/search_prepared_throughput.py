@@ -240,12 +240,14 @@ def _validate_prepared_stats(stats: CudaPreparedPrimitiveStats) -> None:
     observed = (
         stats.builds,
         stats.evaluations,
+        stats.packed_evaluations,
         stats.resident_count,
         stats.resident_kind,
         stats.reuses,
     )
     expected = (
         1,
+        expected_evaluations,
         expected_evaluations,
         CORPUS_SIZE,
         PrimitiveKind.ROTATE,

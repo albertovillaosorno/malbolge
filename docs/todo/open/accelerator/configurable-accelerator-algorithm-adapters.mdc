@@ -130,8 +130,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   scalar, exhaustive equality covers the full domain, and benchmarks require
   16 evaluations/full cardinality. Retained CPU prepared median is 3.313 ms
   (4.243x better), and CPU backend evaluation improves 4.540x to 2.906 ms. CPU is
-  1.440x faster than same-run CUDA. CPU result validation/packing and CUDA host
-  materialization/packing are next. Synthesis/guided
+  1.440x faster than same-run CUDA. The neutral result contract now accepts
+  canonical packed u32le bytes alongside tuples. Prepared CUDA returns resident host
+  output directly; the bridge still validates capability, exact count, and every
+  word domain. Ordinary CUDA/CPU remain tuple-based, and benchmarks require
+  16 packed evaluations. Post-commit evidence is pending. CPU result
+  validation/packing and packed-domain validation are next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

@@ -808,8 +808,14 @@ matches every prepared result, and both benchmarks require 16 prepared evaluatio
 plus all 59,049 table entries. Retained CPU prepared median falls from 14.058 to
 3.313 ms (4.243x), while CPU backend evaluation falls from 13.190 to 2.906 ms
 (4.540x). CPU ordinary remains effectively unchanged at 0.9996x. Same-run CPU
-prepared is 1.440x faster than CUDA prepared. CPU result validation/packing and CUDA
-host materialization/packing are the next measured backend subphases.
+prepared is 1.440x faster than CUDA prepared. `PackedPrimitiveResult` now adds a
+canonical u32le byte representation alongside tuple results. CUDA prepared returns
+the resident host buffer directly as packed bytes; the neutral bridge still checks
+capability, exact byte count, and every word's classic-domain bound before evidence
+acceptance. Ordinary CUDA and CPU tuple results remain unchanged. Benchmarks require
+16 packed CUDA evaluations plus all existing proofs. Post-commit performance
+evidence is pending. CPU result validation/packing and packed-domain validation are
+the next measured backend subphases.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -891,8 +897,11 @@ median falls from 6.182 to 4.929 ms (1.254x), and backend evaluation from 5.239 
 while ordinary CPU remains scalar; benchmarks expose table/evaluation proof.
 Retained CPU/CUDA prepared medians are 3.313/4.769 ms, making CPU prepared 1.440x
 faster in the same run. CUDA backend evaluation changes only 1.018x to 3.868 ms and
-remains a contextual control. CUDA host materialization/packing remains the next
-measured CUDA subphase.
+remains a contextual control. CUDA prepared now returns canonical packed u32le
+words directly after D-to-H transfer, eliminating tuple materialization and
+repacking while retaining full bridge validation. Benchmarks require 16 packed
+prepared evaluations. Post-commit performance evidence is pending; packed-domain
+validation is the next measured CUDA subphase.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

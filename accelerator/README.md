@@ -149,8 +149,14 @@ scalar, the exhaustive test compares every classic word, and benchmarks require
 `benchmarks/accelerator/evidence/2026-07-28-cpu-rotate-table-search-rtx4060/`
 records 3.313 ms CPU prepared, 4.243x faster than extrema validation and 1.440x
 faster than same-run CUDA. The phase sibling lowers CPU backend evaluation 4.540x
-to 2.906 ms while CUDA changes only 1.018x. CPU result validation/packing and CUDA
-host materialization/packing are the next backend subphases.
+to 2.906 ms while CUDA changes only 1.018x. `PackedPrimitiveResult` now carries
+canonical little-endian u32 words alongside tuple results. Prepared CUDA returns the
+resident host buffer as bytes after D-to-H transfer; the candidate bridge validates
+capability, exact byte count, and every classic-domain word before forwarding those
+same bytes. Ordinary CUDA and CPU tuple routes remain unchanged. Benchmarks require
+`packed_evaluations=16` with the existing proofs. Post-commit evidence is pending;
+CPU result validation/packing and packed-domain validation are the next backend
+subphases.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

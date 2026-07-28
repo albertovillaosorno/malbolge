@@ -123,7 +123,12 @@ directly on CUDA APIs.
   equality and benchmark counters require 59,049 entries/16 evaluations. Retained
   CPU prepared median improves 4.243x to 3.313 ms and backend evaluation improves
   4.540x to 2.906 ms; CPU is 1.440x faster than same-run CUDA. CPU result
-  validation/packing and CUDA host materialization/packing are next. Synthesis/guided search,
+  validation/packing and CUDA host materialization/packing selected the next
+  boundary. The result contract now accepts canonical packed u32le bytes alongside
+  tuples; prepared CUDA returns the resident host buffer directly, but the bridge
+  still validates capability, exact count, and every word domain. Benchmarks require
+  16 packed evaluations. Post-commit evidence is pending. CPU result
+  validation/packing and packed-domain validation are next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

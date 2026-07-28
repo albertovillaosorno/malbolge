@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import override
 from unittest import SkipTest
 
@@ -16,6 +17,7 @@ from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import ExactPrimitiveAdapter
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
 from accelerator.exact_primitives import MAX_WORD
+from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PreparedPrimitiveBatch
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
@@ -48,6 +50,10 @@ BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
 BAD_MODE_DOMAIN = "domain"
 BAD_MODE_NEGATIVE = "negative"
+BAD_PACKED_MODE_CAPABILITY = "packed-capability"
+BAD_PACKED_MODE_COUNT = "packed-count"
+BAD_PACKED_MODE_DOMAIN = "packed-domain"
+BAD_PACKED_MODE_MUTABLE = "packed-mutable"
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad",
     device_arch="bad",
@@ -150,6 +156,47 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
         self,
         prepared: PreparedPrimitiveBatch,
     ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
+
+
+@dataclass(frozen=True, slots=True)
+class _BadPackedResultAdapter(ExactPrimitiveAdapter):
+    mode: str
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PackedPrimitiveResult:
+        capability = BAD_CAPABILITY
+        if self.mode == BAD_PACKED_MODE_CAPABILITY:
+            capability = AcceleratorCapability(
+                backend_id="other",
+                device_arch="bad",
+                device_name="bad",
+            )
+        if self.mode == BAD_PACKED_MODE_COUNT:
+            payloads = b""
+        elif self.mode == BAD_PACKED_MODE_DOMAIN:
+            payloads = (MAX_WORD + 1).to_bytes(4, "little")
+        elif self.mode == BAD_PACKED_MODE_MUTABLE:
+            payloads = cast(
+                "bytes",
+                cast("object", bytearray(4 * len(batch.data))),
+            )
+        else:
+            payloads = b"".join((0).to_bytes(4, "little") for _ in batch.data)
+        return PackedPrimitiveResult(
+            capability=capability,
+            words_u32le=payloads,
+        )
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PackedPrimitiveResult:
         return self.evaluate(prepared.validated_batch())
 
 
@@ -384,6 +431,47 @@ def test_malformed_primitive_results_fail_closed() -> None:
         )
 
 
+def test_malformed_packed_primitive_results_fail_closed() -> None:
+    """Packed capability, count, and domain drift cannot become evidence."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        items=(
+            CandidateWorkItem(
+                logical_id="one",
+                payload=encode_rotate_candidate(1),
+            ),
+        ),
+    )
+    cases = (
+        (
+            BAD_PACKED_MODE_CAPABILITY,
+            "primitive backend changed capability identity",
+        ),
+        (
+            BAD_PACKED_MODE_COUNT,
+            "packed primitive result count does not match candidate batch",
+        ),
+        (
+            BAD_PACKED_MODE_DOMAIN,
+            "primitive backend result outside classic domain",
+        ),
+        (
+            BAD_PACKED_MODE_MUTABLE,
+            "packed primitive result must use immutable bytes",
+        ),
+    )
+    for mode, message in cases:
+        adapter = PrimitiveCandidateEvaluationAdapter(
+            _BadPackedResultAdapter(mode),
+            PrimitiveKind.ROTATE,
+        )
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda adapter=adapter: adapter.evaluate(batch),
+        )
+
+
 def test_live_cuda_prepared_session_reuses_exact_input() -> None:
     """Ordinary stays one-shot while prepared CUDA reuses resident input."""
     batch = _rotate_batch()
@@ -411,15 +499,17 @@ def test_live_cuda_prepared_session_reuses_exact_input() -> None:
     assert (
         first_stats.builds,
         first_stats.evaluations,
+        first_stats.packed_evaluations,
         first_stats.reuses,
         first_stats.resident_count,
         first_stats.resident_kind,
-    ) == (1, 1, 0, CORPUS_SIZE, PrimitiveKind.ROTATE)
+    ) == (1, 1, 1, 0, CORPUS_SIZE, PrimitiveKind.ROTATE)
     assert (
         second_stats.builds,
         second_stats.evaluations,
+        second_stats.packed_evaluations,
         second_stats.reuses,
-    ) == (1, 2, 1)
+    ) == (1, 2, 2, 1)
 
 
 def test_live_cuda_prepared_session_rebuilds_new_proof() -> None:
@@ -438,7 +528,12 @@ def test_live_cuda_prepared_session_rebuilds_new_proof() -> None:
         stats = cuda.prepared_stats()
 
     assert replacement_result.packed == first_result.packed
-    assert (stats.builds, stats.evaluations, stats.reuses) == (2, 2, 0)
+    assert (
+        stats.builds,
+        stats.evaluations,
+        stats.packed_evaluations,
+        stats.reuses,
+    ) == (2, 2, 2, 0)
 
 
 def test_cuda_candidate_crazy_port_matches_cpu_reference() -> None:

@@ -144,8 +144,13 @@ from the scalar reference; ordinary CPU remains scalar. Exhaustive equality and
 benchmark counters make table use observable and fail closed. Retained CPU prepared
 median improves 4.243x to 3.313 ms and CPU backend evaluation improves 4.540x to
 2.906 ms. CPU ordinary is effectively unchanged, and CPU prepared is 1.440x faster
-than same-run CUDA. CPU result validation/packing and CUDA host
-materialization/packing are next, while resident/fused search remains later work.
+than same-run CUDA. The hardware-neutral result union now supports canonical
+packed u32le words in addition to tuples. Prepared CUDA returns the copied resident
+host buffer directly, while the neutral bridge remains authoritative for capability,
+count, and complete domain validation. Ordinary CUDA, CPU, and test adapters retain
+tuple compatibility. Benchmarks require 16 packed evaluations. Post-commit evidence
+is pending. CPU result validation/packing and packed-domain validation are next,
+while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

@@ -151,8 +151,14 @@ benchmark diagnostics require exact equality, 16 prepared evaluations, and full
 table cardinality. Retained CPU prepared median falls from 14.058 to 3.313 ms
 (4.243x), and CPU backend evaluation from 13.190 to 2.906 ms (4.540x). CPU ordinary
 is effectively unchanged; same-run CPU prepared is 1.440x faster than CUDA prepared.
-CPU result validation/packing and CUDA host materialization/packing are the next
-neutral subphases. Resident or
+`PackedPrimitiveResult` now extends the neutral result contract with canonical
+little-endian u32 bytes while preserving tuple compatibility. Prepared CUDA exposes
+the resident host output without tuple materialization or repacking. The bridge
+still validates capability identity, exact result count, and every word's classic
+bound before candidate evidence acceptance. Ordinary CUDA and CPU paths remain
+tuple-based. Benchmarks require 16 packed CUDA evaluations plus all prior proofs.
+Post-commit evidence is pending; CPU result validation/packing and packed-domain
+validation are the next neutral subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
