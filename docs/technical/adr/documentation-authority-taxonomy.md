@@ -174,11 +174,22 @@ can drift while appearing equally authoritative.
 
 ## Evidence
 
-- the four documentation-family catalogs
-- `docs/technical/README.md`
-- `docs/research/README.md`
-- `docs/legal/README.md`
-- `docs/bibliography/README.md`
-- `docs/todo/open/`
-- `integrations/cspell/`
-- `math/README.md`
+- The four documentation-family catalogs exist at `docs/technical/README.md`,
+  `docs/research/README.md`, `docs/legal/README.md`, and
+  `docs/bibliography/README.md`; every current nested documentation directory
+  outside typed TODO state has a `README.md`, with no competing `index.md`.
+- Each authoritative family has a local `adr/`; no global `docs/adr/` exists.
+  CSpell data remains under `integrations/cspell/`, and no `.tex` source lives
+  under the Markdown-only documentation families.
+- A local topology comparison on 2026-07-27 shows Jig using the selected
+  family-local model: `bibliography`, `legal`, `research`, and `technical` each
+  own `adr/`, with no global `docs/adr/`. SHAR separates bibliography, legal,
+  and technical documentation but retains a global `docs/adr`, demonstrating the
+  useful family split while retaining the centralized decision namespace this
+  ADR rejects.
+- The current STM checkout has no `docs/` tree, so it is not presented as
+  current positive topology evidence. The earlier STM-style global-ADR pattern
+  remains only a design antecedent for the rejected monolithic alternative; this
+  record does not infer historical files that are absent from the checkout.
+- `docs/todo/open/`, `integrations/cspell/`, and `math/README.md` demonstrate the
+  explicit non-family governance, editorial-data, and mathematical boundaries.

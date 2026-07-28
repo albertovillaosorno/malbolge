@@ -180,20 +180,6 @@ without editing Ben's source.
 
 ## Documentation authority and promotion
 
-### TODO - Documentation authority taxonomy
-
-Define the exact documentation ownership model before the planning corpus is
-promoted into durable records. `docs/technical/`, `docs/research/`,
-`docs/legal/`, and `docs/bibliography/` are the four documentation authority
-families, and each family owns its own `adr/` directory for decisions local to
-that family. A global `docs/adr/` is forbidden so unrelated decisions cannot
-collapse into an STM-style ADR monolith. ADRs contain bounded decisions and
-tradeoffs; technical specifications, research findings, legal analysis, and
-bibliography records remain ordinary documentation under their owning family.
-`integrations/cspell/` remains the editorial support surface used by CSpell and
-is not a fifth authority family. Jig will eventually validate this topology;
-Malbolge must not grow a parallel documentation linter to enforce it.
-
 ### TODO - Repository bibliography taxonomy and citation provenance
 
 Build `docs/bibliography/` as the repository-wide, non-governing source and
