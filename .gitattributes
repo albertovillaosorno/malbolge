@@ -22,6 +22,10 @@
 *.editorconfig text eol=lf
 *.props text eol=lf
 
+# Exact generated source-bound transforms.
+algorithms/doom/amalgamate/main.rs linguist-generated=true
+algorithms/doom/quality/main.rs linguist-generated=true
+
 # Binary families.
 *.png binary
 *.jpg binary
