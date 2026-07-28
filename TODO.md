@@ -407,9 +407,12 @@ argument/result types, pointer/range validation, blocking rules, failure
 semantics, capability discovery, and a deterministic call-frame representation
 without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
 runners may lower the same call frame differently, but guest-visible behavior and
-validation must agree. The DOOM source ABI currently exercises 24 version-1
+validation must agree. The DOOM source ABI currently exercises version-1
 external capabilities spanning guest-memory provisioning, diagnostics/exit,
-video/input, PCM audio, raw file I/O, UDP transport, and monotonic time.
+video/input, PCM audio, raw file I/O, UDP transport, monotonic time, guest-directed
+mouse capture, and optional language-neutral execution telemetry. Telemetry may
+identify C source lines or Malbolge cells/instructions for host presentation, but
+must never alter guest-visible behavior.
 
 ### TODO - Supported libc contract
 
@@ -728,10 +731,15 @@ speedup hypothesis is rejected for this route. A separate 15-sample phase profil
 attributes 97.5% of CPU median total time and 99.5% of CUDA median total time to
 named phases. CUDA host-side phases account for about 57.0% of the median while
 backend evaluation accounts for about 42.5%; batch construction plus proposal
-selection consume about 173.081 ms. Reusable validated/prepared search state is
-therefore the next evidence-driven optimization target before additional kernel
-work. Synthesis/guided strategies, ROCm search implementations, richer
-orchestration, and broader representative comparative evidence remain open.
+selection consume about 173.081 ms. `PreparedEvaluatedSearch` now builds and
+validates immutable request/batch state once, binds it to the exact algorithm,
+batch-builder, and selector identities, and permits the same proof to execute
+through CPU or CUDA without rebuilding the corpus. Rotate-target selection now
+validates only the target/header instead of materializing all candidates a second
+time. A new ordinary-versus-prepared benchmark is ready, but no speedup is claimed
+until post-commit evidence is retained. Synthesis/guided strategies, resident or
+fused search, ROCm search implementations, richer orchestration, and broader
+representative comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
@@ -761,10 +769,13 @@ median versus 412.570 ms CUDA median on the RTX 4060 (0.972x CUDA/CPU), rejectin
 the speedup hypothesis for this host-heavy search route. The retained phase
 profile shows that CUDA host-side phases consume about 57.0% of median total time
 and backend evaluation about 42.5%; batch construction plus proposal selection
-alone consume about 173.081 ms. Reusable prepared search state and later
-resident/fused evaluation-selection are now the evidence-driven path, not blind
-kernel tuning. Broader hardware evidence, synthesis/search algorithms, and ROCm
-implementations remain open.
+alone consume about 173.081 ms. Hardware-neutral prepared state is now active:
+one CPU-built immutable proof can execute through CPU or CUDA only when algorithm,
+batch-builder, and selector identities match exactly. Rotate-target selection no
+longer decodes the complete corpus a second time. Ordinary-versus-prepared
+performance evidence remains to be retained before claiming benefit; resident or
+fused evaluation-selection is the later measured path. Broader hardware evidence,
+synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer
 
@@ -942,7 +953,12 @@ runner. The normalized DOOM C corpus already passes the strict freestanding
 compile gate on all six target/architecture pairs without OS-selection macros;
 the remaining platform work is capability implementation and runtime validation,
 not guest-source porting. Runners must not require LLVM or an externally installed
-multimedia library merely to execute an already generated program.
+multimedia library merely to execute an already generated program. Replace the
+non-executable `cli/adapters/doom/abi.malbolge` and
+`cli/adapters/doom/windows.malbolge` scaffolds with compiler-generated, verified
+modules. When a `.malbolge` capsule explicitly declares `doom.host.v1`,
+`malbolge <artifact.malbolge>` must resolve and load the ABI plus current-platform
+adapter automatically; ordinary programs receive no implicit DOOM capabilities.
 
 ### TODO - DOOM playable generated-code performance
 

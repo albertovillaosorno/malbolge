@@ -44,11 +44,25 @@ When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
 adapter supplies the debug window, keyboard/mouse input, audio, files, and clock.
 It does not embed an IWAD and is never part of `doom.c` or `doom.malbolge`.
 
-DOOM debug state is written under ignored `cli/run/doom/`. Pass `-iwad <path>`
-to select an asset explicitly. Without `-iwad`, the CLI checks
-`MALBOLGE_DOOM_IWAD`, then compatible filenames under `doom/data/wad/`, then the
-accepted quality output's passthrough data directory. The WAD remains an external
-user-provided file.
+DOOM debug execution uses the directory containing `doom.c` as its working
+directory. Put `settings.json`, local WADs, `default.cfg`, and saves beside that
+file; the amalgamation input directory is ignored. Explicit command-line options
+win over `settings.json`. Settings win over the CLI's external IWAD fallback.
+Without either, the CLI checks `MALBOLGE_DOOM_IWAD`, compatible filenames beside
+`doom.c`, `doom/data/wad/`, and the accepted quality output's passthrough data
+directory. WAD files remain external user-provided assets.
+
+The Windows adapter reads `iwad`, `wads`, `language`, `maximized`, `resolution`,
+`vsync`, and `show_fps` from `settings.json`. Gameplay uses centered relative
+mouse capture; pause, menus, automap, demos, and focus loss release the cursor.
+When `show_fps` is enabled, language-neutral execution telemetry drives titles
+such as `FPS 93 - C d_main.c:309 M_Drawer()` and, for the future capability-linked
+artifact, `FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
+
+`cli/adapters/doom/abi.malbolge` and `windows.malbolge` currently reserve the
+annotated module contracts with intentionally empty canonical payloads. They are
+not executable adapters yet. The open capability-runner TODO requires automatic
+loading only when a `.malbolge` capsule explicitly declares `doom.host.v1`.
 
 ## Build the CLI
 

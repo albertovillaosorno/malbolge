@@ -65,3 +65,11 @@ generated program.
   identity for measurements.
 - Prerequisite completion evidence: `versioned-host-capability-call-abi` and
   `native-x86-64-and-aarch64-backends`.
+
+## Generated Malbolge adapter modules
+
+Replace `cli/adapters/doom/abi.malbolge` and
+`cli/adapters/doom/windows.malbolge` scaffolds with compiler-generated, verified
+modules. A capsule that explicitly requires `doom.host.v1` must trigger automatic
+ABI and current-platform adapter resolution during `malbolge <artifact.malbolge>`;
+filename heuristics and implicit capability grants are forbidden.

@@ -137,7 +137,6 @@ typedef struct wavehdr_tag {
     struct wavehdr_tag *lpNext;
     DWORD_PTR reserved;
 } WAVEHDR;
-
 __declspec(dllimport) HINSTANCE __stdcall GetModuleHandleA(LPCSTR);
 __declspec(dllimport) ATOM __stdcall RegisterClassExA(const WNDCLASSEXA *);
 __declspec(dllimport) DWORD __stdcall GetLastError(void);
@@ -161,6 +160,8 @@ __declspec(dllimport) int __stdcall ShowCursor(BOOL);
 __declspec(dllimport) BOOL __stdcall SetCursorPos(int, int);
 __declspec(dllimport) BOOL __stdcall PeekMessageA(MSG *, HWND, UINT, UINT, UINT);
 __declspec(dllimport) LRESULT __stdcall DispatchMessageA(const MSG *);
+__declspec(dllimport) DWORD __stdcall GetEnvironmentVariableA(
+    LPCSTR, LPSTR, DWORD);
 __declspec(dllimport) HCURSOR __stdcall LoadCursorA(HINSTANCE, LPCSTR);
 __declspec(dllimport) HDC __stdcall BeginPaint(HWND, PAINTSTRUCT *);
 __declspec(dllimport) BOOL __stdcall EndPaint(HWND, const PAINTSTRUCT *);
@@ -280,10 +281,23 @@ __declspec(dllimport) UINT __stdcall waveOutClose(HWAVEOUT);
 #define WHDR_DONE 0x00000001UL
 #define IDC_ARROW ((LPCSTR)(uintptr_t)32512U)
 
-static int MouseX(LPARAM value) { return (int)(int16_t)(uint16_t)((uintptr_t)value & 0xffffU); }
-static int MouseY(LPARAM value) { return (int)(int16_t)(uint16_t)(((uintptr_t)value >> 16U) & 0xffffU); }
+static int MouseX(LPARAM value)
+{
+    return (int)(int16_t)(uint16_t)((uintptr_t)value & UINT16_MAX);
+}
+
+static int MouseY(LPARAM value)
+{
+    return (int)(int16_t)(uint16_t)(((uintptr_t)value >> 16U) & UINT16_MAX);
+}
 
 #include "abi.h"
+
+#ifdef main
+#undef main
+#endif
+
+int DoomGuestMain(int argc, char **argv);
 
 #define GUEST_MEMORY_BYTES (64 * 1024 * 1024)
 #define HOST_FILE_CAPACITY 64
@@ -293,6 +307,11 @@ static int MouseY(LPARAM value) { return (int)(int16_t)(uint16_t)(((uintptr_t)va
 #define AUDIO_CHANNELS 2
 #define WINDOW_CLIENT_WIDTH 1280
 #define WINDOW_CLIENT_HEIGHT 720
+#define SETTINGS_BUFFER_BYTES 65536
+#define WAD_ROUTE_BYTES 4096
+#define LANGUAGE_NAME_BYTES 64
+#define SETTINGS_WAD_CAPACITY 512
+#define MAX_DEBUG_ARGUMENTS 1024
 
 typedef struct
 {
@@ -301,6 +320,10 @@ typedef struct
     int window_height;
     boolean paced_60hz;
     boolean show_fps;
+    char iwad[WAD_ROUTE_BYTES];
+    char language[LANGUAGE_NAME_BYTES];
+    char wads[SETTINGS_WAD_CAPACITY][WAD_ROUTE_BYTES];
+    int wad_count;
 } debug_settings_t;
 
 static debug_settings_t debug_settings = {
@@ -309,9 +332,16 @@ static debug_settings_t debug_settings = {
     .window_height = WINDOW_CLIENT_HEIGHT,
     .paced_60hz = false,
     .show_fps = false,
+    .iwad = {0},
+    .language = {0},
+    .wads = {{0}},
+    .wad_count = 0,
 };
 
 _Alignas(16) static unsigned char guest_memory[GUEST_MEMORY_BYTES];
+static char settings_json[SETTINGS_BUFFER_BYTES];
+static char fallback_iwad[WAD_ROUTE_BYTES];
+static char *debug_arguments[MAX_DEBUG_ARGUMENTS];
 static char fatal_error_message[4096];
 static HWND window_handle;
 static HINSTANCE instance_handle;
@@ -323,6 +353,7 @@ static unsigned int event_read;
 static unsigned int event_write;
 static int mouse_buttons;
 static boolean relative_mouse;
+static boolean mouse_capture_requested;
 static boolean mouse_centering;
 static boolean mouse_captured;
 static boolean window_has_focus;
@@ -339,6 +370,11 @@ static uint64_t last_present_ns;
 static uint64_t fps_window_start_ns;
 static int fps_window_frames;
 static int displayed_fps;
+static char trace_language[24] = "HOST";
+static char trace_source[64] = "startup";
+static char trace_instruction[128] = "initializing";
+static uint64_t trace_location;
+static uint64_t trace_title_update_ns;
 
 static HWAVEOUT audio_output;
 static WAVEHDR audio_headers[AUDIO_BLOCK_COUNT];
@@ -348,10 +384,328 @@ static boolean audio_initialized;
 
 static void *file_handles[HOST_FILE_CAPACITY];
 
+static const char *SkipJsonSpace(const char *cursor)
+{
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
+        ++cursor;
+    return cursor;
+}
+
+static const char *FindJsonValue(const char *json, const char *key)
+{
+    const char *cursor = json;
+    int key_length = 0;
+
+    while (key[key_length] != '\0')
+        ++key_length;
+    while (*cursor != '\0')
+    {
+        if (*cursor == '"')
+        {
+            const char *name = cursor + 1;
+            int index = 0;
+            while (index < key_length && name[index] == key[index])
+                ++index;
+            if (index == key_length && name[index] == '"')
+            {
+                cursor = SkipJsonSpace(name + index + 1);
+                if (*cursor != ':')
+                    return NULL;
+                return SkipJsonSpace(cursor + 1);
+            }
+        }
+        ++cursor;
+    }
+    return NULL;
+}
+
+static boolean ParseJsonBoolean(const char *json, const char *key, boolean *value)
+{
+    const char *cursor = FindJsonValue(json, key);
+
+    if (cursor == NULL)
+        return false;
+    if (cursor[0] == 't' && cursor[1] == 'r' && cursor[2] == 'u' && cursor[3] == 'e')
+    {
+        *value = true;
+        return true;
+    }
+    if (cursor[0] == 'f' && cursor[1] == 'a' && cursor[2] == 'l' &&
+        cursor[3] == 's' && cursor[4] == 'e')
+    {
+        *value = false;
+        return true;
+    }
+    return false;
+}
+
+static boolean ParsePositiveInt(const char **cursor_ptr, int *value)
+{
+    const char *cursor = SkipJsonSpace(*cursor_ptr);
+    int result = 0;
+    int digits = 0;
+
+    while (*cursor >= '0' && *cursor <= '9')
+    {
+        const int digit = *cursor - '0';
+        if (result > (INT32_MAX - digit) / 10)
+            return false;
+        result = result * 10 + digit;
+        ++cursor;
+        ++digits;
+    }
+    if (digits == 0 || result <= 0)
+        return false;
+    *cursor_ptr = cursor;
+    *value = result;
+    return true;
+}
+
+static boolean ParseJsonResolution(const char *json, int *width, int *height)
+{
+    const char *cursor = FindJsonValue(json, "resolution");
+
+    if (cursor == NULL || *cursor != '[')
+        return false;
+    ++cursor;
+    if (!ParsePositiveInt(&cursor, width))
+        return false;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor != ',')
+        return false;
+    ++cursor;
+    if (!ParsePositiveInt(&cursor, height))
+        return false;
+    cursor = SkipJsonSpace(cursor);
+    return *cursor == ']';
+}
+
+static boolean ParseJsonStringValue(const char **cursor_ptr, char *output,
+                                    int capacity)
+{
+    const char *cursor = SkipJsonSpace(*cursor_ptr);
+    int length = 0;
+
+    if (*cursor != '"' || capacity <= 0)
+        return false;
+    ++cursor;
+    while (*cursor != '\0' && *cursor != '"')
+    {
+        char value = *cursor++;
+        if (value == '\\')
+        {
+            const char escaped = *cursor++;
+            if (escaped == '\\' || escaped == '"' || escaped == '/')
+                value = escaped;
+            else
+                return false;
+        }
+        if (length + 1 >= capacity)
+            return false;
+        output[length++] = value;
+    }
+    if (*cursor != '"')
+        return false;
+    ++cursor;
+    output[length] = '\0';
+    *cursor_ptr = cursor;
+    return true;
+}
+
+static boolean ParseJsonString(const char *json, const char *key, char *output,
+                               int capacity)
+{
+    const char *cursor = FindJsonValue(json, key);
+
+    if (cursor == NULL)
+        return false;
+    return ParseJsonStringValue(&cursor, output, capacity);
+}
+
+static int ParseJsonStringArray(const char *json, const char *key,
+                                char output[SETTINGS_WAD_CAPACITY][WAD_ROUTE_BYTES])
+{
+    const char *cursor = FindJsonValue(json, key);
+    int count = 0;
+
+    if (cursor == NULL || *cursor != '[')
+        return 0;
+    ++cursor;
+    for (;;)
+    {
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == ']')
+            return count;
+        if (count >= SETTINGS_WAD_CAPACITY ||
+            !ParseJsonStringValue(&cursor, output[count], WAD_ROUTE_BYTES))
+            return -1;
+        ++count;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == ']')
+            return count;
+        if (*cursor != ',')
+            return -1;
+        ++cursor;
+    }
+}
+
+static void LoadDebugSettings(void)
+{
+    HANDLE file;
+    DWORD bytes_read = 0;
+    int width;
+    int height;
+
+    file = CreateFileA("settings.json", GENERIC_READ, FILE_SHARE_READ, NULL,
+                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE)
+        return;
+    if (!ReadFile(file, settings_json, (DWORD)(sizeof(settings_json) - 1U),
+                  &bytes_read, NULL))
+    {
+        (void)CloseHandle(file);
+        return;
+    }
+    (void)CloseHandle(file);
+    settings_json[bytes_read] = '\0';
+
+    (void)ParseJsonBoolean(settings_json, "maximized", &debug_settings.maximized);
+    (void)ParseJsonBoolean(settings_json, "vsync", &debug_settings.paced_60hz);
+    (void)ParseJsonBoolean(settings_json, "show_fps", &debug_settings.show_fps);
+    if (ParseJsonResolution(settings_json, &width, &height) &&
+        width >= 320 && height >= 200)
+    {
+        debug_settings.window_width = width;
+        debug_settings.window_height = height;
+    }
+    if (!ParseJsonString(settings_json, "iwad", debug_settings.iwad,
+                         (int)sizeof(debug_settings.iwad)))
+    {
+        (void)ParseJsonString(settings_json, "wadroute", debug_settings.iwad,
+                              (int)sizeof(debug_settings.iwad));
+    }
+    (void)ParseJsonString(settings_json, "language", debug_settings.language,
+                          (int)sizeof(debug_settings.language));
+    debug_settings.wad_count =
+        ParseJsonStringArray(settings_json, "wads", debug_settings.wads);
+    if (debug_settings.wad_count < 0)
+    {
+        debug_settings.wad_count = 0;
+        (void)MessageBoxA(NULL, "Invalid wads array in settings.json",
+                          "DOOM settings", MB_OK | MB_ICONERROR);
+    }
+}
+
+static boolean HasArgument(int argc, char **argv, const char *name)
+{
+    for (int index = 1; index < argc; ++index)
+    {
+        const char *left = argv[index];
+        const char *right = name;
+        while (*left != '\0' && *left == *right)
+        {
+            ++left;
+            ++right;
+        }
+        if (*left == '\0' && *right == '\0')
+            return true;
+    }
+    return false;
+}
+
+static boolean AppendDebugArgument(int *count, char *value)
+{
+    if (*count < 0 || *count >= MAX_DEBUG_ARGUMENTS)
+        return false;
+    debug_arguments[*count] = value;
+    ++*count;
+    return true;
+}
+
+static int BuildDebugArguments(int argc, char **argv)
+{
+    static char arg_iwad[] = "-iwad";
+    static char arg_file[] = "-file";
+    static char arg_language[] = "-default-language";
+    int count = 0;
+    const boolean has_iwad = HasArgument(argc, argv, arg_iwad);
+    const boolean has_file = HasArgument(argc, argv, arg_file);
+    const boolean has_language = HasArgument(argc, argv, arg_language);
+
+    for (int index = 0; index < argc; ++index)
+        if (!AppendDebugArgument(&count, argv[index]))
+            return -1;
+
+    if (!has_language && debug_settings.language[0] != '\0')
+    {
+        if (!AppendDebugArgument(&count, arg_language) ||
+            !AppendDebugArgument(&count, debug_settings.language))
+            return -1;
+    }
+    if (!has_iwad)
+    {
+        char *iwad = NULL;
+        if (debug_settings.iwad[0] != '\0')
+            iwad = debug_settings.iwad;
+        else
+        {
+            const DWORD length = GetEnvironmentVariableA(
+                "MALBOLGE_DOOM_FALLBACK_IWAD", fallback_iwad,
+                (DWORD)sizeof(fallback_iwad));
+            if (length > 0 && length < (DWORD)sizeof(fallback_iwad))
+                iwad = fallback_iwad;
+        }
+        if (iwad != NULL &&
+            (!AppendDebugArgument(&count, arg_iwad) ||
+             !AppendDebugArgument(&count, iwad)))
+            return -1;
+    }
+    if (!has_file && debug_settings.wad_count > 0)
+    {
+        if (!AppendDebugArgument(&count, arg_file))
+            return -1;
+        for (int index = 0; index < debug_settings.wad_count; ++index)
+            if (!AppendDebugArgument(&count, debug_settings.wads[index]))
+                return -1;
+    }
+    return count;
+}
+
+int main(int argc, char **argv)
+{
+    int debug_argc;
+
+    LoadDebugSettings();
+    debug_argc = BuildDebugArguments(argc, argv);
+    if (debug_argc < 0)
+    {
+        (void)MessageBoxA(NULL, "Too many DOOM debug arguments",
+                          "DOOM settings", MB_OK | MB_ICONERROR);
+        return 2;
+    }
+    return DoomGuestMain(debug_argc, debug_arguments);
+}
+
+static void AppendText(char *output, int *length, int capacity,
+                       const char *text)
+{
+    if (output == NULL || length == NULL || text == NULL || capacity <= 0)
+        return;
+    while (*text != '\0' && *length + 1 < capacity)
+        output[(*length)++] = *text++;
+}
+
 static void AppendDecimal(char *text, int *length, int capacity, int value)
 {
     char reversed[16];
     int count = 0;
+
+    if (value < 0)
+    {
+        if (*length + 1 < capacity)
+            text[(*length)++] = '-';
+        value = -value;
+    }
     if (value == 0)
         reversed[count++] = '0';
     while (value > 0 && count < (int)sizeof(reversed))
@@ -363,12 +717,50 @@ static void AppendDecimal(char *text, int *length, int capacity, int value)
         text[(*length)++] = reversed[--count];
 }
 
+static void AppendUnsignedDecimal(char *text, int *length, int capacity,
+                                  uint64_t value)
+{
+    char reversed[32];
+    int count = 0;
+
+    if (value == 0)
+        reversed[count++] = '0';
+    while (value > 0 && count < (int)sizeof(reversed))
+    {
+        reversed[count++] = (char)('0' + value % UINT64_C(10));
+        value /= UINT64_C(10);
+    }
+    while (count > 0 && *length + 1 < capacity)
+        text[(*length)++] = reversed[--count];
+}
+
+static void CopyText(char *output, int capacity, const char *text)
+{
+    int length = 0;
+
+    if (output == NULL || capacity <= 0)
+        return;
+    if (text != NULL)
+        AppendText(output, &length, capacity, text);
+    output[length] = '\0';
+}
+
+static const char *SourceBasename(const char *path)
+{
+    const char *base = path;
+
+    if (path == NULL)
+        return "unknown";
+    for (const char *cursor = path; *cursor != '\0'; ++cursor)
+        if (*cursor == '/' || *cursor == '\\')
+            base = cursor + 1;
+    return base;
+}
+
 static void UpdateFpsTitle(void)
 {
-    char title[64];
+    char title[256];
     int length = 0;
-    static const char prefix[] = "DOOM - ";
-    static const char suffix[] = " FPS";
 
     if (window_handle == NULL)
         return;
@@ -377,13 +769,45 @@ static void UpdateFpsTitle(void)
         (void)SetWindowTextA(window_handle, "DOOM");
         return;
     }
-    for (int i = 0; prefix[i] != '\0'; ++i)
-        title[length++] = prefix[i];
+    AppendText(title, &length, (int)sizeof(title), "FPS ");
     AppendDecimal(title, &length, (int)sizeof(title), displayed_fps);
-    for (int i = 0; suffix[i] != '\0' && length + 1 < (int)sizeof(title); ++i)
-        title[length++] = suffix[i];
+    AppendText(title, &length, (int)sizeof(title), " - ");
+    AppendText(title, &length, (int)sizeof(title), trace_language);
+    AppendText(title, &length, (int)sizeof(title), " ");
+    AppendText(title, &length, (int)sizeof(title), trace_source);
+    if (trace_location > 0)
+    {
+        AppendText(title, &length, (int)sizeof(title),
+                   trace_language[0] == 'C' &&
+                           trace_language[1] == '\0'
+                       ? ":"
+                       : "@");
+        AppendUnsignedDecimal(title, &length, (int)sizeof(title),
+                              trace_location);
+    }
+    AppendText(title, &length, (int)sizeof(title), " ");
+    AppendText(title, &length, (int)sizeof(title), trace_instruction);
     title[length] = '\0';
     (void)SetWindowTextA(window_handle, title);
+}
+
+void DoomHost_DebugExecutionActivity(const char *language,
+                                     const char *source,
+                                     uint64_t location,
+                                     const char *instruction)
+{
+    const uint64_t now = DoomHost_MonotonicNanoseconds();
+
+    CopyText(trace_language, (int)sizeof(trace_language), language);
+    CopyText(trace_source, (int)sizeof(trace_source), SourceBasename(source));
+    CopyText(trace_instruction, (int)sizeof(trace_instruction), instruction);
+    trace_location = location;
+    if (trace_title_update_ns == 0 ||
+        now - trace_title_update_ns >= UINT64_C(100000000))
+    {
+        trace_title_update_ns = now;
+        UpdateFpsTitle();
+    }
 }
 
 static void QueueEvent(const doom_host_event_t *event)
@@ -448,7 +872,7 @@ static void RenderLastFrame(HDC dc);
 
 static boolean WantsMouseCapture(void)
 {
-    return relative_mouse && window_has_focus;
+    return relative_mouse && mouse_capture_requested && window_has_focus;
 }
 
 static void CenterMouse(void)
@@ -493,6 +917,12 @@ static void SetMouseCaptured(boolean capture)
 static void UpdateMouseCapture(void)
 {
     SetMouseCaptured(WantsMouseCapture());
+}
+
+void DoomHost_SetRelativeMouseCapture(boolean capture)
+{
+    mouse_capture_requested = capture;
+    UpdateMouseCapture();
 }
 
 static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)

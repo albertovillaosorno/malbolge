@@ -1,0 +1,23 @@
+# NON-EXECUTABLE ANNOTATED MALBOLGE MODULE SCAFFOLD.
+#
+# Module: doom.host.v1.windows
+# Generated-from: cli/adapters/doom/windows.c
+# Intended artifact: cli/adapters/doom/windows.malbolge
+#
+# This file intentionally contains no canonical Malbolge bytes yet. It reserves
+# the Windows runner module identity while preserving the architecture boundary:
+# Win32 system calls remain host-runner capabilities and are never encoded as
+# guest pointers, host ABIs, or hidden native callbacks inside doom.malbolge.
+#
+# Runtime rule: on supported Windows hosts, a .malbolge capsule declaring
+# doom.host.v1 must resolve this adapter automatically after loading
+# doom.host.v1.abi. The same doom.malbolge payload must select Linux/macOS host
+# adapters without changing guest bytes.
+#
+# Mouse capture is guest-directed: gameplay requests centered relative capture;
+# pause, menus, automap, demos, and focus loss release it. Execution telemetry is
+# language-neutral, so the title may show either C source lines during native
+# debugging or Malbolge cell/address plus active graphical instruction.
+#
+# Blocked by: versioned-host-capability-call-abi, state-aware-malbolge-linker,
+# cross-platform-native-capability-runners, and C-to-Malbolge code generation.

@@ -81,6 +81,8 @@ enum CDriver {
 #[derive(Debug)]
 struct CRunPlan {
     arguments: Vec<OsString>,
+    compiler_arguments: Vec<OsString>,
+    environment: Vec<(OsString, OsString)>,
     extra_sources: Vec<PathBuf>,
     needs_windows_libraries: bool,
     working_directory: Option<PathBuf>,
@@ -120,6 +122,7 @@ fn compile_c(
         .arg("-std=c23")
         .arg("-O0")
         .arg("-g")
+        .args(&plan.compiler_arguments)
         .arg(source)
         .args(&plan.extra_sources)
         .arg("-o")
@@ -147,15 +150,20 @@ fn build_c_run_plan(
     if !source_uses_doom_host(source)? {
         return Ok(CRunPlan {
             arguments: arguments.to_vec(),
+            compiler_arguments: Vec::new(),
+            environment: Vec::new(),
             extra_sources: Vec::new(),
             needs_windows_libraries: false,
             working_directory: None,
         });
     }
-    build_doom_run_plan(arguments)
+    build_doom_run_plan(source, arguments)
 }
 
-fn build_doom_run_plan(arguments: &[OsString]) -> Result<CRunPlan, String> {
+fn build_doom_run_plan(
+    source: &Path,
+    arguments: &[OsString],
+) -> Result<CRunPlan, String> {
     if !cfg!(windows) {
         return Err(String::from(
             "native doom.c debugging currently has only a Windows adapter",
@@ -171,16 +179,29 @@ fn build_doom_run_plan(arguments: &[OsString]) -> Result<CRunPlan, String> {
             adapter.display(),
         ));
     }
-    let working_directory = root.join("cli/run/doom");
+    let working_directory = source
+        .parent()
+        .ok_or_else(|| String::from("doom.c has no parent directory"))?
+        .to_path_buf();
     DirBuilder::new()
         .recursive(true)
         .create(&working_directory)
         .map_err(|error| {
             format!("cannot create DOOM run directory: {error}")
         })?;
-    let resolved_arguments = doom_arguments(&root, arguments)?;
+    let resolved_arguments = doom_arguments(arguments)?;
+    let environment = discover_doom_iwad(&root, &working_directory)
+        .map(|path| {
+            vec![(
+                OsString::from("MALBOLGE_DOOM_FALLBACK_IWAD"),
+                path.into_os_string(),
+            )]
+        })
+        .unwrap_or_default();
     Ok(CRunPlan {
         arguments: resolved_arguments,
+        compiler_arguments: vec![OsString::from("-Dmain=DoomGuestMain")],
+        environment,
         extra_sources: vec![adapter],
         needs_windows_libraries: true,
         working_directory: Some(working_directory),
@@ -193,7 +214,7 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
-fn discover_doom_iwad(root: &Path) -> Option<PathBuf> {
+fn discover_doom_iwad(root: &Path, source_directory: &Path) -> Option<PathBuf> {
     if let Some(configured) = env::var_os("MALBOLGE_DOOM_IWAD") {
         let configured_path = PathBuf::from(configured);
         if let Ok(canonical) = configured_path.canonicalize()
@@ -203,6 +224,8 @@ fn discover_doom_iwad(root: &Path) -> Option<PathBuf> {
         }
     }
     let directories = [
+        source_directory.to_path_buf(),
+        source_directory.join("data/wad"),
         root.join("doom/data/wad"),
         root.join("algorithms/doom/quality/out/doom_fixed/data/wad"),
     ];
@@ -219,10 +242,7 @@ fn discover_doom_iwad(root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn doom_arguments(
-    root: &Path,
-    arguments: &[OsString],
-) -> Result<Vec<OsString>, String> {
+fn doom_arguments(arguments: &[OsString]) -> Result<Vec<OsString>, String> {
     let mut resolved = arguments.to_vec();
     let iwad_index = resolved
         .iter()
@@ -239,15 +259,7 @@ fn doom_arguments(
             .get_mut(path_index)
             .ok_or_else(|| String::from("-iwad requires a path"))?;
         *path_slot = canonical.into_os_string();
-        return Ok(resolved);
     }
-    let iwad = discover_doom_iwad(root).ok_or_else(|| {
-        String::from(
-            "no compatible IWAD found; put one in doom/data/wad, pass -iwad, or set MALBOLGE_DOOM_IWAD",
-        )
-    })?;
-    resolved.push(OsString::from("-iwad"));
-    resolved.push(iwad.into_os_string());
     Ok(resolved)
 }
 
@@ -424,6 +436,7 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
     let mut command = Command::new(&executable);
     let _configured = command
         .args(&plan.arguments)
+        .envs(plan.environment.iter().cloned())
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());

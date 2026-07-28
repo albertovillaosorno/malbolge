@@ -66,3 +66,11 @@ application-local capabilities are design evidence, not yet the generic VM ABI.
   fixtures, and cross-tier differential results.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi` and
   `canonical-malbolge-target-profile`.
+
+## DOOM execution telemetry extension
+
+Specify guest-directed relative-mouse capture and optional execution telemetry as
+versioned capabilities. Telemetry carries a language identifier, source identity,
+execution location, and active instruction text; C line reporting and Malbolge
+cell/instruction reporting must use the same semantic record without influencing
+guest behavior.

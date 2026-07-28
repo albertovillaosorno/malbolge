@@ -1,0 +1,22 @@
+# NON-EXECUTABLE ANNOTATED MALBOLGE MODULE SCAFFOLD.
+#
+# Module: doom.host.v1.abi
+# Generated-from: cli/adapters/doom/abi.h
+# Intended artifact: cli/adapters/doom/abi.malbolge
+#
+# This file intentionally contains no canonical Malbolge bytes yet. It reserves
+# the guest-side module identity for version-one DOOM capability call frames.
+# The future C-to-Malbolge pipeline must generate and verify this module from the
+# deterministic ABI contract rather than hand-translating declarations.
+#
+# Runtime rule: a .malbolge capsule declaring doom.host.v1 must cause the CLI or
+# runtime linker to load this module automatically. Ordinary Malbolge programs
+# must not receive DOOM capabilities implicitly.
+#
+# Debug telemetry capability 0x0600 accepts language, source identity, execution
+# location, and the active instruction text. A Malbolge executor reports
+# language=MALBOLGE, source=<artifact>, location=<cell/address>, and the current
+# graphical instruction byte so the host title can display real execution.
+#
+# Blocked by: versioned-host-capability-call-abi, state-aware-malbolge-linker,
+# cross-platform-native-capability-runners, and C-to-Malbolge code generation.

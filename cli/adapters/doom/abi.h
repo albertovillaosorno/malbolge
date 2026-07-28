@@ -126,6 +126,7 @@ void DoomHost_ReportError(const char *text, int length);
 boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config);
 void DoomHost_VideoShutdown(void);
 boolean DoomHost_PollEvent(doom_host_event_t *event);
+void DoomHost_SetRelativeMouseCapture(boolean capture);
 void DoomHost_SetPalette(const byte *rgb_palette, int color_count);
 void DoomHost_PresentIndexed8(const byte *pixels, int width, int height,
                               int pitch);
@@ -150,5 +151,9 @@ int DoomHost_NetReceive(byte *data, int capacity,
                         doom_host_net_endpoint_t *source);
 uint64_t DoomHost_MonotonicNanoseconds(void);
 void DoomHost_SleepNanoseconds(uint64_t nanoseconds);
+void DoomHost_DebugExecutionActivity(const char *language,
+                                     const char *source,
+                                     uint64_t location,
+                                     const char *instruction);
 
 #endif
