@@ -852,8 +852,16 @@ retained intervals. `search_preparation_crossover.py` now preregisters scales 1,
 Python memory, ordinary CUDA, fresh resident build, and reused resident execution.
 It computes the first strictly profitable run count while preserving validator,
 proposal, admission, reference/membership/selector, and CUDA-session proofs.
-Post-commit evidence is pending; no exploratory crossover or memory result is
-promoted yet.
+Retained evidence records warm crossover counts 6/3/2/1 and cold counts
+106/38/5/2 across 1/64/1,024/59,049 candidates. At full domain, warm preparation
+plus first search is 212.140 ms versus 222.842 ms ordinary, a 10.703 ms one-shot
+advantage; cold preparation plus first search is 227.767 ms and crosses on run two.
+Incremental traced Python state retains 16.063 MiB and peaks at 19.040 MiB, versus
+0.901 MiB of exact reference/device/host buffers. Retained state is 285.249 bytes per
+candidate and 71.312x the reference bytes alone. `tracemalloc` excludes the prebuilt
+workload, global rotate table, CUDA/native storage, imports, and adapter setup. The
+next measured boundary is component-level prepared-state memory decomposition before
+any compaction change.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -963,8 +971,11 @@ first/last corruption fails closed. Retained CUDA prepared search is 0.488 ms
 end-to-end improves 4.488x to 0.1935 ms. Reference construction remains untimed and
 requires 236,196 bytes here. The active preparation-crossover benchmark now measures
 cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
-strict amortization at four scales with all exact proofs. Post-commit evidence is
-pending before selecting the next memory or orchestration optimization.
+strict amortization at four scales with all exact proofs. Retained warm crossover
+is 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm one-shot saves 10.703 ms;
+cold crosses on run two. Incremental Python state retains/peaks at
+16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. The next
+measurement decomposes prepared Python state by component before compaction.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

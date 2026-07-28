@@ -176,8 +176,11 @@ validation (23.590x), and 0.1935 ms primitive end-to-end (4.488x). Same-run CUDA
 6.786x faster than CPU prepared. The reference image is 236,196 bytes and construction
 is excluded. A four-scale benchmark now measures fresh-process and warm-process
 preparation, incremental Python memory, first resident execution, reuse, and strict
-crossover while retaining every identity/admission/session proof. Post-commit
-evidence is pending, while resident/fused search remains later work.
+crossover while retaining every identity/admission/session proof. Retained
+warm/cold crossover is 6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves
+10.703 ms; cold crosses on run two. Incremental Python state retains/peaks at
+16.063/19.040 MiB versus 0.901 MiB exact buffers. Component-level state-memory
+measurement is next, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

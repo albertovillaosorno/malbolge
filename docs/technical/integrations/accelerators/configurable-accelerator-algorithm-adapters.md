@@ -189,7 +189,12 @@ not timed execution. The active crossover benchmark measures fresh-process and
 warm-process preparation, incremental Python memory, first resident execution,
 steady reuse, and strict amortization at four corpus sizes. Validator identities,
 exact proposal/admission, reference/membership/selector counts, and CUDA counters
-remain required. Post-commit evidence is pending. Resident or
+remain required. Retained warm crossover is 6/3/2/1 and cold crossover is
+106/38/5/2. Full-domain warm preparation plus first search is 212.140 ms versus
+222.842 ms ordinary; cold crosses on run two. Incremental Python state
+retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. The next
+measurement decomposes prepared state memory by component before compaction.
+Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

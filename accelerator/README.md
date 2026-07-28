@@ -189,8 +189,14 @@ validation (23.590x better), 0.0180 ms byte comparison, and 0.1935 ms end-to-end
 incremental Python allocation, fresh resident build, steady reuse, and strict
 ordinary/prepared crossover at 1/64/1,024/59,049 candidates. It preserves both
 validator IDs, exact proposals/admission, state cardinalities, and CUDA session
-proofs. Post-commit evidence is pending; the trusted verifier remains the sole
-proposal-admission authority.
+proofs. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-prepared-search-crossover-rtx4060/`
+records warm crossover 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm
+preparation plus first search is 212.140 ms versus 222.842 ms ordinary; cold crosses
+on run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
+0.901 MiB exact reference/device/host buffers. Component-level Python state memory
+is the next measurement; the trusted verifier remains the sole proposal-admission
+authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

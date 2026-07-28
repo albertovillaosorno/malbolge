@@ -157,7 +157,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   end-to-end is 0.1935 ms (4.488x). The 236,196-byte reference and construction are
   untimed preparation costs. The active four-scale crossover benchmark measures
   cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
-  strict amortization with every exact proof. Post-commit evidence is pending.
+  strict amortization with every exact proof. Retained warm/cold crossover is
+  6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves 10.703 ms; cold crosses on
+  run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
+  0.901 MiB exact buffers. Component-level memory decomposition is next.
   Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.

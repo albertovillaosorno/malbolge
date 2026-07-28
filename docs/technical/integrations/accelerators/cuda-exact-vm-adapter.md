@@ -259,8 +259,11 @@ fails explicitly without changing correctness rules.
   bytes and construction remains outside timed execution. The active four-scale
   benchmark measures cold/warm preparation, incremental Python memory, fresh
   resident build, steady reuse, and strict crossover while requiring validator,
-  proposal/admission, state-count, and session proofs. Post-commit evidence is
-  pending.
+  proposal/admission, state-count, and session proofs. Retained warm/cold crossover
+  is 6/3/2/1 and 106/38/5/2. Full-domain warm preparation plus first search is
+  212.140 ms versus 222.842 ms ordinary; cold crosses on run two. Incremental Python
+  state retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. The next
+  CUDA-boundary measurement decomposes prepared Python memory by component.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

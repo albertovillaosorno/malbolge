@@ -324,5 +324,10 @@ The strict crossover is the first positive `runs` satisfying
 sampled in a new Python process each time; warm preparation shares the process-wide
 exact rotate table. Every sample preserves ordinary/prepared validator IDs, one
 exact admitted proposal, proof-bound reference/membership/selector counts, and
-fresh/reused CUDA session counters. Post-commit evidence is pending, so exploratory
-crossover or memory observations are not retained claims.
+fresh/reused CUDA session counters. Retained evidence is under
+`evidence/2026-07-28-prepared-search-crossover-rtx4060/`. Warm crossover is
+6/3/2/1 and cold crossover is 106/38/5/2 across the four scales. Full-domain warm
+preparation plus first search is 212.140 ms versus 222.842 ms ordinary; cold crosses
+on run two. Incremental traced Python state retains 16.063 MiB and peaks at
+19.040 MiB, while exact reference/device/host buffers total 0.901 MiB. The next
+protocol step decomposes prepared Python state by component before compaction.
