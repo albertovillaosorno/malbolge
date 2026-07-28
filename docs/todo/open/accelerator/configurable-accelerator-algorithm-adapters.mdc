@@ -1,6 +1,6 @@
 ---
 id: "configurable-accelerator-algorithm-adapters"
-status: "pending"
+status: "active"
 lane: "8"
 area: "accelerator"
 task: "TODO - Configurable accelerator algorithm adapters"
@@ -52,5 +52,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- Active foundation: `SearchRequest` records algorithm ID, deterministic seed,
+  evaluation budget, and problem bytes independently from backend capability.
+  `CpuSearchExecutionAdapter` supplies portable execution capacity; optional
+  backend failure or malformed shape falls back to it. Search proposals and
+  verification hints remain untrusted, and only `TrustedCandidateVerifier` can
+  admit a proposal. Concrete algorithms, deterministic selection/CLI overrides,
+  accelerator implementations, and comparative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

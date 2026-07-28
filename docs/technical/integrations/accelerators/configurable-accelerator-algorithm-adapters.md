@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -26,16 +26,23 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Active Model
 
-This record defines the contract that implementation must satisfy for
-`configurable-accelerator-algorithm-adapters`. The implementation may change
-internal representation or language choices without changing the observable
-behavior, trust boundary, or ownership rules stated by its governing decisions.
+`SearchRequest` binds an algorithm ID, deterministic seed, evaluation budget, and
+opaque problem bytes independently from backend capability.
+`SearchExecutionAdapter` supplies execution capacity only; returned
+`CandidateProposal` values are untrusted until `TrustedCandidateVerifier` admits
+them. `CpuSearchExecutionAdapter` supplies the mandatory portable callback path.
+The same boundary separates candidate-evaluation evidence and optional
+verification hints from candidate acceptance.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The first selection-independent contract is active. Algorithm ID is request
+identity while `AcceleratorCapability` is backend identity, so the two dimensions
+are recorded independently. Deterministic configuration/CLI selection, concrete
+research strategy adapters, accelerator implementations, and comparative
+benchmark evidence remain open.
 
 ## Invariants
 

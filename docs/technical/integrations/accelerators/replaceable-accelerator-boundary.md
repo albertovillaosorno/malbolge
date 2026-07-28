@@ -35,7 +35,11 @@ adds a complete-state bounded-run contract whose classic memory width is fixed a
 59,049 words without exposing CUDA handles or layout details.
 `accelerator/profile_run.py` extends the same hardware-neutral boundary to
 validated single-word-modular ternary geometries, including the current
-14-trit/4,782,969-word profile.
+14-trit/4,782,969-word profile. `accelerator/work_ports.py` adds immutable
+candidate-evaluation, search, and verification-assist request/result protocols.
+Search requests bind algorithm ID, seed, and evaluation budget independently from
+backend capability. Search proposals and verification hints carry no acceptance
+bit; `TrustedCandidateVerifier` is the only admission port.
 
 ### Implementation Status
 
@@ -56,7 +60,11 @@ backend traits with safe-Rust fallback and live CUDA-worker integration. Retaine
 current-profile performance evidence additionally covers the original complete
 snapshot baseline, device-side shared initialization, and persistent resident
 sessions; none changes semantic authority or establishes a CPU-relative speedup.
-Candidate evaluation/search/verification ports and ROCm remain open.
+Candidate evaluation/search/verification-assist ports are now active. The
+portable CPU callback adapters provide mandatory candidate/search execution
+capacity and best-effort routing falls back on typed optional-backend failures or
+malformed result shape. Concrete search algorithms, accelerator implementations
+of these generic work ports, asynchronous submission, and ROCm remain open.
 
 ## Invariants
 
@@ -95,9 +103,12 @@ fails explicitly without changing correctness rules.
   product ports against the real resident workers.
 - Current-profile post-optimization evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`.
-- Remaining evidence includes candidate/search/verification ports, ROCm
-  substitution, broader hardware evidence, and matched measurements for any
-  future CPU-relative speedup claim.
+- `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,
+  malformed optional-result fallback, stable algorithm/seed/budget identity,
+  optional verification hints, and verifier-only candidate admission.
+- Remaining evidence includes concrete algorithm adapters, CUDA/ROCm work-port
+  implementations, ROCm VM substitution, asynchronous submission, broader
+  hardware evidence, and matched measurements for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

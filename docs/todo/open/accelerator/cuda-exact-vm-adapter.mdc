@@ -76,7 +76,8 @@ batches.
   scalable sessions reach about 2.00 million 64-step VM segments/s at batch 128
   when setup/observation/snapshots are outside the timed region. Reusable validated
   profile memory then raises retained complete-snapshot batch 32 to about
-  93.68 VMs/s while validation/planning falls to about 0.23 ms. Broader live
-  hardware and remaining search/verification accelerator ports remain open.
+  93.68 VMs/s while validation/planning falls to about 0.23 ms. Direct snapshot
+  output removes redundant packed host staging. Broader live hardware and CUDA
+  implementations for generic search/verification-assist ports remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

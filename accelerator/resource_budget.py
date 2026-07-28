@@ -85,8 +85,8 @@ def plan_resident_batches(
 
     Returns:
         Stable input-order chunks whose requested bytes fit the measured budget.
-        An optional per-chunk item bound represents backend integer/layout limits,
-        never an accelerator-memory ceiling.
+        An optional per-chunk item bound represents backend integer/layout
+        limits, never an accelerator-memory ceiling.
 
     Raises:
         ResourceBudgetError: If the snapshot, layout, or one item cannot fit.

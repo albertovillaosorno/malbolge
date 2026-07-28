@@ -30,7 +30,12 @@ batch 32 reaches about 51.67 VMs/s, while resident batch 128 reaches about
 2.00 million 64-step segments/s when setup and snapshots are outside the timed
 region. `ProfileMemoryImage` now carries reusable geometry-bound validation proof;
 retained batch-32 complete-snapshot throughput reaches about 93.68 VMs/s and
-validation/planning falls to about 0.23 ms. Complete-snapshot materialization
-remains a measured host-side cost. Candidate evaluation,
-search/verification ports, ROCm, broader hardware evidence, and further
-performance orchestration remain follow-on work.
+validation/planning falls to about 0.23 ms. Direct complete-snapshot materialization now downloads into final result
+arrays without redundant packed host staging; full-state transfer/page commitment
+remains a measured cost. `work_ports.py` now defines hardware-neutral candidate
+evaluation, search execution, verification-assist, and trusted-admission
+boundaries. CPU callback adapters provide mandatory candidate/search execution
+capacity while search proposals and verification hints remain untrusted. Concrete
+search strategies, CUDA/ROCm implementations for those work ports, ROCm VM
+execution, broader hardware evidence, and further orchestration remain follow-on
+work.

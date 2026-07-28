@@ -122,7 +122,8 @@ example probe points, not supported-range endpoints.
   persistent scalable session reaches about 2.00 million 64-step VM segments/s
   at batch 128 when setup/observation/snapshots are excluded from `advance()`.
   `ProfileMemoryImage` now validates/owns reusable geometry-bound inputs once;
-  retained batch-32 validation/planning falls from about 62.40 ms to 0.23 ms and
-  complete throughput reaches about 93.68 VMs/s. Complete-snapshot
-  materialization and broader live-hardware measurements remain required.
+  retained batch-32 validation/planning falls from about 62.40 ms to 0.23 ms
+  and complete throughput reaches about 93.68 VMs/s. Direct snapshot output now
+  removes redundant packed host staging; unavoidable final-array transfer/page
+  commitment and broader live-hardware measurements remain required.
   Persistent classic continuation is tracked by its own retained session evidence.

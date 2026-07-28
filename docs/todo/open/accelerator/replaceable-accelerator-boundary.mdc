@@ -65,8 +65,11 @@ directly on CUDA APIs.
   workers while safe Rust owns admission and fallback. RTX 4060 current-profile
   baseline, shared-initialization, and persistent-session evidence is also
   retained. Geometry-bound `ProfileMemoryImage` inputs now carry reusable
-  validation proof without weakening mutable-input checks. Search/verification
-  ports, ROCm, broader hardware, and complete-snapshot materialization remain
-  open.
+  validation proof without weakening mutable-input checks. Hardware-neutral
+  candidate evaluation, search, verification-assist, and trusted-admission ports
+  now have CPU fallback/shape-failure tests. Direct snapshot materialization also
+  removes redundant packed host staging. Concrete search algorithms, CUDA/ROCm
+  work-port implementations, ROCm VM execution, asynchronous submission, and
+  broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

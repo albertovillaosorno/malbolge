@@ -386,8 +386,10 @@ Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 The CPU baseline now has deterministic sequential and explicit host-parallel
 execution for classic and profile-driven machines through one scheduler. Retained
-worker-scaling evidence applies to the classic workload only; current-profile
-performance measurement and future accelerator adapters remain open.
+worker-scaling evidence applies to the classic CPU workload only. Retained
+current-profile CUDA evidence now covers complete snapshots and persistent
+resident segments; additional hardware adapters remain separate accelerator
+work.
 
 ### TODO - Explicit native-tier execution controls
 
@@ -740,7 +742,10 @@ primitive request/result protocol with a mandatory scalar CPU implementation and
 optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
 fail before backend execution. Rust batch APIs now expose replaceable classic and
 profile execution ports with deterministic safe-Rust fallback, and live CUDA
-workers exercise both routes. Search/verification ports and ROCm remain open.
+workers exercise both routes. Hardware-neutral candidate-evaluation, search, and
+verification-assist ports now preserve algorithm identity, seed/budget identity,
+CPU fallback, and verifier-only acceptance. Concrete search strategies, CUDA/ROCm
+implementations for those work ports, and ROCm VM execution remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -767,8 +772,10 @@ termination, step count, resumption, and atomic rejection. The same geometry-bou
 resident kernel now executes `malbolge-2026.2`; Rust compares eight current cases
 across all 4,782,969 final words plus complete observable state. Rust product
 batches now route classic and current-profile states through hardware-neutral
-backend ports with safe-Rust fallback. Current-profile throughput, broader
-hardware evidence, and remaining accelerator ports remain open.
+backend ports with safe-Rust fallback. Current-profile throughput is now
+retained through direct complete-snapshot materialization and persistent sessions.
+Broader hardware evidence plus CUDA/ROCm search and verification-assist
+implementations remain open.
 
 ### TODO - CUDA superoptimizer
 
@@ -796,8 +803,10 @@ Current-profile shared initialization replicates one host image into private
 device states, and persistent scalable sessions avoid repeated full-state
 movement between bounded segments. `ProfileMemoryImage` now validates and owns
 reusable geometry-bound input once, reducing repeated current-profile validation
-to sub-millisecond planning in retained evidence. Broader live-device evidence
-and redundant complete-snapshot materialization is removed; unavoidable final-array transfer/page commitment and broader live-device evidence remain open.
+to sub-millisecond planning in retained evidence. Direct complete snapshots now
+download into final result arrays without redundant packed host staging.
+Unavoidable final-array transfer/page commitment and broader live-device evidence
+remain open.
 
 ### TODO - Compilation latency performance budget
 

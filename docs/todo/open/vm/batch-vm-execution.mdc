@@ -44,8 +44,8 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   sequential baseline and explicit worker counts 1, 2, 4, and 8 over 96
   independent roundtrip jobs. On the identified host, median speedups versus
   sequential were 0.99x, 1.87x, 3.35x, and 5.65x respectively, with identical
-  deterministic checksums. No profile-driven speedup is claimed from that classic
-  evidence; current-profile batching remains correctness-measured only.
+  deterministic checksums. That classic evidence makes no profile-driven speedup
+  claim; current-profile CUDA performance is measured separately below.
 - Optional CUDA now has compact classic proving transitions plus resident classic
   and current-profile bounded execution. Current geometry comes from canonical
   Rust profile identity, and full-state differential evidence compares every
@@ -53,8 +53,9 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   both resident workers with per-item/whole-batch safe-Rust fallback. The retained
   RTX 4060 current-profile baseline reached about 40.08 VMs/s at complete-snapshot
   batch 32; device-side shared initialization reaches about 51.67 VMs/s, and
-  reusable validated profile memory now reaches about 93.68 VMs/s. A persistent
-  current-profile session separately reaches about 2.00 million
+  reusable validated profile memory reaches about 93.68 VMs/s. Direct snapshot
+  output removes redundant packed host staging. A persistent current-profile
+  session separately reaches about 2.00 million
   64-step segments/s at batch 128 when setup, observation, and snapshots are
   outside the timed region. A matched CPU-relative speedup claim remains
   intentionally absent.

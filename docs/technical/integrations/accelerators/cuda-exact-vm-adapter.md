@@ -152,10 +152,10 @@ fails explicitly without changing correctness rules.
   projections and atomic rejection. Resident classic evidence compares complete
   59,049-word states; scalable resident evidence compares complete 4,782,969-word
   current-profile states against normative Rust. Product-level batch routing, an
-  RTX 4060 current-profile baseline, device-side shared initialization, and
-  persistent scalable-session evidence are now retained. Broader live-hardware
-  evidence and the remaining search/verification ports are still required before
-  this TODO can complete.
+  RTX 4060 current-profile baseline, device-side shared initialization,
+  validated-memory, direct-snapshot, and persistent-session evidence are retained.
+  Broader live-hardware evidence and CUDA implementations for the generic
+  search/verification-assist ports remain before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References
