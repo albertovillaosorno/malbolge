@@ -39,6 +39,17 @@ On Windows the repository development setup pins Zig 0.16.0 as the portable C
 frontend/linker. Zig itself is development tooling; generated `.malbolge`
 programs must not require it at execution time.
 
+When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
+`cli/adapters/doom/windows.c` as a separate host-only translation unit. The
+adapter supplies the debug window, keyboard/mouse input, audio, files, and clock.
+It does not embed an IWAD and is never part of `doom.c` or `doom.malbolge`.
+
+DOOM debug state is written under ignored `cli/run/doom/`. Pass `-iwad <path>`
+to select an asset explicitly. Without `-iwad`, the CLI checks
+`MALBOLGE_DOOM_IWAD`, then compatible filenames under `doom/data/wad/`, then the
+accepted quality output's passthrough data directory. The WAD remains an external
+user-provided file.
+
 ## Build the CLI
 
 The Rust frontend is `cli/main.rs` and the Cargo binary name is `malbolge`.

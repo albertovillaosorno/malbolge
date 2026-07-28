@@ -49,12 +49,24 @@
 use malbolge::{Machine, ProfileMachine, RunOutcome, parse_capsule};
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fs;
+use std::fs::{self, DirBuilder};
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
 
 const C_EXTENSION: &str = "c";
+const DOOM_HOST_MARKERS: [&[u8]; 2] =
+    [b"DoomHost_GuestMemoryRegion", b"DoomHost_VideoInitialize"];
+const DOOM_IWAD_NAMES: [&str; 8] = [
+    "freedoom1.wad",
+    "freedoom2.wad",
+    "doom2.wad",
+    "doomu.wad",
+    "doom.wad",
+    "doom1.wad",
+    "plutonia.wad",
+    "tnt.wad",
+];
 const C_RUN_PREFIX: &str = "malbolge-c-run";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const RUN_CHUNK_STEPS: usize = 1_000_000;
@@ -64,6 +76,14 @@ const ZIG_VERSION: &str = "0.16.0";
 enum CDriver {
     Cc(OsString),
     Zig(OsString),
+}
+
+#[derive(Debug)]
+struct CRunPlan {
+    arguments: Vec<OsString>,
+    extra_sources: Vec<PathBuf>,
+    needs_windows_libraries: bool,
+    working_directory: Option<PathBuf>,
 }
 
 fn cleanup_native_artifacts(executable: &Path) -> Result<(), String> {
@@ -86,6 +106,7 @@ fn compile_c(
     source: &Path,
     executable: &Path,
     driver: &CDriver,
+    plan: &CRunPlan,
 ) -> Result<(), String> {
     let mut command = match driver {
         CDriver::Cc(path) => Command::new(path),
@@ -100,9 +121,12 @@ fn compile_c(
         .arg("-O0")
         .arg("-g")
         .arg(source)
+        .args(&plan.extra_sources)
         .arg("-o")
         .arg(executable);
-    add_windows_debug_libraries(&mut command);
+    if plan.needs_windows_libraries {
+        add_windows_debug_libraries(&mut command);
+    }
     let compile_status = command
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -114,6 +138,125 @@ fn compile_c(
     } else {
         Err(format!("C compilation failed with status {compile_status}"))
     }
+}
+
+fn build_c_run_plan(
+    source: &Path,
+    arguments: &[OsString],
+) -> Result<CRunPlan, String> {
+    if !source_uses_doom_host(source)? {
+        return Ok(CRunPlan {
+            arguments: arguments.to_vec(),
+            extra_sources: Vec::new(),
+            needs_windows_libraries: false,
+            working_directory: None,
+        });
+    }
+    build_doom_run_plan(arguments)
+}
+
+fn build_doom_run_plan(arguments: &[OsString]) -> Result<CRunPlan, String> {
+    if !cfg!(windows) {
+        return Err(String::from(
+            "native doom.c debugging currently has only a Windows adapter",
+        ));
+    }
+    let root = repository_root().ok_or_else(|| {
+        String::from("cannot locate repository root for DOOM debug adapter")
+    })?;
+    let adapter = root.join("cli/adapters/doom/windows.c");
+    if !adapter.is_file() {
+        return Err(format!(
+            "DOOM debug adapter is missing: {}",
+            adapter.display(),
+        ));
+    }
+    let working_directory = root.join("cli/run/doom");
+    DirBuilder::new()
+        .recursive(true)
+        .create(&working_directory)
+        .map_err(|error| {
+            format!("cannot create DOOM run directory: {error}")
+        })?;
+    let resolved_arguments = doom_arguments(&root, arguments)?;
+    Ok(CRunPlan {
+        arguments: resolved_arguments,
+        extra_sources: vec![adapter],
+        needs_windows_libraries: true,
+        working_directory: Some(working_directory),
+    })
+}
+
+fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+fn discover_doom_iwad(root: &Path) -> Option<PathBuf> {
+    if let Some(configured) = env::var_os("MALBOLGE_DOOM_IWAD") {
+        let configured_path = PathBuf::from(configured);
+        if let Ok(canonical) = configured_path.canonicalize()
+            && canonical.is_file()
+        {
+            return Some(canonical);
+        }
+    }
+    let directories = [
+        root.join("doom/data/wad"),
+        root.join("algorithms/doom/quality/out/doom_fixed/data/wad"),
+    ];
+    for directory in directories {
+        for name in DOOM_IWAD_NAMES {
+            let candidate = directory.join(name);
+            if let Ok(canonical) = candidate.canonicalize()
+                && canonical.is_file()
+            {
+                return Some(canonical);
+            }
+        }
+    }
+    None
+}
+
+fn doom_arguments(
+    root: &Path,
+    arguments: &[OsString],
+) -> Result<Vec<OsString>, String> {
+    let mut resolved = arguments.to_vec();
+    let iwad_index = resolved
+        .iter()
+        .position(|argument| argument == OsStr::new("-iwad"));
+    if let Some(index) = iwad_index {
+        let path_index = index.saturating_add(1);
+        let path = resolved
+            .get(path_index)
+            .ok_or_else(|| String::from("-iwad requires a path"))?;
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|error| format!("cannot open IWAD: {error}"))?;
+        let path_slot = resolved
+            .get_mut(path_index)
+            .ok_or_else(|| String::from("-iwad requires a path"))?;
+        *path_slot = canonical.into_os_string();
+        return Ok(resolved);
+    }
+    let iwad = discover_doom_iwad(root).ok_or_else(|| {
+        String::from(
+            "no compatible IWAD found; put one in doom/data/wad, pass -iwad, or set MALBOLGE_DOOM_IWAD",
+        )
+    })?;
+    resolved.push(OsString::from("-iwad"));
+    resolved.push(iwad.into_os_string());
+    Ok(resolved)
+}
+
+fn source_uses_doom_host(source: &Path) -> Result<bool, String> {
+    let bytes = fs::read(source)
+        .map_err(|error| format!("failed to inspect C source: {error}"))?;
+    Ok(DOOM_HOST_MARKERS
+        .iter()
+        .all(|marker| bytes_contain(&bytes, marker)))
 }
 
 fn c_driver() -> Result<CDriver, String> {
@@ -271,21 +414,25 @@ fn run() -> Result<ExitCode, String> {
 
 fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
     let driver = c_driver()?;
+    let plan = build_c_run_plan(source, arguments)?;
     let executable = native_executable_path();
     cleanup_native_artifacts(&executable)?;
-    if let Err(error) = compile_c(source, &executable, &driver) {
+    if let Err(error) = compile_c(source, &executable, &driver, &plan) {
         cleanup_native_artifacts(&executable)?;
         return Err(error);
     }
-    let run_status = Command::new(&executable)
-        .args(arguments)
+    let mut command = Command::new(&executable);
+    let _configured = command
+        .args(&plan.arguments)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|error| {
-            format!("failed to execute compiled C program: {error}")
-        });
+        .stderr(Stdio::inherit());
+    if let Some(directory) = &plan.working_directory {
+        let _working_directory = command.current_dir(directory);
+    }
+    let run_status = command.status().map_err(|error| {
+        format!("failed to execute compiled C program: {error}")
+    });
     let cleanup_result = cleanup_native_artifacts(&executable);
     let status = run_status?;
     cleanup_result?;
