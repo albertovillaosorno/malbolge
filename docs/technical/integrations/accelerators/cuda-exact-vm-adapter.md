@@ -154,8 +154,10 @@ fails explicitly without changing correctness rules.
   current-profile states against normative Rust. Product-level batch routing, an
   RTX 4060 current-profile baseline, device-side shared initialization,
   validated-memory, direct-snapshot, and persistent-session evidence are retained.
-  Broader live-hardware evidence and CUDA implementations for the generic
-  search/verification-assist ports remain before this TODO can complete.
+  The hardware-neutral exact-primitive candidate bridge also executes 257-item
+  classic crazy and rotate corpora on live CUDA and matches CPU evidence exactly.
+  Broader live-hardware evidence plus CUDA search/verification-assist ports remain
+  before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

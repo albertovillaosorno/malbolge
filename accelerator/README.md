@@ -38,9 +38,11 @@ boundaries. CPU callback adapters provide mandatory candidate/search execution
 capacity while search proposals and verification hints remain untrusted.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
-versus actual backend identity after fallback. Concrete search strategies, CLI
-front-end wiring, CUDA/ROCm implementations for those work ports, ROCm VM
-execution, broader hardware evidence, and further orchestration remain follow-on
-work. `optimizer/enumerative.py` now supplies the first concrete CPU-only search
-strategy: deterministic finite-corpus enumeration with canonical replay identity
-and independent trusted verification.
+versus actual backend identity after fallback. `primitive_candidates.py` binds
+classic crazy/rotate candidate payloads to any exact primitive adapter; the same
+bridge is differentially exercised through CPU and live CUDA backends. Additional
+search strategies, CLI front-end wiring, CUDA search/verification-assist, ROCm
+work ports and VM execution, broader hardware evidence, and orchestration remain
+follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
+search strategy: deterministic finite-corpus enumeration with canonical replay
+identity and independent trusted verification.

@@ -67,9 +67,11 @@ directly on CUDA APIs.
   retained. Geometry-bound `ProfileMemoryImage` inputs now carry reusable
   validation proof without weakening mutable-input checks. Hardware-neutral
   candidate evaluation, search, verification-assist, and trusted-admission ports
-  now have CPU fallback/shape-failure tests. Direct snapshot materialization also
-  removes redundant packed host staging. Concrete search algorithms, CUDA/ROCm
-  work-port implementations, ROCm VM execution, asynchronous submission, and
-  broader hardware remain open.
+  now have CPU fallback/shape-failure tests. Exact crazy/rotate candidate
+  evaluation additionally runs through the same bridge on CPU and live CUDA;
+  malformed primitive capability/count/domain evidence falls back safely. Direct
+  snapshot materialization removes redundant packed host staging. Additional
+  search algorithms, CUDA search/verification-assist, ROCm work ports/VM execution,
+  asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

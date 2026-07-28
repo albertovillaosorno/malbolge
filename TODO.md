@@ -688,8 +688,10 @@ fail before backend execution. Rust batch APIs now expose replaceable classic an
 profile execution ports with deterministic safe-Rust fallback, and live CUDA
 workers exercise both routes. Hardware-neutral candidate-evaluation, search, and
 verification-assist ports now preserve algorithm identity, seed/budget identity,
-CPU fallback, and verifier-only acceptance. Concrete search strategies, CUDA/ROCm
-implementations for those work ports, and ROCm VM execution remain open.
+CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
+evaluation now exercises the same port through CPU and live CUDA backends.
+Additional search strategies, CUDA search/verification-assist implementations,
+ROCm work ports, and ROCm VM execution remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -722,8 +724,9 @@ across all 4,782,969 final words plus complete observable state. Rust product
 batches now route classic and current-profile states through hardware-neutral
 backend ports with safe-Rust fallback. Current-profile throughput is now
 retained through direct complete-snapshot materialization and persistent sessions.
-Broader hardware evidence plus CUDA/ROCm search and verification-assist
-implementations remain open.
+A hardware-neutral exact-primitive candidate bridge now differentially matches
+CPU and live CUDA for classic crazy/rotate batches. Broader hardware evidence plus
+CUDA search/verification-assist and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer
 

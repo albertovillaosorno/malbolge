@@ -77,7 +77,9 @@ batches.
   when setup/observation/snapshots are outside the timed region. Reusable validated
   profile memory then raises retained complete-snapshot batch 32 to about
   93.68 VMs/s while validation/planning falls to about 0.23 ms. Direct snapshot
-  output removes redundant packed host staging. Broader live hardware and CUDA
-  implementations for generic search/verification-assist ports remain open.
+  output removes redundant packed host staging. Exact classic crazy/rotate
+  candidate evaluation now traverses the hardware-neutral work port on live CUDA
+  and matches CPU evidence over 257-item deterministic corpora. Broader live
+  hardware and CUDA search/verification-assist implementations remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

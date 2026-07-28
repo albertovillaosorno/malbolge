@@ -65,8 +65,12 @@ portable CPU callback adapters provide mandatory candidate/search execution
 capacity and best-effort routing falls back on typed optional-backend failures or
 malformed result shape. Search selection now resolves algorithm/backend bindings
 independently and records configured versus actual backend identity after
-fallback. Concrete search algorithms, accelerator implementations of these
-generic work ports, asynchronous submission, and ROCm remain open.
+fallback. `accelerator/primitive_candidates.py` now maps exact classic crazy and
+rotate candidate payloads into the existing primitive contract; the identical
+bridge runs through mandatory CPU and optional CUDA adapters, and malformed
+backend capability/count/domain evidence falls back before admission. Additional
+search algorithms, CUDA search/verification-assist implementations, asynchronous
+submission, and ROCm remain open.
 
 ## Invariants
 
