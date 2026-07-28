@@ -1,5 +1,5 @@
 [jig]
-schema_version = 11
+schema_version = 12
 
 [documentation]
 path_style = "lower-kebab"
