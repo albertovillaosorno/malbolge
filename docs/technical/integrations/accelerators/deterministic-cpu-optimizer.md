@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active implementation
 
 ## Purpose
 
@@ -22,16 +22,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Active Model
 
-This record defines the contract that implementation must satisfy for
-`deterministic-cpu-optimizer`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+The first concrete CPU search strategy is
+`deterministic-corpus-enumeration-v1` under `optimizer/enumerative.py`. Its
+problem is an explicitly supplied finite corpus with canonical binary encoding.
+The request seed selects a deterministic starting ordinal and the evaluation
+budget bounds how many distinct candidates are proposed without wraparound
+duplication. Stable logical candidate IDs preserve replay identity.
+
+The strategy runs through `CpuSearchExecutionAdapter` and the shared search port.
+It produces only untrusted `CandidateProposal` values; `search_and_verify()`
+passes those proposals to an independent `TrustedCandidateVerifier`, which alone
+decides acceptance. GPU availability is irrelevant to this path.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+A bounded deterministic CPU baseline is active and plugs into the generic
+algorithm/backend registry. It proves reproducible CPU-only search, canonical
+problem replay, explicit seed/budget control, and independent verification. It is
+not a claim that general Malbolge synthesis is solved. Real synthesis generators,
+translation-validation integration, AArch64 execution evidence, and performance
+benchmarks remain open.
 
 ## Invariants
 
@@ -53,6 +65,9 @@ fails explicitly without changing correctness rules.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- `tests/optimizer/test_deterministic_enumeration.py` covers canonical problem
+  roundtrip, seeded order, budget bounds, duplicate rejection, malformed
+  encodings, trusted-verifier admission, and generic search-registry integration.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

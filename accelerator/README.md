@@ -41,4 +41,6 @@ requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. Concrete search strategies, CLI
 front-end wiring, CUDA/ROCm implementations for those work ports, ROCm VM
 execution, broader hardware evidence, and further orchestration remain follow-on
-work.
+work. `optimizer/enumerative.py` now supplies the first concrete CPU-only search
+strategy: deterministic finite-corpus enumeration with canonical replay identity
+and independent trusted verification.

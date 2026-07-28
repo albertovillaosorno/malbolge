@@ -732,6 +732,11 @@ and end-to-end tier performance remain open.
 Implement a correct CPU reference optimizer and search engine that works without
 a GPU, even when much slower, and acts as the specification-conformant CPU
 baseline on both x86-64 and AArch64 hosts for accelerator implementations.
+The first active strategy, `deterministic-corpus-enumeration-v1`, searches an
+explicit canonically encoded finite corpus under deterministic seed/budget
+control and submits every proposal to the trusted verifier. Real synthesis
+generators, translation-validation integration, AArch64 evidence, and performance
+measurement remain open.
 
 ### TODO - Replaceable accelerator boundary
 

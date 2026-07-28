@@ -1,6 +1,6 @@
 ---
 id: "deterministic-cpu-optimizer"
-status: "pending"
+status: "active"
 lane: "12"
 area: "accelerator"
 task: "TODO - Deterministic CPU optimizer"
@@ -49,5 +49,16 @@ baseline for accelerator implementations.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- `tests/optimizer/test_deterministic_enumeration.py` covers canonical problem
+  roundtrip, seeded order, budget bounds, duplicate rejection, malformed
+  encodings, trusted-verifier admission, and generic search-registry integration.
+- Active foundation: `deterministic-corpus-enumeration-v1` canonically encodes an
+  explicit finite candidate corpus, uses seed and evaluation budget for
+  deterministic bounded order, emits stable logical candidate IDs, and never
+  duplicates candidates by wraparound. It executes through the mandatory CPU
+  search adapter and only an independent `TrustedCandidateVerifier` may accept a
+  proposal. This establishes a CPU-only search baseline, not general Malbolge
+  synthesis. Translation-validation integration, real synthesis generators,
+  AArch64 execution evidence, and performance measurements remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
