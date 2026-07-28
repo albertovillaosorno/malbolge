@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-preparation-crossover-v5"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-packed-rotate-batch-builder-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does packed first-representative construction and scalar packed CPU truth reduce rotate-target preparation peak and latency without weakening exact admission?"
+hypothesis = "At full domain, the v5 builder reduces peak memory and preparation time, preserves exact proofs and one-run crossover, and improves ordinary CPU/CUDA routes; prepared routes remain contextual controls."
+baseline = "retained version-4 packed primitive-input evidence from source commit 1deca088aca6f3a1aa862833bdbbcfb167b1a121"
+rejection_observation = "Builder/reference identity or exact proofs drift, full-domain peak or preparation does not improve, ordinary routes regress, or crossover exceeds one run. Prepared-route changes are retained contextual controls rather than rejection criteria because the builder is outside those timed intervals."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup; one resident build plus one reuse warmup; CPU and CUDA prepared sessions each require one build and fifteen measured reuses"
+ordering = "fixed"
+stopping_rule = "fifteen retained timing samples and five retained memory samples per crossover scale; fifteen throughput and phase samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "crossover_runs", "session_builds", "session_reuses"]
+tradeoff_policy = "builder, storage, membership, validators, proposal, admission, cardinality, and CPU/CUDA session proofs precede memory, route, phase, and crossover interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-packed-rotate-batch-builder-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
