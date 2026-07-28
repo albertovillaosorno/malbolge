@@ -166,3 +166,21 @@ The retained RTX 4060 evidence is under
 306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared
 CPU. Preparation is outside all timed samples, and every route preserves exact
 proposal identity plus independent CPU admission.
+`search_prepared_phase_profile.py` attributes the amortized prepared path after
+request/batch construction and validation have already completed. It retains
+strategy-proof validation, backend evaluation, proposal selection, result
+validation, and inclusive total time for 15 fixed interleaved CPU-then-CUDA
+samples. Preparation, CUDA adapter construction, and NVRTC setup remain outside
+timed intervals; every profile still checks exact proposals and independent CPU
+admission.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_prepared_phase_profile
+```
+
+This diagnostic answers where prepared repeated-search time remains. It is not a
+one-shot latency measurement and must not be used to count preparation as free in
+workloads that cannot reuse immutable state.
