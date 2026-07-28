@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "projected-prepared-rotate-crossover-v8"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does exact selection-aware projection evaluate only the proven rotate preimage while preserving full-batch membership, trusted admission, preparation crossover, and ordinary controls?"
+hypothesis = "At full domain, projecting prepared rotate execution from 59,049 candidates to the one exact preimage lowers retained and peak preparation memory and prepared CPU/CUDA latency, while full membership remains 59,049, ordinary execution stays full-domain, and crossover remains one run."
+baseline = "immediate clean source commit 5d8cff5fb01462cd9885d521d7b9aec2d6b79890; retained crossover v7 plus same-run clean throughput and phase profiles"
+rejection_observation = "Projection identity, exact proposal, full membership, trusted admission, primitive equality, session counts, or source provenance drift; full-domain retained or peak memory fails to improve; prepared latency does not improve; or full-domain crossover changes. Tiny-batch regressions remain explicit tradeoffs."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup and one projected prepared build plus reuse warmup; fixed interleaved throughput and phase ordering"
+ordering = "fixed"
+stopping_rule = "fifteen retained timing samples and five retained memory samples per crossover scale; fifteen samples per throughput route and phase"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "crossover_runs", "projection_count", "membership_count", "selection_count"]
+tradeoff_policy = "projection, selector, builder, storage, membership, validators, proposal, admission, cardinality, and CPU/CUDA session proofs precede performance interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

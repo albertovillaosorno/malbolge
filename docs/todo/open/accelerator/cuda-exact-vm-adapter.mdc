@@ -252,24 +252,32 @@ batches.
   incremental beside the retained batch, is the next measured preparation-memory
   boundary; exact reference, selection, membership, proposal, and admission proofs
   remain mandatory.
-  The active prepared rotate path now uses selection-aware exact projection under
+  Retained version-8 evidence under
+  `benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/`
+  promotes selection-aware exact projection under
   `classic-rotate-preimage-projection-v1`. Generic evaluated search prepares the
   selector proof first, requires the projected sub-batch to preserve evaluator
   identity and exact full-batch membership, binds projection callbacks into strategy
   identity, and validates backend evidence against only that sub-batch. Proposal
-  membership and trusted admission still use the complete evaluated batch. The
-  classic rotate inverse has zero or one exact preimage, so prepared CPU/CUDA state
-  retains zero or one reference word while membership continues to cover every
-  candidate. Empty projections skip backend execution. Crossover protocol v8 and
-  prepared throughput/phase protocol v2 record the projection identity and require
-  one projected reference word, 59,049 membership entries, one selected position,
-  and resident CPU/CUDA count one for the canonical full-domain workload. Exploratory
-  full-domain results lower retained state from 710,647 to 475,010 bytes, peak from
-  946,675 to 710,126 bytes, and warm preparation from 64.780 to 46.581 ms. CPU/CUDA
-  prepared search measure about 0.094/0.268 ms while ordinary remains full-domain.
-  The one-candidate cold/warm crossover moves from 6/6 to 7/7, so projection is not
-  a universal tiny-batch win. Clean post-commit crossover, throughput, and phase
-  evidence is pending before promotion and before choosing the next boundary.
+  membership and trusted admission still use all 59,049 evaluated candidates. The
+  classic rotate inverse has zero or one exact preimage, so the canonical full-domain
+  prepared state retains one reference word, one selected position, and one resident
+  CPU/CUDA word while full membership remains 59,049. Empty projections skip backend
+  execution; wrong evaluator, fabricated member, oversized projection, forged proof,
+  wrong evidence, and fabricated proposal still fail closed. Against the immediate
+  clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms to
+  46.2706/46.6161 ms (1.393x/1.390x), retained state falls from 710,647 to 475,010
+  bytes (33.158%), peak allocation falls from 946,675 to 710,126 bytes (24.987%),
+  and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to 0.0787
+  ms (41.172x), while CUDA prepared improves from 0.5116 to 0.2743 ms (1.865x).
+  Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-phase
+  speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
+  are not attributed to projection. Projection is not universal tiny-batch policy: at
+  one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
+  moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
+  contract for strategies without a unique algebraic inverse; any generalization must
+  retain subset identity, full membership, exact evidence, proposal validation, and
+  independent trusted admission rather than introduce heuristic filtering.
   Synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
