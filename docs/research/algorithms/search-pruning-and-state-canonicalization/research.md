@@ -52,6 +52,14 @@ The rule is rejected as unsound if any two byte-distinct inputs share a
 representative. A corpus with no duplicates is the required null case and must
 show zero reduction in candidate evaluations.
 
+This exact relation is also the strongest universally sound relation available to
+the hardware-neutral pre-verifier layer. Because `TrustedCandidateVerifier` may
+inspect the complete payload, any two byte-distinct candidates can be separated
+by a valid verifier that accepts one and rejects the other. Consequently, any
+coarser generic canonicalization would change acceptance for some legal verifier.
+Stronger pruning must therefore carry profile-, semantics-, or verifier-specific
+proof obligations instead of being smuggled into generic candidate plumbing.
+
 ## Evidence
 
 Candidate generation, heuristics, models, and accelerators are untrusted. A
@@ -98,7 +106,9 @@ the original encoded corpus, including duplicates, remains replayable while only
 exact representatives consume evaluation budget and receive logical candidate
 identity. Production Python fixtures match the retained duplicate-rich, unique,
 and near-match research cases, while the independent Rust adversarial suite still
-passes all five checks.
+passes all five checks. A production verifier-discrimination test additionally
+demonstrates the generic maximality boundary: byte-distinct payloads can receive
+different trusted acceptance decisions.
 
 This integration does not turn the exploratory fixture into a wall-time speedup
 claim. The rule cannot help an all-unique corpus, and the evidence does not

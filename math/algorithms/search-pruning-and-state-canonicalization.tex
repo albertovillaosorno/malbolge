@@ -29,4 +29,16 @@ candidate evaluations is $|R|\le |C|$. Equality of hashes, prefixes, lengths, or
 other reduced descriptors is not sufficient for $\sim_{\mathrm{bytes}}$. Thus
 this rule is exact but provides zero reduction when every candidate byte sequence
 is unique.
+
+Moreover, this relation is maximal for a hardware-neutral pre-verifier layer.
+For any two byte-distinct candidates $b_i\ne b_j$, define a permitted trusted
+verifier $V_i$ that accepts exactly payload $b_i$ and rejects $b_j$. Then
+\[
+  V_i(b_i,p)=1 \qquad\text{and}\qquad V_i(b_j,p)=0.
+\]
+Therefore any generic relation $\approx$ that identifies some
+$b_i\ne b_j$ cannot preserve acceptance for every possible trusted verifier.
+A relation coarser than $\sim_{\mathrm{bytes}}$ is sound only after adding
+profile-, semantics-, or verifier-specific proof obligations to the trusted
+boundary.
 \end{document}

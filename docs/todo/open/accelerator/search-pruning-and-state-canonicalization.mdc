@@ -64,6 +64,10 @@ raw hardware scale.
   an independent Python implementation of the same exact relation before logical
   identity; duplicate corpus bytes roundtrip unchanged, while budget is consumed
   only by stable first representatives. Python production tests and the five Rust
-  research adversarials both pass. This is correctness/evaluation-count evidence
-  only; stronger canonicalization, dominance, admissible heuristics, and
-  preregistered performance evidence remain open.
+  research adversarials both pass. The hardware-neutral generic layer is also
+  now bounded by a maximality argument: any two byte-distinct payloads can be
+  separated by a legal trusted verifier, so no coarser universal equivalence is
+  sound without profile-, semantics-, or verifier-specific proof obligations.
+  This is correctness/evaluation-count evidence only; stronger canonicalization,
+  dominance, admissible heuristics, and preregistered performance evidence remain
+  open.

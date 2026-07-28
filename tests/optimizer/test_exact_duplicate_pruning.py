@@ -4,7 +4,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from accelerator.work_ports import CandidateProposal
 from optimizer import prune_exact_duplicates
+
+if TYPE_CHECKING:
+    from accelerator.work_ports import VerificationHint
 
 DUPLICATE_SAVED = 3
 
@@ -49,3 +55,27 @@ def test_prefix_length_and_one_byte_differences_remain_distinct() -> None:
 
     assert pruning.representative_indices == (0, 1, 2, 3, 4)
     assert pruning.canonical_indices == (0, 1, 2, 3, 4, 0)
+
+
+def test_byte_distinct_candidates_can_be_distinguished_by_verification() -> (
+    None
+):
+    """Generic verifier authority forbids coarser universal equivalence."""
+    accepted_payload = b"prefix-A"
+    rejected_payload = b"prefix-B"
+
+    def accepts(
+        candidate: CandidateProposal,
+        hint: VerificationHint | None,
+    ) -> bool:
+        return hint is None and candidate.payload == accepted_payload
+
+    accepted = CandidateProposal(
+        logical_id="accepted", payload=accepted_payload
+    )
+    rejected = CandidateProposal(
+        logical_id="rejected", payload=rejected_payload
+    )
+
+    assert accepts(accepted, None)
+    assert not accepts(rejected, None)
