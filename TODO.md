@@ -792,8 +792,13 @@ evaluated preimage positions. Prepared selection reads and validates evidence on
 at those positions; ordinary search keeps the full packed scan. Missing/excluded
 preimages, forged state, and nonmatching evidence produce no proposal or fail
 closed. Both benchmarks require one prepared position for the canonical workload.
-Post-commit performance evidence is pending; primitive backend execution is the
-next measured boundary.
+Retained direct-selection evidence records CPU/CUDA prepared medians of
+15.266/6.182 ms, improvements of 1.755x/2.907x over indexed membership; CUDA is
+2.470x faster in the same run. Selection falls from 11.801 ms to 13.2 us CPU
+(894.008x) and from 11.761 ms to 12.4 us CUDA (948.452x). Ordinary controls improve
+only 1.022x/1.015x and backend phases only 1.034x/1.035x, strongly bounding
+attribution to exact prepared selection. Primitive backend execution is the next
+measured boundary.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -864,8 +869,11 @@ ordinary/backend controls bound attribution to the direct selection phase. Prepa
 rotate search now stores exact preimage positions and reads only their packed
 backend evidence, while ordinary search retains the full scan. The canonical
 benchmarks require exactly one prepared position plus the existing membership and
-resident-session proofs. Post-commit performance evidence is pending; primitive
-backend execution now precedes resident or fused evaluation-selection. Broader
+resident-session proofs. Retained CUDA prepared throughput reaches 6.182 ms versus
+15.266 ms CPU prepared (2.470x), while CUDA selection falls to 12.4 us (948.452x).
+Backend evaluation remains 5.239 ms and changes only 1.035x versus the indexed run,
+so primitive backend execution now precedes resident or fused evaluation-selection.
+Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 

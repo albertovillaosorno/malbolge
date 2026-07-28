@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "rotate-target-direct-selection-phase-profile-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 17
+
+[challenge]
+family = "classic-rotate-target-full-domain-v1"
+difficulty = 59049
+target_profile = "malbolge-1998-classic-word-domain"
+
+[budget]
+evaluations = 59049
+samples_per_backend = 15
+
+[verification]
+required = true
+oracle = "exact proposal identity, CPU admission, one prepared position, full membership, phase coverage, and resident counters"
+
+[provenance]
+implementation = "benchmarks/accelerator/search_prepared_phase_profile.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060"
+
+[run]
+commit = "e36d33f6042842932ba41f0be11850e615457937"
+workload_sha256 = "68215df6ec0f00ab5fa8a720737c1e52f59252ee5c0a344bc2802d648dd677a1"
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060/raw.csv"

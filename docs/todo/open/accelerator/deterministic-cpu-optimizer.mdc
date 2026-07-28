@@ -92,8 +92,8 @@ baseline for accelerator implementations.
   Retained CPU prepared median is 26.797 ms (1.725x better), and selection improves
   3.519x to 11.801 ms. Prepared rotate state now stores exact preimage positions
   after pruning/seed/budget and validates only their evidence; ordinary CPU search
-  retains the packed scan. Post-commit evidence is pending; primitive arithmetic is
-  next.
+  retains the packed scan. Retained CPU prepared median is 15.266 ms (1.755x
+  better), and selection improves 894.008x to 13.2 us. Primitive arithmetic is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

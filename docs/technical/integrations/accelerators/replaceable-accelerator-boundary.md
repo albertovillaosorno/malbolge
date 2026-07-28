@@ -131,9 +131,11 @@ cross-run attribution. Prepared strategy state now optionally includes a
 proof-bound selector preparer, selector, and count function. Rotate target uses the
 exact classic inverse and stores only evaluated preimage positions; prepared
 CPU/CUDA read and validate evidence there, while ordinary execution retains the
-full scan. Forged/mismatched selector state and nonmatching evidence fail closed.
-Post-commit evidence is pending; primitive execution is next, while resident/fused
-search remains later work.
+full scan. Forged/mismatched selector state and nonmatching evidence fail closed. Retained
+prepared medians improve 1.755x CPU and 2.907x CUDA; selection improves
+894.008x/948.452x to 13.2/12.4 us. CUDA is 2.470x faster than same-run CPU. Ordinary
+controls and backend phases change far less, bounding attribution. Primitive
+execution is next, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

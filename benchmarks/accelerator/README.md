@@ -227,4 +227,9 @@ unique classic rotate preimage after pruning, seed rotation, and budget selectio
 Both benchmark programs emit and require `prepared_selection_count=1` together with
 `prepared_membership_count=59049` and the CUDA session counters. Prepared selection
 still reads/validates backend evidence at that position; ordinary search retains the
-full scan. A post-commit rerun is required before claiming the exploratory reduction.
+full scan. Retained post-commit evidence is under
+`evidence/2026-07-28-direct-rotate-selection-rtx4060/` and
+`evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060/`. Prepared
+CPU/CUDA medians reach 15.266/6.182 ms, while selection reaches 13.2/12.4 us.
+Backend phases move only about 3.5%, identifying primitive execution as the next
+boundary.

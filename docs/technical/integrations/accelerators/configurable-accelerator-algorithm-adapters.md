@@ -136,8 +136,12 @@ uses the exact inverse of the classic rotate bijection and records only preimage
 positions that survive pruning, seed order, and budget. Prepared selection reads
 and validates packed evidence only at those positions; ordinary search retains the
 full scan. Missing/excluded positions, forged state, and nonmatching evidence remain
-fail-closed. Benchmarks require one canonical position. Post-commit evidence is
-pending; primitive backend execution is the next neutral boundary. Resident or
+fail-closed. Benchmarks require one canonical position. Retained prepared medians
+are 15.266 ms CPU and 6.182 ms CUDA, improvements of 1.755x/2.907x over indexed
+membership; CUDA is 2.470x faster in the same run. Selection improves
+894.008x/948.452x to 13.2/12.4 us. Ordinary controls improve only 1.022x/1.015x and
+backend phases only 1.034x/1.035x, strongly bounding attribution. Primitive backend
+execution is the next neutral boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -204,6 +208,10 @@ fails explicitly without changing correctness rules.
 - `benchmarks/accelerator/evidence/2026-07-28-indexed-membership-search-rtx4060/`
   and its phase sibling retain full index/session identity. Prepared medians improve
   1.725x CPU and 1.899x CUDA; proposal selection improves 3.519x/3.939x.
+- `benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-rtx4060/`
+  and its phase sibling retain selector/index/session proof identity. Prepared
+  medians improve 1.755x CPU and 2.907x CUDA; selection improves
+  894.008x/948.452x to microsecond scale.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

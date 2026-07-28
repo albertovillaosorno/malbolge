@@ -131,8 +131,10 @@ fails explicitly without changing correctness rules.
   only positions that survive pruning/seed/budget. It reads/verifies evidence at
   those positions instead of scanning every packed word; ordinary CPU search keeps
   the scan. Missing/excluded candidates and nonmatching evidence produce no
-  proposal. Post-commit evidence is pending; primitive arithmetic remains the CPU
-  target.
+  proposal. Retained CPU prepared median reaches 15.266 ms, 1.755x faster than
+  indexed membership, while selection falls from 11.801 ms to 13.2 us (894.008x).
+  Backend evaluation remains 14.387 ms and changes only 1.034x. Primitive arithmetic
+  remains the CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

@@ -214,8 +214,11 @@ fails explicitly without changing correctness rules.
   also contains exact rotate-preimage positions after pruning/seed/budget. CUDA
   prepared selection reads and validates only those packed words; ordinary CUDA
   search retains the full host scan. Benchmarks require one selector position
-  alongside membership and resident-session identity. Post-commit performance
-  evidence is pending; the remaining prepared cost is primitive backend execution.
+  alongside membership and resident-session identity. Retained CUDA prepared median
+  is 6.182 ms, 2.907x faster than indexed membership and 2.470x faster than same-run
+  CPU. CUDA selection falls from 11.761 ms to 12.4 us (948.452x), while backend
+  evaluation changes only 1.035x to 5.239 ms. The remaining prepared cost is
+  primitive backend execution.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

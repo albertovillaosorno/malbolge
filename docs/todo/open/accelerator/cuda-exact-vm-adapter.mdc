@@ -124,7 +124,8 @@ batches.
   to 11.761 ms. Prepared rotate selection now stores exact preimage positions and
   validates only those packed evidence words, while ordinary CUDA retains the full
   scan. Benchmarks require one selector position alongside existing proofs.
-  Post-commit evidence is pending; primitive execution and synthesis/search remain
-  open.
+  Retained CUDA prepared median is 6.182 ms, 2.907x faster than indexed membership
+  and 2.470x faster than CPU. Selection improves 948.452x to 12.4 us, while backend
+  evaluation remains 5.239 ms. Primitive execution and synthesis/search remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

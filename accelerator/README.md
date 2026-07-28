@@ -131,8 +131,13 @@ prepared proof. Rotate target preparation computes the unique classic rotate
 preimage after pruning/seed/budget and retains its evaluated positions. Prepared
 selection validates only those packed evidence words; ordinary search keeps the
 full scan. Missing/excluded positions, forged state, and nonmatching evidence fail
-closed, and benchmarks require one prepared position. Post-commit performance
-evidence is pending; primitive backend execution is the next candidate boundary.
+closed, and benchmarks require one prepared position. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-direct-rotate-selection-rtx4060/`
+records 15.266 ms CPU prepared and 6.182 ms CUDA prepared, improvements of
+1.755x/2.907x over indexed membership. CUDA is 2.470x faster in the same run. The
+phase sibling lowers selection to 13.2/12.4 us (894.008x/948.452x), while backend
+phases change only 1.034x/1.035x. Primitive backend execution is the next candidate
+boundary.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
