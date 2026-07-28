@@ -72,7 +72,9 @@ from optimizer.rotate_target import rotate_target_batch_builder_id
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
 EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
-EXPECTED_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
+EXPECTED_BATCH_BUILDER_ID = (
+    "classic-u32le-bitset-inplace-first-representatives-v2"
+)
 EXPECTED_CROSSOVER_RUNS = 5
 TEST_LOOKUP_ITERATIONS = 8
 TEST_SAMPLE_COUNT = 2

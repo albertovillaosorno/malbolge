@@ -313,10 +313,11 @@ Run the active preparation, membership-index, and reuse-crossover benchmark with
 15 warm-process preparations after the global rotate table is built, five
 incremental `tracemalloc` memory observations, 15 ordinary CUDA calls, 15 fresh
 resident-build calls, and 15 resident reuses after one build and one warmup. Version
-4 retains 15 component preparations and five component memory samples for the active
+6 retains 15 component preparations and five component memory samples for the active
 index and copied-tuple `frozenset`, plus 15 exact hit and miss timing blocks of 4,096
-lookups per index. It requires indexed-candidate, membership, and proof-bound packed
-primitive-storage identities in the proof record.
+lookups per index. It requires indexed-candidate, membership, proof-bound packed
+primitive-storage, scalar packed-reference, and in-place rotate-target batch-builder
+identities in the proof record.
 Workload construction, CUDA/NVRTC adapter setup, and trusted result admission are
 outside timed intervals. Fresh-build timing includes resident allocation/upload and
 one exact search. Memory tracing excludes the prebuilt workload, global rotate
@@ -397,6 +398,18 @@ large deterministic batches, not universal small-batch memory. All builder,
 storage, validator, membership, proposal, admission, cardinality, and CPU/CUDA
 session proofs pass. Component attribution now places the remaining peak in the
 batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes as
-representative, selected-index, and payload arrays coexist. Removing that
-coexistence without weakening first-representative, seed/budget, strict-rotation,
-or fail-closed proofs is the next measured boundary.
+representative, selected-index, and payload arrays coexist. Protocol version 6 is
+active under `classic-u32le-bitset-inplace-first-representatives-v2`. The builder
+reuses the representative array as final logical-index storage, rotates it in place
+through overlapping native-word memoryviews plus only the wrapped prefix, truncates
+to the evaluation budget, materializes immutable index bytes, releases the mutable
+array, and only then builds payload bytes. First-representative order, seed/budget
+rotation, strict packed-rotation proof, scalar packed reference, and fail-closed
+admission remain unchanged. Exploratory full-domain results lower warm/cold
+preparation from 76.584/76.130 to 64.580/64.631 ms (1.186x/1.178x), peak Python
+allocation from 1,183,023 to 962,052 bytes (18.679%), and ordinary CUDA search from
+102.850 to 90.783 ms (1.133x), while retained state stays 710,647 bytes and
+crossover remains 1/1. At 64 and 1,024 candidates the same route also lowers peak,
+preparation, and ordinary time; one-candidate peak is unchanged at 8,391 bytes.
+Clean post-commit crossover, throughput, phase, and component evidence is pending
+before the next measured boundary is selected.

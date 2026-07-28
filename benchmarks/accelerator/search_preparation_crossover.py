@@ -109,7 +109,7 @@ PREPARED_VALIDATION_ID: Final = "cpu-scalar-packed-equality-v2"
 CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
 PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
 ROTATE_TARGET_BATCH_BUILDER_ID: Final = (
-    "classic-u32le-bitset-first-representatives-v1"
+    "classic-u32le-bitset-inplace-first-representatives-v2"
 )
 MEMBERSHIP_INDEX_ID: Final = (
     "u32-rotation-or-pair-or-reference-binary-search-v1"
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v5",
+        "benchmark_id": "rotate-target-preparation-crossover-v6",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,

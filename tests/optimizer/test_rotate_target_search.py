@@ -86,7 +86,9 @@ if TYPE_CHECKING:
 CPU_BACKEND = "cpu-reference"
 CUDA_BACKEND = "cuda"
 ROTATE_ONE = 19_683
-EXPECTED_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
+EXPECTED_BATCH_BUILDER_ID = (
+    "classic-u32le-bitset-inplace-first-representatives-v2"
+)
 EXPECTED_ROTATION_PIVOT = 2
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad-search",

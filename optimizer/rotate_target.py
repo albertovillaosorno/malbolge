@@ -90,7 +90,9 @@ if TYPE_CHECKING:
     from accelerator.work_ports import VerificationHint
 
 ROTATE_TARGET_ALGORITHM_ID = "classic-rotate-target-search-v1"
-ROTATE_TARGET_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
+ROTATE_TARGET_BATCH_BUILDER_ID = (
+    "classic-u32le-bitset-inplace-first-representatives-v2"
+)
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
@@ -293,10 +295,16 @@ def build_rotate_target_batch(
         candidate_count,
         candidate_offset,
     )
-    logical_indices, payloads = _selected_packed_candidates(
-        validated,
-        candidate_offset,
+    logical_indices = _selected_packed_indices(
         representatives,
+        evaluation_budget=validated.evaluation_budget,
+        seed=validated.seed,
+    )
+    del representatives
+    payloads = _packed_selected_payloads(
+        validated.problem,
+        candidate_offset,
+        logical_indices,
     )
     return CandidateEvaluationBatch(
         evaluator_id=ROTATE_EVALUATOR_ID,
@@ -323,7 +331,7 @@ def _packed_representative_indices(
     problem: bytes,
     candidate_count: int,
     candidate_offset: int,
-) -> bytes:
+) -> array[int]:
     values = _native_u32_values(problem, candidate_offset)
     if len(values) != candidate_count:
         message = "rotate target problem has invalid candidate byte length"
@@ -340,29 +348,44 @@ def _packed_representative_indices(
             continue
         seen[byte_index] |= mask
         representatives.append(index)
+    return representatives
+
+
+def _selected_packed_indices(
+    representatives: array[int],
+    *,
+    evaluation_budget: int,
+    seed: int,
+) -> bytes:
+    representative_count = len(representatives)
+    if not representative_count:
+        return b""
+    start = seed % representative_count
+    _rotate_array_left(representatives, start)
+    count = min(evaluation_budget, representative_count)
+    del representatives[count:]
     return _u32le_bytes(representatives)
 
 
-def _selected_packed_candidates(
-    request: SearchRequest,
+def _rotate_array_left(values: array[int], start: int) -> None:
+    if not start:
+        return
+    prefix = array(_NATIVE_WORD_FORMAT, values[:start])
+    view = memoryview(values)
+    view[:-start] = view[start:]
+    view[-start:] = memoryview(prefix)
+
+
+def _packed_selected_payloads(
+    problem: bytes,
     candidate_offset: int,
-    representatives_u32le: bytes,
-) -> tuple[bytes, bytes]:
-    representatives = _native_u32_values(representatives_u32le, 0)
-    representative_count = len(representatives)
-    if not representative_count:
-        return (b"", b"")
-    candidates = _native_u32_values(request.problem, candidate_offset)
-    count = min(request.evaluation_budget, representative_count)
-    start = request.seed % representative_count
-    logical_indices = array(_NATIVE_WORD_FORMAT)
+    logical_indices_u32le: bytes,
+) -> bytes:
+    candidates = _native_u32_values(problem, candidate_offset)
+    logical_indices = _native_u32_values(logical_indices_u32le, 0)
     payloads = array(_NATIVE_WORD_FORMAT)
-    logical_indices.extend(
-        representatives[(start + position) % representative_count]
-        for position in range(count)
-    )
     payloads.extend(candidates[index] for index in logical_indices)
-    return (_u32le_bytes(logical_indices), _u32le_bytes(payloads))
+    return _u32le_bytes(payloads)
 
 
 def _native_u32_values(payload: bytes, offset: int) -> Sequence[int]:
