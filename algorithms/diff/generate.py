@@ -10,6 +10,7 @@ import math
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
+from algorithms.diff.domain import load_compatible_domain
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.fingerprints import AnchorPolicy
@@ -130,14 +131,23 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
     )
 
 
+def _preflight_compatible(recipe: DiffRecipe) -> None:
+    if recipe.domain_module is None:
+        message = "compatible generation requires a domain module"
+        raise DiffGeneratorUnavailableError(message)
+    domain = load_compatible_domain(recipe.domain_module)
+    domain.validate_source_provenance(recipe.source_root)
+    domain.validate_authoring_oracle(recipe.oracle_root)
+
+
 def write_algorithm(recipe: DiffRecipe) -> None:
     """Generate one requested transform mode or fail closed.
 
     Exact-baseline mode is implemented and intentionally binds raw source
     bytes because it also requires the exact authoring source snapshot.
-    Compatible mode
-    remains unavailable until canonical identity, admission thresholds, behavior
-    probes, and bug routing are represented in the emitted runtime.
+    Compatible mode executes consumer source-provenance and oracle preflights.
+    It then remains unavailable until compatible protected serialization and
+    runtime emission are complete.
 
     Raises:
         DiffGeneratorUnavailableError: Compatible emission is not implemented.
@@ -147,8 +157,9 @@ def write_algorithm(recipe: DiffRecipe) -> None:
     if recipe.mode is TransformMode.EXACT_BASELINE:
         _write_exact_algorithm(recipe)
         return
+    _preflight_compatible(recipe)
     message = (
         "compatible source-bound Rust emission is not implemented; "
-        "no output was materialized"
+        "preflight passed but no output was materialized"
     )
     raise DiffGeneratorUnavailableError(message)

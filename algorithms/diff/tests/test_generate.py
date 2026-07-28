@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 from typing import TYPE_CHECKING
 
@@ -67,6 +68,44 @@ def _expect(condition: object, message: str) -> None:
         raise AssertionError(message)
 
 
+def _domain_module(tmp_path: Path) -> Path:
+    module = tmp_path / "domain.py"
+    module.write_text(
+        """\
+def validate_source_provenance(root):
+    marker = root / "source-ok"
+    if not marker.exists():
+        raise RuntimeError("source pin rejected")
+    return None
+
+
+def validate_authoring_oracle(root):
+    marker = root / "oracle-ok"
+    if not marker.exists():
+        raise RuntimeError("oracle preflight rejected")
+
+
+def build_identity_tree(root):
+    return None
+
+
+def map_compatible_file(path, data):
+    return None
+
+
+def build_behavior_programs():
+    return None
+
+
+def build_behavior_probe_context(source_root, repository_root):
+    return None
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return module
+
+
 def test_generator_rejects_invalid_fraction_before_output(
     tmp_path: Path,
 ) -> None:
@@ -82,14 +121,34 @@ def test_generator_rejects_invalid_fraction_before_output(
     _expect(not recipe.output_algorithm.exists(), "invalid recipe wrote output")
 
 
-def test_compatible_mode_remains_fail_closed(tmp_path: Path) -> None:
-    """Keep fuzzy generation unavailable until runtime gates exist."""
+def test_compatible_mode_runs_domain_preflight_then_fails_emission(
+    tmp_path: Path,
+) -> None:
+    """Require domain provenance checks before unfinished emission."""
     recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    _write(recipe.source_root, "source-ok", b"")
+    _write(recipe.oracle_root, "oracle-ok", b"")
+    recipe = replace(recipe, domain_module=_domain_module(tmp_path))
 
-    with pytest.raises(DiffGeneratorUnavailableError, match="compatible"):
+    with pytest.raises(DiffGeneratorUnavailableError, match="preflight passed"):
         write_algorithm(recipe)
     _expect(
         not recipe.output_algorithm.exists(), "compatible mode wrote output"
+    )
+
+
+def test_compatible_mode_propagates_source_preflight_failure(
+    tmp_path: Path,
+) -> None:
+    """Reject the candidate source before compatible emission is considered."""
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    _write(recipe.oracle_root, "oracle-ok", b"")
+    recipe = replace(recipe, domain_module=_domain_module(tmp_path))
+
+    with pytest.raises(RuntimeError, match="source pin rejected"):
+        write_algorithm(recipe)
+    _expect(
+        not recipe.output_algorithm.exists(), "rejected source wrote output"
     )
 
 

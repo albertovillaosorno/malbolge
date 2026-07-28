@@ -18,6 +18,9 @@ from algorithms.diff.admission import identity_tree
 from algorithms.diff.canonicalize import normalize_line_endings
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
+from algorithms.diff.provenance import SourcePin
+from algorithms.diff.provenance import SourcePinError
+from algorithms.diff.provenance import require_source_pin
 from algorithms.doom.generator.behavior_probes import behavior_programs
 from algorithms.doom.generator.behavior_probes import pinned_probe_context
 
@@ -27,9 +30,31 @@ if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior_programs import BehaviorPrograms
     from algorithms.diff.probe_exec import ProbeRunContext
+    from algorithms.diff.provenance import SourcePinEvidence
 
 DOMAIN_ID = "doom-linux-source"
 DOOM_IDENTITY_SUBTREE = "linuxdoom-1.10"
+DOOM_UPSTREAM_REPOSITORY = "https://github.com/id-Software/DOOM.git"
+DOOM_UPSTREAM_COMMIT = "a77dfb96cb91780ca334d0d4cfd86957558007e0"
+DOOM_UPSTREAM_FILE_COUNT = 165
+DOOM_UPSTREAM_SNAPSHOT_SHA256 = (
+    "20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b"
+)
+DOOM_SOURCE_PIN = SourcePin(
+    repository=DOOM_UPSTREAM_REPOSITORY,
+    commit=DOOM_UPSTREAM_COMMIT,
+    roots=(
+        "LICENSE.TXT",
+        "README.TXT",
+        "ipx",
+        DOOM_IDENTITY_SUBTREE,
+        "sersrc",
+        "sndserv",
+    ),
+    file_count=DOOM_UPSTREAM_FILE_COUNT,
+    snapshot_sha256=DOOM_UPSTREAM_SNAPSHOT_SHA256,
+)
+_SOURCE_ALLOWED_ROOTS = frozenset((*DOOM_SOURCE_PIN.roots, ".git", "data"))
 _QUALITY_ORACLE_ROOTS = frozenset({"data", DOOM_IDENTITY_SUBTREE, "LICENSE"})
 _QUALITY_ORACLE_DIRECTORIES = frozenset({"data", DOOM_IDENTITY_SUBTREE})
 _QUALITY_ORACLE_FILES = frozenset({"LICENSE"})
@@ -600,6 +625,28 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
         for path in source_files
     }
     return identity_tree(canonical_files)
+
+
+def _require_source_root_surface(source_root: Path) -> None:
+    if not source_root.is_dir():
+        message = f"missing DOOM source root: {source_root}"
+        raise SourcePinError(message)
+    names = frozenset(entry.name for entry in source_root.iterdir())
+    unexpected = tuple(sorted(names - _SOURCE_ALLOWED_ROOTS))
+    if unexpected:
+        message = f"unexpected DOOM source root entries: {unexpected!r}"
+        raise SourcePinError(message)
+
+
+def validate_source_provenance(source_root: Path) -> SourcePinEvidence:
+    """Require the exact official DOOM source revision used by this profile.
+
+    Returns:
+        Matching deterministic source snapshot evidence.
+
+    """
+    _require_source_root_surface(source_root)
+    return require_source_pin(source_root, DOOM_SOURCE_PIN)
 
 
 def _quality_oracle_entries(oracle_root: Path) -> dict[str, Path]:

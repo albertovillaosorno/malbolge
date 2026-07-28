@@ -16,9 +16,10 @@ committed. The durable authoring surface is intentionally split:
   transform emission;
 - `algorithms/doom/quality/main.rs` is the generated transformation artifact.
 
-The generated transformation must still require sufficiently compatible source
-material. Possessing `main.rs` alone must not be enough to reconstruct the local
-manual oracle.
+The generated transformation requires the exact pinned id Software source revision
+used by this profile. Possessing `main.rs` alone must not be enough to reconstruct the
+local manual oracle, and a different DOOM source revision is a different profile rather
+than an implicitly accepted compatibility variant.
 
 ## Scope: Interoperability Corpus, Not a DOOM Port
 
@@ -50,9 +51,14 @@ algorithms/doom/
 repository root/doom/    # lawful source supplied by the developer; ignored
 ```
 
-The root `doom/` tree is the admitted source lineage.
-`algorithms/doom/quality/in/doom/` is the manually modernized oracle used to
-author and test the generated transform. Neither tree is repository source.
+The root `doom/` tree contains two logically separate inputs. The official engine
+source must be byte-identical to `id-Software/DOOM` commit
+`a77dfb96cb91780ca334d0d4cfd86957558007e0`; the domain validates all 165 official
+files against deterministic snapshot SHA-256
+`20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`. `data/` is
+external game-data/test input and is deliberately outside that source-code pin.
+`algorithms/doom/quality/in/doom/` is the manually modernized oracle used to author
+and test the generated transform. Neither tree is repository source.
 
 `out/doom_fixed/` is the reproducible materialization result. For the exact
 baseline used to generate the transformation, it must be byte-identical to the
@@ -67,8 +73,9 @@ now the oracle-discovery phase, not the final implementation strategy.
 2. Maintain the ignored manual oracle under `quality/in/doom/` while discovering
    required bug fixes, host-boundary changes, and deterministic modernization.
 3. Drive the oracle to zero accepted findings and validate its behavior.
-4. Run `generator/quality.py`. The recipe supplies source/oracle paths, the DOOM
-   domain module, and provisional admission thresholds to `algorithms/diff/`.
+4. Run `generator/quality.py`. The DOOM domain first requires the exact pinned
+   upstream source revision and validates the local oracle surface; only then may the
+   generic generator author transformation material.
 5. The generic diff engine learns file creation/deletion/movement/modification,
    structural anchors, behavioral preconditions, and source-bound reconstruction
    material, then emits `quality/main.rs`.
@@ -84,14 +91,13 @@ now the oracle-discovery phase, not the final implementation strategy.
 Canonical similarity may ignore comments and formatting **for identity only**.
 The transformation must still preserve required source comments and provenance.
 
-Identity probes, compatibility probes, and bug probes have separate roles. A
-compatible source revision that already fixed an original defect should satisfy
-the postcondition and skip that repair rather than being rejected for not
-reproducing the bug.
+Identity, compatibility, and bug probes remain useful transformation and
+postcondition evidence, but they no longer widen source-version admission for this
+DOOM profile. A different upstream revision requires an explicit new pin/profile.
 
-The first recipe records exploratory source/anchor/behavior thresholds of
-`0.50`, `0.66`, and `0.80`. They are technical calibration values, not legal
-thresholds and not frozen until synthetic fixtures justify them.
+The recipe still records the generic engine's exploratory `0.50` / `0.66` / `0.80`
+structural, anchor, and behavior thresholds for research and regression coverage. They
+are not the product source-admission boundary for DOOM quality; the exact source pin is.
 
 The source-binding and generator contract is documented in
 `docs/technical/tooling/source-bound-diff-generator.md`.

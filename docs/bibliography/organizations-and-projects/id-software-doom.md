@@ -11,6 +11,7 @@ Verified; evidence verified.
   input
 - Stable identifier: `id-Software/DOOM`
 - Publisher or authority: id Software repository under the ZeniMax organization
+- Engineering revision pin: `a77dfb96cb91780ca334d0d4cfd86957558007e0`
 
 ## Repository Use
 
@@ -20,7 +21,9 @@ compilation, and end-to-end performance demonstrations.
 
 ## Provenance
 
-The official GitHub repository is the primary source reviewed here. The
+The official GitHub repository is the primary source reviewed here. The current
+engineering corpus was verified byte-for-byte against commit
+`a77dfb96cb91780ca334d0d4cfd86957558007e0` across its 165 official files. The
 repository identifies the source as GPL-2.0 licensed. Its historical README
 states that real DOOM game data is still required and explains that the released
 code targeted Linux because the DOS source depended on a copyrighted sound

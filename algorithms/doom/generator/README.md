@@ -20,6 +20,14 @@ the domain hook used by generic semantic compatible placement to preserve candid
 comments and formatting outside transformed semantic regions. A read-only source +
 oracle smoke mapped 273 C/header files with zero identity mismatches.
 
+The DOOM domain also owns source provenance, authoring preflight, and compatible file
+mapping. `DOOM_SOURCE_PIN` names `https://github.com/id-Software/DOOM.git` commit
+`a77dfb96cb91780ca334d0d4cfd86957558007e0`. A fresh checkout with
+`core.autocrlf=false` matched the ignored local baseline byte-for-byte across all 165
+official files; the deterministic pinned snapshot digest is
+`20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`. `data/` is
+explicitly excluded from that code pin.
+
 The DOOM domain also owns authoring preflight and compatible file mapping.
 `map_compatible_file()` exposes only `linuxdoom-1.10` C/header files to semantic
 placement; WADs and other surfaces remain opaque. `validate_authoring_oracle()`
@@ -51,9 +59,9 @@ python -m algorithms.doom.generator.quality
 
 `algorithms/diff` now implements exact authoring, source-span reuse, canonical
 identity primitives, stable anchors, tree admission, behavior evaluation, portable
-process probes, threshold key unlock, RFC 8439 payload protection, and protected
-exact-plan materialization, and deterministic std-only Rust emission for the exact
-baseline. `write_algorithm()` still fails closed without replacing `quality/main.rs` because the DOOM recipe now explicitly requests
-`TransformMode.COMPATIBLE`; that runtime still needs consumer identity/admission and
-broader compatibility/bug coverage. The generic public API can already emit
-`EXACT_BASELINE` transforms without changing this product-level choice.
+process probes, exact source-revision pins, threshold key unlock, RFC 8439 payload
+protection, protected exact-plan materialization, and deterministic std-only Rust
+emission for the exact baseline. For compatible generation, `write_algorithm()` now
+loads the domain and executes the hard source-provenance and oracle preflights before
+reaching the still-unimplemented compatible Rust emitter. The DOOM profile therefore
+uses an exact source revision even though compatible-output/runtime work remains open.

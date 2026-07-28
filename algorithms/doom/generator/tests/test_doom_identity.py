@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from algorithms.doom.generator.doom import DOOM_SOURCE_PIN
+from algorithms.doom.generator.doom import DOOM_UPSTREAM_COMMIT
+from algorithms.doom.generator.doom import DOOM_UPSTREAM_FILE_COUNT
+from algorithms.doom.generator.doom import DOOM_UPSTREAM_REPOSITORY
 from algorithms.doom.generator.doom import DoomIdentityError
 from algorithms.doom.generator.doom import build_identity_tree
 from algorithms.doom.generator.doom import canonicalize_c_identity
@@ -232,4 +236,20 @@ def test_compatible_mapper_selects_only_linux_c_and_headers() -> None:
     _expect(
         map_compatible_file("ipx/doomnet.c", code) is None,
         "non-Linux source unexpectedly entered semantic placement",
+    )
+
+
+def test_source_pin_names_exact_official_revision() -> None:
+    """Keep the DOOM product profile bound to one verified upstream commit."""
+    _expect(
+        DOOM_SOURCE_PIN.commit == DOOM_UPSTREAM_COMMIT,
+        "source pin commit diverged from domain constant",
+    )
+    _expect(
+        DOOM_SOURCE_PIN.repository == DOOM_UPSTREAM_REPOSITORY,
+        "source pin repository diverged from domain constant",
+    )
+    _expect(
+        DOOM_SOURCE_PIN.file_count == DOOM_UPSTREAM_FILE_COUNT,
+        "upstream source count changed",
     )

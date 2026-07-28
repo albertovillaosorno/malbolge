@@ -60,9 +60,12 @@ and transform emission remain application-agnostic.
   findings snapshot. It is historical progress evidence and must not be refreshed
   as final acceptance evidence until generated `out/doom_fixed/` exists.
 
-- `algorithms/doom/generator/quality.py` now explicitly requests compatible emission;
-  the generic exact generation path is implemented but is not substituted for the
-  broader DOOM product contract.
+- The DOOM product source boundary is now an exact pin to
+  `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`. Generic fuzzy
+  admission remains engine infrastructure, not a requirement for this profile.
+- `algorithms/doom/generator/quality.py` still requests compatible output semantics so
+  external `data/` and future output policy are not accidentally folded into the code
+  revision pin. Compatible Rust emission remains the open generator boundary.
 
 ## Acceptance
 
@@ -71,17 +74,16 @@ and transform emission remain application-agnostic.
   transformation.
 - For the exact baseline used to author the transform, generated
   `out/doom_fixed/` is byte-identical to the manual oracle.
-- A compatible source variant may preserve legitimate upstream changes only when
-  all transformation postconditions and downstream gates pass.
-- Comments/formatting may be ignored for lineage admission but required
-  legal/provenance comments survive output construction.
+- The official engine source matches the exact pinned upstream revision; accepting a
+  different source revision requires an explicit new profile/pin.
+- Required legal/provenance comments survive output construction.
 - Identity probes, compatibility probes, and bug probes remain separate; an
   upstream source that already fixed a known defect is not rejected merely for
   lacking the historical bug.
 - The generated transform alone cannot materialize the normalized source without
   sufficient admitted source evidence.
-- Structural similarity, stable-anchor, and behavior thresholds are calibrated by
-  evidence rather than treated as legal rules.
+- Structural similarity, stable-anchor, and behavior thresholds remain generic
+  research/regression evidence rather than DOOM source-version admission rules.
 - Video, input, timing, audio, game-data, resolution, and frame-rate behavior
   remain represented through explicit guest/host capabilities and measured
   behavior rather than hidden host substitutions.

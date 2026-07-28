@@ -48,9 +48,10 @@ local quality/in/doom oracle --------+  |
                          quality/out/doom_fixed/
 ```
 
-`quality.py` is a thin recipe. It declares paths, a profile identity, the DOOM
-domain module, and provisional admission thresholds. It must not grow a parallel
-diff implementation.
+`quality.py` is a thin recipe. It declares paths, a profile identity, and the DOOM
+domain module. The domain hard-pins the official source revision; generic similarity
+thresholds remain engine research parameters rather than DOOM product admission. The
+recipe must not grow a parallel diff implementation.
 
 `doom.py` is the allowed home for DOOM-specific source lineage, compatibility,
 behavior, and bug probes that cannot remain declarative.
@@ -64,8 +65,12 @@ required to run it.
 
 ### Current Oracle State
 
-Repository-root `doom/` is the untouched local baseline. The ignored
-`algorithms/doom/quality/in/doom/` tree is the manually modernized oracle.
+Repository-root `doom/` is the untouched local baseline. Its official engine source
+is pinned to `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`; 165
+official files are verified against snapshot SHA-256
+`20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`. External
+`data/` is outside that code pin. The ignored `algorithms/doom/quality/in/doom/` tree
+is the manually modernized oracle.
 
 The current oracle contains 65 C translation units and passes:
 

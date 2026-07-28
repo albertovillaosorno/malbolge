@@ -123,6 +123,12 @@ format.
   seconds. The plan contains 117 semantic-patch files / 6,257 edits / 251,933 raw
   replacement bytes, 7 candidate copies, 2 exact-gated opaque files, and 26 creates.
 
+- Exact external source revision pins are now generic infrastructure. The DOOM quality
+  domain hard-pins `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`
+  and verifies 165 official files against deterministic snapshot SHA-256
+  `20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`; `data/`
+  remains outside that code pin.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
