@@ -30,7 +30,7 @@ the change.
 ## Identity And Version
 
 - Record owner: Malbolge repository bibliography.
-- Governance:`n
+- Governance:
   `docs/bibliography/adr/source-taxonomy-and-citation-provenance.md`.
 - Review date: 2026-07-26.
 - Git is cataloged separately under `docs/bibliography/tooling/git.md`.
@@ -105,6 +105,26 @@ GitHub repository citation metadata, and Citation File Format. Source records
 support identity and capabilities without making upstream tools part of runtime
 architecture automatically.
 
+### Baseline Coverage
+
+| Required source class | Canonical records | State |
+| --- | --- | --- |
+| Historical Malbolge specification/interpreter | `specifications-and-standards/malbolge/malbolge-1998.md` | covered |
+| Programming languages | `languages/c.md`, `languages/rust.md` | covered |
+| Host architectures | `platforms-and-runtimes/x86-64.md`, `aarch64.md` | covered |
+| Compiler/toolchain | `platforms-and-runtimes/compiler/`, `tooling/clang-tidy.md` | covered |
+| Accelerator computing | CUDA, ROCm, and PyTorch records | covered |
+| Superoptimization/synthesis | STOKE, Souper, and egg records | covered |
+| Verification/formal methods | Alive2 record | covered |
+| Research methodology | ACM artifact/empirical-standard records | covered |
+| Standards/publication metadata | CommonMark, TOML, CFF, LaTeX records | covered |
+| Validation/provenance tooling | Git and clang-tidy records | covered |
+
+The closed bibliography taxonomy also reserves `legal-and-regulatory/` and
+`libraries/` for future source records. No baseline source is fabricated merely
+to make those categories non-empty. New material claims must add a canonical
+record before relying on a source class not covered above.
+
 ### Discarded Or Rejected Evidence Patterns
 
 The repository does not accept the following as sufficient evidence:
@@ -117,6 +137,12 @@ The repository does not accept the following as sufficient evidence:
   programs depend on it; or
 - a bibliography entry that no repository claim, experiment, legal question, or
   tool identity actually uses.
+
+### Unresolved
+
+Coverage is intentionally a baseline rather than a permanently closed corpus.
+New dependencies, standards, algorithms, legal authorities, or materially cited
+external claims require additional canonical source records and dated review.
 
 ### Open Verification Work
 

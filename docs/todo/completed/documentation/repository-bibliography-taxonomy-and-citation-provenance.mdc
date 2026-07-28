@@ -1,6 +1,6 @@
 ---
 id: "repository-bibliography-taxonomy-and-citation-provenance"
-status: "pending"
+status: "completed"
 lane: "2"
 area: "documentation"
 task: "TODO - Repository bibliography taxonomy and citation provenance"
@@ -15,7 +15,11 @@ scope:
   - "docs/technical/"
   - "docs/research/"
   - "docs/legal/"
+  - "scripts/validate/"
+  - "tests/"
 validation:
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_bibliography.py"
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/bibliography.py"
   - "jig validate --root ."
 ---
 # TODO - Repository bibliography taxonomy and citation provenance
@@ -59,7 +63,17 @@ repository policy merely because they are cited.
 - Expected durable artifact surface: `docs/bibliography/`, including its subject
   taxonomy, indexes/templates, bibliography ADRs where genuinely needed, and
   source records.
-- Evidence must show coverage of every source cited by the initial promoted
-  technical, research, and legal documents, with unresolved source gaps named
-  explicitly.
+- The active baseline has 24 source/provenance records and a coverage ledger
+  naming 22 required canonical records across historical Malbolge, languages,
+  host architectures, compiler/toolchain, accelerators, superoptimization,
+  verification, research methodology, standards/publication metadata, and
+  validation tooling. All current source records retain dated provenance plus an
+  explicit unresolved/uncertainty boundary.
+- `scripts/validate/bibliography.py` enforces the closed taxonomy, README and
+  template topology, record heading order, dated provenance, unresolved
+  evidence, nonempty source lists, and baseline coverage.
+- `tests/test_bibliography.py` covers successful repository validation and
+  fail-closed uncertainty, placeholder, date, source-list, and heading-order
+  cases. Empty `legal-and-regulatory/` and `libraries/` categories remain honest
+  catalogs instead of fabricated evidence.
 - Prerequisite completion evidence: `documentation-authority-taxonomy`.

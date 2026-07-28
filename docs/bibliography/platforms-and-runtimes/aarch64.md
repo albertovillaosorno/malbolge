@@ -38,6 +38,12 @@ does not redistribute the manuals as project-owned content.
 - The repository's choice to support AArch64 is independent from Arm's document
   licensing and from any single processor implementation.
 
+### Unresolved
+
+The exact repository CPU-feature baseline, calling convention, and native-backend
+ABI are Malbolge technical decisions. The cited Arm architecture material does
+not choose those repository policies.
+
 ## Sources
 
 - <https://developer.arm.com/documentation/102374/latest/>

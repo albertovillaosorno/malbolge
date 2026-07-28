@@ -43,6 +43,12 @@ vendored component requires its own dependency/license review.
 - Backend availability and performance are hardware/runtime facts and cannot
   alter Malbolge semantic acceptance.
 
+### Unresolved
+
+Supported-device matrices, runtime availability, and performance vary by ROCm
+release and hardware. Malbolge acceptance and throughput claims therefore still
+require versioned local adapter evidence.
+
 ## Sources
 
 - <https://rocm.docs.amd.com/>

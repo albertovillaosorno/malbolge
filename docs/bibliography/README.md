@@ -16,6 +16,8 @@ Repository policy, legal conclusions, or research conclusions.
 
 - `adr/`
 - `languages/`
+- `legal-and-regulatory/`
+- `libraries/`
 - `organizations-and-projects/`
 - `platforms-and-runtimes/`
 - `provenance-and-methodology/`
@@ -23,4 +25,4 @@ Repository policy, legal conclusions, or research conclusions.
 - `specifications-and-standards/`
 - `tooling/`
 - `disclaimer.md`
-- `template.md`
+- `provenance-and-methodology/template.md`

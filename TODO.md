@@ -180,21 +180,6 @@ without editing Ben's source.
 
 ## Documentation authority and promotion
 
-### TODO - Repository bibliography taxonomy and citation provenance
-
-Build `docs/bibliography/` as the repository-wide, non-governing source and
-provenance authority, independent from `docs/research/`. Adopt a SHAR-style
-subject taxonomy for programming languages, compilers/runtimes, Malbolge and
-esolangs, superoptimization/program synthesis, verification/formal methods,
-accelerator computing, protocols/standards, validation tooling, research
-methodology, AI/code generation, and relevant organizations/projects. Populate a
-baseline sufficient to support the first technical, research, and legal records,
-preferring primary or authoritative sources and retaining stable identifiers,
-versions, publication metadata, retrieval dates, provenance, and explicit
-uncertainty. `docs/bibliography/adr/` owns only durable decisions about how
-bibliography itself is organized or interpreted; source records never become
-repository policy merely because they are cited.
-
 ### TODO - Planning corpus promotion to durable documentation
 
 Once ROADMAP and typed TODO coverage are stable, classify every settled planning
