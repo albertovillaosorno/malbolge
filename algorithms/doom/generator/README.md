@@ -20,6 +20,15 @@ the domain hook used by generic semantic compatible placement to preserve candid
 comments and formatting outside transformed semantic regions. A read-only source +
 oracle smoke mapped 273 C/header files with zero identity mismatches.
 
+The DOOM domain also owns authoring preflight and compatible file mapping.
+`map_compatible_file()` exposes only `linuxdoom-1.10` C/header files to semantic
+placement; WADs and other surfaces remain opaque. `validate_authoring_oracle()`
+requires the normalized oracle root to contain exactly `data/`, `linuxdoom-1.10/`,
+and `LICENSE`. Unexpected authoring artifacts fail closed rather than becoming
+target-only payload. The current local oracle intentionally remains untouched; its
+unexpected `System.Management.Automation.Internal.Host.InternalHost` root entry is
+therefore detected and rejected until the authoring corpus itself is corrected.
+
 The domain facade now also exposes the first executable behavior program.
 `behavior_probes.py` defines a Windows x86-64 / pinned LLVM 22.1.8 fixed-point
 identity probe. It compiles the candidate mirror's real `m_fixed.c` with a

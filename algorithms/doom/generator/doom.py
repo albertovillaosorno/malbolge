@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
@@ -29,6 +30,9 @@ if TYPE_CHECKING:
 
 DOMAIN_ID = "doom-linux-source"
 DOOM_IDENTITY_SUBTREE = "linuxdoom-1.10"
+_QUALITY_ORACLE_ROOTS = frozenset({"data", DOOM_IDENTITY_SUBTREE, "LICENSE"})
+_QUALITY_ORACLE_DIRECTORIES = frozenset({"data", DOOM_IDENTITY_SUBTREE})
+_QUALITY_ORACLE_FILES = frozenset({"LICENSE"})
 
 _CODE_SUFFIXES = frozenset({".c", ".h"})
 _ASCII_WHITESPACE = frozenset(b" \t\n\v\f")
@@ -596,6 +600,60 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
         for path in source_files
     }
     return identity_tree(canonical_files)
+
+
+def _quality_oracle_entries(oracle_root: Path) -> dict[str, Path]:
+    if not oracle_root.is_dir():
+        message = f"missing DOOM quality oracle root: {oracle_root}"
+        raise DoomIdentityError(message)
+    return {entry.name: entry for entry in oracle_root.iterdir()}
+
+
+def _require_quality_oracle_names(entries: dict[str, Path]) -> None:
+    names = frozenset(entries)
+    if names == _QUALITY_ORACLE_ROOTS:
+        return
+    missing = tuple(sorted(_QUALITY_ORACLE_ROOTS - names))
+    unexpected = tuple(sorted(names - _QUALITY_ORACLE_ROOTS))
+    message = (
+        "DOOM quality oracle root surface mismatch: "
+        f"missing={missing!r}; unexpected={unexpected!r}"
+    )
+    raise DoomIdentityError(message)
+
+
+def _require_quality_oracle_kinds(entries: dict[str, Path]) -> None:
+    for name in _QUALITY_ORACLE_DIRECTORIES:
+        if entries[name].is_symlink() or not entries[name].is_dir():
+            message = f"DOOM quality oracle root must be a directory: {name}"
+            raise DoomIdentityError(message)
+    for name in _QUALITY_ORACLE_FILES:
+        if entries[name].is_symlink() or not entries[name].is_file():
+            message = f"DOOM quality oracle root must be a file: {name}"
+            raise DoomIdentityError(message)
+
+
+def validate_authoring_oracle(oracle_root: Path) -> None:
+    """Require the expected normalized DOOM oracle root surface."""
+    entries = _quality_oracle_entries(oracle_root)
+    _require_quality_oracle_names(entries)
+    _require_quality_oracle_kinds(entries)
+
+
+def map_compatible_file(path: str, data: bytes) -> MappedView | None:
+    """Map Linux DOOM C/header files for semantic compatible placement.
+
+    Returns:
+        Mapped C identity for selected Linux source files, otherwise ``None``.
+
+    """
+    candidate = PurePosixPath(path)
+    is_linux_code = (
+        bool(candidate.parts)
+        and candidate.parts[0] == DOOM_IDENTITY_SUBTREE
+        and candidate.suffix.lower() in _CODE_SUFFIXES
+    )
+    return mapped_c_identity(data) if is_linux_code else None
 
 
 def build_behavior_programs() -> BehaviorPrograms:

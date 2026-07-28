@@ -27,6 +27,7 @@ algorithms/diff/
 |-- relocatable.py    # hash-only compatible byte-range placement
 |-- mapped.py         # canonical units with raw source spans
 |-- semantic.py       # hashed semantic compatible placement
+|-- compatible.py     # admitted in-memory compatible tree plans
 |-- emit_rust.py      # deterministic Rust transform emission
 `-- tests/
 ```
@@ -295,6 +296,33 @@ A read-only calibration over both local DOOM trees mapped 273 C/header files and
 549,978 canonical units with zero canonical-stream mismatches against the established
 `canonicalize_c_identity()` implementation. This validates mapping equivalence only;
 it does not yet claim compatible tree admission or final output acceptance.
+
+## Implemented In-Memory Compatible Tree Planning
+
+`compatible.py` now composes the lower-level primitives into a non-distributable
+tree plan. Authoring reuses exact topology, maps supported files through semantic
+placement, preserves candidate bytes for semantically unchanged mapped files, exact-
+gates unsupported opaque files, creates target-only files from local authoring bytes,
+omits historical source-only files, and preserves candidate-only paths by default.
+Materialization requires conjunctive source-lineage and behavior admission before
+staging. Target-only path conflicts, opaque-file drift, unsupported bug routing, and
+postcondition failure all reject before publication.
+
+The semantic matcher no longer uses quadratic-prone generic sequence matching. It
+partitions canonical digest sequences with unique k-gram anchors (8, 4, 2, then 1
+unit), preserves monotonic anchors with a longest-increasing-subsequence pass, trims
+common prefixes/suffixes, and recursively processes only gaps. Regions without
+reliable anchors become coarse replacements rather than entering unbounded search. A
+10,001-token repetitive synthetic fixture with one local change remains a single edit.
+
+A read-only DOOM authoring smoke that previously exceeded the runner limit now
+finishes in 11.159 seconds. Its 152 target paths classify as 117 semantic patches,
+7 candidate-preserving mapped files, 2 opaque exact gates, and 26 target-only creates.
+The 117 semantic files contain 6,257 edits totaling 251,933 raw replacement bytes,
+compared with 2,116,232 target-only bytes in the exact baseline. These are authoring
+measurements, not yet a distributable compatible transform. Bug correction IDs still
+need to be attached to named edits, and compatible target material still needs
+source-bound serialization/runtime support.
 
 ## Exact and Compatible Modes
 

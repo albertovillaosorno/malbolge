@@ -60,8 +60,9 @@ particular, a future upstream DOOM revision should not be rejected merely
 because it already fixed one of the original bugs that this modernization fixed.
 
 The generated transform must remain source-bound: possessing `main.rs` alone is
-not enough to reconstruct the local target. The exact cryptographic construction
-is intentionally still open and must be independently tested before adoption.
+not enough to reconstruct the local target. The exact path now uses threshold
+source-bound key recovery plus RFC 8439 ChaCha20-Poly1305; compatible serialization
+still requires independent review before it can replace the checked-in scaffold.
 
 The same generic engine is planned for a second stage later: accepted normalized
 DOOM plus a semantically validated local single-file oracle will generate the

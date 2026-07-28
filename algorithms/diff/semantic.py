@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 import hashlib
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ _ZERO = 0
 _ONE = 1
 _DEFAULT_CONTEXT_UNITS = 4
 _UNIT_DOMAIN = b"semantic-placement-unit-v1\0"
-_EQUAL_OPCODE = "equal"
+_ANCHOR_WIDTHS = (8, 4, 2, 1)
 
 
 class SemanticPlacementError(RuntimeError):
@@ -72,6 +72,49 @@ class _LocatedEdit:
     raw_end: int
 
 
+@dataclass(frozen=True, slots=True)
+class _AnchorPair:
+    source_start: int
+    target_start: int
+
+
+@dataclass(frozen=True, slots=True)
+class _MatchBlock:
+    source_start: int
+    target_start: int
+    length: int
+
+
+@dataclass(frozen=True, slots=True)
+class _EditRange:
+    source_start: int
+    source_end: int
+    target_start: int
+    target_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _MatchContext:
+    source: tuple[bytes, ...]
+    target: tuple[bytes, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Region:
+    source_start: int
+    source_end: int
+    target_start: int
+    target_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _SemanticBuildContext:
+    source_digests: tuple[bytes, ...]
+    target_digests: tuple[bytes, ...]
+    target: MappedView
+    context_units: int
+
+
 def _frame(value: bytes) -> bytes:
     return len(value).to_bytes(8, byteorder="big") + value
 
@@ -108,6 +151,321 @@ def _locator(
     )
 
 
+def _common_prefix_length(context: _MatchContext, region: _Region) -> int:
+    limit = min(
+        region.source_end - region.source_start,
+        region.target_end - region.target_start,
+    )
+    length = _ZERO
+    while (
+        length < limit
+        and context.source[region.source_start + length]
+        == context.target[region.target_start + length]
+    ):
+        length += _ONE
+    return length
+
+
+def _common_suffix_length(context: _MatchContext, region: _Region) -> int:
+    limit = min(
+        region.source_end - region.source_start,
+        region.target_end - region.target_start,
+    )
+    length = _ZERO
+    while (
+        length < limit
+        and context.source[region.source_end - length - _ONE]
+        == context.target[region.target_end - length - _ONE]
+    ):
+        length += _ONE
+    return length
+
+
+def _unique_windows(
+    values: tuple[bytes, ...],
+    start: int,
+    end: int,
+    *,
+    width: int,
+) -> dict[tuple[bytes, ...], int]:
+    positions: dict[tuple[bytes, ...], int | None] = {}
+    final_start = end - width
+    for offset in range(start, final_start + _ONE):
+        window = values[offset : offset + width]
+        if window in positions:
+            positions[window] = None
+        else:
+            positions[window] = offset
+    return {
+        window: offset
+        for window, offset in positions.items()
+        if offset is not None
+    }
+
+
+def _reconstruct_lis(
+    pairs: tuple[_AnchorPair, ...],
+    tail_indices: list[int],
+    predecessors: list[int],
+) -> tuple[_AnchorPair, ...]:
+    cursor = tail_indices[-_ONE]
+    selected: list[_AnchorPair] = []
+    while cursor >= _ZERO:
+        selected.append(pairs[cursor])
+        cursor = predecessors[cursor]
+    selected.reverse()
+    return tuple(selected)
+
+
+def _lis_pairs(pairs: tuple[_AnchorPair, ...]) -> tuple[_AnchorPair, ...]:
+    if not pairs:
+        return ()
+    tail_targets: list[int] = []
+    tail_indices: list[int] = []
+    predecessors = [-_ONE] * len(pairs)
+    for index, pair in enumerate(pairs):
+        position = bisect_left(tail_targets, pair.target_start)
+        if position == len(tail_targets):
+            tail_targets.append(pair.target_start)
+            tail_indices.append(index)
+        else:
+            tail_targets[position] = pair.target_start
+            tail_indices[position] = index
+        if position > _ZERO:
+            predecessors[index] = tail_indices[position - _ONE]
+    return _reconstruct_lis(pairs, tail_indices, predecessors)
+
+
+def _non_overlapping_pairs(
+    pairs: tuple[_AnchorPair, ...],
+    width: int,
+) -> tuple[_AnchorPair, ...]:
+    selected: list[_AnchorPair] = []
+    source_end = -_ONE
+    target_end = -_ONE
+    for pair in pairs:
+        if pair.source_start < source_end or pair.target_start < target_end:
+            continue
+        selected.append(pair)
+        source_end = pair.source_start + width
+        target_end = pair.target_start + width
+    return tuple(selected)
+
+
+def _window_pairs(
+    context: _MatchContext,
+    region: _Region,
+    width: int,
+) -> tuple[_AnchorPair, ...]:
+    source_windows = _unique_windows(
+        context.source,
+        region.source_start,
+        region.source_end,
+        width=width,
+    )
+    target_windows = _unique_windows(
+        context.target,
+        region.target_start,
+        region.target_end,
+        width=width,
+    )
+    return tuple(
+        sorted(
+            (
+                _AnchorPair(source_offset, target_windows[window])
+                for window, source_offset in source_windows.items()
+                if window in target_windows
+            ),
+            key=lambda pair: (pair.source_start, pair.target_start),
+        )
+    )
+
+
+def _anchor_pairs(
+    context: _MatchContext,
+    region: _Region,
+) -> tuple[int, tuple[_AnchorPair, ...]]:
+    source_length = region.source_end - region.source_start
+    target_length = region.target_end - region.target_start
+    for width in _ANCHOR_WIDTHS:
+        if width > source_length or width > target_length:
+            continue
+        pairs = _window_pairs(context, region, width)
+        ordered = _non_overlapping_pairs(_lis_pairs(pairs), width)
+        if ordered:
+            return width, ordered
+    return _ZERO, ()
+
+
+def _merge_blocks(blocks: list[_MatchBlock]) -> list[_MatchBlock]:
+    if not blocks:
+        return []
+    merged = [blocks[0]]
+    for block in blocks[1:]:
+        previous = merged[-_ONE]
+        contiguous = (
+            previous.source_start + previous.length == block.source_start
+            and previous.target_start + previous.length == block.target_start
+        )
+        if contiguous:
+            merged[-_ONE] = _MatchBlock(
+                source_start=previous.source_start,
+                target_start=previous.target_start,
+                length=previous.length + block.length,
+            )
+        else:
+            merged.append(block)
+    return merged
+
+
+def _prefix_block(region: _Region, length: int) -> _MatchBlock | None:
+    if not length:
+        return None
+    return _MatchBlock(region.source_start, region.target_start, length)
+
+
+def _suffix_block(region: _Region, length: int) -> _MatchBlock | None:
+    if not length:
+        return None
+    return _MatchBlock(
+        region.source_end - length,
+        region.target_end - length,
+        length,
+    )
+
+
+def _core_region(region: _Region, prefix: int, suffix: int) -> _Region:
+    return _Region(
+        source_start=region.source_start + prefix,
+        source_end=region.source_end - suffix,
+        target_start=region.target_start + prefix,
+        target_end=region.target_end - suffix,
+    )
+
+
+def _anchored_core_blocks(
+    context: _MatchContext,
+    region: _Region,
+) -> list[_MatchBlock]:
+    width, anchors = _anchor_pairs(context, region)
+    if not anchors:
+        return []
+    blocks: list[_MatchBlock] = []
+    previous_source = region.source_start
+    previous_target = region.target_start
+    for anchor in anchors:
+        gap = _Region(
+            previous_source,
+            anchor.source_start,
+            previous_target,
+            anchor.target_start,
+        )
+        blocks.extend(_region_blocks(context, gap))
+        blocks.append(
+            _MatchBlock(anchor.source_start, anchor.target_start, width)
+        )
+        previous_source = anchor.source_start + width
+        previous_target = anchor.target_start + width
+    trailing = _Region(
+        previous_source,
+        region.source_end,
+        previous_target,
+        region.target_end,
+    )
+    blocks.extend(_region_blocks(context, trailing))
+    return blocks
+
+
+def _region_blocks(
+    context: _MatchContext,
+    region: _Region,
+) -> list[_MatchBlock]:
+    prefix = _common_prefix_length(context, region)
+    after_prefix = _Region(
+        region.source_start + prefix,
+        region.source_end,
+        region.target_start + prefix,
+        region.target_end,
+    )
+    suffix = _common_suffix_length(context, after_prefix)
+    core = _core_region(region, prefix, suffix)
+    blocks: list[_MatchBlock] = []
+    prefix_match = _prefix_block(region, prefix)
+    if prefix_match is not None:
+        blocks.append(prefix_match)
+    blocks.extend(_anchored_core_blocks(context, core))
+    suffix_match = _suffix_block(region, suffix)
+    if suffix_match is not None:
+        blocks.append(suffix_match)
+    return _merge_blocks(blocks)
+
+
+def _matching_blocks(
+    source: tuple[bytes, ...],
+    target: tuple[bytes, ...],
+) -> tuple[_MatchBlock, ...]:
+    context = _MatchContext(source=source, target=target)
+    region = _Region(_ZERO, len(source), _ZERO, len(target))
+    return tuple(_region_blocks(context, region))
+
+
+def _edit_ranges(
+    source: tuple[bytes, ...],
+    target: tuple[bytes, ...],
+) -> tuple[_EditRange, ...]:
+    edits: list[_EditRange] = []
+    source_cursor = _ZERO
+    target_cursor = _ZERO
+    for block in _matching_blocks(source, target):
+        has_gap = (
+            source_cursor != block.source_start
+            or target_cursor != block.target_start
+        )
+        if has_gap:
+            edits.append(
+                _EditRange(
+                    source_cursor,
+                    block.source_start,
+                    target_cursor,
+                    block.target_start,
+                )
+            )
+        source_cursor = block.source_start + block.length
+        target_cursor = block.target_start + block.length
+    if source_cursor != len(source) or target_cursor != len(target):
+        edits.append(
+            _EditRange(
+                source_cursor,
+                len(source),
+                target_cursor,
+                len(target),
+            )
+        )
+    return tuple(edits)
+
+
+def _semantic_edit(
+    context: _SemanticBuildContext,
+    edit: _EditRange,
+) -> SemanticEdit:
+    return SemanticEdit(
+        locator=_locator(
+            context.source_digests,
+            edit.source_start,
+            edit.source_end,
+            context_units=context.context_units,
+        ),
+        replacement=_replacement_bytes(
+            context.target,
+            edit.target_start,
+            edit.target_end,
+        ),
+        replacement_digests=context.target_digests[
+            edit.target_start : edit.target_end
+        ],
+    )
+
+
 def build_semantic_plan(
     source: MappedView,
     target: MappedView,
@@ -130,37 +488,17 @@ def build_semantic_plan(
         raise SemanticPlacementError(message)
     source_digests = _view_digests(source)
     target_digests = _view_digests(target)
-    matcher = SequenceMatcher(
-        None,
-        source_digests,
-        target_digests,
-        autojunk=False,
+    context = _SemanticBuildContext(
+        source_digests=source_digests,
+        target_digests=target_digests,
+        target=target,
+        context_units=context_units,
     )
-    edits: list[SemanticEdit] = []
-    for (
-        tag,
-        source_start,
-        source_end,
-        target_start,
-        target_end,
-    ) in matcher.get_opcodes():
-        if tag == _EQUAL_OPCODE:
-            continue
-        edits.append(
-            SemanticEdit(
-                locator=_locator(
-                    source_digests,
-                    source_start,
-                    source_end,
-                    context_units=context_units,
-                ),
-                replacement=_replacement_bytes(
-                    target, target_start, target_end
-                ),
-                replacement_digests=target_digests[target_start:target_end],
-            )
-        )
-    return SemanticAuthoringPlan(edits=tuple(edits))
+    edits = tuple(
+        _semantic_edit(context, edit)
+        for edit in _edit_ranges(source_digests, target_digests)
+    )
+    return SemanticAuthoringPlan(edits=edits)
 
 
 def _context_matches(
@@ -186,15 +524,35 @@ def _context_matches(
     )
 
 
+def _position_seeds(
+    candidate: tuple[bytes, ...],
+    locator: SemanticLocator,
+) -> tuple[int, ...]:
+    if locator.source_digests:
+        first = locator.source_digests[0]
+        return tuple(
+            index for index, digest in enumerate(candidate) if digest == first
+        )
+    if locator.before_digests:
+        final_before = locator.before_digests[-_ONE]
+        return tuple(
+            index + _ONE
+            for index, digest in enumerate(candidate)
+            if digest == final_before
+        )
+    first_after = locator.after_digests[0]
+    return tuple(
+        index for index, digest in enumerate(candidate) if digest == first_after
+    )
+
+
 def _candidate_positions(
     candidate: tuple[bytes, ...],
     locator: SemanticLocator,
 ) -> tuple[int, ...]:
-    source_count = len(locator.source_digests)
-    final_start = len(candidate) - source_count
     return tuple(
         start
-        for start in range(final_start + _ONE)
+        for start in _position_seeds(candidate, locator)
         if _context_matches(candidate, locator, start)
     )
 

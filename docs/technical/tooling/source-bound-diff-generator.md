@@ -321,9 +321,22 @@ correction when behavior evidence classifies that defect as already fixed.
 A read-only equivalence smoke over the original and normalized local trees processed
 273 C/header files and 549,978 mapped units with zero mismatches against the existing
 canonicalizer. This proves identity-equivalent mapping, not final compatible-tree
-correctness. Compatible tree planning still must combine admission, behavior routing,
-source-bound target material, file policy, and output postconditions around this
-primitive.
+correctness.
+
+`compatible.py` now composes admission, behavior evidence, file topology, semantic
+placement, conservative opaque-file gates, candidate-only preservation, target-only
+conflict checks, and transactional postconditions into an in-memory compatible plan.
+Bug correction routing remains intentionally fail-closed until correction IDs are
+attached to specific semantic edits; target-only bytes also remain local authoring
+material until compatible source-bound serialization exists.
+
+The first full DOOM compatible-authoring smoke exposed a scalability defect in generic
+sequence matching and did not finish within the runner limit. The replacement matcher
+uses unique canonical k-grams at widths 8/4/2/1, a monotonic LIS anchor chain, common
+prefix/suffix trimming, and recursive gap partitioning. With that matcher the same
+read-only plan finishes in 11.159 seconds: 117 semantic-patch files, 7 mapped candidate
+copies, 2 opaque exact-gated files, and 26 target-only creates across 152 target paths.
+Those semantic files contain 6,257 edits and 251,933 raw replacement bytes.
 
 ### Exact Baseline and Compatible Variants
 

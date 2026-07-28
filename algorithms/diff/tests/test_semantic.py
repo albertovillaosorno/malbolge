@@ -18,6 +18,7 @@ _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _REPLACED = b"extra ; alpha   = new ; omega tail"
 _INSERTED = b"alpha   added; omega"
 _DELETED = b"alpha      ; omega"
+_LARGE_REPLACEMENT = b"new"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -128,3 +129,18 @@ def test_semantic_authoring_is_deterministic() -> None:
     second = build_semantic_plan(source, target)
 
     _expect(first == second, "semantic authoring changed across runs")
+
+
+def test_large_repetitive_sequence_authors_local_edit() -> None:
+    """Keep a large repetitive fixture local instead of quadratic matching."""
+    repeated = b"a " * 5_000
+    source = _map(repeated + b"old " + repeated)
+    target = _map(repeated + b"new " + repeated)
+
+    plan = build_semantic_plan(source, target)
+
+    _expect(len(plan.edits) == 1, "large local change fragmented unexpectedly")
+    _expect(
+        plan.edits[0].replacement == _LARGE_REPLACEMENT,
+        "large local replacement changed",
+    )

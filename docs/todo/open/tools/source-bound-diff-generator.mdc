@@ -72,7 +72,8 @@ format.
   and IPX surfaces from lineage scoring.
 - The admission model combines structural similarity, stable anchors, and normalized
   behavior evidence. Threshold key unlock and authenticated exact-plan payload
-  recovery are implemented; compatible-variant placement remains unfinished.
+  recovery are implemented; compatible in-memory placement now exists while protected
+  compatible serialization/runtime emission remains unfinished.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds. Synthetic
   threshold tests exist, and a local source-to-normalized-descendant stress smoke
   measured 0.780928 structural similarity and 0.766396 anchor coverage; broader
@@ -112,6 +113,15 @@ format.
 - The DOOM C mapper is identity-equivalent to the established canonicalizer across a
   read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches. Synthetic
   placement preserves comments, formatting, and unrelated upstream functions.
+
+- Compatible tree authoring now composes lineage + behavior admission, semantic
+  placement, conservative opaque exact gates, target-only conflict checks, candidate-
+  only preservation, historical removals, and transactional postconditions. Bug
+  correction routes still fail closed until correction IDs are attached to edits.
+- Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors + LIS
+  reduced the full read-only DOOM compatible-plan smoke from runner timeout to 11.159
+  seconds. The plan contains 117 semantic-patch files / 6,257 edits / 251,933 raw
+  replacement bytes, 7 candidate copies, 2 exact-gated opaque files, and 26 creates.
 
 ## Acceptance
 

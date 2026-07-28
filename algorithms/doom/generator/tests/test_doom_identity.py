@@ -9,7 +9,9 @@ import pytest
 from algorithms.doom.generator.doom import DoomIdentityError
 from algorithms.doom.generator.doom import build_identity_tree
 from algorithms.doom.generator.doom import canonicalize_c_identity
+from algorithms.doom.generator.doom import map_compatible_file
 from algorithms.doom.generator.doom import mapped_c_identity
+from algorithms.doom.generator.doom import validate_authoring_oracle
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -165,4 +167,69 @@ def test_eof_directive_end_uses_zero_width_raw_marker() -> None:
     _expect(
         marker.raw_start == len(raw) and marker.raw_end == len(raw),
         "EOF directive marker consumed nonexistent bytes",
+    )
+
+
+def _quality_oracle_fixture(root: Path) -> None:
+    (root / "data").mkdir(parents=True)
+    (root / "linuxdoom-1.10").mkdir()
+    (root / "LICENSE").write_bytes(b"license")
+
+
+def test_quality_oracle_preflight_accepts_exact_root_surface(
+    tmp_path: Path,
+) -> None:
+    """Accept only the explicit normalized DOOM oracle root contract."""
+    _quality_oracle_fixture(tmp_path)
+
+    validate_authoring_oracle(tmp_path)
+
+
+def test_quality_oracle_preflight_rejects_unexpected_root(
+    tmp_path: Path,
+) -> None:
+    """Never learn an accidental authoring artifact as target-only payload."""
+    _quality_oracle_fixture(tmp_path)
+    (
+        tmp_path / "System.Management.Automation.Internal.Host.InternalHost"
+    ).write_bytes(b"accidental")
+
+    with pytest.raises(DoomIdentityError, match="unexpected"):
+        validate_authoring_oracle(tmp_path)
+
+
+def test_quality_oracle_preflight_rejects_missing_or_wrong_kind(
+    tmp_path: Path,
+) -> None:
+    """Reject incomplete or structurally malformed oracle roots."""
+    _quality_oracle_fixture(tmp_path)
+    (tmp_path / "LICENSE").unlink()
+
+    with pytest.raises(DoomIdentityError, match="missing"):
+        validate_authoring_oracle(tmp_path)
+
+    (tmp_path / "LICENSE").mkdir()
+    with pytest.raises(DoomIdentityError, match="must be a file"):
+        validate_authoring_oracle(tmp_path)
+
+
+def test_compatible_mapper_selects_only_linux_c_and_headers() -> None:
+    """Keep semantic placement scoped to the DOOM C identity surface."""
+    code = b"int value;\n"
+
+    _expect(
+        map_compatible_file("linuxdoom-1.10/main.c", code) is not None,
+        "Linux C file was not mapped",
+    )
+    _expect(
+        map_compatible_file("linuxdoom-1.10/defs.H", code) is not None,
+        "Linux header was not mapped",
+    )
+    _expect(
+        map_compatible_file("data/wad/freedoom1.wad", b"opaque") is None,
+        "WAD unexpectedly entered semantic placement",
+    )
+    _expect(
+        map_compatible_file("ipx/doomnet.c", code) is None,
+        "non-Linux source unexpectedly entered semantic placement",
     )
