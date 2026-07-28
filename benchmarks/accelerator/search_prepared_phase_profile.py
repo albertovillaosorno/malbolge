@@ -131,7 +131,7 @@ def main() -> int:
     workload = full_domain_rotate_target_workload()
     measured = _measure_phases(workload)
     payload = {
-        "benchmark_id": "rotate-target-prepared-search-phase-profile-v2",
+        "benchmark_id": "rotate-target-prepared-search-phase-profile-v3",
         "workload": {
             "algorithm_id": ROTATE_TARGET_ALGORITHM_ID,
             "corpus_size": CORPUS_SIZE,

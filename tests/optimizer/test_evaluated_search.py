@@ -55,7 +55,9 @@ from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
 from accelerator.evaluated_search import EvaluatedSearchStrategy
 from accelerator.evaluated_search import PreparedCandidateExecution
 from accelerator.evaluated_search import PreparedCandidateMembershipIndex
+from accelerator.evaluated_search import PreparedCandidateProjection
 from accelerator.evaluated_search import PreparedProposalSelection
+from accelerator.evaluated_search import prepare_candidate_projection
 from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
@@ -204,7 +206,9 @@ def _project_first_candidate(
         message = "projection selector state changed candidate batch"
         raise InvalidAcceleratorWorkError(message)
     _ = request
-    return prepare_candidate_subset(batch, (0,))
+    subset = prepare_candidate_subset(batch, (0,))
+    projected, _ = subset.for_batch(batch)
+    return prepare_candidate_projection(batch, subset, projected)
 
 
 def _project_first_candidate_other(
@@ -224,13 +228,31 @@ def _project_fabricated_candidate(
     return object()
 
 
-def _project_wrong_evaluator(
+def _project_forged_candidate(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
     selection_state: object,
 ) -> object:
-    _ = (request, batch, selection_state)
-    return object()
+    _ = (request, selection_state)
+    subset = prepare_candidate_subset(batch, (0,))
+    projected, _ = subset.for_batch(batch)
+    return PreparedCandidateProjection(
+        subset=subset,
+        state=projected,
+        _proof=object(),
+    )
+
+
+def _project_another_batch(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    selection_state: object,
+) -> object:
+    _ = (batch, selection_state)
+    replacement = _two_items(request).validated()
+    subset = prepare_candidate_subset(replacement, (0,))
+    projected, _ = subset.for_batch(replacement)
+    return prepare_candidate_projection(replacement, subset, projected)
 
 
 def _project_oversized_batch(
@@ -242,27 +264,10 @@ def _project_oversized_batch(
     return prepare_candidate_subset(batch, (0, 1))
 
 
-def _projected_evaluation_subset(state: object) -> PreparedCandidateSubset:
-    if not isinstance(state, PreparedCandidateSubset):
-        message = "projected state must be a candidate subset"
-        raise InvalidAcceleratorWorkError(message)
-    return state
-
-
-def _projected_evaluation_subset_other(
-    state: object,
-) -> PreparedCandidateSubset:
-    return _projected_evaluation_subset(state)
-
-
 def _projected_adapter(
     projection: Callable[
         [SearchRequest, CandidateEvaluationBatch, object], object
     ],
-    *,
-    evaluation_subset: Callable[[object], PreparedCandidateSubset] = (
-        _projected_evaluation_subset
-    ),
 ) -> EvaluatedSearchExecutionAdapter:
     evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
     return EvaluatedSearchExecutionAdapter(
@@ -274,7 +279,6 @@ def _projected_adapter(
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=None,
                 evaluator=_evaluate_identity_state,
-                evaluation_subset=evaluation_subset,
                 selection_aware_preparer=projection,
                 state_count=_count_identity_state,
             ),
@@ -493,6 +497,22 @@ def test_prepared_selection_preparer_is_strategy_identity() -> None:
     )
 
 
+def test_candidate_projection_rejects_forged_proof() -> None:
+    """Raw projection construction cannot bind strategy state to a subset."""
+    batch = _two_items(_request(budget=TWO_ITEM_COUNT)).validated()
+    subset = prepare_candidate_subset(batch, (0,))
+    forged = PreparedCandidateProjection(
+        subset=subset,
+        state=subset.batch,
+        _proof=object(),
+    )
+
+    _expect_error(
+        "prepared candidate projection is forged",
+        lambda: forged.for_batch(batch),
+    )
+
+
 def test_selection_aware_projection_evaluates_exact_sub_batch() -> None:
     """Projected evidence preserves full-batch membership."""
     adapter = _projected_adapter(_project_first_candidate)
@@ -513,17 +533,27 @@ def test_selection_aware_projection_rejects_fabricated_candidate() -> None:
     adapter = _projected_adapter(_project_fabricated_candidate)
 
     _expect_error(
-        "projected state must be a candidate subset",
+        "selection-aware preparer returned wrong projection type",
         lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
     )
 
 
-def test_selection_aware_projection_rejects_evaluator_drift() -> None:
-    """Projection cannot redirect prepared execution to another evaluator."""
-    adapter = _projected_adapter(_project_wrong_evaluator)
+def test_selection_aware_projection_rejects_forged_proof() -> None:
+    """Raw projection construction cannot forge subset/state authority."""
+    adapter = _projected_adapter(_project_forged_candidate)
 
     _expect_error(
-        "projected state must be a candidate subset",
+        "prepared candidate projection is forged",
+        lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
+    )
+
+
+def test_selection_aware_projection_rejects_another_batch() -> None:
+    """Equal content under another full batch cannot authorize evaluation."""
+    adapter = _projected_adapter(_project_another_batch)
+
+    _expect_error(
+        "prepared candidate subset changed full candidate batch",
         lambda: adapter.prepare(_request(budget=TWO_ITEM_COUNT)),
     )
 
@@ -540,7 +570,6 @@ def test_selection_aware_projection_rejects_oversized_batch() -> None:
             prepared_execution=PreparedCandidateExecution(
                 batch_preparer=None,
                 evaluator=_evaluate_identity_state,
-                evaluation_subset=_projected_evaluation_subset,
                 selection_aware_preparer=_project_oversized_batch,
             ),
             prepared_selection=PreparedProposalSelection(
@@ -561,17 +590,12 @@ def test_projection_callbacks_are_strategy_identity() -> None:
     """Another projection callback cannot consume an existing prepared proof."""
     first = _projected_adapter(_project_first_candidate)
     different_preparer = _projected_adapter(_project_first_candidate_other)
-    different_batch = _projected_adapter(
-        _project_first_candidate,
-        evaluation_subset=_projected_evaluation_subset_other,
-    )
     prepared = first.prepare(_request(budget=TWO_ITEM_COUNT))
 
-    for adapter in (different_preparer, different_batch):
-        _expect_error(
-            "prepared search state belongs to a different strategy",
-            lambda adapter=adapter: adapter.search_prepared(prepared),
-        )
+    _expect_error(
+        "prepared search state belongs to a different strategy",
+        lambda: different_preparer.search_prepared(prepared),
+    )
 
 
 def test_prepared_execution_requires_exactly_one_preparer() -> None:

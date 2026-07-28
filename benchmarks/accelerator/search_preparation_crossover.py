@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v8",
+        "benchmark_id": "rotate-target-preparation-crossover-v9",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,

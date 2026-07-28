@@ -323,9 +323,12 @@ The next exact-subset slice is implemented under
 full-batch object, projected batch, and strictly increasing request-order positions;
 empty, one-item, and multi-item subsets are supported. Mutable, duplicate, reordered,
 out-of-range, forged, wrong-type, and cross-batch state fail closed before backend
-execution. Generic prepared search consumes only this proof instead of accepting an
-arbitrary projected batch; rotate separately retains the subset proof and primitive
-prepared state. The version-8 bundle remains the historical v1 baseline. Exploratory
+execution. A selection-aware preparer must return a neutral proof-bound projection
+rather than
+an arbitrary projected batch. Generic preparation validates and unwraps that projection
+once, stores the primitive candidate state directly on the repeated hot path, and retains
+the exact projected batch beside the full membership authority. The version-8 bundle
+remains the historical v1 baseline. Exploratory
 `candidate-subset-proof-tradeoff-v1` medians over a 59,049-item full batch compare
 legacy membership revalidation with the proof route: 2.2/4.3 microseconds for an
 empty subset (0.512x), 20.0/7.5 microseconds for one item (2.667x), 1.0347/0.1584 ms

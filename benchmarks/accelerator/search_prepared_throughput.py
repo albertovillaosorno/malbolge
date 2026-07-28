@@ -132,7 +132,7 @@ def main() -> int:
     measured = _measure_search(workload)
     by_route = {row.route_id: row for row in measured.rows}
     payload = {
-        "benchmark_id": "rotate-target-prepared-search-throughput-v2",
+        "benchmark_id": "rotate-target-prepared-search-throughput-v3",
         "workload": {
             "algorithm_id": ROTATE_TARGET_ALGORITHM_ID,
             "corpus_size": CORPUS_SIZE,
