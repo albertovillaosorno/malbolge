@@ -139,8 +139,11 @@ execution selected the next boundary. The neutral bridge now validates primitive
 result tuples through exact minimum/maximum bounds, preserving negative and
 above-domain failure before packing. Retained prepared medians improve 1.086x CPU
 and 1.254x CUDA; backend phases improve 1.091x/1.330x and ordinary controls remain
-nearly flat. CPU arithmetic and CUDA tuple/materialization are next, while
-resident/fused search remains later work.
+nearly flat. Prepared CPU rotate now consumes a cached full-domain table generated
+from the scalar reference; ordinary CPU remains scalar. Exhaustive equality and
+benchmark counters make table use observable and fail closed. Post-commit evidence
+is pending. CPU result validation/packing and CUDA tuple/materialization are next,
+while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

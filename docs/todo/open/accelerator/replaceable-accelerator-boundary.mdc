@@ -118,7 +118,10 @@ directly on CUDA APIs.
   894.008x/948.452x. CUDA is 2.470x faster than same-run CPU. Exact min/max
   primitive-result validation now replaces the Python value loop while retaining
   negative/overflow failure. Retained prepared medians improve 1.086x CPU and
-  1.254x CUDA; backend phases improve 1.091x/1.330x. CPU arithmetic and CUDA
+  1.254x CUDA; backend phases improve 1.091x/1.330x. Prepared CPU rotate now reuses
+  a full-domain scalar-derived table while ordinary CPU stays scalar. Exhaustive
+  equality and benchmark counters require 59,049 entries/16 evaluations.
+  Post-commit evidence is pending. CPU result validation/packing and CUDA
   tuple/materialization are next. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.

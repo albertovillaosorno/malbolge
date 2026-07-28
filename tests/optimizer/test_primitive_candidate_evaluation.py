@@ -179,6 +179,40 @@ def test_cpu_candidate_bridge_preserves_exact_crazy_results() -> None:
     assert result.packed.payload_width == EVIDENCE_WORD_BYTES
 
 
+def test_cpu_prepared_rotate_matches_exhaustive_scalar_reference() -> None:
+    """Prepared lookup matches scalar rotate over the full domain."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id=ROTATE_EVALUATOR_ID,
+        items=tuple(
+            CandidateWorkItem(
+                logical_id=f"rotate-{value}",
+                payload=encode_rotate_candidate(value),
+            )
+            for value in range(MAX_WORD + 1)
+        ),
+    )
+    primitive = CpuExactPrimitiveAdapter()
+    adapter = PrimitiveCandidateEvaluationAdapter(
+        primitive,
+        PrimitiveKind.ROTATE,
+    )
+    prepared = prepare_rotate_candidate_batch(batch)
+
+    ordinary = adapter.evaluate(batch)
+    assert primitive.prepared_stats().evaluations == 0
+    reused = adapter.evaluate_prepared(prepared)
+    stats = primitive.prepared_stats()
+
+    assert reused.packed == ordinary.packed
+    assert (stats.evaluations, stats.rotate_table_entries) == (
+        1,
+        MAX_WORD + 1,
+    )
+    assert tuple(iter_primitive_evidence_values(reused)) == tuple(
+        iter_primitive_evidence_values(ordinary)
+    )
+
+
 def test_cpu_candidate_bridge_preserves_exact_rotate_results() -> None:
     """Candidate evidence matches the exact CPU rotate primitive."""
     batch = _rotate_batch()

@@ -801,8 +801,13 @@ attribution to exact prepared selection. Primitive result validation now checks
 both tuple extrema instead of scanning every value in Python, preserving rejection
 of negative and above-domain evidence before packing. Retained prepared medians
 improve 1.086x CPU and 1.254x CUDA; backend evaluation improves 1.091x/1.330x while
-ordinary controls remain nearly flat/slightly slower. CPU rotate arithmetic and
-CUDA host tuple/materialization are the next measured backend subphases.
+ordinary controls remain nearly flat/slightly slower. Prepared CPU rotate now uses
+a full 59,049-entry lookup table generated exactly once from the scalar reference
+formula. Ordinary CPU execution remains scalar; an exhaustive full-domain test
+matches every prepared result, and both benchmarks require 16 prepared evaluations
+plus all 59,049 table entries. Post-commit performance evidence is pending. CPU
+result validation/packing and CUDA host tuple/materialization are the next measured
+backend subphases.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -880,7 +885,10 @@ so primitive backend execution now precedes resident or fused evaluation-selecti
 Primitive result validation now uses exact minimum/maximum bounds and still rejects
 negative or above-domain output before evidence packing. Retained CUDA prepared
 median falls from 6.182 to 4.929 ms (1.254x), and backend evaluation from 5.239 to
-3.940 ms (1.330x). CUDA host tuple/materialization is the next measured subphase.
+3.940 ms (1.330x). Prepared CPU rotate now uses an exact full-domain lookup table
+while ordinary CPU remains scalar; benchmarks expose table/evaluation proof.
+Post-commit comparative evidence is pending, so no new CPU/CUDA ordering is claimed
+yet. CUDA host tuple/materialization remains the next measured CUDA subphase.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

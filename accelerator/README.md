@@ -142,7 +142,11 @@ negative/overflow rejection before packing. Retained evidence under
 `benchmarks/accelerator/evidence/2026-07-28-extrema-validation-search-rtx4060/`
 records 14.058 ms CPU prepared and 4.929 ms CUDA prepared, improvements of
 1.086x/1.254x over direct selection. Backend phases improve 1.091x/1.330x while
-ordinary controls remain nearly flat. CPU arithmetic and CUDA host
+ordinary controls remain nearly flat. Prepared CPU rotate now reuses a cached
+59,049-entry table generated from the scalar reference formula. Ordinary CPU stays
+scalar, the exhaustive test compares every classic word, and benchmarks require
+16 prepared evaluations plus the full table cardinality. Post-commit performance
+evidence is pending. CPU result validation/packing and CUDA host
 tuple/materialization are the next backend subphases.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain

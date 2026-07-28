@@ -239,3 +239,11 @@ records are the pre-change baseline. Retained post-change evidence is under
 `evidence/2026-07-28-extrema-validation-search-phase-profile-rtx4060/`. Prepared
 CPU/CUDA medians improve 1.086x/1.254x and backend phases improve 1.091x/1.330x;
 ordinary controls remain essentially flat/slightly slower.
+
+The active prepared CPU implementation now generates the complete classic rotate
+table once from the scalar reference and uses request-order table lookup only for
+prepared execution. Ordinary CPU remains scalar. Both benchmark programs emit and
+require `cpu_prepared_rotate` with 16 evaluations and 59,049 table entries, in
+addition to selector/index/CUDA-session proofs. A post-commit rerun is required
+before claiming the exploratory CPU reduction or changing the retained CPU/CUDA
+ordering.

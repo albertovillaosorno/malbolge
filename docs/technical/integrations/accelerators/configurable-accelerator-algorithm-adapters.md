@@ -144,8 +144,12 @@ backend phases only 1.034x/1.035x, strongly bounding attribution. Primitive back
 execution selected the next neutral boundary. Primitive result validation now uses
 exact tuple minimum/maximum bounds rather than an interpreted per-value loop. Both negative and above-domain evidence still fail before packing. Retained
 prepared medians improve 1.086x CPU and 1.254x CUDA; backend evaluation improves
-1.091x/1.330x while ordinary controls remain nearly flat. CPU arithmetic and CUDA
-host tuple/materialization are the next neutral subphases. Resident or
+1.091x/1.330x while ordinary controls remain nearly flat. Prepared CPU rotate now
+uses a cached 59,049-entry table generated exclusively from the scalar reference.
+Ordinary CPU evaluation remains scalar. An exhaustive classic-domain test and
+benchmark diagnostics require exact equality, 16 prepared evaluations, and full
+table cardinality. Post-commit evidence is pending; CPU result validation/packing
+and CUDA host tuple/materialization are the next neutral subphases. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer

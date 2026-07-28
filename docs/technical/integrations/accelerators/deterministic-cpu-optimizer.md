@@ -137,7 +137,11 @@ fails explicitly without changing correctness rules.
   validation now uses exact tuple extrema instead of a Python per-value loop and
   still rejects negative or above-domain output. Retained CPU prepared median falls
   from 15.266 to 14.058 ms (1.086x), and backend evaluation from 14.387 to
-  13.190 ms (1.091x). Rotate arithmetic remains the CPU target.
+  13.190 ms (1.091x). Prepared rotate now uses a cached 59,049-entry lookup table
+  generated once from the scalar formula; ordinary CPU remains scalar. The
+  exhaustive differential test compares every classic-domain input, and benchmark
+  diagnostics require 16 prepared evaluations plus full table cardinality.
+  Post-commit evidence is pending; result validation/packing is the next CPU target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

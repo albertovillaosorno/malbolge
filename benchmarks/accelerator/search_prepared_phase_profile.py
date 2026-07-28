@@ -14,6 +14,7 @@ import sys
 from typing import Final
 from typing import TYPE_CHECKING
 
+from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveKind
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
@@ -29,14 +30,15 @@ from benchmarks.accelerator.search_workload import (
     validate_search_benchmark_result,
 )
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
-from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
+    from accelerator.cpu import CpuPreparedPrimitiveStats
     from accelerator.cuda import CudaPreparedPrimitiveStats
     from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
     from accelerator.evaluated_search import PreparedEvaluatedSearch
     from accelerator.evaluated_search import PreparedSearchPhaseProfile
+    from accelerator.exact_primitives import AcceleratorCapability
     from benchmarks.accelerator.search_workload import SearchBenchmarkWorkload
 
 SAMPLE_COUNT: Final = 15
@@ -61,6 +63,17 @@ class PhaseTiming:
     raw_ns: tuple[int, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _MeasuredPhases:
+    capability: AcceleratorCapability
+    cpu: dict[str, PhaseTiming]
+    cpu_stats: CpuPreparedPrimitiveStats
+    cuda: dict[str, PhaseTiming]
+    cuda_stats: CudaPreparedPrimitiveStats
+    membership_count: int
+    selection_count: int
+
+
 def main() -> int:
     """Measure post-preparation full-domain phases on CPU and CUDA.
 
@@ -69,19 +82,7 @@ def main() -> int:
 
     """
     workload = full_domain_rotate_target_workload()
-    cpu = cpu_rotate_target_search_adapter()
-    prepared = cpu.prepare(workload.request)
-    with CudaExactPrimitiveAdapter() as primitive:
-        cuda = rotate_target_search_adapter(primitive)
-        cpu_phases, cuda_phases = _measure_pair(
-            cpu,
-            cuda,
-            prepared=prepared,
-            workload=workload,
-        )
-        capability = primitive.capability()
-        prepared_stats = primitive.prepared_stats()
-        _validate_prepared_stats(prepared_stats)
+    measured = _measure_phases(workload)
     payload = {
         "benchmark_id": "rotate-target-prepared-search-phase-profile-v1",
         "workload": {
@@ -101,22 +102,50 @@ def main() -> int:
             "warmup_count": WARMUP_COUNT,
         },
         "device": {
-            "arch": capability.device_arch,
-            "backend": capability.backend_id,
-            "name": capability.device_name,
+            "arch": measured.capability.device_arch,
+            "backend": measured.capability.backend_id,
+            "name": measured.capability.device_name,
         },
-        "cpu": {name: asdict(value) for name, value in cpu_phases.items()},
-        "cuda": {name: asdict(value) for name, value in cuda_phases.items()},
-        "cuda_prepared_session": asdict(prepared_stats),
-        "prepared_membership_count": _validated_membership_count(
-            cpu.prepared_membership_count(prepared)
-        ),
-        "prepared_selection_count": _validated_selection_count(
-            cpu.prepared_selection_count(prepared)
-        ),
+        "cpu": {name: asdict(value) for name, value in measured.cpu.items()},
+        "cuda": {name: asdict(value) for name, value in measured.cuda.items()},
+        "cpu_prepared_rotate": asdict(measured.cpu_stats),
+        "cuda_prepared_session": asdict(measured.cuda_stats),
+        "prepared_membership_count": measured.membership_count,
+        "prepared_selection_count": measured.selection_count,
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
+
+
+def _measure_phases(workload: SearchBenchmarkWorkload) -> _MeasuredPhases:
+    cpu_primitive = CpuExactPrimitiveAdapter()
+    cpu = rotate_target_search_adapter(cpu_primitive)
+    prepared = cpu.prepare(workload.request)
+    with CudaExactPrimitiveAdapter() as primitive:
+        cuda = rotate_target_search_adapter(primitive)
+        cpu_phases, cuda_phases = _measure_pair(
+            cpu,
+            cuda,
+            prepared=prepared,
+            workload=workload,
+        )
+        cpu_stats = cpu_primitive.prepared_stats()
+        _validate_cpu_prepared_stats(cpu_stats)
+        cuda_stats = primitive.prepared_stats()
+        _validate_prepared_stats(cuda_stats)
+        return _MeasuredPhases(
+            capability=primitive.capability(),
+            cpu=cpu_phases,
+            cpu_stats=cpu_stats,
+            cuda=cuda_phases,
+            cuda_stats=cuda_stats,
+            membership_count=_validated_membership_count(
+                cpu.prepared_membership_count(prepared)
+            ),
+            selection_count=_validated_selection_count(
+                cpu.prepared_selection_count(prepared)
+            ),
+        )
 
 
 def _measure_pair(
@@ -164,6 +193,14 @@ def _measure_pair(
         {name: _timing(samples) for name, samples in cpu_raw.items()},
         {name: _timing(samples) for name, samples in cuda_raw.items()},
     )
+
+
+def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
+    expected = (WARMUP_COUNT + SAMPLE_COUNT, CORPUS_SIZE)
+    observed = (stats.evaluations, stats.rotate_table_entries)
+    if observed != expected:
+        message = "prepared CPU rotate did not use one full-domain lookup table"
+        raise RuntimeError(message)
 
 
 def _validated_membership_count(count: int) -> int:

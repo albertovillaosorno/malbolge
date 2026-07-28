@@ -15,6 +15,7 @@ from time import perf_counter_ns
 from typing import Final
 from typing import TYPE_CHECKING
 
+from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveKind
 from benchmarks.accelerator.search_workload import CORPUS_SIZE
@@ -30,15 +31,16 @@ from benchmarks.accelerator.search_workload import (
     validate_search_benchmark_result,
 )
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
-from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.cpu import CpuPreparedPrimitiveStats
     from accelerator.cuda import CudaPreparedPrimitiveStats
     from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
     from accelerator.evaluated_search import PreparedEvaluatedSearch
+    from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import SearchResult
     from benchmarks.accelerator.search_workload import SearchBenchmarkWorkload
 
@@ -62,6 +64,16 @@ class SearchTiming:
     route_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class _MeasuredSearch:
+    capability: AcceleratorCapability
+    cpu_stats: CpuPreparedPrimitiveStats
+    cuda_stats: CudaPreparedPrimitiveStats
+    membership_count: int
+    rows: tuple[SearchTiming, ...]
+    selection_count: int
+
+
 def main() -> int:
     """Measure ordinary and prepared full-domain search on CPU and CUDA.
 
@@ -70,20 +82,8 @@ def main() -> int:
 
     """
     workload = full_domain_rotate_target_workload()
-    cpu = cpu_rotate_target_search_adapter()
-    prepared = cpu.prepare(workload.request)
-    with CudaExactPrimitiveAdapter() as primitive:
-        cuda = rotate_target_search_adapter(primitive)
-        rows = _measure_routes(
-            cpu,
-            cuda,
-            prepared=prepared,
-            workload=workload,
-        )
-        capability = primitive.capability()
-        prepared_stats = primitive.prepared_stats()
-        _validate_prepared_stats(prepared_stats)
-    by_route = {row.route_id: row for row in rows}
+    measured = _measure_search(workload)
+    by_route = {row.route_id: row for row in measured.rows}
     payload = {
         "benchmark_id": "rotate-target-prepared-search-throughput-v1",
         "workload": {
@@ -106,18 +106,15 @@ def main() -> int:
             "warmup_count": WARMUP_COUNT,
         },
         "device": {
-            "arch": capability.device_arch,
-            "backend": capability.backend_id,
-            "name": capability.device_name,
+            "arch": measured.capability.device_arch,
+            "backend": measured.capability.backend_id,
+            "name": measured.capability.device_name,
         },
-        "routes": {row.route_id: asdict(row) for row in rows},
-        "cuda_prepared_session": asdict(prepared_stats),
-        "prepared_membership_count": _validated_membership_count(
-            cpu.prepared_membership_count(prepared)
-        ),
-        "prepared_selection_count": _validated_selection_count(
-            cpu.prepared_selection_count(prepared)
-        ),
+        "routes": {row.route_id: asdict(row) for row in measured.rows},
+        "cpu_prepared_rotate": asdict(measured.cpu_stats),
+        "cuda_prepared_session": asdict(measured.cuda_stats),
+        "prepared_membership_count": measured.membership_count,
+        "prepared_selection_count": measured.selection_count,
         "speedups_at_median": {
             "cpu_prepared_over_ordinary": (
                 by_route[CPU_ORDINARY].median_ns
@@ -135,6 +132,36 @@ def main() -> int:
     }
     _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return 0
+
+
+def _measure_search(workload: SearchBenchmarkWorkload) -> _MeasuredSearch:
+    cpu_primitive = CpuExactPrimitiveAdapter()
+    cpu = rotate_target_search_adapter(cpu_primitive)
+    prepared = cpu.prepare(workload.request)
+    with CudaExactPrimitiveAdapter() as primitive:
+        cuda = rotate_target_search_adapter(primitive)
+        rows = _measure_routes(
+            cpu,
+            cuda,
+            prepared=prepared,
+            workload=workload,
+        )
+        cpu_stats = cpu_primitive.prepared_stats()
+        _validate_cpu_prepared_stats(cpu_stats)
+        cuda_stats = primitive.prepared_stats()
+        _validate_prepared_stats(cuda_stats)
+        return _MeasuredSearch(
+            capability=primitive.capability(),
+            cpu_stats=cpu_stats,
+            cuda_stats=cuda_stats,
+            membership_count=_validated_membership_count(
+                cpu.prepared_membership_count(prepared)
+            ),
+            rows=rows,
+            selection_count=_validated_selection_count(
+                cpu.prepared_selection_count(prepared)
+            ),
+        )
 
 
 def _measure_routes(
@@ -184,6 +211,14 @@ def _measure_routes(
                 )
             )
     return tuple(_timing(route_id, raw[route_id]) for route_id in raw)
+
+
+def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
+    expected = (WARMUP_COUNT + SAMPLE_COUNT, CORPUS_SIZE)
+    observed = (stats.evaluations, stats.rotate_table_entries)
+    if observed != expected:
+        message = "prepared CPU rotate did not use one full-domain lookup table"
+        raise RuntimeError(message)
 
 
 def _validated_membership_count(count: int) -> int:

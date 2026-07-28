@@ -96,7 +96,10 @@ baseline for accelerator implementations.
   better), and selection improves 894.008x to 13.2 us. Exact min/max validation now
   replaces the Python value loop while preserving domain failure. Retained CPU
   prepared median is 14.058 ms (1.086x better), and backend evaluation improves
-  1.091x to 13.190 ms. Rotate arithmetic is next.
+  1.091x to 13.190 ms. Prepared rotate now reuses a scalar-derived 59,049-entry
+  table while ordinary CPU stays scalar. Exhaustive equality and benchmark counters
+  require 16 evaluations/full cardinality. Post-commit evidence is pending; result
+  validation/packing is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

@@ -129,6 +129,8 @@ batches.
   evaluation remains 5.239 ms. Exact min/max result validation now replaces the
   Python per-value loop without weakening domain checks. Retained CUDA prepared
   median is 4.929 ms (1.254x better), and backend evaluation improves 1.330x to
-  3.940 ms. Host tuple/materialization and synthesis/search remain open.
+  3.940 ms. Prepared CPU now has a scalar-derived full-domain lookup table with
+  explicit counters; comparative evidence is pending. Host tuple/materialization
+  and synthesis/search remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
