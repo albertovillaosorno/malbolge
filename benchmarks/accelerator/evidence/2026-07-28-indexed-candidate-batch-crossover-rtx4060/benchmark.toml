@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "rotate-target-preparation-crossover-v3"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does proof-carrying fixed-width candidate storage reduce prepared memory and end-to-end search cost while preserving exact CUDA crossover and admission?"
+hypothesis = "At full domain, indexed candidate storage reduces retained and peak prepared memory, improves preparation and ordinary search, keeps strict crossover at one run, and retains any lookup or small-scale regressions with all exact proofs."
+baseline = "retained version-2 compact-membership run plus the same-run copied identity/payload frozenset for component metrics"
+rejection_observation = "Any proof identity or exact result drifts, full-domain retained memory does not fall, strict full-domain crossover is not finite, or ordinary indexed proposal admission materializes/fabricates candidates."
+
+[workload]
+identity = "classic-rotate-target-preparation-scales-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary warmup; one resident build plus one reuse warmup; storage and membership proofs validated before timing"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained timing samples and five retained memory samples per scale; each lookup sample contains 4096 operations"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "memory_bytes", "lookup_block_ns", "crossover_runs"]
+tradeoff_policy = "candidate-storage, membership, primitive validation, proposal, admission, cardinality, and CUDA-session proofs precede memory, preparation, ordinary-route, lookup, and crossover interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

@@ -168,23 +168,26 @@ by-side comparison without recompiling or modifying compiler semantics.
   prepared retention/peak. Exact compact hit/miss lookup regresses 9.898x/13.856x,
   so promotion is for scale memory/preparation. Warm/cold crossover is 7/3/2/1 and
   108/38/5/1. This is the retained version-2 baseline.
-  The next slice is now active. Rotate-target batch construction uses proof-carrying
-  `IndexedCandidateWorkItems` under
-  `u32-index-fixed-width-payloads-rotation-v1`: original u32 logical indexes and
-  fixed-width payloads remain in immutable bytes, while IDs and item objects
-  materialize only at consumer boundaries. Exact duplicate pruning now admits generic
-  hashable exact equality, so injective u32 encoding does not create temporary payload
-  objects before pruning. A validated rotation pivot lets
-  `u32-rotation-or-pair-or-reference-binary-search-v1` search two ordered regions
-  without retaining a sorted reference or pair array; arbitrary indexed batches and
-  ordinary tuple batches retain exact pair/reference fallbacks. Ordinary indexed
-  proposal admission also uses direct proof-bound lookup instead of materializing a
-  one-shot identity/payload dictionary. Duplicate or
-  out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged/cross-batch
-  proofs, and payload substitution fail closed. Crossover protocol v3 records both
-  storage identities. Clean post-commit memory, preparation, lookup, and crossover
-  evidence is pending; the retained prepared primitive integer tuple is the next
-  candidate only after this result is measured.
+  Retained version-3 evidence under
+  `benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/`
+  promotes proof-carrying fixed-width candidate storage for large deterministic
+  batches. At 59,049 candidates, complete prepared state falls from 10.910 to 2.923
+  MiB retained (73.211%) and from 14.080 to 8.395 MiB peak (40.378%). Warm/cold
+  preparation improves from 194.917/207.761 ms to 117.753/132.553 ms
+  (1.655x/1.567x), while ordinary CUDA search improves from 222.518 to 152.998 ms
+  (1.454x). Warm/cold preparation plus first resident search is 129.508/144.308 ms,
+  so both retain one-run crossover with 23.490/8.691 ms observed margins. The
+  rotation-backed membership component retains 528 bytes versus 473,352 bytes in
+  version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
+  0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
+  17.755 microseconds versus 2.625 microseconds in version 2 and 0.266 microseconds
+  copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
+  from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
+  miss lookup. The promotion is not universal: one-candidate memory grows slightly,
+  and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
+  out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
+  cross-batch proofs, and payload substitution still fail closed. The retained
+  prepared primitive Python integer tuple is the next measured memory boundary.
   Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
