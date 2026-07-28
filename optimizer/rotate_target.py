@@ -94,24 +94,25 @@ class RotateTargetProblem:
         Returns:
             Validated immutable rotate-target problem.
 
-        Raises:
-            InvalidRotateTargetProblemError: If encoding is malformed.
-
         """
-        if not payload.startswith(_MAGIC):
-            message = "rotate target problem has invalid magic"
-            raise InvalidRotateTargetProblemError(message)
-        target, offset = _read_u32(payload, len(_MAGIC))
-        count, offset = _read_u32(payload, offset)
-        expected = offset + (count * _U32.size)
-        if expected != len(payload):
-            message = "rotate target problem has invalid candidate byte length"
-            raise InvalidRotateTargetProblemError(message)
+        target, count, offset = _decode_header(payload)
         candidates = tuple(
             _U32.unpack_from(payload, offset + (index * _U32.size))[0]
             for index in range(count)
         )
         return cls(target=target, candidates=candidates).validated()
+
+    @classmethod
+    def decode_target(cls, payload: bytes) -> int:
+        """Decode only the structurally validated classic-domain target.
+
+        Returns:
+            Target word without materializing the candidate corpus.
+
+        """
+        target, _, _ = _decode_header(payload)
+        _ = cls(target=target, candidates=()).validated()
+        return target
 
 
 def rotate_target_search_adapter(
@@ -198,7 +199,7 @@ def select_rotate_target_proposals(
         Untrusted matching proposals in evaluation order.
 
     """
-    target = RotateTargetProblem.decode(request.problem).target
+    target = RotateTargetProblem.decode_target(request.problem)
     proposals: list[CandidateProposal] = []
     for item, observed in zip(batch.items, evidence.items, strict=True):
         if decode_primitive_evidence(observed.payload) == target:
@@ -246,6 +247,19 @@ class RotateTargetVerifier(TrustedCandidateVerifier):
             )
         )
         return result.values == (self._target,)
+
+
+def _decode_header(payload: bytes) -> tuple[int, int, int]:
+    if not payload.startswith(_MAGIC):
+        message = "rotate target problem has invalid magic"
+        raise InvalidRotateTargetProblemError(message)
+    target, offset = _read_u32(payload, len(_MAGIC))
+    count, offset = _read_u32(payload, offset)
+    expected = offset + (count * _U32.size)
+    if expected != len(payload):
+        message = "rotate target problem has invalid candidate byte length"
+        raise InvalidRotateTargetProblemError(message)
+    return (target, count, offset)
 
 
 def _read_u32(payload: bytes, offset: int) -> tuple[int, int]:

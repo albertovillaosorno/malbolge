@@ -141,3 +141,22 @@ CUDA, host-side phases account for about 57.0% while backend evaluation accounts
 for about 42.5%; batch construction plus proposal selection consume about
 173.081 ms at their medians. This attribution motivates reusable prepared search
 state before additional kernel work.
+
+`search_prepared_throughput.py` compares four routes over the same complete-domain
+workload: ordinary CPU, prepared CPU, ordinary CUDA, and prepared CUDA. One CPU
+adapter prepares and validates immutable request/batch state before timing; the
+identical strategy-bound proof is then reused by both CPU and CUDA. Preparation,
+adapter construction, and NVRTC setup are outside timed intervals. One warmup
+precedes 15 fixed interleaved samples of all four routes. Every sample still
+checks exact proposal identity and independent CPU admission.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.search_prepared_throughput
+```
+
+Prepared measurements answer an amortized repeated-search question. They must not
+be substituted for one-shot ordinary search latency, and no improvement is claimed
+until a post-commit evidence bundle retains the raw samples.

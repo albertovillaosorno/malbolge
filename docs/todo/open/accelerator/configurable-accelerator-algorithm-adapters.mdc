@@ -80,8 +80,13 @@ by-side comparison without recompiling or modifying compiler semantics.
   separate 15-profile run explains 97.5% of CPU and 99.5% of CUDA median total
   time through named phases. CUDA host-side phases account for about 57.0%, and
   batch construction plus proposal selection consume about 173.081 ms. Reusable
-  validated/prepared search state is the next evidence-driven optimization target.
-  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  validated/prepared search state is now active. One immutable proof binds the
+  validated request/batch to exact algorithm, batch-builder, and selector identity;
+  matching CPU/CUDA adapters can reuse it, while forged or mismatched strategy
+  state fails closed. Prepared execution retains verifier-only acceptance and
+  removes repeated batch build/validation from the amortized path. A four-route
+  ordinary/prepared CPU/CUDA benchmark is active; retained evidence remains
+  pending before a performance claim. Synthesis/guided strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

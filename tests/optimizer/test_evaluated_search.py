@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import final
 
 from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
@@ -46,6 +47,18 @@ def _one_item(request: SearchRequest) -> CandidateEvaluationBatch:
     )
 
 
+@final
+class _CountingBatchBuilder:
+    calls: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, request: SearchRequest) -> CandidateEvaluationBatch:
+        self.calls += 1
+        return _one_item(request)
+
+
 def _two_items(request: SearchRequest) -> CandidateEvaluationBatch:
     _ = request
     return CandidateEvaluationBatch(
@@ -67,6 +80,15 @@ def _select_first(
     return (
         CandidateProposal(logical_id=item.logical_id, payload=item.payload),
     )
+
+
+def _select_none(
+    request: SearchRequest,
+    batch: CandidateEvaluationBatch,
+    evidence: CandidateEvaluationResult,
+) -> tuple[CandidateProposal, ...]:
+    _ = (request, batch, evidence)
+    return ()
 
 
 def _fabricate(
@@ -136,6 +158,56 @@ def test_profiled_search_matches_ordinary_result_and_retains_phases() -> None:
         phases.proposal_selection_ns,
         phases.result_validation_ns,
     ))
+
+
+def test_prepared_state_builds_once_and_reuses_exact_result() -> None:
+    """Prepared immutable state removes repeated strategy batch construction."""
+    builder = _CountingBatchBuilder()
+    adapter = _adapter(builder, _select_first)
+    request = _request(budget=1)
+
+    prepared = adapter.prepare(request)
+    first = adapter.search_prepared(prepared)
+    second = adapter.search_prepared(prepared)
+
+    assert builder.calls == 1
+    assert first == second
+    calls_before_ordinary = builder.calls
+    assert first == adapter.search(request)
+    assert builder.calls == calls_before_ordinary + 1
+
+
+def test_prepared_profile_matches_prepared_execution() -> None:
+    """Prepared diagnostics preserve the amortized execution result."""
+    adapter = _adapter(_one_item, _select_first)
+    prepared = adapter.prepare(_request(budget=1))
+
+    ordinary = adapter.search_prepared(prepared)
+    profiled = adapter.profile_prepared_search(prepared)
+
+    assert profiled.result == ordinary
+    phases = profiled.phases
+    assert phases.prepared_validation_ns >= 0
+    assert phases.backend_evaluation_ns >= 0
+    assert phases.proposal_selection_ns >= 0
+    assert phases.result_validation_ns >= 0
+    assert phases.total_ns >= sum((
+        phases.prepared_validation_ns,
+        phases.backend_evaluation_ns,
+        phases.proposal_selection_ns,
+        phases.result_validation_ns,
+    ))
+
+
+def test_prepared_state_rejects_different_strategy_functions() -> None:
+    """Algorithm identity alone cannot authorize another strategy binding."""
+    prepared = _adapter(_one_item, _select_first).prepare(_request(budget=1))
+    different = _adapter(_one_item, _select_none)
+
+    _expect_error(
+        "prepared search state belongs to a different strategy",
+        lambda: different.search_prepared(prepared),
+    )
 
 
 def test_selector_cannot_fabricate_candidate_payload() -> None:

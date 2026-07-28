@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field
 from time import perf_counter_ns
 from typing import TYPE_CHECKING
 from typing import final
@@ -29,11 +30,50 @@ type SearchProposalSelector = Callable[
     [SearchRequest, CandidateEvaluationBatch, CandidateEvaluationResult],
     tuple[CandidateProposal, ...],
 ]
+type SearchStrategyKey = tuple[
+    str,
+    SearchBatchBuilder,
+    SearchProposalSelector,
+]
+
+_PREPARED_PROOF = object()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedEvaluatedSearch:
+    """Validated request/batch state reusable across exact backends."""
+
+    request: SearchRequest
+    batch: CandidateEvaluationBatch
+    _proof: object = field(repr=False)
+    _strategy_key: SearchStrategyKey = field(repr=False)
+
+    def for_strategy(
+        self,
+        strategy_key: SearchStrategyKey,
+    ) -> tuple[SearchRequest, CandidateEvaluationBatch]:
+        """Return state only to the exact strategy that prepared it.
+
+        Returns:
+            Immutable validated request and candidate batch.
+
+        Raises:
+            InvalidAcceleratorWorkError: If this state is forged or belongs to a
+                different strategy implementation.
+
+        """
+        if self._proof is not _PREPARED_PROOF:
+            message = "prepared search state was not created by prepare"
+            raise InvalidAcceleratorWorkError(message)
+        if self._strategy_key != strategy_key:
+            message = "prepared search state belongs to a different strategy"
+            raise InvalidAcceleratorWorkError(message)
+        return (self.request, self.batch)
 
 
 @dataclass(frozen=True, slots=True)
 class EvaluatedSearchPhaseProfile:
-    """Wall-clock phase diagnostics for one evaluated-search execution."""
+    """Wall-clock phase diagnostics for one ordinary search execution."""
 
     backend_evaluation_ns: int
     batch_build_ns: int
@@ -45,10 +85,29 @@ class EvaluatedSearchPhaseProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedSearchPhaseProfile:
+    """Wall-clock phases after validated search state is prepared."""
+
+    backend_evaluation_ns: int
+    prepared_validation_ns: int
+    proposal_selection_ns: int
+    result_validation_ns: int
+    total_ns: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProfiledSearchResult:
-    """One search result paired with non-authoritative timing diagnostics."""
+    """One ordinary search result paired with timing diagnostics."""
 
     phases: EvaluatedSearchPhaseProfile
+    result: SearchResult
+
+
+@dataclass(frozen=True, slots=True)
+class ProfiledPreparedSearchResult:
+    """One prepared search result paired with timing diagnostics."""
+
+    phases: PreparedSearchPhaseProfile
     result: SearchResult
 
 
@@ -77,6 +136,11 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         self._algorithm_id = algorithm_id
         self._batch_builder = batch_builder
         self._proposal_selector = proposal_selector
+        self._strategy_key: SearchStrategyKey = (
+            algorithm_id,
+            batch_builder,
+            proposal_selector,
+        )
 
     @override
     def capability(self) -> AcceleratorCapability:
@@ -88,6 +152,23 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         """
         return self._adapter.capability()
 
+    def prepare(self, request: SearchRequest) -> PreparedEvaluatedSearch:
+        """Build and validate immutable search state once for later reuse.
+
+        Returns:
+            Hardware-neutral request and candidate batch bound to this exact
+            strategy identity.
+
+        """
+        validated = self._validated_request(request)
+        batch = self._validated_batch(validated)
+        return PreparedEvaluatedSearch(
+            request=validated,
+            batch=batch,
+            _proof=_PREPARED_PROOF,
+            _strategy_key=self._strategy_key,
+        )
+
     @override
     def search(self, request: SearchRequest) -> SearchResult:
         """Evaluate a bounded corpus and return untrusted selected proposals.
@@ -98,13 +179,23 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         """
         validated = self._validated_request(request)
         batch = self._validated_batch(validated)
-        capability = self.capability()
-        evidence = self._evaluated(batch, capability)
-        proposals = self._selected(validated, batch, evidence)
-        return self._result(validated, capability, proposals)
+        return self._search_validated(validated, batch)
+
+    def search_prepared(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> SearchResult:
+        """Evaluate already prepared immutable state through this backend.
+
+        Returns:
+            Structurally validated untrusted proposals.
+
+        """
+        request, batch = self._prepared(prepared)
+        return self._search_validated(request, batch)
 
     def profile_search(self, request: SearchRequest) -> ProfiledSearchResult:
-        """Execute one search while retaining wall-clock phase diagnostics.
+        """Execute one ordinary search with wall-clock phase diagnostics.
 
         Returns:
             The ordinary validated result plus diagnostic phase durations.
@@ -136,7 +227,49 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             "result_validation_ns",
             lambda: self._result(validated, capability, proposals),
         )
-        return ProfiledSearchResult(phases=recorder.finish(), result=result)
+        return ProfiledSearchResult(
+            phases=recorder.finish_ordinary(),
+            result=result,
+        )
+
+    def profile_prepared_search(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> ProfiledPreparedSearchResult:
+        """Execute prepared state with post-preparation phase diagnostics.
+
+        Returns:
+            Validated untrusted proposals plus amortized-path phase durations.
+
+        """
+        recorder = _PhaseRecorder()
+        request, batch = recorder.measure(
+            "prepared_validation_ns",
+            lambda: self._prepared(prepared),
+        )
+        capability = self.capability()
+        evidence = recorder.measure(
+            "backend_evaluation_ns",
+            lambda: self._evaluated(batch, capability),
+        )
+        proposals = recorder.measure(
+            "proposal_selection_ns",
+            lambda: self._selected(request, batch, evidence),
+        )
+        result = recorder.measure(
+            "result_validation_ns",
+            lambda: self._result(request, capability, proposals),
+        )
+        return ProfiledPreparedSearchResult(
+            phases=recorder.finish_prepared(),
+            result=result,
+        )
+
+    def _prepared(
+        self,
+        prepared: PreparedEvaluatedSearch,
+    ) -> tuple[SearchRequest, CandidateEvaluationBatch]:
+        return prepared.for_strategy(self._strategy_key)
 
     def _validated_request(self, request: SearchRequest) -> SearchRequest:
         validated = request.validated()
@@ -150,6 +283,16 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         request: SearchRequest,
     ) -> CandidateEvaluationBatch:
         return _validate_batch(request, self._batch_builder(request))
+
+    def _search_validated(
+        self,
+        request: SearchRequest,
+        batch: CandidateEvaluationBatch,
+    ) -> SearchResult:
+        capability = self.capability()
+        evidence = self._evaluated(batch, capability)
+        proposals = self._selected(request, batch, evidence)
+        return self._result(request, capability, proposals)
 
     def _evaluated(
         self,
@@ -205,8 +348,8 @@ class _PhaseRecorder:
         self._durations[name] = perf_counter_ns() - start
         return result
 
-    def finish(self) -> EvaluatedSearchPhaseProfile:
-        """Materialize immutable phase diagnostics.
+    def finish_ordinary(self) -> EvaluatedSearchPhaseProfile:
+        """Materialize immutable ordinary-search phase diagnostics.
 
         Returns:
             Complete phase durations plus inclusive total wall time.
@@ -218,6 +361,21 @@ class _PhaseRecorder:
             batch_validation_ns=self._duration("batch_validation_ns"),
             proposal_selection_ns=self._duration("proposal_selection_ns"),
             request_validation_ns=self._duration("request_validation_ns"),
+            result_validation_ns=self._duration("result_validation_ns"),
+            total_ns=perf_counter_ns() - self._total_start,
+        )
+
+    def finish_prepared(self) -> PreparedSearchPhaseProfile:
+        """Materialize immutable prepared-search phase diagnostics.
+
+        Returns:
+            Post-preparation phase durations plus inclusive total wall time.
+
+        """
+        return PreparedSearchPhaseProfile(
+            backend_evaluation_ns=self._duration("backend_evaluation_ns"),
+            prepared_validation_ns=self._duration("prepared_validation_ns"),
+            proposal_selection_ns=self._duration("proposal_selection_ns"),
             result_validation_ns=self._duration("result_validation_ns"),
             total_ns=perf_counter_ns() - self._total_start,
         )

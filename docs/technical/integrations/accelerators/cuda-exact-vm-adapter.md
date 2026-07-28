@@ -169,9 +169,14 @@ fails explicitly without changing correctness rules.
   route. Exact proposal equality and CPU admission still pass for every sample.
   The companion phase profile attributes 99.5% of CUDA median total time to named
   phases: about 57.0% host-side and 42.5% backend evaluation. Batch construction
-  plus proposal selection consume about 173.081 ms, so reusable prepared search
-  state precedes further kernel optimization; resident or fused search remains a
-  later measured option. Broader live-hardware evidence, synthesis/search
+  plus proposal selection consume about 173.081 ms. Hardware-neutral prepared
+  search state is now active: CPU-prepared immutable request/batch state executes
+  unchanged through the matching CUDA strategy, while forged or mismatched proof
+  identity fails closed. Prepared execution removes repeated batch build/validation
+  from the timed repeated-search path, and rotate-target selection avoids a second
+  full corpus decode. The four-route benchmark is implemented, but post-commit raw
+  evidence remains pending before claiming improvement. Resident or fused search
+  remains a later measured option. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

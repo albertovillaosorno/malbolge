@@ -89,8 +89,14 @@ backend and exact proposal checks. CPU median is 401.185 ms and CUDA median is
 hypothesis for this route. The diagnostic phase profile explains 97.5% of CPU
 and 99.5% of CUDA median total time through named phases. CUDA host-side phases
 account for about 57.0%, and batch construction plus proposal selection consume
-about 173.081 ms. Reusable prepared search state is therefore the next neutral
-boundary extension before resident/fused search. Synthesis/guided search
+about 173.081 ms. The neutral boundary now includes
+`PreparedEvaluatedSearch`: immutable validated request/batch state bound to exact
+algorithm, batch-builder, and selector identity. A CPU adapter may prepare it once
+and a matching CUDA adapter may consume it without semantic reinterpretation;
+forged or mismatched proof identity fails closed. Prepared execution preserves
+result/proposal validation and verifier-only acceptance. Comparative evidence is
+pending before performance conclusions; resident/fused search remains later work.
+Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 
 ## Invariants

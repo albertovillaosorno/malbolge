@@ -78,10 +78,18 @@ for this host-heavy route; no CUDA performance benefit is claimed. A separate
 phase profile retains 15 profiles per backend and explains 97.5% of CPU and 99.5%
 of CUDA median total time through named phases. For CUDA, host-side phases account
 for about 57.0% of median total time while backend evaluation accounts for about
-42.5%; batch construction plus proposal selection consume about 173.081 ms. The
-next optimization target is reusable validated/prepared search state, followed by
-resident or fused evaluation-selection only if exact equivalence remains explicit.
-Synthesis and guided strategies, ROCm search implementations, richer
+42.5%; batch construction plus proposal selection consume about 173.081 ms.
+`PreparedEvaluatedSearch` now implements the target: `prepare()` validates request
+and batch exactly once and emits immutable state bound to algorithm ID plus the
+concrete batch-builder/selector identities. Matching CPU and CUDA adapters may
+reuse that proof; forged or different strategy bindings fail closed.
+`search_prepared()` and `profile_prepared_search()` preserve untrusted proposal
+and result validation while removing repeated batch construction and validation
+from the amortized path. Rotate-target selection additionally decodes only the
+validated target/header. Comparative ordinary/prepared evidence is pending before
+a performance claim. Resident or fused evaluation-selection remains a later
+option only if exact equivalence stays explicit. Synthesis and guided strategies,
+ROCm search implementations, richer
 orchestration, and broader representative benchmark evidence remain open.
 
 ## Invariants

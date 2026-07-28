@@ -101,6 +101,7 @@ def test_rotate_target_problem_roundtrips_canonically() -> None:
 
     assert decoded == problem
     assert decoded.encode() == encoded
+    assert RotateTargetProblem.decode_target(encoded) == ROTATE_ONE
 
 
 def test_problem_rejects_invalid_domain_and_encoding() -> None:
@@ -117,6 +118,17 @@ def test_problem_rejects_invalid_domain_and_encoding() -> None:
     _expect_problem_error(
         "invalid candidate byte length",
         lambda: RotateTargetProblem.decode(valid[:-1]),
+    )
+    _expect_problem_error(
+        "invalid candidate byte length",
+        lambda: RotateTargetProblem.decode_target(valid[:-1]),
+    )
+    invalid_target = (
+        b"MBRTS1\0" + (59_049).to_bytes(4, "little") + (0).to_bytes(4, "little")
+    )
+    _expect_problem_error(
+        "rotate target outside classic domain",
+        lambda: RotateTargetProblem.decode_target(invalid_target),
     )
 
 
@@ -191,6 +203,31 @@ def test_live_cuda_search_matches_cpu_and_records_backend_identity() -> None:
         RotateTargetVerifier(ROTATE_ONE),
     )
     assert accepted == record.result.proposals
+
+
+def test_prepared_cpu_state_executes_unchanged_on_live_cuda() -> None:
+    """Hardware-neutral prepared state crosses exact CPU/CUDA capacity."""
+    problem = RotateTargetProblem(
+        target=ROTATE_ONE,
+        candidates=tuple(range(257)),
+    )
+    request = _request(problem, budget=257, seed=17)
+    reference = cpu_rotate_target_search_adapter()
+    prepared = reference.prepare(request)
+    expected = reference.search_prepared(prepared)
+
+    with _cuda() as cuda:
+        observed = rotate_target_search_adapter(cuda).search_prepared(prepared)
+
+    assert observed.capability.backend_id == CUDA_BACKEND
+    assert observed.proposals == expected.proposals
+    assert (
+        admit_search_result(
+            observed,
+            RotateTargetVerifier(ROTATE_ONE),
+        )
+        == observed.proposals
+    )
 
 
 def test_malformed_optional_cuda_style_search_falls_back_to_cpu() -> None:

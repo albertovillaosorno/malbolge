@@ -92,8 +92,11 @@ batches.
   for this host-heavy route while every proposal remains exact. The companion
   phase profile attributes 99.5% of CUDA median total time to named phases, with
   about 57.0% host-side and 42.5% backend evaluation. Batch construction plus
-  proposal selection consume about 173.081 ms, making reusable prepared search
-  state the next target before more kernel work. Broader live hardware, resident
+  proposal selection consume about 173.081 ms. Reusable prepared search state is
+  now active and crosses CPU to CUDA under exact strategy identity; forged or
+  mismatched state fails closed, and acceptance remains CPU-owned. Prepared
+  execution removes repeated batch construction/validation, but comparative raw
+  evidence remains pending before an improvement claim. Broader live hardware, resident
   search, and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

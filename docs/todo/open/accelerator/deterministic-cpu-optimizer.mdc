@@ -69,8 +69,11 @@ baseline for accelerator implementations.
   median on the RTX 4060, preserving the 0.972x CUDA/CPU negative result instead
   of claiming acceleration. The companion phase profile attributes 97.5% of CPU
   median total time to named phases; batch construction, backend evaluation, and
-  proposal selection dominate. Reusable prepared search state is therefore also
-  relevant to the CPU baseline. Translation-validation integration, real
+  proposal selection dominate. Reusable prepared search state is now active for
+  the CPU baseline: request/batch validation happens once, repeated execution
+  preserves exact untrusted proposals, and matching CUDA capacity may consume the
+  same strategy-bound proof. Comparative evidence remains pending.
+  Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,

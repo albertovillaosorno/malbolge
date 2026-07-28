@@ -68,9 +68,15 @@ benchmark filtering. The retained phase profile at
 `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`
 shows 97.5% CPU and 99.5% CUDA named-phase coverage. CUDA host-side phases account
 for about 57.0% of median total time, backend evaluation about 42.5%, and batch
-construction plus proposal selection about 173.081 ms. Reusing validated prepared
-search state is therefore the next optimization target before additional kernel
-work. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+construction plus proposal selection about 173.081 ms.
+`PreparedEvaluatedSearch` now carries immutable validated request/batch state bound
+to exact algorithm, batch-builder, and selector identity. It can be prepared once
+through CPU and reused unchanged through matching CPU or CUDA adapters; forged or
+mismatched strategy state fails closed. Prepared execution and diagnostics avoid
+repeated batch construction/validation, while rotate-target selection decodes only
+the validated header target instead of rebuilding the complete corpus. The
+ordinary-versus-prepared benchmark is active, but post-commit raw evidence remains
+pending before any speedup claim. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

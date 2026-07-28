@@ -99,6 +99,10 @@ fails explicitly without changing correctness rules.
   retains diagnostic attribution. Named phases explain 97.5% of CPU median total
   time and identify batch construction (132.653 ms), backend evaluation
   (132.738 ms), and proposal selection (52.029 ms) as the dominant CPU phases.
+- Prepared evaluated-search state now validates and builds this exact CPU batch
+  once, supports repeated execution and post-preparation phase diagnostics, and
+  can be consumed unchanged by the matching CUDA strategy. Rotate-target selection
+  decodes only the validated target/header. Comparative evidence remains pending.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References
