@@ -302,7 +302,7 @@ and search total reaches 0.238 ms (3.729x). Exact validation reaches 0.0278 ms
 The one-time 236,196-byte CPU reference is outside retained intervals. A dedicated
 preparation/memory/crossover benchmark is the next protocol step.
 
-Run the active preparation, memory, and reuse-crossover benchmark with:
+Run the active preparation, membership-index, and reuse-crossover benchmark with:
 
 ```powershell
 .dependencies/python/3.14.6/Scripts/python.exe -m benchmarks.accelerator.search_preparation_crossover
@@ -312,7 +312,10 @@ Run the active preparation, memory, and reuse-crossover benchmark with:
 1,024, and 59,049. For every scale it retains 15 fresh-process cold preparations,
 15 warm-process preparations after the global rotate table is built, five
 incremental `tracemalloc` memory observations, 15 ordinary CUDA calls, 15 fresh
-resident-build calls, and 15 resident reuses after one build and one warmup.
+resident-build calls, and 15 resident reuses after one build and one warmup. Version
+2 additionally retains 15 component preparations and five component memory samples
+for the compact index and copied-tuple `frozenset`, plus 15 exact hit and miss timing
+blocks of 4,096 lookups per index.
 Workload construction, CUDA/NVRTC adapter setup, and trusted result admission are
 outside timed intervals. Fresh-build timing includes resident allocation/upload and
 one exact search. Memory tracing excludes the prebuilt workload, global rotate
@@ -333,7 +336,9 @@ on run two. Incremental traced Python state retains 16.063 MiB and peaks at
 target. The active index identity is
 `identity-sorted-candidate-reference-binary-search-v1`: it stores sorted references
 to existing immutable candidate items and checks exact ID/payload membership by
-binary search. `search_preparation_crossover.py` now emits and validates this identity
-alongside both primitive validators and all state/session proofs. A clean post-commit
-rerun is required before replacing the retained 16.063/19.040 MiB memory result or
-interpreting crossover changes.
+binary search. Version 2 emits and validates this identity plus
+`copied-identity-payload-frozenset-v1` alongside both primitive validators and all
+state/session proofs. Component preparation, retained/peak allocation, and exact
+hit/miss lookup are measured in the same run. A clean post-commit rerun is required
+before replacing the retained 16.063/19.040 MiB memory result or interpreting the
+lookup/crossover trade-off.

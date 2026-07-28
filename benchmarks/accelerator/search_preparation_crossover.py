@@ -64,6 +64,7 @@ from typing import Final
 from typing import TYPE_CHECKING
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.evaluated_search import PreparedCandidateMembershipIndex
 from accelerator.evaluated_search import prepared_membership_index_id
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.primitive_candidates import encode_rotate_candidate
@@ -89,10 +90,12 @@ if TYPE_CHECKING:
     from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
     from accelerator.evaluated_search import PreparedEvaluatedSearch
     from accelerator.exact_primitives import AcceleratorCapability
+    from accelerator.work_ports import CandidateEvaluationBatch
     from accelerator.work_ports import SearchResult
 
 SAMPLE_COUNT: Final = 15
 MEMORY_SAMPLE_COUNT: Final = 5
+LOOKUP_ITERATIONS: Final = 4_096
 WARMUP_COUNT: Final = 1
 CORPUS_SIZES: Final = (1, 64, 1_024, CORPUS_SIZE)
 WORD_BYTES: Final = 4
@@ -102,6 +105,8 @@ PREPARED_VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
 MEMBERSHIP_INDEX_ID: Final = (
     "identity-sorted-candidate-reference-binary-search-v1"
 )
+LEGACY_MEMBERSHIP_INDEX_ID: Final = "copied-identity-payload-frozenset-v1"
+MISSING_LOGICAL_ID: Final = "membership-benchmark-missing-candidate"
 COLD_CHILD_FLAG: Final = "--cold-child"
 MODULE_NAME: Final = "benchmarks.accelerator.search_preparation_crossover"
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[2]
@@ -146,6 +151,44 @@ class Crossover:
 
 
 @dataclass(frozen=True, slots=True)
+class MembershipMeasurementPlan:
+    """Fixed component sample counts for one membership comparison."""
+
+    lookup_iterations: int
+    memory_sample_count: int
+    sample_count: int
+
+
+DEFAULT_MEMBERSHIP_PLAN: Final = MembershipMeasurementPlan(
+    lookup_iterations=LOOKUP_ITERATIONS,
+    memory_sample_count=MEMORY_SAMPLE_COUNT,
+    sample_count=SAMPLE_COUNT,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MembershipLookupMeasurement:
+    """Exact hit/miss lookup timings for compact and historical indexes."""
+
+    compact_hit: Timing
+    compact_miss: Timing
+    iterations_per_sample: int
+    legacy_hit: Timing
+    legacy_miss: Timing
+
+
+@dataclass(frozen=True, slots=True)
+class MembershipIndexComparison:
+    """Same-run component economics for the prepared membership index."""
+
+    compact_memory: MemoryMeasurement
+    compact_prepare: Timing
+    legacy_memory: MemoryMeasurement
+    legacy_prepare: Timing
+    lookup: MembershipLookupMeasurement
+
+
+@dataclass(frozen=True, slots=True)
 class ScaleWorkload:
     """Canonical scale workload with exact expected proposal identity."""
 
@@ -175,6 +218,7 @@ class ScaleMeasurement:
     cuda_device_bytes: int
     cuda_host_output_bytes: int
     memory: MemoryMeasurement
+    membership: MembershipIndexComparison
     membership_count: int
     problem_sha256: str
     reference_bytes: int
@@ -202,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v1",
+        "benchmark_id": "rotate-target-preparation-crossover-v2",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -212,6 +256,15 @@ def main(argv: list[str] | None = None) -> int:
             "fresh_build_scope": (
                 "resident allocate/upload plus one exact search; "
                 "adapter and NVRTC setup excluded"
+            ),
+            "lookup_iterations_per_sample": LOOKUP_ITERATIONS,
+            "lookup_scope": (
+                "same proof-bound compact index and copied-tuple frozenset; "
+                "exact hit/miss result checked after each timed loop"
+            ),
+            "membership_component_ordering": (
+                "compact prepare, legacy prepare, compact memory, legacy "
+                "memory, compact hit/miss, legacy hit/miss"
             ),
             "memory_sample_count": MEMORY_SAMPLE_COUNT,
             "memory_scope": (
@@ -234,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             "name": capability.device_name,
         },
         "proof": {
+            "legacy_membership_index_id": LEGACY_MEMBERSHIP_INDEX_ID,
             "membership_index_id": _membership_index_id(),
             "ordinary_validation_id": _ordinary_validation_id(),
             "prepared_validation_id": _prepared_validation_id(),
@@ -253,6 +307,10 @@ def _measure_size(size: int) -> ScaleMeasurement:
     memory = _memory_measurement(cpu, workload)
     prepared = cpu.prepare(workload.request)
     proofs = validate_prepared_scale(cpu, prepared, size)
+    membership = measure_membership_index_comparison(
+        prepared.batch,
+        workload.expected[0],
+    )
     cuda = _cuda_timings(workload, prepared, size)
     crossover = Crossover(
         cold_runs=preparation_crossover_runs(
@@ -276,6 +334,7 @@ def _measure_size(size: int) -> ScaleMeasurement:
         cuda_device_bytes=size * WORD_BYTES * 2,
         cuda_host_output_bytes=size * WORD_BYTES,
         memory=memory,
+        membership=membership,
         membership_count=proofs[1],
         problem_sha256=sha256(workload.problem).hexdigest(),
         reference_bytes=size * WORD_BYTES,
@@ -405,6 +464,247 @@ def _memory_measurement(
         peak=_byte_timing(peak_samples, MEMORY_SAMPLE_COUNT),
         retained=_byte_timing(retained_samples, MEMORY_SAMPLE_COUNT),
     )
+
+
+def measure_membership_index_comparison(
+    batch: CandidateEvaluationBatch,
+    hit: CandidateProposal,
+    plan: MembershipMeasurementPlan = DEFAULT_MEMBERSHIP_PLAN,
+) -> MembershipIndexComparison:
+    """Measure compact-index economics against the historical copied set.
+
+    Returns:
+        Same-run preparation, memory, and exact hit/miss observations.
+
+    Raises:
+        ValueError: A sample count is nonpositive or the miss identity exists.
+
+    """
+    if (
+        plan.sample_count <= 0
+        or plan.memory_sample_count <= 0
+        or plan.lookup_iterations <= 0
+    ):
+        message = "membership comparison sample counts must be positive"
+        raise ValueError(message)
+    validated = batch.validated()
+    miss = CandidateProposal(
+        logical_id=MISSING_LOGICAL_ID,
+        payload=hit.payload,
+    )
+    if any(item.logical_id == miss.logical_id for item in validated.items):
+        message = "membership benchmark miss identity exists in candidate batch"
+        raise ValueError(message)
+    compact_prepare, legacy_prepare = _membership_preparation(
+        validated,
+        plan.sample_count,
+    )
+    compact_memory, legacy_memory = _membership_memory(
+        validated,
+        plan.memory_sample_count,
+    )
+    lookup = _membership_lookup(
+        validated,
+        hit,
+        miss,
+        plan=plan,
+    )
+    return MembershipIndexComparison(
+        compact_memory=compact_memory,
+        compact_prepare=compact_prepare,
+        legacy_memory=legacy_memory,
+        legacy_prepare=legacy_prepare,
+        lookup=lookup,
+    )
+
+
+def _membership_preparation(
+    batch: CandidateEvaluationBatch,
+    sample_count: int,
+) -> tuple[Timing, Timing]:
+    compact_samples: list[int] = []
+    legacy_samples: list[int] = []
+    for _ in range(sample_count):
+        _ = gc.collect()
+        start = perf_counter_ns()
+        compact = PreparedCandidateMembershipIndex.prepare(batch)
+        compact_samples.append(perf_counter_ns() - start)
+        if compact.count_for(batch) != len(batch.items):
+            message = "compact membership preparation changed candidate count"
+            raise RuntimeError(message)
+        start = perf_counter_ns()
+        legacy = _legacy_membership_index(batch)
+        legacy_samples.append(perf_counter_ns() - start)
+        if len(legacy) != len(batch.items):
+            message = "legacy membership preparation changed candidate count"
+            raise RuntimeError(message)
+    return (
+        _timing(compact_samples, sample_count),
+        _timing(legacy_samples, sample_count),
+    )
+
+
+def _membership_memory(
+    batch: CandidateEvaluationBatch,
+    sample_count: int,
+) -> tuple[MemoryMeasurement, MemoryMeasurement]:
+    compact_retained: list[int] = []
+    compact_peak: list[int] = []
+    legacy_retained: list[int] = []
+    legacy_peak: list[int] = []
+    for _ in range(sample_count):
+        compact_current, compact_max = _component_memory_sample(
+            lambda: PreparedCandidateMembershipIndex.prepare(batch),
+        )
+        legacy_current, legacy_max = _component_memory_sample(
+            lambda: _legacy_membership_index(batch),
+        )
+        compact_retained.append(compact_current)
+        compact_peak.append(compact_max)
+        legacy_retained.append(legacy_current)
+        legacy_peak.append(legacy_max)
+    return (
+        _memory_measurement_from_samples(
+            compact_retained,
+            compact_peak,
+            sample_count,
+        ),
+        _memory_measurement_from_samples(
+            legacy_retained,
+            legacy_peak,
+            sample_count,
+        ),
+    )
+
+
+def _component_memory_sample(factory: Callable[[], object]) -> tuple[int, int]:
+    _ = gc.collect()
+    tracemalloc.start()
+    try:
+        before, _ = tracemalloc.get_traced_memory()
+        tracemalloc.reset_peak()
+        value = factory()
+        current, peak = tracemalloc.get_traced_memory()
+        del value
+    finally:
+        tracemalloc.stop()
+    return max(0, current - before), max(0, peak - before)
+
+
+def _memory_measurement_from_samples(
+    retained: list[int],
+    peak: list[int],
+    sample_count: int,
+) -> MemoryMeasurement:
+    return MemoryMeasurement(
+        peak=_byte_timing(peak, sample_count),
+        retained=_byte_timing(retained, sample_count),
+    )
+
+
+def _membership_lookup(
+    batch: CandidateEvaluationBatch,
+    hit: CandidateProposal,
+    miss: CandidateProposal,
+    *,
+    plan: MembershipMeasurementPlan,
+) -> MembershipLookupMeasurement:
+    compact = PreparedCandidateMembershipIndex.prepare(batch)
+    legacy = _legacy_membership_index(batch)
+    _validate_membership_models(
+        compact,
+        legacy,
+        batch=batch,
+        proposals=(hit, miss),
+    )
+    compact_hit: list[int] = []
+    compact_miss: list[int] = []
+    legacy_hit: list[int] = []
+    legacy_miss: list[int] = []
+    for _ in range(plan.sample_count):
+        compact_hit.append(
+            _timed_lookup(
+                lambda: compact.contains(batch, hit),
+                plan.lookup_iterations,
+                plan.lookup_iterations,
+            )
+        )
+        compact_miss.append(
+            _timed_lookup(
+                lambda: compact.contains(batch, miss),
+                plan.lookup_iterations,
+                0,
+            )
+        )
+        legacy_hit.append(
+            _timed_lookup(
+                lambda: _legacy_contains(legacy, hit),
+                plan.lookup_iterations,
+                plan.lookup_iterations,
+            )
+        )
+        legacy_miss.append(
+            _timed_lookup(
+                lambda: _legacy_contains(legacy, miss),
+                plan.lookup_iterations,
+                0,
+            )
+        )
+    return MembershipLookupMeasurement(
+        compact_hit=_timing(compact_hit, plan.sample_count),
+        compact_miss=_timing(compact_miss, plan.sample_count),
+        iterations_per_sample=plan.lookup_iterations,
+        legacy_hit=_timing(legacy_hit, plan.sample_count),
+        legacy_miss=_timing(legacy_miss, plan.sample_count),
+    )
+
+
+def _validate_membership_models(
+    compact: PreparedCandidateMembershipIndex,
+    legacy: frozenset[tuple[str, bytes]],
+    *,
+    batch: CandidateEvaluationBatch,
+    proposals: tuple[CandidateProposal, CandidateProposal],
+) -> None:
+    hit, miss = proposals
+    observed = (
+        compact.contains(batch, hit),
+        compact.contains(batch, miss),
+        _legacy_contains(legacy, hit),
+        _legacy_contains(legacy, miss),
+    )
+    if observed != (True, False, True, False):
+        message = "membership comparison changed exact hit/miss semantics"
+        raise RuntimeError(message)
+
+
+def _timed_lookup(
+    action: Callable[[], bool],
+    iterations: int,
+    expected_matches: int,
+) -> int:
+    matches = 0
+    start = perf_counter_ns()
+    for _ in range(iterations):
+        matches += action()
+    elapsed = perf_counter_ns() - start
+    if matches != expected_matches:
+        message = "membership lookup changed expected exact result"
+        raise RuntimeError(message)
+    return elapsed
+
+
+def _legacy_membership_index(
+    batch: CandidateEvaluationBatch,
+) -> frozenset[tuple[str, bytes]]:
+    return frozenset((item.logical_id, item.payload) for item in batch.items)
+
+
+def _legacy_contains(
+    index: frozenset[tuple[str, bytes]],
+    proposal: CandidateProposal,
+) -> bool:
+    return (proposal.logical_id, proposal.payload) in index
 
 
 def _cuda_timings(

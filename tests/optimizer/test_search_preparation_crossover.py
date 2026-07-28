@@ -50,7 +50,13 @@ from __future__ import annotations
 from accelerator.work_ports import CandidateProposal
 from benchmarks.accelerator.search_preparation_crossover import CORPUS_SIZES
 from benchmarks.accelerator.search_preparation_crossover import (
+    MembershipMeasurementPlan,
+)
+from benchmarks.accelerator.search_preparation_crossover import (
     build_scale_workload,
+)
+from benchmarks.accelerator.search_preparation_crossover import (
+    measure_membership_index_comparison,
 )
 from benchmarks.accelerator.search_preparation_crossover import (
     preparation_crossover_runs,
@@ -62,6 +68,8 @@ from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
 
 EXPECTED_CROSSOVER_RUNS = 5
+TEST_LOOKUP_ITERATIONS = 8
+TEST_SAMPLE_COUNT = 2
 
 
 def test_strict_crossover_requires_first_profitable_run() -> None:
@@ -126,3 +134,34 @@ def test_prepared_scale_proofs_match_candidate_count() -> None:
     prepared = adapter.prepare(workload.request)
 
     assert validate_prepared_scale(adapter, prepared, size) == (size, size, 1)
+
+
+def test_membership_comparison_preserves_exact_hit_and_miss() -> None:
+    """Component benchmark validates compact and historical lookup semantics."""
+    size = 64
+    workload = build_scale_workload(size)
+    adapter = cpu_rotate_target_search_adapter()
+    prepared = adapter.prepare(workload.request)
+
+    plan = MembershipMeasurementPlan(
+        lookup_iterations=TEST_LOOKUP_ITERATIONS,
+        memory_sample_count=TEST_SAMPLE_COUNT,
+        sample_count=TEST_SAMPLE_COUNT,
+    )
+    comparison = measure_membership_index_comparison(
+        prepared.batch,
+        workload.expected[0],
+        plan,
+    )
+
+    assert comparison.lookup.iterations_per_sample == TEST_LOOKUP_ITERATIONS
+    assert len(comparison.compact_prepare.raw_ns) == TEST_SAMPLE_COUNT
+    assert len(comparison.legacy_prepare.raw_ns) == TEST_SAMPLE_COUNT
+    assert (
+        len(comparison.compact_memory.retained.raw_bytes) == TEST_SAMPLE_COUNT
+    )
+    assert len(comparison.legacy_memory.retained.raw_bytes) == TEST_SAMPLE_COUNT
+    assert comparison.lookup.compact_hit.median_ns > 0
+    assert comparison.lookup.compact_miss.median_ns > 0
+    assert comparison.lookup.legacy_hit.median_ns > 0
+    assert comparison.lookup.legacy_miss.median_ns > 0

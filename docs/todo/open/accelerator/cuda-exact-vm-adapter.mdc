@@ -159,7 +159,9 @@ batches.
   run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
   0.901 MiB exact buffers. Component tracing selected the duplicate prepared
   membership frozenset. Its proof-bound sorted-reference replacement uses binary ID
-  search plus exact payload equality and records stable benchmark identity. Clean
-  memory/crossover evidence is pending. Synthesis/search remains open.
+  search plus exact payload equality and records stable benchmark identity. Version
+  2 compares it with the copied-set model across component preparation,
+  retained/peak memory, and exact hit/miss lookup in 4,096-operation samples. A clean
+  post-commit run is pending. Synthesis/search remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

@@ -197,9 +197,10 @@ compaction. Prepared membership now uses
 `identity-sorted-candidate-reference-binary-search-v1`, a proof-bound sorted tuple of
 references to the original immutable batch items. Binary search locates logical IDs
 and exact payload equality preserves anti-fabrication semantics. Forged/cross-batch
-indexes fail closed, and benchmark proof records the index identity. Clean
-post-commit memory/crossover evidence is pending. Resident or
-fused evaluation-selection remains a later
+indexes fail closed. Version 2 of the benchmark records compact and historical
+index identities and compares same-run component preparation, retained/peak memory,
+and exact hit/miss lookup in 4,096-operation samples. A clean post-commit run is
+pending. Resident or fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
 orchestration, and broader representative benchmark evidence remain open.

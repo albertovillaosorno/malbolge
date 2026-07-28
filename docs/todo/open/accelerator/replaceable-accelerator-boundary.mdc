@@ -154,7 +154,9 @@ directly on CUDA APIs.
   at 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component tracing selected
   the duplicate membership frozenset. Its proof-bound sorted-reference replacement
   performs binary ID search plus exact payload equality and records stable benchmark
-  identity. Clean memory/crossover evidence is pending. Synthesis/guided search,
+  identity. Benchmark version 2 compares component preparation, retained/peak
+  memory, and exact hit/miss lookup against the copied set in 4,096-operation
+  samples. A clean post-commit run is pending. Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

@@ -163,8 +163,9 @@ by-side comparison without recompiling or modifying compiler semantics.
   0.901 MiB exact buffers. Component tracing selected the duplicate membership
   frozenset. The active proof-bound sorted-reference index performs binary ID search
   plus exact payload equality and rejects forged/cross-batch reuse. The crossover
-  benchmark records its stable identity. Clean post-commit memory/crossover evidence
-  is pending. Synthesis/guided
+  benchmark version 2 records compact and copied-set identities and measures
+  component preparation, retained/peak memory, and exact hit/miss lookup in
+  4,096-operation samples. A clean post-commit run is pending. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

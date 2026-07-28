@@ -199,9 +199,11 @@ compaction target. Prepared search now uses
 `identity-sorted-candidate-reference-binary-search-v1`: an immutable, proof-bound,
 identity-sorted tuple of references to the original batch items. Membership uses
 binary search by logical ID followed by byte-exact payload equality; forged indexes,
-cross-batch reuse, missing IDs, and payload substitution fail closed. The crossover
-benchmark records this identity. Post-commit memory/crossover evidence is pending;
-the trusted verifier remains the sole proposal-admission authority.
+cross-batch reuse, missing IDs, and payload substitution fail closed. Version 2 of
+the crossover benchmark records both the compact and historical index identities,
+then compares component preparation, retained/peak memory, and exact hit/miss lookup
+in 4,096-operation samples. A clean post-commit run is pending; the trusted verifier
+remains the sole proposal-admission authority.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

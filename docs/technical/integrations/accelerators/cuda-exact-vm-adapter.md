@@ -266,9 +266,10 @@ fails explicitly without changing correctness rules.
   first compaction. The replacement retains sorted references to the original batch,
   is proof-bound to that batch, and checks binary-searched logical IDs with exact
   payload equality. Forged/cross-batch indexes and proposal substitution fail
-  closed. The crossover benchmark records
-  `identity-sorted-candidate-reference-binary-search-v1`; clean memory and crossover
-  evidence is pending.
+  closed. Version 2 of the crossover benchmark records
+  `identity-sorted-candidate-reference-binary-search-v1` and the copied-tuple
+  baseline, then compares component preparation, retained/peak memory, and exact
+  hit/miss lookup in 4,096-operation samples. A clean post-commit run is pending.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

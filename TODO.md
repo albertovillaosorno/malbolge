@@ -866,9 +866,11 @@ candidate in addition to the validated batch. The active
 identity-sorted tuple of references to the existing immutable `CandidateWorkItem`
 objects. It is proof-bound to the original batch, compares logical ID and payload
 exactly, and rejects forged or cross-batch indexes. Generic fabrication checks remain
-active. The crossover benchmark now records membership-index identity. Post-commit
-memory, preparation, lookup, and crossover evidence is pending before promoting a
-compaction result.
+active. Version 2 of the crossover protocol records both membership identities and
+adds same-run component preparation, retained/peak memory, and exact hit/miss lookup
+for the compact index versus the copied-tuple `frozenset`. Lookup samples execute
+4,096 operations each and preserve exact results. A clean post-commit run is pending
+before promoting the compaction result.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -984,9 +986,10 @@ cold crosses on run two. Incremental Python state retains/peaks at
 16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. Component tracing selected the duplicate prepared membership frozenset for the first
 compaction. The active proof-bound index stores sorted references to existing batch
 items and uses binary search plus exact payload equality; forged/cross-batch indexes
-and fabricated proposals fail closed. The crossover protocol records its stable
-identity. Clean post-commit memory and crossover evidence is pending before the next
-state component is selected.
+and fabricated proposals fail closed. Version 2 of the crossover protocol records
+both index identities and measures same-run component preparation, retained/peak
+memory, and exact hit/miss lookup in 4,096-operation samples. A clean post-commit run
+is pending before the next state component is selected.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

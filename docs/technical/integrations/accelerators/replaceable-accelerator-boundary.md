@@ -183,9 +183,10 @@ warm/cold crossover is 6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves
 compaction. The replacement is a proof-bound identity-sorted tuple of references to
 the original immutable batch items. Binary search plus exact payload equality keeps
 anti-fabrication checks outside accelerator authority, while forged/cross-batch
-indexes fail closed. The benchmark records
-`identity-sorted-candidate-reference-binary-search-v1`; clean memory/crossover
-evidence is pending, while resident/fused search remains later work.
+indexes fail closed. Version 2 of the benchmark records the compact and copied-set
+identities, then compares component preparation, retained/peak memory, and exact
+hit/miss lookup in 4,096-operation samples. A clean post-commit run is pending,
+while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 
