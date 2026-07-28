@@ -285,7 +285,7 @@ def _validated_packed_validation_id(identifier: str) -> str:
 
 
 def _validated_prepared_validation_id(identifier: str) -> str:
-    expected = "cpu-reference-packed-equality-v1"
+    expected = "cpu-scalar-packed-equality-v2"
     if identifier != expected:
         message = "prepared primitive validation identity drifted"
         raise RuntimeError(message)

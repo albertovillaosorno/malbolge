@@ -78,11 +78,11 @@ from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import TrustedCandidateVerifier
-from accelerator.work_ports import indexed_candidate_items_from_unique_u32
-from optimizer.pruning import prune_exact_duplicates
+from accelerator.work_ports import indexed_candidate_items_from_rotated_u32le
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from collections.abc import Sequence
 
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.work_ports import CandidateEvaluationResult
@@ -90,12 +90,14 @@ if TYPE_CHECKING:
     from accelerator.work_ports import VerificationHint
 
 ROTATE_TARGET_ALGORITHM_ID = "classic-rotate-target-search-v1"
+ROTATE_TARGET_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
 _MAGIC = b"MBRTS1\0"
 _U32 = Struct("<I")
 _MAX_U32 = (1 << 32) - 1
 _PREPARED_ROTATE_SELECTION_PROOF = object()
 _CORPUS_ID_PREFIX = "corpus-"
 _LITTLE_ENDIAN = "little"
+_NATIVE_WORD_FORMAT = "I"
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,28 +284,111 @@ def build_rotate_target_batch(
     if validated.algorithm_id != ROTATE_TARGET_ALGORITHM_ID:
         message = "rotate target search request selects a different algorithm"
         raise InvalidAcceleratorWorkError(message)
-    problem = RotateTargetProblem.decode(validated.problem)
-    representatives = prune_exact_duplicates(
-        problem.candidates
-    ).representative_indices
-    if not representatives:
-        selected: tuple[int, ...] = ()
-    else:
-        count = min(validated.evaluation_budget, len(representatives))
-        start = validated.seed % len(representatives)
-        selected = tuple(
-            representatives[(start + offset) % len(representatives)]
-            for offset in range(count)
-        )
+    target, candidate_count, candidate_offset = _decode_header(
+        validated.problem
+    )
+    _validate_target(target)
+    representatives = _packed_representative_indices(
+        validated.problem,
+        candidate_count,
+        candidate_offset,
+    )
+    logical_indices, payloads = _selected_packed_candidates(
+        validated,
+        candidate_offset,
+        representatives,
+    )
     return CandidateEvaluationBatch(
         evaluator_id=ROTATE_EVALUATOR_ID,
-        items=indexed_candidate_items_from_unique_u32(
+        items=indexed_candidate_items_from_rotated_u32le(
             logical_id_prefix=_CORPUS_ID_PREFIX,
-            logical_indices=selected,
+            logical_indices_u32le=logical_indices,
             payload_width=_U32.size,
-            payloads=_pack_selected_candidates(problem.candidates, selected),
+            payloads=payloads,
         ),
     )
+
+
+def rotate_target_batch_builder_id() -> str:
+    """Return the active packed rotate-target batch-builder identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return ROTATE_TARGET_BATCH_BUILDER_ID
+
+
+def _packed_representative_indices(
+    problem: bytes,
+    candidate_count: int,
+    candidate_offset: int,
+) -> bytes:
+    values = _native_u32_values(problem, candidate_offset)
+    if len(values) != candidate_count:
+        message = "rotate target problem has invalid candidate byte length"
+        raise InvalidRotateTargetProblemError(message)
+    seen = bytearray((MAX_WORD + 8) // 8)
+    representatives = array(_NATIVE_WORD_FORMAT)
+    for index, value in enumerate(values):
+        if value > MAX_WORD:
+            message = f"rotate candidate outside classic domain: {value}"
+            raise InvalidRotateTargetProblemError(message)
+        byte_index, bit_index = divmod(value, 8)
+        mask = 1 << bit_index
+        if seen[byte_index] & mask:
+            continue
+        seen[byte_index] |= mask
+        representatives.append(index)
+    return _u32le_bytes(representatives)
+
+
+def _selected_packed_candidates(
+    request: SearchRequest,
+    candidate_offset: int,
+    representatives_u32le: bytes,
+) -> tuple[bytes, bytes]:
+    representatives = _native_u32_values(representatives_u32le, 0)
+    representative_count = len(representatives)
+    if not representative_count:
+        return (b"", b"")
+    candidates = _native_u32_values(request.problem, candidate_offset)
+    count = min(request.evaluation_budget, representative_count)
+    start = request.seed % representative_count
+    logical_indices = array(_NATIVE_WORD_FORMAT)
+    payloads = array(_NATIVE_WORD_FORMAT)
+    logical_indices.extend(
+        representatives[(start + position) % representative_count]
+        for position in range(count)
+    )
+    payloads.extend(candidates[index] for index in logical_indices)
+    return (_u32le_bytes(logical_indices), _u32le_bytes(payloads))
+
+
+def _native_u32_values(payload: bytes, offset: int) -> Sequence[int]:
+    view = memoryview(payload)[offset:]
+    if sys.byteorder == _LITTLE_ENDIAN:
+        return view.cast(_NATIVE_WORD_FORMAT)
+    values = array(_NATIVE_WORD_FORMAT)
+    values.frombytes(view)
+    values.byteswap()
+    return values
+
+
+def _u32le_bytes(values: array[int]) -> bytes:
+    if values.itemsize != _U32.size:
+        return b"".join(
+            value.to_bytes(_U32.size, _LITTLE_ENDIAN) for value in values
+        )
+    if sys.byteorder != _LITTLE_ENDIAN:
+        values.byteswap()
+    return values.tobytes()
+
+
+def _validate_target(target: int) -> None:
+    if target > MAX_WORD:
+        message = f"rotate target outside classic domain: {target}"
+        raise InvalidRotateTargetProblemError(message)
 
 
 def prepare_rotate_target_selection(
@@ -483,20 +568,6 @@ class RotateTargetVerifier(TrustedCandidateVerifier):
             )
         )
         return result.values == (self._target,)
-
-
-def _pack_selected_candidates(
-    candidates: tuple[int, ...],
-    selected: tuple[int, ...],
-) -> bytes:
-    packed = bytearray(len(selected) * _U32.size)
-    for position, candidate_index in enumerate(selected):
-        _U32.pack_into(
-            packed,
-            position * _U32.size,
-            candidates[candidate_index],
-        )
-    return bytes(packed)
 
 
 def _indexed_rotate_positions(

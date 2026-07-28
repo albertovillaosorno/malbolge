@@ -78,6 +78,7 @@ from accelerator.work_ports import VerificationHint
 from accelerator.work_ports import admit_search_result
 from accelerator.work_ports import evaluate_candidates
 from accelerator.work_ports import execute_search
+from accelerator.work_ports import indexed_candidate_items_from_rotated_u32le
 from accelerator.work_ports import indexed_candidate_items_id
 from accelerator.work_ports import request_verification_hints
 
@@ -243,6 +244,65 @@ def test_indexed_candidate_items_preserve_request_order_and_identity() -> None:
     assert items.parse_logical_id("other-7") is None
     assert items.payload_matches(1, b"BB")
     assert not items.payload_matches(1, b"B")
+
+
+def test_rotated_u32le_factory_retains_exact_packed_rotation() -> None:
+    """Packed factory proves one strict rotation without tuple conversion."""
+    indexes = b"".join(value.to_bytes(4, "little") for value in (7, 9, 1, 3))
+
+    items = indexed_candidate_items_from_rotated_u32le(
+        logical_id_prefix="corpus-",
+        logical_indices_u32le=indexes,
+        payload_width=1,
+        payloads=b"ABCD",
+    )
+
+    assert items.logical_indices_u32le is indexes
+    assert items.logical_rotation_pivot == INDEXED_ITEM_COUNT
+    assert tuple(items.logical_index_at(index) for index in range(4)) == (
+        7,
+        9,
+        1,
+        3,
+    )
+
+
+def test_rotated_u32le_factory_rejects_non_strict_orders() -> None:
+    """Duplicate, overlapping, and multi-descent indexes fail closed."""
+    cases = (
+        ((1, 1), "duplicate candidate logical ID"),
+        ((3, 5, 4, 6), "must form one strict rotation"),
+        ((7, 1, 5, 2), "must form one strict rotation"),
+    )
+    for values, message in cases:
+        indexes = b"".join(value.to_bytes(4, "little") for value in values)
+        payloads = b"A" * len(values)
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            message,
+            lambda indexes=indexes, payloads=payloads: (
+                indexed_candidate_items_from_rotated_u32le(
+                    logical_id_prefix="corpus-",
+                    logical_indices_u32le=indexes,
+                    payload_width=1,
+                    payloads=payloads,
+                )
+            ),
+        )
+
+
+def test_rotated_u32le_factory_rejects_incomplete_indexes() -> None:
+    """Packed construction rejects partial u32 logical identities."""
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "logical indexes must contain complete u32s",
+        lambda: indexed_candidate_items_from_rotated_u32le(
+            logical_id_prefix="corpus-",
+            logical_indices_u32le=b"bad",
+            payload_width=1,
+            payloads=b"",
+        ),
+    )
 
 
 def test_indexed_candidate_items_reject_malformed_storage() -> None:

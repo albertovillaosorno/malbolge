@@ -68,9 +68,11 @@ from benchmarks.accelerator.search_preparation_crossover import (
 )
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_batch_builder_id
 
 EXPECTED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
 EXPECTED_PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
+EXPECTED_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
 EXPECTED_CROSSOVER_RUNS = 5
 TEST_LOOKUP_ITERATIONS = 8
 TEST_SAMPLE_COUNT = 2
@@ -128,6 +130,11 @@ def test_scale_workloads_keep_one_exact_admissible_candidate() -> None:
                 payload=(1).to_bytes(4, "little"),
             ),
         )
+
+
+def test_benchmark_uses_packed_rotate_batch_builder_identity() -> None:
+    """Protocol identity tracks packed first-representative construction."""
+    assert rotate_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
 
 
 def test_benchmark_uses_packed_prepared_primitive_identity() -> None:

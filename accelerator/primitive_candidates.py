@@ -56,7 +56,7 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
-from accelerator.cpu.exact_primitives import CpuExactPrimitiveAdapter
+from accelerator.cpu.exact_primitives import packed_scalar_reference_words
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveBatch
@@ -82,7 +82,7 @@ if TYPE_CHECKING:
 CRAZY_EVALUATOR_ID = "classic-crazy-u32le-v1"
 ROTATE_EVALUATOR_ID = "classic-rotate-u32le-v1"
 PACKED_PRIMITIVE_VALIDATION_ID = "u32le-broadword-domain-v1"
-PREPARED_PRIMITIVE_VALIDATION_ID = "cpu-reference-packed-equality-v1"
+PREPARED_PRIMITIVE_VALIDATION_ID = "cpu-scalar-packed-equality-v2"
 _WORD_BYTES = 4
 _CRAZY_PAYLOAD_BYTES = 8
 _LITTLE_ENDIAN = "little"
@@ -712,9 +712,7 @@ def _required_expected_words(
 
 
 def _trusted_reference_words(prepared: PreparedPrimitiveBatch) -> bytes:
-    reference = CpuExactPrimitiveAdapter().evaluate_prepared(prepared)
-    _validate_primitive_values(reference.values)
-    return _pack_words(reference.values)
+    return packed_scalar_reference_words(prepared)
 
 
 def _decode_batch(

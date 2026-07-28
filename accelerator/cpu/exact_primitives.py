@@ -47,10 +47,12 @@
 
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 from functools import cache
 from itertools import starmap
 from operator import itemgetter
+import sys
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
@@ -65,6 +67,8 @@ from accelerator.exact_primitives import ROTATE_HIGH_TRIT_WEIGHT
 from accelerator.exact_primitives import TRIT_COUNT
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
 
@@ -78,6 +82,9 @@ CRAZY_TRIT_TABLE = (
     (1, 0, 2),
     (2, 2, 1),
 )
+_LITTLE_ENDIAN = "little"
+_NATIVE_WORD_FORMAT = "I"
+_WORD_BYTES = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +193,46 @@ class CpuExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._prepared_session = session
         self._prepared_builds += 1
         return session
+
+
+def packed_scalar_reference_words(
+    prepared: PreparedPrimitiveBatch,
+) -> bytes:
+    """Return independent scalar CPU truth as canonical packed u32le words.
+
+    Returns:
+        Exact primitive results in input order without tuple materialization.
+
+    """
+    storage = prepared.validated_storage()
+    if storage.kind is PrimitiveKind.ROTATE:
+        values = map(_rotate, _iter_packed_words(storage.data_u32le))
+    else:
+        pairs = zip(
+            _iter_packed_words(storage.data_u32le),
+            _iter_packed_words(storage.accumulators_u32le),
+            strict=True,
+        )
+        values = starmap(_crazy, pairs)
+    words = array("I", values)
+    if words.itemsize != _WORD_BYTES:
+        return b"".join(
+            value.to_bytes(_WORD_BYTES, _LITTLE_ENDIAN) for value in words
+        )
+    if sys.byteorder != _LITTLE_ENDIAN:
+        words.byteswap()
+    return words.tobytes()
+
+
+def _iter_packed_words(words_u32le: bytes) -> Iterator[int]:
+    if sys.byteorder == _LITTLE_ENDIAN:
+        yield from memoryview(words_u32le).cast(_NATIVE_WORD_FORMAT)
+        return
+    for offset in range(0, len(words_u32le), _WORD_BYTES):
+        yield int.from_bytes(
+            words_u32le[offset : offset + _WORD_BYTES],
+            _LITTLE_ENDIAN,
+        )
 
 
 def _evaluate_prepared_validated(batch: PrimitiveBatch) -> PrimitiveResult:

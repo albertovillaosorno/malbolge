@@ -47,10 +47,12 @@
 
 from __future__ import annotations
 
+from array import array
 from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 from struct import Struct
+import sys
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
@@ -70,6 +72,9 @@ MAX_U32 = (1 << 32) - 1
 MAX_U64 = (1 << 64) - 1
 _U32_BYTES = 4
 _U32_DECIMAL_DIGITS = 10
+_MIN_ROTATION_SCAN_ITEMS = 2
+_LITTLE_ENDIAN = "little"
+_NATIVE_WORD_FORMAT = "I"
 _U32_LE = Struct("<I")
 _INDEXED_CANDIDATE_ITEMS_PROOF = object()
 
@@ -95,6 +100,33 @@ def indexed_candidate_items_from_unique_u32(
         payload_width=payload_width,
         payloads=payloads,
         logical_rotation_pivot=_rotation_pivot(logical_indices),
+        _proof=_INDEXED_CANDIDATE_ITEMS_PROOF,
+    )
+    _validate_indexed_storage(item)
+    return item
+
+
+def indexed_candidate_items_from_rotated_u32le(
+    *,
+    logical_id_prefix: str,
+    logical_indices_u32le: bytes,
+    payload_width: int,
+    payloads: bytes,
+) -> IndexedCandidateWorkItems:
+    """Build proof-carrying storage from one strict sorted-index rotation.
+
+    Returns:
+        Fixed-width candidate storage validated without tuple materialization.
+
+    """
+    _validate_identity(logical_id_prefix, "candidate logical ID prefix")
+    pivot = _packed_rotation_pivot(logical_indices_u32le)
+    item = IndexedCandidateWorkItems(
+        logical_id_prefix=logical_id_prefix,
+        logical_indices_u32le=logical_indices_u32le,
+        payload_width=payload_width,
+        payloads=payloads,
+        logical_rotation_pivot=pivot,
         _proof=_INDEXED_CANDIDATE_ITEMS_PROOF,
     )
     _validate_indexed_storage(item)
@@ -799,6 +831,69 @@ def _validate_unique_u32_values(values: tuple[int, ...]) -> None:
     if len(values) != len(set(values)):
         message = "duplicate candidate logical ID"
         raise InvalidAcceleratorWorkError(message)
+
+
+def _packed_rotation_pivot(values_u32le: bytes) -> int:
+    _validate_index_storage(values_u32le)
+    values = _native_u32_values(values_u32le)
+    if len(values) < _MIN_ROTATION_SCAN_ITEMS:
+        return 0
+    first = values[0]
+    pivot, descents, last = _scan_packed_rotation(values, first)
+    if descents and last >= first:
+        _raise_invalid_packed_rotation()
+    return pivot
+
+
+def _native_u32_values(values_u32le: bytes) -> Sequence[int]:
+    if sys.byteorder == _LITTLE_ENDIAN:
+        return memoryview(values_u32le).cast(_NATIVE_WORD_FORMAT)
+    values = array(_NATIVE_WORD_FORMAT)
+    values.frombytes(values_u32le)
+    values.byteswap()
+    return values
+
+
+def _scan_packed_rotation(
+    values: Sequence[int],
+    first: int,
+) -> tuple[int, int, int]:
+    previous = first
+    state = (0, 0)
+    for index in range(1, len(values)):
+        current = values[index]
+        state = _updated_rotation_state(
+            previous,
+            current,
+            index,
+            state=state,
+        )
+        previous = current
+    pivot, descents = state
+    return (pivot, descents, previous)
+
+
+def _updated_rotation_state(
+    previous: int,
+    current: int,
+    index: int,
+    *,
+    state: tuple[int, int],
+) -> tuple[int, int]:
+    _, descents = state
+    if current == previous:
+        message = "duplicate candidate logical ID"
+        raise InvalidAcceleratorWorkError(message)
+    if current >= previous:
+        return state
+    if descents:
+        _raise_invalid_packed_rotation()
+    return (index, 1)
+
+
+def _raise_invalid_packed_rotation() -> None:
+    message = "candidate logical indexes must form one strict rotation"
+    raise InvalidAcceleratorWorkError(message)
 
 
 def _rotation_pivot(values: tuple[int, ...]) -> int | None:

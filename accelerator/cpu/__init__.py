@@ -47,6 +47,7 @@
 
 from accelerator.cpu.exact_primitives import CpuExactPrimitiveAdapter
 from accelerator.cpu.exact_primitives import CpuPreparedPrimitiveStats
+from accelerator.cpu.exact_primitives import packed_scalar_reference_words
 from accelerator.cpu.work_ports import CpuCandidateEvaluationAdapter
 from accelerator.cpu.work_ports import CpuSearchExecutionAdapter
 
@@ -55,4 +56,5 @@ __all__ = [
     "CpuExactPrimitiveAdapter",
     "CpuPreparedPrimitiveStats",
     "CpuSearchExecutionAdapter",
+    "packed_scalar_reference_words",
 ]

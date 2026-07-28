@@ -92,7 +92,7 @@ if TYPE_CHECKING:
 SAMPLE_COUNT: Final = 15
 WARMUP_COUNT: Final = 1
 MINIMUM_COVERAGE_PERCENT: Final = 95.0
-VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
+VALIDATION_ID: Final = "cpu-scalar-packed-equality-v2"
 PHASE_NAMES: Final = (
     "launch_sync_ns",
     "download_ns",

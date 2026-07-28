@@ -74,6 +74,7 @@ from optimizer.rotate_target import RotateTargetVerifier
 from optimizer.rotate_target import build_rotate_target_batch
 from optimizer.rotate_target import count_prepared_rotate_target_positions
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_batch_builder_id
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
@@ -85,6 +86,8 @@ if TYPE_CHECKING:
 CPU_BACKEND = "cpu-reference"
 CUDA_BACKEND = "cuda"
 ROTATE_ONE = 19_683
+EXPECTED_BATCH_BUILDER_ID = "classic-u32le-bitset-first-representatives-v1"
+EXPECTED_ROTATION_PIVOT = 2
 BAD_CAPABILITY = AcceleratorCapability(
     backend_id="bad-search",
     device_arch="bad",
@@ -235,6 +238,58 @@ def test_problem_rejects_invalid_domain_and_encoding() -> None:
         "rotate target outside classic domain",
         lambda: RotateTargetProblem.decode_target(invalid_target),
     )
+
+
+def test_rotate_target_batch_builder_has_stable_identity() -> None:
+    """Benchmark provenance names the exact packed pruning algorithm."""
+    assert rotate_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
+
+
+def test_rotate_target_batch_rejects_out_of_domain_packed_candidate() -> None:
+    """Packed scan validates every candidate before constructing work."""
+    problem = (
+        b"MBRTS1\0"
+        + ROTATE_ONE.to_bytes(4, "little")
+        + (1).to_bytes(4, "little")
+        + (59_049).to_bytes(4, "little")
+    )
+    request = SearchRequest(
+        algorithm_id=ROTATE_TARGET_ALGORITHM_ID,
+        evaluation_budget=1,
+        problem=problem,
+        seed=0,
+    )
+
+    _expect_problem_error(
+        "rotate candidate outside classic domain",
+        lambda: build_rotate_target_batch(request),
+    )
+
+
+def test_rotate_batch_rotates_first_representatives_packed() -> None:
+    """Seed and budget rotate only stable first representatives."""
+    request = _request(
+        RotateTargetProblem(
+            target=ROTATE_ONE,
+            candidates=(7, 1, 7, 4, 1, 9),
+        ),
+        budget=3,
+        seed=2,
+    )
+
+    batch = build_rotate_target_batch(request).validated()
+
+    assert isinstance(batch.items, IndexedCandidateWorkItems)
+    assert batch.items.logical_rotation_pivot == EXPECTED_ROTATION_PIVOT
+    assert tuple(batch.items.logical_index_at(index) for index in range(3)) == (
+        3,
+        5,
+        0,
+    )
+    assert tuple(
+        int.from_bytes(batch.items.payload_at(index), "little")
+        for index in range(3)
+    ) == (4, 9, 7)
 
 
 def test_rotate_target_batch_uses_indexed_fixed_width_storage() -> None:

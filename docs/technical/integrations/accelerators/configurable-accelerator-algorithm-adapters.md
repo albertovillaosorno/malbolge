@@ -236,10 +236,23 @@ clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
 also proves 16 packed evaluations and CPU proves the full rotate table. The packed
-representation is promoted because no clean route regresses. The unchanged
-temporary reference/decode tuple is the next peak-memory boundary; it may be
-removed only while preserving an independently generated exact reference and the
-same first/last corruption, forged-proof, and fabricated-proposal failures.
+representation is promoted because no clean route regresses. Protocol version 5 is active with `classic-u32le-bitset-first-representatives-v1`
+and `cpu-scalar-packed-equality-v2`. Rotate-target preparation now scans encoded
+candidate words directly, records stable first representatives with a classic-domain
+bitset, rotates packed u32 indexes by seed/budget, and emits payload bytes without
+decoding candidate tuples or invoking generic dictionary pruning. The independent
+CPU reference applies scalar rotate/crazy formulas directly to proof-bound packed
+input. Packed factory validation requires exactly one strict ascending-index rotation
+and rejects duplicate, overlapping, multi-descent, truncated, out-of-domain, forged,
+or fabricated work. Exploratory RTX 4060 full-domain results reduce warm preparation
+from 109.027 to 77.144 ms (1.413x), peak Python allocation from 8,802,328 to
+1,183,023 bytes (86.560%), and ordinary CUDA search from 144.440 to 102.281 ms
+(1.412x), while retained state remains about 0.678 MiB and cold/warm crossover stays
+1/1. The fixed classic-domain bitset raises one-candidate peak from 2,664 to 8,391
+bytes, and 64-candidate warm crossover moves from 3 to 4 runs; promotion is for
+large deterministic batches rather than universal small-batch memory. Clean
+post-commit crossover, route, memory, and phase evidence is pending before the next
+component is selected.
 Resident or fused
 evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,

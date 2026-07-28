@@ -84,6 +84,7 @@ from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import RotateTargetVerifier
 from optimizer.rotate_target import cpu_rotate_target_search_adapter
+from optimizer.rotate_target import rotate_target_batch_builder_id
 from optimizer.rotate_target import rotate_target_search_adapter
 
 if TYPE_CHECKING:
@@ -104,9 +105,12 @@ CORPUS_SIZES: Final = (1, 64, 1_024, CORPUS_SIZE)
 WORD_BYTES: Final = 4
 COLD_CHILD_ARGUMENT_COUNT: Final = 2
 ORDINARY_VALIDATION_ID: Final = "u32le-broadword-domain-v1"
-PREPARED_VALIDATION_ID: Final = "cpu-reference-packed-equality-v1"
+PREPARED_VALIDATION_ID: Final = "cpu-scalar-packed-equality-v2"
 CANDIDATE_ITEMS_ID: Final = "u32-index-fixed-width-payloads-rotation-v1"
 PREPARED_PRIMITIVE_STORAGE_ID: Final = "proof-bound-u32le-primitive-input-v1"
+ROTATE_TARGET_BATCH_BUILDER_ID: Final = (
+    "classic-u32le-bitset-first-representatives-v1"
+)
 MEMBERSHIP_INDEX_ID: Final = (
     "u32-rotation-or-pair-or-reference-binary-search-v1"
 )
@@ -251,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     measurements = tuple(_measure_size(size) for size in CORPUS_SIZES)
     capability = measurements[-1].cuda.capability
     payload = {
-        "benchmark_id": "rotate-target-preparation-crossover-v4",
+        "benchmark_id": "rotate-target-preparation-crossover-v5",
         "measurement": {
             "adapter_setup_timed": False,
             "cold_process_per_sample": True,
@@ -298,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
             "ordinary_validation_id": _ordinary_validation_id(),
             "prepared_primitive_storage_id": _prepared_primitive_storage_id(),
             "prepared_validation_id": _prepared_validation_id(),
+            "rotate_target_batch_builder_id": _rotate_target_batch_builder_id(),
             "strict_crossover": True,
         },
         "scales": [asdict(item) for item in measurements],
@@ -916,6 +921,14 @@ def _timing(samples: list[int], expected_count: int) -> Timing:
         pstdev_ns=pstdev(samples),
         raw_ns=tuple(samples),
     )
+
+
+def _rotate_target_batch_builder_id() -> str:
+    observed = rotate_target_batch_builder_id()
+    if observed != ROTATE_TARGET_BATCH_BUILDER_ID:
+        message = "rotate-target batch builder identity drifted"
+        raise RuntimeError(message)
+    return observed
 
 
 def _prepared_primitive_storage_id() -> str:
