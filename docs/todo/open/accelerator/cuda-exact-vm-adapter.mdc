@@ -86,6 +86,10 @@ batches.
   `classic-rotate-target-search-v1` strategy now evaluates a deterministic
   257-candidate corpus through live CUDA, records CUDA as actual search execution,
   matches the CPU reference proposals, and leaves final admission to the CPU
-  verifier. Broader live hardware plus synthesis/search strategies remain open.
+  verifier. The retained complete-domain benchmark covers 59,049 candidates with
+  15 samples per backend. CPU median is 401.185 ms and CUDA median is 412.570 ms
+  on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup hypothesis
+  for this host-heavy route while every proposal remains exact. Broader live
+  hardware, resident search, and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

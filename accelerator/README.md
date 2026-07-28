@@ -57,8 +57,16 @@ overrides, and emits deterministic JSON containing problem SHA-256,
 configured-versus-actual backend identity, device metadata, seed/budget, and only
 untrusted proposals. Supported CUDA setup failure preserves configured CUDA intent
 while safely falling back to CPU; unsupported algorithm/backend pairs fail
-explicitly. Synthesis/guided search, ROCm work ports and VM execution, broader
-hardware evidence, richer orchestration, and comparative benchmarks remain
-follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
+explicitly. The retained full-domain comparison at
+`benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-rtx4060/`
+contains 15 samples per backend under Benchmark Protocol v1. CPU median is
+401.185 ms and CUDA median is 412.570 ms over all 59,049 classic words, yielding a
+0.972x CUDA/CPU ratio and rejecting the speedup hypothesis for this complete
+host-heavy route. Proposals remain identical and independently admitted. This
+negative result motivates larger or resident search designs rather than hidden
+benchmark filtering. Synthesis/guided search, ROCm work ports and VM execution,
+broader hardware evidence, richer orchestration, and additional representative
+comparisons remain follow-on work. `optimizer/enumerative.py` supplies the first
+concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

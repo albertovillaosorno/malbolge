@@ -68,9 +68,15 @@ seed/budget, and hex-encoded proposals marked `untrusted`. A supported CUDA rout
 that cannot initialize is represented as optional unavailable capacity and falls
 back through the normal CPU reference path while retaining configured CUDA
 identity. Unsupported pairs such as deterministic corpus enumeration plus CUDA
-fail explicitly instead of changing strategy. Synthesis/guided strategies, ROCm
-search implementations, richer orchestration, and comparative benchmark evidence
-remain open.
+fail explicitly instead of changing strategy. The first retained side-by-side
+performance record uses the complete 59,049-word classic domain with 15 retained
+samples per backend, one warmup, fixed CPU-then-CUDA interleaving, retain-all
+outlier policy, exact proposal equality, and independent CPU admission. On the
+RTX 4060, CPU median is 401.185 ms and CUDA median is 412.570 ms, producing a
+0.972x CUDA/CPU ratio. The preregistered speedup hypothesis is therefore rejected
+for this host-heavy route; no CUDA performance benefit is claimed. Synthesis and
+guided strategies, ROCm search implementations, richer orchestration, and broader
+representative benchmark evidence remain open.
 
 ## Invariants
 
@@ -98,6 +104,11 @@ fails explicitly without changing correctness rules.
   overrides, unsupported-pair rejection, CUDA-unavailable CPU fallback with
   configured identity preserved, file-backed JSON output, and a live CUDA route
   that records CUDA as actual execution.
+- `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-rtx4060/`
+  retains Benchmark Protocol v1 metadata, an Experiment Manifest v1 run, 30 raw
+  samples, structured output, exact source commit, workload SHA-256, device and
+  toolchain identity, proposal-equality checks, and the negative 0.972x median
+  CUDA/CPU result.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

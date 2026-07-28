@@ -162,8 +162,13 @@ fails explicitly without changing correctness rules.
   `classic-rotate-target-search-v1` strategy now uses live CUDA candidate
   evaluation through the neutral search port over 257 deterministic candidates,
   records CUDA as the actual backend, matches CPU proposals, and leaves acceptance
-  to an independent CPU verifier. Broader live-hardware evidence, synthesis/search
-  strategies, and ROCm work remain before this TODO can complete.
+  to an independent CPU verifier. A separate protocol-compliant full-domain run
+  retains 15 CPU and 15 CUDA samples over 59,049 candidates. CPU median is
+  401.185 ms and CUDA median is 412.570 ms on the RTX 4060, yielding 0.972x
+  CUDA/CPU and rejecting the speedup hypothesis for this complete host-heavy
+  route. Exact proposal equality and CPU admission still pass for every sample.
+  Broader live-hardware evidence, synthesis/search strategies, resident search
+  designs, and ROCm work remain before this TODO can complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References

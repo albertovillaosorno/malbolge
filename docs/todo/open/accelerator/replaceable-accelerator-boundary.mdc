@@ -80,7 +80,10 @@ directly on CUDA APIs.
   search without allowing selectors to fabricate unevaluated payloads. The same
   `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA
   matches CPU proposals over 257 candidates while independent CPU admission
-  remains authoritative. Synthesis/guided search, ROCm work ports/VM execution,
-  asynchronous submission, and broader hardware remain open.
+  remains authoritative. A retained full-domain comparison over 59,049 candidates
+  records a 401.185 ms CPU median and 412.570 ms CUDA median on the RTX 4060,
+  preserving the negative 0.972x CUDA/CPU result. Synthesis/guided search,
+  resident search, ROCm work ports/VM execution, asynchronous submission, and
+  broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

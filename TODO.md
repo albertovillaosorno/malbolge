@@ -720,8 +720,13 @@ and emits deterministic JSON with problem SHA-256, configured-versus-actual
 backend identity, device metadata, seed/budget, and explicitly untrusted
 proposals. CUDA setup failure falls back to the registered CPU reference without
 rewriting configured intent; unsupported algorithm/backend pairs still fail
-explicitly. Synthesis/guided strategies, ROCm search implementations, richer
-orchestration, and comparative evidence remain open.
+explicitly. The first protocol-compliant side-by-side run over the complete
+59,049-word classic domain retains 15 CPU and 15 CUDA samples with identical
+proposals and independent CPU admission. CPU median is 401.185 ms and CUDA median
+is 412.570 ms on the RTX 4060, so the observed CUDA/CPU ratio is 0.972x and the
+speedup hypothesis is rejected for this route. Synthesis/guided strategies, ROCm
+search implementations, richer orchestration, and broader representative
+comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
@@ -745,8 +750,11 @@ CPU and live CUDA for classic crazy/rotate batches. Candidate evidence can also
 feed verification-assist hints through live CUDA while trusted admission remains
 CPU-owned. `classic-rotate-target-search-v1` now supplies a concrete live CUDA
 search route over a deterministic 257-word corpus and matches the CPU reference
-before independent trusted admission. Broader hardware evidence, synthesis/search
-algorithms, and ROCm implementations remain open.
+before independent trusted admission. A retained full-domain comparison over
+59,049 candidates records identical accepted proposals but a 401.185 ms CPU
+median versus 412.570 ms CUDA median on the RTX 4060 (0.972x CUDA/CPU), rejecting
+the speedup hypothesis for this host-heavy search route. Broader hardware
+evidence, synthesis/search algorithms, and ROCm implementations remain open.
 
 ### TODO - CUDA superoptimizer
 

@@ -64,8 +64,11 @@ baseline for accelerator implementations.
   exercised by optional CUDA evaluation. `python -m optimizer.cli` can execute
   these registered CPU references from versioned configuration and canonical
   problem bytes while emitting reproducible untrusted-proposal evidence. These
-  establish CPU search baselines, not general Malbolge synthesis.
-  Translation-validation integration, real synthesis generators, AArch64
-  execution evidence, and performance measurements remain open.
+  establish CPU search baselines, not general Malbolge synthesis. A retained
+  full-domain comparison records a 401.185 ms CPU median versus 412.570 ms CUDA
+  median on the RTX 4060, preserving the 0.972x CUDA/CPU negative result instead
+  of claiming acceleration. Translation-validation integration, real synthesis
+  generators, AArch64 execution evidence, and broader performance measurements
+  remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.

@@ -1,0 +1,72 @@
+{
+  "benchmark_id": "rotate-target-search-cpu-vs-cuda-v1",
+  "cpu": {
+    "backend_id": "cpu-reference",
+    "max_ns": 623407700,
+    "median_ns": 401185400,
+    "min_ns": 318003100,
+    "pstdev_ns": 98663132.02292919,
+    "raw_ns": [
+      361597600,
+      623407700,
+      587912400,
+      441104200,
+      460579200,
+      343814300,
+      323339300,
+      513029200,
+      322046900,
+      563440000,
+      451670400,
+      401185400,
+      382601600,
+      318003100,
+      348194300
+    ]
+  },
+  "cuda": {
+    "backend_id": "cuda",
+    "max_ns": 696523400,
+    "median_ns": 412570100,
+    "min_ns": 336735200,
+    "pstdev_ns": 97231501.65690039,
+    "raw_ns": [
+      538850800,
+      696523400,
+      458487000,
+      478753400,
+      412570100,
+      355848500,
+      419454700,
+      401824800,
+      492362100,
+      546227900,
+      388157500,
+      336735200,
+      345564700,
+      344101000,
+      343581200
+    ]
+  },
+  "cuda_speedup_at_median": 0.9724054166794928,
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "measurement": {
+    "adapter_setup_timed": false,
+    "ordering": "fixed interleaved CPU then CUDA",
+    "sample_count": 15,
+    "warmup_count": 1
+  },
+  "workload": {
+    "algorithm_id": "classic-rotate-target-search-v1",
+    "corpus_size": 59049,
+    "evaluation_budget": 59049,
+    "identity": "classic-rotate-target-full-domain-v1",
+    "problem_sha256": "68215df6ec0f00ab5fa8a720737c1e52f59252ee5c0a344bc2802d648dd677a1",
+    "seed": 17,
+    "target": 19683
+  }
+}

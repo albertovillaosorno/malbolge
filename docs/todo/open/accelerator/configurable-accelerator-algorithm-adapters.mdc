@@ -72,8 +72,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   emits deterministic JSON with problem hash, configured/actual backend identity,
   device metadata, seed/budget, and explicitly untrusted proposals. Supported
   CUDA setup failure preserves configured CUDA intent while falling back to CPU;
-  unsupported algorithm/backend pairs fail explicitly. Synthesis/guided
-  strategies, ROCm search implementations, richer orchestration, and comparative
-  benchmarks remain open.
+  unsupported algorithm/backend pairs fail explicitly. The first retained
+  Benchmark Protocol v1 comparison covers the complete 59,049-word classic
+  domain with 15 samples per backend. CPU median is 401.185 ms and CUDA median is
+  412.570 ms on the RTX 4060, so the 0.972x CUDA/CPU result rejects the speedup
+  hypothesis while preserving exact proposals and independent CPU admission.
+  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

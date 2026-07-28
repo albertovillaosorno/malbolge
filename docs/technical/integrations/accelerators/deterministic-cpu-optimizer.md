@@ -91,6 +91,10 @@ fails explicitly without changing correctness rules.
   duplicate pruning, seed/budget bounds, CPU search, live CUDA differential search,
   actual-backend identity, independent CPU admission, and malformed-backend CPU
   fallback. This is a bounded exact-search fixture, not general synthesis.
+- `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-rtx4060/`
+  retains the complete 59,049-word CPU/CUDA comparison. The CPU reference median
+  is 401.185 ms versus 412.570 ms for CUDA, so this CPU baseline wins by median
+  and the 0.972x CUDA/CPU result is retained as negative evidence.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

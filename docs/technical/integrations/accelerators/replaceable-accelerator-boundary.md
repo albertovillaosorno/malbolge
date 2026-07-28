@@ -82,8 +82,12 @@ corpus matches CPU hints exactly; malformed optional evidence produces no hints.
 bounded search route while preventing selectors from inventing payloads outside
 the evaluated batch. `classic-rotate-target-search-v1` runs unchanged through CPU
 or live CUDA evaluation; CUDA matches CPU proposals over 257 candidates and the
-independent CPU verifier remains the only admission authority. Synthesis/guided
-search algorithms, asynchronous submission, and ROCm remain open.
+independent CPU verifier remains the only admission authority. A retained
+full-domain performance comparison over 59,049 candidates keeps 15 samples per
+backend and exact proposal checks. CPU median is 401.185 ms and CUDA median is
+412.570 ms on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup
+hypothesis for this route. Synthesis/guided search algorithms, resident search,
+asynchronous submission, and ROCm remain open.
 
 ## Invariants
 

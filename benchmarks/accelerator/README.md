@@ -109,3 +109,10 @@ Run with:
 Do not interpret the resulting ratio as compiler or superoptimizer speedup. It is
 one bounded exact-search workload comparing replaceable execution capacity under
 identical strategy semantics.
+
+The retained RTX 4060 run is under
+`evidence/2026-07-27-rotate-target-search-rtx4060/`. Its protocol-compliant result
+is intentionally negative: CPU median 401.185 ms, CUDA median 412.570 ms, and
+0.972x CUDA/CPU. Every sample preserves exact proposal equality and independent
+CPU admission, so the evidence rejects a performance hypothesis without weakening
+correctness.
