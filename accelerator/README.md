@@ -35,7 +35,10 @@ arrays without redundant packed host staging; full-state transfer/page commitmen
 remains a measured cost. `work_ports.py` now defines hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution
-capacity while search proposals and verification hints remain untrusted. Concrete
-search strategies, CUDA/ROCm implementations for those work ports, ROCm VM
+capacity while search proposals and verification hints remain untrusted.
+`search_selection.py` independently resolves algorithm and backend bindings,
+requires a CPU reference, supports explicit overrides, and records configured
+versus actual backend identity after fallback. Concrete search strategies, CLI
+front-end wiring, CUDA/ROCm implementations for those work ports, ROCm VM
 execution, broader hardware evidence, and further orchestration remain follow-on
 work.

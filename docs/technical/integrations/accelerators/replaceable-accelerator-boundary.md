@@ -63,8 +63,10 @@ sessions; none changes semantic authority or establishes a CPU-relative speedup.
 Candidate evaluation/search/verification-assist ports are now active. The
 portable CPU callback adapters provide mandatory candidate/search execution
 capacity and best-effort routing falls back on typed optional-backend failures or
-malformed result shape. Concrete search algorithms, accelerator implementations
-of these generic work ports, asynchronous submission, and ROCm remain open.
+malformed result shape. Search selection now resolves algorithm/backend bindings
+independently and records configured versus actual backend identity after
+fallback. Concrete search algorithms, accelerator implementations of these
+generic work ports, asynchronous submission, and ROCm remain open.
 
 ## Invariants
 

@@ -57,7 +57,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   `CpuSearchExecutionAdapter` supplies portable execution capacity; optional
   backend failure or malformed shape falls back to it. Search proposals and
   verification hints remain untrusted, and only `TrustedCandidateVerifier` can
-  admit a proposal. Concrete algorithms, deterministic selection/CLI overrides,
-  accelerator implementations, and comparative benchmarks remain open.
+  admit a proposal. `SearchSelection` resolves independent algorithm/backend
+  bindings with explicit overrides, rejects unsupported combinations, and records
+  configured versus actual backend identity after fallback. Concrete algorithms,
+  CLI front-end wiring, accelerator implementations, and comparative benchmarks
+  remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
