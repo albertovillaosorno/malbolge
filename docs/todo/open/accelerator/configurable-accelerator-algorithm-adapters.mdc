@@ -59,8 +59,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   verification hints remain untrusted, and only `TrustedCandidateVerifier` can
   admit a proposal. `SearchSelection` resolves independent algorithm/backend
   bindings with explicit overrides, rejects unsupported combinations, and records
-  configured versus actual backend identity after fallback. Concrete algorithms,
-  CLI front-end wiring, accelerator implementations, and comparative benchmarks
-  remain open.
+  configured versus actual backend identity after fallback. Versioned search
+  configuration v1 now loads independent algorithm/backend identities from TOML,
+  rejects unknown/empty configuration, preserves source identity, and applies
+  explicit caller overrides without mutating the loaded base selection. The
+  deterministic corpus enumerator is the first concrete CPU strategy. User-facing
+  CLI wiring, additional strategies, CUDA/ROCm search implementations, and
+  comparative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

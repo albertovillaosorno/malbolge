@@ -701,10 +701,14 @@ hardware adapters provide execution capacity for those strategies. Select
 algorithms and hardware through deterministic configuration with optional CLI
 overrides, record the exact combination in benchmark evidence, and permit
 side-by-side comparison without recompiling or modifying compiler semantics.
-The active foundation now resolves explicit algorithm/backend bindings with a
+The active foundation resolves explicit algorithm/backend bindings with a
 mandatory CPU reference, optional preferred backend, deterministic overrides, and
-configured-versus-actual execution identity. Concrete strategy implementations,
-CLI wiring, accelerator implementations, and comparative evidence remain open.
+configured-versus-actual execution identity. Search configuration v1 now loads
+independent algorithm/backend identities from versioned TOML, rejects unknown or
+empty configuration, preserves source identity, and applies explicit overrides
+without mutating the base selection. The deterministic corpus enumerator is the
+first concrete CPU strategy. User-facing CLI wiring, additional strategies,
+accelerator search implementations, and comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and

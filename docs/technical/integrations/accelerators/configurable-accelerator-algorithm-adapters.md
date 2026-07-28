@@ -45,10 +45,14 @@ mandatory `cpu-reference` implementation and an optional preferred backend.
 Algorithm/backend overrides are explicit and unsupported combinations fail
 before search starts. `SearchRunIdentity` records both configured and actual
 backend IDs, so a CPU fallback cannot be mislabeled as accelerated evidence.
-The first concrete strategy is `deterministic-corpus-enumeration-v1`, bound to
-the mandatory CPU reference through the same registry. Additional research
-strategies, CLI front-end wiring, accelerator implementations, and comparative
-benchmark evidence remain open.
+`accelerator/search_config.py` adds versioned `schema_version = 1` TOML selection
+with independent `algorithm_id`/`backend_id`, fail-closed unknown keys, durable
+configuration-source identity, and explicit caller overrides that never mutate
+the loaded base configuration. The first concrete strategy is
+`deterministic-corpus-enumeration-v1`, bound to the mandatory CPU reference
+through the same registry. User-facing CLI wiring, additional research
+strategies, CUDA/ROCm search implementations, and comparative benchmark evidence
+remain open.
 
 ## Invariants
 
@@ -69,6 +73,9 @@ fails explicitly without changing correctness rules.
   `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
+- `tests/optimizer/test_search_config.py` verifies schema versioning, independent
+  algorithm/backend fields, explicit overrides, unknown-key rejection, mandatory
+  nonempty identities, and durable file-source identity.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

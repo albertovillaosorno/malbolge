@@ -38,7 +38,10 @@ boundaries. CPU callback adapters provide mandatory candidate/search execution
 capacity while search proposals and verification hints remain untrusted.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
-versus actual backend identity after fallback. `primitive_candidates.py` binds
+versus actual backend identity after fallback. `search_config.py` adds versioned
+TOML base selection with fail-closed schema/identity validation and durable source
+identity; explicit overrides produce a new effective selection without mutating
+the loaded configuration. `primitive_candidates.py` binds
 classic crazy/rotate candidate payloads to any exact primitive adapter; the same
 bridge is differentially exercised through CPU and live CUDA backends. Additional
 search strategies, CLI front-end wiring, CUDA search/verification-assist, ROCm
