@@ -123,10 +123,11 @@ reuse their geometry/domain proof across calls: retained batch-32 validation and
 planning falls to about 0.23 ms and complete-snapshot throughput reaches about
 93.68 VMs/s. Resident sessions now expose diagnostic `profile_snapshot()` without
 changing ordinary snapshot semantics. It separates fresh host-array allocation,
-state/memory/output D-to-H, decode, and total; exploratory batches 8/32 place about
-62--64% in allocation and 36--37% in memory transfer, while batch 1 is 96.6%
-transfer. The result contract still requires independent mutable arrays, so reusable
-host storage needs a separately admitted ownership surface. These are backend
+state/memory/output D-to-H, decode, and total. Retained RTX 4060 batches 1/8/32
+measure 3.1616/65.7829/271.1391 ms. Batch 1 is 96.489% transfer; batches 8/32
+are 62.419%/63.872% allocation and 37.248%/35.962% memory transfer. The result
+contract still requires independent mutable arrays, so reusable host storage needs
+a separately admitted ownership surface. These are backend
 measurements, not CPU-relative or cross-device speedup claims.
 
 ## Invariants

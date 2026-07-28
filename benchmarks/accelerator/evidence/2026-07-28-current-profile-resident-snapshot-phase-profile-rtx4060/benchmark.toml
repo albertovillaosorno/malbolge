@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "current-profile-resident-snapshot-phase-profile-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Which host-side phases dominate explicit complete snapshots after current-profile state is already resident on CUDA?"
+hypothesis = "Full-memory D-to-H dominates batch one, while fresh independent Python result-array allocation dominates batches eight and thirty-two; named phases cover at least ninety-five percent of inclusive snapshot time."
+baseline = "descriptive decomposition of CudaProfileRunSession.snapshot semantics at clean source commit 4d1e6626edefc5bcbb2524dc816b284b210a5cfa"
+rejection_observation = "Exact result validation fails, phase totals are negative or exceed inclusive total, named coverage falls below ninety-five percent, sample/chunk identity drifts, or the observed dominant phases differ from the hypothesis."
+
+[workload]
+identity = "current-profile-14-trit-resident-snapshot-64-step-no-op-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one complete ordinary snapshot after one untimed resident advance per batch size"
+ordering = "fixed"
+stopping_rule = "fifteen retained exact profile_snapshot calls for batches one, eight, and thirty-two"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "named_phase_coverage", "memory_bytes", "batch_size"]
+tradeoff_policy = "exact complete results and independent mutable array ownership precede phase interpretation; allocation includes observable Python and operating-system effects without claiming allocator internals"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

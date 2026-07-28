@@ -106,6 +106,13 @@ Run with:
   -m benchmarks.accelerator.profile_resident_snapshot_phase_profile
 ```
 
+Retained RTX 4060 evidence is under
+`evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/`.
+Median totals are 3.1616/65.7829/271.1391 ms for batches 1/8/32. Batch 1 is
+transfer-dominated (96.489%); batches 8/32 are allocation-dominated
+(62.419%/63.872%) with memory transfer at 37.248%/35.962%. Named coverage is at
+least 99.817%. This is descriptive attribution, not a speedup claim.
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One

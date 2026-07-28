@@ -375,6 +375,8 @@ fails explicitly without changing correctness rules.
   accepted.
 - Current-profile post-optimization evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-27-current-profile-resident-session-rtx4060/`.
+- Resident snapshot phase evidence is retained under
+  `benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/`.
 - `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,
   malformed optional-result fallback, stable algorithm/seed/budget identity,
   optional verification hints, and verifier-only candidate admission.

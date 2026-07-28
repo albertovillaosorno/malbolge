@@ -1,0 +1,17 @@
+{
+  "batch_sizes": [
+    1,
+    8,
+    32
+  ],
+  "benchmark_id": "current-profile-resident-snapshot-phase-profile-v1",
+  "geometry": {
+    "memory_bytes_per_vm": 19131876,
+    "memory_words": 4782969,
+    "word_trits": 14
+  },
+  "request": "current-profile-14-trit-64-step-no-op-v1",
+  "sample_count": 15,
+  "segment_steps": 64,
+  "warmup_count": 1
+}

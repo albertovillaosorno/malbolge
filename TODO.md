@@ -1307,18 +1307,19 @@ device states, and persistent scalable sessions avoid repeated full-state
 movement between bounded segments. `ProfileMemoryImage` now validates and owns
 reusable geometry-bound input once, reducing repeated current-profile validation
 to sub-millisecond planning in retained evidence. Direct complete snapshots now
-download into final result arrays without redundant packed host staging. A public
-`ProfileSnapshotPhaseProfile` diagnostic path leaves ordinary `snapshot()` unchanged
-and separates fresh host-array allocation, scalar-state D-to-H, full-memory D-to-H,
-output D-to-H, decode, and inclusive total. The formal resident-snapshot profiler
-covers batches 1/8/32 with one excluded warmup and 15 exact retained samples.
-Exploratory medians are 3.1599/65.9398/271.6625 ms total. Batch 1 is 96.557%
-full-memory transfer; batches 8/32 are 62.463%/63.967% fresh Python array allocation
-and 37.229%/35.913% memory transfer. Decode stays below 0.11%, and named coverage is
-above 99.8%. The existing result contract requires independent mutable `array('I')`
-memories, so buffer reuse or pinned allocation cannot be introduced silently.
-Clean post-commit evidence is pending before selecting an explicit streaming or
-caller-owned snapshot contract. Broader live-device evidence remains open.
+download into final result arrays without redundant packed host staging. Retained snapshot-phase evidence under
+`benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/`
+uses `ProfileSnapshotPhaseProfile` while leaving ordinary `snapshot()` unchanged.
+Batches 1/8/32 retain 15 exact samples after one excluded warmup and measure
+3.1616/65.7829/271.1391 ms median total. Batch 1 is 96.489% full-memory D-to-H.
+Batches 8/32 are 62.419%/63.872% fresh independent Python array allocation and
+37.248%/35.962% memory transfer. Decode is at most 0.105%; named coverage is at
+least 99.817%. Pinned memory alone is rejected as the selected next step because it
+does not remove the dominant fresh-array ownership requirement. Silent buffer reuse
+is inadmissible because later snapshots could mutate earlier results. The next design
+experiment must expose an explicit streaming or caller-owned output contract while
+ordinary independent mutable `array('I')` results remain unchanged. Broader
+live-device evidence remains open.
 
 ### TODO - Compilation latency performance budget
 

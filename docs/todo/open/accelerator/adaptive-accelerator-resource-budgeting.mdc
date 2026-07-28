@@ -127,11 +127,14 @@ example probe points, not supported-range endpoints.
   removes redundant packed host staging. `ProfileSnapshotPhaseProfile` and
   `profile_resident_snapshot_phase_profile.py` add a diagnostic-only decomposition
   of fresh host arrays, scalar-state/full-memory/output D-to-H, decode, and total.
-  Exploratory 1/8/32 totals are 3.1599/65.9398/271.6625 ms. Batch 1 is 96.557%
-  memory transfer; batches 8/32 are 62.463%/63.967% allocation and
-  37.229%/35.913% transfer. Decode stays below 0.11% and named coverage exceeds
-  99.8%. Ordinary snapshot semantics remain unchanged. Independent mutable result
-  arrays prohibit silent buffer reuse, so clean evidence is required before an
-  explicit streaming or caller-owned snapshot contract is selected. Broader
-  live-hardware measurements remain required. Persistent classic continuation is
+  Retained evidence under
+  `benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/`
+  records 3.1616/65.7829/271.1391 ms for batches 1/8/32. Batch 1 is 96.489%
+  memory transfer; batches 8/32 are 62.419%/63.872% allocation and
+  37.248%/35.962% transfer. Decode is at most 0.105% and named coverage is at
+  least 99.817%. Ordinary snapshot semantics remain unchanged. Independent mutable
+  result arrays prohibit silent buffer reuse; pinned memory alone does not remove
+  the selected allocation boundary. The next experiment requires an explicit
+  streaming or caller-owned snapshot contract. Broader live-hardware measurements
+  remain required. Persistent classic continuation is
   tracked by its own retained session evidence.
