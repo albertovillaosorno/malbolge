@@ -237,8 +237,12 @@ fails explicitly without changing correctness rules.
   high-bit masks and lane-independent threshold addition validate all words through
   big-integer operations; scalar decoding runs only after failure to report the
   invalid maximum. First/last-lane threshold and high-bit adversaries fail closed,
-  and benchmarks require the identity. Post-commit evidence is pending; remaining
-  kernel, transfer, byte-copy, and validation costs must be reprofiled.
+  and benchmarks require the identity. Retained CUDA prepared median falls from
+  2.036 to 1.175 ms (1.733x), backend evaluation from 1.802 to 0.860 ms (2.095x),
+  and total from 1.824 to 0.886 ms (2.057x). CUDA is 2.706x faster than same-run CPU.
+  CPU phase regressions remain controls. Remaining kernel launch/synchronization,
+  D-to-H transfer, immutable byte-copy, and broadword-validation costs require
+  measured decomposition.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

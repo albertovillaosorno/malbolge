@@ -140,8 +140,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   packed validation now uses `u32le-broadword-domain-v1`: repeated high-bit and
   threshold/carry masks validate independent u32le lanes; scalar iteration is only
   the failure diagnostic. First/last-lane adversaries fail closed and benchmarks
-  require the identity. Post-commit evidence is pending. CPU result
-  validation/packing and remaining CUDA phases are next. Synthesis/guided
+  require the identity. Retained CUDA prepared median is 1.175 ms (1.733x
+  better), backend evaluation is 0.860 ms (2.095x better), and total is 0.886 ms
+  (2.057x better). CUDA is 2.706x faster than same-run CPU; CPU phase regressions
+  remain controls. CPU result validation/packing and measured CUDA decomposition are
+  next. Synthesis/guided
   strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

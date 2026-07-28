@@ -822,9 +822,13 @@ faster than same-run CPU. Packed-domain validation now uses
 per-lane `0xffff - 59048` addition sets bit 16 exactly for words above the classic
 maximum without cross-lane carry. Invalid threshold/high-bit words in first and last
 lanes fail closed; descriptive scalar fallback runs only on failure. Benchmarks
-require the validator identity alongside every existing proof. Post-commit evidence
-is pending; CPU result validation/packing and the remaining CUDA backend phases are
-next.
+require the validator identity alongside every existing proof. Retained CUDA
+prepared median falls from 2.036 to 1.175 ms (1.733x), while CUDA backend evaluation
+falls from 1.802 to 0.860 ms (2.095x) and CUDA total from 1.824 to 0.886 ms (2.057x).
+Same-run CUDA prepared is 2.706x faster than CPU. CPU phase regressions are retained
+as controls and are not attributed to this CUDA-targeted change. CPU result
+validation/packing and measured decomposition of the remaining CUDA backend phases
+are next.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -914,8 +918,11 @@ than the CPU-table baseline and 1.621x faster than same-run CPU. CUDA backend
 evaluation improves 2.147x to 1.802 ms, while CPU phases change about 0.5%.
 Packed-domain validation now uses repeated broadword masks and lane-independent
 threshold addition under identity `u32le-broadword-domain-v1`; first/last-lane
-threshold and high-bit adversaries fail closed. Post-commit evidence is pending;
-the remaining CUDA backend phases are the next measured subphase.
+threshold and high-bit adversaries fail closed. Retained CUDA prepared median is
+1.175 ms (1.733x better), backend evaluation is 0.860 ms (2.095x better), and total
+is 0.886 ms (2.057x better). CUDA is 2.706x faster than same-run CPU. Remaining
+kernel launch/synchronization, D-to-H transfer, immutable byte copy, and broadword
+validation costs require measured decomposition.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.

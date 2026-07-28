@@ -162,9 +162,13 @@ records 2.036 ms CUDA prepared, 2.343x faster than the CPU-table baseline and
 now uses `u32le-broadword-domain-v1`: repeated high-bit masks plus an independent
 per-lane threshold addition validate all u32le words in big-integer operations.
 Invalid first/last threshold or high-bit lanes retain descriptive fail-closed
-fallback. Benchmarks require the validator identity. Post-commit evidence is
-pending; CPU result validation/packing and the remaining CUDA backend phases are
-next.
+fallback. Benchmarks require the validator identity. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-28-broadword-packed-validation-search-rtx4060/`
+records 1.175 ms CUDA prepared, 1.733x faster than scalar packed validation and
+2.706x faster than same-run CPU. The phase sibling lowers CUDA backend evaluation
+2.095x to 0.860 ms and CUDA total 2.057x to 0.886 ms; CPU phase regressions remain
+controls. CPU result validation/packing and measured decomposition of the remaining
+CUDA backend phases are next.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

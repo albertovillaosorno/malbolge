@@ -268,5 +268,10 @@ Packed validation now emits and requires
 `packed_primitive_validation="u32le-broadword-domain-v1"`. Repeated high-bit,
 threshold-delta, and threshold-carry masks validate independent 32-bit lanes; scalar
 iteration is retained only to report an invalid maximum after failure. Tests reject
-threshold and high-bit corruption in both first and final lanes. A post-commit rerun
-is required before replacing the retained packed-result evidence.
+threshold and high-bit corruption in both first and final lanes. Retained evidence
+is under `evidence/2026-07-28-broadword-packed-validation-search-rtx4060/` and
+`evidence/2026-07-28-broadword-packed-validation-search-phase-profile-rtx4060/`.
+CUDA prepared reaches 1.175 ms, a 1.733x improvement, while CUDA backend evaluation
+reaches 0.860 ms (2.095x) and CUDA total 0.886 ms (2.057x). CUDA prepared is 2.706x
+faster than same-run CPU. CPU phase regressions are retained as controls and are not
+attributed to this CUDA-targeted validator change.

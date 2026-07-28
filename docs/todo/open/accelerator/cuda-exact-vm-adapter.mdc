@@ -139,7 +139,10 @@ batches.
   evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x faster than same-run CPU;
   CPU phases stay effectively flat. Packed validation now uses
   `u32le-broadword-domain-v1` repeated high-bit/threshold/carry masks; first/last
-  invalid lanes fail closed and benchmarks require the identity. Post-commit
-  evidence is pending; remaining CUDA phases and synthesis/search remain open.
+  invalid lanes fail closed and benchmarks require the identity. Retained CUDA
+  prepared median is 1.175 ms (1.733x better), backend evaluation is 0.860 ms
+  (2.095x better), and total is 0.886 ms (2.057x better). CUDA is 2.706x faster than
+  same-run CPU; CPU phase regressions remain controls. Remaining CUDA phase
+  decomposition and synthesis/search remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

@@ -156,8 +156,11 @@ validation now uses stable `u32le-broadword-domain-v1` identity. Repeated masks
 reject high bits and detect values above 59,048 through lane-independent threshold
 addition; scalar fallback exists only to describe invalid output. First/last-lane
 threshold and high-bit corruption fail closed, and benchmark output requires the
-identity. Post-commit evidence is pending. CPU result validation/packing and the
-remaining CUDA phases are next, while resident/fused search remains later work.
+identity. Retained CUDA prepared median improves 1.733x to 1.175 ms, CUDA backend
+evaluation improves 2.095x to 0.860 ms, and CUDA total improves 2.057x to 0.886 ms.
+CUDA is 2.706x faster than same-run CPU; CPU phase regressions remain contextual
+controls. CPU result validation/packing and measured decomposition of the remaining
+CUDA phases are next, while resident/fused search remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.
 

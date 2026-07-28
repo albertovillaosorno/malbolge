@@ -133,8 +133,11 @@ directly on CUDA APIs.
   packed validation now uses stable `u32le-broadword-domain-v1` identity with
   repeated high-bit and threshold/carry masks. First/last-lane adversaries fail
   closed; scalar iteration is only a failure diagnostic. Benchmarks require the
-  identity. Post-commit evidence is pending. CPU result validation/packing and
-  remaining CUDA phases are next. Synthesis/guided search,
+  identity. Retained CUDA prepared median improves 1.733x to 1.175 ms, backend
+  evaluation improves 2.095x to 0.860 ms, and total improves 2.057x to 0.886 ms.
+  CUDA is 2.706x faster than same-run CPU; CPU phase regressions remain controls.
+  CPU result validation/packing and measured CUDA decomposition are next.
+  Synthesis/guided search,
   resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
