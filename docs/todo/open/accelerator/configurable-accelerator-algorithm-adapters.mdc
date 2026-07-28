@@ -67,7 +67,13 @@ by-side comparison without recompiling or modifying compiler semantics.
   `classic-rotate-target-search-v1` additionally composes one bounded strategy with
   interchangeable CPU/CUDA candidate evaluators. Live CUDA matches CPU proposals
   over 257 candidates, records configured/actual backend identity, and still uses
-  independent CPU admission. User-facing CLI wiring, synthesis/guided strategies,
-  ROCm search implementations, and comparative benchmarks remain open.
+  independent CPU admission. `python -m optimizer.cli` now loads versioned search
+  configuration and canonical problem bytes, applies explicit overrides, and
+  emits deterministic JSON with problem hash, configured/actual backend identity,
+  device metadata, seed/budget, and explicitly untrusted proposals. Supported
+  CUDA setup failure preserves configured CUDA intent while falling back to CPU;
+  unsupported algorithm/backend pairs fail explicitly. Synthesis/guided
+  strategies, ROCm search implementations, richer orchestration, and comparative
+  benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

@@ -46,7 +46,10 @@ target. It uses the same `EvaluatedSearchExecutionAdapter` strategy shape as the
 optional CUDA route, but binds the exact CPU primitive evaluator. Exact duplicate
 inputs are pruned by stable first representative, seed rotates the representative
 order, budget bounds candidate evaluations, and `RotateTargetVerifier` recomputes
-acceptance independently on CPU.
+acceptance independently on CPU. The external `python -m optimizer.cli` runner
+can select either CPU reference through Search Configuration v1 and records
+canonical problem hash plus configured/actual execution identity without claiming
+proposal acceptance.
 
 ### Implementation Status
 

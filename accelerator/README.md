@@ -51,7 +51,14 @@ adds a bounded map/select search adapter that only proposes members of the exact
 evaluated batch. `classic-rotate-target-search-v1` uses that adapter with identical
 CPU/CUDA strategy logic; live CUDA records actual backend identity, matches CPU
 proposals over 257 candidates, and remains subject to independent CPU admission.
-Synthesis/guided search, CLI front-end wiring, ROCm work ports and VM execution,
-broader hardware evidence, and orchestration remain follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
+`python -m optimizer.cli` is the first external search runner: it reads Search
+Configuration v1 plus canonical problem bytes, accepts explicit algorithm/backend
+overrides, and emits deterministic JSON containing problem SHA-256,
+configured-versus-actual backend identity, device metadata, seed/budget, and only
+untrusted proposals. Supported CUDA setup failure preserves configured CUDA intent
+while safely falling back to CPU; unsupported algorithm/backend pairs fail
+explicitly. Synthesis/guided search, ROCm work ports and VM execution, broader
+hardware evidence, richer orchestration, and comparative benchmarks remain
+follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

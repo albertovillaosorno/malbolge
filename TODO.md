@@ -714,8 +714,14 @@ without mutating the base selection. The deterministic corpus enumerator is the
 first concrete CPU-only strategy. `classic-rotate-target-search-v1` additionally
 binds one exact bounded strategy to interchangeable CPU/CUDA evaluators; live CUDA
 records configured and actual backend identity and matches CPU proposals before
-trusted CPU admission. User-facing CLI wiring, synthesis/guided strategies, ROCm
-search implementations, and comparative evidence remain open.
+trusted CPU admission. `python -m optimizer.cli` now loads Search Configuration
+v1 plus canonical problem bytes, applies explicit algorithm/backend overrides,
+and emits deterministic JSON with problem SHA-256, configured-versus-actual
+backend identity, device metadata, seed/budget, and explicitly untrusted
+proposals. CUDA setup failure falls back to the registered CPU reference without
+rewriting configured intent; unsupported algorithm/backend pairs still fail
+explicitly. Synthesis/guided strategies, ROCm search implementations, richer
+orchestration, and comparative evidence remain open.
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and

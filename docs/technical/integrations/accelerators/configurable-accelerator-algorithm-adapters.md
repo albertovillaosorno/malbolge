@@ -59,9 +59,18 @@ evaluation count cannot exceed the search budget. The concrete
 `classic-rotate-target-search-v1` strategy runs unchanged through CPU or live CUDA
 evaluation. CUDA and CPU produce identical proposals over a deterministic
 257-candidate corpus, `SearchRunIdentity` records CUDA as actual execution, and a
-separate CPU verifier recomputes acceptance. User-facing CLI wiring,
-synthesis/guided strategies, ROCm search implementations, and comparative
-benchmark evidence remain open.
+separate CPU verifier recomputes acceptance. `optimizer/cli.py` now exposes the
+same registry externally through `python -m optimizer.cli`. It reads versioned
+TOML configuration plus canonical binary problem bytes, accepts explicit
+algorithm/backend overrides, and emits deterministic JSON with configuration
+source, problem SHA-256, configured and actual backend IDs, device metadata,
+seed/budget, and hex-encoded proposals marked `untrusted`. A supported CUDA route
+that cannot initialize is represented as optional unavailable capacity and falls
+back through the normal CPU reference path while retaining configured CUDA
+identity. Unsupported pairs such as deterministic corpus enumeration plus CUDA
+fail explicitly instead of changing strategy. Synthesis/guided strategies, ROCm
+search implementations, richer orchestration, and comparative benchmark evidence
+remain open.
 
 ## Invariants
 
@@ -85,6 +94,10 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_search_config.py` verifies schema versioning, independent
   algorithm/backend fields, explicit overrides, unknown-key rejection, mandatory
   nonempty identities, and durable file-source identity.
+- `tests/optimizer/test_search_cli.py` verifies CPU execution evidence, explicit
+  overrides, unsupported-pair rejection, CUDA-unavailable CPU fallback with
+  configured identity preserved, file-backed JSON output, and a live CUDA route
+  that records CUDA as actual execution.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References
