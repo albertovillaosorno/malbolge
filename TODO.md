@@ -238,23 +238,6 @@ TODO by TODO with its governing documents already available.
 
 ## Research methodology and experiment infrastructure
 
-### TODO - Academic research methodology and evidence model
-
-Define the repository-wide scientific method for compiler research. The active
-methodology now requires explicit research class, baseline/falsification rule,
-correctness-before-quality, plan/raw/derived/interpretation separation,
-negative/null retention, method-specific benchmarking/optimization evidence, and
-an explicit promotion boundary; downstream records still own their concrete
-experiments and replications.
-
-### TODO - Algorithm research mirror and local output contract
-
-Standardize and enforce the semantic mirror between
-`docs/research/algorithms/<id>/` and `algorithms/<id>/`. The accepted ADR plus
-`research_mirror.py` now require exact two-sided IDs, research/experiment/test
-layout, and Git-ignored local `out/`, while product-owned interoperability
-algorithms remain explicitly outside the academic mirror.
-
 ### TODO - Reproducible experiment identity and manifest
 
 Define a versioned experiment manifest that records algorithm identity, exact
