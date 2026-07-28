@@ -80,7 +80,12 @@ ordinary-versus-prepared evidence is retained under
 falls from 293.564 to 148.590 ms (1.976x), and CUDA median falls from 306.872 to
 162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared CPU
 (0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search results;
-preparation is outside the timed interval. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
+preparation is outside the timed interval. The retained prepared phase profile at
+`benchmarks/accelerator/evidence/2026-07-28-prepared-search-phase-profile-rtx4060/`
+shows backend evaluation consuming 79.9% of CPU and 81.2% of CUDA median total
+time; proposal selection consumes 19.6% and 18.7%. Proof/result validation is
+negligible. Candidate-evaluation result representation/transport is therefore the
+next optimization boundary. Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay

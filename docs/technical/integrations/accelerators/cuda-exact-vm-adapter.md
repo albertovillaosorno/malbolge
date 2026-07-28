@@ -178,8 +178,11 @@ fails explicitly without changing correctness rules.
   and prepared medians of 306.872 and 162.693 ms (1.886x). CPU prepared reaches
   148.590 ms, leaving prepared CUDA about 9.5% slower (0.913x
   CPU-prepared/CUDA-prepared). Preparation is outside timed intervals, so this is
-  repeated-search evidence rather than one-shot latency. Resident or fused search
-  remains a later measured option. Broader live-hardware evidence, synthesis/search
+  repeated-search evidence rather than one-shot latency. The retained prepared
+  phase profile attributes 138.320 ms, or 81.2% of CUDA median total time, to
+  backend evaluation and 31.912 ms, or 18.7%, to proposal selection. Proof/result
+  validation is negligible, selecting candidate-evaluation result representation
+  and transport before resident or fused search. Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

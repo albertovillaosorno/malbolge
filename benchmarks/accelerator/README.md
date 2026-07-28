@@ -184,3 +184,11 @@ Run with:
 This diagnostic answers where prepared repeated-search time remains. It is not a
 one-shot latency measurement and must not be used to count preparation as free in
 workloads that cannot reuse immutable state.
+
+The retained RTX 4060 evidence is under
+`evidence/2026-07-28-prepared-search-phase-profile-rtx4060/`. CPU median total is
+156.935 ms with 125.412 ms in backend evaluation and 30.796 ms in proposal
+selection. CUDA median total is 170.276 ms with 138.320 ms in backend evaluation
+and 31.912 ms in proposal selection. Named phases cover at least 99.6% of both
+medians; candidate-evaluation result transport/materialization is the next measured
+optimization boundary.

@@ -90,7 +90,11 @@ validated target/header. The retained four-route comparison records CPU
 ordinary/prepared medians of 293.564/148.590 ms (1.976x) and CUDA
 ordinary/prepared medians of 306.872/162.693 ms (1.886x). Prepared CUDA remains
 about 9.5% slower than prepared CPU, so reusable state is beneficial without
-establishing a CUDA advantage. Preparation is outside timed intervals. Resident or
+establishing a CUDA advantage. Preparation is outside timed intervals. The
+prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total time
+to backend evaluation, with proposal selection at 19.6% and 18.7%. Strategy-proof
+and result validation are negligible. Candidate-evaluation result representation
+and transport are therefore the next neutral optimization boundary. Resident or
 fused evaluation-selection remains a later
 option only if exact equivalence stays explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
@@ -137,6 +141,11 @@ fails explicitly without changing correctness rules.
   source/workload identity, proposal/admission checks, 1.976x CPU and 1.886x CUDA
   same-backend prepared improvements, and the negative 0.913x prepared CUDA/CPU
   comparison boundary.
+- `benchmarks/accelerator/evidence/2026-07-28-prepared-search-phase-profile-rtx4060/`
+  retains 150 raw prepared-path phase samples. Backend evaluation accounts for
+  79.9% of CPU and 81.2% of CUDA median total time; proposal selection accounts
+  for 19.6% and 18.7%, selecting result representation/transport as the next
+  measured boundary.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

@@ -97,7 +97,10 @@ forged or mismatched proof identity fails closed. Prepared execution preserves
 result/proposal validation and verifier-only acceptance. Retained evidence records
 1.976x CPU and 1.886x CUDA same-backend prepared improvements, while prepared CUDA
 remains about 9.5% slower than prepared CPU. Preparation is outside timed intervals,
-so the result applies to repeated immutable search state; resident/fused search
+so the result applies to repeated immutable search state. The prepared phase
+profile attributes 79.9% of CPU and 81.2% of CUDA median total time to backend
+evaluation, with proposal selection at 19.6% and 18.7%. Candidate-evaluation result
+representation/transport is the next neutral boundary; resident/fused search
 remains later work.
 Synthesis/guided search
 algorithms, asynchronous submission, and ROCm remain open.

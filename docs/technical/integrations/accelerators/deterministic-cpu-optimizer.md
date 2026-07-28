@@ -105,7 +105,9 @@ fails explicitly without changing correctness rules.
   decodes only the validated target/header. Retained repeated-search evidence records
   a CPU ordinary median of 293.564 ms and prepared median of 148.590 ms (1.976x).
   Preparation is outside timed intervals, and every sample preserves independent
-  admission.
+  admission. The prepared phase profile places 125.412 ms, or 79.9% of CPU median
+  total time, in backend evaluation and 30.796 ms, or 19.6%, in proposal selection.
+  Result representation/materialization is the next CPU baseline target.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
 ## References

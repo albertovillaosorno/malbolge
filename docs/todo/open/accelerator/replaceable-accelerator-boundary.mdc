@@ -91,7 +91,10 @@ directly on CUDA APIs.
   Forged or mismatched state fails closed. Retained repeated-search evidence
   records 1.976x CPU and 1.886x CUDA same-backend prepared improvements, while
   prepared CUDA remains about 9.5% slower than prepared CPU. Preparation is outside
-  timed intervals. Synthesis/guided search, resident search, ROCm work ports/VM execution,
+  timed intervals. The prepared phase profile attributes 79.9% of CPU and 81.2%
+  of CUDA median total time to backend evaluation, selecting result
+  representation/transport as the next neutral boundary. Synthesis/guided search,
+  resident search, ROCm work ports/VM execution,
   asynchronous submission, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

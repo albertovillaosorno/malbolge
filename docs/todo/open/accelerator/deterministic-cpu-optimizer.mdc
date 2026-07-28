@@ -73,7 +73,10 @@ baseline for accelerator implementations.
   the CPU baseline: request/batch validation happens once, repeated execution
   preserves exact untrusted proposals, and matching CUDA capacity may consume the
   same strategy-bound proof. Retained CPU ordinary/prepared medians are
-  293.564/148.590 ms (1.976x), with preparation outside timed intervals.
+  293.564/148.590 ms (1.976x), with preparation outside timed intervals. The
+  prepared phase profile places 79.9% of CPU median total time in backend
+  evaluation and 19.6% in proposal selection, selecting result representation and
+  materialization as the next baseline target.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
   measurements remain open.

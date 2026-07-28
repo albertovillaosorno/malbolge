@@ -88,7 +88,10 @@ by-side comparison without recompiling or modifying compiler semantics.
   retained ordinary/prepared evidence records 293.564/148.590 ms CPU medians
   (1.976x) and 306.872/162.693 ms CUDA medians (1.886x). Prepared CUDA remains
   about 9.5% slower than prepared CPU, and preparation is outside timed intervals.
-  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  The prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total
+  time to backend evaluation, with proposal selection at 19.6% and 18.7%.
+  Candidate-evaluation result representation/transport is the next measured
+  boundary. Synthesis/guided strategies, ROCm search implementations, richer orchestration,
   and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

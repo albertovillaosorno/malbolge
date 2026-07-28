@@ -98,7 +98,9 @@ batches.
   execution removes repeated batch construction/validation. Retained evidence
   records CUDA ordinary/prepared medians of 306.872/162.693 ms (1.886x), while
   prepared CUDA remains about 9.5% slower than prepared CPU. Preparation is outside
-  timed intervals. Broader live hardware, resident
+  timed intervals. The prepared phase profile attributes 81.2% of CUDA median
+  total time to backend evaluation and 18.7% to proposal selection; proof/result
+  validation is negligible. Result representation/transport now precedes resident
   search, and synthesis/search strategies remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

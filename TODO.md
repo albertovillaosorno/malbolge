@@ -740,7 +740,11 @@ time. The retained four-route comparison records CPU ordinary/prepared medians o
 293.564/148.590 ms (1.976x) and CUDA ordinary/prepared medians of
 306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared
 CPU (0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search
-measurements with preparation outside the timed interval. Synthesis/guided
+measurements with preparation outside the timed interval. A retained prepared-path
+phase profile attributes 79.9% of CPU and 81.2% of CUDA median total time to
+backend evaluation, with proposal selection at 19.6% and 18.7%. Proof/result
+validation is negligible, so candidate-evaluation result representation and
+transport are the next evidence-driven boundary. Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
@@ -779,7 +783,10 @@ batch-builder, and selector identities match exactly. Rotate-target selection no
 longer decodes the complete corpus a second time. Retained repeated-search evidence
 shows 1.976x CPU and 1.886x CUDA same-backend median improvements, while prepared
 CUDA remains about 9.5% slower than prepared CPU. Preparation is outside the timed
-interval, so the result is not one-shot latency evidence; resident or
+interval, so the result is not one-shot latency evidence. The retained prepared
+phase profile places 81.2% of CUDA median total time in backend evaluation and
+18.7% in proposal selection; proof/result validation is negligible. Result
+representation/transport now precedes any resident or
 fused evaluation-selection is the later measured path. Broader hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
