@@ -1314,12 +1314,19 @@ Batches 1/8/32 retain 15 exact samples after one excluded warmup and measure
 3.1616/65.7829/271.1391 ms median total. Batch 1 is 96.489% full-memory D-to-H.
 Batches 8/32 are 62.419%/63.872% fresh independent Python array allocation and
 37.248%/35.962% memory transfer. Decode is at most 0.105%; named coverage is at
-least 99.817%. Pinned memory alone is rejected as the selected next step because it
-does not remove the dominant fresh-array ownership requirement. Silent buffer reuse
-is inadmissible because later snapshots could mutate earlier results. The next design
-experiment must expose an explicit streaming or caller-owned output contract while
-ordinary independent mutable `array('I')` results remain unchanged. Broader
-live-device evidence remains open.
+least 99.817%. Pinned memory alone is rejected because it does not remove the dominant
+fresh-array ownership requirement. The selected caller-owned contract is now active
+under `caller-owned-independent-u32-arrays-v1`. Ordinary resident `snapshot()` now
+creates independent mutable `array('I')` results at every batch size, including one;
+`allocate_snapshot_workspace()` instead creates explicit arrays once, and workspace
+`snapshot()`/`profile_snapshot()` overwrite and return those same arrays by contract.
+Forged, resized, duplicate, wrong-type, wrong-count, and closed-session workspace
+state fails closed. Exploratory batches 1/8/32 improve from 8.1202/65.1681/270.1266
+ms ordinary to 3.1566/24.5695/99.6554 ms workspace (2.572x/2.652x/2.711x).
+One-time allocation is 4.8533/41.2194/172.1482 ms and strict crossover is 1/2/2
+snapshots. Workspace allocation is outside the repeated timed path and every profiled
+workspace sample reports zero result-array allocation. Clean post-commit evidence is
+pending before promotion; streaming and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

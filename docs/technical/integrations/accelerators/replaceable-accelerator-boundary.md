@@ -65,10 +65,11 @@ configuring or invoking CUDA is not enough to claim the product route executed o
 the device. Retained current-profile performance evidence additionally covers the
 original complete
 snapshot baseline, device-side shared initialization, and persistent resident
-sessions. Resident full-snapshot diagnostics now separate host allocation,
-state/memory/output transfer, decode, and total without changing the hardware-neutral
-result or independent mutable-memory ownership; none changes semantic authority or
-establishes a CPU-relative speedup.
+sessions. Resident full-snapshot diagnostics separate host allocation,
+state/memory/output transfer, decode, and total. Ordinary snapshots now preserve
+fresh independent mutable-memory ownership uniformly; the optional caller-owned
+workspace is a distinct overwrite/alias contract bound to one live session. Neither
+surface changes semantic authority or establishes a CPU-relative speedup.
 Candidate evaluation/search/verification-assist ports are now active. The
 portable CPU callback adapters provide mandatory candidate/search execution
 capacity and best-effort routing falls back on typed optional-backend failures or

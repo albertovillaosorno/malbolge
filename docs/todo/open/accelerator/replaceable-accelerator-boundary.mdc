@@ -78,8 +78,9 @@ directly on CUDA APIs.
   snapshot materialization removes redundant packed host staging. The resident
   snapshot diagnostic path now attributes fresh result arrays, three D-to-H phases,
   decode, and total while preserving ordinary independent mutable result ownership.
-  Retained batches 1/8/32 identify transfer at batch one and fresh array allocation
-  at batches eight/thirty-two; an alternate output path requires explicit ownership.
+  Retained batches 1/8/32 identify transfer and fresh array allocation. The active
+  caller-owned workspace is a separate proof-bound overwrite contract, while ordinary
+  snapshots now return fresh arrays uniformly. Clean comparative evidence is pending.
   `EvaluatedSearchExecutionAdapter` now composes bounded candidate evaluation into
   search without allowing selectors to fabricate unevaluated payloads. The same
   `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA

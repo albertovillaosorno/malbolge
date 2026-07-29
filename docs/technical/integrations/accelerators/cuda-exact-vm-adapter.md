@@ -125,9 +125,12 @@ planning falls to about 0.23 ms and complete-snapshot throughput reaches about
 changing ordinary snapshot semantics. It separates fresh host-array allocation,
 state/memory/output D-to-H, decode, and total. Retained RTX 4060 batches 1/8/32
 measure 3.1616/65.7829/271.1391 ms. Batch 1 is 96.489% transfer; batches 8/32
-are 62.419%/63.872% allocation and 37.248%/35.962% memory transfer. The result
-contract still requires independent mutable arrays, so reusable host storage needs
-a separately admitted ownership surface. These are backend
+are 62.419%/63.872% allocation and 37.248%/35.962% memory transfer. Ordinary resident snapshots now always return fresh independent mutable arrays.
+The separately admitted `caller-owned-independent-u32-arrays-v1` workspace makes
+reuse and overwrite semantics explicit, validates shape/proof/session identity, and
+reports allocation outside the repeated path. Exploratory batches 1/8/32 improve
+2.572x/2.652x/2.711x with strict crossover 1/2/2; clean evidence is pending.
+These are backend
 measurements, not CPU-relative or cross-device speedup claims.
 
 ## Invariants

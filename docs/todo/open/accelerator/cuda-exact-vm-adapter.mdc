@@ -81,8 +81,10 @@ batches.
   profiler now separates host-array allocation, state/memory/output D-to-H, decode,
   and total while preserving ordinary snapshot ownership. Retained RTX 4060 batches
   1/8/32 measure 3.1616/65.7829/271.1391 ms; batch 1 is 96.489% transfer and
-  batches 8/32 are 62.419%/63.872% allocation. Pinned memory alone is not selected;
-  any alternate host-output surface must state streaming or caller-owned ownership.
+  batches 8/32 are 62.419%/63.872% allocation. Pinned memory alone is not selected. The active
+  `caller-owned-independent-u32-arrays-v1` workspace explicitly owns reusable arrays;
+  ordinary snapshots remain fresh and independent. Exploratory batches 1/8/32 improve
+  2.572x/2.652x/2.711x with crossover 1/2/2, and clean evidence is pending.
   Exact classic crazy/rotate
   candidate evaluation now traverses the hardware-neutral work port on live CUDA
   and matches CPU evidence over 257-item deterministic corpora. Exact candidate

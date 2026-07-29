@@ -36,9 +36,12 @@ adds a diagnostic-only decomposition of fresh host-array allocation,
 state/memory/output D-to-H, decode, and inclusive total while ordinary `snapshot()`
 remains unchanged. Retained RTX 4060 evidence records 3.1616/65.7829/271.1391 ms
 for batches 1/8/32. Batch 1 is 96.489% memory transfer; batches 8/32 are about
-62--64% fresh arrays and 36--37% memory transfer. Because results must own
-independent mutable `array('I')` memories, pinned memory alone is not selected and
-any reusable host-storage surface requires a separate explicit ownership contract.
+62--64% fresh arrays and 36--37% memory transfer. Ordinary resident snapshots now always own fresh independent mutable
+`array('I')` memories. The explicit
+`caller-owned-independent-u32-arrays-v1` workspace allocates those arrays once and
+advertises that later calls overwrite earlier aliased results. Exploratory batches
+1/8/32 improve by 2.572x/2.652x/2.711x with strict crossover 1/2/2 snapshots;
+clean post-commit evidence is pending. Pinned memory remains a separate question.
 `work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission

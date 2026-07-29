@@ -113,6 +113,21 @@ transfer-dominated (96.489%); batches 8/32 are allocation-dominated
 (62.419%/63.872%) with memory transfer at 37.248%/35.962%. Named coverage is at
 least 99.817%. This is descriptive attribution, not a speedup claim.
 
+`profile_snapshot_workspace_tradeoff.py` compares ordinary fresh independent
+snapshots with the explicit caller-owned workspace on the same resident session.
+It measures workspace allocation separately, excludes one warmup per route, retains
+15 paired snapshots with alternating route order, validates every complete result,
+and computes the first strict amortization count. Workspace results must alias the
+supplied arrays, ordinary results must remain independent, and every workspace phase
+sample must report zero result-array allocation.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_snapshot_workspace_tradeoff
+```
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One

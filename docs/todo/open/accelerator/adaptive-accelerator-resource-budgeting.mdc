@@ -132,9 +132,14 @@ example probe points, not supported-range endpoints.
   records 3.1616/65.7829/271.1391 ms for batches 1/8/32. Batch 1 is 96.489%
   memory transfer; batches 8/32 are 62.419%/63.872% allocation and
   37.248%/35.962% transfer. Decode is at most 0.105% and named coverage is at
-  least 99.817%. Ordinary snapshot semantics remain unchanged. Independent mutable
-  result arrays prohibit silent buffer reuse; pinned memory alone does not remove
-  the selected allocation boundary. The next experiment requires an explicit
-  streaming or caller-owned snapshot contract. Broader live-hardware measurements
-  remain required. Persistent classic continuation is
+  least 99.817%. Ordinary snapshot semantics remain unchanged. Independent mutable result ownership is now split explicitly. Ordinary
+  snapshots allocate fresh arrays at every batch size; the active
+  `caller-owned-independent-u32-arrays-v1` workspace allocates once and documents
+  overwrite/alias semantics. Exploratory 1/8/32 medians improve from
+  8.1202/65.1681/270.1266 ms to 3.1566/24.5695/99.6554 ms, with one-time
+  allocation 4.8533/41.2194/172.1482 ms and crossover 1/2/2 snapshots. Forged,
+  resized, duplicate, wrong-type/count, and closed-session state fails closed.
+  Clean post-commit evidence is pending before promotion. Pinned storage, streaming,
+  and broader live-hardware measurements remain required. Persistent classic
+  continuation is
   tracked by its own retained session evidence.

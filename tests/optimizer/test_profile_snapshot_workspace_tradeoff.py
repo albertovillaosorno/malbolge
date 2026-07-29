@@ -1,7 +1,7 @@
 # File:
-#   - __init__.py
+#   - test_profile_snapshot_workspace_tradeoff.py
 # Path:
-#   - accelerator/cuda/__init__.py
+#   - tests/optimizer/test_profile_snapshot_workspace_tradeoff.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -28,7 +28,7 @@
 # - Merge-When:
 #   - Merge when another file owns the exact same responsibility.
 # - Summary:
-#   - Optional NVIDIA CUDA accelerator adapter.
+#   - Crossover tests for caller-owned snapshot workspaces.
 # - Description:
 #   - Implements the responsibility summarized by this module.
 # - Usage:
@@ -43,20 +43,25 @@
 #   - false
 #
 
-"""Optional NVIDIA CUDA accelerator adapter."""
+"""Pure crossover tests for caller-owned snapshot workspaces."""
 
-from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
-from accelerator.cuda.exact_primitives import CudaPreparedPrimitivePhaseProfile
-from accelerator.cuda.exact_primitives import CudaPreparedPrimitiveStats
-from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
-from accelerator.cuda.profile_run import ProfileSnapshotPhaseProfile
-from accelerator.cuda.profile_run import profile_snapshot_workspace_id
+from __future__ import annotations
 
-__all__ = [
-    "CudaExactPrimitiveAdapter",
-    "CudaPreparedPrimitivePhaseProfile",
-    "CudaPreparedPrimitiveStats",
-    "CudaProfileSnapshotWorkspace",
-    "ProfileSnapshotPhaseProfile",
-    "profile_snapshot_workspace_id",
-]
+from benchmarks.accelerator.profile_snapshot_workspace_tradeoff import (
+    strict_workspace_crossover,
+)
+
+EXPECTED_CROSSOVER = 3
+
+
+def test_workspace_crossover_is_strict_and_ceiling_bounded() -> None:
+    """One-time allocation is recovered only after total cost is lower."""
+    assert strict_workspace_crossover(100, 80, 30) == EXPECTED_CROSSOVER
+    assert 100 + (2 * 30) >= 2 * 80
+    assert 100 + (3 * 30) < 3 * 80
+
+
+def test_workspace_crossover_rejects_non_improving_hot_path() -> None:
+    """A workspace cannot amortize when one snapshot is not faster."""
+    assert strict_workspace_crossover(100, 80, 80) is None
+    assert strict_workspace_crossover(100, 80, 90) is None

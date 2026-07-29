@@ -52,11 +52,16 @@ from dataclasses import replace
 from typing import Final
 from unittest import SkipTest
 
+import pytest
+
 from accelerator.classic_run import RunError
 from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
+from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
+from accelerator.cuda.profile_run import profile_snapshot_workspace_id
+from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
@@ -68,6 +73,7 @@ INITIAL_ACCUMULATOR: Final = 7
 EXPECTED_DATA_POINTER: Final = 2
 SESSION_BATCH_SIZE: Final = 2
 SESSION_RUNS: Final = 3
+SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
 NO_OP_CELL: Final = 33
 ENCRYPTED_NO_OP_CELL: Final = 53
 GEOMETRY = ProfileRunGeometry(
@@ -76,6 +82,10 @@ GEOMETRY = ProfileRunGeometry(
     word_modulus=SYNTHETIC_WORDS,
     word_trits=SYNTHETIC_TRITS,
 )
+
+
+def _corrupt_attribute(target: object, name: str, value: object) -> None:
+    setattr(target, name, value)
 
 
 def _cuda() -> CudaProfileRunAdapter:
@@ -201,10 +211,13 @@ def test_cuda_profile_session_matches_contiguous_execution() -> None:
 def test_cuda_profile_session_snapshot_phases_preserve_exact_results() -> None:
     """Snapshot profiling separates host allocation, transfers, and decode."""
     request = _resident_session_request()
-    with _cuda() as adapter, adapter.open_session(
-        (request, request),
-        max_runs=SESSION_RUNS,
-    ) as session:
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=SESSION_RUNS,
+        ) as session,
+    ):
         for _ in range(SESSION_RUNS):
             session.advance()
         expected = session.snapshot()
@@ -221,6 +234,141 @@ def test_cuda_profile_session_snapshot_phases_preserve_exact_results() -> None:
     )
     assert all(value >= 0 for value in components)
     assert profile.total_ns >= sum(components)
+
+
+def test_cuda_profile_session_snapshots_are_independent_between_calls() -> None:
+    """Ordinary snapshots never alias a prior snapshot memory array."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request,),
+            max_runs=1,
+        ) as session,
+    ):
+        session.advance()
+        first = session.snapshot()
+        second = session.snapshot()
+
+    assert first == second
+    assert first[0].memory is not second[0].memory
+    first[0].memory[0] = 0
+    assert second[0].memory[0] != 0
+
+
+def test_cuda_profile_snapshot_workspace_reuses_explicit_arrays() -> None:
+    """Workspace snapshots alias and overwrite only caller-owned arrays."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=1,
+        ) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_workspace()
+        first = workspace.snapshot()
+        first_value = first[0].memory[0]
+        workspace.memories[0][0] = 0
+        second, profile = workspace.profile_snapshot()
+
+    assert first == expected
+    assert second == expected
+    assert all(
+        result.memory is workspace.memories[index]
+        for index, result in enumerate(second)
+    )
+    assert first[0].memory is second[0].memory
+    assert first[0].memory[0] == first_value
+    assert profile.host_memory_allocate_ns == 0
+    assert profile.total_ns >= (
+        profile.state_download_ns
+        + profile.memory_download_ns
+        + profile.output_download_ns
+        + profile.decode_ns
+    )
+
+
+def test_cuda_profile_snapshot_workspace_rejects_mutated_shape() -> None:
+    """Resized or duplicated caller arrays fail before a snapshot download."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=1,
+        ) as session,
+    ):
+        workspace = session.allocate_snapshot_workspace()
+        _ = workspace.memories[0].pop()
+        with pytest.raises(
+            AcceleratorExecutionError, match="word count changed"
+        ):
+            _ = workspace.snapshot()
+
+        replacement = session.allocate_snapshot_workspace()
+        same = replacement.memories[0]
+        _corrupt_attribute(replacement, "_memories", (same, same))
+        with pytest.raises(
+            AcceleratorExecutionError, match="independent arrays"
+        ):
+            _ = replacement.snapshot()
+
+
+def test_cuda_profile_snapshot_workspace_rejects_forged_or_closed_use() -> None:
+    """Proof drift and closed-session actions fail explicitly."""
+    request = _resident_session_request()
+    with _cuda() as adapter:
+        session = adapter.open_session((request,), max_runs=1)
+        workspace = session.allocate_snapshot_workspace()
+        _corrupt_attribute(workspace, "_proof", object())
+        with pytest.raises(
+            AcceleratorExecutionError, match="workspace is forged"
+        ):
+            _ = workspace.snapshot()
+
+        valid = session.allocate_snapshot_workspace()
+        session.close()
+        with pytest.raises(
+            AcceleratorExecutionError, match="session is closed"
+        ):
+            _ = valid.snapshot()
+
+
+def test_cuda_profile_snapshot_workspace_rejects_count_drift() -> None:
+    """Workspace cardinality remains bound to its exact resident session."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=1,
+        ) as session,
+    ):
+        workspace = session.allocate_snapshot_workspace()
+        _corrupt_attribute(workspace, "_memories", workspace.memories[:1])
+        with pytest.raises(
+            AcceleratorExecutionError, match="workspace count changed"
+        ):
+            _ = workspace.snapshot()
+
+
+def test_cuda_profile_snapshot_workspace_type_is_public() -> None:
+    """The caller-owned workspace has an explicit public runtime type."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request,),
+            max_runs=1,
+        ) as session,
+    ):
+        workspace = session.allocate_snapshot_workspace()
+
+    assert isinstance(workspace, CudaProfileSnapshotWorkspace)
+    assert profile_snapshot_workspace_id() == SNAPSHOT_WORKSPACE_ID
 
 
 def test_cuda_profile_accepts_validated_memory_image() -> None:

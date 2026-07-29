@@ -75,6 +75,7 @@ from accelerator.resource_budget import ResourceBudgetError
 from accelerator.resource_budget import plan_resident_batches
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Sequence
 
     from accelerator.profile_run import ProfileRunGeometry
@@ -89,6 +90,9 @@ _STEPS_INDEX: Final = 15
 _DEVICE_WORD_BYTES: Final = 4
 _FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
 _KERNEL_NAME: Final = "malbolge_profile_run_batch"
+_SNAPSHOT_WORKSPACE_PROOF = object()
+_WORD_TYPECODE: Final = "I"
+PROFILE_SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
@@ -107,6 +111,82 @@ class ProfileRunPhaseProfile:
     total_ns: int
     upload_ns: int
     validation_plan_ns: int
+
+
+def profile_snapshot_workspace_id() -> str:
+    """Return the active explicit snapshot-workspace identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PROFILE_SNAPSHOT_WORKSPACE_ID
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotWorkspaceActions:
+    profile: Callable[
+        [tuple[array[int], ...]],
+        tuple[tuple[ProfileRunResult, ...], ProfileSnapshotPhaseProfile],
+    ]
+    snapshot: Callable[
+        [tuple[array[int], ...]],
+        tuple[ProfileRunResult, ...],
+    ]
+
+
+@final
+class CudaProfileSnapshotWorkspace:
+    """Explicit caller-owned arrays overwritten by repeated snapshots."""
+
+    def __init__(
+        self,
+        *,
+        memories: tuple[array[int], ...],
+        memory_words: int,
+        actions: _SnapshotWorkspaceActions,
+        _proof: object,
+    ) -> None:
+        """Bind reusable arrays to one exact live resident session."""
+        self._memories = memories
+        self._memory_words = memory_words
+        self._actions = actions
+        self._proof = _proof
+
+    @property
+    def memories(self) -> tuple[array[int], ...]:
+        """Arrays that each workspace call overwrites in place."""
+        return self._memories
+
+    def snapshot(self) -> tuple[ProfileRunResult, ...]:
+        """Overwrite workspace arrays and return results aliasing those arrays.
+
+        Returns:
+            Complete results whose memory fields are workspace-owned arrays.
+
+        """
+        return self._actions.snapshot(self._validated_memories())
+
+    def profile_snapshot(
+        self,
+    ) -> tuple[tuple[ProfileRunResult, ...], ProfileSnapshotPhaseProfile]:
+        """Profile one overwrite of the reusable workspace arrays.
+
+        Returns:
+            Aliasing complete results plus transfer and decode diagnostics.
+
+        """
+        return self._actions.profile(self._validated_memories())
+
+    def _validated_memories(self) -> tuple[array[int], ...]:
+        if self._proof is not _SNAPSHOT_WORKSPACE_PROOF:
+            message = "resident snapshot workspace is forged"
+            raise AcceleratorExecutionError(message)
+        _validate_snapshot_workspace_memories(
+            self._memories,
+            self._memory_words,
+        )
+        return self._memories
 
 
 @dataclass(frozen=True, slots=True)
@@ -737,6 +817,79 @@ class CudaProfileRunSession:
             )
         return tuple(observations)
 
+    def allocate_snapshot_workspace(self) -> CudaProfileSnapshotWorkspace:
+        """Allocate explicit arrays reusable across complete snapshots.
+
+        Returns:
+            Workspace whose calls overwrite the same independent mutable arrays.
+
+        """
+        self._ensure_usable()
+        count = sum(chunk.count for chunk in self._chunks)
+        memories = tuple(
+            array(_WORD_TYPECODE, [0]) * self._context.geometry.memory_words
+            for _ in range(count)
+        )
+        return CudaProfileSnapshotWorkspace(
+            memories=memories,
+            memory_words=self._context.geometry.memory_words,
+            actions=_SnapshotWorkspaceActions(
+                profile=self._profile_snapshot_into_memories,
+                snapshot=self._snapshot_into_memories,
+            ),
+            _proof=_SNAPSHOT_WORKSPACE_PROOF,
+        )
+
+    def _snapshot_into_memories(
+        self,
+        memories: tuple[array[int], ...],
+    ) -> tuple[ProfileRunResult, ...]:
+        self._ensure_usable()
+        _validate_snapshot_workspace_count(memories, self._snapshot_count())
+        results: list[ProfileRunResult] = []
+        offset = 0
+        for chunk in self._chunks:
+            chunk_memories = memories[offset : offset + chunk.count]
+            _download_resident_chunk_into(
+                self._context,
+                chunk,
+                chunk_memories,
+            )
+            results.extend(_decode_results(chunk.hosts, chunk_memories))
+            offset += chunk.count
+        return tuple(results)
+
+    def _profile_snapshot_into_memories(
+        self,
+        memories: tuple[array[int], ...],
+    ) -> tuple[tuple[ProfileRunResult, ...], ProfileSnapshotPhaseProfile]:
+        total_start = perf_counter_ns()
+        self._ensure_usable()
+        _validate_snapshot_workspace_count(memories, self._snapshot_count())
+        phase = _SnapshotPhaseCounter()
+        results: list[ProfileRunResult] = []
+        offset = 0
+        for chunk in self._chunks:
+            chunk_memories = memories[offset : offset + chunk.count]
+            _profile_snapshot_downloads_into(
+                self._context,
+                chunk,
+                memories=chunk_memories,
+                phase=phase,
+            )
+            start = perf_counter_ns()
+            results.extend(_decode_results(chunk.hosts, chunk_memories))
+            phase.decode_ns += perf_counter_ns() - start
+            offset += chunk.count
+        total_ns = perf_counter_ns() - total_start
+        return tuple(results), phase.freeze(
+            chunks=len(self._chunks),
+            total_ns=total_ns,
+        )
+
+    def _snapshot_count(self) -> int:
+        return sum(chunk.count for chunk in self._chunks)
+
     def snapshot(self) -> tuple[ProfileRunResult, ...]:
         """Materialize complete resident profile states on explicit demand.
 
@@ -747,11 +900,9 @@ class CudaProfileRunSession:
         self._ensure_usable()
         results: list[ProfileRunResult] = []
         for chunk in self._chunks:
-            memories = _download_complete_results(
-                self._context.runtime,
-                self._context.geometry,
-                hosts=chunk.hosts,
-                pointers=chunk.pointers,
+            memories = _download_resident_chunk(
+                self._context,
+                chunk,
             )
             results.extend(_decode_results(chunk.hosts, memories))
         return tuple(results)
@@ -1031,6 +1182,68 @@ def _copy_words(runtime: CudaRuntime, host: _WordBuffer) -> int:
     return pointer
 
 
+def _validate_snapshot_workspace_memories(
+    memories: tuple[array[int], ...],
+    memory_words: int,
+) -> None:
+    if type(memories) is not tuple:
+        message = "resident snapshot workspace memories must use a tuple"
+        raise AcceleratorExecutionError(message)
+    identities: set[int] = set()
+    for memory in memories:
+        _validate_snapshot_workspace_memory(memory, memory_words)
+        identity = id(memory)
+        if identity in identities:
+            message = "resident snapshot workspace requires independent arrays"
+            raise AcceleratorExecutionError(message)
+        identities.add(identity)
+
+
+def _validate_snapshot_workspace_memory(
+    memory: object,
+    memory_words: int,
+) -> None:
+    if not isinstance(memory, array):
+        message = "resident snapshot workspace memory has wrong type"
+        raise AcceleratorExecutionError(message)
+    if (
+        memory.typecode != _WORD_TYPECODE
+        or memory.itemsize != _DEVICE_WORD_BYTES
+    ):
+        message = "resident snapshot workspace requires 32-bit array('I')"
+        raise AcceleratorExecutionError(message)
+    if len(memory) != memory_words:
+        message = "resident snapshot workspace word count changed"
+        raise AcceleratorExecutionError(message)
+
+
+def _validate_snapshot_workspace_count(
+    memories: tuple[array[int], ...],
+    expected_count: int,
+) -> None:
+    if len(memories) != expected_count:
+        message = "resident snapshot workspace count changed"
+        raise AcceleratorExecutionError(message)
+
+
+def _fresh_result_memories(
+    geometry: ProfileRunGeometry,
+    count: int,
+) -> tuple[array[int], ...]:
+    return tuple(
+        array(_WORD_TYPECODE, [0]) * geometry.memory_words for _ in range(count)
+    )
+
+
+def _download_resident_chunk(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+) -> tuple[array[int], ...]:
+    memories = _fresh_result_memories(context.geometry, chunk.count)
+    _download_resident_chunk_into(context, chunk, memories)
+    return memories
+
+
 def _result_memories(
     geometry: ProfileRunGeometry,
     hosts: _HostBatch,
@@ -1063,9 +1276,24 @@ def _profile_snapshot_downloads(
     phase: _SnapshotPhaseCounter,
 ) -> tuple[array[int], ...]:
     start = perf_counter_ns()
-    memories = _result_memories(context.geometry, chunk.hosts)
+    memories = _fresh_result_memories(context.geometry, chunk.count)
     phase.host_memory_allocate_ns += perf_counter_ns() - start
+    _profile_snapshot_downloads_into(
+        context,
+        chunk,
+        memories=memories,
+        phase=phase,
+    )
+    return memories
 
+
+def _profile_snapshot_downloads_into(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+    *,
+    memories: tuple[array[int], ...],
+    phase: _SnapshotPhaseCounter,
+) -> None:
     start = perf_counter_ns()
     context.runtime.copy_from_device(chunk.hosts.states.view, chunk.pointers[0])
     phase.state_download_ns += perf_counter_ns() - start
@@ -1084,7 +1312,6 @@ def _profile_snapshot_downloads(
         chunk.hosts.outputs.view, chunk.pointers[3]
     )
     phase.output_download_ns += perf_counter_ns() - start
-    return memories
 
 
 def _download_complete_results(
@@ -1104,6 +1331,24 @@ def _download_complete_results(
     )
     runtime.copy_from_device(hosts.outputs.view, pointers[3])
     return memories
+
+
+def _download_resident_chunk_into(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+    memories: tuple[array[int], ...],
+) -> None:
+    context.runtime.copy_from_device(chunk.hosts.states.view, chunk.pointers[0])
+    _download_result_memories(
+        context.runtime,
+        context.geometry,
+        device_pointer=chunk.pointers[1],
+        memories=memories,
+    )
+    context.runtime.copy_from_device(
+        chunk.hosts.outputs.view,
+        chunk.pointers[3],
+    )
 
 
 def _decode_observations(
