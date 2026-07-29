@@ -215,6 +215,29 @@ Do not interpret the resulting ratio as compiler or superoptimizer speedup. It i
 one bounded exact-search workload comparing replaceable execution capacity under
 identical strategy semantics.
 
+`crazy_search_performance_matrix.py` measures the exact non-invertible
+`classic-crazy-target-search-v1` workload over all 59,049 classic words. The fixed
+accumulator-zero/target-29,524 relation has exactly 1,024 preimages. Five routes are
+measured: CPU ordinary, CPU prepared, CUDA ordinary, CUDA prepared, and the one-shot
+CUDA search ticket. Prepared-state construction and adapter setup are outside the
+prepared intervals; ticket batch/selector preparation is intentionally inside its
+one-shot interval. One warmup precedes 15 retained samples with cyclic first-route
+rotation. Every result must contain the same 1,024 proposals and pass independent
+CPU admission. CPU/CUDA prepared sessions must each report one build, 16
+evaluations, 15 reuses, and resident cardinality 1,024.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.crazy_search_performance_matrix
+```
+
+The matrix separates amortized prepared execution from the full one-shot neutral
+ticket cost. It makes no compiler, synthesis, kernel-overlap, or independent-stream
+claim. Retained evidence must come from a clean source commit under Benchmark
+Protocol v1.
+
 The retained RTX 4060 run is under
 `evidence/2026-07-27-rotate-target-search-rtx4060/`. Its protocol-compliant result
 is intentionally negative: CPU median 401.185 ms, CUDA median 412.570 ms, and
