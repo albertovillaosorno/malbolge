@@ -68,9 +68,12 @@ from accelerator.submission import CandidateSubmissionAdapter
 from accelerator.work_ports import InvalidAcceleratorWorkError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
     from accelerator.cuda.exact_primitives import CudaPrimitiveEvaluationTicket
     from accelerator.exact_primitives import AcceleratorCapability
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.work_ports import CandidateEvaluationBatch
     from accelerator.work_ports import CandidateEvaluationResult
 
@@ -134,11 +137,18 @@ class CudaPrimitiveCandidateSubmissionAdapter(CandidateSubmissionAdapter):
         self,
         adapter: CudaExactPrimitiveAdapter,
         kind: PrimitiveKind,
+        *,
+        submit: Callable[
+            [PreparedPrimitiveBatch],
+            CudaPrimitiveEvaluationTicket,
+        ]
+        | None = None,
     ) -> None:
-        """Bind one CUDA adapter to one exact candidate evaluator identity."""
+        """Bind one CUDA adapter and explicit primitive ticket lifetime."""
         self._adapter = adapter
         self._evaluator_id = _evaluator_id(kind)
         self._kind = kind
+        self._submit = adapter.submit_prepared if submit is None else submit
 
     @override
     def capability(self) -> AcceleratorCapability:
@@ -172,7 +182,7 @@ class CudaPrimitiveCandidateSubmissionAdapter(CandidateSubmissionAdapter):
         if candidate_batch is not batch or expected is None:
             message = "CUDA candidate submission lost prepared reference proof"
             raise InvalidAcceleratorWorkError(message)
-        ticket = self._adapter.submit_prepared(primitive)
+        ticket = self._submit(primitive)
         return CudaPrimitiveCandidateTicket(
             _CudaCandidateTicketBinding(
                 capability=self.capability(),

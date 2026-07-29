@@ -57,6 +57,9 @@ from typing import TYPE_CHECKING
 from typing import final
 from typing import override
 
+from accelerator.cuda.runtime import CudaDeviceToHostTransfer
+from accelerator.cuda.runtime import CudaHostToDeviceTransfer
+from accelerator.cuda.runtime import CudaIndependentTransferSubmission
 from accelerator.cuda.runtime import CudaRuntime
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
@@ -172,6 +175,33 @@ class _PreparedPointerOwner:
 
     def close(self) -> None:
         _free_all(self.runtime, self.pointers)
+
+
+@dataclass(slots=True)
+class _CudaPrimitiveTicketOwner:
+    runtime: CudaRuntime
+    pointers: list[int]
+    registrations: list[int]
+
+    def allocate(self, byte_count: int) -> int:
+        pointer = self.runtime.allocate(byte_count)
+        self.pointers.append(pointer)
+        return pointer
+
+    def register(self, host: ctypes.Array[ctypes.c_uint32]) -> None:
+        address = self.runtime.host_memory.register(host)
+        self.registrations.append(address)
+
+    def close(self) -> None:
+        registration_failure = _unregister_all_failure(
+            self.runtime,
+            self.registrations,
+        )
+        allocation_failure = _free_all_failure(
+            self.runtime,
+            self.pointers,
+        )
+        _raise_first_failure(registration_failure, allocation_failure)
 
 
 @dataclass(slots=True)
@@ -347,9 +377,11 @@ class _CudaPrimitiveTicketBinding:
 
 @dataclass(slots=True)
 class _CudaPrimitiveTicketResources:
+    download_pointer: int | None
     host_output: ctypes.Array[ctypes.c_uint32]
     launch: CudaIndependentKernelLaunch | None
     pointers: list[int]
+    registrations: list[int]
 
 
 @final
@@ -411,10 +443,11 @@ class CudaPrimitiveEvaluationTicket:
         return None
 
     def _download_result(self) -> PackedPrimitiveResult:
-        if self._resources.pointers:
+        download_pointer = self._resources.download_pointer
+        if download_pointer is not None:
             self._binding.runtime.copy_from_device(
                 self._resources.host_output,
-                self._resources.pointers[-1],
+                download_pointer,
             )
         return PackedPrimitiveResult(
             capability=self._binding.capability,
@@ -422,20 +455,22 @@ class CudaPrimitiveEvaluationTicket:
         )
 
     def _release_failure(self) -> AcceleratorExecutionError | None:
+        launch_failure: AcceleratorExecutionError | None = None
         launch = self._resources.launch
         if launch is not None:
-            try:
-                launch.close()
-            except AcceleratorExecutionError as error:
-                return error
+            launch_failure = _operation_failure(launch.close)
             self._resources.launch = None
-        failure = _free_all_failure(
+        registration_failure = _unregister_all_failure(
+            self._binding.runtime,
+            self._resources.registrations,
+        )
+        allocation_failure = _free_all_failure(
             self._binding.runtime,
             self._resources.pointers,
         )
         self._closed = True
         self._binding.forget(self)
-        return failure
+        return launch_failure or registration_failure or allocation_failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,9 +496,11 @@ def _submit_primitive_ticket(
         return CudaPrimitiveEvaluationTicket(
             submission.binding,
             _CudaPrimitiveTicketResources(
+                download_pointer=None,
                 host_output=host_output,
                 launch=None,
                 pointers=[],
+                registrations=[],
             ),
         )
     owner = _PreparedPointerOwner(
@@ -471,7 +508,7 @@ def _submit_primitive_ticket(
         pointers=[],
     )
     try:
-        launch = _build_primitive_ticket_launch(
+        launch, download_pointer = _build_primitive_ticket_launch(
             submission,
             owner,
             host_output,
@@ -482,9 +519,11 @@ def _submit_primitive_ticket(
     return CudaPrimitiveEvaluationTicket(
         submission.binding,
         _CudaPrimitiveTicketResources(
+            download_pointer=download_pointer,
             host_output=host_output,
             launch=launch,
             pointers=owner.pointers,
+            registrations=[],
         ),
     )
 
@@ -493,7 +532,7 @@ def _build_primitive_ticket_launch(
     submission: _CudaPrimitiveSubmission,
     owner: _PreparedPointerOwner,
     host_output: ctypes.Array[ctypes.c_uint32],
-) -> CudaIndependentKernelLaunch:
+) -> tuple[CudaIndependentKernelLaunch, int]:
     storage = submission.prepared.validated_storage()
     device_data = owner.copy_packed(storage.data_u32le)
     device_accumulator = _prepared_packed_accumulator(owner, storage)
@@ -509,12 +548,14 @@ def _build_primitive_ticket_launch(
     )
     timeline = submission.timeline
     if timeline is not None:
-        return timeline.submit(kernel, pointers, storage.count())
-    return submission.binding.runtime.independent_kernel_launches.submit(
-        kernel,
-        pointers,
-        storage.count(),
-    )
+        launch = timeline.submit(kernel, pointers, storage.count())
+    else:
+        launch = submission.binding.runtime.independent_kernel_launches.submit(
+            kernel,
+            pointers,
+            storage.count(),
+        )
+    return launch, device_output
 
 
 @dataclass(frozen=True, slots=True)
@@ -538,6 +579,150 @@ def _primitive_launch_spec(
         kernels.crazy,
         (buffers.data, buffers.accumulator, buffers.output),
     )
+
+
+def _submit_streamed_primitive_ticket(
+    submission: _CudaPrimitiveSubmission,
+) -> CudaPrimitiveEvaluationTicket:
+    storage = submission.prepared.validated_storage()
+    host_output = _empty_host_words(storage.count())
+    if storage.count() == 0:
+        return CudaPrimitiveEvaluationTicket(
+            submission.binding,
+            _CudaPrimitiveTicketResources(
+                download_pointer=None,
+                host_output=host_output,
+                launch=None,
+                pointers=[],
+                registrations=[],
+            ),
+        )
+    owner = _CudaPrimitiveTicketOwner(
+        runtime=submission.binding.runtime,
+        pointers=[],
+        registrations=[],
+    )
+    try:
+        launch = _build_streamed_primitive_ticket_launch(
+            submission,
+            owner,
+            host_output,
+        )
+    except AcceleratorExecutionError as submit_error:
+        try:
+            owner.close()
+        except AcceleratorExecutionError as cleanup_error:
+            raise submit_error from cleanup_error
+        raise
+    return CudaPrimitiveEvaluationTicket(
+        submission.binding,
+        _CudaPrimitiveTicketResources(
+            download_pointer=None,
+            host_output=host_output,
+            launch=launch,
+            pointers=owner.pointers,
+            registrations=owner.registrations,
+        ),
+    )
+
+
+def _build_streamed_primitive_ticket_launch(
+    submission: _CudaPrimitiveSubmission,
+    owner: _CudaPrimitiveTicketOwner,
+    host_output: ctypes.Array[ctypes.c_uint32],
+) -> CudaIndependentKernelLaunch:
+    storage = submission.prepared.validated_storage()
+    buffers, uploads = _allocate_streamed_primitive_ticket_buffers(
+        owner,
+        storage,
+        host_output,
+    )
+    kernel, pointers = _primitive_launch_spec(
+        submission.kernels,
+        storage.kind,
+        buffers,
+    )
+    transfer_submission = CudaIndependentTransferSubmission(
+        count=storage.count(),
+        device_pointers=pointers,
+        downloads=(
+            CudaDeviceToHostTransfer(
+                device_pointer=buffers.output,
+                host=host_output,
+            ),
+        ),
+        kernel=kernel,
+        uploads=uploads,
+    )
+    timeline = submission.timeline
+    if timeline is not None:
+        return timeline.submit_with_transfers(transfer_submission)
+    launch_factory = submission.binding.runtime.independent_kernel_launches
+    return launch_factory.submit_with_transfers(transfer_submission)
+
+
+def _allocate_streamed_primitive_ticket_buffers(
+    owner: _CudaPrimitiveTicketOwner,
+    storage: PreparedPrimitiveBatch,
+    host_output: ctypes.Array[ctypes.c_uint32],
+) -> tuple[_CudaPrimitiveBuffers, tuple[CudaHostToDeviceTransfer, ...]]:
+    host_data = _host_packed_words(storage.data_u32le)
+    device_data = owner.allocate(ctypes.sizeof(host_data))
+    owner.register(host_data)
+    uploads = [
+        CudaHostToDeviceTransfer(
+            device_pointer=device_data,
+            host=host_data,
+        )
+    ]
+    device_accumulator: int | None = None
+    if storage.kind is PrimitiveKind.CRAZY:
+        host_accumulator = _host_packed_words(storage.accumulators_u32le)
+        device_accumulator = owner.allocate(ctypes.sizeof(host_accumulator))
+        owner.register(host_accumulator)
+        uploads.append(
+            CudaHostToDeviceTransfer(
+                device_pointer=device_accumulator,
+                host=host_accumulator,
+            )
+        )
+    device_output = owner.allocate(ctypes.sizeof(host_output))
+    owner.register(host_output)
+    return (
+        _CudaPrimitiveBuffers(
+            accumulator=device_accumulator,
+            data=device_data,
+            output=device_output,
+        ),
+        tuple(uploads),
+    )
+
+
+@final
+class CudaPrimitiveTicketTransferFactory:
+    """Explicit opt-in factory for registered same-stream ticket transfers."""
+
+    def __init__(
+        self,
+        submit: Callable[
+            [PreparedPrimitiveBatch],
+            CudaPrimitiveEvaluationTicket,
+        ],
+    ) -> None:
+        """Bind one adapter-owned streamed ticket callback."""
+        self._submit = submit
+
+    def submit(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> CudaPrimitiveEvaluationTicket:
+        """Submit exact prepared input with registered asynchronous copies.
+
+        Returns:
+            One-shot streamed ticket requiring explicit wait or close.
+
+        """
+        return self._submit(prepared)
 
 
 @final
@@ -645,6 +830,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _rotate: ctypes.c_void_p
     _runtime: CudaRuntime
     ticket_timelines: CudaPrimitiveTicketTimelineFactory
+    ticket_transfers: CudaPrimitiveTicketTransferFactory
 
     def __init__(self, device_id: int = 0) -> None:
         """Create one optional CUDA adapter and compile reviewed kernels.
@@ -681,6 +867,9 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self.ticket_timelines = CudaPrimitiveTicketTimelineFactory(
             runtime.independent_kernel_timelines.create,
             self._submit_prepared_profiled,
+        )
+        self.ticket_transfers = CudaPrimitiveTicketTransferFactory(
+            self._submit_prepared_streamed,
         )
 
     def __enter__(self) -> Self:
@@ -833,6 +1022,29 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
                 ),
                 prepared=prepared,
                 timeline=timeline,
+            )
+        )
+        self._primitive_tickets.append(ticket)
+        return ticket
+
+    def _submit_prepared_streamed(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> CudaPrimitiveEvaluationTicket:
+        self._ensure_open()
+        ticket = _submit_streamed_primitive_ticket(
+            _CudaPrimitiveSubmission(
+                binding=_CudaPrimitiveTicketBinding(
+                    capability=self._capability,
+                    forget=self._forget_primitive_ticket,
+                    runtime=self._runtime,
+                ),
+                kernels=_CudaPrimitiveKernels(
+                    crazy=self._crazy,
+                    rotate=self._rotate,
+                ),
+                prepared=prepared,
+                timeline=None,
             )
         )
         self._primitive_tickets.append(ticket)
@@ -1026,6 +1238,21 @@ def _raise_first_failure(
     for failure in failures:
         if failure is not None:
             raise failure
+
+
+def _unregister_all_failure(
+    runtime: CudaRuntime,
+    registrations: list[int],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    while registrations:
+        address = registrations.pop()
+        try:
+            runtime.host_memory.unregister(address)
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    return failure
 
 
 def _free_all_failure(

@@ -51,6 +51,7 @@ from accelerator.cuda.exact_primitives import CudaPreparedPrimitiveStats
 from accelerator.cuda.exact_primitives import CudaPrimitiveEvaluationTicket
 from accelerator.cuda.exact_primitives import CudaPrimitiveTicketTimeline
 from accelerator.cuda.exact_primitives import CudaPrimitiveTicketTimelineFactory
+from accelerator.cuda.exact_primitives import CudaPrimitiveTicketTransferFactory
 from accelerator.cuda.profile_run import CudaProfileSnapshotOverlapWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotStreamWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
@@ -103,6 +104,7 @@ __all__ = [
     "CudaPrimitiveEvaluationTicket",
     "CudaPrimitiveTicketTimeline",
     "CudaPrimitiveTicketTimelineFactory",
+    "CudaPrimitiveTicketTransferFactory",
     "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
