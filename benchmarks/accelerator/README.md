@@ -233,6 +233,26 @@ Run with:
   benchmarks.accelerator.crazy_search_performance_matrix
 ```
 
+`independent_ticket_stream_throughput.py` isolates the one-stream-per-ticket
+mechanism from search preparation. One proof-bound full-domain crazy batch contains
+59,049 data words plus zero accumulators. Sequential routes repeat submit+wait;
+grouped routes submit all tickets first and wait in reverse order. Groups 2/4/8
+retain identical total work and exact byte output. Preparation, CPU reference, CUDA
+adapter/NVRTC setup, and post-timing validation are outside intervals. One warmup
+precedes 15 samples per route with cyclic first-route rotation. The preregistered
+hypothesis is limited to group eight; groups two and four are controls.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.independent_ticket_stream_throughput
+```
+
+This benchmark may establish grouped ticket throughput on one device. Stream
+configuration alone is not kernel-overlap evidence, and no result may be promoted
+without retained raw samples and exact output checks.
+
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`. CPU ordinary/prepared medians are 368.3588/22.4264 ms
