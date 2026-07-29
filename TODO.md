@@ -1425,12 +1425,22 @@ failure fail closed. Ten neutral tests cover state, idempotence, deferred CPU,
 optional success/fallback, malformed ticket/result, close, cached mandatory
 failure, and cleanup failure. The layer creates no hidden threads. CUDA now
 implements exact crazy/rotate tickets using
-`cuda-default-stream-kernel-launch-v1`: launch parameter owners and independent
-one-shot buffers survive until context synchronization, download, prepared CPU
-reference equality, and cleanup. Seven tests cover identity and six live RTX 4060
-routes: rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback,
-and two tickets waited in reverse order. Existing synchronous calls remain
-synchronous; context-wide default-stream completion is not overlap or speedup.
+`cuda-independent-stream-kernel-launch-v1`: every one-shot ticket creates one
+`CU_STREAM_NON_BLOCKING`, retains exact parameter owners and private buffers, waits
+only for that stream, and destroys it before publication or fallback. Launch failure
+destroys the new stream; synchronization failure still attempts destruction; runtime
+teardown drains every outstanding stream. Five deterministic contract tests cover
+identity preservation, distinct stream handles, selected-stream synchronization,
+launch cleanup, and synchronization-failure cleanup. Seven live RTX 4060 tests cover
+rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback, and two
+tickets waited in reverse order; the reverse-wait route also passes 50/50 stress.
+Existing `evaluate`/`evaluate_prepared` calls remain synchronous under
+`cuda-default-stream-kernel-launch-v1`. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` compares
+sequential submit/wait with submit-all/reverse-wait for identical groups 2/4/8 of
+59,049-word CRAZY tickets. Sequential/grouped medians are 2.1745/1.5970 ms
+(1.362x), 3.6403/3.0304 ms (1.201x), and 7.5313/5.6971 ms (1.322x); every group wins
+15/15 paired samples. This establishes grouped-ticket throughput, not physical
+kernel overlap, because no CUDA event/timeline evidence attributes scheduling.
 Hardware-neutral search lifetime is now active as
 `validated-search-submission-v1`. One exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU reference. `wait()` validates capability,
@@ -1461,9 +1471,9 @@ tests include live exact publication and teardown fallback. The retained matrix 
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
 one-shot CUDA-ticket improvements over their same-run ordinary baselines, all with
 15/15 paired wins. CUDA prepared remains 9.137x faster than the one-shot ticket.
-Other CUDA/ROCm strategies, independent stream policy,
-adaptive bank/window selection, kernel/transfer overlap, other callback workloads,
-and broader live-device evidence remain open.
+Other CUDA/ROCm strategies, CUDA event/timeline overlap attribution,
+asynchronous ticket transfers, adaptive stream/group admission, other callback or
+kernel workloads, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

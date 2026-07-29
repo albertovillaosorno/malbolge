@@ -173,17 +173,25 @@ doubles retained memory to 36.491/291.929 MiB and increases allocation, so it is
 opt-in. This is D-to-H versus callback-CPU overlap, not kernel overlap or a
 cross-device claim. The hardware-neutral
 `validated-candidate-submission-v1` now has a CUDA implementation for exact
-classic crazy/rotate candidates. `cuda-default-stream-kernel-launch-v1` separates
-Driver launch from context synchronization while retaining every kernel parameter
-owner. Each candidate submission uses independent one-shot input/output device
-allocations rather than resident buffers; `wait()` synchronizes, downloads,
-validates against the proof-bound CPU reference, and frees before publication.
-`close()` drains without publication, adapter/runtime teardown drains outstanding
-launches before module/context destruction, and cleanup failure remains fail-closed.
-Existing primitive `evaluate`/`evaluate_prepared` methods retain their synchronous
-behavior. Default-stream context synchronization may complete multiple queued
-launches, but it is not independent-stream concurrency, kernel/transfer overlap,
-or a speedup claim. Neutral `validated-search-submission-v1` now has one concrete
+classic crazy/rotate candidates. `cuda-independent-stream-kernel-launch-v1` gives
+each one-shot primitive ticket one `CU_STREAM_NON_BLOCKING`, retains every kernel
+parameter owner and private input/output allocation, synchronizes only that stream,
+and destroys it before publication or fallback. Launch rejection destroys the new
+stream; synchronization failure still attempts destruction; adapter/runtime teardown
+drains all outstanding ticket streams before module/context destruction. Five
+hardware-neutral fake-Driver tests prove stable independent/default identities,
+distinct handles, selected-stream synchronization, launch-failure cleanup, and
+synchronization-failure destruction. Seven live RTX 4060 candidate tests cover exact
+rotate/crazy/empty publication, close, teardown fallback, and reverse waiting; the
+reverse-wait route passes 50/50 stress. Existing primitive
+`evaluate`/`evaluate_prepared` methods remain synchronous through
+`cuda-default-stream-kernel-launch-v1`. Retained Benchmark Protocol v1 evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` compares identical full-domain CRAZY groups 2/4/8. Sequential/grouped
+medians are 2.1745/1.5970 ms (1.362x), 3.6403/3.0304 ms (1.201x), and
+7.5313/5.6971 ms (1.322x), each with 15/15 paired wins. The data establishes grouped
+ticket throughput on one RTX 4060, not physical kernel overlap: no CUDA event or
+timeline attributes scheduling, and allocation/copy phases remain synchronous and
+unprofiled. Neutral `validated-search-submission-v1` now has one concrete
 CUDA-backed strategy composition:
 `classic-rotate-target-search-submission-v1`. The search ticket retains full-batch
 selector/projection proof while submitting only the exact zero-or-one rotate
@@ -208,9 +216,9 @@ paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
-Kernel/transfer overlap evidence remains open. Other strategy submissions require
-their own exact
-state/lifetime evidence. Optional
+CUDA event/timeline attribution, asynchronous ticket transfers, and other
+kernel/group workloads remain open. Other strategy submissions require their own
+exact state/lifetime evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
 `candidate-evidence-verification-submission-v1`. It retains exact verifier and
@@ -267,6 +275,13 @@ fails explicitly without changing correctness rules.
   `tests/optimizer/test_crazy_target_submission.py` adds seven proof-bound ticket
   regressions, including live full-domain publication and teardown-driven CPU
   fallback after nested CUDA cleanup.
+  `tests/optimizer/test_cuda_independent_kernel_launch.py` adds five deterministic
+  stream-lifetime regressions for identities, distinct handles, selected wait,
+  launch cleanup, and sync-failure destruction. The seven live candidate-ticket
+  routes retain exact output and reverse-wait behavior.
+  `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` retains 90 chronological samples plus Benchmark Protocol v1 and
+  Experiment Manifest v1 identity. Groups 2/4/8 improve 1.362x/1.201x/1.322x with
+  15/15 paired wins while every 59,049-word output matches independent CPU bytes.
   `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains the five-route matrix and 75 raw samples. CUDA ordinary,
   prepared, and ticket medians are 235.8490/20.3304/185.7629 ms; prepared and
   ticket improve 11.601x and 1.270x over ordinary with 15/15 paired wins, while

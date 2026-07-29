@@ -304,10 +304,13 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
-  Synthesis/guided
-  strategies, ROCm search implementations, richer orchestration,
-  and broader representative benchmarks remain open.
+optimization. `classic-crazy-target-search-v1` now supplies the first exact
+non-invertible multiposition strategy without heuristic filtering. It retains full
+59,049-member authority while projecting exactly 1,024 positions, executes through
+CPU/CUDA bindings and its proof-bound search ticket, and preserves independent CPU
+admission. Retained same-run evidence records 16.425x CPU prepared, 11.601x CUDA
+prepared, and 1.270x one-shot CUDA-ticket improvements over ordinary routes.
+  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
+  additional algorithm families, and broader representative benchmarks remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

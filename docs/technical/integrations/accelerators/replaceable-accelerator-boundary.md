@@ -366,11 +366,17 @@ reference, publishes only after result validation, records pending/completed/clo
 failed state, and requires successful optional-ticket cleanup before fallback.
 Malformed tickets or cleanup failure fail closed. The neutral layer creates no
 threads and grants no acceptance authority. CUDA now implements candidate tickets
-for exact classic crazy/rotate work: `cuda-default-stream-kernel-launch-v1`
-retains launch parameters until synchronization, and one-shot buffers survive
-until exact CPU-reference validation plus cleanup. Existing synchronous calls do
-not change. Context-wide default-stream completion is not independent-stream
-concurrency or measured speedup. The shared boundary now also exposes
+for exact classic crazy/rotate work through
+`cuda-independent-stream-kernel-launch-v1`. Every ticket owns one nonblocking stream,
+exact launch parameters, and private buffers until stream-specific wait, exact CPU
+reference validation, and destruction. Launch/synchronization failure cleanup and
+runtime draining are fail-closed. Five deterministic stream tests plus seven live
+candidate tests cover identity, isolation, selected wait, exact output, and teardown;
+reverse waiting passes 50/50 stress. Existing synchronous calls remain under
+`cuda-default-stream-kernel-launch-v1`. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` records
+grouped-ticket improvements of 1.362x/1.201x/1.322x for groups 2/4/8, all 15/15
+paired wins. This is grouped throughput, not CUDA event/timeline proof of physical
+overlap. The shared boundary now also exposes
 `validated-search-submission-v1` through `accelerator/search_submission.py`. One
 exact algorithm/problem/seed/budget request binds an optional ticket plus deferred
 mandatory CPU search. Publication validates capability, algorithm, seed, and
@@ -398,9 +404,9 @@ through a proof-bound 1,024-item candidate ticket; seven tests cover its exact a
 fallback routes. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared,
 11.601x CUDA prepared, and 1.270x one-shot CUDA-ticket improvements over their
 same-run ordinary baselines, all with 15/15 paired wins; CUDA prepared remains
-9.137x faster than the ticket. Other CUDA/ROCm strategies, adaptive bank selection,
-kernel/transfer overlap, and
-independent CUDA streams remain open.
+9.137x faster than the ticket. Other CUDA/ROCm strategies, adaptive stream/group
+admission, CUDA event/timeline attribution, asynchronous ticket transfers, and
+other kernel/callback workloads remain open.
 
 ## Invariants
 
@@ -464,10 +470,12 @@ fails explicitly without changing correctness rules.
   identity, deferred CPU execution, exact optional publication, idempotent wait,
   typed submit/wait fallback, malformed-ticket rejection, result-shape fallback,
   close-before-wait, mandatory-failure caching, and cleanup-failure rejection.
-- `tests/optimizer/test_cuda_candidate_submission.py` verifies stable launch
-  identity and six live CUDA ticket routes covering exact rotate/crazy publication,
-  empty/idempotent work, close-before-wait, teardown fallback, and reverse waiting
-  of two independent one-shot submissions.
+- `tests/optimizer/test_cuda_independent_kernel_launch.py` verifies both stable
+  launch identities, distinct nonblocking handles, stream-specific reverse wait,
+  launch-failure destruction, and sync-failure best-effort destruction.
+- `tests/optimizer/test_cuda_candidate_submission.py` verifies seven live CUDA
+  ticket routes covering exact rotate/crazy publication, empty/idempotent work,
+  close-before-wait, teardown fallback, and reverse waiting of two isolated streams.
 - `tests/optimizer/test_search_submission.py` verifies stable neutral search
   identity, deferred CPU work, exact optional publication, submit/wait/result
   fallback, malformed-ticket rejection, idempotent completion, close-before-wait,
@@ -490,17 +498,20 @@ fails explicitly without changing correctness rules.
   prepared session counters, one-shot ticket identity, proposal equality, and
   independent CPU admission. Medians improve 16.425x CPU prepared, 11.601x CUDA
   prepared, and 1.270x CUDA ticket over same-run ordinary routes.
+- `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` retains 90 chronological samples, workload/launch/storage identity,
+  exact independent CPU bytes for every ticket, and groups 2/4/8. Grouped routes
+  improve 1.362x/1.201x/1.322x with 15/15 paired wins; no event/timeline overlap
+  attribution follows.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.
 - `tests/optimizer/test_evidence_verification_submission.py` verifies exact nested
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
-- Remaining evidence includes other CUDA/ROCm search and hint tickets,
-  ROCm candidate tickets and VM substitution, independent CUDA stream policy,
-  adaptive overlap selection, kernel/transfer
-  overlap, broader hardware evidence, and matched measurements for future speedup
-  claims.
+- Remaining evidence includes other CUDA/ROCm search and hint tickets, ROCm
+  candidate tickets and VM substitution, CUDA event/timeline attribution,
+  asynchronous ticket transfers, adaptive stream/group admission, broader hardware
+  evidence, and matched measurements for other workloads.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

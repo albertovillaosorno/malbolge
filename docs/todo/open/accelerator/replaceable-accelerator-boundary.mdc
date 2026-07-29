@@ -332,9 +332,14 @@ timed.
   optional tickets and deferred CPU fallback. Publication waits for structural
   validation; optional cleanup must succeed before fallback; malformed tickets or
   cleanup failure fail closed. Ten tests cover lifetime, route, and failure state.
-  CUDA now supplies exact crazy/rotate tickets with retained launch parameters and
-  independent one-shot buffers; seven tests cover identity plus six live exact
-  lifetime routes. Neutral `validated-search-submission-v1` now binds exact
+  CUDA now supplies exact crazy/rotate tickets through
+  `cuda-independent-stream-kernel-launch-v1`; one nonblocking stream retains each
+  ticket's exact parameters and private buffers until selected wait and destruction.
+  Five deterministic tests cover isolation/failure cleanup, seven live tests cover
+  exact lifetime routes, and reverse waiting passes 50/50 stress. Retained evidence
+  under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` records 1.362x/1.201x/1.322x grouped throughput for groups 2/4/8,
+  all 15/15 paired wins, without event/timeline overlap attribution. Neutral
+  `validated-search-submission-v1` now binds exact
   algorithm/problem/seed/budget requests to optional tickets and deferred CPU
   search, validates untrusted proposal publication, and requires cleanup before
   fallback. Ten tests cover its complete state/failure lifetime.
@@ -351,8 +356,8 @@ timed.
   publication and teardown fallback. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records
   16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA ticket same-baseline
   improvements, all with 15/15 paired wins. Other CUDA/ROCm strategy and hint
-  tickets,
-  synthesis/guided and resident search, independent CUDA streams,
-  ROCm VM execution, adaptive/kernel overlap, and broader hardware remain open.
+  tickets, synthesis/guided and resident search, ROCm VM execution, CUDA
+  event/timeline attribution, asynchronous ticket transfers, adaptive stream/group
+  admission, other workloads, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

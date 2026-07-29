@@ -75,15 +75,20 @@ Pending tickets must close before fallback; malformed tickets and cleanup failur
 fail closed. State and actual/fallback route are observable, repeated successful
 wait is idempotent, and close-before-wait prevents execution. The contract creates
 no hidden threads. CUDA now implements this port for exact classic crazy/rotate
-candidates. Runtime identity `cuda-default-stream-kernel-launch-v1` retains kernel
-parameter owners until context synchronization; each candidate ticket owns
-one-shot uploads, output, launch, and device allocations until `wait()` or
-`close()`. Prepared CPU-reference equality is required before candidate evidence
-publishes. Seven tests cover identity plus six live RTX 4060 routes: rotate, crazy,
-empty/idempotent, close-before-wait, adapter-teardown fallback, and two independent
-tickets waited in reverse order. Existing synchronous primitive calls remain
-synchronous. Context-wide default-stream completion is not independent-stream
-concurrency, measured overlap, or a speedup claim. `search_submission.py` adds
+candidates. Runtime identity `cuda-independent-stream-kernel-launch-v1` gives every
+one-shot ticket one nonblocking Driver stream, exact parameter/buffer ownership,
+stream-specific synchronization, and deterministic destruction. Launch rejection
+cleans the new stream; synchronization failure still attempts destruction; runtime
+close drains all outstanding ticket streams. Five deterministic tests cover both
+stable launch identities, distinct handles, selected-stream wait, launch cleanup,
+and synchronization-failure cleanup. Seven live RTX 4060 routes cover rotate,
+crazy, empty/idempotent, close-before-wait, adapter-teardown fallback, and reverse
+waiting of two tickets; that route passes 50/50 stress. Existing synchronous
+primitive calls retain `cuda-default-stream-kernel-launch-v1`. Retained evidence
+under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` records sequential/grouped medians for groups 2/4/8 of
+2.1745/1.5970, 3.6403/3.0304, and 7.5313/5.6971 ms, improvements of
+1.362x/1.201x/1.322x with 15/15 paired wins each. This is grouped-ticket throughput,
+not CUDA event/timeline proof of physical kernel overlap. `search_submission.py` adds
 `validated-search-submission-v1`: one exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU search. Proposal publication waits for
 capability/algorithm/seed/budget validation; cleanup must succeed before fallback.

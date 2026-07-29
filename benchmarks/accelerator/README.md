@@ -249,9 +249,13 @@ Run with:
   benchmarks.accelerator.independent_ticket_stream_throughput
 ```
 
-This benchmark may establish grouped ticket throughput on one device. Stream
-configuration alone is not kernel-overlap evidence, and no result may be promoted
-without retained raw samples and exact output checks.
+This benchmark may establish grouped ticket throughput on one device. Retained
+Benchmark Protocol v1 evidence is under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/`. Sequential/grouped medians for
+groups 2/4/8 are 2.1745/1.5970 ms (1.362x), 3.6403/3.0304 ms (1.201x), and
+7.5313/5.6971 ms (1.322x), with 15/15 paired wins and paired-median savings of
+0.5334/0.6092/1.8240 ms. The preregistered group-eight hypothesis passes. Stream
+configuration and grouped throughput alone are not physical kernel-overlap evidence;
+CUDA events/timeline attribution remains open.
 
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under
@@ -637,8 +641,11 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. That production boundary is now implemented by
+`classic-crazy-target-search-v1`: the full 59,049-member fixed-accumulator workload
+projects exactly 1,024 positions without heuristic filtering and retains CPU/CUDA,
+search-ticket, and independent-admission evidence. New strategy families, ROCm,
+and broader representative comparisons remain separate work.
 
 Run the projected prepared-search measurements with:
 
