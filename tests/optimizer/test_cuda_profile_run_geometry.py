@@ -50,6 +50,8 @@ from __future__ import annotations
 from array import array
 from dataclasses import replace
 from typing import Final
+from typing import TYPE_CHECKING
+from typing import cast
 from unittest import SkipTest
 
 import pytest
@@ -60,12 +62,19 @@ from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
+from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
+from accelerator.cuda.runtime import CudaHostMemoryRegistry
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from accelerator.cuda.profile_run import ProfileSnapshotHostRegistration
 
 SYNTHETIC_TRITS: Final = 5
 SYNTHETIC_WORDS: Final = 243
@@ -74,6 +83,12 @@ EXPECTED_DATA_POINTER: Final = 2
 SESSION_BATCH_SIZE: Final = 2
 SESSION_RUNS: Final = 3
 SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
+SNAPSHOT_HOST_REGISTRATION_ID: Final = (
+    "bounded-all-or-pageable-u32-arrays-v1"
+)
+_DEVICE_WORD_BYTES: Final = 4
+_HOST_REGISTRATION_BUDGET_EXCEEDED: Final = "budget-exceeded"
+_HOST_REGISTRATION_DRIVER_REJECTED: Final = "driver-rejected"
 NO_OP_CELL: Final = 33
 ENCRYPTED_NO_OP_CELL: Final = 53
 GEOMETRY = ProfileRunGeometry(
@@ -291,6 +306,181 @@ def test_cuda_profile_snapshot_workspace_reuses_explicit_arrays() -> None:
     )
 
 
+def test_cuda_profile_snapshot_workspace_registers_within_budget() -> None:
+    """One stable workspace is page-locked and released explicitly."""
+    request = _resident_session_request()
+    expected_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with (
+        _cuda() as adapter,
+        adapter.open_session((request,), max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_workspace(
+            host_registration_budget_bytes=expected_bytes,
+        )
+        registration = workspace.registration
+        with pytest.raises(
+            BufferError,
+            match=r"cannot resize.*exporting buffers",
+        ):
+            workspace.memories[0].append(0)
+        observed = workspace.snapshot()
+        workspace.close()
+        workspace.memories[0].append(0)
+        _ = workspace.memories[0].pop()
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="workspace is closed",
+        ):
+            _ = workspace.snapshot()
+
+    assert observed == expected
+    assert registration.active
+    assert registration.budget_bytes == expected_bytes
+    assert registration.fallback_reason is None
+    assert registration.registered_arrays == 1
+    assert registration.registered_bytes == expected_bytes
+    assert registration.requested_bytes == expected_bytes
+
+
+def test_cuda_profile_snapshot_workspace_falls_back_for_budget() -> None:
+    """An insufficient explicit budget preserves the pageable contract."""
+    request = _resident_session_request()
+    requested_bytes = (
+        SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    )
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=1,
+        ) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_workspace(
+            host_registration_budget_bytes=requested_bytes - 1,
+        )
+        registration = workspace.registration
+        workspace.memories[0].append(0)
+        _ = workspace.memories[0].pop()
+        observed = workspace.snapshot()
+
+    assert observed == expected
+    assert not registration.active
+    assert (
+        registration.fallback_reason
+        == _HOST_REGISTRATION_BUDGET_EXCEEDED
+    )
+    assert registration.registered_arrays == 0
+    assert registration.registered_bytes == 0
+    assert registration.requested_bytes == requested_bytes
+
+
+def _measure_driver_rejection_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    request: ProfileRunRequest,
+    requested_bytes: int,
+) -> tuple[
+    tuple[object, ...],
+    tuple[object, ...],
+    ProfileSnapshotHostRegistration,
+    int,
+]:
+    original = cast("Callable[..., int]", CudaHostMemoryRegistry.register)
+    calls = 0
+
+    def reject_second(registry: object, host: object) -> int:
+        nonlocal calls
+        calls += 1
+        if calls == SESSION_BATCH_SIZE:
+            message = "synthetic CUDA host registration rejection"
+            raise AcceleratorExecutionError(message)
+        return original(registry, host)
+
+    monkeypatch.setattr(CudaHostMemoryRegistry, "register", reject_second)
+    with (
+        _cuda() as adapter,
+        adapter.open_session(
+            (request, request),
+            max_runs=1,
+        ) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_workspace(
+            host_registration_budget_bytes=requested_bytes,
+        )
+        registration = workspace.registration
+        workspace.memories[0].append(0)
+        _ = workspace.memories[0].pop()
+        observed = workspace.snapshot()
+    return expected, observed, registration, calls
+
+
+def test_cuda_profile_snapshot_workspace_rolls_back_driver_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later registration rejection releases earlier page locks."""
+    requested_bytes = (
+        SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    )
+    measured = _measure_driver_rejection_fallback(
+        monkeypatch,
+        _resident_session_request(),
+        requested_bytes,
+    )
+    expected, observed, registration, calls = measured
+
+    assert calls == SESSION_BATCH_SIZE
+    assert observed == expected
+    assert not registration.active
+    assert (
+        registration.fallback_reason
+        == _HOST_REGISTRATION_DRIVER_REJECTED
+    )
+    assert registration.registered_arrays == 0
+    assert registration.registered_bytes == 0
+
+
+def test_cuda_profile_snapshot_workspace_rejects_invalid_budget() -> None:
+    """Registration budgets require exact nonnegative integer authority."""
+    request = _resident_session_request()
+    with (
+        _cuda() as adapter,
+        adapter.open_session((request,), max_runs=1) as session,
+    ):
+        for budget in (-1, True):
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="nonnegative integer",
+            ):
+                _ = session.allocate_snapshot_workspace(
+                    host_registration_budget_bytes=budget,
+                )
+
+
+def test_cuda_profile_snapshot_session_close_releases_registration() -> None:
+    """Session close releases page locks before closed-session errors."""
+    request = _resident_session_request()
+    expected_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with _cuda() as adapter:
+        session = adapter.open_session((request,), max_runs=1)
+        workspace = session.allocate_snapshot_workspace(
+            host_registration_budget_bytes=expected_bytes,
+        )
+        assert workspace.registration.active
+        session.close()
+        workspace.memories[0].append(0)
+        _ = workspace.memories[0].pop()
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="session is closed",
+        ):
+            _ = workspace.snapshot()
+
+
 def test_cuda_profile_snapshot_workspace_rejects_mutated_shape() -> None:
     """Resized or duplicated caller arrays fail before a snapshot download."""
     request = _resident_session_request()
@@ -369,6 +559,10 @@ def test_cuda_profile_snapshot_workspace_type_is_public() -> None:
 
     assert isinstance(workspace, CudaProfileSnapshotWorkspace)
     assert profile_snapshot_workspace_id() == SNAPSHOT_WORKSPACE_ID
+    assert (
+        profile_snapshot_host_registration_id()
+        == SNAPSHOT_HOST_REGISTRATION_ID
+    )
 
 
 def test_cuda_profile_accepts_validated_memory_image() -> None:

@@ -54,6 +54,7 @@ import os
 from pathlib import Path
 from typing import Final
 from typing import cast
+from typing import final
 
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
@@ -80,6 +81,89 @@ class CudaDeviceInfo:
     max_threads_per_block: int
     multiprocessor_count: int
     name: str
+
+
+@final
+class CudaHostMemoryRegistry:
+    """Own page-locked host buffers for one live CUDA context."""
+
+    def __init__(
+        self,
+        ensure_open: Callable[[], None],
+        register_fn: _CudaFn,
+        unregister_fn: _CudaFn,
+    ) -> None:
+        """Bind one context's registration functions and lifetime guard."""
+        self._ensure_open = ensure_open
+        self._register_fn = register_fn
+        self._registrations: dict[int, HostWords] = {}
+        self._unregister_fn = unregister_fn
+
+    def register(self, host: HostWords) -> int:
+        """Page-lock one stable nonempty host buffer.
+
+        Returns:
+            Exact address token required for later unregistration.
+
+        Raises:
+            AcceleratorExecutionError: If validation or registration fails.
+
+        """
+        self._ensure_open()
+        byte_count = ctypes.sizeof(host)
+        if byte_count <= 0:
+            message = "CUDA host registration requires a nonempty buffer"
+            raise AcceleratorExecutionError(message)
+        address = ctypes.addressof(host)
+        if address in self._registrations:
+            message = "CUDA host buffer is already registered"
+            raise AcceleratorExecutionError(message)
+        _check_execution(
+            self._register_fn(ctypes.c_void_p(address), byte_count, 0),
+            "cuMemHostRegister_v2",
+        )
+        self._registrations[address] = host
+        return address
+
+    def unregister(self, address: int) -> None:
+        """Release one exact page-locked host-address token.
+
+        Raises:
+            AcceleratorExecutionError: If the token is invalid or CUDA fails.
+
+        """
+        self._ensure_open()
+        if type(address) is not int or address <= 0:
+            message = "CUDA host unregistration requires a positive address"
+            raise AcceleratorExecutionError(message)
+        if address not in self._registrations:
+            message = "CUDA host unregistration token is not owned"
+            raise AcceleratorExecutionError(message)
+        _check_execution(
+            self._unregister_fn(ctypes.c_void_p(address)),
+            "cuMemHostUnregister",
+        )
+        del self._registrations[address]
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Attempt every owned unregistration.
+
+        Returns:
+            First Driver API failure, or ``None`` after complete release.
+
+        """
+        failure: AcceleratorExecutionError | None = None
+        for address in tuple(self._registrations):
+            try:
+                self.unregister(address)
+            except AcceleratorExecutionError as error:
+                if failure is None:
+                    failure = error
+        return failure
+
+    def clear(self) -> None:
+        """Drop retained buffers after the owning context is destroyed."""
+        self._registrations.clear()
 
 
 class CudaResourceProbe:
@@ -127,6 +211,7 @@ class CudaRuntime:
     _driver: ctypes.WinDLL
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
+    host_memory: CudaHostMemoryRegistry
     resources: CudaResourceProbe
 
     _cu_ctx_create: _CudaFn
@@ -140,6 +225,8 @@ class CudaRuntime:
     _cu_launch_kernel: _CudaFn
     _cu_mem_alloc: _CudaFn
     _cu_mem_get_info: _CudaFn
+    _cu_mem_host_register: _CudaFn
+    _cu_mem_host_unregister: _CudaFn
     _cu_mem_free: _CudaFn
     _cu_memcpy_dtod: _CudaFn
     _cu_memcpy_dtoh: _CudaFn
@@ -178,6 +265,11 @@ class CudaRuntime:
         self._device = self._open_device(device_id)
         self._context = self._create_context(self._device)
         self.device_info = self._read_device_info(self._device)
+        self.host_memory = CudaHostMemoryRegistry(
+            self._ensure_open,
+            self._cu_mem_host_register,
+            self._cu_mem_host_unregister,
+        )
         self.resources = CudaResourceProbe(
             self._cu_mem_get_info,
             self.device_info,
@@ -199,11 +291,24 @@ class CudaRuntime:
         return pointer.value
 
     def close(self) -> None:
-        """Destroy the owned CUDA context exactly once."""
+        """Release registered host buffers and destroy the CUDA context."""
         if self._closed:
             return
+        registration_failure = self.host_memory.release_failure()
         self._closed = True
-        _check_execution(self._cu_ctx_destroy(self._context), "cuCtxDestroy_v2")
+        context_failure: AcceleratorExecutionError | None = None
+        try:
+            _check_execution(
+                self._cu_ctx_destroy(self._context),
+                "cuCtxDestroy_v2",
+            )
+        except AcceleratorExecutionError as error:
+            context_failure = error
+        self.host_memory.clear()
+        if registration_failure is not None:
+            raise registration_failure
+        if context_failure is not None:
+            raise context_failure
 
     def _compile_ptx(self, source: str, arch: str) -> bytes:
         """Compile reviewed CUDA C++ source to PTX with pinned NVRTC.
@@ -425,6 +530,8 @@ class CudaRuntime:
             self._cu_mem_alloc,
             self._cu_mem_get_info,
             self._cu_mem_free,
+            self._cu_mem_host_register,
+            self._cu_mem_host_unregister,
             self._cu_memcpy_htod,
             self._cu_memcpy_dtoh,
             self._cu_memcpy_dtod,
@@ -597,6 +704,16 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_free = dll.cuMemFree_v2
     raw_free.argtypes = [ctypes.c_uint64]
     raw_free.restype = ctypes.c_int
+    raw_host_register = dll.cuMemHostRegister_v2
+    raw_host_register.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_uint,
+    ]
+    raw_host_register.restype = ctypes.c_int
+    raw_host_unregister = dll.cuMemHostUnregister
+    raw_host_unregister.argtypes = [ctypes.c_void_p]
+    raw_host_unregister.restype = ctypes.c_int
     raw_htod = dll.cuMemcpyHtoD_v2
     raw_htod.argtypes = [ctypes.c_uint64, ctypes.c_void_p, ctypes.c_size_t]
     raw_htod.restype = ctypes.c_int
@@ -612,6 +729,8 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
             raw_alloc,
             raw_info,
             raw_free,
+            raw_host_register,
+            raw_host_unregister,
             raw_htod,
             raw_dtoh,
             raw_dtod,

@@ -93,6 +93,12 @@ _KERNEL_NAME: Final = "malbolge_profile_run_batch"
 _SNAPSHOT_WORKSPACE_PROOF = object()
 _WORD_TYPECODE: Final = "I"
 PROFILE_SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
+PROFILE_SNAPSHOT_HOST_REGISTRATION_ID: Final = (
+    "bounded-all-or-pageable-u32-arrays-v1"
+)
+_HOST_REGISTRATION_DISABLED: Final = "disabled"
+_HOST_REGISTRATION_BUDGET_EXCEEDED: Final = "budget-exceeded"
+_HOST_REGISTRATION_DRIVER_REJECTED: Final = "driver-rejected"
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
@@ -123,6 +129,233 @@ def profile_snapshot_workspace_id() -> str:
     return PROFILE_SNAPSHOT_WORKSPACE_ID
 
 
+def profile_snapshot_host_registration_id() -> str:
+    """Return the bounded host-registration policy identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PROFILE_SNAPSHOT_HOST_REGISTRATION_ID
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotHostRegistration:
+    """Observable all-or-none registration outcome for one workspace."""
+
+    budget_bytes: int
+    fallback_reason: str | None
+    registered_arrays: int
+    registered_bytes: int
+    requested_bytes: int
+
+    @property
+    def active(self) -> bool:
+        """Whether every workspace array is currently page-locked."""
+        return self.fallback_reason is None
+
+
+@dataclass(slots=True)
+class _SnapshotHostRegistrationLease:
+    """Exact runtime-owned host registrations for one workspace."""
+
+    runtime: CudaRuntime
+    registration_record: ProfileSnapshotHostRegistration
+    addresses: tuple[int, ...] = ()
+    memory_ids: tuple[int, ...] = ()
+    released: bool = False
+
+    @property
+    def registration(self) -> ProfileSnapshotHostRegistration:
+        """Immutable registration/fallback evidence."""
+        return self.registration_record
+
+    def release(self) -> None:
+        """Unregister every page-locked array exactly once."""
+        if self.released:
+            return
+        failure = _unregister_host_addresses(self.runtime, self.addresses)
+        if failure is not None:
+            raise failure
+        self.addresses = ()
+        self.released = True
+
+    def validate_memories(self, memories: tuple[array[int], ...]) -> None:
+        """Reject array substitution while registered buffers are live.
+
+        Raises:
+            AcceleratorExecutionError: If registered array identity changed.
+
+        """
+        if self.released or not self.registration.active:
+            return
+        if tuple(id(memory) for memory in memories) != self.memory_ids:
+            message = "resident snapshot registered arrays changed"
+            raise AcceleratorExecutionError(message)
+
+
+def _unregister_host_addresses(
+    runtime: CudaRuntime,
+    addresses: tuple[int, ...] | list[int],
+) -> AcceleratorExecutionError | None:
+    """Attempt every host unregistration.
+
+    Returns:
+        First Driver API failure, or ``None`` after complete release.
+
+    """
+    failure: AcceleratorExecutionError | None = None
+    for address in reversed(addresses):
+        try:
+            runtime.host_memory.unregister(address)
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    return failure
+
+
+def _registration_record(
+    budget_bytes: int,
+    requested_bytes: int,
+    fallback_reason: str | None,
+    *,
+    registered_arrays: int,
+) -> ProfileSnapshotHostRegistration:
+    registered_bytes = requested_bytes if fallback_reason is None else 0
+    return ProfileSnapshotHostRegistration(
+        budget_bytes=budget_bytes,
+        fallback_reason=fallback_reason,
+        registered_arrays=registered_arrays,
+        registered_bytes=registered_bytes,
+        requested_bytes=requested_bytes,
+    )
+
+
+def _pageable_registration_lease(
+    runtime: CudaRuntime,
+    memory_ids: tuple[int, ...],
+    registration: ProfileSnapshotHostRegistration,
+) -> _SnapshotHostRegistrationLease:
+    return _SnapshotHostRegistrationLease(
+        runtime=runtime,
+        registration_record=registration,
+        memory_ids=memory_ids,
+    )
+
+
+def _registration_fallback_reason(
+    budget_bytes: int,
+    requested_bytes: int,
+) -> str | None:
+    if budget_bytes == 0:
+        return _HOST_REGISTRATION_DISABLED
+    if requested_bytes > budget_bytes:
+        return _HOST_REGISTRATION_BUDGET_EXCEEDED
+    return None
+
+
+def _register_snapshot_addresses(
+    runtime: CudaRuntime,
+    memories: tuple[array[int], ...],
+) -> tuple[int, ...] | None:
+    """Register all arrays or roll back prior registrations.
+
+    Returns:
+        Exact address tokens, or ``None`` after a clean driver fallback.
+
+    """
+    addresses: list[int] = []
+    try:
+        for memory in memories:
+            address = runtime.host_memory.register(_word_buffer(memory).view)
+            addresses.append(address)
+    except AcceleratorExecutionError as registration_error:
+        rollback_error = _unregister_host_addresses(runtime, addresses)
+        if rollback_error is not None:
+            raise rollback_error from registration_error
+        return None
+    return tuple(addresses)
+
+
+def _prepare_snapshot_host_registration(
+    runtime: CudaRuntime,
+    memories: tuple[array[int], ...],
+    budget_bytes: int,
+) -> _SnapshotHostRegistrationLease:
+    """Register every array within budget or return a pageable fallback.
+
+    Returns:
+        Registration lease with an observable active or fallback outcome.
+
+    Raises:
+        AcceleratorExecutionError: If the budget is invalid or rollback fails.
+
+    """
+    if type(budget_bytes) is not int or budget_bytes < 0:
+        message = (
+            "snapshot host registration budget must be a nonnegative integer"
+        )
+        raise AcceleratorExecutionError(message)
+    requested_bytes = sum(len(memory) * memory.itemsize for memory in memories)
+    memory_ids = tuple(id(memory) for memory in memories)
+    fallback_reason = _registration_fallback_reason(
+        budget_bytes,
+        requested_bytes,
+    )
+    if fallback_reason is not None:
+        registration = _registration_record(
+            budget_bytes,
+            requested_bytes,
+            fallback_reason,
+            registered_arrays=0,
+        )
+        return _pageable_registration_lease(
+            runtime,
+            memory_ids,
+            registration,
+        )
+    addresses = _register_snapshot_addresses(runtime, memories)
+    if addresses is None:
+        registration = _registration_record(
+            budget_bytes,
+            requested_bytes,
+            _HOST_REGISTRATION_DRIVER_REJECTED,
+            registered_arrays=0,
+        )
+        return _pageable_registration_lease(
+            runtime,
+            memory_ids,
+            registration,
+        )
+    registration = _registration_record(
+        budget_bytes,
+        requested_bytes,
+        None,
+        registered_arrays=len(memories),
+    )
+    return _SnapshotHostRegistrationLease(
+        runtime=runtime,
+        registration_record=registration,
+        addresses=addresses,
+        memory_ids=memory_ids,
+    )
+
+
+def _release_snapshot_registration_leases(
+    leases: list[_SnapshotHostRegistrationLease],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    for lease in reversed(leases):
+        try:
+            lease.release()
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    if failure is None:
+        leases.clear()
+    return failure
+
+
 @dataclass(frozen=True, slots=True)
 class _SnapshotWorkspaceActions:
     profile: Callable[
@@ -135,6 +368,13 @@ class _SnapshotWorkspaceActions:
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class _SnapshotWorkspaceBinding:
+    actions: _SnapshotWorkspaceActions
+    memory_words: int
+    registration_lease: _SnapshotHostRegistrationLease
+
+
 @final
 class CudaProfileSnapshotWorkspace:
     """Explicit caller-owned arrays overwritten by repeated snapshots."""
@@ -143,20 +383,51 @@ class CudaProfileSnapshotWorkspace:
         self,
         *,
         memories: tuple[array[int], ...],
-        memory_words: int,
-        actions: _SnapshotWorkspaceActions,
+        binding: _SnapshotWorkspaceBinding,
         _proof: object,
     ) -> None:
         """Bind reusable arrays to one exact live resident session."""
+        self._actions = binding.actions
+        self._closed = False
         self._memories = memories
-        self._memory_words = memory_words
-        self._actions = actions
+        self._memory_words = binding.memory_words
         self._proof = _proof
+        self._registration_lease = binding.registration_lease
 
     @property
     def memories(self) -> tuple[array[int], ...]:
         """Arrays that each workspace call overwrites in place."""
         return self._memories
+
+    @property
+    def registration(self) -> ProfileSnapshotHostRegistration:
+        """All-or-none page-lock result for these stable arrays."""
+        return self._registration_lease.registration
+
+    def __enter__(self) -> Self:
+        """Enter the explicit caller-owned workspace scope.
+
+        Returns:
+            This workspace instance.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Release any page-locked host arrays at scope exit."""
+        self.close()
+
+    def close(self) -> None:
+        """Release any page-locked arrays exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        self._registration_lease.release()
 
     def snapshot(self) -> tuple[ProfileRunResult, ...]:
         """Overwrite workspace arrays and return results aliasing those arrays.
@@ -179,6 +450,9 @@ class CudaProfileSnapshotWorkspace:
         return self._actions.profile(self._validated_memories())
 
     def _validated_memories(self) -> tuple[array[int], ...]:
+        if self._closed:
+            message = "resident snapshot workspace is closed"
+            raise AcceleratorExecutionError(message)
         if self._proof is not _SNAPSHOT_WORKSPACE_PROOF:
             message = "resident snapshot workspace is forged"
             raise AcceleratorExecutionError(message)
@@ -186,6 +460,7 @@ class CudaProfileSnapshotWorkspace:
             self._memories,
             self._memory_words,
         )
+        self._registration_lease.validate_memories(self._memories)
         return self._memories
 
 
@@ -743,6 +1018,9 @@ class CudaProfileRunSession:
         self._failed = False
         self._max_runs = max_runs
         self._runs_executed = 0
+        self._snapshot_registration_leases: list[
+            _SnapshotHostRegistrationLease
+        ] = []
 
     def __enter__(self) -> Self:
         """Return this live resident session for scoped use.
@@ -792,11 +1070,20 @@ class CudaProfileRunSession:
         self._runs_executed += 1
 
     def close(self) -> None:
-        """Release all device allocations exactly once."""
+        """Release registered host arrays and device allocations."""
         if self._closed:
             return
         self._closed = True
-        _free_resident_chunks(self._context.runtime, self._chunks)
+        failure = _release_snapshot_registration_leases(
+            self._snapshot_registration_leases
+        )
+        try:
+            _free_resident_chunks(self._context.runtime, self._chunks)
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+        if failure is not None:
+            raise failure
 
     def observe(self) -> tuple[ProfileRunObservation, ...]:
         """Download compact scalar outcomes without full resident memory.
@@ -817,11 +1104,17 @@ class CudaProfileRunSession:
             )
         return tuple(observations)
 
-    def allocate_snapshot_workspace(self) -> CudaProfileSnapshotWorkspace:
-        """Allocate explicit arrays reusable across complete snapshots.
+    def allocate_snapshot_workspace(
+        self,
+        *,
+        host_registration_budget_bytes: int = 0,
+    ) -> CudaProfileSnapshotWorkspace:
+        """Allocate reusable arrays with optional bounded host registration.
 
         Returns:
             Workspace whose calls overwrite the same independent mutable arrays.
+            Registration is all-or-none; budget or driver rejection falls back
+            to the ordinary pageable workspace contract.
 
         """
         self._ensure_usable()
@@ -830,13 +1123,23 @@ class CudaProfileRunSession:
             array(_WORD_TYPECODE, [0]) * self._context.geometry.memory_words
             for _ in range(count)
         )
-        return CudaProfileSnapshotWorkspace(
-            memories=memories,
-            memory_words=self._context.geometry.memory_words,
+        lease = _prepare_snapshot_host_registration(
+            self._context.runtime,
+            memories,
+            host_registration_budget_bytes,
+        )
+        self._snapshot_registration_leases.append(lease)
+        binding = _SnapshotWorkspaceBinding(
             actions=_SnapshotWorkspaceActions(
                 profile=self._profile_snapshot_into_memories,
                 snapshot=self._snapshot_into_memories,
             ),
+            memory_words=self._context.geometry.memory_words,
+            registration_lease=lease,
+        )
+        return CudaProfileSnapshotWorkspace(
+            memories=memories,
+            binding=binding,
             _proof=_SNAPSHOT_WORKSPACE_PROOF,
         )
 

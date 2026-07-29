@@ -49,7 +49,9 @@ from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitivePhaseProfile
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitiveStats
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
+from accelerator.cuda.profile_run import ProfileSnapshotHostRegistration
 from accelerator.cuda.profile_run import ProfileSnapshotPhaseProfile
+from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 
 __all__ = [
@@ -57,6 +59,8 @@ __all__ = [
     "CudaPreparedPrimitivePhaseProfile",
     "CudaPreparedPrimitiveStats",
     "CudaProfileSnapshotWorkspace",
+    "ProfileSnapshotHostRegistration",
     "ProfileSnapshotPhaseProfile",
+    "profile_snapshot_host_registration_id",
     "profile_snapshot_workspace_id",
 ]
