@@ -92,7 +92,11 @@ batches.
   unchanged. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/` adds the explicit
   `caller-owned-windowed-u32-arrays-v1` stream workspace. Batch-32 windows 1/8 emit
   32/4 exact ordered callbacks, reduce host memory 96.875%/75.000%, and improve
-  1.023x/1.036x versus the full pageable window. Exact classic crazy/rotate
+  1.023x/1.036x versus the full pageable window. The runtime now exposes
+  `cuda-ordered-registered-dtoh-stream-v1`; seven live tests prove same-context
+  registration lifetime, prior default-upload visibility, exact/same-host order,
+  ownership failure, and teardown.
+  Snapshot double buffering and measured overlap remain open. Exact classic crazy/rotate
   candidate evaluation now traverses the hardware-neutral work port on live CUDA
   and matches CPU evidence over 257-item deterministic corpora. Exact candidate
   evidence can now feed verification-assist hints through live CUDA over a

@@ -53,7 +53,11 @@ Retained batch-32 windows 1/8 reduce host memory 96.875%/75.000% and improve
 1.023x/1.036x versus the full pageable window. Evidence is retained under
 `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
 Callback-scoped aliases must be copied before the next window when durable ownership
-is required. `work_ports.py` now defines
+is required. CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` now binds
+ordered D-to-H submission with default-stream dependencies to same-context registered buffers. Pending
+copies retain host registration until `wait()` or teardown, and runtime close drains
+streams before unregistering host memory. Snapshot overlap is not enabled implicitly.
+`work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution

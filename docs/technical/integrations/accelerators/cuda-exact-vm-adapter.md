@@ -34,9 +34,11 @@ evidence.
 The first exact CUDA slice is implemented for classic ten-trit `rotate` and
 `crazy` batches. Integer-only kernels under `accelerator/cuda/` compile at runtime
 with NVRTC for the selected device architecture and execute through the CUDA
-Driver API. The adapter uses synchronous copies/launches deliberately in this
-correctness-first slice; streams, overlap, and throughput tuning remain future
-performance work.
+Driver API. Ordinary adapter copies and launches remain synchronous deliberately.
+The reviewed runtime now additionally exposes an explicit ordered D-to-H stream foundation with default-stream
+dependencies; it is not selected implicitly and does not yet claim snapshot
+or kernel/transfer overlap. Higher-level double buffering and throughput tuning
+remain future performance work.
 
 Windows x86-64 development pins CUDA 13.3 Update 1 under ignored
 `.dependencies/cuda/13.3.1/`. `accelerator/cuda/toolchain.json` records the exact
@@ -144,6 +146,17 @@ batch-32 windows 1/8 retain 18.246/145.965 MiB and measure 97.5194/96.2771 ms ve
 99.7597 ms full pageable while reducing host memory 96.875%/75.000%. Active streaming
 blocks session mutation and nested capture; consumer failure releases both locks.
 These are backend measurements, not CPU-relative or cross-device speedup claims.
+`cuda-ordered-registered-dtoh-stream-v1` now defines the first asynchronous Driver
+lifetime boundary. `cuStreamCreate` preserves default-stream dependencies and
+`cuMemcpyDtoHAsync_v2` accepts only host buffers registered by the same live context.
+Every submission increments an in-flight host lease; `wait()` synchronizes the exact
+stream, reports copy/byte counts, then releases all leases. Unregistration fails while
+copies are pending, explicit stream close drains work before destruction, and runtime
+close drains every owned stream before host unregistration and context destruction.
+Seven live RTX 4060 tests prove exact copy, repeated visibility of prior default-stream
+uploads, two-copy same-host ordering, invalid ownership and pointer rejection,
+explicit-close draining, runtime-close draining, and stable identity. This foundation
+alone makes no overlap or speedup claim.
 
 ## Invariants
 

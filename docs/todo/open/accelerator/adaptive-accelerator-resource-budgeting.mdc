@@ -152,5 +152,8 @@ example probe points, not supported-range endpoints.
   `caller-owned-windowed-u32-arrays-v1`. Batch-32 windows 1/8 reduce retained host
   memory 96.875%/75.000% and improve 1.023x/1.036x versus the full pageable window.
   Window 1 minimizes memory; window 8 is the measured balanced point on this device.
-  Asynchronous transfer and broader live-hardware measurements remain required.
-  Persistent classic continuation is tracked by its own retained session evidence.
+  Ordered CUDA D-to-H lifetime is now explicit through
+  `cuda-ordered-registered-dtoh-stream-v1`, but double-buffer sizing, overlap
+  admission/fallback, performance evidence, and broader live-hardware measurements
+  remain required. Persistent classic continuation is tracked by its own retained
+  session evidence.

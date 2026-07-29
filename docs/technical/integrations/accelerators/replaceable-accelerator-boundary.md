@@ -333,9 +333,11 @@ improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The pro
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. The next production boundary is the first real non-invertible or
 multi-position strategy that can supply exact positions without heuristic filtering.
-Resident/fused search remains later work.
-Synthesis/guided search
-algorithms, asynchronous submission, and ROCm remain open.
+Resident/fused search remains later work. CUDA now has the adapter-internal
+`cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered submissions
+retain same-context registered host buffers until synchronization and teardown.
+Hardware-neutral asynchronous work submission, snapshot double buffering,
+Synthesis/guided search algorithms, and ROCm remain open.
 
 ## Invariants
 
@@ -384,12 +386,17 @@ fails explicitly without changing correctness rules.
   `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`.
 - Bounded streamed-snapshot window evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
+- `tests/optimizer/test_cuda_ordered_dtoh_stream.py` provides live RTX 4060
+  evidence for exact ordered async D-to-H copies, same-host submission order,
+  registered-buffer lifetime, invalid ownership rejection, and deterministic
+  explicit/runtime teardown.
 - `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,
   malformed optional-result fallback, stable algorithm/seed/budget identity,
   optional verification hints, and verifier-only candidate admission.
 - Remaining evidence includes concrete algorithm adapters, CUDA/ROCm work-port
-  implementations, ROCm VM substitution, asynchronous submission, broader
-  hardware evidence, and matched measurements for future speedup claims.
+  implementations, ROCm VM substitution, hardware-neutral asynchronous
+  submission, higher-level overlap, broader hardware evidence, and matched
+  measurements for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

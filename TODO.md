@@ -1345,8 +1345,15 @@ measure 97.5194/96.2771 ms versus 99.7597 ms full pageable (1.023x/1.036x), winn
 14/15 and 13/15 paired samples while reducing retained host memory 96.875%/75.000%.
 Window 8 is 1.013x faster than window 1 but retains eight times more memory, so both
 remain explicit choices. Active streams block session mutation and nested streaming;
-consumer failure releases locks for exact retry. Asynchronous transfer needs a
-separate lifetime/ordering contract, and broader live-device evidence remains open.
+consumer failure releases locks for exact retry. The CUDA runtime now exposes
+`cuda-ordered-registered-dtoh-stream-v1`: an explicitly ordered Driver stream accepts only
+buffers registered by the same context, retains each host lifetime until explicit
+`wait()`/`close()`, preserves submission order, blocks unregistration while in flight,
+and drains streams before host/context teardown. Seven live RTX 4060 tests cover
+exact copy, repeated visibility of prior default-stream uploads, same-host ordering,
+ownership rejection, explicit close, runtime close, and stable identity. Snapshot
+double-buffer integration, measured overlap, hardware-
+neutral asynchronous submission, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

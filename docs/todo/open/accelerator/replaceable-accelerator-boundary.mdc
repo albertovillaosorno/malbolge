@@ -310,8 +310,10 @@ improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The pro
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. The next production boundary is the first real non-invertible or
 multi-position strategy that can supply exact positions without heuristic filtering.
-  Synthesis/guided search,
-  resident search, ROCm work ports/VM execution,
-  asynchronous submission, and broader hardware remain open.
+  CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` now proves
+  ordered registered-buffer lifetime and deterministic teardown without claiming
+  higher-level overlap. Synthesis/guided search, resident search, ROCm work
+  ports/VM execution, hardware-neutral asynchronous submission, and broader
+  hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
