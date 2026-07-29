@@ -196,9 +196,13 @@ claim is made. The synchronous prepared search boundary now additionally runs
 CPU-neutral digitwise preparation retains all 59,049 membership entries while
 projecting exactly 1,024 candidates for accumulator zero and target 29,524. Live
 RTX 4060 CUDA consumes that exact prepared subset, reports resident cardinality
-1,024, and matches CPU proposals before independent admission. This is not yet a
-search-submission ticket, benchmark, or overlap claim. Other strategy submissions
-require their own exact state/lifetime evidence. Optional
+1,024, and matches CPU proposals before independent admission.
+`classic-crazy-target-search-submission-v1` now retains the same full selector proof
+while submitting only the exact 1,024-position subset through the CUDA candidate
+ticket. Seven tests cover CPU full-domain/empty work, malformed nested protocol,
+live CUDA publication, and teardown-driven CPU fallback. A retained benchmark and
+overlap evidence remain open. Other strategy submissions require their own exact
+state/lifetime evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
 `candidate-evidence-verification-submission-v1`. It retains exact verifier and
@@ -252,6 +256,9 @@ fails explicitly without changing correctness rules.
   executes the exact 1,024-position prepared subset on CUDA, matches CPU proposals,
   and passes independent CPU admission. Three CLI regressions cover CPU/CUDA
   registration and setup fallback.
+  `tests/optimizer/test_crazy_target_submission.py` adds seven proof-bound ticket
+  regressions, including live full-domain publication and teardown-driven CPU
+  fallback after nested CUDA cleanup.
   `tests/optimizer/test_evidence_verification_submission.py` adds seven nested
   candidate-hint regressions, including two live CUDA routes for exact CPU-equal
   hints and teardown-driven empty completion.
@@ -514,8 +521,10 @@ optimization. That production boundary is now implemented by
 `classic-crazy-target-search-v1`: the complete 59,049-member
 accumulator-zero/target-29,524 case projects exactly 1,024 positions and executes
 unchanged through prepared CUDA capacity. Full membership and trusted CPU admission
-remain authoritative. A concrete search-submission ticket and retained benchmark
-remain open; no speedup or independent-stream claim is made.
+remain authoritative. The concrete
+`classic-crazy-target-search-submission-v1` ticket now preserves that projection
+across nested candidate lifetime and exact fallback. A retained benchmark remains
+open; no speedup or independent-stream claim is made.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

@@ -431,8 +431,11 @@ optimization. That production boundary is now implemented by
 `classic-crazy-target-search-v1`: exact digitwise preparation projects the full
 59,049-member accumulator-zero/target-29,524 case to 1,024 positions before
 replaceable CPU/CUDA evaluation. The full membership and independent admission
-proofs remain unchanged. A retained benchmark and concrete crazy-target search
-submission ticket remain open; no speedup or independent-stream claim is made.
+proofs remain unchanged. `classic-crazy-target-search-submission-v1` now carries
+that full selector/projection proof across a deferred 1,024-item candidate ticket.
+Seven tests cover full-domain/empty CPU routes, malformed nested protocol, live CUDA
+publication, and teardown fallback. A retained benchmark remains open; no speedup
+or independent-stream claim is made.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

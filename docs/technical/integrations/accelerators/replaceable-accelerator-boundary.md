@@ -339,9 +339,14 @@ membership, evidence validation, proposal membership, and independent admission
 remain unchanged. The complete 59,049-word corpus with accumulator zero and target
 29,524 projects exactly 1,024 positions, and the same CPU-prepared state executes
 unchanged on live RTX 4060 CUDA with resident cardinality 1,024. Fourteen strategy
-and three CLI tests cover the boundary. No benchmark, speedup, or independent-stream
-claim follows; retained performance evidence and a concrete crazy-target search
-submission ticket remain open. Resident/fused search remains later work. CUDA now
+and three CLI tests cover the boundary.
+`classic-crazy-target-search-submission-v1` now retains the exact full-batch
+selector/projection proof across a nested candidate ticket and submits only the
+1,024-position subset. Seven tests cover identity, full-domain/empty CPU paths,
+malformed nested evidence/ticket behavior, exact live CUDA publication, and
+teardown-driven CPU fallback. No benchmark, speedup, or independent-stream claim
+follows; retained performance evidence remains open. Resident/fused search remains
+later work. CUDA now
 has the adapter-internal
 `cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered submissions
 retain same-context registered host buffers until synchronization and teardown.
@@ -382,9 +387,10 @@ cleanup failure fail closed. Nine tests cover the neutral lifetime.
 into exact ordered hints while preserving evaluator/verifier identity. Seven tests
 include two live CUDA routes for CPU-equal hints and teardown-driven empty
 completion. Hints remain optional and untrusted; `TrustedCandidateVerifier` alone
-owns acceptance. Crazy-target synchronous prepared search is active, while its
-search-submission ticket and retained performance matrix remain open. Other
-CUDA/ROCm strategies, adaptive bank selection, kernel/transfer overlap, and
+owns acceptance. Crazy-target search now also uses the neutral submission lifetime
+through a proof-bound 1,024-item candidate ticket; seven tests cover its exact and
+fallback routes. Its retained performance matrix remains open. Other CUDA/ROCm
+strategies, adaptive bank selection, kernel/transfer overlap, and
 independent CUDA streams remain open.
 
 ## Invariants
@@ -465,6 +471,9 @@ fails explicitly without changing correctness rules.
   multiposition projection, full 59,049-member authority with 1,024 preimages,
   ordinary/prepared equality, forged/failing evidence, trusted admission, and live
   CPU/CUDA equality at resident cardinality 1,024.
+- `tests/optimizer/test_crazy_target_submission.py` verifies the stable ticket
+  identity, exact 1,024-item nested subset, empty work, malformed evidence/ticket
+  handling, live CUDA publication, and teardown-driven CPU fallback.
 - `tests/optimizer/test_search_cli.py` additionally verifies crazy-target CPU and
   CUDA registration plus deterministic CUDA-setup fallback.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
@@ -473,8 +482,8 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_evidence_verification_submission.py` verifies exact nested
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
-- Remaining evidence includes a concrete crazy-target search ticket, retained
-  crazy-target performance measurements, other CUDA/ROCm search and hint tickets,
+- Remaining evidence includes retained crazy-target performance measurements,
+  other CUDA/ROCm search and hint tickets,
   ROCm candidate tickets and VM substitution, independent CUDA stream policy,
   adaptive overlap selection, kernel/transfer
   overlap, broader hardware evidence, and matched measurements for future speedup

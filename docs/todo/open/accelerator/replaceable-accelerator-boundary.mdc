@@ -315,7 +315,9 @@ derive exact fixed-accumulator preimage positions without backend filtering. The
 full 59,049-member accumulator-zero/target-29,524 case projects exactly 1,024
 positions; fourteen strategy and three CLI tests include live CUDA equality and
 resident cardinality 1,024. Full membership and trusted admission remain separate.
-Benchmark evidence and a concrete crazy-target search ticket remain open.
+`classic-crazy-target-search-submission-v1` now retains that proof across a nested
+1,024-item candidate ticket; seven tests cover CPU, CUDA, malformed protocol, and
+teardown fallback. Benchmark evidence remains open.
   CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` proves ordered
   registered-buffer lifetime and deterministic teardown. Adapter-internal
   `caller-owned-double-window-overlap-u32-arrays-v1` now overlaps next-window D-to-H
@@ -340,9 +342,10 @@ Benchmark evidence and a concrete crazy-target search ticket remain open.
   malformed or unknown lifetimes. Nine tests cover the neutral contract.
   `candidate-evidence-verification-submission-v1` retains evaluator/verifier
   identity across nested candidate tickets; seven tests include two live CUDA
-  exact/teardown routes. Hints remain non-authoritative. Crazy-target synchronous
-  prepared search is active, while its submission ticket and retained performance
-  evidence remain open. Other CUDA/ROCm strategy and hint tickets,
+  exact/teardown routes. Hints remain non-authoritative. Crazy-target search now
+  also traverses its proof-bound submission ticket; seven tests include live exact
+  publication and teardown fallback. Retained performance evidence remains open.
+  Other CUDA/ROCm strategy and hint tickets,
   synthesis/guided and resident search, independent CUDA streams,
   ROCm VM execution, adaptive/kernel overlap, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,

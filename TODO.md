@@ -1038,8 +1038,12 @@ contains exactly 1,024 positions. Fourteen strategy tests cover format,
 deduplication, seed/budget order, empty and forged state, ordinary/prepared
 equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
 cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
-setup fallback. No performance or independent-stream claim is made; a retained
-benchmark and strategy-specific search ticket remain open.
+setup fallback. `classic-crazy-target-search-submission-v1` now retains the exact
+full-batch selector/projection proof while submitting the 1,024-position subset
+through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
+routes, malformed nested evidence/ticket handling, exact live CUDA publication,
+and teardown-driven CPU fallback. No performance or independent-stream claim is
+made; a retained benchmark remains open.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -1307,8 +1311,12 @@ contains exactly 1,024 positions. Fourteen strategy tests cover format,
 deduplication, seed/budget order, empty and forged state, ordinary/prepared
 equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
 cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
-setup fallback. No performance or independent-stream claim is made; a retained
-benchmark and strategy-specific search ticket remain open.
+setup fallback. `classic-crazy-target-search-submission-v1` now retains the exact
+full-batch selector/projection proof while submitting the 1,024-position subset
+through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
+routes, malformed nested evidence/ticket handling, exact live CUDA publication,
+and teardown-driven CPU fallback. No performance or independent-stream claim is
+made; a retained benchmark remains open.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
@@ -1434,9 +1442,11 @@ composition: exact evaluator/verifier identity survives across nested candidate
 tickets. Seven tests cover CPU evidence, nested protocol failures, verifier
 mismatch, and two live RTX 4060 routes for exact CUDA hints and teardown-driven no
 hints. Hints remain untrusted and never acquire acceptance authority. The
-multiposition crazy-target strategy is active through synchronous prepared
-CPU/CUDA search, but its concrete search-submission ticket and retained performance
-matrix remain open. Other CUDA/ROCm strategies, independent stream policy,
+multiposition crazy-target strategy now also traverses
+`classic-crazy-target-search-submission-v1`: the full selector proof survives while
+only the exact projected subset enters the nested CPU/CUDA candidate ticket. Seven
+tests include live exact publication and teardown fallback. A retained performance
+matrix remains open. Other CUDA/ROCm strategies, independent stream policy,
 adaptive bank/window selection, kernel/transfer overlap, other callback workloads,
 and broader live-device evidence remain open.
 
