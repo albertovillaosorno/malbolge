@@ -344,9 +344,15 @@ and three CLI tests cover the boundary.
 selector/projection proof across a nested candidate ticket and submits only the
 1,024-position subset. Seven tests cover identity, full-domain/empty CPU paths,
 malformed nested evidence/ticket behavior, exact live CUDA publication, and
-teardown-driven CPU fallback. No benchmark, speedup, or independent-stream claim
-follows; retained performance evidence remains open. Resident/fused search remains
-later work. CUDA now
+teardown-driven CPU fallback. Retained Benchmark Protocol v1 evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
+paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
+15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
+15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
+than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
+are timed. This is one-device deterministic workload evidence, not compiler,
+synthesis, cross-device, kernel-overlap, or independent-stream evidence.
+Resident/fused search remains later work. CUDA now
 has the adapter-internal
 `cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered submissions
 retain same-context registered host buffers until synchronization and teardown.
@@ -389,8 +395,11 @@ include two live CUDA routes for CPU-equal hints and teardown-driven empty
 completion. Hints remain optional and untrusted; `TrustedCandidateVerifier` alone
 owns acceptance. Crazy-target search now also uses the neutral submission lifetime
 through a proof-bound 1,024-item candidate ticket; seven tests cover its exact and
-fallback routes. Its retained performance matrix remains open. Other CUDA/ROCm
-strategies, adaptive bank selection, kernel/transfer overlap, and
+fallback routes. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared,
+11.601x CUDA prepared, and 1.270x one-shot CUDA-ticket improvements over their
+same-run ordinary baselines, all with 15/15 paired wins; CUDA prepared remains
+9.137x faster than the ticket. Other CUDA/ROCm strategies, adaptive bank selection,
+kernel/transfer overlap, and
 independent CUDA streams remain open.
 
 ## Invariants
@@ -476,14 +485,18 @@ fails explicitly without changing correctness rules.
   handling, live CUDA publication, and teardown-driven CPU fallback.
 - `tests/optimizer/test_search_cli.py` additionally verifies crazy-target CPU and
   CUDA registration plus deterministic CUDA-setup fallback.
+- `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains 75 chronological samples, Benchmark Protocol v1 metadata,
+  an Experiment Manifest v1 run, exact 59,049/1,024 proof identity, CPU/CUDA
+  prepared session counters, one-shot ticket identity, proposal equality, and
+  independent CPU admission. Medians improve 16.425x CPU prepared, 11.601x CUDA
+  prepared, and 1.270x CUDA ticket over same-run ordinary routes.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.
 - `tests/optimizer/test_evidence_verification_submission.py` verifies exact nested
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
-- Remaining evidence includes retained crazy-target performance measurements,
-  other CUDA/ROCm search and hint tickets,
+- Remaining evidence includes other CUDA/ROCm search and hint tickets,
   ROCm candidate tickets and VM substitution, independent CUDA stream policy,
   adaptive overlap selection, kernel/transfer
   overlap, broader hardware evidence, and matched measurements for future speedup

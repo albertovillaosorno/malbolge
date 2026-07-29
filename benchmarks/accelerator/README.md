@@ -234,9 +234,14 @@ Run with:
 ```
 
 The matrix separates amortized prepared execution from the full one-shot neutral
-ticket cost. It makes no compiler, synthesis, kernel-overlap, or independent-stream
-claim. Retained evidence must come from a clean source commit under Benchmark
-Protocol v1.
+ticket cost. Retained Benchmark Protocol v1 evidence is under
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`. CPU ordinary/prepared medians are 368.3588/22.4264 ms
+(16.425x, 15/15 paired wins), and CUDA ordinary/prepared medians are
+235.8490/20.3304 ms (11.601x, 15/15 wins). CUDA prepared is 1.103x faster than
+CPU prepared in the same run. The one-shot CUDA ticket median is 185.7629 ms,
+1.270x faster than CUDA ordinary with 15/15 wins, but 9.137x slower than
+amortized CUDA prepared. It makes no compiler, synthesis, cross-device,
+kernel-overlap, or independent-stream claim.
 
 The retained RTX 4060 run is under
 `evidence/2026-07-27-rotate-target-search-rtx4060/`. Its protocol-compliant result

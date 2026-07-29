@@ -334,7 +334,9 @@ a live CUDA prepared route retains resident cardinality 1,024 and matches CPU
 before independent admission. Fourteen strategy plus three CLI tests cover the
 boundary. `classic-crazy-target-search-submission-v1` now retains the projection
 across a nested candidate ticket; seven tests include live exact publication and
-teardown fallback. A retained benchmark remains open.
+teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains 75 samples: CUDA prepared/ticket medians are
+20.3304/185.7629 ms versus 235.8490 ms ordinary, improving 11.601x/1.270x with
+15/15 paired wins. Prepared remains 9.137x faster than the one-shot ticket.
   CUDA now implements the neutral candidate ticket port for exact classic
   crazy/rotate work. `cuda-default-stream-kernel-launch-v1` retains launch
   parameters until context sync; one-shot buffers remain owned until download,
@@ -349,8 +351,11 @@ teardown fallback. A retained benchmark remains open.
   candidate ticket through `candidate-evidence-verification-submission-v1`; seven
   tests include two live exact-hint/teardown-empty routes while trusted admission
   remains separate. Crazy-target prepared search and its proof-bound submission
-  ticket are exact on live CUDA; only the retained performance matrix remains open.
-  No ticket speedup or independent-stream claim is made; other synthesis/search/hint
+  ticket are exact on live CUDA. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 11.601x
+  prepared and 1.270x ticket improvements over ordinary CUDA, both with 15/15 wins;
+  prepared is 9.137x faster than the one-shot ticket. No cross-device, compiler,
+  synthesis, kernel-overlap, or independent-stream claim is made; other
+  synthesis/search/hint
   strategies and independent streams remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

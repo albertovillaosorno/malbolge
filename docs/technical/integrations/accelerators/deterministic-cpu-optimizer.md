@@ -91,10 +91,21 @@ fails explicitly without changing correctness rules.
   duplicate pruning, seed/budget bounds, CPU search, live CUDA differential search,
   actual-backend identity, independent CPU admission, and malformed-backend CPU
   fallback. This is a bounded exact-search fixture, not general synthesis.
+- `tests/optimizer/test_crazy_target_search.py` verifies the first exact
+  non-invertible multiposition strategy: shared ternary semantics, fixed-accumulator
+  full-domain membership, exact 1,024-position projection, CPU/CUDA prepared
+  equality, and independent admission. Its sibling ticket tests retain nested
+  lifetime, malformed-protocol, exact CUDA publication, and teardown fallback.
 - `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-rtx4060/`
   retains the complete 59,049-word CPU/CUDA comparison. The CPU reference median
   is 401.185 ms versus 412.570 ms for CUDA, so this CPU baseline wins by median
   and the 0.972x CUDA/CPU result is retained as negative evidence.
+- `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains the multiposition crazy-target matrix. CPU ordinary/prepared
+  medians are 368.3588/22.4264 ms (16.425x, 15/15 paired wins); CUDA
+  ordinary/prepared medians are 235.8490/20.3304 ms (11.601x, 15/15 wins). The
+  one-shot CUDA ticket reaches 185.7629 ms (1.270x over ordinary, 15/15 wins) but
+  remains 9.137x slower than amortized prepared CUDA. Every route preserves the
+  same 1,024 proposals and independent CPU admission.
 - `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-phase-profile-rtx4060/`
   retains diagnostic attribution. Named phases explain 97.5% of CPU median total
   time and identify batch construction (132.653 ms), backend evaluation

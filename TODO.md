@@ -681,8 +681,8 @@ submits every proposal to the trusted verifier. The exact
 `classic-crazy-target-search-v1` strategy additionally proves non-invertible,
 multi-position search with fixed-accumulator digitwise preimage preparation and
 replaceable CPU/CUDA evaluation. Real synthesis generators,
-translation-validation integration, AArch64 evidence, and performance measurement
-remain open.
+translation-validation integration, AArch64 evidence, and broader cross-device
+performance measurement remain open.
 
 ### TODO - Replaceable accelerator boundary
 
@@ -1042,8 +1042,14 @@ setup fallback. `classic-crazy-target-search-submission-v1` now retains the exac
 full-batch selector/projection proof while submitting the 1,024-position subset
 through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
 routes, malformed nested evidence/ticket handling, exact live CUDA publication,
-and teardown-driven CPU fallback. No performance or independent-stream claim is
-made; a retained benchmark remains open.
+and teardown-driven CPU fallback. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
+paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
+15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
+15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
+than the ticket. Prepared construction is untimed; ticket preparation and cleanup
+are timed. No cross-device, compiler, synthesis, kernel-overlap, or independent-
+stream claim is made.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -1315,8 +1321,14 @@ setup fallback. `classic-crazy-target-search-submission-v1` now retains the exac
 full-batch selector/projection proof while submitting the 1,024-position subset
 through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
 routes, malformed nested evidence/ticket handling, exact live CUDA publication,
-and teardown-driven CPU fallback. No performance or independent-stream claim is
-made; a retained benchmark remains open.
+and teardown-driven CPU fallback. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
+paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
+15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
+15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
+than the ticket. Prepared construction is untimed; ticket preparation and cleanup
+are timed. No cross-device, compiler, synthesis, kernel-overlap, or independent-
+stream claim is made.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
@@ -1445,8 +1457,11 @@ hints. Hints remain untrusted and never acquire acceptance authority. The
 multiposition crazy-target strategy now also traverses
 `classic-crazy-target-search-submission-v1`: the full selector proof survives while
 only the exact projected subset enters the nested CPU/CUDA candidate ticket. Seven
-tests include live exact publication and teardown fallback. A retained performance
-matrix remains open. Other CUDA/ROCm strategies, independent stream policy,
+tests include live exact publication and teardown fallback. The retained matrix at
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
+one-shot CUDA-ticket improvements over their same-run ordinary baselines, all with
+15/15 paired wins. CUDA prepared remains 9.137x faster than the one-shot ticket.
+Other CUDA/ROCm strategies, independent stream policy,
 adaptive bank/window selection, kernel/transfer overlap, other callback workloads,
 and broader live-device evidence remain open.
 

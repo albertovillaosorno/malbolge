@@ -200,8 +200,16 @@ RTX 4060 CUDA consumes that exact prepared subset, reports resident cardinality
 `classic-crazy-target-search-submission-v1` now retains the same full selector proof
 while submitting only the exact 1,024-position subset through the CUDA candidate
 ticket. Seven tests cover CPU full-domain/empty work, malformed nested protocol,
-live CUDA publication, and teardown-driven CPU fallback. A retained benchmark and
-overlap evidence remain open. Other strategy submissions require their own exact
+live CUDA publication, and teardown-driven CPU fallback. Retained Benchmark Protocol v1 evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
+paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
+15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
+15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
+than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
+are timed. This is one-device deterministic workload evidence, not compiler,
+synthesis, cross-device, kernel-overlap, or independent-stream evidence.
+Kernel/transfer overlap evidence remains open. Other strategy submissions require
+their own exact
 state/lifetime evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
@@ -259,6 +267,10 @@ fails explicitly without changing correctness rules.
   `tests/optimizer/test_crazy_target_submission.py` adds seven proof-bound ticket
   regressions, including live full-domain publication and teardown-driven CPU
   fallback after nested CUDA cleanup.
+  `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains the five-route matrix and 75 raw samples. CUDA ordinary,
+  prepared, and ticket medians are 235.8490/20.3304/185.7629 ms; prepared and
+  ticket improve 11.601x and 1.270x over ordinary with 15/15 paired wins, while
+  amortized prepared remains 9.137x faster than the one-shot ticket.
   `tests/optimizer/test_evidence_verification_submission.py` adds seven nested
   candidate-hint regressions, including two live CUDA routes for exact CPU-equal
   hints and teardown-driven empty completion.
@@ -523,8 +535,11 @@ accumulator-zero/target-29,524 case projects exactly 1,024 positions and execute
 unchanged through prepared CUDA capacity. Full membership and trusted CPU admission
 remain authoritative. The concrete
 `classic-crazy-target-search-submission-v1` ticket now preserves that projection
-across nested candidate lifetime and exact fallback. A retained benchmark remains
-open; no speedup or independent-stream claim is made.
+across nested candidate lifetime and exact fallback. The retained matrix at
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 11.601x CUDA prepared and 1.270x one-shot ticket improvements
+over CUDA ordinary, both with 15/15 paired wins; prepared remains 9.137x faster
+than the ticket. No cross-device, compiler, synthesis, kernel-overlap, or
+independent-stream claim is made.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

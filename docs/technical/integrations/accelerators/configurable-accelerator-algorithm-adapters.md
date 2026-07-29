@@ -340,11 +340,16 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
-Resident or fused
-evaluation-selection remains a later
-option only if exact equivalence stays explicit. Synthesis and guided strategies,
+optimization. `classic-crazy-target-search-v1` now supplies the first exact
+non-invertible multiposition strategy and is registered for both CPU and CUDA.
+Neutral digitwise preparation retains 59,049 full-membership entries while
+projecting exactly 1,024 preimages. Its proof-bound one-shot search ticket preserves
+the same selector identity and fallback behavior. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA
+ticket improvements over same-run ordinary routes, all with 15/15 paired wins;
+CUDA prepared remains 9.137x faster than the ticket. Resident or fused
+evaluation-selection remains a later option only if exact equivalence stays
+explicit. Synthesis and guided strategies,
 ROCm search implementations, richer
 orchestration, and broader representative benchmark evidence remain open.
 
@@ -372,8 +377,8 @@ fails explicitly without changing correctness rules.
   nonempty identities, and durable file-source identity.
 - `tests/optimizer/test_search_cli.py` verifies CPU execution evidence, explicit
   overrides, unsupported-pair rejection, CUDA-unavailable CPU fallback with
-  configured identity preserved, file-backed JSON output, and a live CUDA route
-  that records CUDA as actual execution.
+  configured identity preserved, file-backed JSON output, and live CUDA routes for
+  unique-inverse rotate-target and multiposition crazy-target strategies.
 - `benchmarks/accelerator/evidence/2026-07-27-rotate-target-search-rtx4060/`
   retains Benchmark Protocol v1 metadata, an Experiment Manifest v1 run, 30 raw
   samples, structured output, exact source commit, workload SHA-256, device and
@@ -417,6 +422,11 @@ fails explicitly without changing correctness rules.
   and its phase sibling retain negative/overflow failure plus all prepared proofs.
   Prepared medians improve 1.086x CPU and 1.254x CUDA; backend phases improve
   1.091x/1.330x while ordinary controls remain effectively unchanged.
+- `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` retains Benchmark Protocol v1 and Experiment Manifest v1 identity,
+  75 chronological samples, 59,049/1,024 membership/projection proof, exact
+  proposal/admission checks, prepared CPU/CUDA session counters, and one-shot ticket
+  identity. CPU prepared, CUDA prepared, and CUDA ticket improve 16.425x, 11.601x,
+  and 1.270x over same-run ordinary routes; every comparison wins 15/15 pairs.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
 ## References

@@ -434,8 +434,14 @@ replaceable CPU/CUDA evaluation. The full membership and independent admission
 proofs remain unchanged. `classic-crazy-target-search-submission-v1` now carries
 that full selector/projection proof across a deferred 1,024-item candidate ticket.
 Seven tests cover full-domain/empty CPU routes, malformed nested protocol, live CUDA
-publication, and teardown fallback. A retained benchmark remains open; no speedup
-or independent-stream claim is made.
+publication, and teardown fallback. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x), CUDA
+ordinary/prepared medians of 235.8490/20.3304 ms (11.601x), and a 185.7629 ms
+one-shot CUDA ticket (1.270x over ordinary); every same-baseline comparison wins
+15/15 retained pairs. CUDA prepared is 1.103x faster than CPU prepared and 9.137x
+faster than the one-shot ticket. Prepared setup is untimed while ticket setup and
+cleanup are timed. No cross-device, compiler, synthesis, kernel-overlap, or
+independent-stream claim is made.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only
