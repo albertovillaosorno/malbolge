@@ -80,8 +80,11 @@ directly on CUDA APIs.
   decode, and total while preserving ordinary independent mutable result ownership.
   Retained batches 1/8/32 identify transfer and fresh array allocation. The active
   caller-owned workspace is a separate proof-bound overwrite contract, while ordinary
-  snapshots now return fresh arrays uniformly. Clean comparative evidence is pending.
-  `EvaluatedSearchExecutionAdapter` now composes bounded candidate evaluation into
+  snapshots return fresh arrays uniformly. Retained batches 1/8/32 improve
+  2.586x/2.667x/2.712x with allocation amortized by snapshot 1/2/2; stable workspace
+  ownership now permits a bounded host-registration experiment without weakening the
+  ordinary boundary. `EvaluatedSearchExecutionAdapter` now composes bounded candidate
+  evaluation into
   search without allowing selectors to fabricate unevaluated payloads. The same
   `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA
   matches CPU proposals over 257 candidates while independent CPU admission

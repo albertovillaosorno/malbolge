@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "current-profile-resident-snapshot-workspace-tradeoff-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does an explicit caller-owned snapshot workspace remove repeated final-array allocation while preserving ordinary independent ownership and exact current-profile results?"
+hypothesis = "Workspace snapshots are faster for batches one, eight, and thirty-two, report zero result-array allocation, preserve exact caller-owned aliases, and amortize one-time allocation within two snapshots without changing ordinary fresh-array semantics."
+baseline = "ordinary fresh independent CudaProfileRunSession.profile_snapshot on the same clean source commit f09f09309ff9c2f0ef03a69c63bd07a657ebb014"
+rejection_observation = "Exact results, independent ordinary arrays, explicit workspace aliasing, workspace identity, shape/proof/session rejection, zero hot allocation, sample counts, or provenance drift; any batch does not improve; or median-derived strict crossover exceeds two snapshots."
+
+[workload]
+identity = "current-profile-14-trit-resident-snapshot-workspace-64-step-no-op-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one ordinary and one workspace complete snapshot after one untimed resident advance per batch size"
+ordering = "fixed"
+stopping_rule = "fifteen paired exact snapshots per route with alternating first route and five retained workspace-allocation samples per batch"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns", "allocation_ns", "crossover_snapshots", "buffer_bytes", "batch_size"]
+tradeoff_policy = "ordinary independent ownership, workspace alias/overwrite semantics, exact complete results, fail-closed workspace proof/shape/session validation, and zero hot allocation precede speed interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

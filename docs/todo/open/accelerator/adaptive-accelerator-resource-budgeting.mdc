@@ -135,11 +135,14 @@ example probe points, not supported-range endpoints.
   least 99.817%. Ordinary snapshot semantics remain unchanged. Independent mutable result ownership is now split explicitly. Ordinary
   snapshots allocate fresh arrays at every batch size; the active
   `caller-owned-independent-u32-arrays-v1` workspace allocates once and documents
-  overwrite/alias semantics. Exploratory 1/8/32 medians improve from
-  8.1202/65.1681/270.1266 ms to 3.1566/24.5695/99.6554 ms, with one-time
-  allocation 4.8533/41.2194/172.1482 ms and crossover 1/2/2 snapshots. Forged,
-  resized, duplicate, wrong-type/count, and closed-session state fails closed.
-  Clean post-commit evidence is pending before promotion. Pinned storage, streaming,
-  and broader live-hardware measurements remain required. Persistent classic
-  continuation is
+  overwrite/alias semantics. Retained evidence under
+  `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/`
+  records ordinary/workspace batches 1/8/32 at 8.1785/3.1631,
+  65.7327/24.6510, and 272.1251/100.3275 ms (2.586x/2.667x/2.712x).
+  One-time allocation is 4.9179/41.3042/173.7859 ms and crossover is 1/2/2;
+  batch-one margin is explicitly marginal. Workspace buffers retain
+  18.246/145.965/583.859 MiB and their hot path is at least 96.485% memory D-to-H.
+  The next experiment is bounded page-lock/host registration with explicit fallback,
+  exact results, and ordinary ownership unchanged. Streaming and broader
+  live-hardware measurements remain required. Persistent classic continuation is
   tracked by its own retained session evidence.

@@ -1315,18 +1315,23 @@ Batches 1/8/32 retain 15 exact samples after one excluded warmup and measure
 Batches 8/32 are 62.419%/63.872% fresh independent Python array allocation and
 37.248%/35.962% memory transfer. Decode is at most 0.105%; named coverage is at
 least 99.817%. Pinned memory alone is rejected because it does not remove the dominant
-fresh-array ownership requirement. The selected caller-owned contract is now active
-under `caller-owned-independent-u32-arrays-v1`. Ordinary resident `snapshot()` now
-creates independent mutable `array('I')` results at every batch size, including one;
-`allocate_snapshot_workspace()` instead creates explicit arrays once, and workspace
+fresh-array ownership requirement. Retained caller-owned workspace evidence under
+`benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/`
+promotes `caller-owned-independent-u32-arrays-v1`. Ordinary resident `snapshot()`
+creates fresh independent mutable `array('I')` results at every batch size;
+`allocate_snapshot_workspace()` creates explicit arrays once, and workspace
 `snapshot()`/`profile_snapshot()` overwrite and return those same arrays by contract.
-Forged, resized, duplicate, wrong-type, wrong-count, and closed-session workspace
-state fails closed. Exploratory batches 1/8/32 improve from 8.1202/65.1681/270.1266
-ms ordinary to 3.1566/24.5695/99.6554 ms workspace (2.572x/2.652x/2.711x).
-One-time allocation is 4.8533/41.2194/172.1482 ms and strict crossover is 1/2/2
-snapshots. Workspace allocation is outside the repeated timed path and every profiled
-workspace sample reports zero result-array allocation. Clean post-commit evidence is
-pending before promotion; streaming and broader live-device evidence remain open.
+Forged, resized, duplicate, wrong-type, wrong-count, and closed-session state fails
+closed. Clean batches 1/8/32 improve from 8.1785/65.7327/272.1251 ms ordinary to
+3.1631/24.6510/100.3275 ms workspace (2.586x/2.667x/2.712x). One-time allocation
+is 4.9179/41.3042/173.7859 ms and median-derived strict crossover is 1/2/2
+snapshots. Batch-one crossover is marginal: allocation plus one workspace snapshot
+is 8.0810 ms versus 8.1785 ms ordinary, so ordinary remains the simpler one-shot
+default. Workspace hot paths are 96.485%/99.389%/99.686% full-memory D-to-H and
+retain 18.246/145.965/583.859 MiB. The next measured boundary is page-locking or
+host registration of stable workspace arrays with a bounded memory budget, explicit
+fallback, exact results, and unchanged ordinary ownership. Streaming and broader
+live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

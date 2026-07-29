@@ -39,10 +39,11 @@ for batches 1/8/32. Batch 1 is 96.489% memory transfer; batches 8/32 are about
 62--64% fresh arrays and 36--37% memory transfer. Ordinary resident snapshots now always own fresh independent mutable
 `array('I')` memories. The explicit
 `caller-owned-independent-u32-arrays-v1` workspace allocates those arrays once and
-advertises that later calls overwrite earlier aliased results. Exploratory batches
-1/8/32 improve by 2.572x/2.652x/2.711x with strict crossover 1/2/2 snapshots;
-clean post-commit evidence is pending. Pinned memory remains a separate question.
-`work_ports.py` now defines
+advertises that later calls overwrite earlier aliased results. Retained RTX 4060
+batches 1/8/32 improve by 2.586x/2.667x/2.712x with median-derived crossover
+1/2/2 snapshots. Batch-one advantage is marginal; repeated batches 8/32 recover
+allocation on the second snapshot. Stable workspace arrays make bounded host
+registration/page-locking the next measured question. `work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution

@@ -128,8 +128,10 @@ measure 3.1616/65.7829/271.1391 ms. Batch 1 is 96.489% transfer; batches 8/32
 are 62.419%/63.872% allocation and 37.248%/35.962% memory transfer. Ordinary resident snapshots now always return fresh independent mutable arrays.
 The separately admitted `caller-owned-independent-u32-arrays-v1` workspace makes
 reuse and overwrite semantics explicit, validates shape/proof/session identity, and
-reports allocation outside the repeated path. Exploratory batches 1/8/32 improve
-2.572x/2.652x/2.711x with strict crossover 1/2/2; clean evidence is pending.
+reports allocation outside the repeated path. Retained batches 1/8/32 improve
+2.586x/2.667x/2.712x with median-derived crossover 1/2/2; batch-one margin is
+narrow and batches 8/32 recover allocation on the second snapshot. The stable arrays
+select bounded host registration/page-locking as the next CUDA experiment.
 These are backend
 measurements, not CPU-relative or cross-device speedup claims.
 

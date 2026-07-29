@@ -83,9 +83,10 @@ batches.
   1/8/32 measure 3.1616/65.7829/271.1391 ms; batch 1 is 96.489% transfer and
   batches 8/32 are 62.419%/63.872% allocation. Pinned memory alone is not selected. The active
   `caller-owned-independent-u32-arrays-v1` workspace explicitly owns reusable arrays;
-  ordinary snapshots remain fresh and independent. Exploratory batches 1/8/32 improve
-  2.572x/2.652x/2.711x with crossover 1/2/2, and clean evidence is pending.
-  Exact classic crazy/rotate
+  ordinary snapshots remain fresh and independent. Retained batches 1/8/32 improve
+  2.586x/2.667x/2.712x with crossover 1/2/2; batch-one margin is marginal and
+  workspace hot paths are transfer-dominated. Bounded host registration with fallback
+  is the next selected measurement. Exact classic crazy/rotate
   candidate evaluation now traverses the hardware-neutral work port on live CUDA
   and matches CPU evidence over 257-item deterministic corpora. Exact candidate
   evidence can now feed verification-assist hints through live CUDA over a

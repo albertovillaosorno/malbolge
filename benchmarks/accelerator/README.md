@@ -128,6 +128,14 @@ Run with:
   -m benchmarks.accelerator.profile_snapshot_workspace_tradeoff
 ```
 
+Retained RTX 4060 evidence is under
+`evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/`.
+Clean ordinary/workspace medians for batches 1/8/32 are
+8.1785/3.1631, 65.7327/24.6510, and 272.1251/100.3275 ms, for
+2.586x/2.667x/2.712x hot speedups. One-time allocation is
+4.9179/41.3042/173.7859 ms; median-derived crossover is 1/2/2 snapshots.
+Batch-one margin is narrow, and the workspace retains up to 583.859 MiB at batch 32.
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One

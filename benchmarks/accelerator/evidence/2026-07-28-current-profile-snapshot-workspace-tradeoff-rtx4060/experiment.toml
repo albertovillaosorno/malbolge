@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "current-profile-resident-snapshot-workspace-tradeoff-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "current-profile-14-trit-resident-snapshot-workspace-64-step-no-op-v1"
+difficulty = 4782969
+target_profile = "malbolge-2026.2"
+
+[budget]
+evaluations = 41
+samples = 15
+
+[verification]
+required = true
+oracle = "complete current-profile no-op validation; ordinary snapshots use fresh independent arrays across and within calls; workspace snapshots return exact supplied arrays and explicitly overwrite them; caller-owned-independent-u32-arrays-v1 identity; forged, resized, duplicate, wrong-type, wrong-count, and closed-session state fails closed; every profiled workspace sample reports zero result-array allocation"
+
+[provenance]
+implementation = "accelerator/cuda/profile_run.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060"
+
+[run]
+commit = "f09f09309ff9c2f0ef03a69c63bd07a657ebb014"
+workload_sha256 = "232de4d90fb7e3a474d37234c7d99285f4a196b36267adf9e2b8208b1decef1a"
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/raw.csv"
