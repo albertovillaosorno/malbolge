@@ -357,8 +357,14 @@ mandatory CPU search. Publication validates capability, algorithm, seed, and
 proposal budget; optional cleanup must complete before fallback, malformed tickets
 fail closed, and no proposal gains acceptance authority. Ten tests cover deferred
 CPU, exact optional publication, submit/wait/result fallback, malformed ticket,
-idempotence, close, cached mandatory failure, and cleanup failure. Concrete
-CUDA/ROCm search tickets, verification-assist submission, adaptive bank selection,
+idempotence, close, cached mandatory failure, and cleanup failure.
+`classic-rotate-target-search-submission-v1` is the first concrete search-ticket
+composition. It retains exact full-batch selector/projection proofs, submits only
+the zero-or-one selector-relevant sub-batch through the candidate ticket, and
+publishes proposals against the full batch after validation. Eight tests include
+three live CUDA routes for one-position exactness, empty projection, and teardown
+fallback. No ticket-specific speedup or independent-stream claim follows. Other
+CUDA/ROCm strategies, verification-assist submission, adaptive bank selection,
 kernel/transfer overlap, and independent CUDA streams remain open.
 
 ## Invariants
@@ -431,7 +437,10 @@ fails explicitly without changing correctness rules.
   identity, deferred CPU work, exact optional publication, submit/wait/result
   fallback, malformed-ticket rejection, idempotent completion, close-before-wait,
   mandatory-failure caching, and cleanup-failure rejection.
-- Remaining evidence includes concrete CUDA/ROCm search tickets,
+- `tests/optimizer/test_rotate_target_submission.py` verifies the stable projected
+  strategy identity, zero/one exact sub-batches, nested protocol failure, and three
+  live CUDA routes covering exact publication, empty work, and teardown fallback.
+- Remaining evidence includes other concrete CUDA/ROCm search tickets,
   verification-assist submission, ROCm candidate tickets and VM substitution,
   independent CUDA stream policy, adaptive overlap selection, kernel/transfer
   overlap, broader hardware evidence, and matched measurements for future speedup

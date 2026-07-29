@@ -183,11 +183,16 @@ launches before module/context destruction, and cleanup failure remains fail-clo
 Existing primitive `evaluate`/`evaluate_prepared` methods retain their synchronous
 behavior. Default-stream context synchronization may complete multiple queued
 launches, but it is not independent-stream concurrency, kernel/transfer overlap,
-or a speedup claim. Neutral `validated-search-submission-v1` now exists, but the
-CUDA candidate ticket is not itself a search ticket: batch construction, proposal
-selection, and search-lifetime cleanup remain synchronous in current evaluated
-search adapters. A concrete CUDA search submission requires its own exact strategy
-state/lifetime evidence.
+or a speedup claim. Neutral `validated-search-submission-v1` now has one concrete
+CUDA-backed strategy composition:
+`classic-rotate-target-search-submission-v1`. The search ticket retains full-batch
+selector/projection proof while submitting only the exact zero-or-one rotate
+preimage through the CUDA candidate ticket. `wait()` validates projected evidence,
+selects proposals against the full batch, and then publishes; teardown drains the
+nested CUDA lifetime before CPU fallback. This does not make the candidate ticket
+a generic search engine, and no ticket-specific speedup or independent-stream
+claim is made. Other strategy submissions require their own exact state/lifetime
+evidence.
 
 ## Invariants
 
@@ -225,6 +230,9 @@ fails explicitly without changing correctness rules.
   six live one-shot ticket routes: rotate/crazy exact publication, empty/idempotent
   completion, close-before-wait, adapter-close CPU fallback after drain, and two
   independent tickets waited in reverse order.
+  `tests/optimizer/test_rotate_target_submission.py` adds eight projected-search
+  ticket regressions, including three live CUDA routes for one-position exact
+  publication, empty projection, and teardown-driven CPU fallback.
   Verification-assist now reuses exact candidate evidence through the same live
   CUDA backend over a deterministic 257-item rotate corpus; those results remain
   untrusted hints and malformed optional evidence becomes no hint. The bounded

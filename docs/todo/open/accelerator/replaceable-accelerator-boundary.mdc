@@ -325,9 +325,12 @@ multi-position strategy that can supply exact positions without heuristic filter
   lifetime routes. Neutral `validated-search-submission-v1` now binds exact
   algorithm/problem/seed/budget requests to optional tickets and deferred CPU
   search, validates untrusted proposal publication, and requires cleanup before
-  fallback. Ten tests cover its complete state/failure lifetime. Concrete CUDA/ROCm
-  search tickets, verification-assist submission, synthesis/guided and resident
-  search, independent CUDA streams, ROCm VM execution, adaptive/kernel overlap,
-  and broader hardware remain open.
+  fallback. Ten tests cover its complete state/failure lifetime.
+  `classic-rotate-target-search-submission-v1` now supplies a concrete zero-or-one
+  projected candidate ticket while retaining full-batch selector proof. Eight tests
+  include three live CUDA exact/empty/teardown routes. Other CUDA/ROCm strategy
+  tickets, verification-assist submission, synthesis/guided and resident search,
+  independent CUDA streams, ROCm VM execution, adaptive/kernel overlap, and broader
+  hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

@@ -90,8 +90,14 @@ capability/algorithm/seed/budget validation; cleanup must succeed before fallbac
 Malformed tickets fail closed, successful wait is idempotent, mandatory failure is
 cached, and close-before-wait prevents execution. Ten tests cover the complete
 neutral lifetime. Proposals remain untrusted and require `admit_search_result` for
-independent acceptance. No concrete CUDA/ROCm search ticket implements this port
-yet.
+independent acceptance. `classic-rotate-target-search-submission-v1` is the first
+concrete composition: it retains full-batch selector state, submits only the exact
+zero-or-one preimage projection through a candidate ticket, and publishes against
+the full batch after candidate validation. Eight tests cover identity, projected
+and empty CPU routes, malformed nested evidence/ticket behavior, and three live
+RTX 4060 routes: exact one-position publication, empty projection, and adapter-
+teardown CPU fallback. This is lifetime/exactness evidence, not measured speedup or
+independent-stream overlap. Other strategies and ROCm search tickets remain open.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. `search_config.py` adds versioned

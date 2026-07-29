@@ -1389,10 +1389,16 @@ binds an optional ticket and deferred CPU reference. `wait()` validates capabili
 algorithm, seed, and proposal budget before publication; optional cleanup precedes
 fallback, malformed tickets fail closed, successful waits are idempotent, and
 mandatory failures are cached. Ten tests cover the full state/fallback lifetime.
-Proposals remain untrusted and only independent admission may accept them. Concrete
-CUDA/ROCm search tickets, verification-assist submission, independent stream
-policy, adaptive bank/window selection, kernel/transfer overlap, other callback
-workloads, and broader live-device evidence remain open.
+Proposals remain untrusted and only independent admission may accept them.
+`classic-rotate-target-search-submission-v1` is now the first concrete search
+ticket: full-batch selector/projection proofs survive while only the exact zero-or-
+one preimage sub-batch reaches the candidate ticket. Eight tests cover identity,
+projected/empty CPU routes, malformed nested evidence/ticket behavior, and three
+live RTX 4060 routes: exact one-position publication, empty projection, and CUDA
+teardown followed by CPU fallback. No ticket-specific speedup or independent-
+stream claim is made. Other CUDA/ROCm strategies, verification-assist submission,
+independent stream policy, adaptive bank/window selection, kernel/transfer overlap,
+other callback workloads, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

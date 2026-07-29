@@ -334,8 +334,11 @@ multi-position strategy that can supply exact positions without heuristic filter
   prepared CPU-reference equality, and cleanup. Seven tests cover identity plus
   six live lifetime/exactness routes. Existing primitive methods stay synchronous,
   and context-wide default-stream completion is not overlap or speedup. Neutral
-  search submission lifetime now exists, but current evaluated-search batch
-  construction/selection does not implement a CUDA search ticket. Independent
-  streams plus concrete synthesis/search submission evidence remain open.
+  search submission lifetime now exists, and
+  `classic-rotate-target-search-submission-v1` is the first concrete CUDA-backed
+  strategy ticket. It retains full-batch selector/projection proof while submitting
+  only zero or one preimage candidate. Eight tests include three live exact/empty/
+  teardown routes. No ticket speedup or independent-stream claim is made; other
+  synthesis/search strategies and independent streams remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
