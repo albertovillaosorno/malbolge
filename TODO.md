@@ -1396,9 +1396,19 @@ one preimage sub-batch reaches the candidate ticket. Eight tests cover identity,
 projected/empty CPU routes, malformed nested evidence/ticket behavior, and three
 live RTX 4060 routes: exact one-position publication, empty projection, and CUDA
 teardown followed by CPU fallback. No ticket-specific speedup or independent-
-stream claim is made. Other CUDA/ROCm strategies, verification-assist submission,
-independent stream policy, adaptive bank/window selection, kernel/transfer overlap,
-other callback workloads, and broader live-device evidence remain open.
+stream claim is made. Hardware-neutral optional hint lifetime is now active as
+`validated-verification-assist-submission-v1`. Missing or cleanly failed assistance
+completes with no hints only after known-ticket cleanup; malformed tickets and
+cleanup failure fail closed. Nine tests cover identity, deferred empty completion,
+optional success/failures, malformed result/ticket, close, and cached cleanup
+failure. `candidate-evidence-verification-submission-v1` is the first concrete
+composition: exact evaluator/verifier identity survives across nested candidate
+tickets. Seven tests cover CPU evidence, nested protocol failures, verifier
+mismatch, and two live RTX 4060 routes for exact CUDA hints and teardown-driven no
+hints. Hints remain untrusted and never acquire acceptance authority. Other
+CUDA/ROCm strategies, independent stream policy, adaptive bank/window selection,
+kernel/transfer overlap, other callback workloads, and broader live-device
+evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

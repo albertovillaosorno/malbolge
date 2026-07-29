@@ -328,9 +328,14 @@ multi-position strategy that can supply exact positions without heuristic filter
   fallback. Ten tests cover its complete state/failure lifetime.
   `classic-rotate-target-search-submission-v1` now supplies a concrete zero-or-one
   projected candidate ticket while retaining full-batch selector proof. Eight tests
-  include three live CUDA exact/empty/teardown routes. Other CUDA/ROCm strategy
-  tickets, verification-assist submission, synthesis/guided and resident search,
-  independent CUDA streams, ROCm VM execution, adaptive/kernel overlap, and broader
-  hardware remain open.
+  include three live CUDA exact/empty/teardown routes. Neutral
+  `validated-verification-assist-submission-v1` now delays optional hint publication
+  until wait/cleanup, completes clean failures with no hints, and fails closed for
+  malformed or unknown lifetimes. Nine tests cover the neutral contract.
+  `candidate-evidence-verification-submission-v1` retains evaluator/verifier
+  identity across nested candidate tickets; seven tests include two live CUDA
+  exact/teardown routes. Hints remain non-authoritative. Other CUDA/ROCm strategy
+  and hint tickets, synthesis/guided and resident search, independent CUDA streams,
+  ROCm VM execution, adaptive/kernel overlap, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

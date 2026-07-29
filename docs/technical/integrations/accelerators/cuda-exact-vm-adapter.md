@@ -192,7 +192,14 @@ selects proposals against the full batch, and then publishes; teardown drains th
 nested CUDA lifetime before CPU fallback. This does not make the candidate ticket
 a generic search engine, and no ticket-specific speedup or independent-stream
 claim is made. Other strategy submissions require their own exact state/lifetime
-evidence.
+evidence. Optional `validated-verification-assist-submission-v1` now also has a
+CUDA-backed composition through
+`candidate-evidence-verification-submission-v1`. It retains exact verifier and
+evaluator identity across the nested CUDA candidate ticket, publishes ordered
+hints only after evidence validation and cleanup, and returns no hints after clean
+teardown-driven failure. Malformed nested tickets or cleanup failure remain fail-
+closed. This path grants no acceptance authority and carries no speedup or
+independent-stream claim.
 
 ## Invariants
 
@@ -233,6 +240,9 @@ fails explicitly without changing correctness rules.
   `tests/optimizer/test_rotate_target_submission.py` adds eight projected-search
   ticket regressions, including three live CUDA routes for one-position exact
   publication, empty projection, and teardown-driven CPU fallback.
+  `tests/optimizer/test_evidence_verification_submission.py` adds seven nested
+  candidate-hint regressions, including two live CUDA routes for exact CPU-equal
+  hints and teardown-driven empty completion.
   Verification-assist now reuses exact candidate evidence through the same live
   CUDA backend over a deterministic 257-item rotate corpus; those results remain
   untrusted hints and malformed optional evidence becomes no hint. The bounded

@@ -98,6 +98,18 @@ and empty CPU routes, malformed nested evidence/ticket behavior, and three live
 RTX 4060 routes: exact one-position publication, empty projection, and adapter-
 teardown CPU fallback. This is lifetime/exactness evidence, not measured speedup or
 independent-stream overlap. Other strategies and ROCm search tickets remain open.
+`verification_submission.py` adds
+`validated-verification-assist-submission-v1`. Optional assistance remains pending
+until `wait()`; no backend, typed submit/wait failure, or malformed result completes
+with no hints only after any known ticket closes. Malformed tickets and cleanup
+failure fail closed, successful waits are idempotent, and close-before-wait blocks
+publication. Nine tests cover the neutral state/outcome lifetime.
+`candidate-evidence-verification-submission-v1` composes exact candidate tickets
+into ordered optional hints while retaining evaluator/verifier identity. Seven tests
+cover CPU evidence, malformed nested evidence/ticket, verifier mismatch, and two
+live RTX 4060 routes: exact CUDA hints and teardown-driven empty completion. Hints
+remain untrusted; only `TrustedCandidateVerifier` may accept a proposal. No hint-
+ticket speedup or independent-stream claim is made.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. `search_config.py` adds versioned

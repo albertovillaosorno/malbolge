@@ -363,8 +363,17 @@ composition. It retains exact full-batch selector/projection proofs, submits onl
 the zero-or-one selector-relevant sub-batch through the candidate ticket, and
 publishes proposals against the full batch after validation. Eight tests include
 three live CUDA routes for one-position exactness, empty projection, and teardown
-fallback. No ticket-specific speedup or independent-stream claim follows. Other
-CUDA/ROCm strategies, verification-assist submission, adaptive bank selection,
+fallback. No ticket-specific speedup or independent-stream claim follows. The
+shared boundary now also exposes
+`validated-verification-assist-submission-v1`. Optional assistance publishes only
+after exact verifier/capability/order validation and successful ticket cleanup;
+absence or clean typed failure completes with no hints, while malformed tickets or
+cleanup failure fail closed. Nine tests cover the neutral lifetime.
+`candidate-evidence-verification-submission-v1` composes nested candidate tickets
+into exact ordered hints while preserving evaluator/verifier identity. Seven tests
+include two live CUDA routes for CPU-equal hints and teardown-driven empty
+completion. Hints remain optional and untrusted; `TrustedCandidateVerifier` alone
+owns acceptance. Other CUDA/ROCm strategies, adaptive bank selection,
 kernel/transfer overlap, and independent CUDA streams remain open.
 
 ## Invariants
@@ -440,9 +449,15 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_rotate_target_submission.py` verifies the stable projected
   strategy identity, zero/one exact sub-batches, nested protocol failure, and three
   live CUDA routes covering exact publication, empty work, and teardown fallback.
-- Remaining evidence includes other concrete CUDA/ROCm search tickets,
-  verification-assist submission, ROCm candidate tickets and VM substitution,
-  independent CUDA stream policy, adaptive overlap selection, kernel/transfer
+- `tests/optimizer/test_verification_submission.py` verifies optional deferred
+  empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
+  rejection, idempotence, close-before-wait, and cleanup-failure caching.
+- `tests/optimizer/test_evidence_verification_submission.py` verifies exact nested
+  candidate evidence, verifier identity, malformed nested lifetime/result handling,
+  and two live CUDA routes for exact hints and teardown-driven empty completion.
+- Remaining evidence includes other concrete CUDA/ROCm search and hint tickets,
+  ROCm candidate tickets and VM substitution, independent CUDA stream policy,
+  adaptive overlap selection, kernel/transfer
   overlap, broader hardware evidence, and matched measurements for future speedup
   claims.
 - Prerequisite completion evidence: `batch-vm-execution`,

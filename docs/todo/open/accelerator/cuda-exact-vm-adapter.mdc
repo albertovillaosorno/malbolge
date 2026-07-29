@@ -338,7 +338,10 @@ multi-position strategy that can supply exact positions without heuristic filter
   `classic-rotate-target-search-submission-v1` is the first concrete CUDA-backed
   strategy ticket. It retains full-batch selector/projection proof while submitting
   only zero or one preimage candidate. Eight tests include three live exact/empty/
-  teardown routes. No ticket speedup or independent-stream claim is made; other
-  synthesis/search strategies and independent streams remain open.
+  teardown routes. Optional verification submission now composes the same CUDA
+  candidate ticket through `candidate-evidence-verification-submission-v1`; seven
+  tests include two live exact-hint/teardown-empty routes while trusted admission
+  remains separate. No ticket speedup or independent-stream claim is made; other
+  synthesis/search/hint strategies and independent streams remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
