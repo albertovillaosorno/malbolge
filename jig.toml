@@ -1,5 +1,5 @@
 [jig]
-schema_version = 13
+schema_version = 14
 
 [documentation]
 path_style = "lower-kebab"
@@ -324,7 +324,8 @@ version = "1.97.1"
 
 [version.basedpyright]
 current = "1.39.9"
-latest = "1.39.9"
+stable = ["1.39.9"]
+preview = []
 
 [version.basedpyright.projection.tool]
 kind = "tool"
@@ -333,7 +334,8 @@ template = "{version}"
 
 [version.pytest]
 current = "9.1.1"
-latest = "9.1.1"
+stable = ["9.1.1"]
+preview = []
 
 [version.pytest.projection.tool]
 kind = "tool"
@@ -342,7 +344,8 @@ template = "{version}"
 
 [version.ruff]
 current = "0.16.0"
-latest = "0.16.0"
+stable = ["0.16.0"]
+preview = []
 
 [version.ruff.projection.tool]
 kind = "tool"
@@ -351,7 +354,8 @@ template = "{version}"
 
 [version.git]
 current = "2.54.0.windows.1"
-latest = "2.54.0.windows.1"
+stable = ["2.54.0.windows.1"]
+preview = []
 
 [version.git.projection.tool]
 kind = "tool"
@@ -360,7 +364,8 @@ template = "{version}"
 
 [version.clippy-nightly]
 current = "0.1.99"
-latest = "0.1.99"
+stable = ["0.1.99"]
+preview = []
 
 [version.clippy-nightly.projection.cargo_clippy]
 kind = "tool"
@@ -369,7 +374,8 @@ template = "{version}"
 
 [version.rust-stable]
 current = "1.97.1"
-latest = "1.97.1"
+stable = ["1.97.1"]
+preview = []
 
 [version.rust-stable.projection.cargo_rust_version]
 kind = "toml"
@@ -390,7 +396,8 @@ template = "stable-{version}-x86_64-pc-windows-gnu"
 
 [version.rustfmt-nightly]
 current = "1.9.0-nightly"
-latest = "1.9.0-nightly"
+stable = ["1.9.0-nightly"]
+preview = []
 
 [version.rustfmt-nightly.projection.cargo_fmt]
 kind = "tool"
