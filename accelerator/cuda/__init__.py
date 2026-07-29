@@ -64,10 +64,12 @@ from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
 from accelerator.cuda.profile_run import profile_snapshot_overlap_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
+from accelerator.cuda.runtime import CudaIndependentKernelLaunch
 from accelerator.cuda.runtime import CudaKernelLaunch
 from accelerator.cuda.runtime import CudaOrderedDtoHStream
 from accelerator.cuda.runtime import CudaOrderedTransferBatch
 from accelerator.cuda.runtime import create_ordered_dtoh_stream
+from accelerator.cuda.runtime import cuda_independent_kernel_launch_id
 from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
@@ -75,6 +77,7 @@ from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
 
 __all__ = [
     "CudaExactPrimitiveAdapter",
+    "CudaIndependentKernelLaunch",
     "CudaKernelLaunch",
     "CudaOrderedDtoHStream",
     "CudaOrderedTransferBatch",
@@ -95,6 +98,7 @@ __all__ = [
     "ProfileSnapshotStreamSummary",
     "ProfileSnapshotWindow",
     "create_ordered_dtoh_stream",
+    "cuda_independent_kernel_launch_id",
     "cuda_kernel_launch_id",
     "cuda_ordered_dtoh_stream_id",
     "profile_snapshot_host_registration_id",

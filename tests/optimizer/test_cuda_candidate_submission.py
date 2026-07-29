@@ -56,7 +56,7 @@ import pytest
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.cuda import CudaPrimitiveCandidateSubmissionAdapter
-from accelerator.cuda import cuda_kernel_launch_id
+from accelerator.cuda import cuda_independent_kernel_launch_id
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import PrimitiveKind
@@ -74,7 +74,7 @@ from accelerator.work_ports import CandidateWorkItem
 if TYPE_CHECKING:
     from accelerator.work_ports import CandidateEvaluationResult
 
-CUDA_KERNEL_LAUNCH_ID = "cuda-default-stream-kernel-launch-v1"
+CUDA_KERNEL_LAUNCH_ID = "cuda-independent-stream-kernel-launch-v1"
 ROTATE_COUNT = 257
 CRAZY_COUNT = 64
 CUDA_BACKEND_ID = "cuda"
@@ -134,9 +134,9 @@ def _assert_same_evidence(
     assert observed.packed == expected.packed
 
 
-def test_cuda_kernel_launch_identity_is_stable() -> None:
-    """Evidence names the exact explicit default-stream launch lifetime."""
-    assert cuda_kernel_launch_id() == CUDA_KERNEL_LAUNCH_ID
+def test_cuda_ticket_kernel_launch_identity_is_stable() -> None:
+    """Candidate tickets name the exact isolated-stream launch lifetime."""
+    assert cuda_independent_kernel_launch_id() == CUDA_KERNEL_LAUNCH_ID
 
 
 def test_cuda_rotate_submission_publishes_exactly_after_wait() -> None:
@@ -261,7 +261,7 @@ def test_adapter_close_drains_ticket_then_neutral_falls_back() -> None:
 
 
 def test_two_cuda_tickets_remain_exact_when_waited_in_reverse() -> None:
-    """Independent one-shot buffers survive context-wide completion ordering."""
+    """Independent streams and buffers remain exact under reverse waiting."""
     first_batch = _rotate_batch()
     second_batch = _rotate_batch(1_024)
     reference = _reference(PrimitiveKind.ROTATE)

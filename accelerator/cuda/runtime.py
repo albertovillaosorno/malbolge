@@ -69,8 +69,12 @@ THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
 CUDA_STREAM_DEFAULT: Final = 0
+CUDA_STREAM_NON_BLOCKING: Final = 1
 CUDA_ORDERED_DTOH_STREAM_ID: Final = "cuda-ordered-registered-dtoh-stream-v1"
 CUDA_KERNEL_LAUNCH_ID: Final = "cuda-default-stream-kernel-launch-v1"
+CUDA_INDEPENDENT_KERNEL_LAUNCH_ID: Final = (
+    "cuda-independent-stream-kernel-launch-v1"
+)
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
@@ -444,6 +448,16 @@ def cuda_kernel_launch_id() -> str:
     return CUDA_KERNEL_LAUNCH_ID
 
 
+def cuda_independent_kernel_launch_id() -> str:
+    """Return the isolated one-stream-per-launch identity.
+
+    Returns:
+        Stable identity for independent CUDA ticket provenance.
+
+    """
+    return CUDA_INDEPENDENT_KERNEL_LAUNCH_ID
+
+
 @dataclass(frozen=True, slots=True)
 class _CudaKernelLaunchBinding:
     ensure_open: Callable[[], None]
@@ -578,6 +592,182 @@ class CudaKernelLaunchFactory:
             return
 
 
+@dataclass(frozen=True, slots=True)
+class _CudaIndependentKernelLaunchBinding:
+    destroy_fn: _CudaFn
+    ensure_open: Callable[[], None]
+    forget: Callable[[CudaIndependentKernelLaunch], None]
+    handle: ctypes.c_void_p
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaIndependentKernelLaunch:
+    """One nonblocking CUDA stream retaining exact launch parameters."""
+
+    def __init__(
+        self,
+        binding: _CudaIndependentKernelLaunchBinding,
+        owners: tuple[object, ...],
+    ) -> None:
+        """Adopt one submitted stream, kernel, and parameter lifetime."""
+        self._binding = binding
+        self._closed = False
+        self._completed = False
+        self._owners = owners
+
+    @property
+    def completed(self) -> bool:
+        """Whether this exact stream has completed its submitted kernel."""
+        return self._completed
+
+    def close(self) -> None:
+        """Synchronize and destroy this launch stream exactly once."""
+        if self._closed:
+            return
+        wait_failure: AcceleratorExecutionError | None = None
+        if not self._completed:
+            try:
+                self.wait()
+            except AcceleratorExecutionError as error:
+                wait_failure = error
+        destroy_failure: AcceleratorExecutionError | None = None
+        try:
+            _check_execution(
+                self._binding.destroy_fn(self._binding.handle),
+                "cuStreamDestroy_v2",
+            )
+        except AcceleratorExecutionError as error:
+            destroy_failure = error
+        self._closed = True
+        self._owners = ()
+        self._binding.forget(self)
+        _raise_first_failure(wait_failure, destroy_failure)
+
+    def wait(self) -> None:
+        """Synchronize only this launch stream and release parameters.
+
+        Raises:
+            AcceleratorExecutionError: If closed or synchronization fails.
+
+        """
+        self._binding.ensure_open()
+        if self._closed:
+            message = "CUDA independent kernel launch is closed"
+            raise AcceleratorExecutionError(message)
+        if self._completed:
+            return
+        _check_execution(
+            self._binding.synchronize_fn(self._binding.handle),
+            "cuStreamSynchronize",
+        )
+        self._completed = True
+        self._owners = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CudaIndependentKernelLaunchFunctions:
+    """Reviewed Driver functions required by isolated kernel streams."""
+
+    create_fn: _CudaFn
+    destroy_fn: _CudaFn
+    ensure_open: Callable[[], None]
+    launch_fn: _CudaFn
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaIndependentKernelLaunchFactory:
+    """Own one nonblocking CUDA stream for every submitted kernel."""
+
+    def __init__(
+        self,
+        binding: CudaIndependentKernelLaunchFunctions,
+    ) -> None:
+        """Bind one live context's stream and kernel functions."""
+        self._binding = binding
+        self._launches: list[CudaIndependentKernelLaunch] = []
+
+    def submit(
+        self,
+        kernel: ctypes.c_void_p,
+        device_pointers: tuple[int, ...],
+        count: int,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit one kernel on a new nonblocking CUDA stream.
+
+        Returns:
+            Runtime-owned isolated launch retaining all parameter owners.
+
+        Raises:
+            AcceleratorExecutionError: If stream creation or launch fails.
+
+        """
+        self._binding.ensure_open()
+        arguments = _kernel_launch_arguments(device_pointers, count)
+        handle = ctypes.c_void_p()
+        _check_execution(
+            self._binding.create_fn(
+                ctypes.byref(handle),
+                CUDA_STREAM_NON_BLOCKING,
+            ),
+            "cuStreamCreate",
+        )
+        try:
+            _check_execution(
+                self._binding.launch_fn(
+                    kernel,
+                    arguments.blocks,
+                    1,
+                    1,
+                    THREADS_PER_BLOCK,
+                    1,
+                    1,
+                    0,
+                    handle,
+                    arguments.params,
+                    None,
+                ),
+                "cuLaunchKernel",
+            )
+        except AcceleratorExecutionError as launch_error:
+            try:
+                _check_execution(
+                    self._binding.destroy_fn(handle),
+                    "cuStreamDestroy_v2",
+                )
+            except AcceleratorExecutionError as destroy_error:
+                raise launch_error from destroy_error
+            raise launch_error from None
+        launch = CudaIndependentKernelLaunch(
+            _CudaIndependentKernelLaunchBinding(
+                destroy_fn=self._binding.destroy_fn,
+                ensure_open=self._binding.ensure_open,
+                forget=self._forget,
+                handle=handle,
+                synchronize_fn=self._binding.synchronize_fn,
+            ),
+            (*arguments.owners, arguments.params),
+        )
+        self._launches.append(launch)
+        return launch
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Close every isolated launch before context destruction.
+
+        Returns:
+            First synchronization/destruction failure, or ``None``.
+
+        """
+        return _release_independent_kernel_launches(self._launches)
+
+    def _forget(self, launch: CudaIndependentKernelLaunch) -> None:
+        try:
+            self._launches.remove(launch)
+        except ValueError:
+            return
+
+
 def _kernel_launch_arguments(
     device_pointers: tuple[int, ...],
     count: int,
@@ -651,6 +841,7 @@ class CudaRuntime:
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
     host_memory: CudaHostMemoryRegistry
+    independent_kernel_launches: CudaIndependentKernelLaunchFactory
     kernel_launches: CudaKernelLaunchFactory
     ordered_transfers: CudaOrderedDtoHStreamFactory
     resources: CudaResourceProbe
@@ -722,6 +913,15 @@ class CudaRuntime:
                 synchronize_fn=self._cu_ctx_synchronize,
             )
         )
+        self.independent_kernel_launches = CudaIndependentKernelLaunchFactory(
+            CudaIndependentKernelLaunchFunctions(
+                create_fn=self._cu_stream_create,
+                destroy_fn=self._cu_stream_destroy,
+                ensure_open=self._ensure_open,
+                launch_fn=self._cu_launch_kernel,
+                synchronize_fn=self._cu_stream_synchronize,
+            )
+        )
         self.ordered_transfers = CudaOrderedDtoHStreamFactory(
             _CudaOrderedFactoryBinding(
                 copy_fn=self._cu_memcpy_dtoh_async,
@@ -757,6 +957,7 @@ class CudaRuntime:
         if self._closed:
             return
         launch_failure = self.kernel_launches.release_failure()
+        independent_failure = self.independent_kernel_launches.release_failure()
         stream_failure = self.ordered_transfers.release_failure()
         registration_failure = self.host_memory.release_failure()
         self._closed = True
@@ -764,6 +965,7 @@ class CudaRuntime:
         self.host_memory.clear()
         _raise_first_failure(
             launch_failure,
+            independent_failure,
             stream_failure,
             registration_failure,
             context_failure,
@@ -1278,6 +1480,21 @@ def _raise_first_failure(
 
 def _release_kernel_launches(
     launches: list[CudaKernelLaunch],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    for launch in tuple(launches):
+        try:
+            launch.close()
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    if failure is None:
+        launches.clear()
+    return failure
+
+
+def _release_independent_kernel_launches(
+    launches: list[CudaIndependentKernelLaunch],
 ) -> AcceleratorExecutionError | None:
     failure: AcceleratorExecutionError | None = None
     for launch in tuple(launches):

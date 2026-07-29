@@ -68,7 +68,7 @@ from accelerator.exact_primitives import PrimitiveResult
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from accelerator.cuda.runtime import CudaKernelLaunch
+    from accelerator.cuda.runtime import CudaIndependentKernelLaunch
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
     from accelerator.exact_primitives import PrimitiveExecutionResult
@@ -346,7 +346,7 @@ class _CudaPrimitiveTicketBinding:
 @dataclass(slots=True)
 class _CudaPrimitiveTicketResources:
     host_output: ctypes.Array[ctypes.c_uint32]
-    launch: CudaKernelLaunch | None
+    launch: CudaIndependentKernelLaunch | None
     pointers: list[int]
 
 
@@ -480,7 +480,7 @@ def _submit_primitive_ticket(
                 output=device_output,
             ),
         )
-        launch = submission.binding.runtime.kernel_launches.submit(
+        launch = submission.binding.runtime.independent_kernel_launches.submit(
             kernel,
             pointers,
             storage.count(),
