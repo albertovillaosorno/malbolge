@@ -1356,9 +1356,22 @@ buffers registered by the same context, retains each host lifetime until explici
 `wait()`/`close()`, preserves submission order, blocks unregistration while in flight,
 and drains streams before host/context teardown. Seven live RTX 4060 tests cover
 exact copy, repeated visibility of prior default-stream uploads, same-host ordering,
-ownership rejection, explicit close, runtime close, and stable identity. Snapshot
-double-buffer integration, measured overlap, hardware-
-neutral asynchronous submission, and broader live-device evidence remain open.
+ownership rejection, explicit close, runtime close, and stable identity.
+`caller-owned-double-window-overlap-u32-arrays-v1` now admits two equal registered
+banks only when the total host budget and all-or-none registration succeed. It
+prefetches the next memory window before the current exact callback and otherwise
+uses the same synchronous callback route with an explicit fallback reason. Six live
+CUDA tests cover alternating/partial windows, registration-disabled, one-bank, and
+Driver-rejection fallback, prefetched consumer failure/retry, and full bank release.
+Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` compares
+matched registered windows 1/8. Synchronous/overlap medians are
+95.2102/94.9084 ms (1.003x, 14/15 paired wins, 0.2647 ms paired-median saving)
+and 94.7627/93.6493 ms (1.012x, 15/15 wins, 1.0636 ms saving). Overlap retains
+36.491/291.929 MiB versus 18.246/145.965 MiB and has higher one-time allocation,
+so it remains an explicit throughput/memory tradeoff rather than a default.
+Hardware-neutral asynchronous submission, adaptive bank/window selection,
+kernel/transfer overlap, other callback workloads, and broader live-device evidence
+remain open.
 
 ### TODO - Compilation latency performance budget
 

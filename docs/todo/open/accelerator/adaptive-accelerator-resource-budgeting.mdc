@@ -152,8 +152,14 @@ example probe points, not supported-range endpoints.
   `caller-owned-windowed-u32-arrays-v1`. Batch-32 windows 1/8 reduce retained host
   memory 96.875%/75.000% and improve 1.023x/1.036x versus the full pageable window.
   Window 1 minimizes memory; window 8 is the measured balanced point on this device.
-  Ordered CUDA D-to-H lifetime is now explicit through
-  `cuda-ordered-registered-dtoh-stream-v1`, but double-buffer sizing, overlap
-  admission/fallback, performance evidence, and broader live-hardware measurements
+  Ordered CUDA D-to-H lifetime is explicit through
+  `cuda-ordered-registered-dtoh-stream-v1`. The admitted
+  `caller-owned-double-window-overlap-u32-arrays-v1` workspace uses two equal banks
+  only when the total host budget and all registrations succeed; every other case
+  follows exact synchronous fallback. Retained evidence under
+  `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` measures
+  1.003x/1.012x for matched windows 1/8 with 14/15 and 15/15 paired wins, at exactly
+  twice the retained host memory and higher setup. Adaptive bank/window choice,
+  other callback workloads, kernel overlap, and broader live-hardware measurements
   remain required. Persistent classic continuation is tracked by its own retained
   session evidence.

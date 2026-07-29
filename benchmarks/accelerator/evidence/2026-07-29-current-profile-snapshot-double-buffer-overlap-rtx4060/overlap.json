@@ -1,0 +1,249 @@
+{
+  "allocation_sample_count": 5,
+  "backend": "cuda-profile-run",
+  "batch_size": 32,
+  "benchmark_id": "current-profile-snapshot-double-buffer-overlap-v1",
+  "device": {
+    "arch": "sm_89",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "geometry": {
+    "memory_bytes_per_vm": 19131876,
+    "memory_words": 4782969,
+    "word_trits": 14
+  },
+  "host_registration_budget_bytes": 536870912,
+  "host_registration_id": "bounded-all-or-pageable-u32-arrays-v1",
+  "hypothesis": "double buffering improves median and paired snapshot latency for the same registered window while preserving exact callback work",
+  "overlap_workspace_id": "caller-owned-double-window-overlap-u32-arrays-v1",
+  "rejection_rule": "do not promote a speedup when overlap median is not lower or paired wins do not exceed half of retained observations",
+  "route_ids": [
+    "sync-window-1",
+    "overlap-window-1",
+    "sync-window-8",
+    "overlap-window-8"
+  ],
+  "route_order": "rotate four route first positions by sample index",
+  "rows": [
+    {
+      "allocate": {
+        "max_ns": 5453400,
+        "median_ns": 5322800,
+        "min_ns": 5266400,
+        "pstdev_ns": 65153.34527098359,
+        "raw_ns": [
+          5453400,
+          5286200,
+          5322800,
+          5330900,
+          5266400
+        ]
+      },
+      "buffer_count": 1,
+      "host_memory_budget_bytes": 19131876,
+      "overlap_active": false,
+      "prefetched_windows": 0,
+      "registration": {
+        "budget_bytes": 536870912,
+        "fallback_reason": null,
+        "registered_arrays": 1,
+        "registered_bytes": 19131876,
+        "requested_bytes": 19131876
+      },
+      "retained_bytes": 19131876,
+      "route_id": "sync-window-1",
+      "snapshot": {
+        "max_ns": 101703400,
+        "median_ns": 95210200,
+        "min_ns": 95065500,
+        "pstdev_ns": 1622436.8534878502,
+        "raw_ns": [
+          95102200,
+          95134800,
+          95282300,
+          95554400,
+          95395300,
+          95065500,
+          95210200,
+          95274400,
+          95079000,
+          101703400,
+          95329900,
+          95136900,
+          95101800,
+          95100200,
+          95340700
+        ]
+      },
+      "window_items": 1,
+      "windows_per_snapshot": 32
+    },
+    {
+      "allocate": {
+        "max_ns": 10955500,
+        "median_ns": 10749000,
+        "min_ns": 10525400,
+        "pstdev_ns": 151108.9275986035,
+        "raw_ns": [
+          10877300,
+          10749000,
+          10955500,
+          10675800,
+          10525400
+        ]
+      },
+      "buffer_count": 2,
+      "host_memory_budget_bytes": 38263752,
+      "overlap_active": true,
+      "prefetched_windows": 31,
+      "registration": {
+        "budget_bytes": 536870912,
+        "fallback_reason": null,
+        "registered_arrays": 2,
+        "registered_bytes": 38263752,
+        "requested_bytes": 38263752
+      },
+      "retained_bytes": 38263752,
+      "route_id": "overlap-window-1",
+      "snapshot": {
+        "max_ns": 95267800,
+        "median_ns": 94908400,
+        "min_ns": 94802600,
+        "pstdev_ns": 146700.66787699214,
+        "raw_ns": [
+          94854400,
+          94924900,
+          95096600,
+          95266900,
+          94936700,
+          94826000,
+          94985000,
+          94802600,
+          94908400,
+          95049200,
+          94864700,
+          94812800,
+          94837100,
+          95267800,
+          94908000
+        ]
+      },
+      "window_items": 1,
+      "windows_per_snapshot": 32
+    },
+    {
+      "allocate": {
+        "max_ns": 56836200,
+        "median_ns": 54401700,
+        "min_ns": 51517100,
+        "pstdev_ns": 1996945.9668203343,
+        "raw_ns": [
+          53925300,
+          56836200,
+          56834400,
+          51517100,
+          54401700
+        ]
+      },
+      "buffer_count": 1,
+      "host_memory_budget_bytes": 153055008,
+      "overlap_active": false,
+      "prefetched_windows": 0,
+      "registration": {
+        "budget_bytes": 536870912,
+        "fallback_reason": null,
+        "registered_arrays": 8,
+        "registered_bytes": 153055008,
+        "requested_bytes": 153055008
+      },
+      "retained_bytes": 153055008,
+      "route_id": "sync-window-8",
+      "snapshot": {
+        "max_ns": 95230200,
+        "median_ns": 94762700,
+        "min_ns": 94663100,
+        "pstdev_ns": 157866.4138511489,
+        "raw_ns": [
+          94696300,
+          94668700,
+          94675700,
+          94903600,
+          94812700,
+          95013700,
+          94663900,
+          94762700,
+          94663100,
+          95230200,
+          94700800,
+          94769800,
+          94693300,
+          94956900,
+          94860700
+        ]
+      },
+      "window_items": 8,
+      "windows_per_snapshot": 4
+    },
+    {
+      "allocate": {
+        "max_ns": 145280700,
+        "median_ns": 123027300,
+        "min_ns": 97226200,
+        "pstdev_ns": 15875789.076250667,
+        "raw_ns": [
+          145280700,
+          130300100,
+          123027300,
+          116063300,
+          97226200
+        ]
+      },
+      "buffer_count": 2,
+      "host_memory_budget_bytes": 306110016,
+      "overlap_active": true,
+      "prefetched_windows": 3,
+      "registration": {
+        "budget_bytes": 536870912,
+        "fallback_reason": null,
+        "registered_arrays": 16,
+        "registered_bytes": 306110016,
+        "requested_bytes": 306110016
+      },
+      "retained_bytes": 306110016,
+      "route_id": "overlap-window-8",
+      "snapshot": {
+        "max_ns": 94215100,
+        "median_ns": 93649300,
+        "min_ns": 93567700,
+        "pstdev_ns": 166920.53944583598,
+        "raw_ns": [
+          93710600,
+          93635700,
+          93612100,
+          93864100,
+          93619100,
+          93649300,
+          93616400,
+          93789700,
+          93933700,
+          94215100,
+          93594000,
+          93654700,
+          93567700,
+          93606900,
+          93745700
+        ]
+      },
+      "window_items": 8,
+      "windows_per_snapshot": 4
+    }
+  ],
+  "sample_count": 15,
+  "segment_steps": 64,
+  "stream_workspace_id": "caller-owned-windowed-u32-arrays-v1",
+  "warmup_count": 1,
+  "window_items": [
+    1,
+    8
+  ]
+}

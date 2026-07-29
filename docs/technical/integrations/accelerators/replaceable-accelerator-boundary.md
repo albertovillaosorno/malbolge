@@ -336,8 +336,12 @@ multi-position strategy that can supply exact positions without heuristic filter
 Resident/fused search remains later work. CUDA now has the adapter-internal
 `cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered submissions
 retain same-context registered host buffers until synchronization and teardown.
-Hardware-neutral asynchronous work submission, snapshot double buffering,
-Synthesis/guided search algorithms, and ROCm remain open.
+The CUDA profile adapter now additionally owns explicit snapshot double buffering:
+two fully registered host banks overlap next-window D-to-H with current callback
+work and fail back synchronously when budget or registration admission is absent.
+This remains adapter-internal capacity, not hardware-neutral asynchronous work
+submission. Synthesis/guided search algorithms, cross-backend async ports, adaptive
+bank selection, kernel overlap, and ROCm remain open.
 
 ## Invariants
 
@@ -386,6 +390,10 @@ fails explicitly without changing correctness rules.
   `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`.
 - Bounded streamed-snapshot window evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
+- Registered double-buffer snapshot evidence is retained under
+  `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`. Matched windows 1/8 improve
+  1.003x/1.012x with 14/15 and 15/15 paired wins while doubling retained host
+  memory; exact synchronous fallback remains authoritative.
 - `tests/optimizer/test_cuda_ordered_dtoh_stream.py` provides live RTX 4060
   evidence for exact ordered async D-to-H copies, same-host submission order,
   registered-buffer lifetime, invalid ownership rejection, and deterministic
@@ -395,8 +403,8 @@ fails explicitly without changing correctness rules.
   optional verification hints, and verifier-only candidate admission.
 - Remaining evidence includes concrete algorithm adapters, CUDA/ROCm work-port
   implementations, ROCm VM substitution, hardware-neutral asynchronous
-  submission, higher-level overlap, broader hardware evidence, and matched
-  measurements for future speedup claims.
+  submission, adaptive overlap selection, kernel/transfer overlap, broader
+  hardware evidence, and matched measurements for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

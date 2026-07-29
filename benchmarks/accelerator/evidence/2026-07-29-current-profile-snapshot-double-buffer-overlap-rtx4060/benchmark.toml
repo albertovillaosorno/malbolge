@@ -1,0 +1,47 @@
+schema_version = 1
+
+[study]
+id = "current-profile-snapshot-double-buffer-overlap-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does a second fully registered snapshot bank overlap next-window D-to-H with exact current-callback validation enough to improve complete batch-32 snapshot latency?"
+hypothesis = "For identical registered window capacities one and eight, double buffering lowers median snapshot latency and wins more than half of the fifteen paired observations while preserving exact results and callback order."
+baseline = "caller-owned-windowed-u32-arrays-v1 synchronous registered routes at window capacities one and eight from clean source commit a25990ab1ff1dc8b42b1f8886e443bc7f9e69766"
+rejection_observation = "Any result/order/summary/capacity/registration drift, active overlap fallback, overlap median not lower than the matched synchronous route, or no more than seven paired wins rejects a speedup claim."
+
+[workload]
+identity = "current-profile-14-trit-resident-snapshot-double-buffer-64-step-no-op-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one exact snapshot per route after one untimed resident advance"
+ordering = "cyclic rotation of sync-window-1, overlap-window-1, sync-window-8, and overlap-window-8 as first route by retained sample index"
+stopping_rule = "fifteen exact snapshots and five allocation samples per route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed range plus matched-window paired direction counts and median paired savings"
+
+[objectives]
+metrics = ["time_ns", "allocation_ns", "retained_bytes", "buffer_count", "callback_count", "prefetched_windows", "registered_bytes"]
+tradeoff_policy = "exact results, ordered callback ranges, explicit registration and overlap admission, bounded host memory, callback-scoped aliases, deterministic cleanup, and synchronous fallback precede speed interpretation"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+host_memory_gib = 31.91
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

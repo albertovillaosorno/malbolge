@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "current-profile-snapshot-double-buffer-overlap-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "current-profile-14-trit-resident-snapshot-double-buffer-64-step-no-op-v1"
+difficulty = 4782969
+target_profile = "malbolge-2026.2"
+
+[budget]
+evaluations = 84
+samples = 15
+
+[verification]
+required = true
+oracle = "complete current-profile no-op validation inside every callback; exact global start/stop order; fixed callback-scoped aliases; registered synchronous and admitted double-buffer routes for windows one/eight; 32/4 callbacks; 31/3 prefetched windows; deterministic drain and retry; identity and transfer cardinality checks"
+
+[provenance]
+implementation = "accelerator/cuda/profile_run.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060"
+
+[run]
+commit = "a25990ab1ff1dc8b42b1f8886e443bc7f9e69766"
+workload_sha256 = "890519535538f56a804832fbe19e1343b4db6f4db7ccf855d3772b0a7427fecb"
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVRTC 13.3.33; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/raw.csv"

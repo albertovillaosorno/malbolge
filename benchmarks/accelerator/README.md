@@ -174,6 +174,27 @@ Windows 1/8 retain 18.246/145.965 MiB, fit the 256 MiB page-lock budget, and mea
 97.5194/96.2771 ms versus 99.7597 ms for the 583.859 MiB full pageable window.
 They reduce memory 96.875%/75.000% and win 14/15 and 13/15 paired samples.
 
+`profile_snapshot_double_buffer_overlap.py` pairs the registered synchronous stream
+workspace against two registered banks at identical per-window capacities one and
+eight. The overlap route submits the next D-to-H window before exact current-callback
+validation. Four routes stay live simultaneously; one warmup precedes 15 retained
+samples with cyclic first-route rotation, plus five allocation samples per route.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_snapshot_double_buffer_overlap
+```
+
+Retained RTX 4060 evidence is under
+`evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`.
+Window-one synchronous/overlap medians are 95.2102/94.9084 ms (1.003x, 14/15
+paired wins); window eight measures 94.7627/93.6493 ms (1.012x, 15/15 wins).
+Overlap doubles retained host memory to 36.491/291.929 MiB and increases setup,
+so it is an explicit tradeoff rather than the default. The measurement overlaps
+D-to-H only with callback-side CPU work; it makes no kernel-overlap claim.
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One

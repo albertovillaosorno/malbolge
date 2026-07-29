@@ -310,10 +310,14 @@ improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The pro
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. The next production boundary is the first real non-invertible or
 multi-position strategy that can supply exact positions without heuristic filtering.
-  CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` now proves
-  ordered registered-buffer lifetime and deterministic teardown without claiming
-  higher-level overlap. Synthesis/guided search, resident search, ROCm work
-  ports/VM execution, hardware-neutral asynchronous submission, and broader
+  CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` proves ordered
+  registered-buffer lifetime and deterministic teardown. Adapter-internal
+  `caller-owned-double-window-overlap-u32-arrays-v1` now overlaps next-window D-to-H
+  with current callback work and falls back synchronously without changing shared
+  semantics. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`
+  records modest 1.003x/1.012x matched-window improvements at twice the memory.
+  Synthesis/guided search, resident search, ROCm work ports/VM execution,
+  hardware-neutral asynchronous submission, adaptive/kernel overlap, and broader
   hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

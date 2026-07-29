@@ -95,8 +95,14 @@ batches.
   1.023x/1.036x versus the full pageable window. The runtime now exposes
   `cuda-ordered-registered-dtoh-stream-v1`; seven live tests prove same-context
   registration lifetime, prior default-upload visibility, exact/same-host order,
-  ownership failure, and teardown.
-  Snapshot double buffering and measured overlap remain open. Exact classic crazy/rotate
+  ownership failure, and teardown. The explicit
+  `caller-owned-double-window-overlap-u32-arrays-v1` workspace now prefetches the
+  next registered memory bank during current callback work and reports synchronous
+  fallback for one-bank or registration failure. Six live tests cover delivery,
+  fallback, pending-prefetch failure recovery, and release. Evidence under
+  `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` measures
+  1.003x/1.012x for windows 1/8 while doubling retained memory. Adaptive selection,
+  kernel overlap, and broader devices remain open. Exact classic crazy/rotate
   candidate evaluation now traverses the hardware-neutral work port on live CUDA
   and matches CPU evidence over 257-item deterministic corpora. Exact candidate
   evidence can now feed verification-assist hints through live CUDA over a

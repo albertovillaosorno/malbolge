@@ -56,8 +56,15 @@ Callback-scoped aliases must be copied before the next window when durable owner
 is required. CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` now binds
 ordered D-to-H submission with default-stream dependencies to same-context registered buffers. Pending
 copies retain host registration until `wait()` or teardown, and runtime close drains
-streams before unregistering host memory. Snapshot overlap is not enabled implicitly.
-`work_ports.py` now defines
+streams before unregistering host memory. The explicit
+`caller-owned-double-window-overlap-u32-arrays-v1` workspace now retains two equal
+registered banks and submits the next D-to-H window while the current callback
+validates or consumes its aliases. One-bank budgets and registration disable,
+budget, or Driver rejection preserve exact synchronous fallback. Retained evidence
+under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` records matched window-1/8
+speedups of 1.003x/1.012x with 14/15 and 15/15 paired wins, while retained memory
+and setup roughly double. It is therefore opt-in; no kernel overlap or semantic
+authority changes. `work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution

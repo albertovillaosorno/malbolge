@@ -35,10 +35,11 @@ The first exact CUDA slice is implemented for classic ten-trit `rotate` and
 `crazy` batches. Integer-only kernels under `accelerator/cuda/` compile at runtime
 with NVRTC for the selected device architecture and execute through the CUDA
 Driver API. Ordinary adapter copies and launches remain synchronous deliberately.
-The reviewed runtime now additionally exposes an explicit ordered D-to-H stream foundation with default-stream
-dependencies; it is not selected implicitly and does not yet claim snapshot
-or kernel/transfer overlap. Higher-level double buffering and throughput tuning
-remain future performance work.
+The reviewed runtime additionally exposes an explicit ordered D-to-H stream with
+default-stream dependencies. Resident snapshots may opt into a separate two-bank
+workspace that overlaps next-window D-to-H with current callback work. Ordinary
+adapter copies, launches, and snapshot routes remain synchronous; no kernel/transfer
+or implicit overlap claim is made.
 
 Windows x86-64 development pins CUDA 13.3 Update 1 under ignored
 `.dependencies/cuda/13.3.1/`. `accelerator/cuda/toolchain.json` records the exact
@@ -155,8 +156,22 @@ copies are pending, explicit stream close drains work before destruction, and ru
 close drains every owned stream before host unregistration and context destruction.
 Seven live RTX 4060 tests prove exact copy, repeated visibility of prior default-stream
 uploads, two-copy same-host ordering, invalid ownership and pointer rejection,
-explicit-close draining, runtime-close draining, and stable identity. This foundation
-alone makes no overlap or speedup claim.
+explicit-close draining, runtime-close draining, and stable identity. Building on
+that lifetime, `caller-owned-double-window-overlap-u32-arrays-v1` allocates one or
+two equal banks under a total host budget. Overlap activates only for two fully
+registered banks; one-bank budgets and registration disable/budget/Driver failure
+use exact synchronous fallback and report the reason. The first window completes
+before publication; each later D-to-H submission starts before the current callback,
+then completes before its own callback. Callback aliases remain bank-scoped, active
+session/workspace mutation fails, and consumer failure drains pending work before
+retry. Six live tests cover exact alternating/partial delivery, all fallback classes,
+prefetched failure recovery, and release. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` compares matched registered
+windows 1/8: 95.2102/94.9084 ms (1.003x, 14/15 wins) and
+94.7627/93.6493 ms (1.012x, 15/15 wins) for synchronous/overlap. The overlap route
+doubles retained memory to 36.491/291.929 MiB and increases allocation, so it is
+opt-in. This is D-to-H versus callback-CPU overlap, not kernel overlap or a
+cross-device claim.
 
 ## Invariants
 
