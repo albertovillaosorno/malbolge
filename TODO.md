@@ -1369,9 +1369,16 @@ matched registered windows 1/8. Synchronous/overlap medians are
 and 94.7627/93.6493 ms (1.012x, 15/15 wins, 1.0636 ms saving). Overlap retains
 36.491/291.929 MiB versus 18.246/145.965 MiB and has higher one-time allocation,
 so it remains an explicit throughput/memory tradeoff rather than a default.
-Hardware-neutral asynchronous submission, adaptive bank/window selection,
-kernel/transfer overlap, other callback workloads, and broader live-device evidence
-remain open.
+Hardware-neutral candidate lifetime is now active as
+`validated-candidate-submission-v1`. One exact batch binds an optional ticket and
+deferred CPU reference; `wait()` validates identity/order before publication,
+optional fallback occurs only after cleanup, and malformed tickets or cleanup
+failure fail closed. Ten neutral tests cover state, idempotence, deferred CPU,
+optional success/fallback, malformed ticket/result, close, cached mandatory
+failure, and cleanup failure. The layer creates no hidden threads and CUDA
+candidate execution is not connected yet. Live CUDA candidate tickets,
+search/verification submission, adaptive bank/window selection, kernel/transfer
+overlap, other callback workloads, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

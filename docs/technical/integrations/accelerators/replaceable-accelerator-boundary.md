@@ -339,9 +339,16 @@ retain same-context registered host buffers until synchronization and teardown.
 The CUDA profile adapter now additionally owns explicit snapshot double buffering:
 two fully registered host banks overlap next-window D-to-H with current callback
 work and fail back synchronously when budget or registration admission is absent.
-This remains adapter-internal capacity, not hardware-neutral asynchronous work
-submission. Synthesis/guided search algorithms, cross-backend async ports, adaptive
-bank selection, kernel overlap, and ROCm remain open.
+The shared boundary now additionally exposes
+`validated-candidate-submission-v1` through `accelerator/submission.py`. It binds
+one exact candidate batch to an optional backend ticket and deferred mandatory CPU
+reference, publishes only after result validation, records pending/completed/closed/
+failed state, and requires successful optional-ticket cleanup before fallback.
+Malformed tickets or cleanup failure fail closed. The neutral layer creates no
+threads and grants no acceptance authority. CUDA snapshot overlap remains
+adapter-internal and the CUDA candidate adapter does not yet implement this
+submission port. Search/verification submission, adaptive bank selection,
+kernel overlap, live CUDA candidate tickets, and ROCm remain open.
 
 ## Invariants
 
@@ -401,10 +408,14 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,
   malformed optional-result fallback, stable algorithm/seed/budget identity,
   optional verification hints, and verifier-only candidate admission.
-- Remaining evidence includes concrete algorithm adapters, CUDA/ROCm work-port
-  implementations, ROCm VM substitution, hardware-neutral asynchronous
-  submission, adaptive overlap selection, kernel/transfer overlap, broader
-  hardware evidence, and matched measurements for future speedup claims.
+- `tests/optimizer/test_accelerator_submission.py` verifies the stable neutral
+  identity, deferred CPU execution, exact optional publication, idempotent wait,
+  typed submit/wait fallback, malformed-ticket rejection, result-shape fallback,
+  close-before-wait, mandatory-failure caching, and cleanup-failure rejection.
+- Remaining evidence includes concrete asynchronous CUDA/ROCm candidate tickets,
+  search/verification submission ports, ROCm VM substitution, adaptive overlap
+  selection, kernel/transfer overlap, broader hardware evidence, and matched
+  measurements for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

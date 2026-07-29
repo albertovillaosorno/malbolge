@@ -64,11 +64,18 @@ budget, or Driver rejection preserve exact synchronous fallback. Retained eviden
 under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` records matched window-1/8
 speedups of 1.003x/1.012x with 14/15 and 15/15 paired wins, while retained memory
 and setup roughly double. It is therefore opt-in; no kernel overlap or semantic
-authority changes. `work_ports.py` now defines
-hardware-neutral candidate
-evaluation, search execution, verification-assist, and trusted-admission
-boundaries. CPU callback adapters provide mandatory candidate/search execution
-capacity while search proposals and verification hints remain untrusted.
+authority changes. `work_ports.py` now defines hardware-neutral candidate evaluation, search
+execution, verification-assist, and trusted-admission boundaries. CPU callback
+adapters provide mandatory candidate/search execution capacity while search
+proposals and verification hints remain untrusted. `submission.py` adds
+`validated-candidate-submission-v1`: an exact candidate batch is bound to one
+optional ticket and a deferred CPU reference route. Results remain unpublished
+until `wait()` validates capability, evaluator identity, count, and request order.
+Pending tickets must close before fallback; malformed tickets and cleanup failure
+fail closed. State and actual/fallback route are observable, repeated successful
+wait is idempotent, and close-before-wait prevents execution. The contract creates
+no hidden threads. CUDA candidate evaluation does not implement this port yet, so
+no cross-backend concurrency or speedup claim follows from the neutral lifetime.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. `search_config.py` adds versioned

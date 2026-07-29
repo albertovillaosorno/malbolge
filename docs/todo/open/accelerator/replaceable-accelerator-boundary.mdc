@@ -316,8 +316,12 @@ multi-position strategy that can supply exact positions without heuristic filter
   with current callback work and falls back synchronously without changing shared
   semantics. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`
   records modest 1.003x/1.012x matched-window improvements at twice the memory.
-  Synthesis/guided search, resident search, ROCm work ports/VM execution,
-  hardware-neutral asynchronous submission, adaptive/kernel overlap, and broader
-  hardware remain open.
+  Neutral `validated-candidate-submission-v1` now binds exact batches to
+  optional tickets and deferred CPU fallback. Publication waits for structural
+  validation; optional cleanup must succeed before fallback; malformed tickets or
+  cleanup failure fail closed. Ten tests cover lifetime, route, and failure state.
+  CUDA candidate tickets, search/verification submission, synthesis/guided and
+  resident search, ROCm work ports/VM execution, adaptive/kernel overlap, and
+  broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

@@ -328,6 +328,9 @@ improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The pro
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. The next production boundary is the first real non-invertible or
 multi-position strategy that can supply exact positions without heuristic filtering.
-  Synthesis/search remains open.
+  Hardware-neutral candidate submission lifetime now exists, but CUDA
+  primitive/candidate methods still synchronize internally and do not implement
+  the neutral ticket port. A separate live launch/sync/output-lifetime slice plus
+  synthesis/search evidence remains open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

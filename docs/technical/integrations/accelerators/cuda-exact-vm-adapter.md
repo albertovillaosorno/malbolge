@@ -171,7 +171,12 @@ windows 1/8: 95.2102/94.9084 ms (1.003x, 14/15 wins) and
 94.7627/93.6493 ms (1.012x, 15/15 wins) for synchronous/overlap. The overlap route
 doubles retained memory to 36.491/291.929 MiB and increases allocation, so it is
 opt-in. This is D-to-H versus callback-CPU overlap, not kernel overlap or a
-cross-device claim.
+cross-device claim. The hardware-neutral
+`validated-candidate-submission-v1` lifetime now exists outside CUDA, but this
+adapter's candidate/primitive launches still synchronize inside their current
+methods and do not implement `CandidateSubmissionAdapter`. Connecting CUDA
+requires a separate launch/sync/output-lifetime slice and live exact evidence;
+the neutral contract alone is not an asynchronous CUDA claim.
 
 ## Invariants
 
