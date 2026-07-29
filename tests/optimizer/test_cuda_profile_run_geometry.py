@@ -63,9 +63,12 @@ from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
+from accelerator.cuda.profile_run import CudaProfileSnapshotOverlapWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotStreamWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
+from accelerator.cuda.profile_run import ProfileSnapshotOverlapSummary
 from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
+from accelerator.cuda.profile_run import profile_snapshot_overlap_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 from accelerator.cuda.runtime import CudaHostMemoryRegistry
@@ -78,6 +81,7 @@ from accelerator.profile_run import ProfileRunRequest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.cuda.profile_run import CudaProfileRunSession
     from accelerator.cuda.profile_run import ProfileSnapshotHostRegistration
     from accelerator.cuda.profile_run import ProfileSnapshotWindow
     from accelerator.profile_run import ProfileRunResult
@@ -96,6 +100,17 @@ SNAPSHOT_HOST_REGISTRATION_ID: Final = (
 SNAPSHOT_STREAM_WORKSPACE_ID: Final = (
     "caller-owned-windowed-u32-arrays-v1"
 )
+SNAPSHOT_OVERLAP_WORKSPACE_ID: Final = (
+    "caller-owned-double-window-overlap-u32-arrays-v1"
+)
+_SNAPSHOT_OVERLAP_SINGLE_BUFFER: Final = "single-buffer-budget"
+_HOST_REGISTRATION_DISABLED: Final = "disabled"
+OVERLAP_REQUEST_COUNT: Final = 3
+OVERLAP_BANK_ITEMS: Final = 2
+OVERLAP_BUFFER_COUNT: Final = 2
+OVERLAP_WINDOWS: Final = 2
+OVERLAP_PREFETCHED_WINDOWS: Final = 1
+OVERLAP_REGISTERED_ARRAYS: Final = 4
 _DEVICE_WORD_BYTES: Final = 4
 _HOST_REGISTRATION_BUDGET_EXCEEDED: Final = "budget-exceeded"
 _HOST_REGISTRATION_DRIVER_REJECTED: Final = "driver-rejected"
@@ -238,6 +253,70 @@ class _StreamCapture:
             assert self.first_alias.memory is result.memory
             assert self.first_alias.memory != self.first_memory
         self.durable.append(_durable_result(result))
+
+
+@dataclass(slots=True)
+class _OverlapCapture:
+    durable: list[ProfileRunResult] = field(default_factory=list)
+    memory_ids: list[tuple[int, ...]] = field(default_factory=list)
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+
+    def __call__(self, window: ProfileSnapshotWindow) -> None:
+        self.ranges.append((window.start, window.stop))
+        self.memory_ids.append(
+            tuple(id(result.memory) for result in window.results)
+        )
+        self.durable.extend(
+            _durable_result(result) for result in window.results
+        )
+
+
+@dataclass(slots=True)
+class _PrefetchRejector:
+    session: CudaProfileRunSession
+    workspace: CudaProfileSnapshotOverlapWorkspace
+
+    def __call__(self, window: ProfileSnapshotWindow) -> None:
+        del window
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="snapshot stream is active",
+        ):
+            _ = self.session.snapshot()
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="overlap workspace is active",
+        ):
+            self.workspace.close()
+        message = "synthetic prefetched consumer failure"
+        raise RuntimeError(message)
+
+
+def _ignore_snapshot_window(window: ProfileSnapshotWindow) -> None:
+    del window
+
+
+def _assert_active_overlap(
+    workspace: CudaProfileSnapshotOverlapWorkspace,
+    summary: ProfileSnapshotOverlapSummary,
+    retained_bytes: int,
+) -> None:
+    assert isinstance(summary, ProfileSnapshotOverlapSummary)
+    capacity = workspace.capacity
+    assert summary.items == OVERLAP_REQUEST_COUNT
+    assert summary.windows == OVERLAP_WINDOWS
+    assert summary.prefetched_windows == OVERLAP_PREFETCHED_WINDOWS
+    assert workspace.admission.active
+    assert workspace.admission.fallback_reason is None
+    assert capacity.bank_items == OVERLAP_BANK_ITEMS
+    assert capacity.buffer_count == OVERLAP_BUFFER_COUNT
+    assert capacity.planned_windows == OVERLAP_WINDOWS
+    assert capacity.retained_bytes == retained_bytes
+    assert workspace.registration.active
+    assert (
+        workspace.registration.registered_arrays
+        == OVERLAP_REGISTERED_ARRAYS
+    )
 
 
 def test_cuda_profile_session_matches_contiguous_execution() -> None:
@@ -522,6 +601,209 @@ def test_cuda_profile_snapshot_session_close_releases_registration() -> None:
             match="session is closed",
         ):
             _ = workspace.snapshot()
+
+
+def test_cuda_profile_snapshot_overlap_prefetches_exact_banks() -> None:
+    """Two registered banks prefetch exact partial final results."""
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    retained_bytes = OVERLAP_REGISTERED_ARRAYS * memory_bytes
+    capture = _OverlapCapture()
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=retained_bytes,
+            host_registration_budget_bytes=retained_bytes,
+        )
+        summary = workspace.stream_snapshot(capture)
+
+    assert tuple(capture.durable) == expected
+    assert capture.ranges == [(0, OVERLAP_BANK_ITEMS), (2, 3)]
+    assert capture.memory_ids == [
+        tuple(id(memory) for memory in workspace.memory_banks[0]),
+        (id(workspace.memory_banks[1][0]),),
+    ]
+    _assert_active_overlap(workspace, summary, retained_bytes)
+    assert isinstance(workspace, CudaProfileSnapshotOverlapWorkspace)
+    assert (
+        profile_snapshot_overlap_workspace_id()
+        == SNAPSHOT_OVERLAP_WORKSPACE_ID
+    )
+
+
+def test_cuda_profile_snapshot_overlap_fallback_without_registration() -> None:
+    """Disabled registration preserves exact synchronous callback delivery."""
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    durable: list[ProfileRunResult] = []
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=4 * memory_bytes,
+        )
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(consume)
+
+    assert tuple(durable) == expected
+    assert not workspace.admission.active
+    assert workspace.admission.fallback_reason == _HOST_REGISTRATION_DISABLED
+    assert not workspace.registration.active
+    assert summary.prefetched_windows == 0
+    assert summary.windows == OVERLAP_WINDOWS
+
+
+def test_cuda_profile_snapshot_overlap_falls_back_to_one_bank_budget() -> None:
+    """A one-memory budget remains usable through exact synchronous windows."""
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    durable: list[ProfileRunResult] = []
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=memory_bytes,
+            host_registration_budget_bytes=memory_bytes,
+        )
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(consume)
+
+    assert tuple(durable) == expected
+    assert workspace.capacity.buffer_count == 1
+    assert workspace.capacity.bank_items == 1
+    assert (
+        workspace.admission.fallback_reason
+        == _SNAPSHOT_OVERLAP_SINGLE_BUFFER
+    )
+    assert workspace.registration.active
+    assert summary.prefetched_windows == 0
+    assert summary.windows == OVERLAP_REQUEST_COUNT
+
+
+def test_cuda_profile_snapshot_overlap_falls_back_after_driver_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Registration rejection rolls back and keeps synchronous exactness."""
+    original = cast("Callable[..., int]", CudaHostMemoryRegistry.register)
+
+    def reject(registry: object, host: object) -> int:
+        del registry, host
+        message = "synthetic overlap registration rejection"
+        raise AcceleratorExecutionError(message)
+
+    monkeypatch.setattr(CudaHostMemoryRegistry, "register", reject)
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    durable: list[ProfileRunResult] = []
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=4 * memory_bytes,
+            host_registration_budget_bytes=4 * memory_bytes,
+        )
+        monkeypatch.setattr(CudaHostMemoryRegistry, "register", original)
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(consume)
+
+    assert tuple(durable) == expected
+    assert (
+        workspace.admission.fallback_reason
+        == _HOST_REGISTRATION_DRIVER_REJECTED
+    )
+    assert not workspace.registration.active
+    assert summary.prefetched_windows == 0
+
+
+def test_cuda_profile_snapshot_overlap_recovers_after_failure() -> None:
+    """Consumer failure drains prefetch and releases both locks."""
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    retained_bytes = 4 * memory_bytes
+    durable: list[ProfileRunResult] = []
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=retained_bytes,
+            host_registration_budget_bytes=retained_bytes,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="synthetic prefetched consumer failure",
+        ):
+            _ = workspace.stream_snapshot(
+                _PrefetchRejector(session, workspace)
+            )
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(consume)
+        observed = session.snapshot()
+
+    assert tuple(durable) == expected
+    assert observed == expected
+    assert summary.prefetched_windows == OVERLAP_PREFETCHED_WINDOWS
+
+
+def test_cuda_profile_snapshot_overlap_close_releases_all_banks() -> None:
+    """Explicit close releases every bank registration and rejects reuse."""
+    requests = (*_stream_requests(), _resident_session_request())
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    retained_bytes = 4 * memory_bytes
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        workspace = session.allocate_snapshot_overlap_workspace(
+            host_memory_budget_bytes=retained_bytes,
+            host_registration_budget_bytes=retained_bytes,
+        )
+        workspace.close()
+        for bank in workspace.memory_banks:
+            for memory in bank:
+                memory.append(0)
+                _ = memory.pop()
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="overlap workspace is closed",
+        ):
+            _ = workspace.stream_snapshot(_ignore_snapshot_window)
 
 
 def test_cuda_profile_snapshot_stream_is_exact_ordered_and_windowed() -> None:

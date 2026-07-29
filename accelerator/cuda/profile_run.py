@@ -68,6 +68,7 @@ from accelerator.classic_step import StepTermination
 from accelerator.cuda.resident_kernel import ResidentGeometry
 from accelerator.cuda.resident_kernel import resident_kernel_source
 from accelerator.cuda.runtime import CudaRuntime
+from accelerator.cuda.runtime import create_ordered_dtoh_stream
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
@@ -82,6 +83,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
 
+    from accelerator.cuda.runtime import CudaOrderedDtoHStream
     from accelerator.profile_run import ProfileRunGeometry
     from accelerator.profile_run import ProfileRunRequest
     from accelerator.resource_budget import ResourcePlan
@@ -94,6 +96,7 @@ _STEPS_INDEX: Final = 15
 _DEVICE_WORD_BYTES: Final = 4
 _FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
 _KERNEL_NAME: Final = "malbolge_profile_run_batch"
+_SNAPSHOT_OVERLAP_WORKSPACE_PROOF = object()
 _SNAPSHOT_STREAM_WORKSPACE_PROOF = object()
 _SNAPSHOT_WORKSPACE_PROOF = object()
 _WORD_TYPECODE: Final = "I"
@@ -101,12 +104,17 @@ PROFILE_SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
 PROFILE_SNAPSHOT_STREAM_WORKSPACE_ID: Final = (
     "caller-owned-windowed-u32-arrays-v1"
 )
+PROFILE_SNAPSHOT_OVERLAP_WORKSPACE_ID: Final = (
+    "caller-owned-double-window-overlap-u32-arrays-v1"
+)
 PROFILE_SNAPSHOT_HOST_REGISTRATION_ID: Final = (
     "bounded-all-or-pageable-u32-arrays-v1"
 )
 _HOST_REGISTRATION_DISABLED: Final = "disabled"
 _HOST_REGISTRATION_BUDGET_EXCEEDED: Final = "budget-exceeded"
 _HOST_REGISTRATION_DRIVER_REJECTED: Final = "driver-rejected"
+_SNAPSHOT_OVERLAP_SINGLE_BUFFER: Final = "single-buffer-budget"
+_SNAPSHOT_OVERLAP_BUFFER_COUNT: Final = 2
 
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
@@ -157,6 +165,16 @@ def profile_snapshot_stream_workspace_id() -> str:
     return PROFILE_SNAPSHOT_STREAM_WORKSPACE_ID
 
 
+def profile_snapshot_overlap_workspace_id() -> str:
+    """Return the double-buffer overlap-workspace identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PROFILE_SNAPSHOT_OVERLAP_WORKSPACE_ID
+
+
 @dataclass(frozen=True, slots=True)
 class ProfileSnapshotWindow:
     """One ordered result window aliasing reusable workspace arrays."""
@@ -187,6 +205,40 @@ class ProfileSnapshotStreamCapacity:
     total_items: int
     window_bytes: int
     window_items: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotOverlapCapacity:
+    """Host-budget layout for one explicit double-buffer workspace."""
+
+    bank_bytes: int
+    bank_items: int
+    buffer_count: int
+    host_memory_budget_bytes: int
+    planned_windows: int
+    retained_bytes: int
+    total_items: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotOverlapAdmission:
+    """Observable overlap admission or synchronous fallback reason."""
+
+    fallback_reason: str | None
+
+    @property
+    def active(self) -> bool:
+        """Whether the workspace will prefetch into its second bank."""
+        return self.fallback_reason is None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotOverlapSummary:
+    """Completed overlap stream cardinality and scheduled prefetch count."""
+
+    items: int
+    prefetched_windows: int
+    windows: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,6 +459,61 @@ def _release_snapshot_registration_leases(
 
 
 @dataclass(frozen=True, slots=True)
+class _SnapshotOverlapActions:
+    stream: Callable[
+        [
+            tuple[tuple[array[int], ...], ...],
+            Callable[[ProfileSnapshotWindow], None],
+            ProfileSnapshotOverlapAdmission,
+        ],
+        ProfileSnapshotOverlapSummary,
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotOverlapBinding:
+    actions: _SnapshotOverlapActions
+    admission: ProfileSnapshotOverlapAdmission
+    bank_items: int
+    buffer_count: int
+    capacity: ProfileSnapshotOverlapCapacity
+    memory_words: int
+    registration_lease: _SnapshotHostRegistrationLease
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotOverlapRequest:
+    chunks: tuple[_ResidentChunk, ...]
+    context: _ResidentContext
+    host_memory_budget_bytes: int
+    host_registration_budget_bytes: int
+    total_items: int
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotOverlapExecution:
+    consumer: Callable[[ProfileSnapshotWindow], None]
+    context: _ResidentContext
+    memory_banks: tuple[tuple[array[int], ...], ...]
+    stream: CudaOrderedDtoHStream
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedSnapshotOverlap:
+    admission: ProfileSnapshotOverlapAdmission
+    capacity: ProfileSnapshotOverlapCapacity
+    memory_banks: tuple[tuple[array[int], ...], ...]
+    registration_lease: _SnapshotHostRegistrationLease
+
+
+@dataclass(frozen=True, slots=True)
+class _ActiveSnapshotWindow:
+    bank_index: int
+    memories: tuple[array[int], ...]
+    plan: _SnapshotWindowPlan
+
+
+@dataclass(frozen=True, slots=True)
 class _SnapshotWorkspaceActions:
     profile: Callable[
         [tuple[array[int], ...]],
@@ -442,6 +549,137 @@ class _SnapshotStreamBinding:
     capacity: ProfileSnapshotStreamCapacity
     memory_words: int
     registration_lease: _SnapshotHostRegistrationLease
+
+
+@final
+class CudaProfileSnapshotOverlapWorkspace:
+    """Two callback-scoped banks with explicit async-prefetch admission."""
+
+    def __init__(
+        self,
+        *,
+        memory_banks: tuple[tuple[array[int], ...], ...],
+        binding: _SnapshotOverlapBinding,
+        _proof: object,
+    ) -> None:
+        """Bind fixed banks to one exact live resident session."""
+        self._actions = binding.actions
+        self._active = False
+        self._admission = binding.admission
+        self._bank_items = binding.bank_items
+        self._buffer_count = binding.buffer_count
+        self._capacity = binding.capacity
+        self._closed = False
+        self._memory_banks = memory_banks
+        self._memory_words = binding.memory_words
+        self._proof = _proof
+        self._registration_lease = binding.registration_lease
+
+    @property
+    def admission(self) -> ProfileSnapshotOverlapAdmission:
+        """Overlap activation or exact synchronous fallback reason."""
+        return self._admission
+
+    @property
+    def capacity(self) -> ProfileSnapshotOverlapCapacity:
+        """Retained double-buffer layout under the host-memory budget."""
+        return self._capacity
+
+    @property
+    def memory_banks(self) -> tuple[tuple[array[int], ...], ...]:
+        """Banks whose aliases are valid only inside their callback."""
+        return self._memory_banks
+
+    @property
+    def registration(self) -> ProfileSnapshotHostRegistration:
+        """All-or-none page-lock result for every retained bank array."""
+        return self._registration_lease.registration
+
+    def __enter__(self) -> Self:
+        """Enter the explicit overlap-workspace scope.
+
+        Returns:
+            This workspace instance.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Release any page-locked bank arrays at scope exit."""
+        self.close()
+
+    def close(self) -> None:
+        """Release every bank registration exactly once.
+
+        Raises:
+            AcceleratorExecutionError: If a callback stream is active.
+
+        """
+        if self._closed:
+            return
+        if self._active:
+            message = "resident snapshot overlap workspace is active"
+            raise AcceleratorExecutionError(message)
+        self._closed = True
+        self._registration_lease.release()
+
+    def stream_snapshot(
+        self,
+        consumer: object,
+    ) -> ProfileSnapshotOverlapSummary:
+        """Deliver exact ordered windows with admitted next-bank prefetch.
+
+        Result memory aliases are callback-scoped. After a callback returns,
+        its bank may be reused by a later transfer and must not be accessed.
+
+        Returns:
+            Complete item/window counts and scheduled prefetch cardinality.
+
+        Raises:
+            AcceleratorExecutionError: If workspace or callback is invalid.
+
+        """
+        if not callable(consumer):
+            message = "resident snapshot overlap consumer must be callable"
+            raise AcceleratorExecutionError(message)
+        admitted_consumer = cast(
+            "Callable[[ProfileSnapshotWindow], None]",
+            consumer,
+        )
+        memory_banks = self._validated_banks()
+        if self._active:
+            message = "resident snapshot overlap workspace is active"
+            raise AcceleratorExecutionError(message)
+        self._active = True
+        try:
+            return self._actions.stream(
+                memory_banks,
+                admitted_consumer,
+                self._admission,
+            )
+        finally:
+            self._active = False
+
+    def _validated_banks(self) -> tuple[tuple[array[int], ...], ...]:
+        if self._closed:
+            message = "resident snapshot overlap workspace is closed"
+            raise AcceleratorExecutionError(message)
+        if self._proof is not _SNAPSHOT_OVERLAP_WORKSPACE_PROOF:
+            message = "resident snapshot overlap workspace is forged"
+            raise AcceleratorExecutionError(message)
+        memories = _validate_snapshot_overlap_banks(
+            self._memory_banks,
+            buffer_count=self._buffer_count,
+            bank_items=self._bank_items,
+            memory_words=self._memory_words,
+        )
+        self._registration_lease.validate_memories(memories)
+        return self._memory_banks
 
 
 @final
@@ -1344,6 +1582,49 @@ class CudaProfileRunSession(_CudaCloseScope):
             _proof=_SNAPSHOT_WORKSPACE_PROOF,
         )
 
+    def allocate_snapshot_overlap_workspace(
+        self,
+        *,
+        host_memory_budget_bytes: int,
+        host_registration_budget_bytes: int = 0,
+    ) -> CudaProfileSnapshotOverlapWorkspace:
+        """Allocate one or two fixed banks with explicit overlap admission.
+
+        Returns:
+            Workspace that prefetches only when two fully registered banks and
+            at least two planned windows exist. Otherwise it falls back to the
+            exact synchronous callback route with an observable reason.
+
+        """
+        self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
+        prepared = _prepare_snapshot_overlap(_SnapshotOverlapRequest(
+            chunks=self._chunks,
+            context=self._context,
+            host_memory_budget_bytes=host_memory_budget_bytes,
+            host_registration_budget_bytes=host_registration_budget_bytes,
+            total_items=self._snapshot_count(),
+        ))
+        self._snapshot_registration_leases.append(
+            prepared.registration_lease
+        )
+        binding = _SnapshotOverlapBinding(
+            actions=_SnapshotOverlapActions(
+                stream=self._stream_snapshot_overlap_into_banks,
+            ),
+            admission=prepared.admission,
+            bank_items=prepared.capacity.bank_items,
+            buffer_count=prepared.capacity.buffer_count,
+            capacity=prepared.capacity,
+            memory_words=self._context.geometry.memory_words,
+            registration_lease=prepared.registration_lease,
+        )
+        return CudaProfileSnapshotOverlapWorkspace(
+            memory_banks=prepared.memory_banks,
+            binding=binding,
+            _proof=_SNAPSHOT_OVERLAP_WORKSPACE_PROOF,
+        )
+
     def allocate_snapshot_stream_workspace(
         self,
         *,
@@ -1394,6 +1675,89 @@ class CudaProfileRunSession(_CudaCloseScope):
             memories=memories,
             binding=binding,
             _proof=_SNAPSHOT_STREAM_WORKSPACE_PROOF,
+        )
+
+    def _stream_snapshot_overlap_into_banks(
+        self,
+        memory_banks: tuple[tuple[array[int], ...], ...],
+        consumer: Callable[[ProfileSnapshotWindow], None],
+        admission: ProfileSnapshotOverlapAdmission,
+    ) -> ProfileSnapshotOverlapSummary:
+        self._ensure_usable()
+        self._begin_snapshot_stream()
+        try:
+            for chunk in self._chunks:
+                _download_resident_chunk_metadata(self._context, chunk)
+            plans = _snapshot_window_plans(
+                self._chunks,
+                len(memory_banks[0]),
+            )
+            if admission.active:
+                return self._stream_snapshot_overlap_plans(
+                    memory_banks,
+                    plans,
+                    consumer,
+                )
+            return self._stream_snapshot_synchronous_plans(
+                memory_banks,
+                plans,
+                consumer,
+            )
+        finally:
+            self._snapshot_stream_active = False
+
+    def _stream_snapshot_overlap_plans(
+        self,
+        memory_banks: tuple[tuple[array[int], ...], ...],
+        plans: tuple[_SnapshotWindowPlan, ...],
+        consumer: Callable[[ProfileSnapshotWindow], None],
+    ) -> ProfileSnapshotOverlapSummary:
+        stream = create_ordered_dtoh_stream(self._context.runtime)
+        try:
+            execution = _SnapshotOverlapExecution(
+                consumer=consumer,
+                context=self._context,
+                memory_banks=memory_banks,
+                stream=stream,
+            )
+            return _execute_snapshot_overlap_plans(execution, plans)
+        finally:
+            stream.close()
+
+    def _stream_snapshot_synchronous_plans(
+        self,
+        memory_banks: tuple[tuple[array[int], ...], ...],
+        plans: tuple[_SnapshotWindowPlan, ...],
+        consumer: Callable[[ProfileSnapshotWindow], None],
+    ) -> ProfileSnapshotOverlapSummary:
+        emitted = 0
+        bank = memory_banks[0]
+        for plan in plans:
+            _ = _validate_snapshot_overlap_banks(
+                memory_banks,
+                buffer_count=len(memory_banks),
+                bank_items=len(bank),
+                memory_words=self._context.geometry.memory_words,
+            )
+            active_memories = bank[: plan.count]
+            _download_resident_memory_window(
+                self._context,
+                plan.chunk,
+                active_memories,
+                item_offset=plan.local_start,
+            )
+            _consume_snapshot_plan(plan, active_memories, consumer)
+            emitted += plan.count
+            _ = _validate_snapshot_overlap_banks(
+                memory_banks,
+                buffer_count=len(memory_banks),
+                bank_items=len(bank),
+                memory_words=self._context.geometry.memory_words,
+            )
+        return ProfileSnapshotOverlapSummary(
+            items=emitted,
+            prefetched_windows=0,
+            windows=len(plans),
         )
 
     def _stream_snapshot_into_memories(
@@ -1834,6 +2198,118 @@ def _snapshot_stream_window_items(
     return min(total_items, host_memory_budget_bytes // memory_bytes)
 
 
+def _prepare_snapshot_overlap(
+    request: _SnapshotOverlapRequest,
+) -> _PreparedSnapshotOverlap:
+    context = request.context
+    memory_bytes = context.geometry.memory_words * _DEVICE_WORD_BYTES
+    buffer_count, bank_items = _snapshot_overlap_layout(
+        request.total_items,
+        memory_bytes,
+        request.host_memory_budget_bytes,
+    )
+    memory_banks = tuple(
+        _fresh_result_memories(context.geometry, bank_items)
+        for _ in range(buffer_count)
+    )
+    lease = _prepare_snapshot_host_registration(
+        context.runtime,
+        tuple(memory for bank in memory_banks for memory in bank),
+        request.host_registration_budget_bytes,
+    )
+    bank_bytes = bank_items * memory_bytes
+    planned_windows = _snapshot_overlap_planned_windows(
+        request.chunks, bank_items
+    )
+    capacity = ProfileSnapshotOverlapCapacity(
+        bank_bytes=bank_bytes,
+        bank_items=bank_items,
+        buffer_count=buffer_count,
+        host_memory_budget_bytes=request.host_memory_budget_bytes,
+        planned_windows=planned_windows,
+        retained_bytes=bank_bytes * buffer_count,
+        total_items=request.total_items,
+    )
+    admission = ProfileSnapshotOverlapAdmission(
+        fallback_reason=_snapshot_overlap_fallback_reason(
+            buffer_count=buffer_count,
+            registration=lease.registration,
+        )
+    )
+    return _PreparedSnapshotOverlap(
+        admission=admission,
+        capacity=capacity,
+        memory_banks=memory_banks,
+        registration_lease=lease,
+    )
+
+
+def _snapshot_overlap_layout(
+    total_items: int,
+    memory_bytes: int,
+    host_memory_budget_bytes: int,
+) -> tuple[int, int]:
+    """Resolve one- or two-bank layout under the total host-memory budget.
+
+    Returns:
+        Buffer count and equal per-bank item capacity.
+
+    """
+    one_bank_items = _snapshot_stream_window_items(
+        total_items,
+        memory_bytes,
+        host_memory_budget_bytes,
+    )
+    if total_items == 1 or one_bank_items == 1:
+        return 1, 1
+    available_items = host_memory_budget_bytes // memory_bytes
+    bank_items = min((total_items + 1) // 2, available_items // 2)
+    if bank_items <= 0:
+        return 1, 1
+    return _SNAPSHOT_OVERLAP_BUFFER_COUNT, bank_items
+
+
+def _snapshot_overlap_planned_windows(
+    chunks: tuple[_ResidentChunk, ...],
+    bank_items: int,
+) -> int:
+    return sum(
+        (chunk.count + bank_items - 1) // bank_items for chunk in chunks
+    )
+
+
+def _snapshot_overlap_fallback_reason(
+    *,
+    buffer_count: int,
+    registration: ProfileSnapshotHostRegistration,
+) -> str | None:
+    if buffer_count < _SNAPSHOT_OVERLAP_BUFFER_COUNT:
+        return _SNAPSHOT_OVERLAP_SINGLE_BUFFER
+    return registration.fallback_reason
+
+
+def _validate_snapshot_overlap_banks(
+    memory_banks: tuple[tuple[array[int], ...], ...],
+    *,
+    buffer_count: int,
+    bank_items: int,
+    memory_words: int,
+) -> tuple[array[int], ...]:
+    if type(memory_banks) is not tuple or len(memory_banks) != buffer_count:
+        message = "resident snapshot overlap buffer count changed"
+        raise AcceleratorExecutionError(message)
+    flattened: list[array[int]] = []
+    for bank in memory_banks:
+        if type(bank) is not tuple or len(bank) != bank_items:
+            message = "resident snapshot overlap bank capacity changed"
+            raise AcceleratorExecutionError(message)
+        _validate_snapshot_workspace_memories(bank, memory_words)
+        flattened.extend(bank)
+    memories = tuple(flattened)
+    _validate_snapshot_workspace_memories(memories, memory_words)
+    return memories
+
+
 def _validate_snapshot_workspace_memories(
     memories: tuple[array[int], ...],
     memory_words: int,
@@ -1885,6 +2361,163 @@ def _fresh_result_memories(
     return tuple(
         array(_WORD_TYPECODE, [0]) * geometry.memory_words for _ in range(count)
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotWindowPlan:
+    chunk: _ResidentChunk
+    count: int
+    global_start: int
+    local_start: int
+
+
+def _snapshot_window_plans(
+    chunks: tuple[_ResidentChunk, ...],
+    window_items: int,
+) -> tuple[_SnapshotWindowPlan, ...]:
+    plans: list[_SnapshotWindowPlan] = []
+    global_start = 0
+    for chunk in chunks:
+        local_start = 0
+        while local_start < chunk.count:
+            count = min(window_items, chunk.count - local_start)
+            plans.append(_SnapshotWindowPlan(
+                chunk=chunk,
+                count=count,
+                global_start=global_start + local_start,
+                local_start=local_start,
+            ))
+            local_start += count
+        global_start += chunk.count
+    return tuple(plans)
+
+
+def _consume_snapshot_plan(
+    plan: _SnapshotWindowPlan,
+    memories: tuple[array[int], ...],
+    consumer: Callable[[ProfileSnapshotWindow], None],
+) -> None:
+    results = _decode_results_window(
+        plan.chunk.hosts,
+        memories,
+        item_offset=plan.local_start,
+    )
+    consumer(ProfileSnapshotWindow(
+        results=results,
+        start=plan.global_start,
+        stop=plan.global_start + plan.count,
+    ))
+
+
+def _execute_snapshot_overlap_plans(
+    execution: _SnapshotOverlapExecution,
+    plans: tuple[_SnapshotWindowPlan, ...],
+) -> ProfileSnapshotOverlapSummary:
+    current = _start_snapshot_overlap_window(execution, 0, plans[0])
+    _wait_for_memory_window(
+        execution.stream,
+        current.plan.count,
+        execution.context.geometry.memory_words,
+    )
+    emitted = 0
+    prefetched = 0
+    for next_plan in plans[1:]:
+        next_window = _start_snapshot_overlap_window(
+            execution,
+            1 - current.bank_index,
+            next_plan,
+        )
+        prefetched += 1
+        _consume_snapshot_plan(
+            current.plan,
+            current.memories,
+            execution.consumer,
+        )
+        emitted += current.plan.count
+        _ = _validate_snapshot_overlap_banks(
+            execution.memory_banks,
+            buffer_count=_SNAPSHOT_OVERLAP_BUFFER_COUNT,
+            bank_items=len(execution.memory_banks[0]),
+            memory_words=execution.context.geometry.memory_words,
+        )
+        _wait_for_memory_window(
+            execution.stream,
+            next_window.plan.count,
+            execution.context.geometry.memory_words,
+        )
+        current = next_window
+    _consume_snapshot_plan(
+        current.plan,
+        current.memories,
+        execution.consumer,
+    )
+    emitted += current.plan.count
+    _ = _validate_snapshot_overlap_banks(
+        execution.memory_banks,
+        buffer_count=_SNAPSHOT_OVERLAP_BUFFER_COUNT,
+        bank_items=len(execution.memory_banks[0]),
+        memory_words=execution.context.geometry.memory_words,
+    )
+    return ProfileSnapshotOverlapSummary(
+        items=emitted,
+        prefetched_windows=prefetched,
+        windows=len(plans),
+    )
+
+
+def _start_snapshot_overlap_window(
+    execution: _SnapshotOverlapExecution,
+    bank_index: int,
+    plan: _SnapshotWindowPlan,
+) -> _ActiveSnapshotWindow:
+    _ = _validate_snapshot_overlap_banks(
+        execution.memory_banks,
+        buffer_count=_SNAPSHOT_OVERLAP_BUFFER_COUNT,
+        bank_items=len(execution.memory_banks[0]),
+        memory_words=execution.context.geometry.memory_words,
+    )
+    memories = execution.memory_banks[bank_index][: plan.count]
+    _submit_resident_memory_window(
+        execution.stream,
+        context=execution.context,
+        plan=plan,
+        memories=memories,
+    )
+    return _ActiveSnapshotWindow(
+        bank_index=bank_index,
+        memories=memories,
+        plan=plan,
+    )
+
+
+def _submit_resident_memory_window(
+    stream: CudaOrderedDtoHStream,
+    *,
+    context: _ResidentContext,
+    plan: _SnapshotWindowPlan,
+    memories: tuple[array[int], ...],
+) -> None:
+    stride_bytes = context.geometry.memory_words * _DEVICE_WORD_BYTES
+    base_pointer = (
+        plan.chunk.pointers[1] + (plan.local_start * stride_bytes)
+    )
+    for index, memory in enumerate(memories):
+        stream.submit_copy_from_device(
+            _word_buffer(memory).view,
+            base_pointer + (index * stride_bytes),
+        )
+
+
+def _wait_for_memory_window(
+    stream: CudaOrderedDtoHStream,
+    item_count: int,
+    memory_words: int,
+) -> None:
+    completed = stream.wait()
+    expected_bytes = item_count * memory_words * _DEVICE_WORD_BYTES
+    if completed.copies != item_count or completed.bytes != expected_bytes:
+        message = "resident snapshot overlap transfer cardinality changed"
+        raise AcceleratorExecutionError(message)
 
 
 def _download_resident_chunk(

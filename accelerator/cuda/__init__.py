@@ -48,14 +48,19 @@
 from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitivePhaseProfile
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitiveStats
+from accelerator.cuda.profile_run import CudaProfileSnapshotOverlapWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotStreamWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
 from accelerator.cuda.profile_run import ProfileSnapshotHostRegistration
+from accelerator.cuda.profile_run import ProfileSnapshotOverlapAdmission
+from accelerator.cuda.profile_run import ProfileSnapshotOverlapCapacity
+from accelerator.cuda.profile_run import ProfileSnapshotOverlapSummary
 from accelerator.cuda.profile_run import ProfileSnapshotPhaseProfile
 from accelerator.cuda.profile_run import ProfileSnapshotStreamCapacity
 from accelerator.cuda.profile_run import ProfileSnapshotStreamSummary
 from accelerator.cuda.profile_run import ProfileSnapshotWindow
 from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
+from accelerator.cuda.profile_run import profile_snapshot_overlap_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 from accelerator.cuda.runtime import CudaOrderedDtoHStream
@@ -69,9 +74,13 @@ __all__ = [
     "CudaOrderedTransferBatch",
     "CudaPreparedPrimitivePhaseProfile",
     "CudaPreparedPrimitiveStats",
+    "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
     "ProfileSnapshotHostRegistration",
+    "ProfileSnapshotOverlapAdmission",
+    "ProfileSnapshotOverlapCapacity",
+    "ProfileSnapshotOverlapSummary",
     "ProfileSnapshotPhaseProfile",
     "ProfileSnapshotStreamCapacity",
     "ProfileSnapshotStreamSummary",
@@ -79,6 +88,7 @@ __all__ = [
     "create_ordered_dtoh_stream",
     "cuda_ordered_dtoh_stream_id",
     "profile_snapshot_host_registration_id",
+    "profile_snapshot_overlap_workspace_id",
     "profile_snapshot_stream_workspace_id",
     "profile_snapshot_workspace_id",
 ]
