@@ -254,8 +254,8 @@ Benchmark Protocol v1 evidence is under `benchmarks/accelerator/evidence/2026-07
 groups 2/4/8 are 2.1745/1.5970 ms (1.362x), 3.6403/3.0304 ms (1.201x), and
 7.5313/5.6971 ms (1.322x), with 15/15 paired wins and paired-median savings of
 0.5334/0.6092/1.8240 ms. The preregistered group-eight hypothesis passes. Stream
-configuration and grouped throughput alone are not physical kernel-overlap evidence;
-CUDA events/timeline attribution remains open.
+configuration and grouped throughput alone do not attribute scheduling; the separate
+CUDA-event timeline below owns that evidence.
 
 `independent_ticket_event_timeline.py` uses opt-in CUDA events around the exact
 kernel launch in every isolated ticket stream. It reuses the same 59,049-word CRAZY
@@ -276,8 +276,12 @@ Run with:
 
 CUDA documentation permits elapsed event intervals in non-null streams to include
 interleaved work. These endpoints therefore describe an observed execution timeline,
-not pure kernel duration. A rejected overlap hypothesis remains useful evidence and
-must not be rewritten as a throughput failure.
+not pure kernel duration. Retained Benchmark Protocol v1 evidence is under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/`. Groups 2/4/8 show significant overlap in 2/15, 8/15, and 15/15 samples;
+median overlap is 0/0.006144/0.015360 ms, median concurrency is
+1.000x/1.072x/1.091x, and maximum observed peak concurrency is 2/3/5. The
+preregistered group-eight hypothesis passes. The absolute effect is small and does
+not establish kernel-transfer overlap or adaptive-policy promotion.
 
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under

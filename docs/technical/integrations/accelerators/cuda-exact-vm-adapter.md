@@ -188,10 +188,21 @@ reverse-wait route passes 50/50 stress. Existing primitive
 `cuda-default-stream-kernel-launch-v1`. Retained Benchmark Protocol v1 evidence under
 `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` compares identical full-domain CRAZY groups 2/4/8. Sequential/grouped
 medians are 2.1745/1.5970 ms (1.362x), 3.6403/3.0304 ms (1.201x), and
-7.5313/5.6971 ms (1.322x), each with 15/15 paired wins. The data establishes grouped
-ticket throughput on one RTX 4060, not physical kernel overlap: no CUDA event or
-timeline attributes scheduling, and allocation/copy phases remain synchronous and
-unprofiled. Neutral `validated-search-submission-v1` now has one concrete
+7.5313/5.6971 ms (1.322x), each with 15/15 paired wins. The opt-in
+`cuda-independent-stream-kernel-timeline-v1` lifetime creates one synchronized
+origin event and start/end events around each exact kernel launch. Ordinary tickets
+create no events. Three deterministic tests cover origin/order/overlap, active
+lifetime, and failed-launch cleanup; one live test preserves CPU-equal packed bytes
+and submission-order intervals. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` reuses the exact
+workload identity and retains 45 group observations plus 210 intervals. Groups 2/4/8
+show significant overlap in 2/15, 8/15, and 15/15 samples; median overlap is
+0/0.006144/0.015360 ms, median interval concurrency is 1.000x/1.072x/1.091x, and
+maximum peak concurrency is 2/3/5. The group-eight hypothesis passes. CUDA permits
+elapsed event intervals to include interleaved work, and instrumentation can perturb
+scheduling, so this is positive origin-relative interval attribution rather than a
+pure kernel-duration or SM-occupancy profile. Allocation, synchronous upload,
+download, cleanup, and host orchestration remain outside kernel-marked intervals.
+Neutral `validated-search-submission-v1` now has one concrete
 CUDA-backed strategy composition:
 `classic-rotate-target-search-submission-v1`. The search ticket retains full-batch
 selector/projection proof while submitting only the exact zero-or-one rotate
@@ -216,9 +227,10 @@ paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
-CUDA event/timeline attribution, asynchronous ticket transfers, and other
-kernel/group workloads remain open. Other strategy submissions require their own
-exact state/lifetime evidence. Optional
+Asynchronous ticket transfers, kernel-transfer timeline attribution, event
+instrumentation controls, adaptive group admission, and other kernel/group workloads
+remain open. Other strategy submissions require their own exact state/lifetime
+evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
 `candidate-evidence-verification-submission-v1`. It retains exact verifier and
@@ -279,6 +291,14 @@ fails explicitly without changing correctness rules.
   stream-lifetime regressions for identities, distinct handles, selected wait,
   launch cleanup, and sync-failure destruction. The seven live candidate-ticket
   routes retain exact output and reverse-wait behavior.
+  `tests/optimizer/test_cuda_independent_kernel_timeline.py` adds three
+  deterministic event-origin/order/overlap/failure regressions plus one live
+  CPU-equal ticket route. Ordinary tickets remain event-free.
+  `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` retains 45 chronological group observations, 210 individual intervals,
+  exact workload/launch/timeline/storage identities, and independent CPU bytes.
+  Groups 2/4/8 cross the one-microsecond threshold in 2/15, 8/15, and 15/15 samples;
+  group eight has 0.015360 ms median overlap, 1.091x median interval concurrency,
+  and observed peak five.
   `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` retains 90 chronological samples plus Benchmark Protocol v1 and
   Experiment Manifest v1 identity. Groups 2/4/8 improve 1.362x/1.201x/1.322x with
   15/15 paired wins while every 59,049-word output matches independent CPU bytes.

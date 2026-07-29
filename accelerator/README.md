@@ -87,8 +87,16 @@ waiting of two tickets; that route passes 50/50 stress. Existing synchronous
 primitive calls retain `cuda-default-stream-kernel-launch-v1`. Retained evidence
 under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` records sequential/grouped medians for groups 2/4/8 of
 2.1745/1.5970, 3.6403/3.0304, and 7.5313/5.6971 ms, improvements of
-1.362x/1.201x/1.322x with 15/15 paired wins each. This is grouped-ticket throughput,
-not CUDA event/timeline proof of physical kernel overlap. `search_submission.py` adds
+1.362x/1.201x/1.322x with 15/15 paired wins each. The opt-in
+`cuda-independent-stream-kernel-timeline-v1` path adds a synchronized origin and
+start/end events around each exact launch while ordinary tickets remain event-free.
+Three deterministic timeline tests cover ordering, active lifetime, overlap, and
+failure cleanup; one live test preserves exact output. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` uses the same workload SHA: groups 2/4/8 overlap in 2/15, 8/15, and
+15/15 samples, with median overlap 0/0.006144/0.015360 ms, concurrency
+1.000x/1.072x/1.091x, and maximum peaks 2/3/5. This is positive origin-relative
+event-interval attribution, not pure kernel duration, SM occupancy, or
+kernel-transfer overlap. `search_submission.py` adds
 `validated-search-submission-v1`: one exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU search. Proposal publication waits for
 capability/algorithm/seed/budget validation; cleanup must succeed before fallback.

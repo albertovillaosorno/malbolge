@@ -338,8 +338,13 @@ timed.
   Five deterministic tests cover isolation/failure cleanup, seven live tests cover
   exact lifetime routes, and reverse waiting passes 50/50 stress. Retained evidence
   under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` records 1.362x/1.201x/1.322x grouped throughput for groups 2/4/8,
-  all 15/15 paired wins, without event/timeline overlap attribution. Neutral
-  `validated-search-submission-v1` now binds exact
+  all 15/15 paired wins. Opt-in `cuda-independent-stream-kernel-timeline-v1`
+  attributes exact origin-relative launch intervals without affecting ordinary
+  tickets. Three deterministic tests and one live route cover event lifetime,
+  ordering, cleanup, and exact output. `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` records overlap in 2/15, 8/15,
+  and 15/15 samples, median overlap 0/0.006144/0.015360 ms, concurrency
+  1.000x/1.072x/1.091x, and peak 2/3/5. This is not pure kernel duration or
+  kernel-transfer overlap. Neutral `validated-search-submission-v1` now binds exact
   algorithm/problem/seed/budget requests to optional tickets and deferred CPU
   search, validates untrusted proposal publication, and requires cleanup before
   fallback. Ten tests cover its complete state/failure lifetime.
@@ -356,8 +361,9 @@ timed.
   publication and teardown fallback. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records
   16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA ticket same-baseline
   improvements, all with 15/15 paired wins. Other CUDA/ROCm strategy and hint
-  tickets, synthesis/guided and resident search, ROCm VM execution, CUDA
-  event/timeline attribution, asynchronous ticket transfers, adaptive stream/group
-  admission, other workloads, and broader hardware remain open.
+  tickets, synthesis/guided and resident search, ROCm VM execution, asynchronous
+  ticket transfers, kernel-transfer attribution, event-instrumentation controls,
+  adaptive stream/group admission, other workloads, and broader hardware remain
+  open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

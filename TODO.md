@@ -1439,8 +1439,19 @@ Existing `evaluate`/`evaluate_prepared` calls remain synchronous under
 sequential submit/wait with submit-all/reverse-wait for identical groups 2/4/8 of
 59,049-word CRAZY tickets. Sequential/grouped medians are 2.1745/1.5970 ms
 (1.362x), 3.6403/3.0304 ms (1.201x), and 7.5313/5.6971 ms (1.322x); every group wins
-15/15 paired samples. This establishes grouped-ticket throughput, not physical
-kernel overlap, because no CUDA event/timeline evidence attributes scheduling.
+15/15 paired samples. Opt-in `cuda-independent-stream-kernel-timeline-v1`
+now records one synchronized origin plus start/end CUDA events around the exact
+kernel launch in each ticket stream, with no event cost on ordinary tickets. Three
+deterministic tests cover origin/order/overlap, active-lifetime rejection, and
+launch-failure cleanup; one live RTX 4060 test preserves CPU-equal bytes and ordered
+interval publication. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` reuses the exact workload
+SHA and records 45 grouped observations plus 210 intervals. Groups 2/4/8 show
+significant overlap in 2/15, 8/15, and 15/15 samples; median overlap is
+0/0.006144/0.015360 ms, median interval concurrency is 1.000x/1.072x/1.091x, and
+maximum observed peak concurrency is 2/3/5. The preregistered group-eight hypothesis
+passes. This attributes origin-relative CUDA-event interval overlap, not pure kernel
+duration, SM occupancy, or kernel-transfer overlap; synchronous allocation/uploads,
+downloads, cleanup, and host orchestration still dominate wall time.
 Hardware-neutral search lifetime is now active as
 `validated-search-submission-v1`. One exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU reference. `wait()` validates capability,
@@ -1471,9 +1482,10 @@ tests include live exact publication and teardown fallback. The retained matrix 
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
 one-shot CUDA-ticket improvements over their same-run ordinary baselines, all with
 15/15 paired wins. CUDA prepared remains 9.137x faster than the one-shot ticket.
-Other CUDA/ROCm strategies, CUDA event/timeline overlap attribution,
-asynchronous ticket transfers, adaptive stream/group admission, other callback or
-kernel workloads, and broader live-device evidence remain open.
+Other CUDA/ROCm strategies, asynchronous ticket H-to-D/D-to-H transfers,
+kernel-transfer timeline attribution, adaptive stream/group admission, other
+callback or kernel workloads, instrumentation controls, and broader live-device
+evidence remain open.
 
 ### TODO - Compilation latency performance budget
 
