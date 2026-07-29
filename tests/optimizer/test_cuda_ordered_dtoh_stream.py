@@ -71,6 +71,7 @@ WORD_COUNT: Final = 4
 WORD_BYTES: Final = ctypes.sizeof(ctypes.c_uint32)
 TRANSFER_BYTES: Final = WORD_COUNT * WORD_BYTES
 ORDERED_COPY_COUNT: Final = 2
+ORDERING_ITERATIONS: Final = 16
 ORDERED_DTOH_STREAM_ID: Final = "cuda-ordered-registered-dtoh-stream-v1"
 type Words = ctypes.Array[ctypes.c_uint32]
 
@@ -169,6 +170,28 @@ def test_cuda_ordered_dtoh_stream_copies_exact_registered_buffer() -> None:
     assert stream.pending_bytes == 0
     assert stream.pending_copies == 0
     assert _values(target) == _values(source)
+
+
+def test_cuda_ordered_dtoh_stream_observes_prior_default_copy() -> None:
+    """Every async read observes the preceding default-stream upload."""
+    target = _words(0, 0, 0, 0)
+    with _TransferFixture() as fixture:
+        pointer = fixture.upload(_words(0, 0, 0, 0))
+        address = fixture.register(target)
+        stream = fixture.create_stream()
+        for iteration in range(ORDERING_ITERATIONS):
+            source = _words(
+                iteration,
+                iteration + 1,
+                iteration + 2,
+                iteration + 3,
+            )
+            fixture.runtime.copy_to_device(pointer, source)
+            stream.submit_copy_from_device(target, pointer)
+            summary = stream.wait()
+            assert summary.copies == 1
+            assert _values(target) == _values(source)
+        fixture.unregister(address)
 
 
 def test_cuda_ordered_dtoh_stream_preserves_same_host_order() -> None:

@@ -68,7 +68,7 @@ NVRTC_SUCCESS: Final = 0
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
-CUDA_STREAM_NON_BLOCKING: Final = 1
+CUDA_STREAM_DEFAULT: Final = 0
 CUDA_ORDERED_DTOH_STREAM_ID: Final = (
     "cuda-ordered-registered-dtoh-stream-v1"
 )
@@ -248,7 +248,7 @@ class CudaOrderedDtoHStream:
     """One ordered CUDA stream retaining registered host buffers until wait."""
 
     def __init__(self, binding: _CudaOrderedStreamBinding) -> None:
-        """Adopt one nonblocking CUDA stream owned by a live runtime."""
+        """Adopt one ordered CUDA stream with default-stream dependencies."""
         self._binding = binding
         self._closed = False
         self._pending_addresses: list[int] = []
@@ -391,7 +391,7 @@ class CudaOrderedDtoHStreamFactory:
         self._streams: list[CudaOrderedDtoHStream] = []
 
     def create(self) -> CudaOrderedDtoHStream:
-        """Create one nonblocking ordered D-to-H submission stream.
+        """Create one ordered D-to-H stream with default dependencies.
 
         Returns:
             Stream that accepts only host buffers registered by this runtime.
@@ -402,7 +402,7 @@ class CudaOrderedDtoHStreamFactory:
         _check_execution(
             self._binding.create_fn(
                 ctypes.byref(handle),
-                CUDA_STREAM_NON_BLOCKING,
+                CUDA_STREAM_DEFAULT,
             ),
             "cuStreamCreate",
         )
