@@ -47,32 +47,78 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import os
 from pathlib import Path
-import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repo-local argv, never a shell command.
+import stat
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repository-local argv.
 import sys
+from typing import Final
 from typing import Never
 import venv
 
-ROOT = Path(__file__).resolve().parents[2]
-PYTHON_VERSION = (3, 14, 6)
-ENVIRONMENT = ROOT / ".dependencies" / "python" / "3.14.6"
-REQUIREMENTS = (
-    ROOT / "scripts" / "bootstrap" / ("python-validation-requirements.txt")
+ROOT: Final = Path(__file__).resolve().parents[2]
+PYTHON_VERSION: Final = (3, 14, 6)
+REQUIREMENTS: Final = (
+    ROOT / "scripts" / "bootstrap" / "python-validation-requirements.txt"
 )
-SCRIPTS = ENVIRONMENT / "Scripts"
-PYTHON = SCRIPTS / "python.exe"
-PYTEST_JIG = SCRIPTS / "pytest-jig.cmd"
-PYTHON_JIG = SCRIPTS / "python-jig.cmd"
-EXPECTED_TOOLS = {
-    "basedpyright.exe": "basedpyright 1.39.9",
-    "pytest-jig.cmd": "pytest 9.1.1",
-    "python-jig.cmd": "Python 3.14.6",
-    "ruff.exe": "ruff 0.16.0",
-}
+WINDOWS_OS_NAME: Final = "nt"
+WINDOWS: Final = os.name == WINDOWS_OS_NAME
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationEnvironmentLayout:
+    """Paths for one platform-specific repository validation environment."""
+
+    environment: Path
+    expected_tools: tuple[tuple[str, str], ...]
+    pytest_launcher: Path
+    python: Path
+    python_launcher: Path
+    scripts: Path
 
 
 class ProvisionError(RuntimeError):
     """Deterministic local Python provisioning failure."""
+
+
+def validation_layout(
+    root: Path = ROOT,
+    *,
+    windows: bool = WINDOWS,
+) -> ValidationEnvironmentLayout:
+    """Resolve repository-local validation paths for one host family.
+
+    Returns:
+        Exact environment, interpreter, launcher, and tool paths.
+
+    """
+    environment = root / ".dependencies" / "python" / "3.14.6"
+    scripts = environment / ("Scripts" if windows else "bin")
+    executable_suffix = ".exe" if windows else ""
+    launcher_suffix = ".cmd" if windows else ""
+    return ValidationEnvironmentLayout(
+        environment=environment,
+        expected_tools=(
+            (f"basedpyright{executable_suffix}", "basedpyright 1.39.9"),
+            (f"pytest-jig{launcher_suffix}", "pytest 9.1.1"),
+            (f"python-jig{launcher_suffix}", "Python 3.14.6"),
+            (f"ruff{executable_suffix}", "ruff 0.16.0"),
+        ),
+        pytest_launcher=scripts / f"pytest-jig{launcher_suffix}",
+        python=scripts / ("python.exe" if windows else "python"),
+        python_launcher=scripts / f"python-jig{launcher_suffix}",
+        scripts=scripts,
+    )
+
+
+LAYOUT: Final = validation_layout()
+ENVIRONMENT: Final = LAYOUT.environment
+SCRIPTS: Final = LAYOUT.scripts
+PYTHON: Final = LAYOUT.python
+PYTEST_JIG: Final = LAYOUT.pytest_launcher
+PYTHON_JIG: Final = LAYOUT.python_launcher
+EXPECTED_TOOLS: Final = dict(LAYOUT.expected_tools)
 
 
 def _fail(message: str) -> Never:
@@ -88,7 +134,7 @@ def _check_host_python() -> None:
 
 
 def _run(command: list[str]) -> str:
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - argv is repository-controlled.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed repository-local argv.
         command,
         cwd=ROOT,
         check=True,
@@ -99,34 +145,80 @@ def _run(command: list[str]) -> str:
     return completed.stdout.strip()
 
 
-def _cache_line() -> str:
+def _windows_cache_line() -> str:
     return r'set "PYTHONPYCACHEPREFIX=%~dp0..\..\..\..\.cache\python\pycache"'
 
 
-def _write_launchers() -> None:
-    cache_line = _cache_line()
-    python_line = '"%~dp0python.exe" %*'
-    python_launcher = f"@echo off\r\n{cache_line}\r\n{python_line}\r\n"
-    _ = PYTHON_JIG.write_text(
-        python_launcher,
-        encoding="ascii",
-        newline="",
+def _windows_launcher_text(*, pytest: bool) -> str:
+    cache_line = _windows_cache_line()
+    invocation = (
+        '"%~dp0python.exe" -m pytest %*' if pytest else '"%~dp0python.exe" %*'
     )
-    pytest_line = '"%~dp0python.exe" -m pytest %*'
-    pytest_launcher = f"@echo off\r\n{cache_line}\r\n{pytest_line}\r\n"
-    _ = PYTEST_JIG.write_text(
-        pytest_launcher,
-        encoding="ascii",
-        newline="",
+    return f"@echo off\r\n{cache_line}\r\n{invocation}\r\n"
+
+
+def _posix_launcher_text(*, pytest: bool) -> str:
+    invocation = (
+        'exec "$SCRIPT_DIR/python" -m pytest "$@"'
+        if pytest
+        else 'exec "$SCRIPT_DIR/python" "$@"'
+    )
+    cache = (
+        'export PYTHONPYCACHEPREFIX="'
+        '$SCRIPT_DIR/../../../../.cache/python/pycache"'
+    )
+    return (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        f"{cache}\n"
+        f"{invocation}\n"
     )
 
 
-def _provision() -> None:
-    if not PYTHON.is_file():
+def _make_executable(path: Path) -> None:
+    mode = path.stat().st_mode
+    _ = path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def write_launchers(
+    layout: ValidationEnvironmentLayout = LAYOUT,
+    *,
+    windows: bool = WINDOWS,
+) -> None:
+    """Write platform-native Python and pytest launchers."""
+    if windows:
+        _ = layout.python_launcher.write_text(
+            _windows_launcher_text(pytest=False),
+            encoding="ascii",
+            newline="",
+        )
+        _ = layout.pytest_launcher.write_text(
+            _windows_launcher_text(pytest=True),
+            encoding="ascii",
+            newline="",
+        )
+        return
+    _ = layout.python_launcher.write_text(
+        _posix_launcher_text(pytest=False),
+        encoding="ascii",
+        newline="\n",
+    )
+    _ = layout.pytest_launcher.write_text(
+        _posix_launcher_text(pytest=True),
+        encoding="ascii",
+        newline="\n",
+    )
+    _make_executable(layout.python_launcher)
+    _make_executable(layout.pytest_launcher)
+
+
+def _provision(layout: ValidationEnvironmentLayout) -> None:
+    if not layout.python.is_file():
         builder = venv.EnvBuilder(with_pip=True, clear=False)
-        builder.create(ENVIRONMENT)
+        builder.create(layout.environment)
     _ = _run([
-        str(PYTHON),
+        str(layout.python),
         "-m",
         "pip",
         "install",
@@ -135,11 +227,15 @@ def _provision() -> None:
         "--requirement",
         str(REQUIREMENTS),
     ])
-    _write_launchers()
+    write_launchers(layout, windows=WINDOWS)
 
 
-def _verify_tool(executable: str, expected: str) -> None:
-    path = SCRIPTS / executable
+def _verify_tool(
+    layout: ValidationEnvironmentLayout,
+    executable: str,
+    expected: str,
+) -> None:
+    path = layout.scripts / executable
     if not path.is_file():
         _fail(f"missing provisioned tool: {path}")
     output = _run([str(path), "--version"])
@@ -148,9 +244,22 @@ def _verify_tool(executable: str, expected: str) -> None:
         _fail(f"unexpected {executable} version: {first_line!r}")
 
 
-def _verify() -> None:
-    for executable, expected in EXPECTED_TOOLS.items():
-        _verify_tool(executable, expected)
+def _verify(layout: ValidationEnvironmentLayout) -> None:
+    for executable, expected in layout.expected_tools:
+        _verify_tool(layout, executable, expected)
+
+
+def initialize() -> ValidationEnvironmentLayout:
+    """Provision and verify the exact repository-local Python tool set.
+
+    Returns:
+        Platform-native environment layout after successful verification.
+
+    """
+    _check_host_python()
+    _provision(LAYOUT)
+    _verify(LAYOUT)
+    return LAYOUT
 
 
 def main() -> int:
@@ -161,14 +270,12 @@ def main() -> int:
 
     """
     try:
-        _check_host_python()
-        _provision()
-        _verify()
+        layout = initialize()
     except (OSError, ProvisionError, subprocess.SubprocessError) as error:
         _ = sys.stderr.write(f"error: {error}\n")
         return 1
     _ = sys.stdout.write(
-        f"python validation environment ready: {ENVIRONMENT}\n"
+        f"python validation environment ready: {layout.environment}\n"
     )
     return 0
 
