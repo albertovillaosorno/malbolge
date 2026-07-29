@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "current-profile-resident-snapshot-host-registration-tradeoff-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "current-profile-14-trit-resident-snapshot-host-registration-64-step-no-op-v1"
+difficulty = 4782969
+target_profile = "malbolge-2026.2"
+
+[budget]
+evaluations = 99
+samples = 15
+
+[verification]
+required = true
+oracle = "complete current-profile no-op validation; exact caller-owned array aliases; bounded-all-or-pageable-u32-arrays-v1 identity; 256 MiB all-or-none registration budget; batches one/eight active and batch thirty-two budget-exceeded fallback; invalid budget, driver rejection rollback, workspace close, session close, runtime close, forged, resized, duplicate, wrong-type, wrong-count, and closed-session state fail closed"
+
+[provenance]
+implementation = "accelerator/cuda/profile_run.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060"
+
+[run]
+commit = "fe04457de2c318a841f6bcfcd5e5a4ea494c8f3e"
+workload_sha256 = "e4d223bf64951fae8435752edea81d52540f7b9cd5f78b9c2ef59acd697ac614"
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/raw.csv"

@@ -42,8 +42,12 @@ for batches 1/8/32. Batch 1 is 96.489% memory transfer; batches 8/32 are about
 advertises that later calls overwrite earlier aliased results. Retained RTX 4060
 batches 1/8/32 improve by 2.586x/2.667x/2.712x with median-derived crossover
 1/2/2 snapshots. Batch-one advantage is marginal; repeated batches 8/32 recover
-allocation on the second snapshot. Stable workspace arrays make bounded host
-registration/page-locking the next measured question. `work_ports.py` now defines
+allocation on the second snapshot. Explicit
+`bounded-all-or-pageable-u32-arrays-v1` host registration now page-locks all
+workspace arrays only within a caller-supplied byte budget. Retained RTX 4060
+batches 1/8 improve 1.079x/1.108x with crossover 2/3; a 256 MiB budget forces
+batch 32 to `budget-exceeded` pageable fallback. Ordinary snapshots and default
+workspaces remain pageable. `work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution

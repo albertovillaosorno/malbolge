@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "current-profile-resident-snapshot-host-registration-tradeoff-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does bounded CUDA host registration improve repeated complete snapshot transfer for stable caller-owned arrays while preserving exact results, explicit fallback, and ordinary pageable ownership?"
+hypothesis = "Within a 256 MiB page-lock budget, batches one and eight improve over paired pageable workspaces and amortize incremental registration setup; batch thirty-two exceeds the budget and falls back exactly without a speedup claim."
+baseline = "pageable caller-owned snapshot workspace on the same clean source commit fe04457de2c318a841f6bcfcd5e5a4ea494c8f3e"
+rejection_observation = "Exact results, caller-owned aliases, registration identity, all-or-none byte counts, paired sample counts, explicit batch-thirty-two budget fallback, rollback/release proofs, or provenance drift; either registered batch does not improve; or ordinary ownership changes."
+
+[workload]
+identity = "current-profile-14-trit-resident-snapshot-host-registration-64-step-no-op-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one pageable and one bounded complete snapshot after one untimed resident advance per batch size"
+ordering = "pageable-first on even retained pairs and bounded-first on odd retained pairs"
+stopping_rule = "fifteen paired exact snapshots per route and five retained allocation samples per route at batches one, eight, and thirty-two"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range plus paired direction count"
+
+[objectives]
+metrics = ["time_ns", "allocation_ns", "crossover_snapshots", "registered_bytes", "fallback_reason", "batch_size"]
+tradeoff_policy = "exact complete results, stable caller-owned aliasing, all-or-none registration, explicit byte budget, driver-rejection rollback, deterministic release, and unchanged ordinary ownership precede speed interpretation"
+
+[resources]
+host = "Microsoft Windows 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

@@ -142,7 +142,11 @@ example probe points, not supported-range endpoints.
   One-time allocation is 4.9179/41.3042/173.7859 ms and crossover is 1/2/2;
   batch-one margin is explicitly marginal. Workspace buffers retain
   18.246/145.965/583.859 MiB and their hot path is at least 96.485% memory D-to-H.
-  The next experiment is bounded page-lock/host registration with explicit fallback,
-  exact results, and ordinary ownership unchanged. Streaming and broader
-  live-hardware measurements remain required. Persistent classic continuation is
+  Retained evidence under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/` promotes
+  `bounded-all-or-pageable-u32-arrays-v1` for explicit workspaces. A 256 MiB
+  all-or-none budget registers batches 1/8, improving 1.079x/1.108x with crossover
+  2/3, and forces batch 32 to `budget-exceeded` pageable fallback. Driver rejection
+  rolls back cleanly; all page locks release with workspace/session/runtime lifetime;
+  ordinary snapshots and default workspaces remain pageable. Streaming/chunking and
+  broader live-hardware measurements remain required. Persistent classic continuation is
   tracked by its own retained session evidence.

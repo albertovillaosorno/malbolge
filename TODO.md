@@ -1328,10 +1328,16 @@ is 4.9179/41.3042/173.7859 ms and median-derived strict crossover is 1/2/2
 snapshots. Batch-one crossover is marginal: allocation plus one workspace snapshot
 is 8.0810 ms versus 8.1785 ms ordinary, so ordinary remains the simpler one-shot
 default. Workspace hot paths are 96.485%/99.389%/99.686% full-memory D-to-H and
-retain 18.246/145.965/583.859 MiB. The next measured boundary is page-locking or
-host registration of stable workspace arrays with a bounded memory budget, explicit
-fallback, exact results, and unchanged ordinary ownership. Streaming and broader
-live-device evidence remain open.
+retain 18.246/145.965/583.859 MiB. Retained bounded host-registration evidence
+under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/` promotes `bounded-all-or-pageable-u32-arrays-v1` only for the
+explicit workspace. A 256 MiB all-or-none budget registers batches 1/8 and rejects
+batch 32 before Driver registration with `budget-exceeded`. Paired pageable/bounded
+medians are 3.4229/3.1718 ms (1.079x, 15/15 faster, crossover 2) and
+29.5885/26.7148 ms (1.108x, 14/15 faster, crossover 3). Batch 32 remains pageable
+at 99.4115/99.9298 ms and receives no speedup claim. Invalid budgets fail closed;
+Driver rejection rolls back prior registrations; workspace/session/runtime close
+releases every page lock. Ordinary snapshots and default workspaces remain pageable.
+Chunked/streaming host materialization and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

@@ -81,9 +81,11 @@ directly on CUDA APIs.
   Retained batches 1/8/32 identify transfer and fresh array allocation. The active
   caller-owned workspace is a separate proof-bound overwrite contract, while ordinary
   snapshots return fresh arrays uniformly. Retained batches 1/8/32 improve
-  2.586x/2.667x/2.712x with allocation amortized by snapshot 1/2/2; stable workspace
-  ownership now permits a bounded host-registration experiment without weakening the
-  ordinary boundary. `EvaluatedSearchExecutionAdapter` now composes bounded candidate
+  2.586x/2.667x/2.712x with allocation amortized by snapshot 1/2/2. Retained
+  bounded host-registration evidence under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/` improves active batches 1/8
+  by 1.079x/1.108x with crossover 2/3; a 256 MiB budget forces batch 32 to exact
+  pageable fallback without weakening the ordinary boundary.
+  `EvaluatedSearchExecutionAdapter` now composes bounded candidate
   evaluation into
   search without allowing selectors to fabricate unevaluated payloads. The same
   `classic-rotate-target-search-v1` strategy runs through CPU and live CUDA; CUDA

@@ -130,10 +130,14 @@ The separately admitted `caller-owned-independent-u32-arrays-v1` workspace makes
 reuse and overwrite semantics explicit, validates shape/proof/session identity, and
 reports allocation outside the repeated path. Retained batches 1/8/32 improve
 2.586x/2.667x/2.712x with median-derived crossover 1/2/2; batch-one margin is
-narrow and batches 8/32 recover allocation on the second snapshot. The stable arrays
-select bounded host registration/page-locking as the next CUDA experiment.
-These are backend
-measurements, not CPU-relative or cross-device speedup claims.
+narrow and batches 8/32 recover allocation on the second snapshot. Retained evidence
+under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/` promotes explicit
+`bounded-all-or-pageable-u32-arrays-v1`. With a 256 MiB all-or-none budget, batches
+1/8 register all arrays and improve 1.079x/1.108x with strict crossover 2/3; batch
+32 records `budget-exceeded`, registers zero arrays, and remains pageable. Driver
+rejection rolls back prior registrations, and workspace/session/runtime close releases
+all page locks. Ordinary snapshots and default workspaces remain pageable. These are
+backend measurements, not CPU-relative or cross-device speedup claims.
 
 ## Invariants
 

@@ -136,6 +136,25 @@ Clean ordinary/workspace medians for batches 1/8/32 are
 4.9179/41.3042/173.7859 ms; median-derived crossover is 1/2/2 snapshots.
 Batch-one margin is narrow, and the workspace retains up to 583.859 MiB at batch 32.
 
+`profile_snapshot_host_registration_tradeoff.py` compares two explicit workspaces:
+one pageable and one using `bounded-all-or-pageable-u32-arrays-v1`. A 256 MiB
+all-or-none budget admits batches 1/8 and forces batch 32 to `budget-exceeded`
+fallback. Fifteen retained pairs alternate the first route; five allocation samples
+per route establish strict crossover while every result preserves exact aliases.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_snapshot_host_registration_tradeoff
+```
+
+Retained RTX 4060 evidence is under
+`evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`.
+Pageable/bounded medians are 3.4229/3.1718 ms at batch 1 and
+29.5885/26.7148 ms at batch 8 (1.079x/1.108x), with strict crossover 2/3.
+Batch 32 exceeds the budget, registers no arrays, and remains a pageable control.
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One
