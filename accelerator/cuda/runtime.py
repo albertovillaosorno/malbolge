@@ -78,6 +78,9 @@ CUDA_INDEPENDENT_KERNEL_LAUNCH_ID: Final = (
 CUDA_INDEPENDENT_KERNEL_TIMELINE_ID: Final = (
     "cuda-independent-stream-kernel-timeline-v1"
 )
+CUDA_INDEPENDENT_TICKET_TRANSFER_ID: Final = (
+    "cuda-independent-stream-ticket-transfer-v1"
+)
 CUDA_EVENT_DEFAULT: Final = 0
 
 _CudaFn = Callable[..., int]
@@ -152,7 +155,7 @@ class CudaHostMemoryRegistry:
             message = "CUDA host unregistration token is not owned"
             raise AcceleratorExecutionError(message)
         if self._in_flight.get(address, 0) != 0:
-            message = "CUDA host buffer has ordered transfers in flight"
+            message = "CUDA host buffer has asynchronous transfers in flight"
             raise AcceleratorExecutionError(message)
         _check_execution(
             self._unregister_fn(ctypes.c_void_p(address)),
@@ -472,6 +475,43 @@ def cuda_independent_kernel_timeline_id() -> str:
     return CUDA_INDEPENDENT_KERNEL_TIMELINE_ID
 
 
+def cuda_independent_ticket_transfer_id() -> str:
+    """Return the same-stream asynchronous ticket transfer identity.
+
+    Returns:
+        Stable identity for registered H-to-D/kernel/D-to-H provenance.
+
+    """
+    return CUDA_INDEPENDENT_TICKET_TRANSFER_ID
+
+
+@dataclass(frozen=True, slots=True)
+class CudaHostToDeviceTransfer:
+    """One registered host buffer queued for stream-local H-to-D copy."""
+
+    device_pointer: int
+    host: HostWords
+
+
+@dataclass(frozen=True, slots=True)
+class CudaDeviceToHostTransfer:
+    """One registered host buffer queued for stream-local D-to-H copy."""
+
+    device_pointer: int
+    host: HostWords
+
+
+@dataclass(frozen=True, slots=True)
+class CudaIndependentTransferSubmission:
+    """Exact uploads, kernel, and downloads for one isolated CUDA stream."""
+
+    count: int
+    device_pointers: tuple[int, ...]
+    downloads: tuple[CudaDeviceToHostTransfer, ...]
+    kernel: ctypes.c_void_p
+    uploads: tuple[CudaHostToDeviceTransfer, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class _CudaKernelLaunchBinding:
     ensure_open: Callable[[], None]
@@ -612,6 +652,7 @@ class _CudaIndependentKernelLaunchBinding:
     ensure_open: Callable[[], None]
     forget: Callable[[CudaIndependentKernelLaunch], None]
     handle: ctypes.c_void_p
+    host_memory: CudaHostMemoryRegistry
     synchronize_fn: _CudaFn
     timeline: _CudaIndependentKernelTimelineLaunch | None
 
@@ -624,12 +665,14 @@ class CudaIndependentKernelLaunch:
         self,
         binding: _CudaIndependentKernelLaunchBinding,
         owners: tuple[object, ...],
+        pending_addresses: tuple[int, ...],
     ) -> None:
-        """Adopt one submitted stream, kernel, and parameter lifetime."""
+        """Adopt one submitted stream, kernel, and transfer lifetime."""
         self._binding = binding
         self._closed = False
         self._completed = False
         self._owners = owners
+        self._pending_addresses = pending_addresses
 
     @property
     def completed(self) -> bool:
@@ -688,7 +731,7 @@ class CudaIndependentKernelLaunch:
         return None
 
     def wait(self) -> None:
-        """Synchronize only this launch stream and release parameters.
+        """Synchronize this stream and release transfer/parameter lifetimes.
 
         Raises:
             AcceleratorExecutionError: If closed or synchronization fails.
@@ -700,12 +743,32 @@ class CudaIndependentKernelLaunch:
             raise AcceleratorExecutionError(message)
         if self._completed:
             return
-        _check_execution(
-            self._binding.synchronize_fn(self._binding.handle),
-            "cuStreamSynchronize",
-        )
-        self._completed = True
-        self._owners = ()
+        synchronize_failure: AcceleratorExecutionError | None = None
+        try:
+            _check_execution(
+                self._binding.synchronize_fn(self._binding.handle),
+                "cuStreamSynchronize",
+            )
+        except AcceleratorExecutionError as error:
+            synchronize_failure = error
+        lease_failure = self._release_transfer_leases_failure()
+        if synchronize_failure is None:
+            self._completed = True
+            self._owners = ()
+        _raise_first_failure(synchronize_failure, lease_failure)
+
+    def _release_transfer_leases_failure(
+        self,
+    ) -> AcceleratorExecutionError | None:
+        addresses = self._pending_addresses
+        if not addresses:
+            return None
+        self._pending_addresses = ()
+        try:
+            self._binding.host_memory.release_async(addresses)
+        except AcceleratorExecutionError as error:
+            return error
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -850,6 +913,22 @@ class CudaIndependentKernelTimeline:
             kernel,
             device_pointers,
             count,
+            timeline=self,
+        )
+
+    def submit_with_transfers(
+        self,
+        submission: CudaIndependentTransferSubmission,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit transfers with events delimiting only the exact kernel.
+
+        Returns:
+            Runtime-owned launch retaining every registered host lifetime.
+
+        """
+        self._ensure_usable()
+        return self._launch_factory.submit_profiled_with_transfers(
+            submission,
             timeline=self,
         )
 
@@ -1010,11 +1089,30 @@ class CudaIndependentKernelTimelineFactory:
 class CudaIndependentKernelLaunchFunctions:
     """Reviewed Driver functions required by isolated kernel streams."""
 
+    copy_from_device_fn: _CudaFn
+    copy_to_device_fn: _CudaFn
     create_fn: _CudaFn
     destroy_fn: _CudaFn
     ensure_open: Callable[[], None]
+    host_memory: CudaHostMemoryRegistry
     launch_fn: _CudaFn
     synchronize_fn: _CudaFn
+
+
+@dataclass(slots=True)
+class _CudaIndependentSubmissionState:
+    pending_addresses: tuple[int, ...] = ()
+    submitted_work: bool = False
+    timeline_launch: _CudaIndependentKernelTimelineLaunch | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaIndependentEnqueueRequest:
+    arguments: _CudaKernelLaunchArguments
+    handle: ctypes.c_void_p
+    state: _CudaIndependentSubmissionState
+    submission: CudaIndependentTransferSubmission
+    timeline: CudaIndependentKernelTimeline | None
 
 
 @final
@@ -1025,7 +1123,7 @@ class CudaIndependentKernelLaunchFactory:
         self,
         binding: CudaIndependentKernelLaunchFunctions,
     ) -> None:
-        """Bind one live context's stream and kernel functions."""
+        """Bind one live context's stream, copy, and kernel functions."""
         self._binding = binding
         self._launches: list[CudaIndependentKernelLaunch] = []
 
@@ -1042,11 +1140,27 @@ class CudaIndependentKernelLaunchFactory:
 
         """
         return self._submit(
-            kernel,
-            device_pointers,
-            count,
+            CudaIndependentTransferSubmission(
+                count=count,
+                device_pointers=device_pointers,
+                downloads=(),
+                kernel=kernel,
+                uploads=(),
+            ),
             timeline=None,
         )
+
+    def submit_with_transfers(
+        self,
+        submission: CudaIndependentTransferSubmission,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit registered H-to-D, kernel, and D-to-H work on one stream.
+
+        Returns:
+            Runtime-owned launch retaining every host lease until completion.
+
+        """
+        return self._submit(submission, timeline=None)
 
     def submit_profiled(
         self,
@@ -1063,32 +1177,59 @@ class CudaIndependentKernelLaunchFactory:
 
         """
         return self._submit(
-            kernel,
-            device_pointers,
-            count,
+            CudaIndependentTransferSubmission(
+                count=count,
+                device_pointers=device_pointers,
+                downloads=(),
+                kernel=kernel,
+                uploads=(),
+            ),
             timeline=timeline,
         )
 
+    def submit_profiled_with_transfers(
+        self,
+        submission: CudaIndependentTransferSubmission,
+        *,
+        timeline: CudaIndependentKernelTimeline,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit transfers while events delimit only the exact kernel.
+
+        Returns:
+            Isolated launch with registered copies and kernel-only events.
+
+        """
+        return self._submit(submission, timeline=timeline)
+
     def _submit(
         self,
-        kernel: ctypes.c_void_p,
-        device_pointers: tuple[int, ...],
-        count: int,
+        submission: CudaIndependentTransferSubmission,
         *,
         timeline: CudaIndependentKernelTimeline | None,
     ) -> CudaIndependentKernelLaunch:
         self._binding.ensure_open()
-        arguments = _kernel_launch_arguments(device_pointers, count)
+        arguments = _kernel_launch_arguments(
+            submission.device_pointers,
+            submission.count,
+        )
         handle = self._create_stream()
-        timeline_launch: _CudaIndependentKernelTimelineLaunch | None = None
+        state = _CudaIndependentSubmissionState()
         try:
-            timeline_launch = self._begin_timeline(timeline, handle)
-            self._launch_kernel(kernel, arguments, handle)
-            self._record_timeline_end(timeline, timeline_launch, handle)
+            self._enqueue_submission(
+                _CudaIndependentEnqueueRequest(
+                    arguments=arguments,
+                    handle=handle,
+                    state=state,
+                    submission=submission,
+                    timeline=timeline,
+                )
+            )
         except AcceleratorExecutionError as launch_error:
             cleanup_failure = self._failed_submit_cleanup(
                 handle,
-                timeline_launch,
+                state.timeline_launch,
+                state.pending_addresses,
+                submitted_work=state.submitted_work,
             )
             if cleanup_failure is not None:
                 raise launch_error from cleanup_failure
@@ -1099,13 +1240,67 @@ class CudaIndependentKernelLaunchFactory:
                 ensure_open=self._binding.ensure_open,
                 forget=self._forget,
                 handle=handle,
+                host_memory=self._binding.host_memory,
                 synchronize_fn=self._binding.synchronize_fn,
-                timeline=timeline_launch,
+                timeline=state.timeline_launch,
             ),
-            (*arguments.owners, arguments.params),
+            (
+                *arguments.owners,
+                arguments.params,
+                *submission.uploads,
+                *submission.downloads,
+            ),
+            state.pending_addresses,
         )
         self._launches.append(launch)
         return launch
+
+    def _enqueue_submission(
+        self,
+        request: _CudaIndependentEnqueueRequest,
+    ) -> None:
+        submission = request.submission
+        state = request.state
+        state.pending_addresses = self._acquire_transfer_leases(submission)
+        state.submitted_work = self._enqueue_uploads(
+            submission.uploads,
+            request.handle,
+        )
+        state.timeline_launch = self._begin_timeline(
+            request.timeline,
+            request.handle,
+        )
+        state.submitted_work = (
+            state.submitted_work or state.timeline_launch is not None
+        )
+        self._launch_kernel(
+            submission.kernel,
+            request.arguments,
+            request.handle,
+        )
+        state.submitted_work = True
+        self._record_timeline_end(
+            request.timeline,
+            state.timeline_launch,
+            request.handle,
+        )
+        _ = self._enqueue_downloads(submission.downloads, request.handle)
+
+    def _acquire_transfer_leases(
+        self,
+        submission: CudaIndependentTransferSubmission,
+    ) -> tuple[int, ...]:
+        addresses: list[int] = []
+        try:
+            for transfer in (*submission.uploads, *submission.downloads):
+                _validate_async_transfer_pointer(transfer.device_pointer)
+                addresses.append(
+                    self._binding.host_memory.acquire_for_async(transfer.host)
+                )
+        except AcceleratorExecutionError:
+            self._binding.host_memory.release_async(tuple(addresses))
+            raise
+        return tuple(addresses)
 
     @staticmethod
     def _begin_timeline(
@@ -1127,17 +1322,65 @@ class CudaIndependentKernelLaunchFactory:
         )
         return handle
 
+    def _enqueue_downloads(
+        self,
+        downloads: tuple[CudaDeviceToHostTransfer, ...],
+        handle: ctypes.c_void_p,
+    ) -> bool:
+        submitted = False
+        for transfer in downloads:
+            _check_execution(
+                self._binding.copy_from_device_fn(
+                    transfer.host,
+                    ctypes.c_uint64(transfer.device_pointer),
+                    ctypes.sizeof(transfer.host),
+                    handle,
+                ),
+                "cuMemcpyDtoHAsync_v2",
+            )
+            submitted = True
+        return submitted
+
+    def _enqueue_uploads(
+        self,
+        uploads: tuple[CudaHostToDeviceTransfer, ...],
+        handle: ctypes.c_void_p,
+    ) -> bool:
+        submitted = False
+        for transfer in uploads:
+            _check_execution(
+                self._binding.copy_to_device_fn(
+                    ctypes.c_uint64(transfer.device_pointer),
+                    transfer.host,
+                    ctypes.sizeof(transfer.host),
+                    handle,
+                ),
+                "cuMemcpyHtoDAsync_v2",
+            )
+            submitted = True
+        return submitted
+
     def _failed_submit_cleanup(
         self,
         handle: ctypes.c_void_p,
         timeline_launch: _CudaIndependentKernelTimelineLaunch | None,
+        pending_addresses: tuple[int, ...],
+        *,
+        submitted_work: bool,
     ) -> AcceleratorExecutionError | None:
+        synchronize_failure = (
+            self._synchronize_failure(handle) if submitted_work else None
+        )
         timeline_failure: AcceleratorExecutionError | None = None
         if timeline_launch is not None:
             try:
                 timeline_launch.finish(completed=False)
             except AcceleratorExecutionError as error:
                 timeline_failure = error
+        lease_failure = _release_async_addresses_failure(
+            self._binding.host_memory,
+            pending_addresses,
+        )
         stream_failure: AcceleratorExecutionError | None = None
         try:
             _check_execution(
@@ -1146,7 +1389,12 @@ class CudaIndependentKernelLaunchFactory:
             )
         except AcceleratorExecutionError as error:
             stream_failure = error
-        return timeline_failure or stream_failure
+        return (
+            synchronize_failure
+            or timeline_failure
+            or lease_failure
+            or stream_failure
+        )
 
     def _launch_kernel(
         self,
@@ -1181,6 +1429,19 @@ class CudaIndependentKernelLaunchFactory:
             return
         timeline.record_end(timeline_launch, handle)
 
+    def _synchronize_failure(
+        self,
+        handle: ctypes.c_void_p,
+    ) -> AcceleratorExecutionError | None:
+        try:
+            _check_execution(
+                self._binding.synchronize_fn(handle),
+                "cuStreamSynchronize",
+            )
+        except AcceleratorExecutionError as error:
+            return error
+        return None
+
     def release_failure(self) -> AcceleratorExecutionError | None:
         """Close every isolated launch before context destruction.
 
@@ -1195,6 +1456,25 @@ class CudaIndependentKernelLaunchFactory:
             self._launches.remove(launch)
         except ValueError:
             return
+
+
+def _validate_async_transfer_pointer(device_pointer: int) -> None:
+    if type(device_pointer) is not int or device_pointer <= 0:
+        message = "CUDA asynchronous copy requires a positive device pointer"
+        raise AcceleratorExecutionError(message)
+
+
+def _release_async_addresses_failure(
+    host_memory: CudaHostMemoryRegistry,
+    addresses: tuple[int, ...],
+) -> AcceleratorExecutionError | None:
+    if not addresses:
+        return None
+    try:
+        host_memory.release_async(addresses)
+    except AcceleratorExecutionError as error:
+        return error
+    return None
 
 
 def _kernel_launch_arguments(
@@ -1305,6 +1585,7 @@ class CudaRuntime:
     _cu_stream_destroy: _CudaFn
     _cu_stream_synchronize: _CudaFn
     _cu_memcpy_dtoh_async: _CudaFn
+    _cu_memcpy_htod_async: _CudaFn
 
     _nvrtc_compile_program: _CudaFn
     _nvrtc_create_program: _CudaFn
@@ -1350,9 +1631,12 @@ class CudaRuntime:
         )
         self.independent_kernel_launches = CudaIndependentKernelLaunchFactory(
             CudaIndependentKernelLaunchFunctions(
+                copy_from_device_fn=self._cu_memcpy_dtoh_async,
+                copy_to_device_fn=self._cu_memcpy_htod_async,
                 create_fn=self._cu_stream_create,
                 destroy_fn=self._cu_stream_destroy,
                 ensure_open=self._ensure_open,
+                host_memory=self.host_memory,
                 launch_fn=self._cu_launch_kernel,
                 synchronize_fn=self._cu_stream_synchronize,
             )
@@ -1642,6 +1926,7 @@ class CudaRuntime:
             self._cu_stream_destroy,
             self._cu_stream_synchronize,
             self._cu_memcpy_dtoh_async,
+            self._cu_memcpy_htod_async,
         ) = stream
 
     def _bind_nvrtc(self) -> None:
@@ -1940,6 +2225,14 @@ def _bind_driver_stream(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
         ctypes.c_void_p,
     ]
     raw_dtoh_async.restype = ctypes.c_int
+    raw_htod_async = dll.cuMemcpyHtoDAsync_v2
+    raw_htod_async.argtypes = [
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+    ]
+    raw_htod_async.restype = ctypes.c_int
     return tuple(
         cast("_CudaFn", raw)
         for raw in (
@@ -1947,6 +2240,7 @@ def _bind_driver_stream(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
             raw_destroy,
             raw_synchronize,
             raw_dtoh_async,
+            raw_htod_async,
         )
     )
 

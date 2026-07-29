@@ -62,6 +62,7 @@ from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.cuda import cuda_independent_kernel_timeline_id
 from accelerator.cuda.runtime import CUDA_EVENT_DEFAULT
 from accelerator.cuda.runtime import CUDA_STREAM_NON_BLOCKING
+from accelerator.cuda.runtime import CudaHostMemoryRegistry
 from accelerator.cuda.runtime import CudaIndependentKernelLaunchFactory
 from accelerator.cuda.runtime import CudaIndependentKernelLaunchFunctions
 from accelerator.cuda.runtime import CudaIndependentKernelTimelineFactory
@@ -248,9 +249,16 @@ def _factories(
 ]:
     launches = CudaIndependentKernelLaunchFactory(
         CudaIndependentKernelLaunchFunctions(
+            copy_from_device_fn=_copy_success,
+            copy_to_device_fn=_copy_success,
             create_fn=fake.create_stream,
             destroy_fn=fake.destroy_stream,
             ensure_open=lambda: None,
+            host_memory=CudaHostMemoryRegistry(
+                lambda: None,
+                _copy_success,
+                _copy_success,
+            ),
             launch_fn=fake.launch,
             synchronize_fn=fake.synchronize_stream,
         )
@@ -267,6 +275,17 @@ def _factories(
         launches,
     )
     return launches, timelines
+
+
+def _copy_success(*arguments: object) -> int:
+    """Return CUDA success for transfer functions unused in this suite.
+
+    Returns:
+        CUDA success.
+
+    """
+    del arguments
+    return CUDA_SUCCESS
 
 
 def _handle_value(handle: ctypes.c_void_p) -> int:
