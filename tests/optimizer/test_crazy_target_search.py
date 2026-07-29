@@ -1,0 +1,483 @@
+# File:
+#   - test_crazy_target_search.py
+# Path:
+#   - tests/optimizer/test_crazy_target_search.py
+#
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+# Path-Rule:
+#   - All paths in this header are repository-root relative.
+#
+# Boundary-Contract:
+# - Owns:
+#   - Exact multi-position crazy-target strategy evidence.
+# - Must-Not:
+#   - Claim heuristic filtering, speedup, or backend acceptance authority.
+# - Allows:
+#   - Inputs: canonical fixed-accumulator target corpora and exact adapters.
+#   - Outputs: format, subset, proposal, verifier, and live CUDA assertions.
+#   - Side effects: scoped live CUDA allocations when available.
+# - Split-When:
+#   - Split when ticket or benchmark evidence gains an independent lifecycle.
+# - Merge-When:
+#   - Merge when another test owns this exact crazy-target strategy contract.
+# - Summary:
+#   - Correctness evidence for exact multiposition crazy-target search.
+# - Description:
+#   - Proves 1,024 algebraic preimages over the complete classic domain.
+# - Usage:
+#   - Collected by the optimizer suite; live tests skip without CUDA.
+# - Defaults:
+#   - Full membership and trusted CPU admission remain authoritative.
+#
+# Related documents:
+# - optimizer/crazy_target.py
+#
+# Large file:
+#   - false
+#
+
+"""Correctness evidence for exact multiposition crazy-target search."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from typing import override
+from unittest import SkipTest
+
+import pytest
+
+from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.exact_primitives import AcceleratorUnavailableError
+from accelerator.exact_primitives import CRAZY_TRIT_TABLE
+from accelerator.exact_primitives import ExactPrimitiveAdapter
+from accelerator.exact_primitives import MAX_WORD
+from accelerator.exact_primitives import PrimitiveResult
+from accelerator.primitive_candidates import encode_crazy_candidate
+from accelerator.work_ports import CandidateProposal
+from accelerator.work_ports import IndexedCandidateWorkItems
+from accelerator.work_ports import InvalidAcceleratorResultError
+from accelerator.work_ports import InvalidAcceleratorWorkError
+from accelerator.work_ports import SearchRequest
+from accelerator.work_ports import admit_search_result
+from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import CrazyTargetProblem
+from optimizer.crazy_target import CrazyTargetVerifier
+from optimizer.crazy_target import InvalidCrazyTargetProblemError
+from optimizer.crazy_target import PreparedCrazyTargetSelection
+from optimizer.crazy_target import build_crazy_target_batch
+from optimizer.crazy_target import count_prepared_crazy_target_positions
+from optimizer.crazy_target import cpu_crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_batch_builder_id
+from optimizer.crazy_target import crazy_target_projected_evaluation_id
+from optimizer.crazy_target import crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_selection_preparer_id
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from accelerator.exact_primitives import PreparedPrimitiveBatch
+    from accelerator.exact_primitives import PrimitiveBatch
+
+ALL_ONES = MAX_WORD // 2
+BAD_CAPABILITY = AcceleratorCapability(
+    backend_id="bad-crazy-search",
+    device_arch="bad",
+    device_name="bad",
+)
+CPU_BACKEND = "cpu-reference"
+CUDA_BACKEND = "cuda"
+EXPECTED_BATCH_BUILDER_ID = (
+    "classic-crazy-u32le-bitset-first-representatives-v1"
+)
+EXPECTED_PROJECTED_EVALUATION_ID = "classic-crazy-preimage-position-subset-v1"
+EXPECTED_SELECTION_PREPARER_ID = "classic-crazy-digitwise-exact-preimage-v1"
+FULL_DOMAIN_COUNT = MAX_WORD + 1
+MULTI_PREIMAGE_COUNT = 1 << 10
+ROTATION_PIVOT = 2
+FIRST_LOGICAL_ID = "corpus-0"
+
+
+def _request(
+    problem: CrazyTargetProblem,
+    *,
+    budget: int | None = None,
+    seed: int = 0,
+) -> SearchRequest:
+    return SearchRequest(
+        algorithm_id=CRAZY_TARGET_ALGORITHM_ID,
+        evaluation_budget=(
+            len(problem.candidates) if budget is None else budget
+        ),
+        problem=problem.encode(),
+        seed=seed,
+    )
+
+
+def _cuda() -> CudaExactPrimitiveAdapter:
+    try:
+        return CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        message = f"CUDA unavailable: {error}"
+        raise SkipTest(message) from error
+
+
+def _expect_problem_error(
+    message: str,
+    action: Callable[[], object],
+) -> None:
+    with pytest.raises(InvalidCrazyTargetProblemError, match=message):
+        _ = action()
+
+
+@dataclass(frozen=True, slots=True)
+class _ExplodingPrimitiveAdapter(ExactPrimitiveAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        _ = batch
+        message = "empty crazy projection unexpectedly invoked evaluation"
+        raise AssertionError(message)
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        _ = prepared
+        message = "empty crazy projection unexpectedly invoked evaluation"
+        raise AssertionError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class _ZeroPrimitiveAdapter(ExactPrimitiveAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        validated = batch.validated()
+        return PrimitiveResult(
+            capability=BAD_CAPABILITY,
+            values=(0,) * len(validated.data),
+        )
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        return self.evaluate(prepared.validated_batch())
+
+
+def test_normative_crazy_table_is_hardware_neutral() -> None:
+    """CPU and selector import one shared normative ternary relation."""
+    assert CRAZY_TRIT_TABLE == (
+        (1, 0, 0),
+        (1, 0, 2),
+        (2, 2, 1),
+    )
+
+
+def test_crazy_target_strategy_identities_are_stable() -> None:
+    """Batch, selector, and multiposition projection identities are explicit."""
+    assert crazy_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
+    assert (
+        crazy_target_selection_preparer_id() == EXPECTED_SELECTION_PREPARER_ID
+    )
+    assert (
+        crazy_target_projected_evaluation_id()
+        == EXPECTED_PROJECTED_EVALUATION_ID
+    )
+
+
+def test_crazy_target_problem_roundtrips_canonically() -> None:
+    """Target, accumulator, and candidate corpus retain canonical identity."""
+    problem = CrazyTargetProblem(
+        accumulator=7,
+        target=ALL_ONES,
+        candidates=(0, 1, 2, 1, MAX_WORD),
+    )
+
+    encoded = problem.encode()
+    decoded = CrazyTargetProblem.decode(encoded)
+
+    assert decoded == problem
+    assert decoded.encode() == encoded
+    assert CrazyTargetProblem.decode_parameters(encoded) == (ALL_ONES, 7)
+
+
+def test_problem_rejects_invalid_domain_and_encoding() -> None:
+    """Malformed target, accumulator, corpus, and bytes fail before work."""
+    _expect_problem_error(
+        "crazy target outside classic domain",
+        lambda: CrazyTargetProblem(
+            accumulator=0,
+            target=MAX_WORD + 1,
+            candidates=(),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "crazy accumulator outside classic domain",
+        lambda: CrazyTargetProblem(
+            accumulator=MAX_WORD + 1,
+            target=0,
+            candidates=(),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "crazy candidate outside classic domain",
+        lambda: CrazyTargetProblem(
+            accumulator=0,
+            target=0,
+            candidates=(MAX_WORD + 1,),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "invalid magic",
+        lambda: CrazyTargetProblem.decode(b"wrong"),
+    )
+    valid = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=(1,),
+    ).encode()
+    _expect_problem_error(
+        "invalid candidate byte length",
+        lambda: CrazyTargetProblem.decode(valid[:-1]),
+    )
+
+
+def test_batch_rotates_distinct_data_and_retains_fixed_accumulator() -> None:
+    """Seed/budget rotate stable data representatives in packed storage."""
+    request = _request(
+        CrazyTargetProblem(
+            accumulator=7,
+            target=ALL_ONES,
+            candidates=(7, 1, 7, 4, 1, 9),
+        ),
+        budget=3,
+        seed=2,
+    )
+
+    batch = build_crazy_target_batch(request).validated()
+
+    assert isinstance(batch.items, IndexedCandidateWorkItems)
+    assert batch.items.logical_rotation_pivot == ROTATION_PIVOT
+    assert tuple(batch.items.logical_index_at(index) for index in range(3)) == (
+        3,
+        5,
+        0,
+    )
+    assert tuple(
+        (
+            int.from_bytes(batch.items.payload_at(index)[:4], "little"),
+            int.from_bytes(batch.items.payload_at(index)[4:], "little"),
+        )
+        for index in range(3)
+    ) == ((4, 7), (9, 7), (7, 7))
+
+
+def test_cpu_search_prunes_duplicates_and_finds_all_small_preimages() -> None:
+    """Non-invertible exact search returns every retained matching position."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=(0, 1, 2, 3, 4, 1),
+    )
+    result = cpu_crazy_target_search_adapter().search(_request(problem))
+
+    assert result.capability.backend_id == CPU_BACKEND
+    assert tuple(proposal.logical_id for proposal in result.proposals) == (
+        "corpus-0",
+        "corpus-1",
+        "corpus-3",
+        "corpus-4",
+    )
+    assert tuple(
+        int.from_bytes(proposal.payload[:4], "little")
+        for proposal in result.proposals
+    ) == (0, 1, 3, 4)
+
+
+def test_seed_and_budget_bound_multiposition_search_order() -> None:
+    """Budget follows exact stable-first deduplication and seed rotation."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=(0, 1, 2, 3, 4, 1),
+    )
+    adapter = cpu_crazy_target_search_adapter()
+
+    result = adapter.search(_request(problem, budget=3, seed=2))
+
+    assert tuple(proposal.logical_id for proposal in result.proposals) == (
+        "corpus-3",
+        "corpus-4",
+    )
+
+
+def test_full_domain_preparation_supplies_exact_1024_position_subset() -> None:
+    """Complete classic membership projects to every digitwise preimage."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=tuple(range(FULL_DOMAIN_COUNT)),
+    )
+    request = _request(problem)
+    adapter = cpu_crazy_target_search_adapter()
+
+    prepared = adapter.prepare(request)
+    result = adapter.search_prepared(prepared)
+
+    assert adapter.prepared_membership_count(prepared) == FULL_DOMAIN_COUNT
+    assert (
+        adapter.prepared_candidate_state_count(prepared) == MULTI_PREIMAGE_COUNT
+    )
+    assert adapter.prepared_selection_count(prepared) == MULTI_PREIMAGE_COUNT
+    assert len(result.proposals) == MULTI_PREIMAGE_COUNT
+    assert result.proposals[0].logical_id == FIRST_LOGICAL_ID
+    assert result.proposals[-1].logical_id == f"corpus-{ALL_ONES}"
+    assert all(
+        CrazyTargetVerifier(ALL_ONES, 0).accepts(proposal, None)
+        for proposal in result.proposals
+    )
+
+
+def test_full_domain_prepared_and_ordinary_search_are_identical() -> None:
+    """Projection changes capacity only; full ordinary semantics stay exact."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=tuple(range(FULL_DOMAIN_COUNT)),
+    )
+    request = _request(problem)
+    adapter = cpu_crazy_target_search_adapter()
+    prepared = adapter.prepare(request)
+
+    assert adapter.search_prepared(prepared) == adapter.search(request)
+
+
+def test_empty_projection_skips_primitive_backend() -> None:
+    """An impossible target yields empty evidence without backend execution."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=0,
+        candidates=tuple(range(257)),
+    )
+    request = _request(problem)
+    adapter = crazy_target_search_adapter(_ExplodingPrimitiveAdapter())
+
+    prepared = adapter.prepare(request)
+    result = adapter.search_prepared(prepared)
+
+    assert adapter.prepared_candidate_state_count(prepared) == 0
+    assert adapter.prepared_selection_count(prepared) == 0
+    assert result.proposals == ()
+
+
+def test_prepared_search_rejects_wrong_exact_backend_evidence() -> None:
+    """Projected candidates still require proof-bound CPU-reference equality."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=(0, 2),
+    )
+    adapter = crazy_target_search_adapter(_ZeroPrimitiveAdapter())
+    prepared = adapter.prepare(_request(problem))
+
+    assert adapter.prepared_selection_count(prepared) == 1
+    with pytest.raises(
+        InvalidAcceleratorResultError, match="trusted CPU reference"
+    ):
+        _ = adapter.search_prepared(prepared)
+
+
+def test_prepared_selection_rejects_forged_state() -> None:
+    """Raw selector-state construction cannot forge exact position authority."""
+    request = _request(
+        CrazyTargetProblem(
+            accumulator=0,
+            target=ALL_ONES,
+            candidates=(0,),
+        )
+    )
+    batch = build_crazy_target_batch(request)
+    forged = PreparedCrazyTargetSelection(
+        accumulator=0,
+        batch=batch,
+        positions=(0,),
+        request=request,
+        target=ALL_ONES,
+        _proof=object(),
+    )
+
+    with pytest.raises(
+        InvalidAcceleratorWorkError,
+        match="prepared crazy selection state is forged",
+    ):
+        _ = count_prepared_crazy_target_positions(forged)
+    with pytest.raises(
+        InvalidAcceleratorWorkError,
+        match="prepared crazy selection state has wrong type",
+    ):
+        _ = count_prepared_crazy_target_positions(object())
+
+
+def test_trusted_verifier_recomputes_and_binds_accumulator() -> None:
+    """Admission rejects malformed or cross-accumulator proposals."""
+    verifier = CrazyTargetVerifier(ALL_ONES, 0)
+    valid = CandidateProposal(
+        logical_id="valid",
+        payload=encode_crazy_candidate(0, 0),
+    )
+    wrong_accumulator = CandidateProposal(
+        logical_id="wrong-accumulator",
+        payload=encode_crazy_candidate(0, 1),
+    )
+    malformed = CandidateProposal(logical_id="malformed", payload=b"bad")
+
+    assert verifier.accepts(valid, None)
+    assert not verifier.accepts(wrong_accumulator, None)
+    assert not verifier.accepts(malformed, None)
+
+
+def test_prepared_cpu_state_executes_1024_positions_on_live_cuda() -> None:
+    """Live CUDA consumes the exact multiposition proof and matches CPU."""
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=ALL_ONES,
+        candidates=tuple(range(FULL_DOMAIN_COUNT)),
+    )
+    request = _request(problem)
+    reference = cpu_crazy_target_search_adapter()
+    prepared = reference.prepare(request)
+    expected = reference.search_prepared(prepared)
+
+    with _cuda() as cuda:
+        observed = crazy_target_search_adapter(cuda).search_prepared(prepared)
+        stats = cuda.prepared_stats()
+
+    assert stats.builds == 1
+    assert stats.evaluations == 1
+    assert stats.packed_evaluations == 1
+    assert stats.resident_count == MULTI_PREIMAGE_COUNT
+    assert stats.reuses == 0
+    assert observed.capability.backend_id == CUDA_BACKEND
+    assert observed.proposals == expected.proposals
+    assert (
+        admit_search_result(observed, CrazyTargetVerifier(ALL_ONES, 0))
+        == observed.proposals
+    )

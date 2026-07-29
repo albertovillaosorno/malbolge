@@ -60,6 +60,11 @@ if TYPE_CHECKING:
 MAX_WORD = 59_048
 ROTATE_HIGH_TRIT_WEIGHT = 19_683
 TRIT_COUNT = 10
+CRAZY_TRIT_TABLE = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
 PREPARED_PRIMITIVE_STORAGE_ID = "proof-bound-u32le-primitive-input-v1"
 _WORD_BYTES = 4
 _LITTLE_ENDIAN = "little"

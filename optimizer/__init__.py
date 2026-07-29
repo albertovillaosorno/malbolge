@@ -45,6 +45,11 @@
 
 """Deterministic optimizer and search baselines."""
 
+from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import CrazyTargetProblem
+from optimizer.crazy_target import CrazyTargetVerifier
+from optimizer.crazy_target import cpu_crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.enumerative import ENUMERATIVE_ALGORITHM_ID
 from optimizer.enumerative import EnumerationProblem
 from optimizer.enumerative import cpu_enumerative_adapter
@@ -59,14 +64,19 @@ from optimizer.rotate_target import cpu_rotate_target_search_adapter
 from optimizer.rotate_target import rotate_target_search_adapter
 
 __all__ = [
+    "CRAZY_TARGET_ALGORITHM_ID",
     "ENUMERATIVE_ALGORITHM_ID",
     "ROTATE_TARGET_ALGORITHM_ID",
+    "CrazyTargetProblem",
+    "CrazyTargetVerifier",
     "EnumerationProblem",
     "ExactDuplicatePartition",
     "RotateTargetProblem",
     "RotateTargetVerifier",
+    "cpu_crazy_target_search_adapter",
     "cpu_enumerative_adapter",
     "cpu_rotate_target_search_adapter",
+    "crazy_target_search_adapter",
     "enumerate_candidates",
     "prune_exact_duplicates",
     "rotate_target_search_adapter",

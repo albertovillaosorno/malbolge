@@ -68,6 +68,9 @@ from accelerator.search_selection import SearchSelectionError
 from accelerator.search_selection import resolve_search_execution
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
+from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import cpu_crazy_target_search_adapter
+from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.enumerative import ENUMERATIVE_ALGORITHM_ID
 from optimizer.enumerative import cpu_enumerative_adapter
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
@@ -87,6 +90,10 @@ CUDA_BACKEND = "cuda"
 CONFIGURATION_ERROR = 2
 OUTPUT_SCHEMA_VERSION = 1
 PROPOSAL_TRUST = "untrusted"
+_CUDA_SEARCH_ALGORITHMS = frozenset((
+    CRAZY_TARGET_ALGORITHM_ID,
+    ROTATE_TARGET_ALGORITHM_ID,
+))
 
 type CudaAdapterFactory = Callable[[], CudaExactPrimitiveAdapter]
 
@@ -281,6 +288,10 @@ def search_record_json(
 def _cpu_bindings() -> tuple[SearchAdapterBinding, ...]:
     return (
         SearchAdapterBinding(
+            adapter=cpu_crazy_target_search_adapter(),
+            algorithm_id=CRAZY_TARGET_ALGORITHM_ID,
+        ),
+        SearchAdapterBinding(
             adapter=cpu_enumerative_adapter(),
             algorithm_id=ENUMERATIVE_ALGORITHM_ID,
         ),
@@ -300,22 +311,33 @@ def _extend_optional_bindings(
 ) -> None:
     if selection.backend_id == CPU_REFERENCE_BACKEND:
         return
-    if (
-        selection.algorithm_id != ROTATE_TARGET_ALGORITHM_ID
-        or selection.backend_id != CUDA_BACKEND
-    ):
+    if selection.backend_id != CUDA_BACKEND:
+        return
+    if selection.algorithm_id not in _CUDA_SEARCH_ALGORITHMS:
         return
     try:
         cuda = stack.enter_context(cuda_factory())
-        adapter: SearchExecutionAdapter = rotate_target_search_adapter(cuda)
+        adapter = _cuda_search_adapter(selection.algorithm_id, cuda)
     except AcceleratorError as error:
         adapter = _UnavailableSearchAdapter(CUDA_BACKEND, error)
     bindings.append(
         SearchAdapterBinding(
             adapter=adapter,
-            algorithm_id=ROTATE_TARGET_ALGORITHM_ID,
+            algorithm_id=selection.algorithm_id,
         )
     )
+
+
+def _cuda_search_adapter(
+    algorithm_id: str,
+    cuda: CudaExactPrimitiveAdapter,
+) -> SearchExecutionAdapter:
+    if algorithm_id == CRAZY_TARGET_ALGORITHM_ID:
+        return crazy_target_search_adapter(cuda)
+    if algorithm_id == ROTATE_TARGET_ALGORITHM_ID:
+        return rotate_target_search_adapter(cuda)
+    message = f"unsupported CUDA search algorithm: {algorithm_id}"
+    raise SearchCliError(message)
 
 
 def _write_error(error: object) -> None:

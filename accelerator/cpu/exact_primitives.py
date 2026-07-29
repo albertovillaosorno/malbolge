@@ -59,6 +59,7 @@ from typing import final
 from typing import override
 
 from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.exact_primitives import CRAZY_TRIT_TABLE
 from accelerator.exact_primitives import ExactPrimitiveAdapter
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PrimitiveKind
@@ -76,11 +77,6 @@ CPU_CAPABILITY = AcceleratorCapability(
     backend_id="cpu-reference",
     device_arch="scalar",
     device_name="portable-cpu",
-)
-CRAZY_TRIT_TABLE = (
-    (1, 0, 0),
-    (1, 0, 2),
-    (2, 2, 1),
 )
 _LITTLE_ENDIAN = "little"
 _NATIVE_WORD_FORMAT = "I"

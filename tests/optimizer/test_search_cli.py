@@ -65,6 +65,8 @@ from optimizer.cli import SearchRunOptions
 from optimizer.cli import main
 from optimizer.cli import run_configured_search
 from optimizer.cli import search_record_json
+from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import CrazyTargetProblem
 from optimizer.enumerative import ENUMERATIVE_ALGORITHM_ID
 from optimizer.enumerative import EnumerationProblem
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
@@ -79,10 +81,12 @@ if TYPE_CHECKING:
 CPU_BACKEND = "cpu-reference"
 CUDA_BACKEND = "cuda"
 ROTATE_ONE = 19_683
+CRAZY_ALL_ONES = 29_524
 CONFIG_SOURCE = "config/search.toml"
 BASE_SOURCE = "base.toml"
 UNSUPPORTED_PAIR = "unsupported search algorithm/backend"
 TWO_PROPOSALS = 2
+CRAZY_PROPOSALS = 4
 
 
 def _configuration(
@@ -197,6 +201,30 @@ def test_explicit_overrides_select_another_registered_cpu_algorithm() -> None:
     assert payload["actual_backend_id"] == CPU_BACKEND
 
 
+def test_cpu_crazy_target_route_is_registered() -> None:
+    """CLI registry exposes exact multiposition crazy search on CPU."""
+    configuration = _configuration(CRAZY_TARGET_ALGORITHM_ID, CPU_BACKEND)
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=CRAZY_ALL_ONES,
+        candidates=(0, 1, 2, 3, 4),
+    ).encode()
+
+    record = run_configured_search(
+        configuration,
+        problem,
+        SearchRunOptions(evaluation_budget=5),
+    )
+
+    assert record.identity.actual_backend_id == CPU_BACKEND
+    assert tuple(item.logical_id for item in record.result.proposals) == (
+        "corpus-0",
+        "corpus-1",
+        "corpus-3",
+        "corpus-4",
+    )
+
+
 def test_unavailable_cuda_preserves_configured_identity_and_falls_back() -> (
     None
 ):
@@ -219,6 +247,27 @@ def test_unavailable_cuda_preserves_configured_identity_and_falls_back() -> (
     assert tuple(item.logical_id for item in record.result.proposals) == (
         "corpus-1",
     )
+
+
+def test_unavailable_cuda_crazy_target_falls_back_to_cpu() -> None:
+    """Crazy-target CUDA setup failure preserves exact CPU proposals."""
+    configuration = _configuration(CRAZY_TARGET_ALGORITHM_ID, CUDA_BACKEND)
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=CRAZY_ALL_ONES,
+        candidates=(0, 1, 2, 3, 4),
+    ).encode()
+
+    record = run_configured_search(
+        configuration,
+        problem,
+        SearchRunOptions(evaluation_budget=5),
+        cuda_factory=_unavailable_cuda,
+    )
+
+    assert record.identity.configured_backend_id == CUDA_BACKEND
+    assert record.identity.actual_backend_id == CPU_BACKEND
+    assert len(record.result.proposals) == CRAZY_PROPOSALS
 
 
 def test_unsupported_algorithm_backend_pair_fails_explicitly() -> None:
@@ -257,6 +306,27 @@ def test_live_cuda_cli_route_records_actual_cuda_execution() -> None:
     assert tuple(item.logical_id for item in record.result.proposals) == (
         "corpus-1",
     )
+
+
+def test_live_cuda_cli_runs_crazy_target_strategy() -> None:
+    """Live CLI registry records CUDA for exact crazy-target search."""
+    configuration = _configuration(CRAZY_TARGET_ALGORITHM_ID, CUDA_BACKEND)
+    problem = CrazyTargetProblem(
+        accumulator=0,
+        target=CRAZY_ALL_ONES,
+        candidates=(0, 1, 2, 3, 4),
+    ).encode()
+    with _live_cuda() as cuda:
+        record = run_configured_search(
+            configuration,
+            problem,
+            SearchRunOptions(evaluation_budget=5),
+            cuda_factory=lambda: cuda,
+        )
+
+    assert record.identity.configured_backend_id == CUDA_BACKEND
+    assert record.identity.actual_backend_id == CUDA_BACKEND
+    assert len(record.result.proposals) == CRAZY_PROPOSALS
 
 
 def test_main_reads_files_and_emits_json(tmp_path: Path) -> None:
