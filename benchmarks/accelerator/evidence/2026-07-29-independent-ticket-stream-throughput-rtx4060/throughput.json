@@ -1,0 +1,216 @@
+{
+  "benchmark_id": "cuda-independent-ticket-stream-throughput-v1",
+  "comparisons": {
+    "2": {
+      "group_size": 2,
+      "grouped_over_sequential": 1.3616155291170946,
+      "paired_median_saving_ns": 533400,
+      "paired_wins": 15
+    },
+    "4": {
+      "group_size": 4,
+      "grouped_over_sequential": 1.2012605596620909,
+      "paired_median_saving_ns": 609200,
+      "paired_wins": 15
+    },
+    "8": {
+      "group_size": 8,
+      "grouped_over_sequential": 1.3219532744729774,
+      "paired_median_saving_ns": 1824000,
+      "paired_wins": 15
+    }
+  },
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "hypothesis": "grouped submit-all/reverse-wait lowers group-eight median versus sequential submit/wait while every full-domain result stays byte-exact",
+  "identities": {
+    "kernel_launch": "cuda-independent-stream-kernel-launch-v1",
+    "prepared_storage": "proof-bound-u32le-primitive-input-v1"
+  },
+  "measurement": {
+    "adapter_setup_timed": false,
+    "ordering": "cyclic first-route rotation across sequential/grouped groups 2, 4, and 8",
+    "preparation_timed": false,
+    "sample_count": 15,
+    "validation_timed": false,
+    "warmup_count": 1
+  },
+  "rejection_rule": "reject group-eight throughput promotion when grouped median is not lower, paired wins do not exceed seven, or any identity/result check fails",
+  "routes": {
+    "grouped-2": {
+      "group_size": 2,
+      "max_ns": 2065000,
+      "median_ns": 1597000,
+      "min_ns": 1413300,
+      "mode": "grouped",
+      "pstdev_ns": 154289.00932989363,
+      "raw_ns": [
+        1585900,
+        1726200,
+        1561400,
+        1562400,
+        1552700,
+        1666000,
+        1413300,
+        2065000,
+        1630200,
+        1762600,
+        1589100,
+        1459800,
+        1608500,
+        1843000,
+        1597000
+      ],
+      "route_id": "grouped-2"
+    },
+    "grouped-4": {
+      "group_size": 4,
+      "max_ns": 3320700,
+      "median_ns": 3030400,
+      "min_ns": 2610900,
+      "mode": "grouped",
+      "pstdev_ns": 162708.8682961756,
+      "raw_ns": [
+        3162100,
+        3163800,
+        3030400,
+        2753300,
+        3043400,
+        3022300,
+        3076000,
+        2987200,
+        2974700,
+        2610900,
+        2958900,
+        3120000,
+        3063600,
+        2949000,
+        3320700
+      ],
+      "route_id": "grouped-4"
+    },
+    "grouped-8": {
+      "group_size": 8,
+      "max_ns": 6293000,
+      "median_ns": 5697100,
+      "min_ns": 5409100,
+      "mode": "grouped",
+      "pstdev_ns": 202731.2436590758,
+      "raw_ns": [
+        5672000,
+        5948000,
+        5539300,
+        5499900,
+        5672100,
+        5783800,
+        5736300,
+        5824000,
+        5619900,
+        5594400,
+        5409100,
+        6293000,
+        5724200,
+        5831700,
+        5697100
+      ],
+      "route_id": "grouped-8"
+    },
+    "sequential-2": {
+      "group_size": 2,
+      "max_ns": 2385700,
+      "median_ns": 2174500,
+      "min_ns": 2031500,
+      "mode": "sequential",
+      "pstdev_ns": 103824.05929691292,
+      "raw_ns": [
+        2031500,
+        2385700,
+        2094800,
+        2057000,
+        2290300,
+        2177500,
+        2097600,
+        2297600,
+        2297900,
+        2118200,
+        2062000,
+        2190000,
+        2174500,
+        2075600,
+        2208400
+      ],
+      "route_id": "sequential-2"
+    },
+    "sequential-4": {
+      "group_size": 4,
+      "max_ns": 3899100,
+      "median_ns": 3640300,
+      "min_ns": 3432400,
+      "mode": "sequential",
+      "pstdev_ns": 128597.59182123988,
+      "raw_ns": [
+        3680100,
+        3815400,
+        3697400,
+        3640300,
+        3616500,
+        3494400,
+        3439100,
+        3790900,
+        3693200,
+        3432400,
+        3568100,
+        3618200,
+        3563300,
+        3899100,
+        3695200
+      ],
+      "route_id": "sequential-4"
+    },
+    "sequential-8": {
+      "group_size": 8,
+      "max_ns": 8688800,
+      "median_ns": 7531300,
+      "min_ns": 7050300,
+      "mode": "sequential",
+      "pstdev_ns": 388159.6421863332,
+      "raw_ns": [
+        7928600,
+        7496000,
+        7843600,
+        7205400,
+        7197600,
+        7610700,
+        7560300,
+        7531300,
+        7455500,
+        7050300,
+        7080100,
+        7496300,
+        7585900,
+        8688800,
+        7542900
+      ],
+      "route_id": "sequential-8"
+    }
+  },
+  "workload": {
+    "count_per_ticket": 59049,
+    "group_sizes": [
+      2,
+      4,
+      8
+    ],
+    "identity": "classic-crazy-full-domain-independent-ticket-group-v1",
+    "kind": "crazy",
+    "sha256": "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc",
+    "total_words_by_group": {
+      "2": 118098,
+      "4": 236196,
+      "8": 472392
+    }
+  }
+}

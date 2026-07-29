@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "cuda-independent-ticket-stream-throughput-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Does grouped submit-all/reverse-wait reduce exact group-eight CUDA ticket time versus sequential submit/wait?"
+hypothesis = "Grouped group-eight median is lower with more than seven paired wins while every full-domain result stays byte-exact."
+baseline = "same-run sequential submit/wait routes for groups 2, 4, and 8"
+rejection_observation = "Group-eight grouped median is not lower, paired wins do not exceed seven, or any workload, launch, output, or backend identity check fails."
+
+[workload]
+identity = "classic-crazy-full-domain-independent-ticket-group-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed execution per sequential and grouped route"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per route with cyclic first-route rotation"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "standard-deviation"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "identical ticket counts, exact CPU-reference bytes, launch/storage identities, and CUDA backend identity must pass; stream configuration alone cannot establish physical overlap"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
