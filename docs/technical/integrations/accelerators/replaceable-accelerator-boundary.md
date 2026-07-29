@@ -350,8 +350,16 @@ for exact classic crazy/rotate work: `cuda-default-stream-kernel-launch-v1`
 retains launch parameters until synchronization, and one-shot buffers survive
 until exact CPU-reference validation plus cleanup. Existing synchronous calls do
 not change. Context-wide default-stream completion is not independent-stream
-concurrency or measured speedup. Search/verification submission, adaptive bank
-selection, kernel/transfer overlap, independent CUDA streams, and ROCm remain open.
+concurrency or measured speedup. The shared boundary now also exposes
+`validated-search-submission-v1` through `accelerator/search_submission.py`. One
+exact algorithm/problem/seed/budget request binds an optional ticket plus deferred
+mandatory CPU search. Publication validates capability, algorithm, seed, and
+proposal budget; optional cleanup must complete before fallback, malformed tickets
+fail closed, and no proposal gains acceptance authority. Ten tests cover deferred
+CPU, exact optional publication, submit/wait/result fallback, malformed ticket,
+idempotence, close, cached mandatory failure, and cleanup failure. Concrete
+CUDA/ROCm search tickets, verification-assist submission, adaptive bank selection,
+kernel/transfer overlap, and independent CUDA streams remain open.
 
 ## Invariants
 
@@ -419,10 +427,15 @@ fails explicitly without changing correctness rules.
   identity and six live CUDA ticket routes covering exact rotate/crazy publication,
   empty/idempotent work, close-before-wait, teardown fallback, and reverse waiting
   of two independent one-shot submissions.
-- Remaining evidence includes search/verification submission ports, ROCm candidate
-  tickets and VM substitution, independent CUDA stream policy, adaptive overlap
-  selection, kernel/transfer overlap, broader hardware evidence, and matched
-  measurements for future speedup claims.
+- `tests/optimizer/test_search_submission.py` verifies stable neutral search
+  identity, deferred CPU work, exact optional publication, submit/wait/result
+  fallback, malformed-ticket rejection, idempotent completion, close-before-wait,
+  mandatory-failure caching, and cleanup-failure rejection.
+- Remaining evidence includes concrete CUDA/ROCm search tickets,
+  verification-assist submission, ROCm candidate tickets and VM substitution,
+  independent CUDA stream policy, adaptive overlap selection, kernel/transfer
+  overlap, broader hardware evidence, and matched measurements for future speedup
+  claims.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

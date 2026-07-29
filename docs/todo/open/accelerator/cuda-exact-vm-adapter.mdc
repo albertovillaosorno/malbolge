@@ -333,7 +333,9 @@ multi-position strategy that can supply exact positions without heuristic filter
   parameters until context sync; one-shot buffers remain owned until download,
   prepared CPU-reference equality, and cleanup. Seven tests cover identity plus
   six live lifetime/exactness routes. Existing primitive methods stay synchronous,
-  and context-wide default-stream completion is not overlap or speedup. Independent
-  streams plus synthesis/search submission evidence remain open.
+  and context-wide default-stream completion is not overlap or speedup. Neutral
+  search submission lifetime now exists, but current evaluated-search batch
+  construction/selection does not implement a CUDA search ticket. Independent
+  streams plus concrete synthesis/search submission evidence remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

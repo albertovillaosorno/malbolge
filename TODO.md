@@ -1383,9 +1383,16 @@ reference equality, and cleanup. Seven tests cover identity and six live RTX 406
 routes: rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback,
 and two tickets waited in reverse order. Existing synchronous calls remain
 synchronous; context-wide default-stream completion is not overlap or speedup.
-Search/verification submission, independent stream policy, adaptive bank/window
-selection, kernel/transfer overlap, other callback workloads, and broader
-live-device evidence remain open.
+Hardware-neutral search lifetime is now active as
+`validated-search-submission-v1`. One exact algorithm/problem/seed/budget request
+binds an optional ticket and deferred CPU reference. `wait()` validates capability,
+algorithm, seed, and proposal budget before publication; optional cleanup precedes
+fallback, malformed tickets fail closed, successful waits are idempotent, and
+mandatory failures are cached. Ten tests cover the full state/fallback lifetime.
+Proposals remain untrusted and only independent admission may accept them. Concrete
+CUDA/ROCm search tickets, verification-assist submission, independent stream
+policy, adaptive bank/window selection, kernel/transfer overlap, other callback
+workloads, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

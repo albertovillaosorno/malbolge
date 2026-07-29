@@ -322,8 +322,12 @@ multi-position strategy that can supply exact positions without heuristic filter
   cleanup failure fail closed. Ten tests cover lifetime, route, and failure state.
   CUDA now supplies exact crazy/rotate tickets with retained launch parameters and
   independent one-shot buffers; seven tests cover identity plus six live exact
-  lifetime routes. Search/verification submission, synthesis/guided and resident
-  search, independent CUDA streams, ROCm work ports/VM execution, adaptive/kernel
-  overlap, and broader hardware remain open.
+  lifetime routes. Neutral `validated-search-submission-v1` now binds exact
+  algorithm/problem/seed/budget requests to optional tickets and deferred CPU
+  search, validates untrusted proposal publication, and requires cleanup before
+  fallback. Ten tests cover its complete state/failure lifetime. Concrete CUDA/ROCm
+  search tickets, verification-assist submission, synthesis/guided and resident
+  search, independent CUDA streams, ROCm VM execution, adaptive/kernel overlap,
+  and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

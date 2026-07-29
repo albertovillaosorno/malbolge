@@ -83,7 +83,15 @@ publishes. Seven tests cover identity plus six live RTX 4060 routes: rotate, cra
 empty/idempotent, close-before-wait, adapter-teardown fallback, and two independent
 tickets waited in reverse order. Existing synchronous primitive calls remain
 synchronous. Context-wide default-stream completion is not independent-stream
-concurrency, measured overlap, or a speedup claim.
+concurrency, measured overlap, or a speedup claim. `search_submission.py` adds
+`validated-search-submission-v1`: one exact algorithm/problem/seed/budget request
+binds an optional ticket and deferred CPU search. Proposal publication waits for
+capability/algorithm/seed/budget validation; cleanup must succeed before fallback.
+Malformed tickets fail closed, successful wait is idempotent, mandatory failure is
+cached, and close-before-wait prevents execution. Ten tests cover the complete
+neutral lifetime. Proposals remain untrusted and require `admit_search_result` for
+independent acceptance. No concrete CUDA/ROCm search ticket implements this port
+yet.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. `search_config.py` adds versioned

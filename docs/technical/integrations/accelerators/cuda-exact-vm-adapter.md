@@ -183,7 +183,11 @@ launches before module/context destruction, and cleanup failure remains fail-clo
 Existing primitive `evaluate`/`evaluate_prepared` methods retain their synchronous
 behavior. Default-stream context synchronization may complete multiple queued
 launches, but it is not independent-stream concurrency, kernel/transfer overlap,
-or a speedup claim.
+or a speedup claim. Neutral `validated-search-submission-v1` now exists, but the
+CUDA candidate ticket is not itself a search ticket: batch construction, proposal
+selection, and search-lifetime cleanup remain synchronous in current evaluated
+search adapters. A concrete CUDA search submission requires its own exact strategy
+state/lifetime evidence.
 
 ## Invariants
 
