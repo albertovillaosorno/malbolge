@@ -48,6 +48,8 @@
 from __future__ import annotations
 
 from array import array
+from dataclasses import dataclass
+from dataclasses import field
 from dataclasses import replace
 from typing import Final
 from typing import TYPE_CHECKING
@@ -61,8 +63,10 @@ from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
+from accelerator.cuda.profile_run import CudaProfileSnapshotStreamWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
 from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
+from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 from accelerator.cuda.runtime import CudaHostMemoryRegistry
 from accelerator.exact_primitives import AcceleratorExecutionError
@@ -75,16 +79,22 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from accelerator.cuda.profile_run import ProfileSnapshotHostRegistration
+    from accelerator.cuda.profile_run import ProfileSnapshotWindow
+    from accelerator.profile_run import ProfileRunResult
 
 SYNTHETIC_TRITS: Final = 5
 SYNTHETIC_WORDS: Final = 243
 INITIAL_ACCUMULATOR: Final = 7
 EXPECTED_DATA_POINTER: Final = 2
 SESSION_BATCH_SIZE: Final = 2
+STREAM_BATCH_SIZE: Final = 3
 SESSION_RUNS: Final = 3
 SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
 SNAPSHOT_HOST_REGISTRATION_ID: Final = (
     "bounded-all-or-pageable-u32-arrays-v1"
+)
+SNAPSHOT_STREAM_WORKSPACE_ID: Final = (
+    "caller-owned-windowed-u32-arrays-v1"
 )
 _DEVICE_WORD_BYTES: Final = 4
 _HOST_REGISTRATION_BUDGET_EXCEEDED: Final = "budget-exceeded"
@@ -195,6 +205,39 @@ def _resident_session_request() -> ProfileRunRequest:
         step_budget=1,
         termination=StepTermination.NONE,
     )
+
+
+def _stream_requests() -> tuple[ProfileRunRequest, ProfileRunRequest]:
+    running = _resident_session_request()
+    halted = replace(running, termination=StepTermination.HALT)
+    return running, halted
+
+
+def _durable_result(result: ProfileRunResult) -> ProfileRunResult:
+    return replace(result, memory=array("I", result.memory))
+
+
+@dataclass(slots=True)
+class _StreamCapture:
+    workspace: CudaProfileSnapshotStreamWorkspace
+    durable: list[ProfileRunResult] = field(default_factory=list)
+    first_alias: ProfileRunResult | None = None
+    first_memory: array[int] | None = None
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+
+    def __call__(self, window: ProfileSnapshotWindow) -> None:
+        self.ranges.append((window.start, window.stop))
+        assert window.item_count == 1
+        (result,) = window.results
+        assert result.memory is self.workspace.memories[0]
+        if self.first_alias is None:
+            self.first_alias = result
+            self.first_memory = array("I", result.memory)
+        else:
+            assert self.first_memory is not None
+            assert self.first_alias.memory is result.memory
+            assert self.first_alias.memory != self.first_memory
+        self.durable.append(_durable_result(result))
 
 
 def test_cuda_profile_session_matches_contiguous_execution() -> None:
@@ -479,6 +522,202 @@ def test_cuda_profile_snapshot_session_close_releases_registration() -> None:
             match="session is closed",
         ):
             _ = workspace.snapshot()
+
+
+def test_cuda_profile_snapshot_stream_is_exact_ordered_and_windowed() -> None:
+    """One-memory window emits exact request order through reused aliases."""
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with (
+        _cuda() as adapter,
+        adapter.open_session(_stream_requests(), max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_stream_workspace(
+            host_memory_budget_bytes=memory_bytes,
+            host_registration_budget_bytes=memory_bytes,
+        )
+        capture = _StreamCapture(workspace)
+        summary = workspace.stream_snapshot(capture)
+        capacity = workspace.capacity
+        registration = workspace.registration
+
+    assert tuple(capture.durable) == expected
+    assert capture.ranges == [(0, 1), (1, SESSION_BATCH_SIZE)]
+    assert summary.items == SESSION_BATCH_SIZE
+    assert summary.windows == SESSION_BATCH_SIZE
+    assert capacity.host_memory_budget_bytes == memory_bytes
+    assert capacity.total_items == SESSION_BATCH_SIZE
+    assert capacity.window_bytes == memory_bytes
+    assert capacity.window_items == 1
+    assert registration.active
+    assert registration.registered_arrays == 1
+    assert isinstance(workspace, CudaProfileSnapshotStreamWorkspace)
+    assert (
+        profile_snapshot_stream_workspace_id()
+        == SNAPSHOT_STREAM_WORKSPACE_ID
+    )
+
+
+def test_cuda_profile_snapshot_stream_emits_partial_final_window() -> None:
+    """A non-divisible batch emits one smaller final prefix in exact order."""
+    running, halted = _stream_requests()
+    requests = (running, halted, running)
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    durable: list[ProfileRunResult] = []
+    ranges: list[tuple[int, int]] = []
+    with (
+        _cuda() as adapter,
+        adapter.open_session(requests, max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_stream_workspace(
+            host_memory_budget_bytes=2 * memory_bytes,
+        )
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            ranges.append((window.start, window.stop))
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(consume)
+
+    assert tuple(durable) == expected
+    assert ranges == [
+        (0, SESSION_BATCH_SIZE),
+        (SESSION_BATCH_SIZE, STREAM_BATCH_SIZE),
+    ]
+    assert summary.items == STREAM_BATCH_SIZE
+    assert summary.windows == SESSION_BATCH_SIZE
+    assert workspace.capacity.window_items == SESSION_BATCH_SIZE
+
+
+def test_cuda_profile_snapshot_stream_locks_session_and_workspace() -> None:
+    """Callbacks cannot mix advances, snapshots, closure, or nested streams."""
+    request = _resident_session_request()
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with (
+        _cuda() as adapter,
+        adapter.open_session((request,), max_runs=1) as session,
+    ):
+        session.advance()
+        workspace = session.allocate_snapshot_stream_workspace(
+            host_memory_budget_bytes=memory_bytes,
+        )
+
+        def consume(window: ProfileSnapshotWindow) -> None:
+            del window
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="snapshot stream is active",
+            ):
+                session.advance()
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="snapshot stream is active",
+            ):
+                _ = session.snapshot()
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="snapshot stream is active",
+            ):
+                session.close()
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="stream workspace is active",
+            ):
+                workspace.close()
+
+            def nested(window: ProfileSnapshotWindow) -> None:
+                del window
+
+            with pytest.raises(
+                AcceleratorExecutionError,
+                match="stream workspace is active",
+            ):
+                _ = workspace.stream_snapshot(nested)
+
+        summary = workspace.stream_snapshot(consume)
+        observed = session.snapshot()
+        workspace.close()
+
+    assert summary.items == 1
+    assert len(observed) == 1
+
+
+def test_cuda_profile_snapshot_stream_recovers_after_consumer_failure() -> None:
+    """Consumer exceptions release both stream locks for an exact retry."""
+    request = _resident_session_request()
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with (
+        _cuda() as adapter,
+        adapter.open_session((request,), max_runs=1) as session,
+    ):
+        session.advance()
+        expected = session.snapshot()
+        workspace = session.allocate_snapshot_stream_workspace(
+            host_memory_budget_bytes=memory_bytes,
+        )
+
+        def reject(window: ProfileSnapshotWindow) -> None:
+            del window
+            message = "synthetic consumer failure"
+            raise RuntimeError(message)
+
+        with pytest.raises(RuntimeError, match="synthetic consumer failure"):
+            _ = workspace.stream_snapshot(reject)
+        durable: list[ProfileRunResult] = []
+
+        def capture(window: ProfileSnapshotWindow) -> None:
+            durable.extend(
+                _durable_result(result) for result in window.results
+            )
+
+        summary = workspace.stream_snapshot(capture)
+
+    assert tuple(durable) == expected
+    assert summary.items == 1
+    assert summary.windows == 1
+
+
+def test_cuda_profile_snapshot_stream_rejects_budget_and_shape_drift() -> None:
+    """A full VM must fit and callback-driven resize fails before completion."""
+    request = _resident_session_request()
+    memory_bytes = SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
+    with (
+        _cuda() as adapter,
+        adapter.open_session((request,), max_runs=1) as session,
+    ):
+        for budget, pattern in (
+            (0, "positive integer"),
+            (-1, "positive integer"),
+            (True, "positive integer"),
+            (memory_bytes - 1, "cannot hold one memory"),
+        ):
+            with pytest.raises(AcceleratorExecutionError, match=pattern):
+                _ = session.allocate_snapshot_stream_workspace(
+                    host_memory_budget_bytes=budget,
+                )
+        workspace = session.allocate_snapshot_stream_workspace(
+            host_memory_budget_bytes=memory_bytes,
+        )
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="consumer must be callable",
+        ):
+            _ = workspace.stream_snapshot(None)
+
+        def resize(window: ProfileSnapshotWindow) -> None:
+            del window
+            _ = workspace.memories[0].pop()
+
+        with pytest.raises(
+            AcceleratorExecutionError,
+            match="word count changed",
+        ):
+            _ = workspace.stream_snapshot(resize)
 
 
 def test_cuda_profile_snapshot_workspace_rejects_mutated_shape() -> None:

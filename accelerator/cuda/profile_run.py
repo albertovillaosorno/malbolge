@@ -47,6 +47,8 @@
 
 from __future__ import annotations
 
+from abc import ABC
+from abc import abstractmethod
 from array import array
 import ctypes
 from dataclasses import dataclass
@@ -54,7 +56,9 @@ from time import perf_counter_ns
 from typing import Final
 from typing import Self
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import final
+from typing import override
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import RunError
@@ -90,9 +94,13 @@ _STEPS_INDEX: Final = 15
 _DEVICE_WORD_BYTES: Final = 4
 _FIXED_CHUNK_BYTES: Final = 2 * _DEVICE_WORD_BYTES
 _KERNEL_NAME: Final = "malbolge_profile_run_batch"
+_SNAPSHOT_STREAM_WORKSPACE_PROOF = object()
 _SNAPSHOT_WORKSPACE_PROOF = object()
 _WORD_TYPECODE: Final = "I"
 PROFILE_SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
+PROFILE_SNAPSHOT_STREAM_WORKSPACE_ID: Final = (
+    "caller-owned-windowed-u32-arrays-v1"
+)
 PROFILE_SNAPSHOT_HOST_REGISTRATION_ID: Final = (
     "bounded-all-or-pageable-u32-arrays-v1"
 )
@@ -137,6 +145,48 @@ def profile_snapshot_host_registration_id() -> str:
 
     """
     return PROFILE_SNAPSHOT_HOST_REGISTRATION_ID
+
+
+def profile_snapshot_stream_workspace_id() -> str:
+    """Return the bounded streaming-workspace identity.
+
+    Returns:
+        Stable identity for benchmark and evidence provenance.
+
+    """
+    return PROFILE_SNAPSHOT_STREAM_WORKSPACE_ID
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotWindow:
+    """One ordered result window aliasing reusable workspace arrays."""
+
+    results: tuple[ProfileRunResult, ...]
+    start: int
+    stop: int
+
+    @property
+    def item_count(self) -> int:
+        """Number of global request positions in this window."""
+        return self.stop - self.start
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotStreamSummary:
+    """Completed bounded streaming snapshot cardinality."""
+
+    items: int
+    windows: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSnapshotStreamCapacity:
+    """Immutable host-window budget and cardinality evidence."""
+
+    host_memory_budget_bytes: int
+    total_items: int
+    window_bytes: int
+    window_items: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,6 +423,143 @@ class _SnapshotWorkspaceBinding:
     actions: _SnapshotWorkspaceActions
     memory_words: int
     registration_lease: _SnapshotHostRegistrationLease
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotStreamActions:
+    stream: Callable[
+        [
+            tuple[array[int], ...],
+            Callable[[ProfileSnapshotWindow], None],
+        ],
+        ProfileSnapshotStreamSummary,
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotStreamBinding:
+    actions: _SnapshotStreamActions
+    capacity: ProfileSnapshotStreamCapacity
+    memory_words: int
+    registration_lease: _SnapshotHostRegistrationLease
+
+
+@final
+class CudaProfileSnapshotStreamWorkspace:
+    """Bounded reusable arrays delivered through ordered consumer windows."""
+
+    def __init__(
+        self,
+        *,
+        memories: tuple[array[int], ...],
+        binding: _SnapshotStreamBinding,
+        _proof: object,
+    ) -> None:
+        """Bind one fixed host window to one exact live resident session."""
+        self._actions = binding.actions
+        self._active = False
+        self._capacity = binding.capacity
+        self._closed = False
+        self._memories = memories
+        self._memory_words = binding.memory_words
+        self._proof = _proof
+        self._registration_lease = binding.registration_lease
+
+    @property
+    def capacity(self) -> ProfileSnapshotStreamCapacity:
+        """Host-window budget and exact stream cardinality."""
+        return self._capacity
+
+    @property
+    def memories(self) -> tuple[array[int], ...]:
+        """Reusable arrays overwritten before each consumer callback."""
+        return self._memories
+
+    @property
+    def registration(self) -> ProfileSnapshotHostRegistration:
+        """All-or-none page-lock result for the bounded window arrays."""
+        return self._registration_lease.registration
+
+    def __enter__(self) -> Self:
+        """Enter the explicit streaming-workspace scope.
+
+        Returns:
+            This workspace instance.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Release any page-locked window arrays at scope exit."""
+        self.close()
+
+    def close(self) -> None:
+        """Release any page-locked window arrays exactly once.
+
+        Raises:
+            AcceleratorExecutionError: If a stream callback is active.
+
+        """
+        if self._closed:
+            return
+        if self._active:
+            message = "resident snapshot stream workspace is active"
+            raise AcceleratorExecutionError(message)
+        self._closed = True
+        self._registration_lease.release()
+
+    def stream_snapshot(
+        self,
+        consumer: object,
+    ) -> ProfileSnapshotStreamSummary:
+        """Deliver one exact snapshot through ordered overwrite windows.
+
+        Each callback receives results whose memory fields alias the prefix
+        of ``memories``. A later callback may overwrite those same arrays.
+        Consumers that need durable results must copy within the callback.
+
+        Returns:
+            Complete emitted item/window counts.
+
+        Raises:
+            AcceleratorExecutionError: If the workspace or callback is invalid.
+
+        """
+        if not callable(consumer):
+            message = "resident snapshot stream consumer must be callable"
+            raise AcceleratorExecutionError(message)
+        admitted_consumer = cast(
+            "Callable[[ProfileSnapshotWindow], None]",
+            consumer,
+        )
+        memories = self._validated_memories()
+        if self._active:
+            message = "resident snapshot stream workspace is active"
+            raise AcceleratorExecutionError(message)
+        self._active = True
+        try:
+            return self._actions.stream(memories, admitted_consumer)
+        finally:
+            self._active = False
+
+    def _validated_memories(self) -> tuple[array[int], ...]:
+        if self._closed:
+            message = "resident snapshot stream workspace is closed"
+            raise AcceleratorExecutionError(message)
+        if self._proof is not _SNAPSHOT_STREAM_WORKSPACE_PROOF:
+            message = "resident snapshot stream workspace is forged"
+            raise AcceleratorExecutionError(message)
+        _validate_snapshot_workspace_memories(
+            self._memories,
+            self._memory_words,
+        )
+        self._registration_lease.validate_memories(self._memories)
+        return self._memories
 
 
 @final
@@ -1000,8 +1187,34 @@ class CudaProfileRunAdapter:
             raise AcceleratorExecutionError(message) from error
 
 
+class _CudaCloseScope(ABC):
+    """Shared context-manager behavior for explicit CUDA lifetimes."""
+
+    def __enter__(self) -> Self:
+        """Enter one explicit CUDA resource scope.
+
+        Returns:
+            This live resource owner.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Release owned CUDA resources at scope exit."""
+        self.close()
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release owned CUDA resources exactly once."""
+
+
 @final
-class CudaProfileRunSession:
+class CudaProfileRunSession(_CudaCloseScope):
     """Repeated scalable CUDA execution with complete state kept resident."""
 
     def __init__(
@@ -1018,27 +1231,10 @@ class CudaProfileRunSession:
         self._failed = False
         self._max_runs = max_runs
         self._runs_executed = 0
+        self._snapshot_stream_active = False
         self._snapshot_registration_leases: list[
             _SnapshotHostRegistrationLease
         ] = []
-
-    def __enter__(self) -> Self:
-        """Return this live resident session for scoped use.
-
-        Returns:
-            This session.
-
-        """
-        return self
-
-    def __exit__(
-        self,
-        _exc_type: object,
-        _exc_value: object,
-        _traceback: object,
-    ) -> None:
-        """Release all resident device allocations at scope exit."""
-        self.close()
 
     @property
     def runs_executed(self) -> int:
@@ -1054,6 +1250,7 @@ class CudaProfileRunSession:
 
         """
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         if self._runs_executed >= self._max_runs:
             message = "resident CUDA profile session run budget exhausted"
             raise AcceleratorExecutionError(message)
@@ -1069,10 +1266,12 @@ class CudaProfileRunSession:
             raise
         self._runs_executed += 1
 
+    @override
     def close(self) -> None:
         """Release registered host arrays and device allocations."""
         if self._closed:
             return
+        self._ensure_snapshot_stream_inactive()
         self._closed = True
         failure = _release_snapshot_registration_leases(
             self._snapshot_registration_leases
@@ -1093,6 +1292,7 @@ class CudaProfileRunSession:
 
         """
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         observations: list[ProfileRunObservation] = []
         for chunk in self._chunks:
             self._context.runtime.copy_from_device(
@@ -1118,6 +1318,7 @@ class CudaProfileRunSession:
 
         """
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         count = sum(chunk.count for chunk in self._chunks)
         memories = tuple(
             array(_WORD_TYPECODE, [0]) * self._context.geometry.memory_words
@@ -1143,11 +1344,115 @@ class CudaProfileRunSession:
             _proof=_SNAPSHOT_WORKSPACE_PROOF,
         )
 
+    def allocate_snapshot_stream_workspace(
+        self,
+        *,
+        host_memory_budget_bytes: int,
+        host_registration_budget_bytes: int = 0,
+    ) -> CudaProfileSnapshotStreamWorkspace:
+        """Allocate one fixed reusable host window for complete snapshots.
+
+        Returns:
+            Workspace that emits every resident result in global request order.
+
+        """
+        self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
+        total_items = self._snapshot_count()
+        memory_bytes = self._context.geometry.memory_words * _DEVICE_WORD_BYTES
+        window_items = _snapshot_stream_window_items(
+            total_items,
+            memory_bytes,
+            host_memory_budget_bytes,
+        )
+        memories = _fresh_result_memories(
+            self._context.geometry,
+            window_items,
+        )
+        lease = _prepare_snapshot_host_registration(
+            self._context.runtime,
+            memories,
+            host_registration_budget_bytes,
+        )
+        self._snapshot_registration_leases.append(lease)
+        window_bytes = window_items * memory_bytes
+        capacity = ProfileSnapshotStreamCapacity(
+            host_memory_budget_bytes=host_memory_budget_bytes,
+            total_items=total_items,
+            window_bytes=window_bytes,
+            window_items=window_items,
+        )
+        binding = _SnapshotStreamBinding(
+            actions=_SnapshotStreamActions(
+                stream=self._stream_snapshot_into_memories,
+            ),
+            capacity=capacity,
+            memory_words=self._context.geometry.memory_words,
+            registration_lease=lease,
+        )
+        return CudaProfileSnapshotStreamWorkspace(
+            memories=memories,
+            binding=binding,
+            _proof=_SNAPSHOT_STREAM_WORKSPACE_PROOF,
+        )
+
+    def _stream_snapshot_into_memories(
+        self,
+        memories: tuple[array[int], ...],
+        consumer: Callable[[ProfileSnapshotWindow], None],
+    ) -> ProfileSnapshotStreamSummary:
+        self._ensure_usable()
+        self._begin_snapshot_stream()
+        global_start = 0
+        windows = 0
+        try:
+            for chunk in self._chunks:
+                _download_resident_chunk_metadata(self._context, chunk)
+                local_start = 0
+                while local_start < chunk.count:
+                    _validate_snapshot_workspace_memories(
+                        memories,
+                        self._context.geometry.memory_words,
+                    )
+                    count = min(len(memories), chunk.count - local_start)
+                    active_memories = memories[:count]
+                    _download_resident_memory_window(
+                        self._context,
+                        chunk,
+                        active_memories,
+                        item_offset=local_start,
+                    )
+                    results = _decode_results_window(
+                        chunk.hosts,
+                        active_memories,
+                        item_offset=local_start,
+                    )
+                    start = global_start + local_start
+                    consumer(ProfileSnapshotWindow(
+                        results=results,
+                        start=start,
+                        stop=start + count,
+                    ))
+                    _validate_snapshot_workspace_memories(
+                        memories,
+                        self._context.geometry.memory_words,
+                    )
+                    local_start += count
+                    windows += 1
+                global_start += chunk.count
+        finally:
+            self._snapshot_stream_active = False
+        return ProfileSnapshotStreamSummary(
+            items=global_start,
+            windows=windows,
+        )
+
     def _snapshot_into_memories(
         self,
         memories: tuple[array[int], ...],
     ) -> tuple[ProfileRunResult, ...]:
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         _validate_snapshot_workspace_count(memories, self._snapshot_count())
         results: list[ProfileRunResult] = []
         offset = 0
@@ -1168,6 +1473,7 @@ class CudaProfileRunSession:
     ) -> tuple[tuple[ProfileRunResult, ...], ProfileSnapshotPhaseProfile]:
         total_start = perf_counter_ns()
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         _validate_snapshot_workspace_count(memories, self._snapshot_count())
         phase = _SnapshotPhaseCounter()
         results: list[ProfileRunResult] = []
@@ -1201,6 +1507,7 @@ class CudaProfileRunSession:
 
         """
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         results: list[ProfileRunResult] = []
         for chunk in self._chunks:
             memories = _download_resident_chunk(
@@ -1221,6 +1528,7 @@ class CudaProfileRunSession:
         """
         total_start = perf_counter_ns()
         self._ensure_usable()
+        self._ensure_snapshot_stream_inactive()
         phase = _SnapshotPhaseCounter()
         results: list[ProfileRunResult] = []
         for chunk in self._chunks:
@@ -1237,6 +1545,15 @@ class CudaProfileRunSession:
             chunks=len(self._chunks),
             total_ns=total_ns,
         )
+
+    def _begin_snapshot_stream(self) -> None:
+        self._ensure_snapshot_stream_inactive()
+        self._snapshot_stream_active = True
+
+    def _ensure_snapshot_stream_inactive(self) -> None:
+        if self._snapshot_stream_active:
+            message = "resident CUDA profile snapshot stream is active"
+            raise AcceleratorExecutionError(message)
 
     def _ensure_usable(self) -> None:
         if self._closed:
@@ -1485,6 +1802,38 @@ def _copy_words(runtime: CudaRuntime, host: _WordBuffer) -> int:
     return pointer
 
 
+def _snapshot_stream_window_items(
+    total_items: int,
+    memory_bytes: int,
+    host_memory_budget_bytes: int,
+) -> int:
+    """Resolve a positive fixed window under the exact host-memory budget.
+
+    Returns:
+        Maximum resident items whose complete memories fit the budget.
+
+    Raises:
+        AcceleratorExecutionError: If the budget is invalid or too small.
+
+    """
+    if (
+        type(host_memory_budget_bytes) is not int
+        or host_memory_budget_bytes <= 0
+    ):
+        message = "snapshot stream host budget must be a positive integer"
+        raise AcceleratorExecutionError(message)
+    if total_items <= 0:
+        message = "snapshot stream workspace requires resident items"
+        raise AcceleratorExecutionError(message)
+    if host_memory_budget_bytes < memory_bytes:
+        message = (
+            "snapshot stream host budget cannot hold one memory: "
+            f"{host_memory_budget_bytes} < {memory_bytes}"
+        )
+        raise AcceleratorExecutionError(message)
+    return min(total_items, host_memory_budget_bytes // memory_bytes)
+
+
 def _validate_snapshot_workspace_memories(
     memories: tuple[array[int], ...],
     memory_words: int,
@@ -1636,6 +1985,33 @@ def _download_complete_results(
     return memories
 
 
+def _download_resident_chunk_metadata(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+) -> None:
+    context.runtime.copy_from_device(chunk.hosts.states.view, chunk.pointers[0])
+    context.runtime.copy_from_device(
+        chunk.hosts.outputs.view,
+        chunk.pointers[3],
+    )
+
+
+def _download_resident_memory_window(
+    context: _ResidentContext,
+    chunk: _ResidentChunk,
+    memories: tuple[array[int], ...],
+    *,
+    item_offset: int,
+) -> None:
+    stride_bytes = context.geometry.memory_words * _DEVICE_WORD_BYTES
+    _download_result_memories(
+        context.runtime,
+        context.geometry,
+        device_pointer=chunk.pointers[1] + (item_offset * stride_bytes),
+        memories=memories,
+    )
+
+
 def _download_resident_chunk_into(
     context: _ResidentContext,
     chunk: _ResidentChunk,
@@ -1679,17 +2055,20 @@ def _decode_observations(
     return tuple(observations)
 
 
-def _decode_results(
+def _decode_results_window(
     hosts: _HostBatch,
     memories: tuple[array[int], ...],
+    *,
+    item_offset: int,
 ) -> tuple[ProfileRunResult, ...]:
+    if item_offset < 0 or item_offset + len(memories) > hosts.count:
+        message = "profile result window outside resident chunk"
+        raise AcceleratorExecutionError(message)
     states = hosts.states.owner
     outputs = hosts.outputs.owner
-    if len(memories) != hosts.count:
-        message = "profile result memory count invariant failed"
-        raise AcceleratorExecutionError(message)
     results: list[ProfileRunResult] = []
-    for index, memory in enumerate(memories):
+    for local_index, memory in enumerate(memories):
+        index = item_offset + local_index
         base = index * STATE_WORDS
         output_offset = states[base + 6]
         output_len = states[base + 7]
@@ -1712,6 +2091,16 @@ def _decode_results(
             )
         )
     return tuple(results)
+
+
+def _decode_results(
+    hosts: _HostBatch,
+    memories: tuple[array[int], ...],
+) -> tuple[ProfileRunResult, ...]:
+    if len(memories) != hosts.count:
+        message = "profile result memory count invariant failed"
+        raise AcceleratorExecutionError(message)
+    return _decode_results_window(hosts, memories, item_offset=0)
 
 
 def _free_resident_chunks(
