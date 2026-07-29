@@ -25,14 +25,20 @@ validation:
 ## Objective
 
 Define the guest C library surface: fixed-width integers, memory primitives,
-byte streams, strings, allocation, formatting, and later higher-level routines
-without hidden host shortcuts.
+byte streams, strings, allocation, formatting, `libm`, and later higher-level
+routines without hidden host shortcuts.
 
 ## Acceptance
 
-- The supported libc surface states exact C signatures and deterministic guest
-  semantics and separates unsupported-today functionality from constructs
-  forbidden by the language/ABI model.
+- The supported libc and `libm` surfaces state exact C signatures and
+  deterministic guest semantics and separate unsupported-today functionality
+  from constructs forbidden by the language/ABI model.
+- Every accepted library routine lowers to ordinary guest code or a verified
+  compiler intrinsic with equivalent guest-visible semantics; no generated
+  artifact resolves the routine through a host libc or host math library.
+- Native CLI adapters are explicitly debug-only and provide no evidence that a
+  C program, compiler intrinsic, libc routine, or `libm` routine lowers to
+  Malbolge.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - The declared scope contains no unresolved placeholder implementation or

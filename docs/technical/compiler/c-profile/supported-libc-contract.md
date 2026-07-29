@@ -7,8 +7,8 @@ Proposed
 ## Purpose
 
 Define the guest C library surface: fixed-width integers, memory primitives,
-byte streams, strings, allocation, formatting, and later higher-level routines
-without hidden host shortcuts.
+byte streams, strings, allocation, formatting, `libm`, and later higher-level
+routines without hidden host shortcuts.
 
 ## Scope
 
@@ -35,9 +35,13 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
-- The supported libc surface states exact C signatures and deterministic guest
-  semantics and separates unsupported-today functionality from constructs
-  forbidden by the language/ABI model.
+- The supported libc and `libm` surfaces state exact C signatures and
+  deterministic guest semantics and separate unsupported-today functionality
+  from constructs forbidden by the language/ABI model.
+- Accepted routines lower to guest code or verified compiler intrinsics and never
+  resolve through a host libc or host math library in generated artifacts.
+- Native CLI adapters are debug-only scaffolding and are not lowerability or
+  conformance evidence.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 

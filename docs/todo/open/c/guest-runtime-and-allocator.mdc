@@ -26,14 +26,17 @@ validation:
 ## Objective
 
 Implement startup, calling convention, frames, allocation, streams, integer
-helpers, strings, scheduling primitives, and other runtime facilities as code
-that ultimately executes under Malbolge semantics.
+helpers, strings, deterministic math helpers, scheduling primitives, and other
+runtime facilities as code that ultimately executes under Malbolge semantics.
 
 ## Acceptance
 
-- Allocation, streams, arithmetic helpers, calling convention support, and other
-  runtime facilities execute inside guest Malbolge semantics rather than hidden
-  host callbacks.
+- Allocation, streams, arithmetic and math helpers, calling convention support,
+  and other runtime facilities execute inside guest Malbolge semantics rather
+  than hidden host callbacks.
+- Fundamental compiler intrinsics such as byte output have executable Malbolge
+  lowerings; a native debug adapter may mirror them but cannot satisfy this
+  acceptance criterion.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - The declared scope contains no unresolved placeholder implementation or

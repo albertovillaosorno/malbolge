@@ -7,8 +7,8 @@ Proposed
 ## Purpose
 
 Implement startup, calling convention, frames, allocation, streams, integer
-helpers, strings, scheduling primitives, and other runtime facilities as code
-that ultimately executes under Malbolge semantics.
+helpers, strings, deterministic math helpers, scheduling primitives, and other
+runtime facilities as code that ultimately executes under Malbolge semantics.
 
 ## Scope
 
@@ -35,9 +35,11 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
-- Allocation, streams, arithmetic helpers, calling convention support, and other
-  runtime facilities execute inside guest Malbolge semantics rather than hidden
-  host callbacks.
+- Allocation, streams, arithmetic and math helpers, calling convention support,
+  and other runtime facilities execute inside guest Malbolge semantics rather
+  than hidden host callbacks.
+- Fundamental compiler intrinsics have executable Malbolge lowerings; native
+  debug adapters may mirror them but cannot satisfy this invariant.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 

@@ -417,18 +417,23 @@ must never alter guest-visible behavior.
 ### TODO - Supported libc contract
 
 Define the guest C library surface: fixed-width integers, memory primitives,
-byte streams, strings, allocation, formatting, and later higher-level routines.
-The contract is deliberately not the host libc ABI: accepted routines either
-compile into ordinary guest code or into verified compiler intrinsics with the
-same guest-visible semantics. No accepted C program may become dependent on
-`msvcrt`, glibc, musl, libSystem, or another native libc merely because the VM
-happens to run on that host.
+byte streams, strings, allocation, formatting, `libm`, and later higher-level
+routines. The contract is deliberately not the host libc ABI: accepted routines
+either compile into ordinary guest code or into verified compiler intrinsics with
+the same guest-visible semantics. No accepted C program may become dependent on
+`msvcrt`, glibc, musl, libSystem, a host math library, or another native runtime
+merely because the VM happens to run on that host. Native CLI adapters are
+debugging scaffolds only and never count as compiler, lowerability, or conformance
+evidence.
 
 ### TODO - Guest runtime and allocator
 
 Implement startup, calling convention, frames, allocation, streams, integer
-helpers, strings, scheduling primitives, and other runtime facilities as code
-that ultimately executes under Malbolge semantics. The DOOM interoperability
+helpers, strings, deterministic math helpers, scheduling primitives, and other
+runtime facilities as code that ultimately executes under Malbolge semantics.
+Fundamental compiler intrinsics such as byte output require real Malbolge
+lowerings. The native CLI adapter may mirror the boundary for debugging but is
+not guest-runtime or lowerability evidence. The DOOM interoperability
 bootstrap already uses the intended memory shape: the host exposes one stable
 guest-memory region and the guest zone allocator owns object allocation inside
 it; no host malloc-like service remains. Guest-side formatting likewise owns
