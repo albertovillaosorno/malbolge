@@ -1,0 +1,35 @@
+schema_version = 1
+
+[experiment]
+id = "crazy-target-full-domain-performance-matrix-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "classic-crazy-target-full-domain-multiposition-v1"
+difficulty = 59049
+target_profile = "malbolge-1998-classic-word-domain"
+
+[budget]
+evaluations = 59049
+samples = 15
+routes = 5
+
+[verification]
+required = true
+oracle = "shared CRAZY_TRIT_TABLE, 59,049 full membership, 1,024 exact projected positions and proposals, proof-bound prepared CPU/CUDA sessions, neutral ticket identity, exact backend result equality, and independent CPU admission"
+
+[provenance]
+implementation = "benchmarks/accelerator/crazy_search_performance_matrix.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060"
+
+[run]
+commit = "a225195d394020cdd354828df33966d61a1e5059"
+workload_sha256 = "178c487369fbae8e26e7a93e8af9f1052b64ee299c7588315b0e12b89dea1c5a"
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3.1 (nvcc 13.3.73); NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/raw.csv"

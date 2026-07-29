@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "crazy-target-full-domain-performance-matrix-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "How do ordinary, exact prepared, and one-shot ticket routes compare for the same 59,049-member crazy-target search?"
+hypothesis = "Exact 1,024-position preparation lowers CPU and CUDA prepared medians versus ordinary full-domain evaluation; the CUDA ticket is reported separately."
+baseline = "same-run CPU ordinary and CUDA ordinary routes over all 59,049 candidates"
+rejection_observation = "Either prepared median is not lower, any exact proposal/admission/proof identity fails, or the ticket is incorrectly promoted when not lower than CUDA ordinary."
+
+[workload]
+identity = "classic-crazy-target-full-domain-multiposition-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed execution per route; prepared state and adapters are already constructed"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per route with cyclic first-route rotation"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "standard-deviation"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["time_ns"]
+tradeoff_policy = "all 1,024 proposals, full membership, exact projection, backend identity, session counters, and independent CPU admission must pass before timing is retained"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
