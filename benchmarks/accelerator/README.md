@@ -283,6 +283,31 @@ median overlap is 0/0.006144/0.015360 ms, median concurrency is
 preregistered group-eight hypothesis passes. The absolute effect is small and does
 not establish kernel-transfer overlap or adaptive-policy promotion.
 
+`independent_ticket_transfer_throughput.py` compares the default synchronous-copy
+one-shot ticket with explicit `cuda-independent-stream-ticket-transfer-v1`.
+The same prepared 59,049-word CRAZY payload runs in groups 1/2/4/8. Groups 2/4/8
+retain four routes: synchronous submit/wait, synchronous submit-all/reverse-wait,
+streamed submit/wait, and streamed submit-all/reverse-wait. Group one retains the
+two sequential routes. Every interval includes allocation, optional host
+registration, H-to-D, isolated kernel launch, synchronization, D-to-H, immutable
+result construction, unregistration, and free. Preparation, adapter/NVRTC setup,
+CPU reference, and byte-exact validation remain outside retained timings. One
+warmup precedes fifteen samples per route with cyclic first-route rotation.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.independent_ticket_transfer_throughput
+```
+
+The preregistered group-eight hypothesis requires streamed grouped execution to
+beat both synchronous grouped and streamed sequential controls with more than
+seven paired wins against each. Failure retains the streamed lifetime as an
+explicit experiment rather than changing the default. Wall time alone does not
+attribute physical H-to-D/kernel/D-to-H overlap; a separate event protocol is
+required for that claim.
+
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`. CPU ordinary/prepared medians are 368.3588/22.4264 ms
