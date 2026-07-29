@@ -147,6 +147,10 @@ example probe points, not supported-range endpoints.
   all-or-none budget registers batches 1/8, improving 1.079x/1.108x with crossover
   2/3, and forces batch 32 to `budget-exceeded` pageable fallback. Driver rejection
   rolls back cleanly; all page locks release with workspace/session/runtime lifetime;
-  ordinary snapshots and default workspaces remain pageable. Streaming/chunking and
-  broader live-hardware measurements remain required. Persistent classic continuation is
-  tracked by its own retained session evidence.
+  ordinary snapshots and default workspaces remain pageable. Retained streaming
+  evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/` promotes
+  `caller-owned-windowed-u32-arrays-v1`. Batch-32 windows 1/8 reduce retained host
+  memory 96.875%/75.000% and improve 1.023x/1.036x versus the full pageable window.
+  Window 1 minimizes memory; window 8 is the measured balanced point on this device.
+  Asynchronous transfer and broader live-hardware measurements remain required.
+  Persistent classic continuation is tracked by its own retained session evidence.

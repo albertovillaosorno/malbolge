@@ -1,0 +1,179 @@
+{
+  "allocation_sample_count": 5,
+  "backend": "cuda-profile-run",
+  "batch_size": 32,
+  "benchmark_id": "current-profile-resident-snapshot-stream-window-tradeoff-v1",
+  "device": {
+    "arch": "sm_89",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "geometry": {
+    "memory_bytes_per_vm": 19131876,
+    "memory_words": 4782969,
+    "word_trits": 14
+  },
+  "host_registration_budget_bytes": 268435456,
+  "host_registration_id": "bounded-all-or-pageable-u32-arrays-v1",
+  "route_order": "rotate window 1/8/32 first position by sample index",
+  "rows": [
+    {
+      "allocate": {
+        "max_ns": 5333200,
+        "median_ns": 5253100,
+        "min_ns": 5135300,
+        "pstdev_ns": 86255.88443694725,
+        "raw_ns": [
+          5328900,
+          5253100,
+          5135300,
+          5142600,
+          5333200
+        ]
+      },
+      "host_memory_budget_bytes": 19131876,
+      "registration": {
+        "budget_bytes": 268435456,
+        "fallback_reason": null,
+        "registered_arrays": 1,
+        "registered_bytes": 19131876,
+        "requested_bytes": 19131876
+      },
+      "registration_active": true,
+      "snapshot": {
+        "max_ns": 103051600,
+        "median_ns": 97519400,
+        "min_ns": 95444400,
+        "pstdev_ns": 1979522.6449716496,
+        "raw_ns": [
+          97730900,
+          98968100,
+          103051600,
+          97896000,
+          97519400,
+          98297800,
+          98283700,
+          95838700,
+          98604400,
+          95553100,
+          95773400,
+          96151100,
+          95563200,
+          95444400,
+          95458800
+        ]
+      },
+      "window_bytes": 19131876,
+      "window_items": 1,
+      "windows_per_snapshot": 32
+    },
+    {
+      "allocate": {
+        "max_ns": 45745300,
+        "median_ns": 45430000,
+        "min_ns": 43783500,
+        "pstdev_ns": 769068.4468888319,
+        "raw_ns": [
+          44408200,
+          45622000,
+          45745300,
+          45430000,
+          43783500
+        ]
+      },
+      "host_memory_budget_bytes": 153055008,
+      "registration": {
+        "budget_bytes": 268435456,
+        "fallback_reason": null,
+        "registered_arrays": 8,
+        "registered_bytes": 153055008,
+        "requested_bytes": 153055008
+      },
+      "registration_active": true,
+      "snapshot": {
+        "max_ns": 110936000,
+        "median_ns": 96277100,
+        "min_ns": 94955300,
+        "pstdev_ns": 3956857.174318471,
+        "raw_ns": [
+          96277100,
+          98351300,
+          110936000,
+          99787800,
+          97895400,
+          97527600,
+          96510500,
+          99779300,
+          95063500,
+          95054200,
+          95247400,
+          95008100,
+          94955300,
+          95108400,
+          95231700
+        ]
+      },
+      "window_bytes": 153055008,
+      "window_items": 8,
+      "windows_per_snapshot": 4
+    },
+    {
+      "allocate": {
+        "max_ns": 258170700,
+        "median_ns": 192869200,
+        "min_ns": 163885100,
+        "pstdev_ns": 39114980.03197241,
+        "raw_ns": [
+          163885100,
+          179797200,
+          192869200,
+          254691200,
+          258170700
+        ]
+      },
+      "host_memory_budget_bytes": 612220032,
+      "registration": {
+        "budget_bytes": 268435456,
+        "fallback_reason": "budget-exceeded",
+        "registered_arrays": 0,
+        "registered_bytes": 0,
+        "requested_bytes": 612220032
+      },
+      "registration_active": false,
+      "snapshot": {
+        "max_ns": 102969300,
+        "median_ns": 99759700,
+        "min_ns": 98210100,
+        "pstdev_ns": 1633313.2153863066,
+        "raw_ns": [
+          100155100,
+          100827300,
+          102762700,
+          102375600,
+          102969300,
+          100731100,
+          101181800,
+          98685100,
+          99759700,
+          98614400,
+          98614900,
+          98592300,
+          98677900,
+          98210100,
+          98344200
+        ]
+      },
+      "window_bytes": 612220032,
+      "window_items": 32,
+      "windows_per_snapshot": 1
+    }
+  ],
+  "sample_count": 15,
+  "segment_steps": 64,
+  "stream_workspace_id": "caller-owned-windowed-u32-arrays-v1",
+  "warmup_count": 1,
+  "window_items": [
+    1,
+    8,
+    32
+  ]
+}

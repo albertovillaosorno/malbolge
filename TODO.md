@@ -1337,7 +1337,16 @@ medians are 3.4229/3.1718 ms (1.079x, 15/15 faster, crossover 2) and
 at 99.4115/99.9298 ms and receives no speedup claim. Invalid budgets fail closed;
 Driver rejection rolls back prior registrations; workspace/session/runtime close
 releases every page lock. Ordinary snapshots and default workspaces remain pageable.
-Chunked/streaming host materialization and broader live-device evidence remain open.
+Retained streaming evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/` promotes
+`caller-owned-windowed-u32-arrays-v1` as an explicit callback-scoped materialization
+contract. On exact batch 32, windows 1/8/32 retain 18.246/145.965/583.859 MiB and
+emit 32/4/1 ordered callbacks. Windows 1/8 fit the 256 MiB page-lock budget and
+measure 97.5194/96.2771 ms versus 99.7597 ms full pageable (1.023x/1.036x), winning
+14/15 and 13/15 paired samples while reducing retained host memory 96.875%/75.000%.
+Window 8 is 1.013x faster than window 1 but retains eight times more memory, so both
+remain explicit choices. Active streams block session mutation and nested streaming;
+consumer failure releases locks for exact retry. Asynchronous transfer needs a
+separate lifetime/ordering contract, and broader live-device evidence remains open.
 
 ### TODO - Compilation latency performance budget
 

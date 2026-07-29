@@ -382,6 +382,8 @@ fails explicitly without changing correctness rules.
   `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/`.
 - Bounded host-registration evidence is retained under
   `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`.
+- Bounded streamed-snapshot window evidence is retained under
+  `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
 - `tests/optimizer/test_accelerator_work_ports.py` verifies CPU fallback,
   malformed optional-result fallback, stable algorithm/seed/budget identity,
   optional verification hints, and verifier-only candidate admission.

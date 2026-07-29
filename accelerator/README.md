@@ -47,7 +47,13 @@ allocation on the second snapshot. Explicit
 workspace arrays only within a caller-supplied byte budget. Retained RTX 4060
 batches 1/8 improve 1.079x/1.108x with crossover 2/3; a 256 MiB budget forces
 batch 32 to `budget-exceeded` pageable fallback. Ordinary snapshots and default
-workspaces remain pageable. `work_ports.py` now defines
+workspaces remain pageable. The explicit `caller-owned-windowed-u32-arrays-v1`
+stream workspace now reuses a fixed host-memory window across ordered callbacks.
+Retained batch-32 windows 1/8 reduce host memory 96.875%/75.000% and improve
+1.023x/1.036x versus the full pageable window. Evidence is retained under
+`benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
+Callback-scoped aliases must be copied before the next window when durable ownership
+is required. `work_ports.py` now defines
 hardware-neutral candidate
 evaluation, search execution, verification-assist, and trusted-admission
 boundaries. CPU callback adapters provide mandatory candidate/search execution

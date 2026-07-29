@@ -1,0 +1,47 @@
+schema_version = 1
+
+[study]
+id = "current-profile-resident-snapshot-stream-window-tradeoff-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Can a fixed reusable host window materialize an exact batch-32 current-profile snapshot with substantially less retained host memory and no throughput loss versus a full-batch workspace?"
+hypothesis = "Window capacities one and eight reduce retained host memory by at least 75 percent, preserve exact ordered results, fit the 256 MiB page-lock budget, and do not regress median complete-snapshot time versus the full-batch pageable route."
+baseline = "one full-batch callback window using the same streaming contract and clean source commit 28849367eeb6b99eacd05d249174575f0bf9961b; its 583.859 MiB host buffer exceeds the 256 MiB registration budget and remains pageable"
+rejection_observation = "Any result/order/alias/callback/summary/capacity/registration identity drift; callback exceptions leave locks active; a bounded route regresses median snapshot time versus the full route; or retained host memory does not fall by at least 75 percent."
+
+[workload]
+identity = "current-profile-14-trit-resident-snapshot-stream-window-64-step-no-op-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one exact streamed snapshot per window route after one untimed resident advance"
+ordering = "cyclic rotation of window one, eight, and thirty-two as first route by retained sample index"
+stopping_rule = "fifteen exact snapshots and five allocation samples per window route"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range plus paired direction counts against the full route"
+
+[objectives]
+metrics = ["time_ns", "allocation_ns", "window_bytes", "window_items", "callback_count", "registered_bytes", "fallback_reason"]
+tradeoff_policy = "exact global request order, complete current-profile results, callback-scoped overwrite semantics, fixed host-memory budget, all-or-none registration, active-stream locking, deterministic cleanup, and unchanged ordinary ownership precede speed interpretation"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+host_memory_gib = 31.91
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

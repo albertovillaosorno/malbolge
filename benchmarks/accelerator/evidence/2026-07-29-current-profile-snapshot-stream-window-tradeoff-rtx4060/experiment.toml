@@ -1,0 +1,34 @@
+schema_version = 1
+
+[experiment]
+id = "current-profile-resident-snapshot-stream-window-tradeoff-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "current-profile-14-trit-resident-snapshot-stream-window-64-step-no-op-v1"
+difficulty = 4782969
+target_profile = "malbolge-2026.2"
+
+[budget]
+evaluations = 63
+samples = 15
+
+[verification]
+required = true
+oracle = "complete current-profile no-op validation inside every callback; exact global start/stop order; fixed caller-owned array aliases overwritten only between callbacks; one/eight/thirty-two window capacities and 32/4/1 callbacks; caller-owned-windowed-u32-arrays-v1 identity; 256 MiB all-or-none registration; active-stream session/workspace mutation rejection; consumer-failure retry; invalid budget, non-callable consumer, forged/closed/shape drift fail closed"
+
+[provenance]
+implementation = "accelerator/cuda/profile_run.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060"
+
+[run]
+commit = "28849367eeb6b99eacd05d249174575f0bf9961b"
+workload_sha256 = "81b5d3544da6a00978d7e35bbb1ac7411ade00746b7ed9be353253338280e765"
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3 Update 1; NVRTC 13.3.33; NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/raw.csv"

@@ -155,6 +155,25 @@ Pageable/bounded medians are 3.4229/3.1718 ms at batch 1 and
 29.5885/26.7148 ms at batch 8 (1.079x/1.108x), with strict crossover 2/3.
 Batch 32 exceeds the budget, registers no arrays, and remains a pageable control.
 
+`profile_snapshot_stream_window_tradeoff.py` measures exact batch-32 snapshots
+through fixed reusable windows of 1/8/32 VM memories. Each timed callback validates
+its complete results without retaining memory, so the route proves bounded host
+materialization rather than deferred full-batch accumulation. Fifteen samples rotate
+the first route; five allocation samples per route retain setup evidence.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_snapshot_stream_window_tradeoff
+```
+
+Retained RTX 4060 evidence is under
+`evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`.
+Windows 1/8 retain 18.246/145.965 MiB, fit the 256 MiB page-lock budget, and measure
+97.5194/96.2771 ms versus 99.7597 ms for the 583.859 MiB full pageable window.
+They reduce memory 96.875%/75.000% and win 14/15 and 13/15 paired samples.
+
 `search_throughput.py` compares the identical
 `classic-rotate-target-search-v1` strategy on the mandatory CPU reference and
 live CUDA candidate evaluator over the complete 59,049-word classic domain. One

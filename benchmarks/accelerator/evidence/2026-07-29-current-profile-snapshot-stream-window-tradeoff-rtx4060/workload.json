@@ -1,0 +1,23 @@
+{
+  "allocation_sample_count": 5,
+  "batch_size": 32,
+  "benchmark_id": "current-profile-resident-snapshot-stream-window-tradeoff-v1",
+  "geometry": {
+    "memory_bytes_per_vm": 19131876,
+    "memory_words": 4782969,
+    "word_trits": 14
+  },
+  "host_registration_budget_bytes": 268435456,
+  "host_registration_id": "bounded-all-or-pageable-u32-arrays-v1",
+  "request": "current-profile-14-trit-64-step-no-op-v1",
+  "route_order": "rotate window 1/8/32 first position by sample index",
+  "sample_count": 15,
+  "segment_steps": 64,
+  "stream_workspace_id": "caller-owned-windowed-u32-arrays-v1",
+  "warmup_count": 1,
+  "window_items": [
+    1,
+    8,
+    32
+  ]
+}

@@ -136,8 +136,14 @@ under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-
 1/8 register all arrays and improve 1.079x/1.108x with strict crossover 2/3; batch
 32 records `budget-exceeded`, registers zero arrays, and remains pageable. Driver
 rejection rolls back prior registrations, and workspace/session/runtime close releases
-all page locks. Ordinary snapshots and default workspaces remain pageable. These are
-backend measurements, not CPU-relative or cross-device speedup claims.
+all page locks. Ordinary snapshots and default workspaces remain pageable. Retained
+streaming evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/` promotes
+`caller-owned-windowed-u32-arrays-v1`: one fixed reusable window emits complete
+results in global request order, and later callbacks overwrite the same aliases. Exact
+batch-32 windows 1/8 retain 18.246/145.965 MiB and measure 97.5194/96.2771 ms versus
+99.7597 ms full pageable while reducing host memory 96.875%/75.000%. Active streaming
+blocks session mutation and nested capture; consumer failure releases both locks.
+These are backend measurements, not CPU-relative or cross-device speedup claims.
 
 ## Invariants
 
