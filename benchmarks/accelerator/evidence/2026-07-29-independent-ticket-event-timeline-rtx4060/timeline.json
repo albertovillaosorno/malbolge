@@ -1,0 +1,1937 @@
+{
+  "benchmark_id": "cuda-independent-ticket-event-timeline-v1",
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "groups": {
+    "2": {
+      "group_size": 2,
+      "max_peak_concurrency": 2,
+      "median_concurrency_ratio": 1.0,
+      "median_event_span_ms": 0.41062402725219727,
+      "median_event_sum_ms": 0.013504087924957275,
+      "median_event_union_ms": 0.01334381103515625,
+      "median_overlap_ms": 0.0,
+      "median_wall_ns": 2026800,
+      "overlap_samples": 2,
+      "pstdev_wall_ns": 615866.8304827667,
+      "raw": [
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.2437119483947754,
+          "event_sum_ms": 0.029695987701416016,
+          "event_union_ms": 0.029695987701416016,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.023552000522613525,
+              "end_ms": 1.1229439973831177,
+              "start_ms": 1.099392056465149,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.3431040048599243,
+              "start_ms": 1.336959958076477,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2014500
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.37273603677749634,
+          "event_sum_ms": 0.0458560585975647,
+          "event_union_ms": 0.0458560585975647,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.84825599193573,
+              "start_ms": 0.8410879969596863,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03868800029158592,
+              "end_ms": 1.2138240337371826,
+              "start_ms": 1.1751359701156616,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 1889100
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.20889604091644287,
+          "event_sum_ms": 0.014335989952087402,
+          "event_union_ms": 0.014335989952087402,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.15939199924469,
+              "start_ms": 1.1522239446640015,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.3611199855804443,
+              "start_ms": 1.3539520502090454,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2026800
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.6117759943008423,
+          "event_sum_ms": 0.013504087924957275,
+          "event_union_ms": 0.013504087924957275,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.006335999816656113,
+              "end_ms": 0.776416003704071,
+              "start_ms": 0.7700799703598022,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.3818559646606445,
+              "start_ms": 2.374687910079956,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3056800
+        },
+        {
+          "concurrency_ratio": 1.4444372582752332,
+          "event_span_ms": 0.009215950965881348,
+          "event_sum_ms": 0.01331186294555664,
+          "event_union_ms": 0.009215950965881348,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.2082879543304443,
+              "start_ms": 1.2011200189590454,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.2103359699249268,
+              "start_ms": 1.204192042350769,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.004095911979675293,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 1835300
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.41491204500198364,
+          "event_sum_ms": 0.0728960633277893,
+          "event_union_ms": 0.0728960633277893,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.9094079732894897,
+              "start_ms": 0.902239978313446,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.06572800129652023,
+              "end_ms": 1.3171520233154297,
+              "start_ms": 1.251423954963684,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 1942900
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.7162240743637085,
+          "event_sum_ms": 0.014336049556732178,
+          "event_union_ms": 0.014336049556732178,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7041919827461243,
+              "start_ms": 0.6970239877700806,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.413248062133789,
+              "start_ms": 2.4060800075531006,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3069700
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.7868798971176147,
+          "event_sum_ms": 0.01334381103515625,
+          "event_union_ms": 0.01334381103515625,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.006175999995321035,
+              "end_ms": 0.7468479871749878,
+              "start_ms": 0.7406719923019409,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.5275518894195557,
+              "start_ms": 2.5203840732574463,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3175600
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.2303999662399292,
+          "event_sum_ms": 0.01228797435760498,
+          "event_union_ms": 0.01228797435760498,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.1461759805679321,
+              "start_ms": 1.1400320529937744,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.3704320192337036,
+              "start_ms": 1.3642879724502563,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2002100
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.5441919565200806,
+          "event_sum_ms": 0.013312101364135742,
+          "event_union_ms": 0.013312101364135742,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.7393280267715454,
+              "start_ms": 0.7331839799880981,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.2773759365081787,
+              "start_ms": 2.2702078819274902,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2914200
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.627135992050171,
+          "event_sum_ms": 0.013312041759490967,
+          "event_union_ms": 0.013312041759490967,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7204160094261169,
+              "start_ms": 0.7132480144500732,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 2.340384006500244,
+              "start_ms": 2.334239959716797,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2964600
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.2979840040206909,
+          "event_sum_ms": 0.013311982154846191,
+          "event_union_ms": 0.013311982154846191,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.0286400318145752,
+              "start_ms": 1.0214719772338867,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.3194559812545776,
+              "start_ms": 1.31331205368042,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 1986100
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.6117759943008423,
+          "event_sum_ms": 0.013312041759490967,
+          "event_union_ms": 0.013312041759490967,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.7210879921913147,
+              "start_ms": 0.7149440050125122,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.3267199993133545,
+              "start_ms": 2.319551944732666,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2948500
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.41062402725219727,
+          "event_sum_ms": 0.051199913024902344,
+          "event_union_ms": 0.051199913024902344,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.600127935409546,
+              "start_ms": 2.5929598808288574,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.04403200000524521,
+              "end_ms": 3.0035839080810547,
+              "start_ms": 2.959552049636841,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3700600
+        },
+        {
+          "concurrency_ratio": 1.5,
+          "event_span_ms": 0.01024007797241211,
+          "event_sum_ms": 0.015360116958618164,
+          "event_union_ms": 0.01024007797241211,
+          "group_size": 2,
+          "intervals": [
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.178048014640808,
+              "start_ms": 1.1698559522628784,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.1800960302352905,
+              "start_ms": 1.172927975654602,
+              "submission_index": 1
+            }
+          ],
+          "overlap_ms": 0.005120038986206055,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 1812200
+        }
+      ]
+    },
+    "4": {
+      "group_size": 4,
+      "max_peak_concurrency": 3,
+      "median_concurrency_ratio": 1.072453326716848,
+      "median_event_span_ms": 1.2707839608192444,
+      "median_event_sum_ms": 0.08396798372268677,
+      "median_event_union_ms": 0.07372814416885376,
+      "median_overlap_ms": 0.006143927574157715,
+      "median_wall_ns": 3507800,
+      "overlap_samples": 8,
+      "pstdev_wall_ns": 525691.9400392422,
+      "raw": [
+        {
+          "concurrency_ratio": 1.1176478644652774,
+          "event_span_ms": 1.921023964881897,
+          "event_sum_ms": 0.05836808681488037,
+          "event_union_ms": 0.052224040031433105,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.6209920048713684,
+              "start_ms": 0.6148480176925659,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03481600061058998,
+              "end_ms": 0.9159039855003357,
+              "start_ms": 0.8810880184173584,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 2.5338239669799805,
+              "start_ms": 2.5246078968048096,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.535871982574463,
+              "start_ms": 2.527679920196533,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.006144046783447266,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 3946700
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 2.581503987312317,
+          "event_sum_ms": 0.05760008096694946,
+          "event_union_ms": 0.05760008096694946,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.9588800072669983,
+              "start_ms": 0.9517120122909546,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0360959991812706,
+              "end_ms": 1.3349440097808838,
+              "start_ms": 1.298848032951355,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.967519998550415,
+              "start_ms": 1.9603519439697266,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 3.5332159996032715,
+              "start_ms": 3.526047945022583,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 4841100
+        },
+        {
+          "concurrency_ratio": 1.2500006063266549,
+          "event_span_ms": 1.9200000166893005,
+          "event_sum_ms": 0.030720174312591553,
+          "event_union_ms": 0.024576127529144287,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.6938560009002686,
+              "start_ms": 0.6866880059242249,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.0860480070114136,
+              "start_ms": 1.0799039602279663,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 2.604640007019043,
+              "start_ms": 2.595423936843872,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.6066880226135254,
+              "start_ms": 2.5984959602355957,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.006144046783447266,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 3889700
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.1274240612983704,
+          "event_sum_ms": 0.08796805143356323,
+          "event_union_ms": 0.08796805143356323,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.6311039924621582,
+              "start_ms": 0.6239359974861145,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03686400130391121,
+              "end_ms": 0.9403520226478577,
+              "start_ms": 0.9034879803657532,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.5045759677886963,
+              "start_ms": 1.4963840246200562,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03574400022625923,
+              "end_ms": 1.7513600587844849,
+              "start_ms": 1.71561598777771,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2981400
+        },
+        {
+          "concurrency_ratio": 1.1134068709966312,
+          "event_span_ms": 0.5488640069961548,
+          "event_sum_ms": 0.06031990051269531,
+          "event_union_ms": 0.0541759729385376,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 1.6381759643554688,
+              "start_ms": 1.6289600133895874,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.6402239799499512,
+              "start_ms": 1.632032036781311,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.00723200011998415,
+              "end_ms": 1.998687982559204,
+              "start_ms": 1.9914560317993164,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.035679999738931656,
+              "end_ms": 2.177824020385742,
+              "start_ms": 2.142143964767456,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.006143927574157715,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 3507800
+        },
+        {
+          "concurrency_ratio": 1.1527786423574704,
+          "event_span_ms": 1.7807360291481018,
+          "event_sum_ms": 0.08499222993850708,
+          "event_union_ms": 0.07372814416885376,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.05939200147986412,
+              "end_ms": 0.5774400234222412,
+              "start_ms": 0.5180479884147644,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 2.29366397857666,
+              "start_ms": 2.2844479084014893,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.296736001968384,
+              "start_ms": 2.288543939590454,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.298784017562866,
+              "start_ms": 2.2905919551849365,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.01126408576965332,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 3564500
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.1286399960517883,
+          "event_sum_ms": 0.10256004333496094,
+          "event_union_ms": 0.10256004333496094,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.6324160099029541,
+              "start_ms": 0.6262720227241516,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.043007999658584595,
+              "end_ms": 0.9447360038757324,
+              "start_ms": 0.9017279744148254,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.018432000651955605,
+              "end_ms": 1.590880036354065,
+              "start_ms": 1.5724480152130127,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03497600182890892,
+              "end_ms": 1.75491201877594,
+              "start_ms": 1.7199360132217407,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3035200
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 0.9768960475921631,
+          "event_sum_ms": 0.08508801460266113,
+          "event_union_ms": 0.08508801460266113,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.1563199758529663,
+              "start_ms": 1.1481280326843262,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006240000016987324,
+              "end_ms": 1.3786239624023438,
+              "start_ms": 1.372383952140808,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.9417279958724976,
+              "start_ms": 1.934559941291809,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.06348799914121628,
+              "end_ms": 2.1250240802764893,
+              "start_ms": 2.0615360736846924,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3412900
+        },
+        {
+          "concurrency_ratio": 1.1250011693523658,
+          "event_span_ms": 2.092031955718994,
+          "event_sum_ms": 0.06451195478439331,
+          "event_union_ms": 0.057343900203704834,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.6366400122642517,
+              "start_ms": 0.629472017288208,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03686400130391121,
+              "end_ms": 0.9510080218315125,
+              "start_ms": 0.914143979549408,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 2.7184319496154785,
+              "start_ms": 2.7081921100616455,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 2.721503973007202,
+              "start_ms": 2.71126389503479,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0071680545806884766,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 4098800
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.1130880117416382,
+          "event_sum_ms": 0.10662388801574707,
+          "event_union_ms": 0.10662388801574707,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.006335999816656113,
+              "end_ms": 0.5907840132713318,
+              "start_ms": 0.584447979927063,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03481600061058998,
+              "end_ms": 0.8752639889717102,
+              "start_ms": 0.8404480218887329,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.41593599319458,
+              "start_ms": 1.4087680578231812,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.05830400064587593,
+              "end_ms": 1.6975359916687012,
+              "start_ms": 1.6392320394515991,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2929600
+        },
+        {
+          "concurrency_ratio": 1.2903183407376253,
+          "event_span_ms": 0.8458240032196045,
+          "event_sum_ms": 0.040959715843200684,
+          "event_union_ms": 0.03174388408660889,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.3036160469055176,
+              "start_ms": 1.295423984527588,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.3066879510879517,
+              "start_ms": 1.2984960079193115,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.1279358863830566,
+              "start_ms": 2.1207680702209473,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.01740800030529499,
+              "end_ms": 2.1412479877471924,
+              "start_ms": 2.123840093612671,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.009215831756591797,
+          "overlapping_pairs": 2,
+          "peak_concurrency": 2,
+          "wall_ns": 3472300
+        },
+        {
+          "concurrency_ratio": 1.072453326716848,
+          "event_span_ms": 1.9251201152801514,
+          "event_sum_ms": 0.09094411134719849,
+          "event_union_ms": 0.08480006456375122,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.03891199827194214,
+              "end_ms": 0.5753600001335144,
+              "start_ms": 0.5364480018615723,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.034623999148607254,
+              "end_ms": 0.8958719968795776,
+              "start_ms": 0.8612480163574219,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 2.459520101547241,
+              "start_ms": 2.4503040313720703,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.4615681171417236,
+              "start_ms": 2.453376054763794,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.006144046783447266,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 3702900
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.1151359677314758,
+          "event_sum_ms": 0.08396798372268677,
+          "event_union_ms": 0.08396798372268677,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.602944016456604,
+              "start_ms": 0.5968000292778015,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03481600061058998,
+              "end_ms": 0.89273601770401,
+              "start_ms": 0.8579199910163879,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.4549119472503662,
+              "start_ms": 1.4477440118789673,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.035840000957250595,
+              "end_ms": 1.7119359970092773,
+              "start_ms": 1.676095962524414,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 2935200
+        },
+        {
+          "concurrency_ratio": 1.0,
+          "event_span_ms": 1.2707839608192444,
+          "event_sum_ms": 0.08713579177856445,
+          "event_union_ms": 0.08713579177856445,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.8332800269126892,
+              "start_ms": 0.8261119723320007,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.038015998899936676,
+              "end_ms": 1.237887978553772,
+              "start_ms": 1.1998720169067383,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.879807949066162,
+              "start_ms": 1.8726400136947632,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03478400036692619,
+              "end_ms": 2.096895933151245,
+              "start_ms": 2.0621120929718018,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.0,
+          "overlapping_pairs": 0,
+          "peak_concurrency": 1,
+          "wall_ns": 3358500
+        },
+        {
+          "concurrency_ratio": 1.0857148559112317,
+          "event_span_ms": 2.2650880813598633,
+          "event_sum_ms": 0.07782411575317383,
+          "event_union_ms": 0.07168006896972656,
+          "group_size": 4,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.6331200003623962,
+              "start_ms": 0.6259520053863525,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.05222399905323982,
+              "end_ms": 0.9526079893112183,
+              "start_ms": 0.9003840088844299,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 2.8889920711517334,
+              "start_ms": 2.8787519931793213,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 2.891040086746216,
+              "start_ms": 2.882848024368286,
+              "submission_index": 3
+            }
+          ],
+          "overlap_ms": 0.006144046783447266,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 4255200
+        }
+      ]
+    },
+    "8": {
+      "group_size": 8,
+      "max_peak_concurrency": 5,
+      "median_concurrency_ratio": 1.090996124190112,
+      "median_event_span_ms": 3.014655828475952,
+      "median_event_sum_ms": 0.16515225172042847,
+      "median_event_union_ms": 0.1590396761894226,
+      "median_overlap_ms": 0.015360116958618164,
+      "median_wall_ns": 6284000,
+      "overlap_samples": 15,
+      "pstdev_wall_ns": 633344.9674720896,
+      "raw": [
+        {
+          "concurrency_ratio": 1.1921935876667031,
+          "event_span_ms": 2.8436479568481445,
+          "event_sum_ms": 0.16515225172042847,
+          "event_union_ms": 0.13852804899215698,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7480639815330505,
+              "start_ms": 0.7408959865570068,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.01228800043463707,
+              "end_ms": 2.2543680667877197,
+              "start_ms": 2.242079973220825,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.01228800043463707,
+              "end_ms": 2.2574400901794434,
+              "start_ms": 2.245151996612549,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 2.259488105773926,
+              "start_ms": 2.2482240200042725,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 2.261535882949829,
+              "start_ms": 2.251296043395996,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.025599999353289604,
+              "end_ms": 3.010080099105835,
+              "start_ms": 2.9844799041748047,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.03407999873161316,
+              "end_ms": 3.176255941390991,
+              "start_ms": 3.1421759128570557,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.05222399905323982,
+              "end_ms": 3.5845439434051514,
+              "start_ms": 3.532320022583008,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.026624202728271484,
+          "overlapping_pairs": 6,
+          "peak_concurrency": 4,
+          "wall_ns": 6041900
+        },
+        {
+          "concurrency_ratio": 1.1078065957254823,
+          "event_span_ms": 2.8170241117477417,
+          "event_sum_ms": 0.30515211820602417,
+          "event_union_ms": 0.27545613050460815,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7088959813117981,
+              "start_ms": 0.7017279863357544,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.01228800043463707,
+              "end_ms": 2.3759679794311523,
+              "start_ms": 2.363679885864258,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 2.379040002822876,
+              "start_ms": 2.3677759170532227,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 2.3810880184173584,
+              "start_ms": 2.3708479404449463,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 2.384160041809082,
+              "start_ms": 2.3728959560394287,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 3.085599899291992,
+              "start_ms": 3.0774080753326416,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.2385919988155365,
+              "end_ms": 3.3190720081329346,
+              "start_ms": 3.0804800987243652,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 3.518752098083496,
+              "start_ms": 3.512608051300049,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.029695987701416016,
+          "overlapping_pairs": 7,
+          "peak_concurrency": 4,
+          "wall_ns": 6266900
+        },
+        {
+          "concurrency_ratio": 1.0096463737458123,
+          "event_span_ms": 3.654656171798706,
+          "event_sum_ms": 1.6076804399490356,
+          "event_union_ms": 1.5923203229904175,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 1.668063998222351,
+              "start_ms": 1.6568000316619873,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 1.672160029411316,
+              "start_ms": 1.6608959436416626,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 1.6742080450057983,
+              "start_ms": 1.6639679670333862,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.040800094604492,
+              "start_ms": 2.0336320400238037,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 2.285536050796509,
+              "start_ms": 2.2793920040130615,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.015359999611973763,
+              "end_ms": 3.1078081130981445,
+              "start_ms": 3.0924479961395264,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.04505600035190582,
+              "end_ms": 3.465183973312378,
+              "start_ms": 3.420128107070923,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 1.5011839866638184,
+              "end_ms": 5.311456203460693,
+              "start_ms": 3.810271978378296,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.015360116958618164,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 7761500
+        },
+        {
+          "concurrency_ratio": 1.0772643271246285,
+          "event_span_ms": 3.163136065006256,
+          "event_sum_ms": 0.17132776975631714,
+          "event_union_ms": 0.1590396761894226,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7383040189743042,
+              "start_ms": 0.7311360239982605,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.05222399905323982,
+              "end_ms": 1.1079679727554321,
+              "start_ms": 1.0557440519332886,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.7040319442749023,
+              "start_ms": 1.6968640089035034,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.035840000957250595,
+              "end_ms": 1.9650559425354004,
+              "start_ms": 1.9292160272598267,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.04230400174856186,
+              "end_ms": 2.342207908630371,
+              "start_ms": 2.2999041080474854,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 3.8891520500183105,
+              "start_ms": 3.8799359798431396,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 3.892224073410034,
+              "start_ms": 3.8830080032348633,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 3.8942720890045166,
+              "start_ms": 3.886080026626587,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.012288093566894531,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 6375000
+        },
+        {
+          "concurrency_ratio": 1.1551725003086009,
+          "event_span_ms": 3.67411208152771,
+          "event_sum_ms": 0.13721609115600586,
+          "event_union_ms": 0.11878407001495361,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 1.494655966758728,
+              "start_ms": 1.4854400157928467,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.4967039823532104,
+              "start_ms": 1.4885120391845703,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.4408318996429443,
+              "start_ms": 2.433664083480835,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.04915200173854828,
+              "end_ms": 2.621056079864502,
+              "start_ms": 2.571903944015503,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.03686400130391121,
+              "end_ms": 3.1473920345306396,
+              "start_ms": 3.110527992248535,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 5.1544318199157715,
+              "start_ms": 5.14521598815918,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 5.157504081726074,
+              "start_ms": 5.148287773132324,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 5.159552097320557,
+              "start_ms": 5.151360034942627,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.018432021141052246,
+          "overlapping_pairs": 4,
+          "peak_concurrency": 3,
+          "wall_ns": 7529200
+        },
+        {
+          "concurrency_ratio": 1.5627156345807263,
+          "event_span_ms": 2.7279359698295593,
+          "event_sum_ms": 0.12796759605407715,
+          "event_union_ms": 0.08188796043395996,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.5868800282478333,
+              "start_ms": 0.5797119736671448,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.04297599941492081,
+              "end_ms": 0.8738240003585815,
+              "start_ms": 0.830847978591919,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.4511359930038452,
+              "start_ms": 1.4439680576324463,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.014336000196635723,
+              "end_ms": 3.297408103942871,
+              "start_ms": 3.283071994781494,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.015359999611973763,
+              "end_ms": 3.3004798889160156,
+              "start_ms": 3.2851200103759766,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.014336000196635723,
+              "end_ms": 3.3035519123077393,
+              "start_ms": 3.2892160415649414,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.014336000196635723,
+              "end_ms": 3.3055999279022217,
+              "start_ms": 3.291264057159424,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.01228800043463707,
+              "end_ms": 3.307647943496704,
+              "start_ms": 3.2953600883483887,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.04607963562011719,
+          "overlapping_pairs": 10,
+          "peak_concurrency": 5,
+          "wall_ns": 5863400
+        },
+        {
+          "concurrency_ratio": 1.06977814724654,
+          "event_span_ms": 3.014655828475952,
+          "event_sum_ms": 0.1883831024169922,
+          "event_union_ms": 0.17609548568725586,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.027648000046610832,
+              "end_ms": 1.04367995262146,
+              "start_ms": 1.0160319805145264,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 1.2023999691009521,
+              "start_ms": 1.1962560415267944,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 1.7799359560012817,
+              "start_ms": 1.7707200050354004,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.05619199946522713,
+              "end_ms": 2.0482239723205566,
+              "start_ms": 1.9920320510864258,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.061535999178886414,
+              "end_ms": 2.4343678951263428,
+              "start_ms": 2.3728320598602295,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 4.025568008422852,
+              "start_ms": 4.0153279304504395,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 4.028639793395996,
+              "start_ms": 4.019423961639404,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 4.0306878089904785,
+              "start_ms": 4.022496223449707,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.012287616729736328,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 6416300
+        },
+        {
+          "concurrency_ratio": 1.0216217304683912,
+          "event_span_ms": 1.992704153060913,
+          "event_sum_ms": 0.19353652000427246,
+          "event_union_ms": 0.18944048881530762,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.4670720100402832,
+              "start_ms": 1.4599039554595947,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.471168041229248,
+              "start_ms": 1.4629759788513184,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.8101119995117188,
+              "start_ms": 1.8029439449310303,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03379200026392937,
+              "end_ms": 1.9329919815063477,
+              "start_ms": 1.8991999626159668,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.03993599861860275,
+              "end_ms": 2.293440103530884,
+              "start_ms": 2.2535040378570557,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.015359999611973763,
+              "end_ms": 2.8494720458984375,
+              "start_ms": 2.8341119289398193,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.03993599861860275,
+              "end_ms": 3.0901119709014893,
+              "start_ms": 3.050175905227661,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.04198399931192398,
+              "end_ms": 3.452608108520508,
+              "start_ms": 3.4106240272521973,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.004096031188964844,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 6016600
+        },
+        {
+          "concurrency_ratio": 1.206842372988489,
+          "event_span_ms": 2.707456111907959,
+          "event_sum_ms": 0.14339220523834229,
+          "event_union_ms": 0.11881601810455322,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.5963839888572693,
+              "start_ms": 0.5902400016784668,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.05135999992489815,
+              "end_ms": 0.8945279717445374,
+              "start_ms": 0.8431680202484131,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.4309439659118652,
+              "start_ms": 1.422752022743225,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03468799963593483,
+              "end_ms": 1.6633919477462769,
+              "start_ms": 1.6287039518356323,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 3.2905280590057373,
+              "start_ms": 3.279263973236084,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 3.293600082397461,
+              "start_ms": 3.2823359966278076,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 3.2956480979919434,
+              "start_ms": 3.2854080200195312,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 3.297696113586426,
+              "start_ms": 3.2874560356140137,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.024576187133789062,
+          "overlapping_pairs": 6,
+          "peak_concurrency": 4,
+          "wall_ns": 5670900
+        },
+        {
+          "concurrency_ratio": 1.080745954658041,
+          "event_span_ms": 3.2184320092201233,
+          "event_sum_ms": 0.17817610502243042,
+          "event_union_ms": 0.16486400365829468,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.734495997428894,
+              "start_ms": 0.7273280024528503,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03788800165057182,
+              "end_ms": 1.104159951210022,
+              "start_ms": 1.0662720203399658,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.7451839447021484,
+              "start_ms": 1.7380160093307495,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03481600061058998,
+              "end_ms": 1.9950400590896606,
+              "start_ms": 1.9602240324020386,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.06348799914121628,
+              "end_ms": 2.388256072998047,
+              "start_ms": 2.32476806640625,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 3.941663980484009,
+              "start_ms": 3.9314239025115967,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 3.943711996078491,
+              "start_ms": 3.9344959259033203,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 3.9457600116729736,
+              "start_ms": 3.937567949295044,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.013312101364135742,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 6284000
+        },
+        {
+          "concurrency_ratio": 1.0271797340932978,
+          "event_span_ms": 1.9927040338516235,
+          "event_sum_ms": 0.2321920394897461,
+          "event_union_ms": 0.22604811191558838,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 1.6071679592132568,
+              "start_ms": 1.5969280004501343,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 1.6092159748077393,
+              "start_ms": 1.6010240316390991,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.869312047958374,
+              "start_ms": 1.8621439933776855,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.05427199974656105,
+              "end_ms": 2.017791986465454,
+              "start_ms": 1.9635200500488281,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.03455999866127968,
+              "end_ms": 2.3710720539093018,
+              "start_ms": 2.3365120887756348,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.016383999958634377,
+              "end_ms": 2.9434878826141357,
+              "start_ms": 2.9271039962768555,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.05119999870657921,
+              "end_ms": 3.1923201084136963,
+              "start_ms": 3.141119956970215,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.050175998359918594,
+              "end_ms": 3.589632034301758,
+              "start_ms": 3.5394558906555176,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.006143927574157715,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 6070300
+        },
+        {
+          "concurrency_ratio": 1.2405279574665928,
+          "event_span_ms": 2.7095040678977966,
+          "event_sum_ms": 0.12675219774246216,
+          "event_union_ms": 0.1021760106086731,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.5892159938812256,
+              "start_ms": 0.5830720067024231,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.035840000957250595,
+              "end_ms": 0.9220160245895386,
+              "start_ms": 0.8861759901046753,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.007968000136315823,
+              "end_ms": 1.45961594581604,
+              "start_ms": 1.4516479969024658,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03379200026392937,
+              "end_ms": 1.7094719409942627,
+              "start_ms": 1.6756800413131714,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 3.2854080200195312,
+              "start_ms": 3.274143934249878,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 3.288480043411255,
+              "start_ms": 3.2772159576416016,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 3.2905280590057373,
+              "start_ms": 3.280287981033325,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 3.2925760746002197,
+              "start_ms": 3.2823359966278076,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.024576187133789062,
+          "overlapping_pairs": 6,
+          "peak_concurrency": 4,
+          "wall_ns": 5779000
+        },
+        {
+          "concurrency_ratio": 1.3510561628558562,
+          "event_span_ms": 3.8328322172164917,
+          "event_sum_ms": 0.10246449708938599,
+          "event_union_ms": 0.0758402943611145,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 0.7509120106697083,
+              "start_ms": 0.7437440156936646,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03590400144457817,
+              "end_ms": 1.1144959926605225,
+              "start_ms": 1.0785919427871704,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.114880084991455,
+              "start_ms": 2.1077120304107666,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 2.346303939819336,
+              "start_ms": 2.3391358852386475,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 4.569407939910889,
+              "start_ms": 4.5581440925598145,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.01228800043463707,
+              "end_ms": 4.572480201721191,
+              "start_ms": 4.560192108154297,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.011264000087976456,
+              "end_ms": 4.574528217315674,
+              "start_ms": 4.563263893127441,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.010239999741315842,
+              "end_ms": 4.576576232910156,
+              "start_ms": 4.566336154937744,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.026624202728271484,
+          "overlapping_pairs": 6,
+          "peak_concurrency": 4,
+          "wall_ns": 7092700
+        },
+        {
+          "concurrency_ratio": 1.090996124190112,
+          "event_span_ms": 3.280895948410034,
+          "event_sum_ms": 0.14732784032821655,
+          "event_union_ms": 0.13503974676132202,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.006144000217318535,
+              "end_ms": 0.7211520075798035,
+              "start_ms": 0.715008020401001,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.03686400130391121,
+              "end_ms": 1.0826239585876465,
+              "start_ms": 1.0457600355148315,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.007040000054985285,
+              "end_ms": 1.7175040245056152,
+              "start_ms": 1.7104640007019043,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03481600061058998,
+              "end_ms": 1.975551962852478,
+              "start_ms": 1.9407360553741455,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.035840000957250595,
+              "end_ms": 2.347264051437378,
+              "start_ms": 2.3114240169525146,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 3.990783929824829,
+              "start_ms": 3.9815680980682373,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.009216000325977802,
+              "end_ms": 3.9938559532165527,
+              "start_ms": 3.984639883041382,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.008191999979317188,
+              "end_ms": 3.995903968811035,
+              "start_ms": 3.9877119064331055,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.012288093566894531,
+          "overlapping_pairs": 3,
+          "peak_concurrency": 3,
+          "wall_ns": 6453800
+        },
+        {
+          "concurrency_ratio": 1.0254778203561556,
+          "event_span_ms": 3.4385921955108643,
+          "event_sum_ms": 0.16486454010009766,
+          "event_union_ms": 0.1607685089111328,
+          "group_size": 8,
+          "intervals": [
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.4652800559997559,
+              "start_ms": 1.4581120014190674,
+              "submission_index": 0
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.46835196018219,
+              "start_ms": 1.461184024810791,
+              "submission_index": 1
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 1.801151990890503,
+              "start_ms": 1.793984055519104,
+              "submission_index": 2
+            },
+            {
+              "duration_ms": 0.03686400130391121,
+              "end_ms": 1.9322240352630615,
+              "start_ms": 1.895359992980957,
+              "submission_index": 3
+            },
+            {
+              "duration_ms": 0.03379200026392937,
+              "end_ms": 2.2977919578552246,
+              "start_ms": 2.2639999389648438,
+              "submission_index": 4
+            },
+            {
+              "duration_ms": 0.016383999958634377,
+              "end_ms": 2.8691840171813965,
+              "start_ms": 2.852799892425537,
+              "submission_index": 5
+            },
+            {
+              "duration_ms": 0.04915200173854828,
+              "end_ms": 3.153856039047241,
+              "start_ms": 3.104703903198242,
+              "submission_index": 6
+            },
+            {
+              "duration_ms": 0.0071680000983178616,
+              "end_ms": 4.896704196929932,
+              "start_ms": 4.889535903930664,
+              "submission_index": 7
+            }
+          ],
+          "overlap_ms": 0.004096031188964844,
+          "overlapping_pairs": 1,
+          "peak_concurrency": 2,
+          "wall_ns": 7318200
+        }
+      ]
+    }
+  },
+  "hypothesis": "group-eight submit-all/reverse-wait produces significant CUDA-event interval overlap in more than seven of fifteen samples",
+  "hypothesis_outcome": {
+    "group_size": 8,
+    "passed": true,
+    "reason": "significant event-interval overlap observed"
+  },
+  "identities": {
+    "kernel_launch": "cuda-independent-stream-kernel-launch-v1",
+    "kernel_timeline": "cuda-independent-stream-kernel-timeline-v1",
+    "prepared_storage": "proof-bound-u32le-primitive-input-v1"
+  },
+  "interpretation_limit": "CUDA event elapsed intervals can include interleaved work; endpoints describe an observed execution timeline rather than pure kernel duration",
+  "measurement": {
+    "adapter_setup_timed": false,
+    "event_origin_setup_timed": false,
+    "ordering": "cyclic first-group rotation across groups 2, 4, and 8",
+    "overlap_epsilon_ms": 0.001,
+    "preparation_timed": false,
+    "sample_count": 15,
+    "timeline_close_timed": false,
+    "validation_timed": false,
+    "warmup_count": 1
+  },
+  "rejection_rule": "reject physical-overlap attribution when group eight has at most seven samples with overlap above one microsecond, when median overlap is not positive, when peak concurrency never exceeds one, or when an exact identity/output check fails",
+  "workload": {
+    "count_per_ticket": 59049,
+    "group_sizes": [
+      2,
+      4,
+      8
+    ],
+    "identity": "classic-crazy-full-domain-independent-ticket-group-v1",
+    "kind": "crazy",
+    "sha256": "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc",
+    "total_words_by_group": {
+      "2": 118098,
+      "4": 236196,
+      "8": 472392
+    }
+  }
+}

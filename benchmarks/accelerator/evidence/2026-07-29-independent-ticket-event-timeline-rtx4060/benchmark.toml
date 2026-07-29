@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "cuda-independent-ticket-event-timeline-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Do grouped independent CUDA ticket streams show significant event-interval overlap for the retained full-domain CRAZY workload?"
+hypothesis = "Group eight shows overlap above one microsecond in more than seven of fifteen samples, positive median overlap, peak concurrency above one, and exact CPU-equal output."
+baseline = "same-run grouped event timelines at groups 2 and 4 plus the retained uninstrumented throughput workload identity"
+rejection_observation = "Group eight has at most seven significant-overlap samples, nonpositive median overlap, peak concurrency no greater than one, or any workload, timeline, launch, storage, backend, or output identity check fails."
+
+[workload]
+identity = "classic-crazy-full-domain-independent-ticket-group-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed complete profiled group per group size"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per group with cyclic first-group rotation"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "standard-deviation"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["wall_ns", "event_span_ms", "event_sum_ms", "event_union_ms", "overlap_ms", "concurrency_ratio", "overlapping_pairs", "peak_concurrency"]
+tradeoff_policy = "all ticket outputs must match independent CPU bytes; CUDA event elapsed intervals are origin-relative diagnostic endpoints that may include interleaved work and instrumentation perturbation, not pure kernel-duration or kernel-transfer-overlap proof"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/observations.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

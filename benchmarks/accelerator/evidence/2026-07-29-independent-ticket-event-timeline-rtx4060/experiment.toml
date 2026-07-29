@@ -1,0 +1,37 @@
+schema_version = 1
+
+[experiment]
+id = "cuda-independent-ticket-event-timeline-v1"
+record_kind = "run"
+method_class = "benchmarking"
+seed = 0
+
+[challenge]
+family = "classic-crazy-full-domain-independent-ticket-group-v1"
+difficulty = 59049
+target_profile = "malbolge-1998-classic-word-domain"
+
+[budget]
+group_sizes = [2, 4, 8]
+max_group_tickets = 8
+samples_per_group = 15
+intervals = 210
+words_per_ticket = 59049
+
+[verification]
+required = true
+oracle = "proof-bound full-domain CRAZY input, independent CPU packed reference, exact bytes for every ticket, cuda-independent-stream-kernel-launch-v1, cuda-independent-stream-kernel-timeline-v1, proof-bound-u32le-primitive-input-v1, and CUDA backend identity"
+
+[provenance]
+implementation = "benchmarks/accelerator/independent_ticket_event_timeline.py"
+configuration = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/benchmark.toml"
+output = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060"
+
+[run]
+commit = "8d4d8a481184e536e860d094511093981e9dd2d7"
+workload_sha256 = "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc"
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+toolchain = "Python 3.14.6; CUDA 13.3.1 (nvcc 13.3.73); NVIDIA driver 610.47"
+outcome = "success"
+raw_output = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/observations.csv"
