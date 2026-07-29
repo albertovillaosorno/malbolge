@@ -17,6 +17,7 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `compilation-latency-performance-budget.md`
 - `configurable-accelerator-algorithm-adapters.md`
 - `cuda-exact-vm-adapter.md`
+- `cuda-linux-runtime-and-toolchain.md`
 - `cuda-superoptimizer.md`
 - `deterministic-cpu-optimizer.md`
 - `replaceable-accelerator-boundary.md`

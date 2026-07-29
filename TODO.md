@@ -1333,6 +1333,21 @@ Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
 
+### TODO - CUDA Linux runtime and hermetic toolchain
+
+Port the exact CUDA runtime and repository-local native toolchains to Linux
+without weakening the current Windows path. The active runtime still uses
+`ctypes.WinDLL`, `nvcuda.dll`, a versioned NVRTC `.dll`, and a literal
+`.dependencies/cuda/13.3.1/toolkit` root. The tracked CUDA manifest is exact but
+only declares `windows-x86_64`; Rust, Jig, LLVM, and Pyright configuration also
+retain Windows-specific paths or targets. Completion requires one reviewed
+platform loader (`WinDLL`/`.dll` on Windows, `CDLL`/versioned `.so` on Linux),
+manifest-selected CUDA release/library identity, native platform toolchains,
+fail-closed CPU fallback, Linux x86-64 differential tests, and retained live-device
+evidence. The project initializer already creates Windows/POSIX Python launchers
+and reports mismatched manifests as unsupported; that diagnostic surface is not a
+Linux CUDA support claim.
+
 ### TODO - CUDA superoptimizer
 
 Implement GPU-parallel candidate synthesis, pruning, equivalence testing, cost
