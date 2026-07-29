@@ -257,6 +257,28 @@ groups 2/4/8 are 2.1745/1.5970 ms (1.362x), 3.6403/3.0304 ms (1.201x), and
 configuration and grouped throughput alone are not physical kernel-overlap evidence;
 CUDA events/timeline attribution remains open.
 
+`independent_ticket_event_timeline.py` uses opt-in CUDA events around the exact
+kernel launch in every isolated ticket stream. It reuses the same 59,049-word CRAZY
+workload and groups 2/4/8 as the retained grouped-throughput benchmark. Each sample
+records wall time, per-ticket origin-relative start/end intervals, direct event
+durations, interval union/sum, overlap, overlapping pairs, concurrency ratio, and
+peak concurrency. Event-origin setup, preparation, CPU reference, validation, and
+origin destruction are outside retained intervals. One warmup precedes 15 samples
+per group with cyclic first-group rotation. The preregistered group-eight hypothesis
+requires significant overlap in more than seven samples.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.independent_ticket_event_timeline
+```
+
+CUDA documentation permits elapsed event intervals in non-null streams to include
+interleaved work. These endpoints therefore describe an observed execution timeline,
+not pure kernel duration. A rejected overlap hypothesis remains useful evidence and
+must not be rewritten as a throughput failure.
+
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`. CPU ordinary/prepared medians are 368.3588/22.4264 ms
