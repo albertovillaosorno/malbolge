@@ -122,9 +122,16 @@ bridge is differentially exercised through CPU and live CUDA backends.
 hints without introducing backend acceptance authority, and live CUDA hints match
 the CPU reference over a deterministic 257-item corpus. `evaluated_search.py`
 adds a bounded map/select search adapter that only proposes members of the exact
-evaluated batch. `classic-rotate-target-search-v1` uses that adapter with identical
-CPU/CUDA strategy logic; live CUDA records actual backend identity, matches CPU
-proposals over 257 candidates, and remains subject to independent CPU admission.
+evaluated batch. `classic-rotate-target-search-v1` uses a zero-or-one inverse
+projection. `classic-crazy-target-search-v1` proves the general multiposition case
+without heuristic filtering: neutral `CRAZY_TRIT_TABLE` semantics derive exact
+fixed-accumulator preimage positions, full-batch membership remains authoritative,
+and only the projected subset reaches CPU/CUDA evaluation. The canonical complete
+59,049-word domain retains exactly 1,024 positions for accumulator zero and target
+29,524. Fourteen strategy tests include a live RTX 4060 prepared CUDA result equal
+to CPU with resident cardinality 1,024; three CLI tests cover CPU, CUDA, and setup
+fallback. Trusted CPU admission remains separate. This is correctness evidence,
+not a speedup or independent-stream claim.
 `python -m optimizer.cli` is the first external search runner: it reads Search
 Configuration v1 plus canonical problem bytes, accepts explicit algorithm/backend
 overrides, and emits deterministic JSON containing problem SHA-256,
@@ -393,10 +400,10 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-p
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
 are not attributed to projection. Projection is not universal tiny-batch policy: at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-contract for strategies without a unique algebraic inverse; any generalization must
-retain subset identity, full membership, exact evidence, proposal validation, and
-independent trusted admission rather than introduce heuristic filtering.
+moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+strategies without a unique algebraic inverse. The promoted proof retains subset
+identity, full membership, exact evidence, proposal validation, and independent
+trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -420,8 +427,12 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. That production boundary is now implemented by
+`classic-crazy-target-search-v1`: exact digitwise preparation projects the full
+59,049-member accumulator-zero/target-29,524 case to 1,024 positions before
+replaceable CPU/CUDA evaluation. The full membership and independent admission
+proofs remain unchanged. A retained benchmark and concrete crazy-target search
+submission ticket remain open; no speedup or independent-stream claim is made.
 Synthesis/guided search, ROCm work ports and VM execution, broader hardware
 evidence, richer orchestration, and additional representative comparisons remain
 follow-on work. `optimizer/enumerative.py` supplies the first concrete CPU-only

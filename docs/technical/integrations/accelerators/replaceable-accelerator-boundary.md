@@ -304,10 +304,10 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-p
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
 are not attributed to projection. Projection is not universal tiny-batch policy: at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-contract for strategies without a unique algebraic inverse; any generalization must
-retain subset identity, full membership, exact evidence, proposal validation, and
-independent trusted admission rather than introduce heuristic filtering.
+moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+strategies without a unique algebraic inverse. The promoted proof retains subset
+identity, full membership, exact evidence, proposal validation, and independent
+trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -331,9 +331,18 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
-Resident/fused search remains later work. CUDA now has the adapter-internal
+optimization. The first production non-invertible/multi-position strategy is now
+`classic-crazy-target-search-v1`. The normative ternary relation is owned by the
+hardware-neutral `CRAZY_TRIT_TABLE`; one fixed accumulator and target derive every
+exact request-order preimage position before backend execution. Full-batch
+membership, evidence validation, proposal membership, and independent admission
+remain unchanged. The complete 59,049-word corpus with accumulator zero and target
+29,524 projects exactly 1,024 positions, and the same CPU-prepared state executes
+unchanged on live RTX 4060 CUDA with resident cardinality 1,024. Fourteen strategy
+and three CLI tests cover the boundary. No benchmark, speedup, or independent-stream
+claim follows; retained performance evidence and a concrete crazy-target search
+submission ticket remain open. Resident/fused search remains later work. CUDA now
+has the adapter-internal
 `cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered submissions
 retain same-context registered host buffers until synchronization and teardown.
 The CUDA profile adapter now additionally owns explicit snapshot double buffering:
@@ -373,8 +382,10 @@ cleanup failure fail closed. Nine tests cover the neutral lifetime.
 into exact ordered hints while preserving evaluator/verifier identity. Seven tests
 include two live CUDA routes for CPU-equal hints and teardown-driven empty
 completion. Hints remain optional and untrusted; `TrustedCandidateVerifier` alone
-owns acceptance. Other CUDA/ROCm strategies, adaptive bank selection,
-kernel/transfer overlap, and independent CUDA streams remain open.
+owns acceptance. Crazy-target synchronous prepared search is active, while its
+search-submission ticket and retained performance matrix remain open. Other
+CUDA/ROCm strategies, adaptive bank selection, kernel/transfer overlap, and
+independent CUDA streams remain open.
 
 ## Invariants
 
@@ -449,13 +460,21 @@ fails explicitly without changing correctness rules.
 - `tests/optimizer/test_rotate_target_submission.py` verifies the stable projected
   strategy identity, zero/one exact sub-batches, nested protocol failure, and three
   live CUDA routes covering exact publication, empty work, and teardown fallback.
+- `tests/optimizer/test_crazy_target_search.py` verifies the shared normative trit
+  table, canonical problem identity, fixed-accumulator packed batches, exact
+  multiposition projection, full 59,049-member authority with 1,024 preimages,
+  ordinary/prepared equality, forged/failing evidence, trusted admission, and live
+  CPU/CUDA equality at resident cardinality 1,024.
+- `tests/optimizer/test_search_cli.py` additionally verifies crazy-target CPU and
+  CUDA registration plus deterministic CUDA-setup fallback.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.
 - `tests/optimizer/test_evidence_verification_submission.py` verifies exact nested
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
-- Remaining evidence includes other concrete CUDA/ROCm search and hint tickets,
+- Remaining evidence includes a concrete crazy-target search ticket, retained
+  crazy-target performance measurements, other CUDA/ROCm search and hint tickets,
   ROCm candidate tickets and VM substitution, independent CUDA stream policy,
   adaptive overlap selection, kernel/transfer
   overlap, broader hardware evidence, and matched measurements for future speedup

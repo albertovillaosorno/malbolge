@@ -299,10 +299,11 @@ batches.
   speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
   are not attributed to projection. Projection is not universal tiny-batch policy: at
   one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-  moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-  contract for strategies without a unique algebraic inverse; any generalization must
-  retain subset identity, full membership, exact evidence, proposal validation, and
-  independent trusted admission rather than introduce heuristic filtering.
+  moves from 6/6 to 8/7. The required architectural boundary was an exact
+  projected-subset contract for strategies without a unique algebraic inverse. The
+  promoted proof retains subset identity, full membership, exact evidence, proposal
+  validation, and independent trusted admission rather than introducing heuristic
+  filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -326,8 +327,12 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. `classic-crazy-target-search-v1` now supplies the first exact
+non-invertible multiposition search. Neutral digitwise preparation projects the
+full 59,049-member accumulator-zero/target-29,524 corpus to exactly 1,024 positions;
+a live CUDA prepared route retains resident cardinality 1,024 and matches CPU
+before independent admission. Fourteen strategy plus three CLI tests cover the
+boundary. A concrete search ticket and retained benchmark remain open.
   CUDA now implements the neutral candidate ticket port for exact classic
   crazy/rotate work. `cuda-default-stream-kernel-launch-v1` retains launch
   parameters until context sync; one-shot buffers remain owned until download,
@@ -341,7 +346,9 @@ multi-position strategy that can supply exact positions without heuristic filter
   teardown routes. Optional verification submission now composes the same CUDA
   candidate ticket through `candidate-evidence-verification-submission-v1`; seven
   tests include two live exact-hint/teardown-empty routes while trusted admission
-  remains separate. No ticket speedup or independent-stream claim is made; other
-  synthesis/search/hint strategies and independent streams remain open.
+  remains separate. Crazy-target prepared search is exact on live CUDA but does not
+  yet have its own submission ticket or retained performance matrix. No ticket
+  speedup or independent-stream claim is made; other synthesis/search/hint
+  strategies and independent streams remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

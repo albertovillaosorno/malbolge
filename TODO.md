@@ -675,11 +675,14 @@ and end-to-end tier performance remain open.
 Implement a correct CPU reference optimizer and search engine that works without
 a GPU, even when much slower, and acts as the specification-conformant CPU
 baseline on both x86-64 and AArch64 hosts for accelerator implementations.
-The first active strategy, `deterministic-corpus-enumeration-v1`, searches an
-explicit canonically encoded finite corpus under deterministic seed/budget
-control and submits every proposal to the trusted verifier. Real synthesis
-generators, translation-validation integration, AArch64 evidence, and performance
-measurement remain open.
+The active `deterministic-corpus-enumeration-v1` strategy searches an explicit
+canonically encoded finite corpus under deterministic seed/budget control and
+submits every proposal to the trusted verifier. The exact
+`classic-crazy-target-search-v1` strategy additionally proves non-invertible,
+multi-position search with fixed-accumulator digitwise preimage preparation and
+replaceable CPU/CUDA evaluation. Real synthesis generators,
+translation-validation integration, AArch64 evidence, and performance measurement
+remain open.
 
 ### TODO - Replaceable accelerator boundary
 
@@ -699,10 +702,15 @@ CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
 evaluation now exercises the same port through CPU and live CUDA backends. The
 same exact evidence can now traverse a verification-assist adapter on live CUDA;
 hints remain untrusted and malformed optional evidence becomes no hint rather
-than admission. `classic-rotate-target-search-v1` now runs the same bounded
-seed/budget strategy through CPU or live CUDA candidate evaluation, records CUDA
-as the actual backend, and still requires independent CPU admission. Synthesis,
-guided/stochastic search, ROCm work ports, and ROCm VM execution remain open.
+than admission. `classic-rotate-target-search-v1` runs the same bounded
+seed/budget strategy through CPU or live CUDA candidate evaluation. The new
+`classic-crazy-target-search-v1` is the first real non-invertible,
+multi-position strategy: shared neutral `CRAZY_TRIT_TABLE` semantics derive exact
+fixed-accumulator preimage positions before replaceable evaluation. Over the full
+59,049-word domain, accumulator zero and target 29,524 retain full membership
+while projecting exactly 1,024 candidates. Live CUDA matches CPU and independent
+CPU admission remains authoritative. Synthesis, guided/stochastic search, ROCm
+work ports, and ROCm VM execution remain open.
 
 ### TODO - Configurable accelerator algorithm adapters
 
@@ -719,10 +727,12 @@ configured-versus-actual execution identity. Search configuration v1 now loads
 independent algorithm/backend identities from versioned TOML, rejects unknown or
 empty configuration, preserves source identity, and applies explicit overrides
 without mutating the base selection. The deterministic corpus enumerator is the
-first concrete CPU-only strategy. `classic-rotate-target-search-v1` additionally
-binds one exact bounded strategy to interchangeable CPU/CUDA evaluators; live CUDA
-records configured and actual backend identity and matches CPU proposals before
-trusted CPU admission. `python -m optimizer.cli` now loads Search Configuration
+first concrete CPU-only strategy. `classic-rotate-target-search-v1` binds one
+unique-inverse strategy to interchangeable CPU/CUDA evaluators, while
+`classic-crazy-target-search-v1` binds exact multiposition preimage preparation to
+the same replaceable capacity. Both record configured and actual backend identity
+and match CPU proposals before trusted CPU admission. `python -m optimizer.cli`
+now loads Search Configuration
 v1 plus canonical problem bytes, applies explicit algorithm/backend overrides,
 and emits deterministic JSON with problem SHA-256, configured-versus-actual
 backend identity, device metadata, seed/budget, and explicitly untrusted
@@ -992,10 +1002,10 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-p
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
 are not attributed to projection. Projection is not universal tiny-batch policy: at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-contract for strategies without a unique algebraic inverse; any generalization must
-retain subset identity, full membership, exact evidence, proposal validation, and
-independent trusted admission rather than introduce heuristic filtering.
+moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+strategies without a unique algebraic inverse. The promoted proof retains subset
+identity, full membership, exact evidence, proposal validation, and independent
+trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -1019,8 +1029,17 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. That production boundary is now implemented by
+`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics and
+a fixed accumulator derive every exact request-order preimage position before
+backend evaluation. For the complete 59,049-word domain with accumulator zero and
+target 29,524, full membership remains authoritative while the prepared subset
+contains exactly 1,024 positions. Fourteen strategy tests cover format,
+deduplication, seed/budget order, empty and forged state, ordinary/prepared
+equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
+cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
+setup fallback. No performance or independent-stream claim is made; a retained
+benchmark and strategy-specific search ticket remain open.
 Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
@@ -1252,10 +1271,10 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-p
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
 are not attributed to projection. Projection is not universal tiny-batch policy: at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-contract for strategies without a unique algebraic inverse; any generalization must
-retain subset identity, full membership, exact evidence, proposal validation, and
-independent trusted admission rather than introduce heuristic filtering.
+moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+strategies without a unique algebraic inverse. The promoted proof retains subset
+identity, full membership, exact evidence, proposal validation, and independent
+trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -1279,8 +1298,17 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. That production boundary is now implemented by
+`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics and
+a fixed accumulator derive every exact request-order preimage position before
+backend evaluation. For the complete 59,049-word domain with accumulator zero and
+target 29,524, full membership remains authoritative while the prepared subset
+contains exactly 1,024 positions. Fourteen strategy tests cover format,
+deduplication, seed/budget order, empty and forged state, ordinary/prepared
+equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
+cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
+setup fallback. No performance or independent-stream claim is made; a retained
+benchmark and strategy-specific search ticket remain open.
 Broader
 hardware evidence,
 synthesis/search algorithms, and ROCm implementations remain open.
@@ -1405,10 +1433,12 @@ failure. `candidate-evidence-verification-submission-v1` is the first concrete
 composition: exact evaluator/verifier identity survives across nested candidate
 tickets. Seven tests cover CPU evidence, nested protocol failures, verifier
 mismatch, and two live RTX 4060 routes for exact CUDA hints and teardown-driven no
-hints. Hints remain untrusted and never acquire acceptance authority. Other
-CUDA/ROCm strategies, independent stream policy, adaptive bank/window selection,
-kernel/transfer overlap, other callback workloads, and broader live-device
-evidence remain open.
+hints. Hints remain untrusted and never acquire acceptance authority. The
+multiposition crazy-target strategy is active through synchronous prepared
+CPU/CUDA search, but its concrete search-submission ticket and retained performance
+matrix remain open. Other CUDA/ROCm strategies, independent stream policy,
+adaptive bank/window selection, kernel/transfer overlap, other callback workloads,
+and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

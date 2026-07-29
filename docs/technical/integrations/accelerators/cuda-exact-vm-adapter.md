@@ -191,8 +191,15 @@ preimage through the CUDA candidate ticket. `wait()` validates projected evidenc
 selects proposals against the full batch, and then publishes; teardown drains the
 nested CUDA lifetime before CPU fallback. This does not make the candidate ticket
 a generic search engine, and no ticket-specific speedup or independent-stream
-claim is made. Other strategy submissions require their own exact state/lifetime
-evidence. Optional `validated-verification-assist-submission-v1` now also has a
+claim is made. The synchronous prepared search boundary now additionally runs
+`classic-crazy-target-search-v1`, the first non-invertible multiposition strategy.
+CPU-neutral digitwise preparation retains all 59,049 membership entries while
+projecting exactly 1,024 candidates for accumulator zero and target 29,524. Live
+RTX 4060 CUDA consumes that exact prepared subset, reports resident cardinality
+1,024, and matches CPU proposals before independent admission. This is not yet a
+search-submission ticket, benchmark, or overlap claim. Other strategy submissions
+require their own exact state/lifetime evidence. Optional
+`validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
 `candidate-evidence-verification-submission-v1`. It retains exact verifier and
 evaluator identity across the nested CUDA candidate ticket, publishes ordered
@@ -240,6 +247,11 @@ fails explicitly without changing correctness rules.
   `tests/optimizer/test_rotate_target_submission.py` adds eight projected-search
   ticket regressions, including three live CUDA routes for one-position exact
   publication, empty projection, and teardown-driven CPU fallback.
+  `tests/optimizer/test_crazy_target_search.py` adds fourteen exact multiposition
+  regressions. Its live full-domain route retains 59,049 membership entries,
+  executes the exact 1,024-position prepared subset on CUDA, matches CPU proposals,
+  and passes independent CPU admission. Three CLI regressions cover CPU/CUDA
+  registration and setup fallback.
   `tests/optimizer/test_evidence_verification_submission.py` adds seven nested
   candidate-hint regressions, including two live CUDA routes for exact CPU-equal
   hints and teardown-driven empty completion.
@@ -470,10 +482,11 @@ fails explicitly without changing correctness rules.
   speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
   are not attributed to projection. Projection is not universal tiny-batch policy: at
   one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-  moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-  contract for strategies without a unique algebraic inverse; any generalization must
-  retain subset identity, full membership, exact evidence, proposal validation, and
-  independent trusted admission rather than introduce heuristic filtering.
+  moves from 6/6 to 8/7. The required architectural boundary was an exact
+  projected-subset contract for strategies without a unique algebraic inverse. The
+  promoted proof retains subset identity, full membership, exact evidence, proposal
+  validation, and independent trusted admission rather than introducing heuristic
+  filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -497,8 +510,12 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. That production boundary is now implemented by
+`classic-crazy-target-search-v1`: the complete 59,049-member
+accumulator-zero/target-29,524 case projects exactly 1,024 positions and executes
+unchanged through prepared CUDA capacity. Full membership and trusted CPU admission
+remain authoritative. A concrete search-submission ticket and retained benchmark
+remain open; no speedup or independent-stream claim is made.
   Broader live-hardware evidence, synthesis/search
   strategies, resident search designs, and ROCm work remain before this TODO can
   complete.

@@ -281,10 +281,11 @@ directly on CUDA APIs.
   speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
   are not attributed to projection. Projection is not universal tiny-batch policy: at
   one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-  moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-  contract for strategies without a unique algebraic inverse; any generalization must
-  retain subset identity, full membership, exact evidence, proposal validation, and
-  independent trusted admission rather than introduce heuristic filtering.
+  moves from 6/6 to 8/7. The required architectural boundary was an exact
+  projected-subset contract for strategies without a unique algebraic inverse. The
+  promoted proof retains subset identity, full membership, exact evidence, proposal
+  validation, and independent trusted admission rather than introducing heuristic
+  filtering.
 Retained version-9 evidence under
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
@@ -308,8 +309,13 @@ regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepa
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
-optimization. The next production boundary is the first real non-invertible or
-multi-position strategy that can supply exact positions without heuristic filtering.
+optimization. `classic-crazy-target-search-v1` now implements the first real
+non-invertible multiposition boundary. Shared neutral `CRAZY_TRIT_TABLE` semantics
+derive exact fixed-accumulator preimage positions without backend filtering. The
+full 59,049-member accumulator-zero/target-29,524 case projects exactly 1,024
+positions; fourteen strategy and three CLI tests include live CUDA equality and
+resident cardinality 1,024. Full membership and trusted admission remain separate.
+Benchmark evidence and a concrete crazy-target search ticket remain open.
   CUDA runtime identity `cuda-ordered-registered-dtoh-stream-v1` proves ordered
   registered-buffer lifetime and deterministic teardown. Adapter-internal
   `caller-owned-double-window-overlap-u32-arrays-v1` now overlaps next-window D-to-H
@@ -334,8 +340,10 @@ multi-position strategy that can supply exact positions without heuristic filter
   malformed or unknown lifetimes. Nine tests cover the neutral contract.
   `candidate-evidence-verification-submission-v1` retains evaluator/verifier
   identity across nested candidate tickets; seven tests include two live CUDA
-  exact/teardown routes. Hints remain non-authoritative. Other CUDA/ROCm strategy
-  and hint tickets, synthesis/guided and resident search, independent CUDA streams,
+  exact/teardown routes. Hints remain non-authoritative. Crazy-target synchronous
+  prepared search is active, while its submission ticket and retained performance
+  evidence remain open. Other CUDA/ROCm strategy and hint tickets,
+  synthesis/guided and resident search, independent CUDA streams,
   ROCm VM execution, adaptive/kernel overlap, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
