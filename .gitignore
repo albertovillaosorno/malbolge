@@ -39,3 +39,4 @@ Thumbs.db
 # and must remain local even if a tool accidentally writes them outside `out/`.
 doom.c
 doom.malbolge
+examples/self_host/**/*.malbolge

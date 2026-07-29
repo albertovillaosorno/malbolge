@@ -44,6 +44,16 @@ When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
 adapter supplies the debug window, keyboard/mouse input, audio, files, and clock.
 It does not embed an IWAD and is never part of `doom.c` or `doom.malbolge`.
 
+When executable C tokens reference the function-like identifier
+`__malbolge_output_byte`, the CLI links `cli/adapters/guest/output.c` as a separate
+host-only debug translation unit. Lexical discovery applies C line splicing and
+ignores comments, string literals, character literals, identifier prefixes, and
+non-function-like uses. The guest source still includes no hosted headers and calls
+no host libc routine. The adapter maps the byte-output boundary to native stdout
+only for `.c` debug execution. It is not linked into generated `.malbolge` artifacts
+and is not evidence that C-to-Malbolge lowering, the guest runtime, libc, or `libm`
+is implemented.
+
 DOOM debug execution uses the directory containing `doom.c` as its working
 directory. Put `settings.json`, local WADs, `default.cfg`, and saves beside that
 file; the amalgamation input directory is ignored. Explicit command-line options

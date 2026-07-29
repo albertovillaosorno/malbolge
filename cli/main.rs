@@ -52,6 +52,8 @@
 
 //! Portable top-level source runner.
 
+pub mod c_source;
+
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, DirBuilder};
@@ -59,11 +61,10 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
 
+use c_source::inspect_c_source;
 use malbolge::{Machine, ProfileMachine, RunOutcome, parse_capsule};
 
 const C_EXTENSION: &str = "c";
-const DOOM_HOST_MARKERS: [&[u8]; 2] =
-    [b"DoomHost_GuestMemoryRegion", b"DoomHost_VideoInitialize"];
 const DOOM_IWAD_NAMES: [&str; 8] = [
     "freedoom1.wad",
     "freedoom2.wad",
@@ -154,17 +155,44 @@ fn build_c_run_plan(
     source: &Path,
     arguments: &[OsString],
 ) -> Result<CRunPlan, String> {
-    if !source_uses_doom_host(source)? {
-        return Ok(CRunPlan {
-            arguments: arguments.to_vec(),
-            compiler_arguments: Vec::new(),
-            environment: Vec::new(),
-            extra_sources: Vec::new(),
-            needs_windows_libraries: false,
-            working_directory: None,
-        });
+    let bytes = fs::read(source)
+        .map_err(|error| format!("failed to inspect C source: {error}"))?;
+    let adapters = inspect_c_source(&bytes);
+    let mut plan = if adapters.doom_host() {
+        build_doom_run_plan(source, arguments)?
+    } else {
+        plain_c_run_plan(arguments)
+    };
+    if adapters.guest_output() {
+        add_guest_output_adapter(&mut plan)?;
     }
-    build_doom_run_plan(source, arguments)
+    Ok(plan)
+}
+
+fn plain_c_run_plan(arguments: &[OsString]) -> CRunPlan {
+    CRunPlan {
+        arguments: arguments.to_vec(),
+        compiler_arguments: Vec::new(),
+        environment: Vec::new(),
+        extra_sources: Vec::new(),
+        needs_windows_libraries: false,
+        working_directory: None,
+    }
+}
+
+fn add_guest_output_adapter(plan: &mut CRunPlan) -> Result<(), String> {
+    let root = repository_root().ok_or_else(|| {
+        String::from("cannot locate repository root for guest output adapter")
+    })?;
+    let adapter = root.join("cli/adapters/guest/output.c");
+    if !adapter.is_file() {
+        return Err(format!(
+            "guest output adapter is missing: {}",
+            adapter.display(),
+        ));
+    }
+    plan.extra_sources.push(adapter);
+    Ok(())
 }
 
 fn build_doom_run_plan(
@@ -221,12 +249,6 @@ fn build_doom_run_plan(
     })
 }
 
-fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
-}
-
 fn discover_doom_iwad(root: &Path, source_directory: &Path) -> Option<PathBuf> {
     if let Some(configured) = env::var_os("MALBOLGE_DOOM_IWAD") {
         let configured_path = PathBuf::from(configured);
@@ -274,14 +296,6 @@ fn doom_arguments(arguments: &[OsString]) -> Result<Vec<OsString>, String> {
         *path_slot = canonical.into_os_string();
     }
     Ok(resolved)
-}
-
-fn source_uses_doom_host(source: &Path) -> Result<bool, String> {
-    let bytes = fs::read(source)
-        .map_err(|error| format!("failed to inspect C source: {error}"))?;
-    Ok(DOOM_HOST_MARKERS
-        .iter()
-        .all(|marker| bytes_contain(&bytes, marker)))
 }
 
 fn c_driver() -> Result<CDriver, String> {
@@ -402,10 +416,25 @@ fn repository_root() -> Option<PathBuf> {
     if let Some(configured) = env::var_os("MALBOLGE_ROOT") {
         return Some(PathBuf::from(configured));
     }
-    let executable = env::current_exe().ok()?;
-    let binary_directory = executable.parent()?;
-    let cli_directory = binary_directory.parent()?;
-    cli_directory.parent().map(Path::to_path_buf)
+    env::current_dir()
+        .ok()
+        .as_deref()
+        .and_then(find_repository_root)
+        .or_else(|| {
+            env::current_exe()
+                .ok()
+                .as_deref()
+                .and_then(find_repository_root)
+        })
+}
+
+fn find_repository_root(start: &Path) -> Option<PathBuf> {
+    start.ancestors().find_map(|candidate| {
+        let manifest = candidate.join("Cargo.toml");
+        let adapters = candidate.join("cli/adapters");
+        (manifest.is_file() && adapters.is_dir())
+            .then(|| candidate.to_path_buf())
+    })
 }
 
 fn repository_zig() -> Option<PathBuf> {
