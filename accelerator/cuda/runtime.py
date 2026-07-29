@@ -68,6 +68,10 @@ NVRTC_SUCCESS: Final = 0
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
+CUDA_STREAM_NON_BLOCKING: Final = 1
+CUDA_ORDERED_DTOH_STREAM_ID: Final = (
+    "cuda-ordered-registered-dtoh-stream-v1"
+)
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
@@ -96,6 +100,7 @@ class CudaHostMemoryRegistry:
         """Bind one context's registration functions and lifetime guard."""
         self._ensure_open = ensure_open
         self._register_fn = register_fn
+        self._in_flight: dict[int, int] = {}
         self._registrations: dict[int, HostWords] = {}
         self._unregister_fn = unregister_fn
 
@@ -139,11 +144,53 @@ class CudaHostMemoryRegistry:
         if address not in self._registrations:
             message = "CUDA host unregistration token is not owned"
             raise AcceleratorExecutionError(message)
+        if self._in_flight.get(address, 0) != 0:
+            message = "CUDA host buffer has ordered transfers in flight"
+            raise AcceleratorExecutionError(message)
         _check_execution(
             self._unregister_fn(ctypes.c_void_p(address)),
             "cuMemHostUnregister",
         )
         del self._registrations[address]
+
+    def acquire_for_async(self, host: HostWords) -> int:
+        """Retain one registered host buffer through asynchronous completion.
+
+        Returns:
+            Registered address whose in-flight count was incremented.
+
+        Raises:
+            AcceleratorExecutionError: If the exact buffer is not registered.
+
+        """
+        self._ensure_open()
+        address = ctypes.addressof(host)
+        registered = self._registrations.get(address)
+        if (
+            registered is None
+            or ctypes.sizeof(registered) != ctypes.sizeof(host)
+        ):
+            message = "CUDA asynchronous copy requires a registered host buffer"
+            raise AcceleratorExecutionError(message)
+        self._in_flight[address] = self._in_flight.get(address, 0) + 1
+        return address
+
+    def release_async(self, addresses: tuple[int, ...]) -> None:
+        """Release exact asynchronous leases after stream synchronization.
+
+        Raises:
+            AcceleratorExecutionError: If an internal lease is missing.
+
+        """
+        for address in addresses:
+            count = self._in_flight.get(address, 0)
+            if count <= 0:
+                message = "CUDA asynchronous host lease is not owned"
+                raise AcceleratorExecutionError(message)
+            if count == 1:
+                del self._in_flight[address]
+            else:
+                self._in_flight[address] = count - 1
 
     def release_failure(self) -> AcceleratorExecutionError | None:
         """Attempt every owned unregistration.
@@ -163,7 +210,228 @@ class CudaHostMemoryRegistry:
 
     def clear(self) -> None:
         """Drop retained buffers after the owning context is destroyed."""
+        self._in_flight.clear()
         self._registrations.clear()
+
+
+def cuda_ordered_dtoh_stream_id() -> str:
+    """Return the ordered registered D-to-H stream identity.
+
+    Returns:
+        Stable identity for contract and evidence provenance.
+
+    """
+    return CUDA_ORDERED_DTOH_STREAM_ID
+
+
+@dataclass(frozen=True, slots=True)
+class CudaOrderedTransferBatch:
+    """One synchronized batch of ordered D-to-H submissions."""
+
+    bytes: int
+    copies: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaOrderedStreamBinding:
+    copy_fn: _CudaFn
+    destroy_fn: _CudaFn
+    ensure_open: Callable[[], None]
+    forget: Callable[[CudaOrderedDtoHStream], None]
+    handle: ctypes.c_void_p
+    host_memory: CudaHostMemoryRegistry
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaOrderedDtoHStream:
+    """One ordered CUDA stream retaining registered host buffers until wait."""
+
+    def __init__(self, binding: _CudaOrderedStreamBinding) -> None:
+        """Adopt one nonblocking CUDA stream owned by a live runtime."""
+        self._binding = binding
+        self._closed = False
+        self._pending_addresses: list[int] = []
+        self._pending_bytes = 0
+
+    @property
+    def pending_bytes(self) -> int:
+        """Bytes whose host lifetime remains bound to stream completion."""
+        return self._pending_bytes
+
+    @property
+    def pending_copies(self) -> int:
+        """Ordered copies not yet released by ``wait`` or ``close``."""
+        return len(self._pending_addresses)
+
+    def close(self) -> None:
+        """Synchronize pending work and destroy the CUDA stream exactly once."""
+        if self._closed:
+            return
+        wait_failure = self._wait_failure()
+        destroy_failure = self._destroy_failure()
+        self._closed = True
+        self._binding.forget(self)
+        _raise_first_failure(wait_failure, destroy_failure)
+
+    def _destroy_failure(self) -> AcceleratorExecutionError | None:
+        try:
+            _check_execution(
+                self._binding.destroy_fn(self._binding.handle),
+                "cuStreamDestroy_v2",
+            )
+        except AcceleratorExecutionError as error:
+            return error
+        return None
+
+    def _wait_failure(self) -> AcceleratorExecutionError | None:
+        if not self._pending_addresses:
+            return None
+        try:
+            _ = self.wait()
+        except AcceleratorExecutionError as error:
+            return error
+        return None
+
+    def submit_copy_from_device(
+        self,
+        host: HostWords,
+        device_pointer: int,
+    ) -> None:
+        """Enqueue one copy after acquiring the registered host lifetime.
+
+        Raises:
+            AcceleratorExecutionError: If state, registration, or CUDA
+                rejects the submission.
+
+        """
+        self._ensure_usable()
+        if type(device_pointer) is not int or device_pointer <= 0:
+            message = (
+                "CUDA asynchronous copy requires a positive device pointer"
+            )
+            raise AcceleratorExecutionError(message)
+        address = self._binding.host_memory.acquire_for_async(host)
+        byte_count = ctypes.sizeof(host)
+        try:
+            _check_execution(
+                self._binding.copy_fn(
+                    host,
+                    ctypes.c_uint64(device_pointer),
+                    byte_count,
+                    self._binding.handle,
+                ),
+                "cuMemcpyDtoHAsync_v2",
+            )
+        except AcceleratorExecutionError:
+            self._binding.host_memory.release_async((address,))
+            raise
+        self._pending_addresses.append(address)
+        self._pending_bytes += byte_count
+
+    def wait(self) -> CudaOrderedTransferBatch:
+        """Synchronize every ordered copy and release all host lifetimes.
+
+        Returns:
+            Completed copy and byte counts for the exact pending batch.
+
+        Raises:
+            AcceleratorExecutionError: If no work is pending or CUDA fails.
+
+        """
+        self._ensure_usable()
+        if not self._pending_addresses:
+            message = "CUDA ordered transfer stream has no pending copies"
+            raise AcceleratorExecutionError(message)
+        addresses = tuple(self._pending_addresses)
+        summary = CudaOrderedTransferBatch(
+            bytes=self._pending_bytes,
+            copies=len(addresses),
+        )
+        failure: AcceleratorExecutionError | None = None
+        try:
+            _check_execution(
+                self._binding.synchronize_fn(self._binding.handle),
+                "cuStreamSynchronize",
+            )
+        except AcceleratorExecutionError as error:
+            failure = error
+        finally:
+            self._binding.host_memory.release_async(addresses)
+            self._pending_addresses.clear()
+            self._pending_bytes = 0
+        if failure is not None:
+            raise failure
+        return summary
+
+    def _ensure_usable(self) -> None:
+        self._binding.ensure_open()
+        if self._closed:
+            message = "CUDA ordered transfer stream is closed"
+            raise AcceleratorExecutionError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaOrderedFactoryBinding:
+    copy_fn: _CudaFn
+    create_fn: _CudaFn
+    destroy_fn: _CudaFn
+    ensure_open: Callable[[], None]
+    host_memory: CudaHostMemoryRegistry
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaOrderedDtoHStreamFactory:
+    """Own every ordered D-to-H stream created for one CUDA context."""
+
+    def __init__(self, binding: _CudaOrderedFactoryBinding) -> None:
+        """Bind one live runtime's reviewed stream functions."""
+        self._binding = binding
+        self._streams: list[CudaOrderedDtoHStream] = []
+
+    def create(self) -> CudaOrderedDtoHStream:
+        """Create one nonblocking ordered D-to-H submission stream.
+
+        Returns:
+            Stream that accepts only host buffers registered by this runtime.
+
+        """
+        self._binding.ensure_open()
+        handle = ctypes.c_void_p()
+        _check_execution(
+            self._binding.create_fn(
+                ctypes.byref(handle),
+                CUDA_STREAM_NON_BLOCKING,
+            ),
+            "cuStreamCreate",
+        )
+        stream = CudaOrderedDtoHStream(_CudaOrderedStreamBinding(
+            copy_fn=self._binding.copy_fn,
+            destroy_fn=self._binding.destroy_fn,
+            ensure_open=self._binding.ensure_open,
+            forget=self._forget,
+            handle=handle,
+            host_memory=self._binding.host_memory,
+            synchronize_fn=self._binding.synchronize_fn,
+        ))
+        self._streams.append(stream)
+        return stream
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Close every owned stream before context and host-memory teardown.
+
+        Returns:
+            First synchronization/destruction failure, or ``None``.
+
+        """
+        return _release_ordered_dtoh_streams(self._streams)
+
+    def _forget(self, stream: CudaOrderedDtoHStream) -> None:
+        try:
+            self._streams.remove(stream)
+        except ValueError:
+            return
 
 
 class CudaResourceProbe:
@@ -212,6 +480,7 @@ class CudaRuntime:
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
     host_memory: CudaHostMemoryRegistry
+    ordered_transfers: CudaOrderedDtoHStreamFactory
     resources: CudaResourceProbe
 
     _cu_ctx_create: _CudaFn
@@ -234,6 +503,10 @@ class CudaRuntime:
     _cu_module_get_function: _CudaFn
     _cu_module_load_data: _CudaFn
     _cu_module_unload: _CudaFn
+    _cu_stream_create: _CudaFn
+    _cu_stream_destroy: _CudaFn
+    _cu_stream_synchronize: _CudaFn
+    _cu_memcpy_dtoh_async: _CudaFn
 
     _nvrtc_compile_program: _CudaFn
     _nvrtc_create_program: _CudaFn
@@ -270,6 +543,16 @@ class CudaRuntime:
             self._cu_mem_host_register,
             self._cu_mem_host_unregister,
         )
+        self.ordered_transfers = CudaOrderedDtoHStreamFactory(
+            _CudaOrderedFactoryBinding(
+                copy_fn=self._cu_memcpy_dtoh_async,
+                create_fn=self._cu_stream_create,
+                destroy_fn=self._cu_stream_destroy,
+                ensure_open=self._ensure_open,
+                host_memory=self.host_memory,
+                synchronize_fn=self._cu_stream_synchronize,
+            )
+        )
         self.resources = CudaResourceProbe(
             self._cu_mem_get_info,
             self.device_info,
@@ -294,21 +577,16 @@ class CudaRuntime:
         """Release registered host buffers and destroy the CUDA context."""
         if self._closed:
             return
+        stream_failure = self.ordered_transfers.release_failure()
         registration_failure = self.host_memory.release_failure()
         self._closed = True
-        context_failure: AcceleratorExecutionError | None = None
-        try:
-            _check_execution(
-                self._cu_ctx_destroy(self._context),
-                "cuCtxDestroy_v2",
-            )
-        except AcceleratorExecutionError as error:
-            context_failure = error
+        context_failure = self._destroy_context_failure()
         self.host_memory.clear()
-        if registration_failure is not None:
-            raise registration_failure
-        if context_failure is not None:
-            raise context_failure
+        _raise_first_failure(
+            stream_failure,
+            registration_failure,
+            context_failure,
+        )
 
     def _compile_ptx(self, source: str, arch: str) -> bytes:
         """Compile reviewed CUDA C++ source to PTX with pinned NVRTC.
@@ -516,6 +794,7 @@ class CudaRuntime:
         context = _bind_driver_context(self._driver)
         memory = _bind_driver_memory(self._driver)
         module = _bind_driver_module(self._driver)
+        stream = _bind_driver_stream(self._driver)
         (
             self._cu_init,
             self._cu_device_get,
@@ -542,6 +821,12 @@ class CudaRuntime:
             self._cu_module_get_function,
             self._cu_launch_kernel,
         ) = module
+        (
+            self._cu_stream_create,
+            self._cu_stream_destroy,
+            self._cu_stream_synchronize,
+            self._cu_memcpy_dtoh_async,
+        ) = stream
 
     def _bind_nvrtc(self) -> None:
         (
@@ -561,6 +846,16 @@ class CudaRuntime:
             "cuCtxCreate_v2",
         )
         return context
+
+    def _destroy_context_failure(self) -> AcceleratorExecutionError | None:
+        try:
+            _check_execution(
+                self._cu_ctx_destroy(self._context),
+                "cuCtxDestroy_v2",
+            )
+        except AcceleratorExecutionError as error:
+            return error
+        return None
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -771,6 +1066,73 @@ def _bind_driver_module(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
         cast("_CudaFn", raw)
         for raw in (raw_load, raw_unload, raw_function, raw_launch)
     )
+
+
+def _bind_driver_stream(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+    raw_create = dll.cuStreamCreate
+    raw_create.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_uint,
+    ]
+    raw_create.restype = ctypes.c_int
+    raw_destroy = dll.cuStreamDestroy_v2
+    raw_destroy.argtypes = [ctypes.c_void_p]
+    raw_destroy.restype = ctypes.c_int
+    raw_synchronize = dll.cuStreamSynchronize
+    raw_synchronize.argtypes = [ctypes.c_void_p]
+    raw_synchronize.restype = ctypes.c_int
+    raw_dtoh_async = dll.cuMemcpyDtoHAsync_v2
+    raw_dtoh_async.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint64,
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+    ]
+    raw_dtoh_async.restype = ctypes.c_int
+    return tuple(
+        cast("_CudaFn", raw)
+        for raw in (
+            raw_create,
+            raw_destroy,
+            raw_synchronize,
+            raw_dtoh_async,
+        )
+    )
+
+
+def create_ordered_dtoh_stream(
+    runtime: CudaRuntime,
+) -> CudaOrderedDtoHStream:
+    """Create one ordered registered D-to-H stream from a live runtime.
+
+    Returns:
+        Runtime-owned stream with explicit submit/wait lifetime.
+
+    """
+    return runtime.ordered_transfers.create()
+
+
+def _raise_first_failure(
+    *failures: AcceleratorExecutionError | None,
+) -> None:
+    for failure in failures:
+        if failure is not None:
+            raise failure
+
+
+def _release_ordered_dtoh_streams(
+    streams: list[CudaOrderedDtoHStream],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    for stream in tuple(streams):
+        try:
+            stream.close()
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    if failure is None:
+        streams.clear()
+    return failure
 
 
 def _bind_nvrtc(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:

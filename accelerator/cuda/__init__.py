@@ -58,9 +58,15 @@ from accelerator.cuda.profile_run import ProfileSnapshotWindow
 from accelerator.cuda.profile_run import profile_snapshot_host_registration_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
+from accelerator.cuda.runtime import CudaOrderedDtoHStream
+from accelerator.cuda.runtime import CudaOrderedTransferBatch
+from accelerator.cuda.runtime import create_ordered_dtoh_stream
+from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 
 __all__ = [
     "CudaExactPrimitiveAdapter",
+    "CudaOrderedDtoHStream",
+    "CudaOrderedTransferBatch",
     "CudaPreparedPrimitivePhaseProfile",
     "CudaPreparedPrimitiveStats",
     "CudaProfileSnapshotStreamWorkspace",
@@ -70,6 +76,8 @@ __all__ = [
     "ProfileSnapshotStreamCapacity",
     "ProfileSnapshotStreamSummary",
     "ProfileSnapshotWindow",
+    "create_ordered_dtoh_stream",
+    "cuda_ordered_dtoh_stream_id",
     "profile_snapshot_host_registration_id",
     "profile_snapshot_stream_workspace_id",
     "profile_snapshot_workspace_id",
