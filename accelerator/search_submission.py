@@ -327,6 +327,8 @@ def _preferred_route(
         try:
             capability = preferred.capability()
             ticket = preferred.submit(request)
+        except InvalidAcceleratorResultError:
+            raise
         except AcceleratorError:
             route = _SearchRoute(
                 fallback=SearchSubmissionFallback.SUBMIT_FAILED,
