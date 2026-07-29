@@ -49,6 +49,8 @@ from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitivePhaseProfile
 from accelerator.cuda.exact_primitives import CudaPreparedPrimitiveStats
 from accelerator.cuda.exact_primitives import CudaPrimitiveEvaluationTicket
+from accelerator.cuda.exact_primitives import CudaPrimitiveTicketTimeline
+from accelerator.cuda.exact_primitives import CudaPrimitiveTicketTimelineFactory
 from accelerator.cuda.profile_run import CudaProfileSnapshotOverlapWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotStreamWorkspace
 from accelerator.cuda.profile_run import CudaProfileSnapshotWorkspace
@@ -65,11 +67,15 @@ from accelerator.cuda.profile_run import profile_snapshot_overlap_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 from accelerator.cuda.runtime import CudaIndependentKernelLaunch
+from accelerator.cuda.runtime import CudaIndependentKernelTimeline
+from accelerator.cuda.runtime import CudaIndependentKernelTimelineSample
 from accelerator.cuda.runtime import CudaKernelLaunch
 from accelerator.cuda.runtime import CudaOrderedDtoHStream
 from accelerator.cuda.runtime import CudaOrderedTransferBatch
+from accelerator.cuda.runtime import create_independent_kernel_timeline
 from accelerator.cuda.runtime import create_ordered_dtoh_stream
 from accelerator.cuda.runtime import cuda_independent_kernel_launch_id
+from accelerator.cuda.runtime import cuda_independent_kernel_timeline_id
 from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
@@ -78,6 +84,8 @@ from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
 __all__ = [
     "CudaExactPrimitiveAdapter",
     "CudaIndependentKernelLaunch",
+    "CudaIndependentKernelTimeline",
+    "CudaIndependentKernelTimelineSample",
     "CudaKernelLaunch",
     "CudaOrderedDtoHStream",
     "CudaOrderedTransferBatch",
@@ -86,6 +94,8 @@ __all__ = [
     "CudaPrimitiveCandidateSubmissionAdapter",
     "CudaPrimitiveCandidateTicket",
     "CudaPrimitiveEvaluationTicket",
+    "CudaPrimitiveTicketTimeline",
+    "CudaPrimitiveTicketTimelineFactory",
     "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
@@ -97,8 +107,10 @@ __all__ = [
     "ProfileSnapshotStreamCapacity",
     "ProfileSnapshotStreamSummary",
     "ProfileSnapshotWindow",
+    "create_independent_kernel_timeline",
     "create_ordered_dtoh_stream",
     "cuda_independent_kernel_launch_id",
+    "cuda_independent_kernel_timeline_id",
     "cuda_kernel_launch_id",
     "cuda_ordered_dtoh_stream_id",
     "profile_snapshot_host_registration_id",

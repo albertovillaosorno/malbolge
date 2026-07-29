@@ -75,6 +75,10 @@ CUDA_KERNEL_LAUNCH_ID: Final = "cuda-default-stream-kernel-launch-v1"
 CUDA_INDEPENDENT_KERNEL_LAUNCH_ID: Final = (
     "cuda-independent-stream-kernel-launch-v1"
 )
+CUDA_INDEPENDENT_KERNEL_TIMELINE_ID: Final = (
+    "cuda-independent-stream-kernel-timeline-v1"
+)
+CUDA_EVENT_DEFAULT: Final = 0
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
@@ -458,6 +462,16 @@ def cuda_independent_kernel_launch_id() -> str:
     return CUDA_INDEPENDENT_KERNEL_LAUNCH_ID
 
 
+def cuda_independent_kernel_timeline_id() -> str:
+    """Return the CUDA-event independent-stream timeline identity.
+
+    Returns:
+        Stable identity for diagnostic launch interval provenance.
+
+    """
+    return CUDA_INDEPENDENT_KERNEL_TIMELINE_ID
+
+
 @dataclass(frozen=True, slots=True)
 class _CudaKernelLaunchBinding:
     ensure_open: Callable[[], None]
@@ -599,6 +613,7 @@ class _CudaIndependentKernelLaunchBinding:
     forget: Callable[[CudaIndependentKernelLaunch], None]
     handle: ctypes.c_void_p
     synchronize_fn: _CudaFn
+    timeline: _CudaIndependentKernelTimelineLaunch | None
 
 
 @final
@@ -625,24 +640,52 @@ class CudaIndependentKernelLaunch:
         """Synchronize and destroy this launch stream exactly once."""
         if self._closed:
             return
-        wait_failure: AcceleratorExecutionError | None = None
-        if not self._completed:
-            try:
-                self.wait()
-            except AcceleratorExecutionError as error:
-                wait_failure = error
-        destroy_failure: AcceleratorExecutionError | None = None
+        wait_failure = self._wait_failure()
+        timeline_failure = self._timeline_failure(
+            completed=wait_failure is None,
+        )
+        destroy_failure = self._destroy_failure()
+        self._closed = True
+        self._owners = ()
+        self._binding.forget(self)
+        _raise_first_failure(
+            wait_failure,
+            timeline_failure,
+            destroy_failure,
+        )
+
+    def _destroy_failure(self) -> AcceleratorExecutionError | None:
         try:
             _check_execution(
                 self._binding.destroy_fn(self._binding.handle),
                 "cuStreamDestroy_v2",
             )
         except AcceleratorExecutionError as error:
-            destroy_failure = error
-        self._closed = True
-        self._owners = ()
-        self._binding.forget(self)
-        _raise_first_failure(wait_failure, destroy_failure)
+            return error
+        return None
+
+    def _timeline_failure(
+        self,
+        *,
+        completed: bool,
+    ) -> AcceleratorExecutionError | None:
+        timeline = self._binding.timeline
+        if timeline is None:
+            return None
+        try:
+            timeline.finish(completed=completed)
+        except AcceleratorExecutionError as error:
+            return error
+        return None
+
+    def _wait_failure(self) -> AcceleratorExecutionError | None:
+        if self._completed:
+            return None
+        try:
+            self.wait()
+        except AcceleratorExecutionError as error:
+            return error
+        return None
 
     def wait(self) -> None:
         """Synchronize only this launch stream and release parameters.
@@ -663,6 +706,304 @@ class CudaIndependentKernelLaunch:
         )
         self._completed = True
         self._owners = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CudaIndependentKernelTimelineSample:
+    """One CUDA-event interval observed for an isolated kernel stream."""
+
+    duration_ms: float
+    end_ms: float
+    start_ms: float
+    submission_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class CudaIndependentKernelTimelineFunctions:
+    """Reviewed Driver functions required by CUDA-event timelines."""
+
+    create_fn: _CudaFn
+    destroy_fn: _CudaFn
+    elapsed_fn: _CudaFn
+    ensure_open: Callable[[], None]
+    record_fn: _CudaFn
+    synchronize_fn: _CudaFn
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaIndependentKernelTimelineLaunch:
+    end: ctypes.c_void_p
+    start: ctypes.c_void_p
+    submission_index: int
+    timeline: CudaIndependentKernelTimeline
+
+    def finish(self, *, completed: bool) -> None:
+        """Publish one completed interval or discard failed event state."""
+        self.timeline.finish_launch(self, completed=completed)
+
+
+@final
+class CudaIndependentKernelTimeline:
+    """Diagnostic CUDA-event origin and isolated launch interval owner."""
+
+    def __init__(
+        self,
+        functions: CudaIndependentKernelTimelineFunctions,
+        launch_factory: CudaIndependentKernelLaunchFactory,
+        forget: Callable[[CudaIndependentKernelTimeline], None],
+    ) -> None:
+        """Create and synchronize one untimed origin event.
+
+        Raises:
+            AcceleratorExecutionError: If event setup fails.
+
+        """
+        self._active = 0
+        self._closed = False
+        self._forget = forget
+        self._functions = functions
+        self._launch_factory = launch_factory
+        self._next_submission_index = 0
+        self._origin = _create_cuda_event(functions.create_fn)
+        self._samples: list[CudaIndependentKernelTimelineSample] = []
+        try:
+            _check_execution(
+                functions.record_fn(self._origin, None),
+                "cuEventRecord",
+            )
+            _check_execution(
+                functions.synchronize_fn(self._origin),
+                "cuEventSynchronize",
+            )
+        except AcceleratorExecutionError:
+            _destroy_cuda_event(functions.destroy_fn, self._origin)
+            raise
+
+    def __enter__(self) -> CudaIndependentKernelTimeline:
+        """Return this diagnostic timeline for scoped use.
+
+        Returns:
+            The same live timeline.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Destroy the event origin after every launch closes."""
+        self.close()
+
+    def close(self) -> None:
+        """Destroy the origin after all profiled launches finish.
+
+        Raises:
+            AcceleratorExecutionError:
+                If launches remain active or event destruction fails.
+
+        """
+        if self._closed:
+            return
+        self._functions.ensure_open()
+        if self._active != 0:
+            message = "CUDA independent kernel timeline has active launches"
+            raise AcceleratorExecutionError(message)
+        _destroy_cuda_event(self._functions.destroy_fn, self._origin)
+        self._closed = True
+        self._forget(self)
+
+    def samples(self) -> tuple[CudaIndependentKernelTimelineSample, ...]:
+        """Return completed samples in submission order.
+
+        Returns:
+            Immutable CUDA-event intervals after every launch cleanup.
+
+        Raises:
+            AcceleratorExecutionError: If launches remain active.
+
+        """
+        self._ensure_usable()
+        if self._active != 0:
+            message = "CUDA independent kernel timeline has active launches"
+            raise AcceleratorExecutionError(message)
+        return tuple(
+            sorted(self._samples, key=lambda sample: sample.submission_index)
+        )
+
+    def submit(
+        self,
+        kernel: ctypes.c_void_p,
+        device_pointers: tuple[int, ...],
+        count: int,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit one isolated launch with CUDA-event start/end markers.
+
+        Returns:
+            Runtime-owned launch whose close publishes one interval.
+
+        """
+        self._ensure_usable()
+        return self._launch_factory.submit_profiled(
+            kernel,
+            device_pointers,
+            count,
+            timeline=self,
+        )
+
+    def begin_launch(
+        self,
+        stream: ctypes.c_void_p,
+    ) -> _CudaIndependentKernelTimelineLaunch:
+        """Create and record one start/end event pair for a stream.
+
+        Returns:
+            Active event resources bound to the next submission index.
+
+        Raises:
+            AcceleratorExecutionError: If event setup or recording fails.
+
+        """
+        self._ensure_usable()
+        start = _create_cuda_event(self._functions.create_fn)
+        try:
+            end = _create_cuda_event(self._functions.create_fn)
+        except AcceleratorExecutionError:
+            _destroy_cuda_event(self._functions.destroy_fn, start)
+            raise
+        try:
+            _check_execution(
+                self._functions.record_fn(start, stream),
+                "cuEventRecord",
+            )
+        except AcceleratorExecutionError:
+            _destroy_cuda_event(self._functions.destroy_fn, end)
+            _destroy_cuda_event(self._functions.destroy_fn, start)
+            raise
+        launch = _CudaIndependentKernelTimelineLaunch(
+            end=end,
+            start=start,
+            submission_index=self._next_submission_index,
+            timeline=self,
+        )
+        self._next_submission_index += 1
+        self._active += 1
+        return launch
+
+    def record_end(
+        self,
+        launch: _CudaIndependentKernelTimelineLaunch,
+        stream: ctypes.c_void_p,
+    ) -> None:
+        """Record the exact end event after one kernel launch."""
+        _check_execution(
+            self._functions.record_fn(launch.end, stream),
+            "cuEventRecord",
+        )
+
+    def finish_launch(
+        self,
+        launch: _CudaIndependentKernelTimelineLaunch,
+        *,
+        completed: bool,
+    ) -> None:
+        """Publish one completed interval and destroy its event pair."""
+        failure: AcceleratorExecutionError | None = None
+        if completed:
+            try:
+                sample = CudaIndependentKernelTimelineSample(
+                    duration_ms=_event_elapsed_ms(
+                        self._functions.elapsed_fn,
+                        launch.start,
+                        launch.end,
+                    ),
+                    end_ms=_event_elapsed_ms(
+                        self._functions.elapsed_fn,
+                        self._origin,
+                        launch.end,
+                    ),
+                    start_ms=_event_elapsed_ms(
+                        self._functions.elapsed_fn,
+                        self._origin,
+                        launch.start,
+                    ),
+                    submission_index=launch.submission_index,
+                )
+                self._samples.append(sample)
+            except AcceleratorExecutionError as error:
+                failure = error
+        end_failure = _destroy_cuda_event_failure(
+            self._functions.destroy_fn,
+            launch.end,
+        )
+        start_failure = _destroy_cuda_event_failure(
+            self._functions.destroy_fn,
+            launch.start,
+        )
+        self._active -= 1
+        _raise_first_failure(failure, end_failure, start_failure)
+
+    def _ensure_usable(self) -> None:
+        self._functions.ensure_open()
+        if self._closed:
+            message = "CUDA independent kernel timeline is closed"
+            raise AcceleratorExecutionError(message)
+
+
+@final
+class CudaIndependentKernelTimelineFactory:
+    """Own CUDA-event timelines created for one live context."""
+
+    def __init__(
+        self,
+        functions: CudaIndependentKernelTimelineFunctions,
+        launch_factory: CudaIndependentKernelLaunchFactory,
+    ) -> None:
+        """Bind event functions and the matching isolated launch factory."""
+        self._functions = functions
+        self._launch_factory = launch_factory
+        self._timelines: list[CudaIndependentKernelTimeline] = []
+
+    def create(self) -> CudaIndependentKernelTimeline:
+        """Create one synchronized CUDA-event origin timeline.
+
+        Returns:
+            Runtime-owned diagnostic timeline for isolated launches.
+
+        """
+        timeline = CudaIndependentKernelTimeline(
+            self._functions,
+            self._launch_factory,
+            self._forget,
+        )
+        self._timelines.append(timeline)
+        return timeline
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Close every timeline after independent launches drain.
+
+        Returns:
+            First event cleanup failure, or ``None``.
+
+        """
+        failure: AcceleratorExecutionError | None = None
+        for timeline in tuple(self._timelines):
+            try:
+                timeline.close()
+            except AcceleratorExecutionError as error:
+                if failure is None:
+                    failure = error
+        if failure is None:
+            self._timelines.clear()
+        return failure
+
+    def _forget(self, timeline: CudaIndependentKernelTimeline) -> None:
+        try:
+            self._timelines.remove(timeline)
+        except ValueError:
+            return
 
 
 @dataclass(frozen=True, slots=True)
@@ -699,45 +1040,58 @@ class CudaIndependentKernelLaunchFactory:
         Returns:
             Runtime-owned isolated launch retaining all parameter owners.
 
-        Raises:
-            AcceleratorExecutionError: If stream creation or launch fails.
+        """
+        return self._submit(
+            kernel,
+            device_pointers,
+            count,
+            timeline=None,
+        )
+
+    def submit_profiled(
+        self,
+        kernel: ctypes.c_void_p,
+        device_pointers: tuple[int, ...],
+        count: int,
+        *,
+        timeline: CudaIndependentKernelTimeline,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit one kernel with opt-in CUDA-event interval capture.
+
+        Returns:
+            Isolated launch that publishes one sample during close.
 
         """
+        return self._submit(
+            kernel,
+            device_pointers,
+            count,
+            timeline=timeline,
+        )
+
+    def _submit(
+        self,
+        kernel: ctypes.c_void_p,
+        device_pointers: tuple[int, ...],
+        count: int,
+        *,
+        timeline: CudaIndependentKernelTimeline | None,
+    ) -> CudaIndependentKernelLaunch:
         self._binding.ensure_open()
         arguments = _kernel_launch_arguments(device_pointers, count)
-        handle = ctypes.c_void_p()
-        _check_execution(
-            self._binding.create_fn(
-                ctypes.byref(handle),
-                CUDA_STREAM_NON_BLOCKING,
-            ),
-            "cuStreamCreate",
-        )
+        handle = self._create_stream()
+        timeline_launch: _CudaIndependentKernelTimelineLaunch | None = None
         try:
-            _check_execution(
-                self._binding.launch_fn(
-                    kernel,
-                    arguments.blocks,
-                    1,
-                    1,
-                    THREADS_PER_BLOCK,
-                    1,
-                    1,
-                    0,
-                    handle,
-                    arguments.params,
-                    None,
-                ),
-                "cuLaunchKernel",
-            )
+            timeline_launch = self._begin_timeline(timeline, handle)
+            self._launch_kernel(kernel, arguments, handle)
+            self._record_timeline_end(timeline, timeline_launch, handle)
         except AcceleratorExecutionError as launch_error:
-            try:
-                _check_execution(
-                    self._binding.destroy_fn(handle),
-                    "cuStreamDestroy_v2",
-                )
-            except AcceleratorExecutionError as destroy_error:
-                raise launch_error from destroy_error
+            cleanup_failure = self._failed_submit_cleanup(
+                handle,
+                timeline_launch,
+            )
+            if cleanup_failure is not None:
+                raise launch_error from cleanup_failure
             raise launch_error from None
         launch = CudaIndependentKernelLaunch(
             _CudaIndependentKernelLaunchBinding(
@@ -746,11 +1100,86 @@ class CudaIndependentKernelLaunchFactory:
                 forget=self._forget,
                 handle=handle,
                 synchronize_fn=self._binding.synchronize_fn,
+                timeline=timeline_launch,
             ),
             (*arguments.owners, arguments.params),
         )
         self._launches.append(launch)
         return launch
+
+    @staticmethod
+    def _begin_timeline(
+        timeline: CudaIndependentKernelTimeline | None,
+        handle: ctypes.c_void_p,
+    ) -> _CudaIndependentKernelTimelineLaunch | None:
+        if timeline is None:
+            return None
+        return timeline.begin_launch(handle)
+
+    def _create_stream(self) -> ctypes.c_void_p:
+        handle = ctypes.c_void_p()
+        _check_execution(
+            self._binding.create_fn(
+                ctypes.byref(handle),
+                CUDA_STREAM_NON_BLOCKING,
+            ),
+            "cuStreamCreate",
+        )
+        return handle
+
+    def _failed_submit_cleanup(
+        self,
+        handle: ctypes.c_void_p,
+        timeline_launch: _CudaIndependentKernelTimelineLaunch | None,
+    ) -> AcceleratorExecutionError | None:
+        timeline_failure: AcceleratorExecutionError | None = None
+        if timeline_launch is not None:
+            try:
+                timeline_launch.finish(completed=False)
+            except AcceleratorExecutionError as error:
+                timeline_failure = error
+        stream_failure: AcceleratorExecutionError | None = None
+        try:
+            _check_execution(
+                self._binding.destroy_fn(handle),
+                "cuStreamDestroy_v2",
+            )
+        except AcceleratorExecutionError as error:
+            stream_failure = error
+        return timeline_failure or stream_failure
+
+    def _launch_kernel(
+        self,
+        kernel: ctypes.c_void_p,
+        arguments: _CudaKernelLaunchArguments,
+        handle: ctypes.c_void_p,
+    ) -> None:
+        _check_execution(
+            self._binding.launch_fn(
+                kernel,
+                arguments.blocks,
+                1,
+                1,
+                THREADS_PER_BLOCK,
+                1,
+                1,
+                0,
+                handle,
+                arguments.params,
+                None,
+            ),
+            "cuLaunchKernel",
+        )
+
+    @staticmethod
+    def _record_timeline_end(
+        timeline: CudaIndependentKernelTimeline | None,
+        timeline_launch: _CudaIndependentKernelTimelineLaunch | None,
+        handle: ctypes.c_void_p,
+    ) -> None:
+        if timeline is None or timeline_launch is None:
+            return
+        timeline.record_end(timeline_launch, handle)
 
     def release_failure(self) -> AcceleratorExecutionError | None:
         """Close every isolated launch before context destruction.
@@ -842,6 +1271,7 @@ class CudaRuntime:
     device_info: CudaDeviceInfo
     host_memory: CudaHostMemoryRegistry
     independent_kernel_launches: CudaIndependentKernelLaunchFactory
+    independent_kernel_timelines: CudaIndependentKernelTimelineFactory
     kernel_launches: CudaKernelLaunchFactory
     ordered_transfers: CudaOrderedDtoHStreamFactory
     resources: CudaResourceProbe
@@ -849,6 +1279,11 @@ class CudaRuntime:
     _cu_ctx_create: _CudaFn
     _cu_ctx_destroy: _CudaFn
     _cu_ctx_synchronize: _CudaFn
+    _cu_event_create: _CudaFn
+    _cu_event_destroy: _CudaFn
+    _cu_event_elapsed_time: _CudaFn
+    _cu_event_record: _CudaFn
+    _cu_event_synchronize: _CudaFn
     _cu_device_compute_capability: _CudaFn
     _cu_device_get: _CudaFn
     _cu_device_get_attribute: _CudaFn
@@ -922,6 +1357,19 @@ class CudaRuntime:
                 synchronize_fn=self._cu_stream_synchronize,
             )
         )
+        self.independent_kernel_timelines = (
+            CudaIndependentKernelTimelineFactory(
+                CudaIndependentKernelTimelineFunctions(
+                    create_fn=self._cu_event_create,
+                    destroy_fn=self._cu_event_destroy,
+                    elapsed_fn=self._cu_event_elapsed_time,
+                    ensure_open=self._ensure_open,
+                    record_fn=self._cu_event_record,
+                    synchronize_fn=self._cu_event_synchronize,
+                ),
+                self.independent_kernel_launches,
+            )
+        )
         self.ordered_transfers = CudaOrderedDtoHStreamFactory(
             _CudaOrderedFactoryBinding(
                 copy_fn=self._cu_memcpy_dtoh_async,
@@ -958,6 +1406,7 @@ class CudaRuntime:
             return
         launch_failure = self.kernel_launches.release_failure()
         independent_failure = self.independent_kernel_launches.release_failure()
+        timeline_failure = self.independent_kernel_timelines.release_failure()
         stream_failure = self.ordered_transfers.release_failure()
         registration_failure = self.host_memory.release_failure()
         self._closed = True
@@ -966,6 +1415,7 @@ class CudaRuntime:
         _raise_first_failure(
             launch_failure,
             independent_failure,
+            timeline_failure,
             stream_failure,
             registration_failure,
             context_failure,
@@ -1151,6 +1601,7 @@ class CudaRuntime:
     def _bind_driver(self) -> None:
         context = _bind_driver_context(self._driver)
         memory = _bind_driver_memory(self._driver)
+        event = _bind_driver_event(self._driver)
         module = _bind_driver_module(self._driver)
         stream = _bind_driver_stream(self._driver)
         (
@@ -1173,6 +1624,13 @@ class CudaRuntime:
             self._cu_memcpy_dtoh,
             self._cu_memcpy_dtod,
         ) = memory
+        (
+            self._cu_event_create,
+            self._cu_event_destroy,
+            self._cu_event_elapsed_time,
+            self._cu_event_record,
+            self._cu_event_synchronize,
+        ) = event
         (
             self._cu_module_load_data,
             self._cu_module_unload,
@@ -1391,6 +1849,41 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
+def _bind_driver_event(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+    raw_create = dll.cuEventCreate
+    raw_create.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_uint,
+    ]
+    raw_create.restype = ctypes.c_int
+    raw_destroy = dll.cuEventDestroy_v2
+    raw_destroy.argtypes = [ctypes.c_void_p]
+    raw_destroy.restype = ctypes.c_int
+    raw_elapsed = dll.cuEventElapsedTime_v2
+    raw_elapsed.argtypes = [
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    raw_elapsed.restype = ctypes.c_int
+    raw_record = dll.cuEventRecord
+    raw_record.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    raw_record.restype = ctypes.c_int
+    raw_synchronize = dll.cuEventSynchronize
+    raw_synchronize.argtypes = [ctypes.c_void_p]
+    raw_synchronize.restype = ctypes.c_int
+    return tuple(
+        cast("_CudaFn", raw)
+        for raw in (
+            raw_create,
+            raw_destroy,
+            raw_elapsed,
+            raw_record,
+            raw_synchronize,
+        )
+    )
+
+
 def _bind_driver_module(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_load = dll.cuModuleLoadData
     raw_load.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
@@ -1458,6 +1951,18 @@ def _bind_driver_stream(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
+def create_independent_kernel_timeline(
+    runtime: CudaRuntime,
+) -> CudaIndependentKernelTimeline:
+    """Create one CUDA-event timeline from a live runtime.
+
+    Returns:
+        Runtime-owned diagnostic timeline for isolated kernel launches.
+
+    """
+    return runtime.independent_kernel_timelines.create()
+
+
 def create_ordered_dtoh_stream(
     runtime: CudaRuntime,
 ) -> CudaOrderedDtoHStream:
@@ -1468,6 +1973,43 @@ def create_ordered_dtoh_stream(
 
     """
     return runtime.ordered_transfers.create()
+
+
+def _create_cuda_event(create_fn: _CudaFn) -> ctypes.c_void_p:
+    event = ctypes.c_void_p()
+    _check_execution(
+        create_fn(ctypes.byref(event), CUDA_EVENT_DEFAULT),
+        "cuEventCreate",
+    )
+    return event
+
+
+def _destroy_cuda_event(destroy_fn: _CudaFn, event: ctypes.c_void_p) -> None:
+    _check_execution(destroy_fn(event), "cuEventDestroy_v2")
+
+
+def _destroy_cuda_event_failure(
+    destroy_fn: _CudaFn,
+    event: ctypes.c_void_p,
+) -> AcceleratorExecutionError | None:
+    try:
+        _destroy_cuda_event(destroy_fn, event)
+    except AcceleratorExecutionError as error:
+        return error
+    return None
+
+
+def _event_elapsed_ms(
+    elapsed_fn: _CudaFn,
+    start: ctypes.c_void_p,
+    end: ctypes.c_void_p,
+) -> float:
+    milliseconds = ctypes.c_float()
+    _check_execution(
+        elapsed_fn(ctypes.byref(milliseconds), start, end),
+        "cuEventElapsedTime_v2",
+    )
+    return float(milliseconds.value)
 
 
 def _raise_first_failure(

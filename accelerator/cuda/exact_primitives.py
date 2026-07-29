@@ -69,6 +69,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from accelerator.cuda.runtime import CudaIndependentKernelLaunch
+    from accelerator.cuda.runtime import CudaIndependentKernelTimeline
+    from accelerator.cuda.runtime import CudaIndependentKernelTimelineSample
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
     from accelerator.exact_primitives import PrimitiveExecutionResult
@@ -447,6 +449,7 @@ class _CudaPrimitiveSubmission:
     binding: _CudaPrimitiveTicketBinding
     kernels: _CudaPrimitiveKernels
     prepared: PreparedPrimitiveBatch
+    timeline: CudaIndependentKernelTimeline | None
 
 
 def _submit_primitive_ticket(
@@ -468,22 +471,10 @@ def _submit_primitive_ticket(
         pointers=[],
     )
     try:
-        device_data = owner.copy_packed(storage.data_u32le)
-        device_accumulator = _prepared_packed_accumulator(owner, storage)
-        device_output = owner.allocate(ctypes.sizeof(host_output))
-        kernel, pointers = _primitive_launch_spec(
-            submission.kernels,
-            storage.kind,
-            _CudaPrimitiveBuffers(
-                accumulator=device_accumulator,
-                data=device_data,
-                output=device_output,
-            ),
-        )
-        launch = submission.binding.runtime.independent_kernel_launches.submit(
-            kernel,
-            pointers,
-            storage.count(),
+        launch = _build_primitive_ticket_launch(
+            submission,
+            owner,
+            host_output,
         )
     except AcceleratorExecutionError:
         owner.close()
@@ -495,6 +486,34 @@ def _submit_primitive_ticket(
             launch=launch,
             pointers=owner.pointers,
         ),
+    )
+
+
+def _build_primitive_ticket_launch(
+    submission: _CudaPrimitiveSubmission,
+    owner: _PreparedPointerOwner,
+    host_output: ctypes.Array[ctypes.c_uint32],
+) -> CudaIndependentKernelLaunch:
+    storage = submission.prepared.validated_storage()
+    device_data = owner.copy_packed(storage.data_u32le)
+    device_accumulator = _prepared_packed_accumulator(owner, storage)
+    device_output = owner.allocate(ctypes.sizeof(host_output))
+    kernel, pointers = _primitive_launch_spec(
+        submission.kernels,
+        storage.kind,
+        _CudaPrimitiveBuffers(
+            accumulator=device_accumulator,
+            data=device_data,
+            output=device_output,
+        ),
+    )
+    timeline = submission.timeline
+    if timeline is not None:
+        return timeline.submit(kernel, pointers, storage.count())
+    return submission.binding.runtime.independent_kernel_launches.submit(
+        kernel,
+        pointers,
+        storage.count(),
     )
 
 
@@ -522,6 +541,95 @@ def _primitive_launch_spec(
 
 
 @final
+class CudaPrimitiveTicketTimeline:
+    """Opt-in CUDA-event timeline for exact one-shot primitive tickets."""
+
+    def __init__(
+        self,
+        timeline: CudaIndependentKernelTimeline,
+        submit: Callable[
+            [PreparedPrimitiveBatch, CudaIndependentKernelTimeline],
+            CudaPrimitiveEvaluationTicket,
+        ],
+    ) -> None:
+        """Adopt one runtime timeline and its adapter-owned submit callback."""
+        self._submit = submit
+        self._timeline = timeline
+
+    def __enter__(self) -> CudaPrimitiveTicketTimeline:
+        """Return this ticket timeline for scoped use.
+
+        Returns:
+            The same live ticket timeline.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Close the event origin after every submitted ticket finishes."""
+        self.close()
+
+    def close(self) -> None:
+        """Destroy the event origin after every ticket launch closes."""
+        self._timeline.close()
+
+    def samples(self) -> tuple[CudaIndependentKernelTimelineSample, ...]:
+        """Return completed ticket intervals in submission order.
+
+        Returns:
+            Immutable CUDA-event intervals for this timeline.
+
+        """
+        return self._timeline.samples()
+
+    def submit(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> CudaPrimitiveEvaluationTicket:
+        """Submit one exact ticket with CUDA-event start/end capture.
+
+        Returns:
+            Ticket whose successful cleanup publishes one interval.
+
+        """
+        return self._submit(prepared, self._timeline)
+
+
+@final
+class CudaPrimitiveTicketTimelineFactory:
+    """Create ticket timelines bound to one exact CUDA adapter."""
+
+    def __init__(
+        self,
+        create_timeline: Callable[[], CudaIndependentKernelTimeline],
+        submit: Callable[
+            [PreparedPrimitiveBatch, CudaIndependentKernelTimeline],
+            CudaPrimitiveEvaluationTicket,
+        ],
+    ) -> None:
+        """Bind runtime creation and adapter-owned ticket submission."""
+        self._create_timeline = create_timeline
+        self._submit = submit
+
+    def create(self) -> CudaPrimitiveTicketTimeline:
+        """Create one synchronized ticket event timeline.
+
+        Returns:
+            New timeline bound to the owning CUDA adapter.
+
+        """
+        return CudaPrimitiveTicketTimeline(
+            self._create_timeline(),
+            self._submit,
+        )
+
+
+@final
 class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     """Exact integer CUDA batch adapter with no semantic authority."""
 
@@ -536,6 +644,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _primitive_tickets: list[CudaPrimitiveEvaluationTicket]
     _rotate: ctypes.c_void_p
     _runtime: CudaRuntime
+    ticket_timelines: CudaPrimitiveTicketTimelineFactory
 
     def __init__(self, device_id: int = 0) -> None:
         """Create one optional CUDA adapter and compile reviewed kernels.
@@ -569,6 +678,10 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._primitive_tickets = []
         self._rotate = rotate
         self._runtime = runtime
+        self.ticket_timelines = CudaPrimitiveTicketTimelineFactory(
+            runtime.independent_kernel_timelines.create,
+            self._submit_prepared_profiled,
+        )
 
     def __enter__(self) -> Self:
         """Return this adapter for scoped use.
@@ -695,6 +808,31 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
                     rotate=self._rotate,
                 ),
                 prepared=prepared,
+                timeline=None,
+            )
+        )
+        self._primitive_tickets.append(ticket)
+        return ticket
+
+    def _submit_prepared_profiled(
+        self,
+        prepared: PreparedPrimitiveBatch,
+        timeline: CudaIndependentKernelTimeline,
+    ) -> CudaPrimitiveEvaluationTicket:
+        self._ensure_open()
+        ticket = _submit_primitive_ticket(
+            _CudaPrimitiveSubmission(
+                binding=_CudaPrimitiveTicketBinding(
+                    capability=self._capability,
+                    forget=self._forget_primitive_ticket,
+                    runtime=self._runtime,
+                ),
+                kernels=_CudaPrimitiveKernels(
+                    crazy=self._crazy,
+                    rotate=self._rotate,
+                ),
+                prepared=prepared,
+                timeline=timeline,
             )
         )
         self._primitive_tickets.append(ticket)
