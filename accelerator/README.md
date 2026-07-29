@@ -74,8 +74,16 @@ until `wait()` validates capability, evaluator identity, count, and request orde
 Pending tickets must close before fallback; malformed tickets and cleanup failure
 fail closed. State and actual/fallback route are observable, repeated successful
 wait is idempotent, and close-before-wait prevents execution. The contract creates
-no hidden threads. CUDA candidate evaluation does not implement this port yet, so
-no cross-backend concurrency or speedup claim follows from the neutral lifetime.
+no hidden threads. CUDA now implements this port for exact classic crazy/rotate
+candidates. Runtime identity `cuda-default-stream-kernel-launch-v1` retains kernel
+parameter owners until context synchronization; each candidate ticket owns
+one-shot uploads, output, launch, and device allocations until `wait()` or
+`close()`. Prepared CPU-reference equality is required before candidate evidence
+publishes. Seven tests cover identity plus six live RTX 4060 routes: rotate, crazy,
+empty/idempotent, close-before-wait, adapter-teardown fallback, and two independent
+tickets waited in reverse order. Existing synchronous primitive calls remain
+synchronous. Context-wide default-stream completion is not independent-stream
+concurrency, measured overlap, or a speedup claim.
 `search_selection.py` independently resolves algorithm and backend bindings,
 requires a CPU reference, supports explicit overrides, and records configured
 versus actual backend identity after fallback. `search_config.py` adds versioned

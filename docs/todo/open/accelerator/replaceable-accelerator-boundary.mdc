@@ -320,8 +320,10 @@ multi-position strategy that can supply exact positions without heuristic filter
   optional tickets and deferred CPU fallback. Publication waits for structural
   validation; optional cleanup must succeed before fallback; malformed tickets or
   cleanup failure fail closed. Ten tests cover lifetime, route, and failure state.
-  CUDA candidate tickets, search/verification submission, synthesis/guided and
-  resident search, ROCm work ports/VM execution, adaptive/kernel overlap, and
-  broader hardware remain open.
+  CUDA now supplies exact crazy/rotate tickets with retained launch parameters and
+  independent one-shot buffers; seven tests cover identity plus six live exact
+  lifetime routes. Search/verification submission, synthesis/guided and resident
+  search, independent CUDA streams, ROCm work ports/VM execution, adaptive/kernel
+  overlap, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

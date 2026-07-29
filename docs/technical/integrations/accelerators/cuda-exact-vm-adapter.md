@@ -172,11 +172,18 @@ windows 1/8: 95.2102/94.9084 ms (1.003x, 14/15 wins) and
 doubles retained memory to 36.491/291.929 MiB and increases allocation, so it is
 opt-in. This is D-to-H versus callback-CPU overlap, not kernel overlap or a
 cross-device claim. The hardware-neutral
-`validated-candidate-submission-v1` lifetime now exists outside CUDA, but this
-adapter's candidate/primitive launches still synchronize inside their current
-methods and do not implement `CandidateSubmissionAdapter`. Connecting CUDA
-requires a separate launch/sync/output-lifetime slice and live exact evidence;
-the neutral contract alone is not an asynchronous CUDA claim.
+`validated-candidate-submission-v1` now has a CUDA implementation for exact
+classic crazy/rotate candidates. `cuda-default-stream-kernel-launch-v1` separates
+Driver launch from context synchronization while retaining every kernel parameter
+owner. Each candidate submission uses independent one-shot input/output device
+allocations rather than resident buffers; `wait()` synchronizes, downloads,
+validates against the proof-bound CPU reference, and frees before publication.
+`close()` drains without publication, adapter/runtime teardown drains outstanding
+launches before module/context destruction, and cleanup failure remains fail-closed.
+Existing primitive `evaluate`/`evaluate_prepared` methods retain their synchronous
+behavior. Default-stream context synchronization may complete multiple queued
+launches, but it is not independent-stream concurrency, kernel/transfer overlap,
+or a speedup claim.
 
 ## Invariants
 
@@ -210,6 +217,10 @@ fails explicitly without changing correctness rules.
   validated-memory, direct-snapshot, and persistent-session evidence are retained.
   The hardware-neutral exact-primitive candidate bridge also executes 257-item
   classic crazy and rotate corpora on live CUDA and matches CPU evidence exactly.
+  `tests/optimizer/test_cuda_candidate_submission.py` adds the launch identity and
+  six live one-shot ticket routes: rotate/crazy exact publication, empty/idempotent
+  completion, close-before-wait, adapter-close CPU fallback after drain, and two
+  independent tickets waited in reverse order.
   Verification-assist now reuses exact candidate evidence through the same live
   CUDA backend over a deterministic 257-item rotate corpus; those results remain
   untrusted hints and malformed optional evidence becomes no hint. The bounded

@@ -345,10 +345,13 @@ one exact candidate batch to an optional backend ticket and deferred mandatory C
 reference, publishes only after result validation, records pending/completed/closed/
 failed state, and requires successful optional-ticket cleanup before fallback.
 Malformed tickets or cleanup failure fail closed. The neutral layer creates no
-threads and grants no acceptance authority. CUDA snapshot overlap remains
-adapter-internal and the CUDA candidate adapter does not yet implement this
-submission port. Search/verification submission, adaptive bank selection,
-kernel overlap, live CUDA candidate tickets, and ROCm remain open.
+threads and grants no acceptance authority. CUDA now implements candidate tickets
+for exact classic crazy/rotate work: `cuda-default-stream-kernel-launch-v1`
+retains launch parameters until synchronization, and one-shot buffers survive
+until exact CPU-reference validation plus cleanup. Existing synchronous calls do
+not change. Context-wide default-stream completion is not independent-stream
+concurrency or measured speedup. Search/verification submission, adaptive bank
+selection, kernel/transfer overlap, independent CUDA streams, and ROCm remain open.
 
 ## Invariants
 
@@ -412,8 +415,12 @@ fails explicitly without changing correctness rules.
   identity, deferred CPU execution, exact optional publication, idempotent wait,
   typed submit/wait fallback, malformed-ticket rejection, result-shape fallback,
   close-before-wait, mandatory-failure caching, and cleanup-failure rejection.
-- Remaining evidence includes concrete asynchronous CUDA/ROCm candidate tickets,
-  search/verification submission ports, ROCm VM substitution, adaptive overlap
+- `tests/optimizer/test_cuda_candidate_submission.py` verifies stable launch
+  identity and six live CUDA ticket routes covering exact rotate/crazy publication,
+  empty/idempotent work, close-before-wait, teardown fallback, and reverse waiting
+  of two independent one-shot submissions.
+- Remaining evidence includes search/verification submission ports, ROCm candidate
+  tickets and VM substitution, independent CUDA stream policy, adaptive overlap
   selection, kernel/transfer overlap, broader hardware evidence, and matched
   measurements for future speedup claims.
 - Prerequisite completion evidence: `batch-vm-execution`,

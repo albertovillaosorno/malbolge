@@ -1375,10 +1375,17 @@ deferred CPU reference; `wait()` validates identity/order before publication,
 optional fallback occurs only after cleanup, and malformed tickets or cleanup
 failure fail closed. Ten neutral tests cover state, idempotence, deferred CPU,
 optional success/fallback, malformed ticket/result, close, cached mandatory
-failure, and cleanup failure. The layer creates no hidden threads and CUDA
-candidate execution is not connected yet. Live CUDA candidate tickets,
-search/verification submission, adaptive bank/window selection, kernel/transfer
-overlap, other callback workloads, and broader live-device evidence remain open.
+failure, and cleanup failure. The layer creates no hidden threads. CUDA now
+implements exact crazy/rotate tickets using
+`cuda-default-stream-kernel-launch-v1`: launch parameter owners and independent
+one-shot buffers survive until context synchronization, download, prepared CPU
+reference equality, and cleanup. Seven tests cover identity and six live RTX 4060
+routes: rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback,
+and two tickets waited in reverse order. Existing synchronous calls remain
+synchronous; context-wide default-stream completion is not overlap or speedup.
+Search/verification submission, independent stream policy, adaptive bank/window
+selection, kernel/transfer overlap, other callback workloads, and broader
+live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

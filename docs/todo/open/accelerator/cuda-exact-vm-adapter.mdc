@@ -328,9 +328,12 @@ improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The pro
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. The next production boundary is the first real non-invertible or
 multi-position strategy that can supply exact positions without heuristic filtering.
-  Hardware-neutral candidate submission lifetime now exists, but CUDA
-  primitive/candidate methods still synchronize internally and do not implement
-  the neutral ticket port. A separate live launch/sync/output-lifetime slice plus
-  synthesis/search evidence remains open.
+  CUDA now implements the neutral candidate ticket port for exact classic
+  crazy/rotate work. `cuda-default-stream-kernel-launch-v1` retains launch
+  parameters until context sync; one-shot buffers remain owned until download,
+  prepared CPU-reference equality, and cleanup. Seven tests cover identity plus
+  six live lifetime/exactness routes. Existing primitive methods stay synchronous,
+  and context-wide default-stream completion is not overlap or speedup. Independent
+  streams plus synthesis/search submission evidence remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
