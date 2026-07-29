@@ -66,6 +66,9 @@ from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import PrimitiveResult
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from accelerator.cuda.runtime import CudaKernelLaunch
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
     from accelerator.exact_primitives import PrimitiveExecutionResult
@@ -333,6 +336,191 @@ class _CudaPreparedPrimitiveSession:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _CudaPrimitiveTicketBinding:
+    capability: AcceleratorCapability
+    forget: Callable[[CudaPrimitiveEvaluationTicket], None]
+    runtime: CudaRuntime
+
+
+@dataclass(slots=True)
+class _CudaPrimitiveTicketResources:
+    host_output: ctypes.Array[ctypes.c_uint32]
+    launch: CudaKernelLaunch | None
+    pointers: list[int]
+
+
+@final
+class CudaPrimitiveEvaluationTicket:
+    """One-shot primitive launch owning buffers until wait or close."""
+
+    def __init__(
+        self,
+        binding: _CudaPrimitiveTicketBinding,
+        resources: _CudaPrimitiveTicketResources,
+    ) -> None:
+        """Adopt one submitted primitive launch and every owned allocation."""
+        self._binding = binding
+        self._closed = False
+        self._failure: AcceleratorExecutionError | None = None
+        self._resources = resources
+        self._result: PackedPrimitiveResult | None = None
+
+    def close(self) -> None:
+        """Drain pending work and release all one-shot allocations."""
+        if self._failure is not None:
+            raise self._failure
+        if self._closed:
+            return
+        failure = self._release_failure()
+        if failure is not None:
+            self._failure = failure
+            raise failure
+
+    def wait(self) -> PackedPrimitiveResult:
+        """Complete, download, and release one exact primitive submission.
+
+        Returns:
+            Immutable packed primitive result after successful cleanup.
+
+        """
+        cached = self._cached_result()
+        if cached is not None:
+            return cached
+        launch = self._resources.launch
+        if launch is not None:
+            launch.wait()
+        result = self._download_result()
+        failure = self._release_failure()
+        if failure is not None:
+            self._failure = failure
+            raise failure
+        self._result = result
+        return result
+
+    def _cached_result(self) -> PackedPrimitiveResult | None:
+        if self._result is not None:
+            return self._result
+        if self._failure is not None:
+            raise self._failure
+        if self._closed:
+            message = "CUDA primitive evaluation ticket is closed"
+            raise AcceleratorExecutionError(message)
+        return None
+
+    def _download_result(self) -> PackedPrimitiveResult:
+        if self._resources.pointers:
+            self._binding.runtime.copy_from_device(
+                self._resources.host_output,
+                self._resources.pointers[-1],
+            )
+        return PackedPrimitiveResult(
+            capability=self._binding.capability,
+            words_u32le=bytes(self._resources.host_output),
+        )
+
+    def _release_failure(self) -> AcceleratorExecutionError | None:
+        launch = self._resources.launch
+        if launch is not None:
+            try:
+                launch.close()
+            except AcceleratorExecutionError as error:
+                return error
+            self._resources.launch = None
+        failure = _free_all_failure(
+            self._binding.runtime,
+            self._resources.pointers,
+        )
+        self._closed = True
+        self._binding.forget(self)
+        return failure
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaPrimitiveKernels:
+    crazy: ctypes.c_void_p
+    rotate: ctypes.c_void_p
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaPrimitiveSubmission:
+    binding: _CudaPrimitiveTicketBinding
+    kernels: _CudaPrimitiveKernels
+    prepared: PreparedPrimitiveBatch
+
+
+def _submit_primitive_ticket(
+    submission: _CudaPrimitiveSubmission,
+) -> CudaPrimitiveEvaluationTicket:
+    storage = submission.prepared.validated_storage()
+    host_output = _empty_host_words(storage.count())
+    if storage.count() == 0:
+        return CudaPrimitiveEvaluationTicket(
+            submission.binding,
+            _CudaPrimitiveTicketResources(
+                host_output=host_output,
+                launch=None,
+                pointers=[],
+            ),
+        )
+    owner = _PreparedPointerOwner(
+        runtime=submission.binding.runtime,
+        pointers=[],
+    )
+    try:
+        device_data = owner.copy_packed(storage.data_u32le)
+        device_accumulator = _prepared_packed_accumulator(owner, storage)
+        device_output = owner.allocate(ctypes.sizeof(host_output))
+        kernel, pointers = _primitive_launch_spec(
+            submission.kernels,
+            storage.kind,
+            _CudaPrimitiveBuffers(
+                accumulator=device_accumulator,
+                data=device_data,
+                output=device_output,
+            ),
+        )
+        launch = submission.binding.runtime.kernel_launches.submit(
+            kernel,
+            pointers,
+            storage.count(),
+        )
+    except AcceleratorExecutionError:
+        owner.close()
+        raise
+    return CudaPrimitiveEvaluationTicket(
+        submission.binding,
+        _CudaPrimitiveTicketResources(
+            host_output=host_output,
+            launch=launch,
+            pointers=owner.pointers,
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaPrimitiveBuffers:
+    accumulator: int | None
+    data: int
+    output: int
+
+
+def _primitive_launch_spec(
+    kernels: _CudaPrimitiveKernels,
+    kind: PrimitiveKind,
+    buffers: _CudaPrimitiveBuffers,
+) -> tuple[ctypes.c_void_p, tuple[int, ...]]:
+    if kind is PrimitiveKind.ROTATE:
+        return (kernels.rotate, (buffers.data, buffers.output))
+    if buffers.accumulator is None:
+        message = "CUDA crazy submission has no accumulator buffer"
+        raise AcceleratorExecutionError(message)
+    return (
+        kernels.crazy,
+        (buffers.data, buffers.accumulator, buffers.output),
+    )
+
+
 @final
 class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     """Exact integer CUDA batch adapter with no semantic authority."""
@@ -345,6 +533,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _prepared_packed_evaluations: int
     _prepared_reuses: int
     _prepared_session: _CudaPreparedPrimitiveSession | None
+    _primitive_tickets: list[CudaPrimitiveEvaluationTicket]
     _rotate: ctypes.c_void_p
     _runtime: CudaRuntime
 
@@ -377,6 +566,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._prepared_packed_evaluations = 0
         self._prepared_reuses = 0
         self._prepared_session = None
+        self._primitive_tickets = []
         self._rotate = rotate
         self._runtime = runtime
 
@@ -409,17 +599,25 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         return self._capability
 
     def close(self) -> None:
-        """Release resident buffers, module, and CUDA context exactly once."""
+        """Drain tickets, resident buffers, module, and context exactly once."""
         if self._closed:
             return
         self._closed = True
-        try:
-            try:
-                self._release_prepared_session()
-            finally:
-                self._runtime.unload_module(self._module)
-        finally:
-            self._runtime.close()
+        ticket_failure = self._release_primitive_tickets_failure()
+        if ticket_failure is not None:
+            runtime_failure = _operation_failure(self._runtime.close)
+            _raise_first_failure(ticket_failure, runtime_failure)
+            return
+        session_failure = _operation_failure(self._release_prepared_session)
+        module_failure = _operation_failure(
+            lambda: self._runtime.unload_module(self._module)
+        )
+        runtime_failure = _operation_failure(self._runtime.close)
+        _raise_first_failure(
+            session_failure,
+            module_failure,
+            runtime_failure,
+        )
 
     @override
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
@@ -473,6 +671,35 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             words_u32le=words_u32le,
         )
 
+    def submit_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> CudaPrimitiveEvaluationTicket:
+        """Submit one one-shot prepared primitive batch without synchronization.
+
+        Returns:
+            Ticket owning uploads, output, launch, and allocations until
+            cleanup.
+
+        """
+        self._ensure_open()
+        ticket = _submit_primitive_ticket(
+            _CudaPrimitiveSubmission(
+                binding=_CudaPrimitiveTicketBinding(
+                    capability=self._capability,
+                    forget=self._forget_primitive_ticket,
+                    runtime=self._runtime,
+                ),
+                kernels=_CudaPrimitiveKernels(
+                    crazy=self._crazy,
+                    rotate=self._rotate,
+                ),
+                prepared=prepared,
+            )
+        )
+        self._primitive_tickets.append(ticket)
+        return ticket
+
     def profile_prepared(
         self,
         prepared: PreparedPrimitiveBatch,
@@ -523,6 +750,29 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
             resident_kind=(None if session is None else session.kind),
             reuses=self._prepared_reuses,
         )
+
+    def _forget_primitive_ticket(
+        self,
+        ticket: CudaPrimitiveEvaluationTicket,
+    ) -> None:
+        try:
+            self._primitive_tickets.remove(ticket)
+        except ValueError:
+            return
+
+    def _release_primitive_tickets_failure(
+        self,
+    ) -> AcceleratorExecutionError | None:
+        failure: AcceleratorExecutionError | None = None
+        for ticket in tuple(self._primitive_tickets):
+            try:
+                ticket.close()
+            except AcceleratorExecutionError as error:
+                if failure is None:
+                    failure = error
+        if failure is None:
+            self._primitive_tickets.clear()
+        return failure
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -620,6 +870,39 @@ def _copy_words(
         runtime.free(pointer)
         raise
     return pointer
+
+
+def _operation_failure(
+    action: Callable[[], None],
+) -> AcceleratorExecutionError | None:
+    try:
+        action()
+    except AcceleratorExecutionError as error:
+        return error
+    return None
+
+
+def _raise_first_failure(
+    *failures: AcceleratorExecutionError | None,
+) -> None:
+    for failure in failures:
+        if failure is not None:
+            raise failure
+
+
+def _free_all_failure(
+    runtime: CudaRuntime,
+    pointers: list[int],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    while pointers:
+        pointer = pointers.pop()
+        try:
+            runtime.free(pointer)
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    return failure
 
 
 def _free_all(runtime: CudaRuntime, pointers: list[int]) -> None:

@@ -329,6 +329,27 @@ def prepared_primitive_reference_word_count(state: object) -> int:
     return len(expected) // _WORD_BYTES
 
 
+def encode_prepared_primitive_result(
+    state: object,
+    primitive: PrimitiveExecutionResult,
+    capability: AcceleratorCapability,
+) -> CandidateEvaluationResult:
+    """Validate and encode one prepared primitive result for publication.
+
+    Returns:
+        Ordered candidate evidence equal to the proof-bound CPU reference.
+
+    """
+    prepared = _prepared_candidate_state(state)
+    expected = _required_expected_words(prepared)
+    return _encode_prepared_result(
+        prepared.batch,
+        primitive,
+        capability,
+        expected_words_u32le=expected,
+    )
+
+
 def profile_prepared_primitive_result(
     state: object,
     primitive: PrimitiveExecutionResult,

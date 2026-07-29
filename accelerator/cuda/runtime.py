@@ -69,9 +69,8 @@ THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
 CUDA_STREAM_DEFAULT: Final = 0
-CUDA_ORDERED_DTOH_STREAM_ID: Final = (
-    "cuda-ordered-registered-dtoh-stream-v1"
-)
+CUDA_ORDERED_DTOH_STREAM_ID: Final = "cuda-ordered-registered-dtoh-stream-v1"
+CUDA_KERNEL_LAUNCH_ID: Final = "cuda-default-stream-kernel-launch-v1"
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
@@ -166,9 +165,8 @@ class CudaHostMemoryRegistry:
         self._ensure_open()
         address = ctypes.addressof(host)
         registered = self._registrations.get(address)
-        if (
-            registered is None
-            or ctypes.sizeof(registered) != ctypes.sizeof(host)
+        if registered is None or ctypes.sizeof(registered) != ctypes.sizeof(
+            host
         ):
             message = "CUDA asynchronous copy requires a registered host buffer"
             raise AcceleratorExecutionError(message)
@@ -406,15 +404,17 @@ class CudaOrderedDtoHStreamFactory:
             ),
             "cuStreamCreate",
         )
-        stream = CudaOrderedDtoHStream(_CudaOrderedStreamBinding(
-            copy_fn=self._binding.copy_fn,
-            destroy_fn=self._binding.destroy_fn,
-            ensure_open=self._binding.ensure_open,
-            forget=self._forget,
-            handle=handle,
-            host_memory=self._binding.host_memory,
-            synchronize_fn=self._binding.synchronize_fn,
-        ))
+        stream = CudaOrderedDtoHStream(
+            _CudaOrderedStreamBinding(
+                copy_fn=self._binding.copy_fn,
+                destroy_fn=self._binding.destroy_fn,
+                ensure_open=self._binding.ensure_open,
+                forget=self._forget,
+                handle=handle,
+                host_memory=self._binding.host_memory,
+                synchronize_fn=self._binding.synchronize_fn,
+            )
+        )
         self._streams.append(stream)
         return stream
 
@@ -432,6 +432,177 @@ class CudaOrderedDtoHStreamFactory:
             self._streams.remove(stream)
         except ValueError:
             return
+
+
+def cuda_kernel_launch_id() -> str:
+    """Return the explicit default-stream kernel-launch identity.
+
+    Returns:
+        Stable identity for contract and evidence provenance.
+
+    """
+    return CUDA_KERNEL_LAUNCH_ID
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaKernelLaunchBinding:
+    ensure_open: Callable[[], None]
+    forget: Callable[[CudaKernelLaunch], None]
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaKernelLaunch:
+    """One default-stream launch retaining parameter owners until completion."""
+
+    def __init__(
+        self,
+        binding: _CudaKernelLaunchBinding,
+        owners: tuple[object, ...],
+    ) -> None:
+        """Adopt one submitted launch and its exact parameter lifetimes."""
+        self._binding = binding
+        self._closed = False
+        self._completed = False
+        self._owners = owners
+
+    @property
+    def completed(self) -> bool:
+        """Whether context synchronization completed this launch."""
+        return self._completed
+
+    def close(self) -> None:
+        """Synchronize pending work and close the launch exactly once."""
+        if self._closed:
+            return
+        if not self._completed:
+            self.wait()
+        self._closed = True
+
+    def wait(self) -> None:
+        """Synchronize the CUDA context and release parameter lifetimes.
+
+        Raises:
+            AcceleratorExecutionError: If closed or synchronization fails.
+
+        """
+        self._binding.ensure_open()
+        if self._closed:
+            message = "CUDA kernel launch is closed"
+            raise AcceleratorExecutionError(message)
+        if self._completed:
+            return
+        _check_execution(self._binding.synchronize_fn(), "cuCtxSynchronize")
+        self._completed = True
+        self._owners = ()
+        self._binding.forget(self)
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaKernelLaunchArguments:
+    blocks: int
+    owners: tuple[object, ...]
+    params: ctypes.Array[ctypes.c_void_p]
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaKernelLaunchFactoryBinding:
+    ensure_open: Callable[[], None]
+    launch_fn: _CudaFn
+    synchronize_fn: _CudaFn
+
+
+@final
+class CudaKernelLaunchFactory:
+    """Own submitted default-stream launches until synchronization."""
+
+    def __init__(self, binding: _CudaKernelLaunchFactoryBinding) -> None:
+        """Bind one live context's launch and synchronization functions."""
+        self._binding = binding
+        self._launches: list[CudaKernelLaunch] = []
+
+    def submit(
+        self,
+        kernel: ctypes.c_void_p,
+        device_pointers: tuple[int, ...],
+        count: int,
+    ) -> CudaKernelLaunch:
+        """Submit one launch without synchronizing the owned context.
+
+        Returns:
+            Runtime-owned launch retaining every kernel parameter owner.
+
+        """
+        self._binding.ensure_open()
+        arguments = _kernel_launch_arguments(device_pointers, count)
+        _check_execution(
+            self._binding.launch_fn(
+                kernel,
+                arguments.blocks,
+                1,
+                1,
+                THREADS_PER_BLOCK,
+                1,
+                1,
+                0,
+                None,
+                arguments.params,
+                None,
+            ),
+            "cuLaunchKernel",
+        )
+        launch = CudaKernelLaunch(
+            _CudaKernelLaunchBinding(
+                ensure_open=self._binding.ensure_open,
+                forget=self._forget,
+                synchronize_fn=self._binding.synchronize_fn,
+            ),
+            (*arguments.owners, arguments.params),
+        )
+        self._launches.append(launch)
+        return launch
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Close every launch before stream, module, or context teardown.
+
+        Returns:
+            First synchronization failure, or ``None`` after complete release.
+
+        """
+        return _release_kernel_launches(self._launches)
+
+    def _forget(self, launch: CudaKernelLaunch) -> None:
+        try:
+            self._launches.remove(launch)
+        except ValueError:
+            return
+
+
+def _kernel_launch_arguments(
+    device_pointers: tuple[int, ...],
+    count: int,
+) -> _CudaKernelLaunchArguments:
+    if type(count) is not int or count <= 0:
+        message = "CUDA kernel launch count must be a positive integer"
+        raise AcceleratorExecutionError(message)
+    if not device_pointers or any(
+        type(pointer) is not int or pointer <= 0 for pointer in device_pointers
+    ):
+        message = "CUDA kernel launch requires positive device pointers"
+        raise AcceleratorExecutionError(message)
+    device_arguments = tuple(
+        ctypes.c_uint64(pointer) for pointer in device_pointers
+    )
+    count_argument = ctypes.c_uint32(count)
+    owners: tuple[object, ...] = (*device_arguments, count_argument)
+    params_type = ctypes.c_void_p * len(owners)
+    params = params_type(*(ctypes.addressof(owner) for owner in owners))
+    blocks = (count + THREADS_PER_BLOCK - 1) // THREADS_PER_BLOCK
+    return _CudaKernelLaunchArguments(
+        blocks=blocks,
+        owners=owners,
+        params=params,
+    )
 
 
 class CudaResourceProbe:
@@ -480,6 +651,7 @@ class CudaRuntime:
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
     host_memory: CudaHostMemoryRegistry
+    kernel_launches: CudaKernelLaunchFactory
     ordered_transfers: CudaOrderedDtoHStreamFactory
     resources: CudaResourceProbe
 
@@ -543,6 +715,13 @@ class CudaRuntime:
             self._cu_mem_host_register,
             self._cu_mem_host_unregister,
         )
+        self.kernel_launches = CudaKernelLaunchFactory(
+            _CudaKernelLaunchFactoryBinding(
+                ensure_open=self._ensure_open,
+                launch_fn=self._cu_launch_kernel,
+                synchronize_fn=self._cu_ctx_synchronize,
+            )
+        )
         self.ordered_transfers = CudaOrderedDtoHStreamFactory(
             _CudaOrderedFactoryBinding(
                 copy_fn=self._cu_memcpy_dtoh_async,
@@ -577,12 +756,14 @@ class CudaRuntime:
         """Release registered host buffers and destroy the CUDA context."""
         if self._closed:
             return
+        launch_failure = self.kernel_launches.release_failure()
         stream_failure = self.ordered_transfers.release_failure()
         registration_failure = self.host_memory.release_failure()
         self._closed = True
         context_failure = self._destroy_context_failure()
         self.host_memory.clear()
         _raise_first_failure(
+            launch_failure,
             stream_failure,
             registration_failure,
             context_failure,
@@ -737,34 +918,9 @@ class CudaRuntime:
         device_pointers: tuple[int, ...],
         count: int,
     ) -> None:
-        """Launch one homogeneous one-dimensional kernel and synchronize."""
-        self._ensure_open()
-        device_arguments = tuple(
-            ctypes.c_uint64(pointer) for pointer in device_pointers
-        )
-        count_argument = ctypes.c_uint32(count)
-        owners: tuple[object, ...] = (*device_arguments, count_argument)
-        params_type = ctypes.c_void_p * len(owners)
-        params = params_type(*(ctypes.addressof(owner) for owner in owners))
-        blocks = (count + THREADS_PER_BLOCK - 1) // THREADS_PER_BLOCK
-        _check_execution(
-            self._cu_launch_kernel(
-                kernel,
-                blocks,
-                1,
-                1,
-                THREADS_PER_BLOCK,
-                1,
-                1,
-                0,
-                None,
-                params,
-                None,
-            ),
-            "cuLaunchKernel",
-        )
-        _ = owners
-        _check_execution(self._cu_ctx_synchronize(), "cuCtxSynchronize")
+        """Launch one homogeneous kernel and preserve synchronous semantics."""
+        launch = self.kernel_launches.submit(kernel, device_pointers, count)
+        launch.wait()
 
     def _load_module(self, ptx: bytes) -> ctypes.c_void_p:
         """Load one PTX image into the owned context.
@@ -1118,6 +1274,21 @@ def _raise_first_failure(
     for failure in failures:
         if failure is not None:
             raise failure
+
+
+def _release_kernel_launches(
+    launches: list[CudaKernelLaunch],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    for launch in tuple(launches):
+        try:
+            launch.close()
+        except AcceleratorExecutionError as error:
+            if failure is None:
+                failure = error
+    if failure is None:
+        launches.clear()
+    return failure
 
 
 def _release_ordered_dtoh_streams(
