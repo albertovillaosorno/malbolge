@@ -81,6 +81,9 @@ CUDA_INDEPENDENT_KERNEL_TIMELINE_ID: Final = (
 CUDA_INDEPENDENT_TICKET_TRANSFER_ID: Final = (
     "cuda-independent-stream-ticket-transfer-v1"
 )
+CUDA_INDEPENDENT_TICKET_TRANSFER_TIMELINE_ID: Final = (
+    "cuda-independent-stream-ticket-transfer-timeline-v1"
+)
 CUDA_EVENT_DEFAULT: Final = 0
 
 _CudaFn = Callable[..., int]
@@ -485,6 +488,16 @@ def cuda_independent_ticket_transfer_id() -> str:
     return CUDA_INDEPENDENT_TICKET_TRANSFER_ID
 
 
+def cuda_independent_ticket_transfer_timeline_id() -> str:
+    """Return the CUDA-event ticket transfer phase timeline identity.
+
+    Returns:
+        Stable identity for H-to-D/kernel/D-to-H phase attribution.
+
+    """
+    return CUDA_INDEPENDENT_TICKET_TRANSFER_TIMELINE_ID
+
+
 @dataclass(frozen=True, slots=True)
 class CudaHostToDeviceTransfer:
     """One registered host buffer queued for stream-local H-to-D copy."""
@@ -653,8 +666,9 @@ class _CudaIndependentKernelLaunchBinding:
     forget: Callable[[CudaIndependentKernelLaunch], None]
     handle: ctypes.c_void_p
     host_memory: CudaHostMemoryRegistry
+    kernel_timeline: _CudaIndependentKernelTimelineLaunch | None
     synchronize_fn: _CudaFn
-    timeline: _CudaIndependentKernelTimelineLaunch | None
+    transfer_timeline: _CudaIndependentTicketTransferTimelineLaunch | None
 
 
 @final
@@ -712,14 +726,19 @@ class CudaIndependentKernelLaunch:
         *,
         completed: bool,
     ) -> AcceleratorExecutionError | None:
-        timeline = self._binding.timeline
-        if timeline is None:
-            return None
-        try:
-            timeline.finish(completed=completed)
-        except AcceleratorExecutionError as error:
-            return error
-        return None
+        failure: AcceleratorExecutionError | None = None
+        for timeline in (
+            self._binding.kernel_timeline,
+            self._binding.transfer_timeline,
+        ):
+            if timeline is None:
+                continue
+            try:
+                timeline.finish(completed=completed)
+            except AcceleratorExecutionError as error:
+                if failure is None:
+                    failure = error
+        return failure
 
     def _wait_failure(self) -> AcceleratorExecutionError | None:
         if self._completed:
@@ -1086,6 +1105,352 @@ class CudaIndependentKernelTimelineFactory:
 
 
 @dataclass(frozen=True, slots=True)
+class CudaIndependentTicketTransferTimelineSample:
+    """CUDA-event phase attribution for one same-stream transfer ticket."""
+
+    download_duration_ms: float
+    end_ms: float
+    kernel_duration_ms: float
+    kernel_end_ms: float
+    start_ms: float
+    submission_index: int
+    total_duration_ms: float
+    upload_duration_ms: float
+    upload_end_ms: float
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaIndependentTicketTransferTimelineLaunch:
+    end: ctypes.c_void_p
+    kernel_end: ctypes.c_void_p
+    start: ctypes.c_void_p
+    submission_index: int
+    timeline: CudaIndependentTicketTransferTimeline
+    upload_end: ctypes.c_void_p
+
+    def finish(self, *, completed: bool) -> None:
+        """Publish completed transfer phases or discard failed event state."""
+        self.timeline._finish_launch(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            self,
+            completed=completed,
+        )
+
+
+@final
+class CudaIndependentTicketTransferTimeline:
+    """Diagnostic event phases for registered same-stream ticket work."""
+
+    def __init__(
+        self,
+        functions: CudaIndependentKernelTimelineFunctions,
+        launch_factory: CudaIndependentKernelLaunchFactory,
+        forget: Callable[[CudaIndependentTicketTransferTimeline], None],
+    ) -> None:
+        """Create and synchronize one untimed event origin.
+
+        Raises:
+            AcceleratorExecutionError: If event setup fails.
+
+        """
+        self._active = 0
+        self._closed = False
+        self._forget = forget
+        self._functions = functions
+        self._launch_factory = launch_factory
+        self._next_submission_index = 0
+        self._origin = _create_cuda_event(functions.create_fn)
+        self._samples: list[CudaIndependentTicketTransferTimelineSample] = []
+        try:
+            _check_execution(
+                functions.record_fn(self._origin, None),
+                "cuEventRecord",
+            )
+            _check_execution(
+                functions.synchronize_fn(self._origin),
+                "cuEventSynchronize",
+            )
+        except AcceleratorExecutionError:
+            _destroy_cuda_event(functions.destroy_fn, self._origin)
+            raise
+
+    def __enter__(self) -> CudaIndependentTicketTransferTimeline:
+        """Return this transfer timeline for scoped use.
+
+        Returns:
+            The same live transfer timeline.
+
+        """
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        """Destroy the origin after every profiled ticket finishes."""
+        self.close()
+
+    def close(self) -> None:
+        """Destroy the origin after all profiled tickets finish.
+
+        Raises:
+            AcceleratorExecutionError:
+                If launches remain active or cleanup fails.
+
+        """
+        if self._closed:
+            return
+        self._functions.ensure_open()
+        if self._active != 0:
+            message = "CUDA ticket transfer timeline has active launches"
+            raise AcceleratorExecutionError(message)
+        _destroy_cuda_event(self._functions.destroy_fn, self._origin)
+        self._closed = True
+        self._forget(self)
+
+    def samples(
+        self,
+    ) -> tuple[CudaIndependentTicketTransferTimelineSample, ...]:
+        """Return completed phase samples in submission order.
+
+        Returns:
+            Immutable phase samples after every launch cleanup.
+
+        Raises:
+            AcceleratorExecutionError: If launches remain active or closed.
+
+        """
+        self._ensure_usable()
+        if self._active != 0:
+            message = "CUDA ticket transfer timeline has active launches"
+            raise AcceleratorExecutionError(message)
+        return tuple(
+            sorted(self._samples, key=lambda sample: sample.submission_index)
+        )
+
+    def submit(
+        self,
+        submission: CudaIndependentTransferSubmission,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit one transfer ticket with four contiguous event markers.
+
+        Returns:
+            Runtime-owned launch whose close publishes phase attribution.
+
+        Raises:
+            AcceleratorExecutionError: If the timeline or submission is invalid.
+
+        """
+        self._ensure_usable()
+        if not submission.uploads or not submission.downloads:
+            message = "CUDA transfer timeline requires uploads and downloads"
+            raise AcceleratorExecutionError(message)
+        return self._launch_factory.submit_transfer_profiled(
+            submission,
+            timeline=self,
+        )
+
+    def begin_submission(
+        self,
+        stream: ctypes.c_void_p,
+    ) -> _CudaIndependentTicketTransferTimelineLaunch:
+        """Create four events and record the pre-upload marker.
+
+        Returns:
+            Active transfer phase resources bound to one submission index.
+
+        Raises:
+            AcceleratorExecutionError: If event setup or recording fails.
+
+        """
+        self._ensure_usable()
+        events = _create_cuda_events(
+            self._functions.create_fn, self._functions.destroy_fn, count=4
+        )
+        start, upload_end, kernel_end, end = events
+        try:
+            _check_execution(
+                self._functions.record_fn(start, stream),
+                "cuEventRecord",
+            )
+        except AcceleratorExecutionError:
+            _destroy_cuda_events(self._functions.destroy_fn, events)
+            raise
+        launch = _CudaIndependentTicketTransferTimelineLaunch(
+            end=end,
+            kernel_end=kernel_end,
+            start=start,
+            submission_index=self._next_submission_index,
+            timeline=self,
+            upload_end=upload_end,
+        )
+        self._next_submission_index += 1
+        self._active += 1
+        return launch
+
+    def record_upload_end(
+        self,
+        launch: _CudaIndependentTicketTransferTimelineLaunch,
+        stream: ctypes.c_void_p,
+    ) -> None:
+        """Record the marker after all H-to-D copies."""
+        self._record(launch.upload_end, stream)
+
+    def record_kernel_end(
+        self,
+        launch: _CudaIndependentTicketTransferTimelineLaunch,
+        stream: ctypes.c_void_p,
+    ) -> None:
+        """Record the marker after the exact kernel launch."""
+        self._record(launch.kernel_end, stream)
+
+    def record_end(
+        self,
+        launch: _CudaIndependentTicketTransferTimelineLaunch,
+        stream: ctypes.c_void_p,
+    ) -> None:
+        """Record the marker after all D-to-H copies."""
+        self._record(launch.end, stream)
+
+    def _finish_launch(
+        self,
+        launch: _CudaIndependentTicketTransferTimelineLaunch,
+        *,
+        completed: bool,
+    ) -> None:
+        """Publish one completed phase sample and destroy all four events."""
+        sample_failure: AcceleratorExecutionError | None = None
+        if completed:
+            try:
+                self._samples.append(self._sample(launch))
+            except AcceleratorExecutionError as error:
+                sample_failure = error
+        event_failure = _destroy_cuda_events_failure(
+            self._functions.destroy_fn,
+            (
+                launch.start,
+                launch.upload_end,
+                launch.kernel_end,
+                launch.end,
+            ),
+        )
+        self._active -= 1
+        _raise_first_failure(sample_failure, event_failure)
+
+    def _sample(
+        self,
+        launch: _CudaIndependentTicketTransferTimelineLaunch,
+    ) -> CudaIndependentTicketTransferTimelineSample:
+        elapsed = self._functions.elapsed_fn
+        return CudaIndependentTicketTransferTimelineSample(
+            download_duration_ms=_event_elapsed_ms(
+                elapsed,
+                launch.kernel_end,
+                launch.end,
+            ),
+            end_ms=_event_elapsed_ms(elapsed, self._origin, launch.end),
+            kernel_duration_ms=_event_elapsed_ms(
+                elapsed,
+                launch.upload_end,
+                launch.kernel_end,
+            ),
+            kernel_end_ms=_event_elapsed_ms(
+                elapsed,
+                self._origin,
+                launch.kernel_end,
+            ),
+            start_ms=_event_elapsed_ms(elapsed, self._origin, launch.start),
+            submission_index=launch.submission_index,
+            total_duration_ms=_event_elapsed_ms(
+                elapsed,
+                launch.start,
+                launch.end,
+            ),
+            upload_duration_ms=_event_elapsed_ms(
+                elapsed,
+                launch.start,
+                launch.upload_end,
+            ),
+            upload_end_ms=_event_elapsed_ms(
+                elapsed,
+                self._origin,
+                launch.upload_end,
+            ),
+        )
+
+    def _record(
+        self,
+        event: ctypes.c_void_p,
+        stream: ctypes.c_void_p,
+    ) -> None:
+        _check_execution(
+            self._functions.record_fn(event, stream),
+            "cuEventRecord",
+        )
+
+    def _ensure_usable(self) -> None:
+        self._functions.ensure_open()
+        if self._closed:
+            message = "CUDA ticket transfer timeline is closed"
+            raise AcceleratorExecutionError(message)
+
+
+@final
+class CudaIndependentTicketTransferTimelineFactory:
+    """Own transfer phase timelines created for one live CUDA context."""
+
+    def __init__(
+        self,
+        functions: CudaIndependentKernelTimelineFunctions,
+        launch_factory: CudaIndependentKernelLaunchFactory,
+    ) -> None:
+        """Bind event functions and the isolated launch factory."""
+        self._functions = functions
+        self._launch_factory = launch_factory
+        self._timelines: list[CudaIndependentTicketTransferTimeline] = []
+
+    def create(self) -> CudaIndependentTicketTransferTimeline:
+        """Create one synchronized transfer phase timeline.
+
+        Returns:
+            Runtime-owned diagnostic timeline for streamed tickets.
+
+        """
+        timeline = CudaIndependentTicketTransferTimeline(
+            self._functions,
+            self._launch_factory,
+            self._forget,
+        )
+        self._timelines.append(timeline)
+        return timeline
+
+    def release_failure(self) -> AcceleratorExecutionError | None:
+        """Close every transfer timeline after launches drain.
+
+        Returns:
+            First event cleanup failure, or ``None``.
+
+        """
+        failure: AcceleratorExecutionError | None = None
+        for timeline in tuple(self._timelines):
+            try:
+                timeline.close()
+            except AcceleratorExecutionError as error:
+                if failure is None:
+                    failure = error
+        if failure is None:
+            self._timelines.clear()
+        return failure
+
+    def _forget(self, timeline: CudaIndependentTicketTransferTimeline) -> None:
+        try:
+            self._timelines.remove(timeline)
+        except ValueError:
+            return
+
+
+@dataclass(frozen=True, slots=True)
 class CudaIndependentKernelLaunchFunctions:
     """Reviewed Driver functions required by isolated kernel streams."""
 
@@ -1101,18 +1466,31 @@ class CudaIndependentKernelLaunchFunctions:
 
 @dataclass(slots=True)
 class _CudaIndependentSubmissionState:
+    kernel_timeline: _CudaIndependentKernelTimelineLaunch | None = None
     pending_addresses: tuple[int, ...] = ()
     submitted_work: bool = False
-    timeline_launch: _CudaIndependentKernelTimelineLaunch | None = None
+    transfer_timeline: _CudaIndependentTicketTransferTimelineLaunch | None = (
+        None
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class _CudaIndependentEnqueueRequest:
     arguments: _CudaKernelLaunchArguments
     handle: ctypes.c_void_p
+    kernel_timeline: CudaIndependentKernelTimeline | None
     state: _CudaIndependentSubmissionState
     submission: CudaIndependentTransferSubmission
-    timeline: CudaIndependentKernelTimeline | None
+    transfer_timeline: CudaIndependentTicketTransferTimeline | None
+
+
+@dataclass(frozen=True, slots=True)
+class _CudaIndependentFailedSubmit:
+    handle: ctypes.c_void_p
+    kernel_timeline: _CudaIndependentKernelTimelineLaunch | None
+    pending_addresses: tuple[int, ...]
+    submitted_work: bool
+    transfer_timeline: _CudaIndependentTicketTransferTimelineLaunch | None
 
 
 @final
@@ -1147,7 +1525,8 @@ class CudaIndependentKernelLaunchFactory:
                 kernel=kernel,
                 uploads=(),
             ),
-            timeline=None,
+            kernel_timeline=None,
+            transfer_timeline=None,
         )
 
     def submit_with_transfers(
@@ -1160,7 +1539,11 @@ class CudaIndependentKernelLaunchFactory:
             Runtime-owned launch retaining every host lease until completion.
 
         """
-        return self._submit(submission, timeline=None)
+        return self._submit(
+            submission,
+            kernel_timeline=None,
+            transfer_timeline=None,
+        )
 
     def submit_profiled(
         self,
@@ -1184,7 +1567,8 @@ class CudaIndependentKernelLaunchFactory:
                 kernel=kernel,
                 uploads=(),
             ),
-            timeline=timeline,
+            kernel_timeline=timeline,
+            transfer_timeline=None,
         )
 
     def submit_profiled_with_transfers(
@@ -1199,13 +1583,36 @@ class CudaIndependentKernelLaunchFactory:
             Isolated launch with registered copies and kernel-only events.
 
         """
-        return self._submit(submission, timeline=timeline)
+        return self._submit(
+            submission,
+            kernel_timeline=timeline,
+            transfer_timeline=None,
+        )
+
+    def submit_transfer_profiled(
+        self,
+        submission: CudaIndependentTransferSubmission,
+        *,
+        timeline: CudaIndependentTicketTransferTimeline,
+    ) -> CudaIndependentKernelLaunch:
+        """Submit transfers with contiguous upload/kernel/download markers.
+
+        Returns:
+            Isolated launch that publishes one transfer phase sample.
+
+        """
+        return self._submit(
+            submission,
+            kernel_timeline=None,
+            transfer_timeline=timeline,
+        )
 
     def _submit(
         self,
         submission: CudaIndependentTransferSubmission,
         *,
-        timeline: CudaIndependentKernelTimeline | None,
+        kernel_timeline: CudaIndependentKernelTimeline | None,
+        transfer_timeline: CudaIndependentTicketTransferTimeline | None,
     ) -> CudaIndependentKernelLaunch:
         self._binding.ensure_open()
         arguments = _kernel_launch_arguments(
@@ -1219,17 +1626,21 @@ class CudaIndependentKernelLaunchFactory:
                 _CudaIndependentEnqueueRequest(
                     arguments=arguments,
                     handle=handle,
+                    kernel_timeline=kernel_timeline,
                     state=state,
                     submission=submission,
-                    timeline=timeline,
+                    transfer_timeline=transfer_timeline,
                 )
             )
         except AcceleratorExecutionError as launch_error:
             cleanup_failure = self._failed_submit_cleanup(
-                handle,
-                state.timeline_launch,
-                state.pending_addresses,
-                submitted_work=state.submitted_work,
+                _CudaIndependentFailedSubmit(
+                    handle=handle,
+                    kernel_timeline=state.kernel_timeline,
+                    pending_addresses=state.pending_addresses,
+                    submitted_work=state.submitted_work,
+                    transfer_timeline=state.transfer_timeline,
+                )
             )
             if cleanup_failure is not None:
                 raise launch_error from cleanup_failure
@@ -1241,8 +1652,9 @@ class CudaIndependentKernelLaunchFactory:
                 forget=self._forget,
                 handle=handle,
                 host_memory=self._binding.host_memory,
+                kernel_timeline=state.kernel_timeline,
                 synchronize_fn=self._binding.synchronize_fn,
-                timeline=state.timeline_launch,
+                transfer_timeline=state.transfer_timeline,
             ),
             (
                 *arguments.owners,
@@ -1262,16 +1674,24 @@ class CudaIndependentKernelLaunchFactory:
         submission = request.submission
         state = request.state
         state.pending_addresses = self._acquire_transfer_leases(submission)
-        state.submitted_work = self._enqueue_uploads(
-            submission.uploads,
+        state.transfer_timeline = self._begin_transfer_timeline(
+            request.transfer_timeline,
             request.handle,
         )
-        state.timeline_launch = self._begin_timeline(
-            request.timeline,
+        state.submitted_work = state.transfer_timeline is not None
+        if self._enqueue_uploads(submission.uploads, request.handle):
+            state.submitted_work = True
+        self._record_transfer_upload_end(
+            request.transfer_timeline,
+            state.transfer_timeline,
+            request.handle,
+        )
+        state.kernel_timeline = self._begin_kernel_timeline(
+            request.kernel_timeline,
             request.handle,
         )
         state.submitted_work = (
-            state.submitted_work or state.timeline_launch is not None
+            state.submitted_work or state.kernel_timeline is not None
         )
         self._launch_kernel(
             submission.kernel,
@@ -1279,12 +1699,22 @@ class CudaIndependentKernelLaunchFactory:
             request.handle,
         )
         state.submitted_work = True
-        self._record_timeline_end(
-            request.timeline,
-            state.timeline_launch,
+        self._record_kernel_timeline_end(
+            request.kernel_timeline,
+            state.kernel_timeline,
+            request.handle,
+        )
+        self._record_transfer_kernel_end(
+            request.transfer_timeline,
+            state.transfer_timeline,
             request.handle,
         )
         _ = self._enqueue_downloads(submission.downloads, request.handle)
+        self._record_transfer_end(
+            request.transfer_timeline,
+            state.transfer_timeline,
+            request.handle,
+        )
 
     def _acquire_transfer_leases(
         self,
@@ -1303,13 +1733,22 @@ class CudaIndependentKernelLaunchFactory:
         return tuple(addresses)
 
     @staticmethod
-    def _begin_timeline(
+    def _begin_kernel_timeline(
         timeline: CudaIndependentKernelTimeline | None,
         handle: ctypes.c_void_p,
     ) -> _CudaIndependentKernelTimelineLaunch | None:
         if timeline is None:
             return None
         return timeline.begin_launch(handle)
+
+    @staticmethod
+    def _begin_transfer_timeline(
+        timeline: CudaIndependentTicketTransferTimeline | None,
+        handle: ctypes.c_void_p,
+    ) -> _CudaIndependentTicketTransferTimelineLaunch | None:
+        if timeline is None:
+            return None
+        return timeline.begin_submission(handle)
 
     def _create_stream(self) -> ctypes.c_void_p:
         handle = ctypes.c_void_p()
@@ -1362,39 +1801,54 @@ class CudaIndependentKernelLaunchFactory:
 
     def _failed_submit_cleanup(
         self,
-        handle: ctypes.c_void_p,
-        timeline_launch: _CudaIndependentKernelTimelineLaunch | None,
-        pending_addresses: tuple[int, ...],
-        *,
-        submitted_work: bool,
+        failed: _CudaIndependentFailedSubmit,
     ) -> AcceleratorExecutionError | None:
         synchronize_failure = (
-            self._synchronize_failure(handle) if submitted_work else None
+            self._synchronize_failure(failed.handle)
+            if failed.submitted_work
+            else None
         )
-        timeline_failure: AcceleratorExecutionError | None = None
-        if timeline_launch is not None:
-            try:
-                timeline_launch.finish(completed=False)
-            except AcceleratorExecutionError as error:
-                timeline_failure = error
+        kernel_timeline_failure = self._finish_timeline_failure(
+            failed.kernel_timeline
+        )
+        transfer_timeline_failure = self._finish_timeline_failure(
+            failed.transfer_timeline
+        )
         lease_failure = _release_async_addresses_failure(
             self._binding.host_memory,
-            pending_addresses,
+            failed.pending_addresses,
         )
         stream_failure: AcceleratorExecutionError | None = None
         try:
             _check_execution(
-                self._binding.destroy_fn(handle),
+                self._binding.destroy_fn(failed.handle),
                 "cuStreamDestroy_v2",
             )
         except AcceleratorExecutionError as error:
             stream_failure = error
         return (
             synchronize_failure
-            or timeline_failure
+            or kernel_timeline_failure
+            or transfer_timeline_failure
             or lease_failure
             or stream_failure
         )
+
+    @staticmethod
+    def _finish_timeline_failure(
+        timeline: (
+            _CudaIndependentKernelTimelineLaunch
+            | _CudaIndependentTicketTransferTimelineLaunch
+            | None
+        ),
+    ) -> AcceleratorExecutionError | None:
+        if timeline is None:
+            return None
+        try:
+            timeline.finish(completed=False)
+        except AcceleratorExecutionError as error:
+            return error
+        return None
 
     def _launch_kernel(
         self,
@@ -1420,9 +1874,39 @@ class CudaIndependentKernelLaunchFactory:
         )
 
     @staticmethod
-    def _record_timeline_end(
+    def _record_kernel_timeline_end(
         timeline: CudaIndependentKernelTimeline | None,
         timeline_launch: _CudaIndependentKernelTimelineLaunch | None,
+        handle: ctypes.c_void_p,
+    ) -> None:
+        if timeline is None or timeline_launch is None:
+            return
+        timeline.record_end(timeline_launch, handle)
+
+    @staticmethod
+    def _record_transfer_upload_end(
+        timeline: CudaIndependentTicketTransferTimeline | None,
+        timeline_launch: _CudaIndependentTicketTransferTimelineLaunch | None,
+        handle: ctypes.c_void_p,
+    ) -> None:
+        if timeline is None or timeline_launch is None:
+            return
+        timeline.record_upload_end(timeline_launch, handle)
+
+    @staticmethod
+    def _record_transfer_kernel_end(
+        timeline: CudaIndependentTicketTransferTimeline | None,
+        timeline_launch: _CudaIndependentTicketTransferTimelineLaunch | None,
+        handle: ctypes.c_void_p,
+    ) -> None:
+        if timeline is None or timeline_launch is None:
+            return
+        timeline.record_kernel_end(timeline_launch, handle)
+
+    @staticmethod
+    def _record_transfer_end(
+        timeline: CudaIndependentTicketTransferTimeline | None,
+        timeline_launch: _CudaIndependentTicketTransferTimelineLaunch | None,
         handle: ctypes.c_void_p,
     ) -> None:
         if timeline is None or timeline_launch is None:
@@ -1552,6 +2036,9 @@ class CudaRuntime:
     host_memory: CudaHostMemoryRegistry
     independent_kernel_launches: CudaIndependentKernelLaunchFactory
     independent_kernel_timelines: CudaIndependentKernelTimelineFactory
+    independent_ticket_transfer_timelines: (
+        CudaIndependentTicketTransferTimelineFactory
+    )
     kernel_launches: CudaKernelLaunchFactory
     ordered_transfers: CudaOrderedDtoHStreamFactory
     resources: CudaResourceProbe
@@ -1654,6 +2141,19 @@ class CudaRuntime:
                 self.independent_kernel_launches,
             )
         )
+        self.independent_ticket_transfer_timelines = (
+            CudaIndependentTicketTransferTimelineFactory(
+                CudaIndependentKernelTimelineFunctions(
+                    create_fn=self._cu_event_create,
+                    destroy_fn=self._cu_event_destroy,
+                    elapsed_fn=self._cu_event_elapsed_time,
+                    ensure_open=self._ensure_open,
+                    record_fn=self._cu_event_record,
+                    synchronize_fn=self._cu_event_synchronize,
+                ),
+                self.independent_kernel_launches,
+            )
+        )
         self.ordered_transfers = CudaOrderedDtoHStreamFactory(
             _CudaOrderedFactoryBinding(
                 copy_fn=self._cu_memcpy_dtoh_async,
@@ -1691,6 +2191,9 @@ class CudaRuntime:
         launch_failure = self.kernel_launches.release_failure()
         independent_failure = self.independent_kernel_launches.release_failure()
         timeline_failure = self.independent_kernel_timelines.release_failure()
+        transfer_timeline_failure = (
+            self.independent_ticket_transfer_timelines.release_failure()
+        )
         stream_failure = self.ordered_transfers.release_failure()
         registration_failure = self.host_memory.release_failure()
         self._closed = True
@@ -1700,6 +2203,7 @@ class CudaRuntime:
             launch_failure,
             independent_failure,
             timeline_failure,
+            transfer_timeline_failure,
             stream_failure,
             registration_failure,
             context_failure,
@@ -2257,6 +2761,18 @@ def create_independent_kernel_timeline(
     return runtime.independent_kernel_timelines.create()
 
 
+def create_independent_ticket_transfer_timeline(
+    runtime: CudaRuntime,
+) -> CudaIndependentTicketTransferTimeline:
+    """Create one CUDA-event transfer timeline from a live runtime.
+
+    Returns:
+        Runtime-owned phase timeline for registered ticket transfers.
+
+    """
+    return runtime.independent_ticket_transfer_timelines.create()
+
+
 def create_ordered_dtoh_stream(
     runtime: CudaRuntime,
 ) -> CudaOrderedDtoHStream:
@@ -2278,6 +2794,26 @@ def _create_cuda_event(create_fn: _CudaFn) -> ctypes.c_void_p:
     return event
 
 
+def _create_cuda_events(
+    create_fn: _CudaFn,
+    destroy_fn: _CudaFn,
+    *,
+    count: int,
+) -> tuple[ctypes.c_void_p, ...]:
+    events: list[ctypes.c_void_p] = []
+    try:
+        events.extend(_create_cuda_event(create_fn) for _ in range(count))
+    except AcceleratorExecutionError as create_error:
+        cleanup_failure = _destroy_cuda_events_failure(
+            destroy_fn,
+            tuple(events),
+        )
+        if cleanup_failure is not None:
+            raise create_error from cleanup_failure
+        raise create_error from None
+    return tuple(events)
+
+
 def _destroy_cuda_event(destroy_fn: _CudaFn, event: ctypes.c_void_p) -> None:
     _check_execution(destroy_fn(event), "cuEventDestroy_v2")
 
@@ -2291,6 +2827,27 @@ def _destroy_cuda_event_failure(
     except AcceleratorExecutionError as error:
         return error
     return None
+
+
+def _destroy_cuda_events(
+    destroy_fn: _CudaFn,
+    events: tuple[ctypes.c_void_p, ...],
+) -> None:
+    failure = _destroy_cuda_events_failure(destroy_fn, events)
+    if failure is not None:
+        raise failure
+
+
+def _destroy_cuda_events_failure(
+    destroy_fn: _CudaFn,
+    events: tuple[ctypes.c_void_p, ...],
+) -> AcceleratorExecutionError | None:
+    failure: AcceleratorExecutionError | None = None
+    for event in reversed(events):
+        event_failure = _destroy_cuda_event_failure(destroy_fn, event)
+        if failure is None and event_failure is not None:
+            failure = event_failure
+    return failure
 
 
 def _event_elapsed_ms(
