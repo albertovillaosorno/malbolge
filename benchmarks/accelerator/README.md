@@ -317,6 +317,22 @@ sequential route with 11/15, 13/15, and 14/15 paired wins, but reaches only
 The preregistered group-eight hypothesis fails and synchronous copies remain the
 default.
 
+`ticket_admission_profile_manifest.py` converts this exact retained bundle into
+the schema-v1 product registry at
+`accelerator/cuda/ticket_admission_profiles.json`. It validates benchmark,
+workload, device, sample, route, comparison, experiment, source-commit, and raw/
+structured-output hash identity before emitting canonical sorted JSON. It writes
+only to stdout; runtime code loads the tracked product manifest and never reads
+benchmark evidence. Tests require generated/tracked byte equality and strict
+rejection of malformed profile documents.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.ticket_admission_profile_manifest
+```
+
 `independent_ticket_transfer_event_timeline.py` instruments only the explicit
 streamed route with `cuda-independent-stream-ticket-transfer-timeline-v1`. Four
 contiguous CUDA events per ticket delimit upload, exact kernel, and download.

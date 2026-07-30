@@ -167,7 +167,11 @@ example probe points, not supported-range endpoints.
   exact same-context paired route evidence and chooses deterministic queue
   chunks. The retained RTX 4060 full-domain CRAZY profile admits synchronous
   groups 2/4/8, rejects streamed 1/2/4/8, validates the packed workload before
-  execution, and leaves the global synchronous default unchanged. Eleven tests
-  cover the neutral planner, exact profile binding, live CPU-equal execution,
-  and wrong-workload rejection. Other devices/workloads, driver/toolchain
-  binding, generated profiles, and online telemetry remain open.
+  execution, and leaves the global synchronous default unchanged. Eleven
+  admission tests cover the neutral planner, exact profile binding, live CPU-equal
+  execution, and wrong-workload rejection. The schema-v1 product registry is
+  reconstructed byte-for-byte from retained evidence; seven manifest tests reject
+  drift, duplicate/unknown keys, unsupported schema, duplicate routes, and direct
+  capability mismatch. Runtime never reads benchmark evidence. Other
+  devices/workloads, runtime driver/toolchain enforcement, and online telemetry
+  remain open.

@@ -1,0 +1,84 @@
+{
+  "profiles": [
+    {
+      "backend_id": "cuda",
+      "device_arch": "sm_89",
+      "device_name": "NVIDIA GeForce RTX 4060",
+      "evidence": {
+        "benchmark_id": "cuda-independent-ticket-transfer-throughput-v1",
+        "host": "Microsoft Windows 11 Pro 10.0.26200 x86-64",
+        "path": "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/",
+        "raw_sha256": "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f",
+        "source_commit": "431f542ab6321eeb12b7bcb9195318f25cf376a5",
+        "throughput_sha256": "edeed94f6ccca041d1db034ba7dfbc75c506e7c02069018c6f049d95e459916e",
+        "toolchain": "Python 3.14.6; CUDA 13.3.1 (nvcc 13.3.73); NVIDIA driver 610.88"
+      },
+      "fallback_ticket_ns": 1471000,
+      "profile_id": "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1",
+      "routes": [
+        {
+          "candidate_median_ns": 1879400,
+          "exact_results": true,
+          "group_size": 1,
+          "mode": "streamed",
+          "paired_wins": 0,
+          "reference_median_ns": 1471000
+        },
+        {
+          "candidate_median_ns": 1386300,
+          "exact_results": true,
+          "group_size": 2,
+          "mode": "synchronous",
+          "paired_wins": 15,
+          "reference_median_ns": 1788500
+        },
+        {
+          "candidate_median_ns": 3179100,
+          "exact_results": true,
+          "group_size": 2,
+          "mode": "streamed",
+          "paired_wins": 0,
+          "reference_median_ns": 1386300
+        },
+        {
+          "candidate_median_ns": 3061100,
+          "exact_results": true,
+          "group_size": 4,
+          "mode": "synchronous",
+          "paired_wins": 15,
+          "reference_median_ns": 3824300
+        },
+        {
+          "candidate_median_ns": 6403800,
+          "exact_results": true,
+          "group_size": 4,
+          "mode": "streamed",
+          "paired_wins": 0,
+          "reference_median_ns": 3061100
+        },
+        {
+          "candidate_median_ns": 5940800,
+          "exact_results": true,
+          "group_size": 8,
+          "mode": "synchronous",
+          "paired_wins": 15,
+          "reference_median_ns": 7456400
+        },
+        {
+          "candidate_median_ns": 12013800,
+          "exact_results": true,
+          "group_size": 8,
+          "mode": "streamed",
+          "paired_wins": 0,
+          "reference_median_ns": 5940800
+        }
+      ],
+      "sample_count": 15,
+      "workload_count": 59049,
+      "workload_id": "classic-crazy-full-domain-ticket-transfer-v1",
+      "workload_kind": "crazy",
+      "workload_sha256": "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc"
+    }
+  ],
+  "schema_version": 1
+}

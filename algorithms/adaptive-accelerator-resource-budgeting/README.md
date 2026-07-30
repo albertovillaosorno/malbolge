@@ -11,9 +11,11 @@ Regenerable results belong in `out/` and remain Git ignored.
 
 The active implementations intentionally remain product-owned by
 `accelerator/resource_budget.py`, `accelerator/ticket_admission.py`, and the exact
-CUDA profile in `accelerator/cuda/ticket_admission.py`; this research mirror owns
+CUDA registry/loader/executor under `accelerator/cuda/`; this research mirror owns
 experiment identity and configuration rather than duplicate schedulers.
 Reproducible capacity/live resource output is emitted by
-`benchmarks/accelerator/resource_budget_measure.py`, while retained ticket-route
-measurements remain under `benchmarks/accelerator/evidence/`. Synthetic scenarios
-are labeled explicitly and must never be reported as measured hardware throughput.
+`benchmarks/accelerator/resource_budget_measure.py`. The ticket profile generator at
+`benchmarks/accelerator/ticket_admission_profile_manifest.py` converts retained
+route evidence into canonical product JSON, while runtime code reads only that
+tracked manifest. Synthetic scenarios are labeled explicitly and must never be
+reported as measured hardware throughput.

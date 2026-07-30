@@ -154,9 +154,15 @@ for malformed or duplicate records, and chooses a deterministic input-order
 partition. The first retained CUDA profile is limited to the RTX 4060 `sm_89`
 full-domain CRAZY evidence from 2026-07-29. It admits synchronous groups 2/4/8,
 rejects every measured streamed route, and leaves the ordinary synchronous path
-as the global default. This closes one exact queue-size admission slice;
-manifest-generated profiles, driver/toolchain identity, other devices/workloads,
-and online queue/resource telemetry remain open.
+as the global default. The schema-v1 product registry at
+`accelerator/cuda/ticket_admission_profiles.json` is generated canonically from
+retained evidence by
+`benchmarks/accelerator/ticket_admission_profile_manifest.py`; runtime loading
+never reads benchmark files. Exact byte-equality plus strict duplicate-key,
+unknown-key, schema, route, hash, and capability tests prevent silent drift. This
+closes one exact queue-size admission and generated-profile slice; runtime
+driver/toolchain enforcement, other devices/workloads, and online queue/resource
+telemetry remain open.
 
 ## Threats to Validity
 

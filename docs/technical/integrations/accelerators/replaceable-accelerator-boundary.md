@@ -450,8 +450,16 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eleven tests cover fallback, positive/negative evidence,
-duplicate/malformed records, exact profile matching, and two live CUDA routes.
+every ticket. Eleven admission tests cover fallback, positive/negative
+evidence, duplicate/malformed records, exact profile matching, and two live CUDA
+routes. The seven route records and exact provenance now live in schema-v1
+`accelerator/cuda/ticket_admission_profiles.json`, not Python source.
+`benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
+canonical bytes from the retained JSON/TOML bundle, source commit, and exact raw/
+structured-output hashes. Seven manifest tests require byte equality and reject
+duplicate or unknown keys, unsupported schema, duplicate routes, and direct
+capability mismatch. Runtime loading reads only the tracked product manifest and
+never opens benchmark evidence.
 This is not driver/toolchain, cross-device, or other-workload evidence, and it
 does not change the global synchronous default.
 Other CUDA/ROCm strategies, event-instrumentation controls, additional
@@ -578,6 +586,13 @@ fails explicitly without changing correctness rules.
   rejection, synchronous tie-breaking, context isolation, malformed/duplicate
   evidence failure, exact RTX 4060 queue composition, one live CPU-equal executor
   route, and live wrong-workload rejection.
+- `accelerator/cuda/ticket_admission_profiles.json` is the schema-v1 product
+  registry generated from the retained transfer-throughput bundle. Runtime loading
+  never reads benchmark evidence.
+- `tests/optimizer/test_cuda_ticket_admission_profile_manifest.py` verifies
+  generated/tracked byte equality, exact commit/hash provenance, admitted-route
+  shape, duplicate JSON keys, unknown root keys, unsupported schema, duplicate
+  route identity, and direct capability mismatch.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.

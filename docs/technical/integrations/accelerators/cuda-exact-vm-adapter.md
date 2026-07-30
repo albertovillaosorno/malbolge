@@ -265,8 +265,16 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eleven tests cover fallback, positive/negative evidence,
-duplicate/malformed records, exact profile matching, and two live CUDA routes.
+every ticket. Eleven admission tests cover fallback, positive/negative
+evidence, duplicate/malformed records, exact profile matching, and two live CUDA
+routes. The seven route records and exact provenance now live in schema-v1
+`accelerator/cuda/ticket_admission_profiles.json`, not Python source.
+`benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
+canonical bytes from the retained JSON/TOML bundle, source commit, and exact raw/
+structured-output hashes. Seven manifest tests require byte equality and reject
+duplicate or unknown keys, unsupported schema, duplicate routes, and direct
+capability mismatch. Runtime loading reads only the tracked product manifest and
+never opens benchmark evidence.
 This is not driver/toolchain, cross-device, or other-workload evidence, and it
 does not change the global synchronous default.
 Event instrumentation controls, additional device/workload admission profiles,
