@@ -38,6 +38,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_summary.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

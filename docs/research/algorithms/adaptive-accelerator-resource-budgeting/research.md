@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Sixty-one
-admission/telemetry/persistence,
+facade resolves the same exact profile before reporting. Sixty-eight
+admission/telemetry/persistence/summary,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -185,15 +185,20 @@ accelerator error. Existing ordinary and completion-only executors remain
 unchanged. `ticket-admission-telemetry-document-v1` captures both snapshots as
 compact sorted-key schema-v1 JSON. Bounded decoding rejects duplicate, unknown,
 oversized, noncanonical, and inconsistent state; explicit writes use atomic
-replacement, and restoration preserves exact sequence and eviction state. There
-is no automatic loading, automatic promotion, or policy update.
+replacement, and restoration preserves exact sequence and eviction state.
+`offline-ticket-admission-telemetry-summary-v1` validates one explicit document
+and groups exact backend/device/workload/ticket-count contexts into integer
+completed/failed totals, estimate comparisons, retention ranges, failure-category
+counts, and sorted evidence appearances. It performs no cross-document merge,
+recommendation, promotion, or policy update. There is no automatic loading.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, and adaptive queue/resource feedback remain open.
+migration or alternate stores, cross-document identity/deduplication, and
+automatic adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

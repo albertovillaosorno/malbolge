@@ -43,6 +43,11 @@ sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
 observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
 input, and restores exact sequence and eviction state. File reads and writes are
 explicit; writes use a same-directory temporary file and atomic replacement.
+`offline-ticket-admission-telemetry-summary-v1` validates one explicit document
+and groups retained observations by exact backend, device, workload, and ticket
+count. It publishes completed/failed integer totals, estimate-comparison counts,
+retention ranges, stable failure categories, and sorted selected-evidence
+appearances. It does not merge documents, recommend routes, or modify admission.
 There is no automatic loading, hidden worker, automatic promotion, or policy
 authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
@@ -51,7 +56,7 @@ authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Sixty-one admission/telemetry/persistence tests cover fallback, positive/negative
+every ticket. Sixty-eight admission/telemetry/persistence/summary tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact

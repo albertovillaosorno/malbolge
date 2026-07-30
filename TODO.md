@@ -1549,16 +1549,21 @@ unchanged. `ticket-admission-telemetry-document-v1` captures both snapshots as
 compact sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and
 4,096 observations per FIFO, rejects duplicate, unknown, oversized, and
 noncanonical input, and restores exact sequence/eviction state. Explicit file
-writes use same-directory temporary files and atomic replacement. No automatic
-loading, hidden workers, automatic promotion, or policy authority are introduced.
-The retained
+writes use same-directory temporary files and atomic replacement.
+`offline-ticket-admission-telemetry-summary-v1` validates one explicit document
+and groups retained observations by exact backend, device, workload, and ticket
+count. It publishes only integer outcome totals, estimate-comparison counts,
+retention ranges, stable failure categories, and sorted selected-evidence
+appearances. It does not merge documents, recommend routes, or modify admission.
+No automatic loading, hidden workers, automatic promotion, or policy authority
+are introduced. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Sixty-one admission/telemetry/persistence tests cover fallback, positive/negative
+every ticket. Sixty-eight admission/telemetry/persistence/summary tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact
@@ -1586,8 +1591,8 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, telemetry schema
-migration or alternate stores, adaptive feedback, and broader live-device evidence
-remain open.
+migration or alternate stores, cross-document identity/deduplication, automatic
+adaptive feedback, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

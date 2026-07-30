@@ -27,7 +27,9 @@ build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
 and bounded completion/failure telemetry explain what ran without changing the
 selected route, retaining exception text, or learning new policy online. The two
 FIFOs can be captured as canonical bounded JSON and explicitly restored without
-automatic loading.
+automatic loading. A deterministic offline summary groups one document by exact
+execution context and exposes only integer totals, retention ranges, stable
+failure categories, and selected-evidence appearance counts.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -173,7 +175,8 @@ groups, immutable admission reports explain every eligible or rejected route,
 and caller-owned bounded telemetry can record completed durations or stable
 accelerator-failure categories. Failure observations omit exception text. An
 explicit schema-v1 document can atomically persist and restore both bounded FIFOs;
-duplicate, unknown, oversized, or noncanonical input fails closed. Observations
+duplicate, unknown, oversized, or noncanonical input fails closed. Offline
+summaries never recommend routes, merge documents, or modify admission. Observations
 do not promote routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
