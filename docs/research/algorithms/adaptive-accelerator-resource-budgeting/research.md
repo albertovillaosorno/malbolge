@@ -163,11 +163,14 @@ never reads benchmark files. Profile use measures
 startup and requires Driver API 13030 or newer, NVRTC 13.3, the tracked toolchain
 SHA-256, NVML display build `610.88`, Windows 11 Professional build `10.0.26200`,
 `x86_64`, and CPython `3.14.6`. Missing optional identity leaves ordinary CUDA
-available while this profile remains unmatched. Eighteen admission, ten manifest,
-and fourteen runtime-identity tests prevent silent drift and direct-plan bypass.
-This closes one exact queue-size, generated-profile, runtime, display-driver, and
-host/Python identity slice; other hosts, Python versions, drivers, devices,
-workloads, and online queue/resource telemetry remain open.
+available while this profile remains unmatched. Twenty-two admission, twelve
+manifest, and fourteen runtime-identity tests prevent silent drift and direct-plan
+bypass. The registry now selects at most one exact workload/capability/runtime
+record, permits distinct runtime variants, and rejects invalid or ambiguous
+selection. This closes exact queue-size, generated-profile, runtime, display-driver,
+host/Python identity, and registry-resolution slices; evidence for other hosts,
+Python versions, drivers, devices, workloads, and online queue/resource telemetry
+remains open.
 
 ## Threats to Validity
 

@@ -344,6 +344,39 @@ def load_cuda_ticket_admission_profiles(
     return profiles
 
 
+def resolve_cuda_ticket_admission_profile(
+    profiles: tuple[CudaTicketAdmissionProfile, ...],
+    *,
+    capability: AcceleratorCapability,
+    runtime_identity: CudaRuntimeIdentity,
+    workload_id: str,
+) -> CudaTicketAdmissionProfile | None:
+    """Resolve at most one exact profile from a validated registry.
+
+    Returns:
+        Exact capability/runtime/workload profile, or ``None`` without one.
+
+    Raises:
+        TicketAdmissionError: If workload identity is invalid or ambiguous.
+
+    """
+    if not workload_id or workload_id.strip() != workload_id:
+        message = "CUDA ticket admission workload identity is invalid"
+        raise TicketAdmissionError(message)
+    matches = tuple(
+        profile
+        for profile in profiles
+        if profile.workload_id == workload_id
+        and profile.matches(capability, runtime_identity)
+    )
+    if len(matches) > 1:
+        message = (
+            "CUDA ticket admission registry resolved multiple exact profiles"
+        )
+        raise TicketAdmissionError(message)
+    return None if not matches else matches[0]
+
+
 def _json_document(text: str) -> dict[str, object]:
     try:
         parsed = cast(
@@ -672,7 +705,7 @@ def _validate_profile_uniqueness(
     profiles: tuple[CudaTicketAdmissionProfile, ...],
 ) -> None:
     identifiers: set[str] = set()
-    contexts: set[tuple[str, str, str, str]] = set()
+    contexts: set[tuple[str, str, str, str, CudaTicketAdmissionRuntime]] = set()
     for profile in profiles:
         if profile.profile_id in identifiers:
             message = (
@@ -685,10 +718,12 @@ def _validate_profile_uniqueness(
             profile.device_arch,
             profile.device_name,
             profile.workload_id,
+            profile.runtime,
         )
         if context in contexts:
             message = (
-                "duplicate CUDA ticket admission capability/workload context"
+                "duplicate CUDA ticket admission capability/workload/"
+                "runtime context"
             )
             raise TicketAdmissionError(message)
         contexts.add(context)

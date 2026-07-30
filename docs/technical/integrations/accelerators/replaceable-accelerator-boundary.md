@@ -450,18 +450,23 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eighteen admission tests cover fallback, positive/negative
+every ticket. Twenty-two admission tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
-runtime drifts, and two live CUDA routes. The seven route records and exact
+runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
+two live CUDA routes. The seven route records and exact
 provenance now live in schema-v4
 `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
 `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
 canonical bytes from retained JSON/TOML, source commit, exact raw/structured-output
 hashes, the tracked CUDA toolchain manifest, retained driver build, and retained
-host/Python context. Ten manifest tests require byte equality and reject duplicate
-or unknown keys, unsupported schema, duplicate routes, malformed display versions,
-invalid host fields, and direct capability/runtime mismatch. Runtime loading reads
-only the tracked product manifest and never opens benchmark evidence. At adapter
+host/Python context. Twelve manifest tests require byte equality and reject
+duplicate or unknown keys, unsupported schema, duplicate routes, malformed display
+versions, invalid host fields, exact runtime-context duplicates, and direct
+capability/runtime mismatch; distinct runtime variants may coexist for one
+capability/workload. Runtime loading reads only the tracked product manifest and
+never opens benchmark evidence. `resolve_cuda_ticket_admission_profile` selects at
+most one exact workload/capability/runtime record; invalid or ambiguous requests
+fail closed, while retained wrappers delegate through the stable workload identity. At adapter
 startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or newer,
 exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build `610.88`;
 `cuda-host-runtime-identity-v1` measures Windows 11 Professional build
@@ -590,11 +595,12 @@ fails explicitly without changing correctness rules.
   workload identity. Groups 2/4/8 overlap in 2/15, 8/15, and 15/15 samples; group
   eight records 0.015360 ms median overlap, 1.091x median interval concurrency, and
   observed peak five.
-- `tests/optimizer/test_ticket_admission.py` verifies stable generic/profile
+- `tests/optimizer/test_ticket_admission.py` verifies stable generic/profile/workload
   identities, singleton fallback, positive synchronous grouping, negative streamed
   rejection, synchronous tie-breaking, context isolation, malformed/duplicate
-  evidence failure, exact RTX 4060 queue composition, one live CPU-equal executor
-  route, and live wrong-workload rejection.
+  evidence failure, exact multi-runtime registry selection, unknown/invalid workload
+  rejection, ambiguity failure, exact RTX 4060 queue composition, one live CPU-equal
+  executor route, and live wrong-workload rejection.
 - `accelerator/cuda/ticket_admission_profiles.json` is the schema-v4 product
   registry generated from retained transfer-throughput evidence, the tracked CUDA
   toolchain manifest, display-driver build, and host/Python context. Runtime loading
@@ -603,7 +609,8 @@ fails explicitly without changing correctness rules.
   generated/tracked byte equality, exact commit/hash/runtime provenance,
   admitted-route shape, duplicate JSON keys, unknown root keys, unsupported schema,
   duplicate route identity, malformed display-driver versions, invalid host fields,
-  and direct capability/runtime mismatch.
+  distinct runtime variants, duplicate exact runtime contexts, and direct
+  capability/runtime mismatch.
 - `tests/optimizer/test_cuda_runtime_identity.py` verifies stable CUDA and host
   protocols, fake Driver API/NVRTC/hash success, required query failures,
   missing-manifest/NVML behavior, NVML lifetimes, invalid host text, exact live host

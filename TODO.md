@@ -1533,18 +1533,23 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eighteen admission tests cover fallback, positive/negative
+every ticket. Twenty-two admission tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
-runtime drifts, and two live CUDA routes. The seven route records and exact
+runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
+two live CUDA routes. The seven route records and exact
 provenance now live in schema-v4
 `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
 `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
 canonical bytes from retained JSON/TOML, source commit, exact raw/structured-output
 hashes, the tracked CUDA toolchain manifest, retained driver build, and retained
-host/Python context. Ten manifest tests require byte equality and reject duplicate
-or unknown keys, unsupported schema, duplicate routes, malformed display versions,
-invalid host fields, and direct capability/runtime mismatch. Runtime loading reads
-only the tracked product manifest and never opens benchmark evidence. At adapter
+host/Python context. Twelve manifest tests require byte equality and reject
+duplicate or unknown keys, unsupported schema, duplicate routes, malformed display
+versions, invalid host fields, exact runtime-context duplicates, and direct
+capability/runtime mismatch; distinct runtime variants may coexist for one
+capability/workload. Runtime loading reads only the tracked product manifest and
+never opens benchmark evidence. `resolve_cuda_ticket_admission_profile` selects at
+most one exact workload/capability/runtime record; invalid or ambiguous requests
+fail closed, while retained wrappers delegate through the stable workload identity. At adapter
 startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or newer,
 exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build `610.88`;
 `cuda-host-runtime-identity-v1` measures Windows 11 Professional build

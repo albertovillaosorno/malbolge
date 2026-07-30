@@ -326,9 +326,9 @@ build, and exact host string before emitting canonical sorted JSON. The runtime
 block requires Driver API 13030 or newer, NVRTC 13.3, the tracked `toolchain.json`
 SHA-256, display build `610.88`, Windows 11 Professional build `10.0.26200`,
 `x86_64`, and CPython `3.14.6`. It writes only to stdout; runtime code loads the
-product manifest and never reads benchmark evidence. Ten manifest tests require
-generated/tracked byte equality and strict rejection of malformed profile,
-display-driver, or host-runtime identity documents.
+product manifest and never reads benchmark evidence. Twelve manifest tests
+require generated/tracked byte equality, allow distinct runtime variants for one
+capability/workload, and reject malformed or duplicate exact profile contexts.
 
 Run with:
 

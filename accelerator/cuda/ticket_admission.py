@@ -55,6 +55,9 @@ from typing import TYPE_CHECKING
 from accelerator.cuda.ticket_admission_profile import (
     load_cuda_ticket_admission_profiles,
 )
+from accelerator.cuda.ticket_admission_profile import (
+    resolve_cuda_ticket_admission_profile,
+)
 from accelerator.ticket_admission import TicketAdmissionError
 from accelerator.ticket_admission import TicketSubmissionMode
 
@@ -75,6 +78,9 @@ if TYPE_CHECKING:
 CUDA_TICKET_ADMISSION_PROFILE_ID: Final = (
     "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
 )
+CUDA_TICKET_ADMISSION_WORKLOAD_ID: Final = (
+    "classic-crazy-full-domain-ticket-transfer-v1"
+)
 
 
 def cuda_ticket_admission_profile_id() -> str:
@@ -87,6 +93,16 @@ def cuda_ticket_admission_profile_id() -> str:
     return CUDA_TICKET_ADMISSION_PROFILE_ID
 
 
+def cuda_ticket_admission_workload_id() -> str:
+    """Return the retained workload identity used by compatibility wrappers.
+
+    Returns:
+        Versioned exact workload identity.
+
+    """
+    return CUDA_TICKET_ADMISSION_WORKLOAD_ID
+
+
 def cuda_ticket_admission_profile(
     capability: AcceleratorCapability,
     runtime_identity: CudaRuntimeIdentity,
@@ -97,8 +113,12 @@ def cuda_ticket_admission_profile(
         Exact retained profile or ``None`` for any identity mismatch.
 
     """
-    profile = _retained_profile()
-    return profile if profile.matches(capability, runtime_identity) else None
+    return resolve_cuda_ticket_admission_profile(
+        load_cuda_ticket_admission_profiles(),
+        capability=capability,
+        runtime_identity=runtime_identity,
+        workload_id=CUDA_TICKET_ADMISSION_WORKLOAD_ID,
+    )
 
 
 def plan_retained_cuda_tickets(
@@ -147,21 +167,6 @@ def execute_retained_cuda_tickets(
         )
         results.extend(_execute_chunk(submit, prepared, chunk.ticket_count))
     return plan, tuple(results)
-
-
-def _retained_profile() -> CudaTicketAdmissionProfile:
-    profiles = tuple(
-        profile
-        for profile in load_cuda_ticket_admission_profiles()
-        if profile.profile_id == CUDA_TICKET_ADMISSION_PROFILE_ID
-    )
-    if len(profiles) != 1:
-        message = (
-            "CUDA ticket admission registry must contain exactly one retained "
-            f"profile {CUDA_TICKET_ADMISSION_PROFILE_ID}"
-        )
-        raise TicketAdmissionError(message)
-    return profiles[0]
 
 
 def _execute_chunk(

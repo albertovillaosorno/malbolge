@@ -167,14 +167,15 @@ example probe points, not supported-range endpoints.
   exact same-context paired route evidence and chooses deterministic queue
   chunks. The retained RTX 4060 full-domain CRAZY profile admits synchronous
   groups 2/4/8, rejects streamed 1/2/4/8, validates the packed workload before
-  execution, and leaves the global synchronous default unchanged. Eighteen
+  execution, and leaves the global synchronous default unchanged. Twenty-two
   admission tests cover the neutral planner, exact profile binding, live CPU-equal
-  execution, wrong-workload rejection, and seven isolated runtime drifts. The
-  schema-v4 product registry is reconstructed byte-for-byte from retained evidence,
-  the tracked CUDA toolchain manifest, display-driver build, and host/Python
-  context. Ten manifest tests reject drift, duplicate/unknown keys, unsupported
-  schema, duplicate routes, malformed display versions, invalid host fields, and
-  direct capability/runtime mismatch. Fourteen runtime tests measure Driver API,
+  execution, wrong-workload rejection, seven isolated runtime drifts, multi-profile
+  selection, invalid/unknown workloads, and ambiguity. The schema-v4 product
+  registry is reconstructed byte-for-byte from retained evidence, the tracked CUDA
+  toolchain manifest, display-driver build, and host/Python context. Twelve manifest
+  tests reject drift, duplicate/unknown keys, unsupported schema, duplicate routes,
+  malformed display versions, invalid host fields, and duplicate exact runtime
+  contexts while allowing distinct runtime variants. Fourteen runtime tests measure Driver API,
   NVRTC, toolchain SHA, NVML display build, Windows host, architecture, and CPython
   with fake and live routes. Missing optional identity leaves ordinary CUDA
   available but the profile unmatched. Runtime never reads benchmark evidence.

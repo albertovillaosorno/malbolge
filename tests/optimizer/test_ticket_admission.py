@@ -59,8 +59,11 @@ from accelerator.cuda import CudaHostRuntimeIdentity
 from accelerator.cuda import CudaRuntimeIdentity
 from accelerator.cuda import cuda_ticket_admission_profile
 from accelerator.cuda import cuda_ticket_admission_profile_id
+from accelerator.cuda import cuda_ticket_admission_workload_id
 from accelerator.cuda import execute_retained_cuda_tickets
+from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.cuda import plan_retained_cuda_tickets
+from accelerator.cuda import resolve_cuda_ticket_admission_profile
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import MAX_WORD
@@ -78,6 +81,7 @@ if TYPE_CHECKING:
 
 GENERIC_ADMISSION_ID = "evidence-bound-ticket-route-admission-v1"
 CUDA_PROFILE_ID = "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
+CUDA_WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 BENCHMARK_ID = "test-ticket-route-v1"
 BACKEND_ID = "cuda"
 DEVICE_ARCH = "sm_test"
@@ -172,6 +176,7 @@ def test_ticket_route_admission_identity_is_stable() -> None:
     """Planning and retained CUDA profile identities remain versioned."""
     assert ticket_route_admission_id() == GENERIC_ADMISSION_ID
     assert cuda_ticket_admission_profile_id() == CUDA_PROFILE_ID
+    assert cuda_ticket_admission_workload_id() == CUDA_WORKLOAD_ID
 
 
 def test_missing_evidence_keeps_singleton_synchronous_fallback() -> None:
@@ -327,6 +332,99 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
     assert profile.profile_id == CUDA_PROFILE_ID
     assert cuda_ticket_admission_profile(mismatch, MATCHING_RUNTIME) is None
     assert plan_retained_cuda_tickets(mismatch, MATCHING_RUNTIME, 8) is None
+
+
+def test_registry_resolver_selects_exact_runtime_variant() -> None:
+    """Two runtime variants resolve independently for one workload/device."""
+    current = load_cuda_ticket_admission_profiles()[0]
+    alternate = replace(
+        current,
+        profile_id="rtx4060-alternate-driver-v1",
+        runtime=replace(current.runtime, display_driver_version="611.00"),
+    )
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    profiles = (current, alternate)
+    assert (
+        resolve_cuda_ticket_admission_profile(
+            profiles,
+            capability=capability,
+            runtime_identity=MATCHING_RUNTIME,
+            workload_id=current.workload_id,
+        )
+        is current
+    )
+    assert (
+        resolve_cuda_ticket_admission_profile(
+            profiles,
+            capability=capability,
+            runtime_identity=replace(
+                MATCHING_RUNTIME,
+                display_driver_version="611.00",
+            ),
+            workload_id=current.workload_id,
+        )
+        is alternate
+    )
+
+
+def test_registry_resolver_returns_none_for_unknown_workload() -> None:
+    """A registry never extrapolates one profile to another workload."""
+    current = load_cuda_ticket_admission_profiles()[0]
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    assert (
+        resolve_cuda_ticket_admission_profile(
+            (current,),
+            capability=capability,
+            runtime_identity=MATCHING_RUNTIME,
+            workload_id="unknown-exact-workload-v1",
+        )
+        is None
+    )
+
+
+def test_registry_resolver_rejects_invalid_workload_identity() -> None:
+    """Empty workload identity fails before registry selection."""
+    current = load_cuda_ticket_admission_profiles()[0]
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    with pytest.raises(
+        TicketAdmissionError, match="workload identity is invalid"
+    ):
+        _ = resolve_cuda_ticket_admission_profile(
+            (current,),
+            capability=capability,
+            runtime_identity=MATCHING_RUNTIME,
+            workload_id="",
+        )
+
+
+def test_registry_resolver_rejects_ambiguous_exact_profiles() -> None:
+    """An unvalidated duplicate tuple still fails closed at resolution."""
+    current = load_cuda_ticket_admission_profiles()[0]
+    duplicate = replace(current, profile_id="duplicate-profile-v1")
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    with pytest.raises(TicketAdmissionError, match="multiple exact profiles"):
+        _ = resolve_cuda_ticket_admission_profile(
+            (current, duplicate),
+            capability=capability,
+            runtime_identity=MATCHING_RUNTIME,
+            workload_id=current.workload_id,
+        )
 
 
 @pytest.mark.parametrize(

@@ -107,6 +107,7 @@ from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
 from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile_id
+from accelerator.cuda.ticket_admission import cuda_ticket_admission_workload_id
 from accelerator.cuda.ticket_admission import execute_retained_cuda_tickets
 from accelerator.cuda.ticket_admission import plan_retained_cuda_tickets
 from accelerator.cuda.ticket_admission_profile import (
@@ -119,6 +120,9 @@ from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionProfile
 from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionRuntime
 from accelerator.cuda.ticket_admission_profile import (
     load_cuda_ticket_admission_profiles,
+)
+from accelerator.cuda.ticket_admission_profile import (
+    resolve_cuda_ticket_admission_profile,
 )
 
 __all__ = [
@@ -175,6 +179,7 @@ __all__ = [
     "cuda_runtime_identity_id",
     "cuda_ticket_admission_profile",
     "cuda_ticket_admission_profile_id",
+    "cuda_ticket_admission_workload_id",
     "execute_retained_cuda_tickets",
     "load_cuda_ticket_admission_profiles",
     "measure_cuda_host_runtime_identity",
@@ -185,4 +190,5 @@ __all__ = [
     "profile_snapshot_overlap_workspace_id",
     "profile_snapshot_stream_workspace_id",
     "profile_snapshot_workspace_id",
+    "resolve_cuda_ticket_admission_profile",
 ]

@@ -49,6 +49,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 from typing import cast
@@ -76,6 +77,7 @@ THROUGHPUT_SHA256 = (
 )
 RAW_SHA256 = "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f"
 ROUTE_COUNT = 7
+PROFILE_VARIANT_COUNT = 2
 DISPLAY_DRIVER_VERSION = "610.88"
 DRIVER_API_VERSION = 13_030
 NVRTC_MAJOR = 13
@@ -219,6 +221,39 @@ def test_loader_rejects_invalid_host_runtime(
         _ = load_cuda_ticket_admission_profiles(manifest)
 
 
+def test_loader_accepts_distinct_runtime_profiles(tmp_path: Path) -> None:
+    """One workload/device may retain independent exact runtime variants."""
+    document = profile_manifest()
+    _append_profile_variant(
+        document,
+        profile_id="rtx4060-alternate-driver-v1",
+        display_driver_version="611.00",
+    )
+    manifest = _write_manifest(tmp_path, document, "variants.json")
+    profiles = load_cuda_ticket_admission_profiles(manifest)
+    assert len(profiles) == PROFILE_VARIANT_COUNT
+    assert [profile.runtime.display_driver_version for profile in profiles] == [
+        DISPLAY_DRIVER_VERSION,
+        "611.00",
+    ]
+
+
+def test_loader_rejects_duplicate_runtime_context(tmp_path: Path) -> None:
+    """A second ID cannot duplicate one exact runtime/workload context."""
+    document = profile_manifest()
+    _append_profile_variant(
+        document,
+        profile_id="rtx4060-duplicate-context-v1",
+        display_driver_version=DISPLAY_DRIVER_VERSION,
+    )
+    manifest = _write_manifest(tmp_path, document, "duplicate-context.json")
+    with pytest.raises(
+        TicketAdmissionError,
+        match="capability/workload/runtime context",
+    ):
+        _ = load_cuda_ticket_admission_profiles(manifest)
+
+
 def test_profile_plan_rejects_mismatched_capability() -> None:
     """Direct profile use cannot bypass exact device matching."""
     profile = load_cuda_ticket_admission_profiles()[0]
@@ -256,6 +291,20 @@ def test_profile_plan_rejects_mismatched_runtime() -> None:
         match="capability/runtime mismatched",
     ):
         _ = profile.plan(capability, mismatch, 1)
+
+
+def _append_profile_variant(
+    document: dict[str, object],
+    *,
+    profile_id: str,
+    display_driver_version: str,
+) -> None:
+    profiles = cast("list[object]", document["profiles"])
+    variant = deepcopy(_first_profile(document))
+    variant["profile_id"] = profile_id
+    runtime = cast("dict[str, object]", variant["runtime"])
+    runtime["display_driver_version"] = display_driver_version
+    profiles.append(variant)
 
 
 def _first_profile(document: dict[str, object]) -> dict[str, object]:
