@@ -45,11 +45,13 @@ example probe points, not supported-range endpoints.
 ## Method
 
 The research identity and configuration live at
-`algorithms/adaptive-accelerator-resource-budgeting/`. The product planner lives
-in `accelerator/resource_budget.py`; the reproducible measurement entry point is
-`benchmarks/accelerator/resource_budget_measure.py`. The experiment deliberately
-separates synthetic capacity scenarios from live CUDA resource evidence. Raw
-regenerable output stays outside correctness authority.
+`algorithms/adaptive-accelerator-resource-budgeting/`. Product planners live in
+`accelerator/resource_budget.py` and `accelerator/ticket_admission.py`; exact CUDA
+route evidence is bound by `accelerator/cuda/ticket_admission.py`. The reproducible
+resource measurement entry point is
+`benchmarks/accelerator/resource_budget_measure.py`. Experiments deliberately
+separate synthetic capacity scenarios, live CUDA resource evidence, and retained
+route comparisons. Raw regenerable output stays outside correctness authority.
 
 ## Evidence
 
@@ -144,6 +146,17 @@ baseline. Complete result decode is now the dominant phase (~75.1%), while the
 kernel remains ~0.10%. This selects an actually resident continuation/snapshot
 boundary: continue VM state on device and materialize all 59,049 words only when
 a host snapshot is explicitly requested.
+
+Ticket queue admission now extends the budgeting work without introducing online
+learning. `accelerator/ticket_admission.py` accepts only exact, same-context
+route evidence with lower median and a strict paired-win majority, fails closed
+for malformed or duplicate records, and chooses a deterministic input-order
+partition. The first retained CUDA profile is limited to the RTX 4060 `sm_89`
+full-domain CRAZY evidence from 2026-07-29. It admits synchronous groups 2/4/8,
+rejects every measured streamed route, and leaves the ordinary synchronous path
+as the global default. This closes one exact queue-size admission slice;
+manifest-generated profiles, driver/toolchain identity, other devices/workloads,
+and online queue/resource telemetry remain open.
 
 ## Threats to Validity
 

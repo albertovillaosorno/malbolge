@@ -393,8 +393,24 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   ticket are exact on live CUDA. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 11.601x
   prepared and 1.270x ticket improvements over ordinary CUDA, both with 15/15 wins;
   prepared is 9.137x faster than the one-shot ticket. No cross-device, compiler,
-  synthesis, or physical kernel-overlap claim follows. Other synthesis/search/hint
-  strategies, event-instrumentation controls, adaptive stream admission, and
-  broader hardware remain open.
+  synthesis, or physical kernel-overlap claim follows.
+  Hardware-neutral `evidence-bound-ticket-route-admission-v1` now gives ticket
+  grouping an explicit evidence gate. It validates exact backend, device, and
+  workload identity plus exact output, lower candidate median, and a strict
+  paired-win majority; malformed or duplicate route records fail closed. Plans
+  preserve input order, minimize chunk count, then measured median cost, and
+  prefer synchronous ties. The retained
+  `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the
+  RTX 4060 `sm_89` capability and full-domain CRAZY workload to source commit
+  `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
+  and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
+  groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
+  packed workload SHA-256, reverse-waits each group, restores input order, and
+  closes every ticket. Eleven tests cover fallback, positive/negative evidence,
+  duplicate/malformed records, exact profile matching, and two live CUDA routes.
+  This is not driver/toolchain, cross-device, or other-workload evidence, and it
+  does not change the global synchronous default.
+  Other synthesis/search/hint strategies, event-instrumentation controls,
+  additional device/workload admission profiles, and broader hardware remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.

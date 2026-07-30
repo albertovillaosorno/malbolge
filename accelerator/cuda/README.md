@@ -14,6 +14,23 @@ standard-library `ctypes` runtime binds only the reviewed NVRTC and CUDA Driver 
 calls needed by the adapter. Normative Rust execution remains the differential
 correctness oracle.
 
+Hardware-neutral `evidence-bound-ticket-route-admission-v1` now gives ticket
+grouping an explicit evidence gate. It validates exact backend, device, and
+workload identity plus exact output, lower candidate median, and a strict
+paired-win majority; malformed or duplicate route records fail closed. Plans
+preserve input order, minimize chunk count, then measured median cost, and
+prefer synchronous ties. The retained
+`rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
+4060 `sm_89` capability and full-domain CRAZY workload to source commit
+`431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
+and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
+2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
+workload SHA-256, reverse-waits each group, restores input order, and closes
+every ticket. Eleven tests cover fallback, positive/negative evidence,
+duplicate/malformed records, exact profile matching, and two live CUDA routes.
+This is not driver/toolchain, cross-device, or other-workload evidence, and it
+does not change the global synchronous default.
+
 The repository pins CUDA 13.3 Update 1 for Windows x86-64 through
 `toolchain.json`. Binary redistributables live under ignored
 `.dependencies/cuda/13.3.1/`, and every downloaded archive is checked against

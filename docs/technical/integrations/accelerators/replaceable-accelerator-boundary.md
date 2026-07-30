@@ -437,9 +437,25 @@ through a proof-bound 1,024-item candidate ticket; seven tests cover its exact a
 fallback routes. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared,
 11.601x CUDA prepared, and 1.270x one-shot CUDA-ticket improvements over their
 same-run ordinary baselines, all with 15/15 paired wins; CUDA prepared remains
-9.137x faster than the ticket. Other CUDA/ROCm strategies,
-event-instrumentation controls, adaptive stream/group admission, and other
-kernel/callback workloads remain open.
+9.137x faster than the ticket.
+Hardware-neutral `evidence-bound-ticket-route-admission-v1` now gives ticket
+grouping an explicit evidence gate. It validates exact backend, device, and
+workload identity plus exact output, lower candidate median, and a strict
+paired-win majority; malformed or duplicate route records fail closed. Plans
+preserve input order, minimize chunk count, then measured median cost, and
+prefer synchronous ties. The retained
+`rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
+4060 `sm_89` capability and full-domain CRAZY workload to source commit
+`431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
+and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
+2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
+workload SHA-256, reverse-waits each group, restores input order, and closes
+every ticket. Eleven tests cover fallback, positive/negative evidence,
+duplicate/malformed records, exact profile matching, and two live CUDA routes.
+This is not driver/toolchain, cross-device, or other-workload evidence, and it
+does not change the global synchronous default.
+Other CUDA/ROCm strategies, event-instrumentation controls, additional
+admission profiles, and other kernel/callback workloads remain open.
 
 ## Invariants
 
@@ -557,6 +573,11 @@ fails explicitly without changing correctness rules.
   workload identity. Groups 2/4/8 overlap in 2/15, 8/15, and 15/15 samples; group
   eight records 0.015360 ms median overlap, 1.091x median interval concurrency, and
   observed peak five.
+- `tests/optimizer/test_ticket_admission.py` verifies stable generic/profile
+  identities, singleton fallback, positive synchronous grouping, negative streamed
+  rejection, synchronous tie-breaking, context isolation, malformed/duplicate
+  evidence failure, exact RTX 4060 queue composition, one live CPU-equal executor
+  route, and live wrong-workload rejection.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.
@@ -564,9 +585,9 @@ fails explicitly without changing correctness rules.
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
 - Remaining evidence includes other CUDA/ROCm search and hint tickets, ROCm
-  candidate tickets and VM substitution, instrumentation controls, adaptive
-  stream/group admission, broader hardware evidence, and matched measurements for
-  other workloads.
+  candidate tickets and VM substitution, instrumentation controls, additional
+  device/workload admission profiles, broader hardware evidence, and matched
+  measurements for other workloads.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

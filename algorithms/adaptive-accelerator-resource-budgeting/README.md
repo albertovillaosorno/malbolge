@@ -9,9 +9,11 @@ Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.
 Regenerable results belong in `out/` and remain Git ignored.
 
-The active implementation intentionally remains product-owned by
-`accelerator/resource_budget.py`; this research mirror owns experiment identity
-and configuration rather than a duplicate scheduler. Reproducible capacity/live
-resource output is emitted by `benchmarks/accelerator/resource_budget_measure.py`.
-Synthetic scenarios are labeled explicitly and must never be reported as measured
-hardware throughput.
+The active implementations intentionally remain product-owned by
+`accelerator/resource_budget.py`, `accelerator/ticket_admission.py`, and the exact
+CUDA profile in `accelerator/cuda/ticket_admission.py`; this research mirror owns
+experiment identity and configuration rather than duplicate schedulers.
+Reproducible capacity/live resource output is emitted by
+`benchmarks/accelerator/resource_budget_measure.py`, while retained ticket-route
+measurements remain under `benchmarks/accelerator/evidence/`. Synthetic scenarios
+are labeled explicitly and must never be reported as measured hardware throughput.

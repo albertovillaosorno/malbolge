@@ -97,6 +97,11 @@ from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
 from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
+from accelerator.cuda.ticket_admission import CudaTicketAdmissionProfile
+from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile
+from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile_id
+from accelerator.cuda.ticket_admission import execute_retained_cuda_tickets
+from accelerator.cuda.ticket_admission import plan_retained_cuda_tickets
 
 __all__ = [
     "CudaDeviceToHostTransfer",
@@ -124,6 +129,7 @@ __all__ = [
     "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
+    "CudaTicketAdmissionProfile",
     "ProfileSnapshotHostRegistration",
     "ProfileSnapshotOverlapAdmission",
     "ProfileSnapshotOverlapCapacity",
@@ -141,6 +147,10 @@ __all__ = [
     "cuda_independent_ticket_transfer_timeline_id",
     "cuda_kernel_launch_id",
     "cuda_ordered_dtoh_stream_id",
+    "cuda_ticket_admission_profile",
+    "cuda_ticket_admission_profile_id",
+    "execute_retained_cuda_tickets",
+    "plan_retained_cuda_tickets",
     "profile_snapshot_host_registration_id",
     "profile_snapshot_overlap_workspace_id",
     "profile_snapshot_stream_workspace_id",

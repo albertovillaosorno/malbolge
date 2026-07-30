@@ -253,8 +253,24 @@ paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
-Event instrumentation controls, adaptive group admission, and other kernel/group
-workloads remain open. Other strategy submissions require their own exact
+Hardware-neutral `evidence-bound-ticket-route-admission-v1` now gives ticket
+grouping an explicit evidence gate. It validates exact backend, device, and
+workload identity plus exact output, lower candidate median, and a strict
+paired-win majority; malformed or duplicate route records fail closed. Plans
+preserve input order, minimize chunk count, then measured median cost, and
+prefer synchronous ties. The retained
+`rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
+4060 `sm_89` capability and full-domain CRAZY workload to source commit
+`431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
+and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
+2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
+workload SHA-256, reverse-waits each group, restores input order, and closes
+every ticket. Eleven tests cover fallback, positive/negative evidence,
+duplicate/malformed records, exact profile matching, and two live CUDA routes.
+This is not driver/toolchain, cross-device, or other-workload evidence, and it
+does not change the global synchronous default.
+Event instrumentation controls, additional device/workload admission profiles,
+and other kernel/group workloads remain open. Other strategy submissions require their own exact
 state/lifetime evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
