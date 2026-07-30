@@ -66,13 +66,22 @@ EVIDENCE_RELATIVE = (
     / "evidence"
     / "2026-07-29-independent-ticket-transfer-throughput-rtx4060"
 )
+TOOLCHAIN_RELATIVE = Path("accelerator") / "cuda" / "toolchain.json"
 PROFILE_ID = "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
 BENCHMARK_ID = "cuda-independent-ticket-transfer-throughput-v1"
 WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 WORKLOAD_KIND = "crazy"
 WORKLOAD_COUNT = 59_049
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EXPECTED_SAMPLE_COUNT = 15
+RUNTIME_IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
+MINIMUM_DRIVER_API_VERSION = 13_030
+NVRTC_MAJOR = 13
+NVRTC_MINOR = 3
+NVRTC_PACKAGE_NAME = "cuda_nvrtc"
+EXPECTED_TOOLCHAIN_SHA256 = (
+    "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
+)
 EXPECTED_SOURCE_COMMIT = "431f542ab6321eeb12b7bcb9195318f25cf376a5"
 EXPECTED_WORKLOAD_SHA256 = (
     "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc"
@@ -101,6 +110,8 @@ class _EvidenceBundle:
     source_commit: str
     throughput: dict[str, object]
     throughput_sha256: str
+    toolchain: dict[str, object]
+    toolchain_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +150,7 @@ def profile_manifest(root: Path = ROOT) -> dict[str, object]:
     """Build one validated profile manifest object.
 
     Returns:
-        Schema-v1 document containing one exact CUDA profile.
+        Schema-v2 document containing one exact CUDA profile.
 
     """
     evidence = root / EVIDENCE_RELATIVE
@@ -152,6 +163,8 @@ def profile_manifest(root: Path = ROOT) -> dict[str, object]:
         source_commit=_read_text(evidence / "source-commit.txt").strip(),
         throughput=_json_object(throughput_path),
         throughput_sha256=_sha256(throughput_path),
+        toolchain=_json_object(root / TOOLCHAIN_RELATIVE),
+        toolchain_sha256=_sha256(root / TOOLCHAIN_RELATIVE),
     )
     _validate_evidence(bundle)
     return {
@@ -195,6 +208,13 @@ def _profile(bundle: _EvidenceBundle) -> dict[str, object]:
         ),
         "profile_id": PROFILE_ID,
         "routes": _routes(routes, comparisons),
+        "runtime": {
+            "identity_id": RUNTIME_IDENTITY_ID,
+            "minimum_driver_api_version": MINIMUM_DRIVER_API_VERSION,
+            "nvrtc_major": NVRTC_MAJOR,
+            "nvrtc_minor": NVRTC_MINOR,
+            "toolchain_manifest_sha256": bundle.toolchain_sha256,
+        },
         "sample_count": _int(
             measurement["sample_count"],
             "measurement.sample_count",
@@ -309,6 +329,7 @@ def _validate_evidence(bundle: _EvidenceBundle) -> None:
     )
     _validate_throughput(bundle.throughput)
     _validate_experiment(bundle.experiment)
+    _validate_toolchain(bundle.toolchain, bundle.toolchain_sha256)
 
 
 def _validate_throughput(throughput: dict[str, object]) -> None:
@@ -376,6 +397,52 @@ def _validate_experiment(experiment: dict[str, object]) -> None:
     )
     for observed, expected in expectations:
         _expect_equal(observed, expected, "retained experiment identity")
+
+
+def _validate_toolchain(
+    toolchain: dict[str, object],
+    toolchain_sha256: str,
+) -> None:
+    _expect_equal(
+        toolchain_sha256,
+        EXPECTED_TOOLCHAIN_SHA256,
+        "CUDA toolchain manifest hash",
+    )
+    expectations = (
+        (_int(toolchain["schema_version"], "toolchain.schema_version"), 1),
+        (
+            _string(toolchain["cuda_release"], "toolchain.cuda_release"),
+            "13.3 Update 1",
+        ),
+        (
+            _string(toolchain["platform"], "toolchain.platform"),
+            "windows-x86_64",
+        ),
+        (
+            _string(toolchain["toolkit_root"], "toolchain.toolkit_root"),
+            ".dependencies/cuda/13.3.1/toolkit",
+        ),
+    )
+    for observed, expected in expectations:
+        _expect_equal(observed, expected, "CUDA toolchain identity")
+    packages = _array(toolchain["packages"], "toolchain.packages")
+    nvrtc = tuple(
+        package
+        for package in (
+            _object(entry, f"toolchain.packages[{index}]")
+            for index, entry in enumerate(packages)
+        )
+        if _string(package["name"], "toolchain package name")
+        == NVRTC_PACKAGE_NAME
+    )
+    if len(nvrtc) != 1:
+        message = "CUDA toolchain must contain exactly one cuda_nvrtc package"
+        raise ProfileManifestError(message)
+    _expect_equal(
+        _string(nvrtc[0]["version"], "cuda_nvrtc.version"),
+        "13.3.33",
+        "NVRTC package version",
+    )
 
 
 def _route_median(
@@ -493,6 +560,13 @@ def _object(value: object, context: str) -> dict[str, object]:
             raise ProfileManifestError(message)
         result[key] = item
     return result
+
+
+def _array(value: object, context: str) -> list[object]:
+    if not isinstance(value, list):
+        message = f"{context} must be an array"
+        raise ProfileManifestError(message)
+    return cast("list[object]", value)
 
 
 def _string(value: object, context: str) -> str:

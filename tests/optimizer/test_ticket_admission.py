@@ -54,6 +54,7 @@ import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.cuda import CudaRuntimeIdentity
 from accelerator.cuda import cuda_ticket_admission_profile
 from accelerator.cuda import cuda_ticket_admission_profile_id
 from accelerator.cuda import execute_retained_cuda_tickets
@@ -86,6 +87,15 @@ THREE_FALLBACK_NS = 3 * FALLBACK_NS
 COMPOSED_NS = 680
 PAIR_GROUP_SIZE = 2
 RETAINED_TEN_NS = 7_327_100
+MATCHING_RUNTIME = CudaRuntimeIdentity(
+    driver_api_version=13_030,
+    identity_id="cuda-runtime-toolchain-identity-v1",
+    nvrtc_major=13,
+    nvrtc_minor=3,
+    toolchain_manifest_sha256=(
+        "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
+    ),
+)
 
 
 def _request(ticket_count: int) -> TicketAdmissionRequest:
@@ -297,11 +307,54 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
         device_arch="sm_89",
         device_name="another sm_89 device",
     )
-    profile = cuda_ticket_admission_profile(exact)
+    profile = cuda_ticket_admission_profile(exact, MATCHING_RUNTIME)
     assert profile is not None
     assert profile.profile_id == CUDA_PROFILE_ID
-    assert cuda_ticket_admission_profile(mismatch) is None
-    assert plan_retained_cuda_tickets(mismatch, 8) is None
+    assert cuda_ticket_admission_profile(mismatch, MATCHING_RUNTIME) is None
+    assert plan_retained_cuda_tickets(mismatch, MATCHING_RUNTIME, 8) is None
+
+
+@pytest.mark.parametrize(
+    "runtime_identity",
+    [
+        CudaRuntimeIdentity(
+            driver_api_version=13_029,
+            identity_id=MATCHING_RUNTIME.identity_id,
+            nvrtc_major=13,
+            nvrtc_minor=3,
+            toolchain_manifest_sha256=(
+                MATCHING_RUNTIME.toolchain_manifest_sha256
+            ),
+        ),
+        CudaRuntimeIdentity(
+            driver_api_version=13_030,
+            identity_id=MATCHING_RUNTIME.identity_id,
+            nvrtc_major=13,
+            nvrtc_minor=2,
+            toolchain_manifest_sha256=(
+                MATCHING_RUNTIME.toolchain_manifest_sha256
+            ),
+        ),
+        CudaRuntimeIdentity(
+            driver_api_version=13_030,
+            identity_id=MATCHING_RUNTIME.identity_id,
+            nvrtc_major=13,
+            nvrtc_minor=3,
+            toolchain_manifest_sha256="0" * 64,
+        ),
+    ],
+)
+def test_cuda_profile_rejects_runtime_identity_drift(
+    runtime_identity: CudaRuntimeIdentity,
+) -> None:
+    """Driver API, NVRTC, and manifest mismatch prevent profile resolution."""
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    assert cuda_ticket_admission_profile(capability, runtime_identity) is None
+    assert plan_retained_cuda_tickets(capability, runtime_identity, 8) is None
 
 
 def test_retained_cuda_profile_selects_sync_group_two_plus_eight() -> None:
@@ -311,7 +364,7 @@ def test_retained_cuda_profile_selects_sync_group_two_plus_eight() -> None:
         device_arch="sm_89",
         device_name="NVIDIA GeForce RTX 4060",
     )
-    plan = plan_retained_cuda_tickets(capability, 10)
+    plan = plan_retained_cuda_tickets(capability, MATCHING_RUNTIME, 10)
     assert plan is not None
     assert [(chunk.start, chunk.stop) for chunk in plan.chunks] == [
         (0, 2),

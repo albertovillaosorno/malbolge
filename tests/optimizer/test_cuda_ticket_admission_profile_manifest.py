@@ -55,6 +55,7 @@ from typing import cast
 
 import pytest
 
+from accelerator.cuda import CudaRuntimeIdentity
 from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.ticket_admission import TicketAdmissionError
@@ -73,6 +74,19 @@ THROUGHPUT_SHA256 = (
 )
 RAW_SHA256 = "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f"
 ROUTE_COUNT = 7
+DRIVER_API_VERSION = 13_030
+NVRTC_MAJOR = 13
+NVRTC_MINOR = 3
+TOOLCHAIN_SHA256 = (
+    "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
+)
+RUNTIME_IDENTITY = CudaRuntimeIdentity(
+    driver_api_version=DRIVER_API_VERSION,
+    identity_id="cuda-runtime-toolchain-identity-v1",
+    nvrtc_major=NVRTC_MAJOR,
+    nvrtc_minor=NVRTC_MINOR,
+    toolchain_manifest_sha256=TOOLCHAIN_SHA256,
+)
 
 
 def test_generated_manifest_matches_tracked_product_bytes() -> None:
@@ -90,6 +104,10 @@ def test_loaded_profile_preserves_exact_provenance_and_routes() -> None:
     assert profile.evidence.source_commit == SOURCE_COMMIT
     assert profile.evidence.throughput_sha256 == THROUGHPUT_SHA256
     assert profile.evidence.raw_sha256 == RAW_SHA256
+    assert profile.runtime.minimum_driver_api_version == DRIVER_API_VERSION
+    assert profile.runtime.nvrtc_major == NVRTC_MAJOR
+    assert profile.runtime.nvrtc_minor == NVRTC_MINOR
+    assert profile.runtime.toolchain_manifest_sha256 == TOOLCHAIN_SHA256
     assert len(profile.candidates) == ROUTE_COUNT
     assert [candidate.admitted for candidate in profile.candidates] == [
         False,
@@ -106,7 +124,7 @@ def test_loader_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     """Duplicate object keys never acquire last-value-wins semantics."""
     manifest = tmp_path / "duplicate.json"
     _ = manifest.write_text(
-        '{"schema_version":1,"schema_version":1,"profiles":[]}',
+        '{"schema_version":2,"schema_version":2,"profiles":[]}',
         encoding="utf-8",
         newline="\n",
     )
@@ -129,7 +147,7 @@ def test_loader_rejects_unknown_root_keys(tmp_path: Path) -> None:
 def test_loader_rejects_unsupported_schema(tmp_path: Path) -> None:
     """Runtime loading never guesses a newer admission schema."""
     document = profile_manifest()
-    document["schema_version"] = 2
+    document["schema_version"] = 3
     manifest = _write_manifest(tmp_path, document, "schema.json")
     with pytest.raises(TicketAdmissionError, match=r"unsupported.*schema"):
         _ = load_cuda_ticket_admission_profiles(manifest)
@@ -155,8 +173,33 @@ def test_profile_plan_rejects_mismatched_capability() -> None:
         device_arch="sm_89",
         device_name="another sm_89 device",
     )
-    with pytest.raises(TicketAdmissionError, match="capability mismatched"):
-        _ = profile.plan(mismatch, 1)
+    with pytest.raises(
+        TicketAdmissionError,
+        match="capability/runtime mismatched",
+    ):
+        _ = profile.plan(mismatch, RUNTIME_IDENTITY, 1)
+
+
+def test_profile_plan_rejects_mismatched_runtime() -> None:
+    """Direct profile use cannot bypass runtime compatibility checks."""
+    profile = load_cuda_ticket_admission_profiles()[0]
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    mismatch = CudaRuntimeIdentity(
+        driver_api_version=DRIVER_API_VERSION,
+        identity_id=RUNTIME_IDENTITY.identity_id,
+        nvrtc_major=NVRTC_MAJOR,
+        nvrtc_minor=NVRTC_MINOR,
+        toolchain_manifest_sha256="0" * 64,
+    )
+    with pytest.raises(
+        TicketAdmissionError,
+        match="capability/runtime mismatched",
+    ):
+        _ = profile.plan(capability, mismatch, 1)
 
 
 def _first_profile(document: dict[str, object]) -> dict[str, object]:

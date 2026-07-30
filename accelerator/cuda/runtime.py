@@ -50,6 +50,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import ctypes
 from dataclasses import dataclass
+from hashlib import sha256
 import os
 from pathlib import Path
 from typing import Final
@@ -63,6 +64,12 @@ from accelerator.resource_budget import AcceleratorResources
 ROOT: Final = Path(__file__).resolve().parents[2]
 CUDA_TOOLKIT: Final = ROOT / ".dependencies" / "cuda" / "13.3.1" / "toolkit"
 NVRTC_DLL: Final = CUDA_TOOLKIT / "bin" / "x64" / "nvrtc64_130_0.dll"
+CUDA_TOOLCHAIN_MANIFEST: Final = (
+    ROOT / "accelerator" / "cuda" / "toolchain.json"
+)
+CUDA_RUNTIME_IDENTITY_ID: Final = "cuda-runtime-toolchain-identity-v1"
+_HEX_DIGITS: Final = frozenset("0123456789abcdef")
+_SHA256_HEX_LENGTH: Final = 64
 CUDA_SUCCESS: Final = 0
 NVRTC_SUCCESS: Final = 0
 THREADS_PER_BLOCK: Final = 256
@@ -88,6 +95,44 @@ CUDA_EVENT_DEFAULT: Final = 0
 
 _CudaFn = Callable[..., int]
 type HostWords = ctypes.Array[ctypes.c_uint32]
+
+
+@dataclass(frozen=True, slots=True)
+class CudaRuntimeIdentity:
+    """Measured CUDA Driver API and pinned NVRTC/toolchain identity."""
+
+    driver_api_version: int
+    identity_id: str
+    nvrtc_major: int
+    nvrtc_minor: int
+    toolchain_manifest_sha256: str
+
+    def validated(self) -> CudaRuntimeIdentity:
+        """Validate runtime/toolchain identity shape.
+
+        Returns:
+            The unchanged identity after fail-closed validation.
+
+        Raises:
+            AcceleratorUnavailableError: If a version or digest is invalid.
+
+        """
+        if self.identity_id != CUDA_RUNTIME_IDENTITY_ID:
+            message = "CUDA runtime identity protocol mismatched"
+            raise AcceleratorUnavailableError(message)
+        if self.driver_api_version <= 0:
+            message = "CUDA Driver API version must be positive"
+            raise AcceleratorUnavailableError(message)
+        if self.nvrtc_major <= 0 or self.nvrtc_minor < 0:
+            message = "NVRTC version is invalid"
+            raise AcceleratorUnavailableError(message)
+        digest = self.toolchain_manifest_sha256
+        if len(digest) != _SHA256_HEX_LENGTH or any(
+            char not in _HEX_DIGITS for char in digest
+        ):
+            message = "CUDA toolchain manifest SHA-256 is invalid"
+            raise AcceleratorUnavailableError(message)
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -2033,6 +2078,7 @@ class CudaRuntime:
     _driver: ctypes.WinDLL
     _nvrtc: ctypes.WinDLL
     device_info: CudaDeviceInfo
+    runtime_identity: CudaRuntimeIdentity
     host_memory: CudaHostMemoryRegistry
     independent_kernel_launches: CudaIndependentKernelLaunchFactory
     independent_kernel_timelines: CudaIndependentKernelTimelineFactory
@@ -2055,6 +2101,7 @@ class CudaRuntime:
     _cu_device_get: _CudaFn
     _cu_device_get_attribute: _CudaFn
     _cu_device_get_name: _CudaFn
+    _cu_driver_get_version: _CudaFn
     _cu_init: _CudaFn
     _cu_launch_kernel: _CudaFn
     _cu_mem_alloc: _CudaFn
@@ -2081,6 +2128,7 @@ class CudaRuntime:
     _nvrtc_get_log_size: _CudaFn
     _nvrtc_get_ptx: _CudaFn
     _nvrtc_get_ptx_size: _CudaFn
+    _nvrtc_version: _CudaFn
 
     def __init__(self, device_id: int = 0) -> None:
         """Load pinned CUDA runtime components and create one device context.
@@ -2101,6 +2149,11 @@ class CudaRuntime:
         self._bind_driver()
         self._bind_nvrtc()
         self._closed = False
+        self.runtime_identity = measure_cuda_runtime_identity(
+            self._cu_driver_get_version,
+            self._nvrtc_version,
+            CUDA_TOOLCHAIN_MANIFEST,
+        )
         self._device = self._open_device(device_id)
         self._context = self._create_context(self._device)
         self.device_info = self._read_device_info(self._device)
@@ -2394,6 +2447,7 @@ class CudaRuntime:
         stream = _bind_driver_stream(self._driver)
         (
             self._cu_init,
+            self._cu_driver_get_version,
             self._cu_device_get,
             self._cu_device_get_attribute,
             self._cu_ctx_create,
@@ -2435,6 +2489,7 @@ class CudaRuntime:
 
     def _bind_nvrtc(self) -> None:
         (
+            self._nvrtc_version,
             self._nvrtc_create_program,
             self._nvrtc_compile_program,
             self._nvrtc_get_ptx_size,
@@ -2539,10 +2594,70 @@ def _add_cuda_dll_directory() -> object:
         raise AcceleratorUnavailableError(message) from error
 
 
+def cuda_runtime_identity_id() -> str:
+    """Return the stable CUDA runtime/toolchain identity protocol.
+
+    Returns:
+        Versioned runtime identity used by evidence-bound profiles.
+
+    """
+    return CUDA_RUNTIME_IDENTITY_ID
+
+
+def measure_cuda_runtime_identity(
+    driver_version_fn: _CudaFn,
+    nvrtc_version_fn: _CudaFn,
+    manifest_path: Path,
+) -> CudaRuntimeIdentity:
+    """Measure Driver API, NVRTC, and exact toolchain manifest identity.
+
+    Returns:
+        Validated immutable runtime identity.
+
+    Raises:
+        AcceleratorUnavailableError: If a query or manifest read fails.
+
+    """
+    driver_version = ctypes.c_int()
+    _check_available(
+        driver_version_fn(ctypes.pointer(driver_version)),
+        "cuDriverGetVersion",
+    )
+    nvrtc_major = ctypes.c_int()
+    nvrtc_minor = ctypes.c_int()
+    _check_available(
+        nvrtc_version_fn(
+            ctypes.pointer(nvrtc_major),
+            ctypes.pointer(nvrtc_minor),
+        ),
+        "nvrtcVersion",
+    )
+    try:
+        manifest_sha256 = sha256(manifest_path.read_bytes()).hexdigest()
+    except OSError as error:
+        message = f"CUDA toolchain manifest unavailable: {error}"
+        raise AcceleratorUnavailableError(message) from error
+    return CudaRuntimeIdentity(
+        driver_api_version=driver_version.value,
+        identity_id=CUDA_RUNTIME_IDENTITY_ID,
+        nvrtc_major=nvrtc_major.value,
+        nvrtc_minor=nvrtc_minor.value,
+        toolchain_manifest_sha256=manifest_sha256,
+    ).validated()
+
+
+def _bind_driver_version(dll: ctypes.WinDLL) -> _CudaFn:
+    raw = dll.cuDriverGetVersion
+    raw.argtypes = [ctypes.POINTER(ctypes.c_int)]
+    raw.restype = ctypes.c_int
+    return cast("_CudaFn", raw)
+
+
 def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     raw_init = dll.cuInit
     raw_init.argtypes = [ctypes.c_uint]
     raw_init.restype = ctypes.c_int
+    raw_driver_version = _bind_driver_version(dll)
     raw_device_get = dll.cuDeviceGet
     raw_device_get.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
     raw_device_get.restype = ctypes.c_int
@@ -2580,6 +2695,7 @@ def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
         cast("_CudaFn", raw)
         for raw in (
             raw_init,
+            raw_driver_version,
             raw_device_get,
             raw_attribute,
             raw_ctx_create,
@@ -2917,6 +3033,12 @@ def _release_ordered_dtoh_streams(
 
 
 def _bind_nvrtc(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+    raw_version = dll.nvrtcVersion
+    raw_version.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    raw_version.restype = ctypes.c_int
     raw_create = dll.nvrtcCreateProgram
     raw_create.argtypes = [
         ctypes.POINTER(ctypes.c_void_p),
@@ -2952,6 +3074,7 @@ def _bind_nvrtc(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     return tuple(
         cast("_CudaFn", raw)
         for raw in (
+            raw_version,
             raw_create,
             raw_compile,
             raw_ptx_size,

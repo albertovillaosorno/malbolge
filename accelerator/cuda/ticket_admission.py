@@ -63,6 +63,7 @@ if TYPE_CHECKING:
 
     from accelerator.cuda.exact_primitives import CudaExactPrimitiveAdapter
     from accelerator.cuda.exact_primitives import CudaPrimitiveEvaluationTicket
+    from accelerator.cuda.runtime import CudaRuntimeIdentity
     from accelerator.cuda.ticket_admission_profile import (
         CudaTicketAdmissionProfile,
     )
@@ -88,29 +89,35 @@ def cuda_ticket_admission_profile_id() -> str:
 
 def cuda_ticket_admission_profile(
     capability: AcceleratorCapability,
+    runtime_identity: CudaRuntimeIdentity,
 ) -> CudaTicketAdmissionProfile | None:
-    """Resolve retained evidence only for its exact measured capability.
+    """Resolve retained evidence only for exact capability/runtime identity.
 
     Returns:
         Exact retained profile or ``None`` for any identity mismatch.
 
     """
     profile = _retained_profile()
-    return profile if profile.matches(capability) else None
+    return profile if profile.matches(capability, runtime_identity) else None
 
 
 def plan_retained_cuda_tickets(
     capability: AcceleratorCapability,
+    runtime_identity: CudaRuntimeIdentity,
     ticket_count: int,
 ) -> TicketAdmissionPlan | None:
-    """Plan exact retained CUDA tickets without cross-device extrapolation.
+    """Plan retained CUDA tickets without device/toolchain extrapolation.
 
     Returns:
         Retained admission plan, or ``None`` when no exact profile exists.
 
     """
-    profile = cuda_ticket_admission_profile(capability)
-    return None if profile is None else profile.plan(capability, ticket_count)
+    profile = cuda_ticket_admission_profile(capability, runtime_identity)
+    return (
+        None
+        if profile is None
+        else profile.plan(capability, runtime_identity, ticket_count)
+    )
 
 
 def execute_retained_cuda_tickets(
@@ -125,11 +132,12 @@ def execute_retained_cuda_tickets(
 
     """
     capability = adapter.capability()
-    profile = cuda_ticket_admission_profile(capability)
+    runtime_identity = adapter.runtime_identity
+    profile = cuda_ticket_admission_profile(capability, runtime_identity)
     if profile is None:
         return None
     _validate_prepared_workload(prepared, profile)
-    plan = profile.plan(capability, ticket_count)
+    plan = profile.plan(capability, runtime_identity, ticket_count)
     results: list[PackedPrimitiveResult] = []
     for chunk in plan.chunks:
         submit = (

@@ -169,9 +169,12 @@ example probe points, not supported-range endpoints.
   groups 2/4/8, rejects streamed 1/2/4/8, validates the packed workload before
   execution, and leaves the global synchronous default unchanged. Eleven
   admission tests cover the neutral planner, exact profile binding, live CPU-equal
-  execution, and wrong-workload rejection. The schema-v1 product registry is
-  reconstructed byte-for-byte from retained evidence; seven manifest tests reject
+  execution, wrong-workload rejection, and three runtime-identity mismatches.
+  The schema-v2 product registry is reconstructed byte-for-byte from retained
+  evidence plus the tracked CUDA toolchain manifest. Eight manifest tests reject
   drift, duplicate/unknown keys, unsupported schema, duplicate routes, and direct
-  capability mismatch. Runtime never reads benchmark evidence. Other
-  devices/workloads, runtime driver/toolchain enforcement, and online telemetry
+  capability/runtime mismatch. Six runtime tests measure Driver API, NVRTC, and
+  toolchain SHA with fake and live CUDA routes. Runtime never reads benchmark
+  evidence. The retained `610.88` display-driver text remains provenance only;
+  NVML/display-driver build identity, other devices/workloads, and online telemetry
   remain open.

@@ -84,6 +84,7 @@ from accelerator.cuda.runtime import CudaIndependentTransferSubmission
 from accelerator.cuda.runtime import CudaKernelLaunch
 from accelerator.cuda.runtime import CudaOrderedDtoHStream
 from accelerator.cuda.runtime import CudaOrderedTransferBatch
+from accelerator.cuda.runtime import CudaRuntimeIdentity
 from accelerator.cuda.runtime import create_independent_kernel_timeline
 from accelerator.cuda.runtime import create_independent_ticket_transfer_timeline
 from accelerator.cuda.runtime import create_ordered_dtoh_stream
@@ -95,6 +96,8 @@ from accelerator.cuda.runtime import (
 )
 from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
+from accelerator.cuda.runtime import cuda_runtime_identity_id
+from accelerator.cuda.runtime import measure_cuda_runtime_identity
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
 from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile
@@ -105,6 +108,7 @@ from accelerator.cuda.ticket_admission_profile import (
     CudaTicketAdmissionEvidence,
 )
 from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionProfile
+from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionRuntime
 from accelerator.cuda.ticket_admission_profile import (
     load_cuda_ticket_admission_profiles,
 )
@@ -135,8 +139,10 @@ __all__ = [
     "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
+    "CudaRuntimeIdentity",
     "CudaTicketAdmissionEvidence",
     "CudaTicketAdmissionProfile",
+    "CudaTicketAdmissionRuntime",
     "ProfileSnapshotHostRegistration",
     "ProfileSnapshotOverlapAdmission",
     "ProfileSnapshotOverlapCapacity",
@@ -154,10 +160,12 @@ __all__ = [
     "cuda_independent_ticket_transfer_timeline_id",
     "cuda_kernel_launch_id",
     "cuda_ordered_dtoh_stream_id",
+    "cuda_runtime_identity_id",
     "cuda_ticket_admission_profile",
     "cuda_ticket_admission_profile_id",
     "execute_retained_cuda_tickets",
     "load_cuda_ticket_admission_profiles",
+    "measure_cuda_runtime_identity",
     "plan_retained_cuda_tickets",
     "profile_snapshot_host_registration_id",
     "profile_snapshot_overlap_workspace_id",

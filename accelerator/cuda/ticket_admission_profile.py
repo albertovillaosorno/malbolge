@@ -20,7 +20,7 @@
 # - Must-Not:
 #   - Read benchmark evidence at runtime or infer missing profile fields.
 # - Allows:
-#   - Inputs: one tracked schema-v1 JSON profile manifest.
+#   - Inputs: one tracked schema-v2 JSON profile manifest.
 # - Outputs: validated immutable CUDA admission profiles.
 # - Side effects: manifest file reads only.
 # - Split-When:
@@ -62,10 +62,11 @@ from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import plan_ticket_submissions
 
 if TYPE_CHECKING:
+    from accelerator.cuda.runtime import CudaRuntimeIdentity
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.ticket_admission import TicketAdmissionPlan
 
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
 PROFILE_MANIFEST_PATH = Path(__file__).with_name(
     "ticket_admission_profiles.json"
 )
@@ -78,6 +79,7 @@ PROFILE_KEYS = frozenset((
     "fallback_ticket_ns",
     "profile_id",
     "routes",
+    "runtime",
     "sample_count",
     "workload_count",
     "workload_id",
@@ -92,6 +94,13 @@ EVIDENCE_KEYS = frozenset((
     "source_commit",
     "throughput_sha256",
     "toolchain",
+))
+RUNTIME_KEYS = frozenset((
+    "identity_id",
+    "minimum_driver_api_version",
+    "nvrtc_major",
+    "nvrtc_minor",
+    "toolchain_manifest_sha256",
 ))
 ROUTE_KEYS = frozenset((
     "candidate_median_ns",
@@ -121,6 +130,33 @@ class CudaTicketAdmissionEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class CudaTicketAdmissionRuntime:
+    """Runtime compatibility required by one evidence-backed profile."""
+
+    identity_id: str
+    minimum_driver_api_version: int
+    nvrtc_major: int
+    nvrtc_minor: int
+    toolchain_manifest_sha256: str
+
+    def matches(self, identity: CudaRuntimeIdentity) -> bool:
+        """Check measured runtime compatibility.
+
+        Returns:
+            Whether Driver API, NVRTC, protocol, and manifest identity match.
+
+        """
+        return (
+            identity.identity_id == self.identity_id
+            and identity.driver_api_version >= self.minimum_driver_api_version
+            and identity.nvrtc_major == self.nvrtc_major
+            and identity.nvrtc_minor == self.nvrtc_minor
+            and identity.toolchain_manifest_sha256
+            == self.toolchain_manifest_sha256
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _ProfileFields:
     backend_id: str
     device_arch: str
@@ -128,6 +164,7 @@ class _ProfileFields:
     evidence: CudaTicketAdmissionEvidence
     fallback_ticket_ns: int
     profile_id: str
+    runtime: CudaTicketAdmissionRuntime
     sample_count: int
     workload_count: int
     workload_id: str
@@ -156,13 +193,18 @@ class CudaTicketAdmissionProfile:
     evidence: CudaTicketAdmissionEvidence
     fallback_ticket_ns: int
     profile_id: str
+    runtime: CudaTicketAdmissionRuntime
     sample_count: int
     workload_count: int
     workload_id: str
     workload_kind: str
     workload_sha256: str
 
-    def matches(self, capability: AcceleratorCapability) -> bool:
+    def matches(
+        self,
+        capability: AcceleratorCapability,
+        runtime_identity: CudaRuntimeIdentity,
+    ) -> bool:
         """Check one live capability against this exact device context.
 
         Returns:
@@ -173,24 +215,28 @@ class CudaTicketAdmissionProfile:
             capability.backend_id == self.backend_id
             and capability.device_arch == self.device_arch
             and capability.device_name == self.device_name
+            and self.runtime.matches(runtime_identity)
         )
 
     def plan(
         self,
         capability: AcceleratorCapability,
+        runtime_identity: CudaRuntimeIdentity,
         ticket_count: int,
     ) -> TicketAdmissionPlan:
-        """Plan pending tickets for this exact retained capability.
+        """Plan pending tickets for exact retained capability/runtime identity.
 
         Returns:
             Conservative fewest-chunk plan with measured-cost tie breaking.
 
         Raises:
-            TicketAdmissionError: If the capability does not match this profile.
+            TicketAdmissionError: If capability or runtime identity mismatches.
 
         """
-        if not self.matches(capability):
-            message = "CUDA ticket admission profile capability mismatched"
+        if not self.matches(capability, runtime_identity):
+            message = (
+                "CUDA ticket admission profile capability/runtime mismatched"
+            )
             raise TicketAdmissionError(message)
         return plan_ticket_submissions(
             TicketAdmissionRequest(
@@ -287,6 +333,7 @@ def _profile(
         evidence=fields.evidence,
         fallback_ticket_ns=fields.fallback_ticket_ns,
         profile_id=fields.profile_id,
+        runtime=fields.runtime,
         sample_count=fields.sample_count,
         workload_count=fields.workload_count,
         workload_id=fields.workload_id,
@@ -324,6 +371,10 @@ def _profile_fields(
         profile_id=_expect_string(
             document["profile_id"],
             f"{context}.profile_id",
+        ),
+        runtime=_runtime(
+            _expect_mapping(document["runtime"], f"{context}.runtime"),
+            context,
         ),
         sample_count=_expect_positive_int(
             document["sample_count"],
@@ -376,6 +427,37 @@ def _profile_candidates(
     )
     _validate_route_uniqueness(candidates, context)
     return candidates
+
+
+def _runtime(
+    document: dict[str, object],
+    profile_context: str,
+) -> CudaTicketAdmissionRuntime:
+    context = f"{profile_context}.runtime"
+    _expect_exact_keys(document, RUNTIME_KEYS, context)
+    return CudaTicketAdmissionRuntime(
+        identity_id=_expect_string(
+            document["identity_id"],
+            f"{context}.identity_id",
+        ),
+        minimum_driver_api_version=_expect_positive_int(
+            document["minimum_driver_api_version"],
+            f"{context}.minimum_driver_api_version",
+        ),
+        nvrtc_major=_expect_positive_int(
+            document["nvrtc_major"],
+            f"{context}.nvrtc_major",
+        ),
+        nvrtc_minor=_expect_nonnegative_int(
+            document["nvrtc_minor"],
+            f"{context}.nvrtc_minor",
+        ),
+        toolchain_manifest_sha256=_expect_hex(
+            document["toolchain_manifest_sha256"],
+            length=64,
+            context=f"{context}.toolchain_manifest_sha256",
+        ),
+    )
 
 
 def _evidence(

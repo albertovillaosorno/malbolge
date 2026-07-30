@@ -406,18 +406,24 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. Eleven admission tests cover fallback, positive/negative
+  closes every ticket. Fourteen admission tests cover fallback, positive/negative
   evidence, duplicate/malformed records, exact profile matching, and two live CUDA
-  routes. The seven route records and exact provenance now live in schema-v1
+  routes. The seven route records and exact provenance now live in schema-v2
   `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
   `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
   canonical bytes from the retained JSON/TOML bundle, source commit, and exact raw/
-  structured-output hashes. Seven manifest tests require byte equality and reject
-  duplicate or unknown keys, unsupported schema, duplicate routes, and direct
-  capability mismatch. Runtime loading reads only the tracked product manifest and
-  never opens benchmark evidence.
-  This is not driver/toolchain, cross-device, or other-workload evidence, and it
-  does not change the global synchronous default.
+  structured-output hashes plus the exact tracked CUDA toolchain manifest. Eight
+  manifest tests require byte equality and reject duplicate or unknown keys,
+  unsupported schema, duplicate routes, and direct capability/runtime mismatch.
+  Runtime loading reads only the tracked product manifest and never opens benchmark
+  evidence. `cuda-runtime-toolchain-identity-v1` is measured when the adapter opens:
+  `cuDriverGetVersion` must be at least 13030, `nvrtcVersion` must be exactly 13.3,
+  and the SHA-256 of `accelerator/cuda/toolchain.json` must match the profile. Six
+  runtime-identity tests cover fake query/hash success, Driver/NVRTC/read failures,
+  and one live CUDA route. The retained NVIDIA driver `610.88` string remains
+  provenance only: Driver API version is not display-driver build identity. NVML or
+  another hermetic display-driver build check, cross-device evidence, and other
+  workloads remain open. The global synchronous default does not change.
   Other synthesis/search/hint strategies, event-instrumentation controls,
   additional device/workload admission profiles, and broader hardware remain open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,

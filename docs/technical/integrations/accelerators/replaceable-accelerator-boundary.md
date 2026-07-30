@@ -450,18 +450,24 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eleven admission tests cover fallback, positive/negative
+every ticket. Fourteen admission tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, and two live CUDA
-routes. The seven route records and exact provenance now live in schema-v1
+routes. The seven route records and exact provenance now live in schema-v2
 `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
 `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
 canonical bytes from the retained JSON/TOML bundle, source commit, and exact raw/
-structured-output hashes. Seven manifest tests require byte equality and reject
-duplicate or unknown keys, unsupported schema, duplicate routes, and direct
-capability mismatch. Runtime loading reads only the tracked product manifest and
-never opens benchmark evidence.
-This is not driver/toolchain, cross-device, or other-workload evidence, and it
-does not change the global synchronous default.
+structured-output hashes plus the exact tracked CUDA toolchain manifest. Eight
+manifest tests require byte equality and reject duplicate or unknown keys,
+unsupported schema, duplicate routes, and direct capability/runtime mismatch.
+Runtime loading reads only the tracked product manifest and never opens benchmark
+evidence. `cuda-runtime-toolchain-identity-v1` is measured when the adapter opens:
+`cuDriverGetVersion` must be at least 13030, `nvrtcVersion` must be exactly 13.3,
+and the SHA-256 of `accelerator/cuda/toolchain.json` must match the profile. Six
+runtime-identity tests cover fake query/hash success, Driver/NVRTC/read failures,
+and one live CUDA route. The retained NVIDIA driver `610.88` string remains
+provenance only: Driver API version is not display-driver build identity. NVML or
+another hermetic display-driver build check, cross-device evidence, and other
+workloads remain open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, event-instrumentation controls, additional
 admission profiles, and other kernel/callback workloads remain open.
 
@@ -586,13 +592,16 @@ fails explicitly without changing correctness rules.
   rejection, synchronous tie-breaking, context isolation, malformed/duplicate
   evidence failure, exact RTX 4060 queue composition, one live CPU-equal executor
   route, and live wrong-workload rejection.
-- `accelerator/cuda/ticket_admission_profiles.json` is the schema-v1 product
-  registry generated from the retained transfer-throughput bundle. Runtime loading
-  never reads benchmark evidence.
+- `accelerator/cuda/ticket_admission_profiles.json` is the schema-v2 product
+  registry generated from retained transfer-throughput evidence plus the tracked
+  CUDA toolchain manifest. Runtime loading never reads benchmark evidence.
 - `tests/optimizer/test_cuda_ticket_admission_profile_manifest.py` verifies
-  generated/tracked byte equality, exact commit/hash provenance, admitted-route
-  shape, duplicate JSON keys, unknown root keys, unsupported schema, duplicate
-  route identity, and direct capability mismatch.
+  generated/tracked byte equality, exact commit/hash/runtime provenance,
+  admitted-route shape, duplicate JSON keys, unknown root keys, unsupported schema,
+  duplicate route identity, and direct capability/runtime mismatch.
+- `tests/optimizer/test_cuda_runtime_identity.py` verifies the stable identity,
+  fake Driver API/NVRTC/hash success, both query failures, missing-manifest failure,
+  and one live Driver API 13030+/NVRTC 13.3/toolchain-hash route.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.

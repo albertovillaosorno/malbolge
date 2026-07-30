@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from accelerator.cuda.runtime import (
         CudaIndependentTicketTransferTimelineSample,
     )
+    from accelerator.cuda.runtime import CudaRuntimeIdentity
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveBatch
     from accelerator.exact_primitives import PrimitiveExecutionResult
@@ -928,6 +929,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
     _primitive_tickets: list[CudaPrimitiveEvaluationTicket]
     _rotate: ctypes.c_void_p
     _runtime: CudaRuntime
+    runtime_identity: CudaRuntimeIdentity
     ticket_timelines: CudaPrimitiveTicketTimelineFactory
     ticket_transfer_timelines: CudaPrimitiveTicketTransferTimelineFactory
     ticket_transfers: CudaPrimitiveTicketTransferFactory
@@ -964,19 +966,7 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
         self._primitive_tickets = []
         self._rotate = rotate
         self._runtime = runtime
-        self.ticket_timelines = CudaPrimitiveTicketTimelineFactory(
-            runtime.independent_kernel_timelines.create,
-            self._submit_prepared_profiled,
-        )
-        self.ticket_transfer_timelines = (
-            CudaPrimitiveTicketTransferTimelineFactory(
-                runtime.independent_ticket_transfer_timelines.create,
-                self._submit_prepared_streamed_profiled,
-            )
-        )
-        self.ticket_transfers = CudaPrimitiveTicketTransferFactory(
-            self._submit_prepared_streamed,
-        )
+        self._bind_ticket_surfaces(runtime)
 
     def __enter__(self) -> Self:
         """Return this adapter for scoped use.
@@ -1005,6 +995,22 @@ class CudaExactPrimitiveAdapter(ExactPrimitiveAdapter):
 
         """
         return self._capability
+
+    def _bind_ticket_surfaces(self, runtime: CudaRuntime) -> None:
+        self.runtime_identity = runtime.runtime_identity
+        self.ticket_timelines = CudaPrimitiveTicketTimelineFactory(
+            runtime.independent_kernel_timelines.create,
+            self._submit_prepared_profiled,
+        )
+        self.ticket_transfer_timelines = (
+            CudaPrimitiveTicketTransferTimelineFactory(
+                runtime.independent_ticket_transfer_timelines.create,
+                self._submit_prepared_streamed_profiled,
+            )
+        )
+        self.ticket_transfers = CudaPrimitiveTicketTransferFactory(
+            self._submit_prepared_streamed,
+        )
 
     def close(self) -> None:
         """Drain tickets, resident buffers, module, and context exactly once."""
