@@ -167,15 +167,16 @@ example probe points, not supported-range endpoints.
   exact same-context paired route evidence and chooses deterministic queue
   chunks. The retained RTX 4060 full-domain CRAZY profile admits synchronous
   groups 2/4/8, rejects streamed 1/2/4/8, validates the packed workload before
-  execution, and leaves the global synchronous default unchanged. Eleven
+  execution, and leaves the global synchronous default unchanged. Eighteen
   admission tests cover the neutral planner, exact profile binding, live CPU-equal
-  execution, wrong-workload rejection, and five runtime-identity mismatches.
-  The schema-v3 product registry is reconstructed byte-for-byte from retained
-  evidence plus the tracked CUDA toolchain manifest and display-driver build. Nine
-  manifest tests reject drift, duplicate/unknown keys, unsupported schema,
-  duplicate routes, malformed display versions, and direct capability/runtime
-  mismatch. Twelve runtime tests measure Driver API, NVRTC, toolchain SHA, and NVML
-  display build with fake and live CUDA routes. Missing or failed NVML leaves
-  ordinary CUDA available but the profile unmatched. Runtime never reads benchmark
-  evidence. Other driver builds, devices/workloads, and online telemetry remain
-  open.
+  execution, wrong-workload rejection, and seven isolated runtime drifts. The
+  schema-v4 product registry is reconstructed byte-for-byte from retained evidence,
+  the tracked CUDA toolchain manifest, display-driver build, and host/Python
+  context. Ten manifest tests reject drift, duplicate/unknown keys, unsupported
+  schema, duplicate routes, malformed display versions, invalid host fields, and
+  direct capability/runtime mismatch. Fourteen runtime tests measure Driver API,
+  NVRTC, toolchain SHA, NVML display build, Windows host, architecture, and CPython
+  with fake and live routes. Missing optional identity leaves ordinary CUDA
+  available but the profile unmatched. Runtime never reads benchmark evidence.
+  Other hosts, Python versions, drivers, devices/workloads, and online telemetry
+  remain open.

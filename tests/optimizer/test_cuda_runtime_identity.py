@@ -16,7 +16,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - CUDA Driver API, NVRTC, NVML, and toolchain identity regressions.
+#   - CUDA, NVML, host OS, Python, and toolchain identity regressions.
 # - Must-Not:
 #   - Make optional NVML a prerequisite for ordinary CUDA availability.
 # - Allows:
@@ -29,13 +29,13 @@
 # - Merge-When:
 #   - Merge when another suite owns this exact runtime identity boundary.
 # - Summary:
-#   - CUDA runtime, display-driver, and toolchain identity regressions.
+#   - CUDA runtime, display-driver, host, and toolchain regressions.
 # - Description:
-#   - Proves required compatibility and optional NVML identity fail closed.
+#   - Proves required compatibility and optional environment identity.
 # - Usage:
 #   - Runs with optimizer tests; the live route skips without CUDA.
 # - Defaults:
-#   - NVML failure leaves CUDA available but evidence profiles unmatched.
+#   - Optional identity failure leaves CUDA available but profiles unmatched.
 #
 # Related documents:
 # - accelerator/cuda/runtime.py
@@ -45,7 +45,7 @@
 #   - false
 #
 
-"""CUDA Driver API, NVRTC, NVML, and toolchain identity tests."""
+"""CUDA, NVML, host OS, Python, and toolchain identity tests."""
 
 from __future__ import annotations
 
@@ -57,7 +57,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.cuda import CudaHostRuntimeIdentity
+from accelerator.cuda import CudaRuntimeEnvironment
+from accelerator.cuda import cuda_host_runtime_identity_id
 from accelerator.cuda import cuda_runtime_identity_id
+from accelerator.cuda import measure_cuda_host_runtime_identity
 from accelerator.cuda import measure_cuda_runtime_identity
 from accelerator.cuda import measure_nvml_display_driver_version
 from accelerator.cuda.runtime import CUDA_TOOLCHAIN_MANIFEST
@@ -68,6 +72,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
+HOST_IDENTITY_ID = "cuda-host-runtime-identity-v1"
 DRIVER_API_VERSION = 13_030
 NVRTC_MAJOR = 13
 NVRTC_MINOR = 3
@@ -76,6 +81,20 @@ TOOLCHAIN_SHA256 = (
 )
 FAILURE_STATUS = 7
 DISPLAY_DRIVER_VERSION = "610.88"
+HOST_RUNTIME_IDENTITY = CudaHostRuntimeIdentity(
+    host_edition="Professional",
+    host_machine="x86_64",
+    host_release="11",
+    host_system="Windows",
+    host_version="10.0.26200",
+    identity_id=HOST_IDENTITY_ID,
+    python_implementation="CPython",
+    python_version="3.14.6",
+)
+ENVIRONMENT = CudaRuntimeEnvironment(
+    display_driver_version=DISPLAY_DRIVER_VERSION,
+    host_runtime_identity=HOST_RUNTIME_IDENTITY,
+)
 
 
 def _version_callback(
@@ -145,7 +164,8 @@ class _FakeNvmlState:
 
 
 def test_cuda_runtime_identity_protocol_is_stable() -> None:
-    """The measured runtime identity remains explicitly versioned."""
+    """Measured CUDA and host runtime identities remain versioned."""
+    assert cuda_host_runtime_identity_id() == HOST_IDENTITY_ID
     assert cuda_runtime_identity_id() == IDENTITY_ID
 
 
@@ -160,10 +180,11 @@ def test_fake_runtime_identity_measures_versions_and_manifest(
         _version_callback(DRIVER_API_VERSION),
         _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
         manifest,
-        display_driver_version=DISPLAY_DRIVER_VERSION,
+        environment=ENVIRONMENT,
     )
     assert identity.display_driver_version == DISPLAY_DRIVER_VERSION
     assert identity.driver_api_version == DRIVER_API_VERSION
+    assert identity.host_runtime_identity == HOST_RUNTIME_IDENTITY
     assert identity.identity_id == IDENTITY_ID
     assert identity.nvrtc_major == NVRTC_MAJOR
     assert identity.nvrtc_minor == NVRTC_MINOR
@@ -224,8 +245,32 @@ def test_runtime_identity_rejects_malformed_display_driver(
             _version_callback(DRIVER_API_VERSION),
             _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
             manifest,
-            display_driver_version="610",
+            environment=CudaRuntimeEnvironment(display_driver_version="610"),
         )
+
+
+def test_measured_host_runtime_matches_retained_environment() -> None:
+    """Live host and Python identity match the retained evidence context."""
+    assert measure_cuda_host_runtime_identity() == HOST_RUNTIME_IDENTITY
+
+
+def test_host_runtime_identity_rejects_invalid_text() -> None:
+    """Malformed host fields never enter a composed CUDA identity."""
+    invalid = CudaHostRuntimeIdentity(
+        host_edition="Professional",
+        host_machine="",
+        host_release="11",
+        host_system="Windows",
+        host_version="10.0.26200",
+        identity_id=HOST_IDENTITY_ID,
+        python_implementation="CPython",
+        python_version="3.14.6",
+    )
+    with pytest.raises(
+        AcceleratorUnavailableError,
+        match="contains invalid text",
+    ):
+        _ = invalid.validated()
 
 
 def test_missing_nvml_is_optional(tmp_path: Path) -> None:
@@ -301,6 +346,7 @@ def test_live_cuda_runtime_identity_matches_current_compatibility() -> None:
         identity = adapter.runtime_identity
     assert identity.display_driver_version == DISPLAY_DRIVER_VERSION
     assert identity.driver_api_version >= DRIVER_API_VERSION
+    assert identity.host_runtime_identity == HOST_RUNTIME_IDENTITY
     assert (identity.nvrtc_major, identity.nvrtc_minor) == (
         NVRTC_MAJOR,
         NVRTC_MINOR,

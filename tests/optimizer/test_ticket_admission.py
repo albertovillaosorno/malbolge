@@ -48,12 +48,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
+from accelerator.cuda import CudaHostRuntimeIdentity
 from accelerator.cuda import CudaRuntimeIdentity
 from accelerator.cuda import cuda_ticket_admission_profile
 from accelerator.cuda import cuda_ticket_admission_profile_id
@@ -88,9 +90,20 @@ COMPOSED_NS = 680
 PAIR_GROUP_SIZE = 2
 RETAINED_TEN_NS = 7_327_100
 DISPLAY_DRIVER_VERSION = "610.88"
+HOST_RUNTIME_IDENTITY = CudaHostRuntimeIdentity(
+    host_edition="Professional",
+    host_machine="x86_64",
+    host_release="11",
+    host_system="Windows",
+    host_version="10.0.26200",
+    identity_id="cuda-host-runtime-identity-v1",
+    python_implementation="CPython",
+    python_version="3.14.6",
+)
 MATCHING_RUNTIME = CudaRuntimeIdentity(
     display_driver_version=DISPLAY_DRIVER_VERSION,
     driver_api_version=13_030,
+    host_runtime_identity=HOST_RUNTIME_IDENTITY,
     identity_id="cuda-runtime-toolchain-identity-v1",
     nvrtc_major=13,
     nvrtc_minor=3,
@@ -319,51 +332,17 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
 @pytest.mark.parametrize(
     "runtime_identity",
     [
-        CudaRuntimeIdentity(
-            display_driver_version=DISPLAY_DRIVER_VERSION,
-            driver_api_version=13_029,
-            identity_id=MATCHING_RUNTIME.identity_id,
-            nvrtc_major=13,
-            nvrtc_minor=3,
-            toolchain_manifest_sha256=(
-                MATCHING_RUNTIME.toolchain_manifest_sha256
-            ),
-        ),
-        CudaRuntimeIdentity(
-            display_driver_version=DISPLAY_DRIVER_VERSION,
-            driver_api_version=13_030,
-            identity_id=MATCHING_RUNTIME.identity_id,
-            nvrtc_major=13,
-            nvrtc_minor=2,
-            toolchain_manifest_sha256=(
-                MATCHING_RUNTIME.toolchain_manifest_sha256
-            ),
-        ),
-        CudaRuntimeIdentity(
-            display_driver_version=DISPLAY_DRIVER_VERSION,
-            driver_api_version=13_030,
-            identity_id=MATCHING_RUNTIME.identity_id,
-            nvrtc_major=13,
-            nvrtc_minor=3,
-            toolchain_manifest_sha256="0" * 64,
-        ),
-        CudaRuntimeIdentity(
-            driver_api_version=13_030,
-            identity_id=MATCHING_RUNTIME.identity_id,
-            nvrtc_major=13,
-            nvrtc_minor=3,
-            toolchain_manifest_sha256=(
-                MATCHING_RUNTIME.toolchain_manifest_sha256
-            ),
-        ),
-        CudaRuntimeIdentity(
-            display_driver_version="611.00",
-            driver_api_version=13_030,
-            identity_id=MATCHING_RUNTIME.identity_id,
-            nvrtc_major=13,
-            nvrtc_minor=3,
-            toolchain_manifest_sha256=(
-                MATCHING_RUNTIME.toolchain_manifest_sha256
+        replace(MATCHING_RUNTIME, driver_api_version=13_029),
+        replace(MATCHING_RUNTIME, nvrtc_minor=2),
+        replace(MATCHING_RUNTIME, toolchain_manifest_sha256="0" * 64),
+        replace(MATCHING_RUNTIME, display_driver_version=None),
+        replace(MATCHING_RUNTIME, display_driver_version="611.00"),
+        replace(MATCHING_RUNTIME, host_runtime_identity=None),
+        replace(
+            MATCHING_RUNTIME,
+            host_runtime_identity=replace(
+                HOST_RUNTIME_IDENTITY,
+                host_version="10.0.99999",
             ),
         ),
     ],
@@ -371,7 +350,7 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
 def test_cuda_profile_rejects_runtime_identity_drift(
     runtime_identity: CudaRuntimeIdentity,
 ) -> None:
-    """Display build, Driver API, NVRTC, and manifest drift are rejected."""
+    """Host, display, Driver API, NVRTC, and manifest drift are rejected."""
     capability = AcceleratorCapability(
         backend_id="cuda",
         device_arch="sm_89",

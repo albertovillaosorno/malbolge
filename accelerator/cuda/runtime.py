@@ -28,9 +28,9 @@
 # - Merge-When:
 #   - Merge when another file owns the exact same responsibility.
 # - Summary:
-#   - Pinned CUDA 13 Driver/NVRTC and optional NVML boundary.
+#   - Pinned CUDA, optional NVML, and host/Python identity boundary.
 # - Description:
-#   - Owns exact CUDA execution plus optional display-driver identity.
+#   - Owns exact CUDA execution and optional environment identity.
 # - Usage:
 #   - Used through the owning package, executable, or document boundary.
 # - Defaults:
@@ -43,7 +43,7 @@
 #   - false
 #
 
-"""Pinned CUDA 13 Driver/NVRTC and optional NVML ctypes boundary."""
+"""Pinned CUDA plus optional NVML and host/Python identity boundary."""
 
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import os
 from pathlib import Path
+import platform
 from typing import Final
 from typing import cast
 from typing import final
@@ -71,6 +72,7 @@ CUDA_TOOLCHAIN_MANIFEST: Final = (
     ROOT / "accelerator" / "cuda" / "toolchain.json"
 )
 CUDA_RUNTIME_IDENTITY_ID: Final = "cuda-runtime-toolchain-identity-v1"
+CUDA_HOST_RUNTIME_IDENTITY_ID: Final = "cuda-host-runtime-identity-v1"
 _HEX_DIGITS: Final = frozenset("0123456789abcdef")
 _SHA256_HEX_LENGTH: Final = 64
 CUDA_SUCCESS: Final = 0
@@ -78,6 +80,7 @@ NVRTC_SUCCESS: Final = 0
 NVML_SUCCESS: Final = 0
 NVML_VERSION_BUFFER_BYTES: Final = 96
 _DISPLAY_DRIVER_MIN_COMPONENTS: Final = 2
+_WINDOWS_SYSTEM: Final = "Windows"
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
@@ -106,8 +109,60 @@ type HostWords = ctypes.Array[ctypes.c_uint32]
 
 
 @dataclass(frozen=True, slots=True)
+class CudaHostRuntimeIdentity:
+    """Measured host OS and Python runtime identity."""
+
+    host_edition: str | None
+    host_machine: str
+    host_release: str
+    host_system: str
+    host_version: str
+    identity_id: str
+    python_implementation: str
+    python_version: str
+
+    def validated(self) -> CudaHostRuntimeIdentity:
+        """Validate one host/Python identity.
+
+        Returns:
+            The unchanged identity after fail-closed validation.
+
+        Raises:
+            AcceleratorUnavailableError: If any identity field is invalid.
+
+        """
+        if self.identity_id != CUDA_HOST_RUNTIME_IDENTITY_ID:
+            message = "CUDA host runtime identity protocol mismatched"
+            raise AcceleratorUnavailableError(message)
+        required = (
+            self.host_machine,
+            self.host_release,
+            self.host_system,
+            self.host_version,
+            self.python_implementation,
+            self.python_version,
+        )
+        if any(not value or value.strip() != value for value in required):
+            message = "CUDA host runtime identity contains invalid text"
+            raise AcceleratorUnavailableError(message)
+        edition = self.host_edition
+        if edition is not None and (not edition or edition.strip() != edition):
+            message = "CUDA host edition is invalid"
+            raise AcceleratorUnavailableError(message)
+        return self
+
+
+@dataclass(frozen=True, slots=True)
+class CudaRuntimeEnvironment:
+    """Optional environment identities composed into one CUDA identity."""
+
+    display_driver_version: str | None = None
+    host_runtime_identity: CudaHostRuntimeIdentity | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CudaRuntimeIdentity:
-    """Measured CUDA, optional display-driver, and toolchain identity."""
+    """Measured CUDA, toolchain, display-driver, and host identity."""
 
     driver_api_version: int
     identity_id: str
@@ -115,6 +170,7 @@ class CudaRuntimeIdentity:
     nvrtc_minor: int
     toolchain_manifest_sha256: str
     display_driver_version: str | None = None
+    host_runtime_identity: CudaHostRuntimeIdentity | None = None
 
     def validated(self) -> CudaRuntimeIdentity:
         """Validate runtime/toolchain identity shape.
@@ -126,6 +182,7 @@ class CudaRuntimeIdentity:
         _validate_cuda_runtime_protocol(self)
         _validate_cuda_runtime_versions(self)
         _validate_display_driver_version(self.display_driver_version)
+        _validate_host_runtime_identity(self.host_runtime_identity)
         _validate_sha256(self.toolchain_manifest_sha256)
         return self
 
@@ -2148,7 +2205,10 @@ class CudaRuntime:
             self._cu_driver_get_version,
             self._nvrtc_version,
             CUDA_TOOLCHAIN_MANIFEST,
-            display_driver_version=measure_nvml_display_driver_version(),
+            environment=CudaRuntimeEnvironment(
+                display_driver_version=measure_nvml_display_driver_version(),
+                host_runtime_identity=measure_cuda_host_runtime_identity(),
+            ),
         )
         self._device = self._open_device(device_id)
         self._context = self._create_context(self._device)
@@ -2590,6 +2650,40 @@ def _add_cuda_dll_directory() -> object:
         raise AcceleratorUnavailableError(message) from error
 
 
+def cuda_host_runtime_identity_id() -> str:
+    """Return the stable host/Python identity protocol.
+
+    Returns:
+        Versioned host identity used by evidence-bound CUDA profiles.
+
+    """
+    return CUDA_HOST_RUNTIME_IDENTITY_ID
+
+
+def measure_cuda_host_runtime_identity() -> CudaHostRuntimeIdentity | None:
+    """Measure host OS and Python identity without requiring it for CUDA.
+
+    Returns:
+        Validated identity, or ``None`` when the host cannot be measured.
+
+    """
+    try:
+        host_system = platform.system()
+        identity = CudaHostRuntimeIdentity(
+            host_edition=_host_edition(host_system),
+            host_machine=_normalize_host_machine(platform.machine()),
+            host_release=platform.release(),
+            host_system=host_system,
+            host_version=platform.version(),
+            identity_id=CUDA_HOST_RUNTIME_IDENTITY_ID,
+            python_implementation=platform.python_implementation(),
+            python_version=platform.python_version(),
+        )
+        return identity.validated()
+    except AcceleratorUnavailableError, OSError, RuntimeError:
+        return None
+
+
 def cuda_runtime_identity_id() -> str:
     """Return the stable CUDA runtime/toolchain identity protocol.
 
@@ -2605,7 +2699,7 @@ def measure_cuda_runtime_identity(
     nvrtc_version_fn: _CudaFn,
     manifest_path: Path,
     *,
-    display_driver_version: str | None = None,
+    environment: CudaRuntimeEnvironment | None = None,
 ) -> CudaRuntimeIdentity:
     """Measure Driver API, NVRTC, toolchain, and optional display build.
 
@@ -2635,9 +2729,11 @@ def measure_cuda_runtime_identity(
     except OSError as error:
         message = f"CUDA toolchain manifest unavailable: {error}"
         raise AcceleratorUnavailableError(message) from error
+    observed_environment = environment or CudaRuntimeEnvironment()
     return CudaRuntimeIdentity(
-        display_driver_version=display_driver_version,
+        display_driver_version=observed_environment.display_driver_version,
         driver_api_version=driver_version.value,
+        host_runtime_identity=observed_environment.host_runtime_identity,
         identity_id=CUDA_RUNTIME_IDENTITY_ID,
         nvrtc_major=nvrtc_major.value,
         nvrtc_minor=nvrtc_minor.value,
@@ -2694,7 +2790,7 @@ def _query_nvml_display_driver(
 def _call_nvml(function: _CudaFn, *arguments: object) -> int | None:
     try:
         return function(*arguments)
-    except (ctypes.ArgumentError, OSError, TypeError, ValueError):
+    except ctypes.ArgumentError, OSError, TypeError, ValueError:
         return None
 
 
@@ -2731,6 +2827,29 @@ def _valid_display_driver_version(version: str) -> bool:
             bool(component) and component.isdigit() for component in components
         )
     )
+
+
+def _host_edition(host_system: str) -> str | None:
+    if host_system != _WINDOWS_SYSTEM:
+        return None
+    try:
+        return platform.win32_edition()
+    except OSError:
+        return None
+
+
+def _normalize_host_machine(machine: str) -> str:
+    normalized = machine.strip()
+    if normalized.casefold() in {"amd64", "x86_64"}:
+        return "x86_64"
+    return normalized
+
+
+def _validate_host_runtime_identity(
+    identity: CudaHostRuntimeIdentity | None,
+) -> None:
+    if identity is not None:
+        _ = identity.validated()
 
 
 def _validate_cuda_runtime_protocol(identity: CudaRuntimeIdentity) -> None:

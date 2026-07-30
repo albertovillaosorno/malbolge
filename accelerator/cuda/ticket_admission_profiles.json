@@ -75,6 +75,16 @@
       ],
       "runtime": {
         "display_driver_version": "610.88",
+        "host_runtime": {
+          "host_edition": "Professional",
+          "host_machine": "x86_64",
+          "host_release": "11",
+          "host_system": "Windows",
+          "host_version": "10.0.26200",
+          "identity_id": "cuda-host-runtime-identity-v1",
+          "python_implementation": "CPython",
+          "python_version": "3.14.6"
+        },
         "identity_id": "cuda-runtime-toolchain-identity-v1",
         "minimum_driver_api_version": 13030,
         "nvrtc_major": 13,
@@ -88,5 +98,5 @@
       "workload_sha256": "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc"
     }
   ],
-  "schema_version": 3
+  "schema_version": 4
 }

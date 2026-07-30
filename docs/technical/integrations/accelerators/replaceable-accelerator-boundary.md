@@ -450,26 +450,27 @@ prefer synchronous ties. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Sixteen admission tests cover fallback, positive/negative
-evidence, duplicate/malformed records, exact profile matching, and two live CUDA
-routes. The seven route records and exact provenance now live in schema-v3
+every ticket. Eighteen admission tests cover fallback, positive/negative
+evidence, duplicate/malformed records, exact profile matching, seven isolated
+runtime drifts, and two live CUDA routes. The seven route records and exact
+provenance now live in schema-v4
 `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
 `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
-canonical bytes from the retained JSON/TOML bundle, source commit, exact raw/
-structured-output hashes, the tracked CUDA toolchain manifest, and retained driver
-build. Nine manifest tests require byte equality and reject duplicate or unknown
-keys, unsupported schema, duplicate routes, malformed display versions, and direct
-capability/runtime mismatch. Runtime loading reads only the tracked product
-manifest and never opens benchmark evidence. `cuda-runtime-toolchain-identity-v1`
-is measured when the adapter opens: `cuDriverGetVersion` must be at least 13030,
-`nvrtcVersion` must be exactly 13.3, the SHA-256 of
-`accelerator/cuda/toolchain.json` must match, and optional NVML must report display
-build `610.88` for this profile to resolve. Missing or failed NVML leaves ordinary
-CUDA available but this evidence-bound profile unmatched. Twelve runtime-identity
-tests cover fake query/hash success, Driver/NVRTC/read failures, missing NVML,
-NVML init/query/shutdown failures, and one live CUDA route. Other display-driver
-builds, cross-device evidence, and other workloads remain open. The global
-synchronous default does not change.
+canonical bytes from retained JSON/TOML, source commit, exact raw/structured-output
+hashes, the tracked CUDA toolchain manifest, retained driver build, and retained
+host/Python context. Ten manifest tests require byte equality and reject duplicate
+or unknown keys, unsupported schema, duplicate routes, malformed display versions,
+invalid host fields, and direct capability/runtime mismatch. Runtime loading reads
+only the tracked product manifest and never opens benchmark evidence. At adapter
+startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or newer,
+exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build `610.88`;
+`cuda-host-runtime-identity-v1` measures Windows 11 Professional build
+`10.0.26200`, `x86_64`, and CPython `3.14.6`. Missing or failed optional NVML or
+host measurement leaves ordinary CUDA available but this evidence-bound profile
+unmatched. Fourteen runtime-identity tests cover required query/hash failures,
+NVML lifetimes, host validation, exact live host measurement, and one live CUDA
+route. Other hosts, Python versions, driver builds, devices, and workloads remain
+open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, event-instrumentation controls, additional
 admission profiles, and other kernel/callback workloads remain open.
 
@@ -594,19 +595,20 @@ fails explicitly without changing correctness rules.
   rejection, synchronous tie-breaking, context isolation, malformed/duplicate
   evidence failure, exact RTX 4060 queue composition, one live CPU-equal executor
   route, and live wrong-workload rejection.
-- `accelerator/cuda/ticket_admission_profiles.json` is the schema-v3 product
+- `accelerator/cuda/ticket_admission_profiles.json` is the schema-v4 product
   registry generated from retained transfer-throughput evidence, the tracked CUDA
-  toolchain manifest, and retained display-driver build. Runtime loading never
-  reads benchmark evidence.
+  toolchain manifest, display-driver build, and host/Python context. Runtime loading
+  never reads benchmark evidence.
 - `tests/optimizer/test_cuda_ticket_admission_profile_manifest.py` verifies
   generated/tracked byte equality, exact commit/hash/runtime provenance,
   admitted-route shape, duplicate JSON keys, unknown root keys, unsupported schema,
-  duplicate route identity, malformed display-driver versions, and direct
-  capability/runtime mismatch.
-- `tests/optimizer/test_cuda_runtime_identity.py` verifies the stable identity,
-  fake Driver API/NVRTC/hash success, both query failures, missing-manifest and
-  missing-NVML behavior, NVML init/query/shutdown failure behavior, and one
-  live Driver API 13030+/NVRTC 13.3/toolchain-hash/display-build route.
+  duplicate route identity, malformed display-driver versions, invalid host fields,
+  and direct capability/runtime mismatch.
+- `tests/optimizer/test_cuda_runtime_identity.py` verifies stable CUDA and host
+  protocols, fake Driver API/NVRTC/hash success, required query failures,
+  missing-manifest/NVML behavior, NVML lifetimes, invalid host text, exact live host
+  measurement, and one live Driver API 13030+/NVRTC 13.3/toolchain-hash/display-
+  build/Windows-CPython route.
 - `tests/optimizer/test_verification_submission.py` verifies optional deferred
   empty completion, exact publication, submit/wait/result outcomes, malformed-ticket
   rejection, idempotence, close-before-wait, and cleanup-failure caching.

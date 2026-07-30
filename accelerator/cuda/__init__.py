@@ -74,6 +74,7 @@ from accelerator.cuda.profile_run import profile_snapshot_overlap_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_stream_workspace_id
 from accelerator.cuda.profile_run import profile_snapshot_workspace_id
 from accelerator.cuda.runtime import CudaDeviceToHostTransfer
+from accelerator.cuda.runtime import CudaHostRuntimeIdentity
 from accelerator.cuda.runtime import CudaHostToDeviceTransfer
 from accelerator.cuda.runtime import CudaIndependentKernelLaunch
 from accelerator.cuda.runtime import CudaIndependentKernelTimeline
@@ -84,10 +85,12 @@ from accelerator.cuda.runtime import CudaIndependentTransferSubmission
 from accelerator.cuda.runtime import CudaKernelLaunch
 from accelerator.cuda.runtime import CudaOrderedDtoHStream
 from accelerator.cuda.runtime import CudaOrderedTransferBatch
+from accelerator.cuda.runtime import CudaRuntimeEnvironment
 from accelerator.cuda.runtime import CudaRuntimeIdentity
 from accelerator.cuda.runtime import create_independent_kernel_timeline
 from accelerator.cuda.runtime import create_independent_ticket_transfer_timeline
 from accelerator.cuda.runtime import create_ordered_dtoh_stream
+from accelerator.cuda.runtime import cuda_host_runtime_identity_id
 from accelerator.cuda.runtime import cuda_independent_kernel_launch_id
 from accelerator.cuda.runtime import cuda_independent_kernel_timeline_id
 from accelerator.cuda.runtime import cuda_independent_ticket_transfer_id
@@ -97,6 +100,7 @@ from accelerator.cuda.runtime import (
 from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.cuda.runtime import cuda_runtime_identity_id
+from accelerator.cuda.runtime import measure_cuda_host_runtime_identity
 from accelerator.cuda.runtime import measure_cuda_runtime_identity
 from accelerator.cuda.runtime import measure_nvml_display_driver_version
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
@@ -108,6 +112,9 @@ from accelerator.cuda.ticket_admission import plan_retained_cuda_tickets
 from accelerator.cuda.ticket_admission_profile import (
     CudaTicketAdmissionEvidence,
 )
+from accelerator.cuda.ticket_admission_profile import (
+    CudaTicketAdmissionHostRuntime,
+)
 from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionProfile
 from accelerator.cuda.ticket_admission_profile import CudaTicketAdmissionRuntime
 from accelerator.cuda.ticket_admission_profile import (
@@ -117,6 +124,7 @@ from accelerator.cuda.ticket_admission_profile import (
 __all__ = [
     "CudaDeviceToHostTransfer",
     "CudaExactPrimitiveAdapter",
+    "CudaHostRuntimeIdentity",
     "CudaHostToDeviceTransfer",
     "CudaIndependentKernelLaunch",
     "CudaIndependentKernelTimeline",
@@ -140,8 +148,10 @@ __all__ = [
     "CudaProfileSnapshotOverlapWorkspace",
     "CudaProfileSnapshotStreamWorkspace",
     "CudaProfileSnapshotWorkspace",
+    "CudaRuntimeEnvironment",
     "CudaRuntimeIdentity",
     "CudaTicketAdmissionEvidence",
+    "CudaTicketAdmissionHostRuntime",
     "CudaTicketAdmissionProfile",
     "CudaTicketAdmissionRuntime",
     "ProfileSnapshotHostRegistration",
@@ -155,6 +165,7 @@ __all__ = [
     "create_independent_kernel_timeline",
     "create_independent_ticket_transfer_timeline",
     "create_ordered_dtoh_stream",
+    "cuda_host_runtime_identity_id",
     "cuda_independent_kernel_launch_id",
     "cuda_independent_kernel_timeline_id",
     "cuda_independent_ticket_transfer_id",
@@ -166,6 +177,7 @@ __all__ = [
     "cuda_ticket_admission_profile_id",
     "execute_retained_cuda_tickets",
     "load_cuda_ticket_admission_profiles",
+    "measure_cuda_host_runtime_identity",
     "measure_cuda_runtime_identity",
     "measure_nvml_display_driver_version",
     "plan_retained_cuda_tickets",

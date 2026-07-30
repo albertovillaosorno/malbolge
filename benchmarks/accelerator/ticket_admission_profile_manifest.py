@@ -72,7 +72,7 @@ BENCHMARK_ID = "cuda-independent-ticket-transfer-throughput-v1"
 WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 WORKLOAD_KIND = "crazy"
 WORKLOAD_COUNT = 59_049
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 EXPECTED_SAMPLE_COUNT = 15
 RUNTIME_IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
 MINIMUM_DRIVER_API_VERSION = 13_030
@@ -80,6 +80,15 @@ NVRTC_MAJOR = 13
 NVRTC_MINOR = 3
 NVRTC_PACKAGE_NAME = "cuda_nvrtc"
 DISPLAY_DRIVER_VERSION = "610.88"
+HOST_RUNTIME_IDENTITY_ID = "cuda-host-runtime-identity-v1"
+HOST_EDITION = "Professional"
+HOST_MACHINE = "x86_64"
+HOST_RELEASE = "11"
+HOST_SYSTEM = "Windows"
+HOST_VERSION = "10.0.26200"
+PYTHON_IMPLEMENTATION = "CPython"
+PYTHON_VERSION = "3.14.6"
+EXPECTED_HOST = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
 EXPECTED_RUN_TOOLCHAIN = (
     "Python 3.14.6; CUDA 13.3.1 (nvcc 13.3.73); NVIDIA driver 610.88"
 )
@@ -154,7 +163,7 @@ def profile_manifest(root: Path = ROOT) -> dict[str, object]:
     """Build one validated profile manifest object.
 
     Returns:
-        Schema-v3 document containing one exact CUDA profile.
+        Schema-v4 document containing one exact CUDA profile.
 
     """
     evidence = root / EVIDENCE_RELATIVE
@@ -214,6 +223,16 @@ def _profile(bundle: _EvidenceBundle) -> dict[str, object]:
         "routes": _routes(routes, comparisons),
         "runtime": {
             "display_driver_version": DISPLAY_DRIVER_VERSION,
+            "host_runtime": {
+                "host_edition": HOST_EDITION,
+                "host_machine": HOST_MACHINE,
+                "host_release": HOST_RELEASE,
+                "host_system": HOST_SYSTEM,
+                "host_version": HOST_VERSION,
+                "identity_id": HOST_RUNTIME_IDENTITY_ID,
+                "python_implementation": PYTHON_IMPLEMENTATION,
+                "python_version": PYTHON_VERSION,
+            },
             "identity_id": RUNTIME_IDENTITY_ID,
             "minimum_driver_api_version": MINIMUM_DRIVER_API_VERSION,
             "nvrtc_major": NVRTC_MAJOR,
@@ -394,6 +413,7 @@ def _validate_experiment(experiment: dict[str, object]) -> None:
             WORKLOAD_COUNT,
         ),
         (_string(run["commit"], "run.commit"), EXPECTED_SOURCE_COMMIT),
+        (_string(run["host"], "run.host"), EXPECTED_HOST),
         (_string(run["toolchain"], "run.toolchain"), EXPECTED_RUN_TOOLCHAIN),
         (
             _string(run["workload_sha256"], "run.workload_sha256"),

@@ -20,7 +20,7 @@
 # - Must-Not:
 #   - Read benchmark evidence at runtime or infer missing profile fields.
 # - Allows:
-#   - Inputs: one tracked schema-v3 JSON profile manifest.
+#   - Inputs: one tracked schema-v4 JSON profile manifest.
 # - Outputs: validated immutable CUDA admission profiles.
 # - Side effects: manifest file reads only.
 # - Split-When:
@@ -62,11 +62,12 @@ from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import plan_ticket_submissions
 
 if TYPE_CHECKING:
+    from accelerator.cuda.runtime import CudaHostRuntimeIdentity
     from accelerator.cuda.runtime import CudaRuntimeIdentity
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.ticket_admission import TicketAdmissionPlan
 
-PROFILE_SCHEMA_VERSION = 3
+PROFILE_SCHEMA_VERSION = 4
 PROFILE_MANIFEST_PATH = Path(__file__).with_name(
     "ticket_admission_profiles.json"
 )
@@ -97,11 +98,22 @@ EVIDENCE_KEYS = frozenset((
 ))
 RUNTIME_KEYS = frozenset((
     "display_driver_version",
+    "host_runtime",
     "identity_id",
     "minimum_driver_api_version",
     "nvrtc_major",
     "nvrtc_minor",
     "toolchain_manifest_sha256",
+))
+HOST_RUNTIME_KEYS = frozenset((
+    "host_edition",
+    "host_machine",
+    "host_release",
+    "host_system",
+    "host_version",
+    "identity_id",
+    "python_implementation",
+    "python_version",
 ))
 ROUTE_KEYS = frozenset((
     "candidate_median_ns",
@@ -132,10 +144,43 @@ class CudaTicketAdmissionEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class CudaTicketAdmissionHostRuntime:
+    """Exact retained host OS and Python runtime context."""
+
+    host_edition: str
+    host_machine: str
+    host_release: str
+    host_system: str
+    host_version: str
+    identity_id: str
+    python_implementation: str
+    python_version: str
+
+    def matches(self, identity: CudaHostRuntimeIdentity | None) -> bool:
+        """Check one optional measured host identity.
+
+        Returns:
+            Whether every retained host/Python field matches exactly.
+
+        """
+        return identity is not None and (
+            identity.host_edition == self.host_edition
+            and identity.host_machine == self.host_machine
+            and identity.host_release == self.host_release
+            and identity.host_system == self.host_system
+            and identity.host_version == self.host_version
+            and identity.identity_id == self.identity_id
+            and identity.python_implementation == self.python_implementation
+            and identity.python_version == self.python_version
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CudaTicketAdmissionRuntime:
     """Runtime compatibility required by one evidence-backed profile."""
 
     display_driver_version: str
+    host_runtime: CudaTicketAdmissionHostRuntime
     identity_id: str
     minimum_driver_api_version: int
     nvrtc_major: int
@@ -152,6 +197,7 @@ class CudaTicketAdmissionRuntime:
         """
         return (
             identity.display_driver_version == self.display_driver_version
+            and self.host_runtime.matches(identity.host_runtime_identity)
             and identity.identity_id == self.identity_id
             and identity.driver_api_version >= self.minimum_driver_api_version
             and identity.nvrtc_major == self.nvrtc_major
@@ -445,6 +491,12 @@ def _runtime(
             document["display_driver_version"],
             f"{context}.display_driver_version",
         ),
+        host_runtime=_host_runtime(
+            _expect_mapping(
+                document["host_runtime"], f"{context}.host_runtime"
+            ),
+            context,
+        ),
         identity_id=_expect_string(
             document["identity_id"],
             f"{context}.identity_id",
@@ -465,6 +517,48 @@ def _runtime(
             document["toolchain_manifest_sha256"],
             length=64,
             context=f"{context}.toolchain_manifest_sha256",
+        ),
+    )
+
+
+def _host_runtime(
+    document: dict[str, object],
+    runtime_context: str,
+) -> CudaTicketAdmissionHostRuntime:
+    context = f"{runtime_context}.host_runtime"
+    _expect_exact_keys(document, HOST_RUNTIME_KEYS, context)
+    return CudaTicketAdmissionHostRuntime(
+        host_edition=_expect_string(
+            document["host_edition"],
+            f"{context}.host_edition",
+        ),
+        host_machine=_expect_string(
+            document["host_machine"],
+            f"{context}.host_machine",
+        ),
+        host_release=_expect_string(
+            document["host_release"],
+            f"{context}.host_release",
+        ),
+        host_system=_expect_string(
+            document["host_system"],
+            f"{context}.host_system",
+        ),
+        host_version=_expect_string(
+            document["host_version"],
+            f"{context}.host_version",
+        ),
+        identity_id=_expect_string(
+            document["identity_id"],
+            f"{context}.identity_id",
+        ),
+        python_implementation=_expect_string(
+            document["python_implementation"],
+            f"{context}.python_implementation",
+        ),
+        python_version=_expect_string(
+            document["python_version"],
+            f"{context}.python_version",
         ),
     )
 

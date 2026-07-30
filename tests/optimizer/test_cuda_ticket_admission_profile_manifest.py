@@ -55,7 +55,9 @@ from typing import cast
 
 import pytest
 
+from accelerator.cuda import CudaHostRuntimeIdentity
 from accelerator.cuda import CudaRuntimeIdentity
+from accelerator.cuda import CudaTicketAdmissionHostRuntime
 from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.ticket_admission import TicketAdmissionError
@@ -81,9 +83,30 @@ NVRTC_MINOR = 3
 TOOLCHAIN_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
+HOST_RUNTIME_IDENTITY = CudaHostRuntimeIdentity(
+    host_edition="Professional",
+    host_machine="x86_64",
+    host_release="11",
+    host_system="Windows",
+    host_version="10.0.26200",
+    identity_id="cuda-host-runtime-identity-v1",
+    python_implementation="CPython",
+    python_version="3.14.6",
+)
+PROFILE_HOST_RUNTIME = CudaTicketAdmissionHostRuntime(
+    host_edition="Professional",
+    host_machine="x86_64",
+    host_release="11",
+    host_system="Windows",
+    host_version="10.0.26200",
+    identity_id="cuda-host-runtime-identity-v1",
+    python_implementation="CPython",
+    python_version="3.14.6",
+)
 RUNTIME_IDENTITY = CudaRuntimeIdentity(
     display_driver_version=DISPLAY_DRIVER_VERSION,
     driver_api_version=DRIVER_API_VERSION,
+    host_runtime_identity=HOST_RUNTIME_IDENTITY,
     identity_id="cuda-runtime-toolchain-identity-v1",
     nvrtc_major=NVRTC_MAJOR,
     nvrtc_minor=NVRTC_MINOR,
@@ -107,6 +130,7 @@ def test_loaded_profile_preserves_exact_provenance_and_routes() -> None:
     assert profile.evidence.throughput_sha256 == THROUGHPUT_SHA256
     assert profile.evidence.raw_sha256 == RAW_SHA256
     assert profile.runtime.display_driver_version == DISPLAY_DRIVER_VERSION
+    assert profile.runtime.host_runtime == PROFILE_HOST_RUNTIME
     assert profile.runtime.minimum_driver_api_version == DRIVER_API_VERSION
     assert profile.runtime.nvrtc_major == NVRTC_MAJOR
     assert profile.runtime.nvrtc_minor == NVRTC_MINOR
@@ -127,7 +151,7 @@ def test_loader_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     """Duplicate object keys never acquire last-value-wins semantics."""
     manifest = tmp_path / "duplicate.json"
     _ = manifest.write_text(
-        '{"schema_version":3,"schema_version":3,"profiles":[]}',
+        '{"schema_version":4,"schema_version":4,"profiles":[]}',
         encoding="utf-8",
         newline="\n",
     )
@@ -150,7 +174,7 @@ def test_loader_rejects_unknown_root_keys(tmp_path: Path) -> None:
 def test_loader_rejects_unsupported_schema(tmp_path: Path) -> None:
     """Runtime loading never guesses a newer admission schema."""
     document = profile_manifest()
-    document["schema_version"] = 4
+    document["schema_version"] = 5
     manifest = _write_manifest(tmp_path, document, "schema.json")
     with pytest.raises(TicketAdmissionError, match=r"unsupported.*schema"):
         _ = load_cuda_ticket_admission_profiles(manifest)
@@ -181,6 +205,20 @@ def test_loader_rejects_invalid_display_driver_version(
         _ = load_cuda_ticket_admission_profiles(manifest)
 
 
+def test_loader_rejects_invalid_host_runtime(
+    tmp_path: Path,
+) -> None:
+    """Empty host/Python identity fields cannot enter a runtime profile."""
+    document = profile_manifest()
+    profile = _first_profile(document)
+    runtime = cast("dict[str, object]", profile["runtime"])
+    host = cast("dict[str, object]", runtime["host_runtime"])
+    host["python_version"] = ""
+    manifest = _write_manifest(tmp_path, document, "host.json")
+    with pytest.raises(TicketAdmissionError, match="trimmed non-empty string"):
+        _ = load_cuda_ticket_admission_profiles(manifest)
+
+
 def test_profile_plan_rejects_mismatched_capability() -> None:
     """Direct profile use cannot bypass exact device matching."""
     profile = load_cuda_ticket_admission_profiles()[0]
@@ -207,6 +245,7 @@ def test_profile_plan_rejects_mismatched_runtime() -> None:
     mismatch = CudaRuntimeIdentity(
         display_driver_version="611.00",
         driver_api_version=DRIVER_API_VERSION,
+        host_runtime_identity=HOST_RUNTIME_IDENTITY,
         identity_id=RUNTIME_IDENTITY.identity_id,
         nvrtc_major=NVRTC_MAJOR,
         nvrtc_minor=NVRTC_MINOR,

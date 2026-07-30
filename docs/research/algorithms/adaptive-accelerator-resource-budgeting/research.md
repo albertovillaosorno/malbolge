@@ -154,19 +154,20 @@ for malformed or duplicate records, and chooses a deterministic input-order
 partition. The first retained CUDA profile is limited to the RTX 4060 `sm_89`
 full-domain CRAZY evidence from 2026-07-29. It admits synchronous groups 2/4/8,
 rejects every measured streamed route, and leaves the ordinary synchronous path
-as the global default. The schema-v3 product registry at
+as the global default. The schema-v4 product registry at
 `accelerator/cuda/ticket_admission_profiles.json` is generated canonically from
 retained evidence and the tracked CUDA toolchain manifest by
 `benchmarks/accelerator/ticket_admission_profile_manifest.py`; runtime loading
 never reads benchmark files. Profile use measures
-`cuda-runtime-toolchain-identity-v1` at adapter startup and requires Driver API
-13030 or newer, exact NVRTC 13.3, the tracked toolchain-manifest SHA-256, and NVML
-reported display build `610.88`. Missing or failed NVML leaves ordinary CUDA
-available while this profile remains unmatched. Sixteen admission, nine manifest,
-and twelve runtime-identity tests prevent silent drift and direct-plan bypass. This
-closes one exact queue-size, generated-profile, runtime-compatibility, and display-
-driver identity slice; other driver builds, devices/workloads, and online queue/
-resource telemetry remain open.
+`cuda-runtime-toolchain-identity-v1` and `cuda-host-runtime-identity-v1` at adapter
+startup and requires Driver API 13030 or newer, NVRTC 13.3, the tracked toolchain
+SHA-256, NVML display build `610.88`, Windows 11 Professional build `10.0.26200`,
+`x86_64`, and CPython `3.14.6`. Missing optional identity leaves ordinary CUDA
+available while this profile remains unmatched. Eighteen admission, ten manifest,
+and fourteen runtime-identity tests prevent silent drift and direct-plan bypass.
+This closes one exact queue-size, generated-profile, runtime, display-driver, and
+host/Python identity slice; other hosts, Python versions, drivers, devices,
+workloads, and online queue/resource telemetry remain open.
 
 ## Threats to Validity
 
