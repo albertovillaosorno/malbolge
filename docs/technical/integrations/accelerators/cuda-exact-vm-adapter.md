@@ -200,8 +200,21 @@ show significant overlap in 2/15, 8/15, and 15/15 samples; median overlap is
 maximum peak concurrency is 2/3/5. The group-eight hypothesis passes. CUDA permits
 elapsed event intervals to include interleaved work, and instrumentation can perturb
 scheduling, so this is positive origin-relative interval attribution rather than a
-pure kernel-duration or SM-occupancy profile. Allocation, synchronous upload,
-download, cleanup, and host orchestration remain outside kernel-marked intervals.
+pure kernel-duration or SM-occupancy profile. Allocation and transfers remain
+outside kernel-marked intervals.
+Opt-in `cuda-independent-stream-ticket-transfer-v1` now registers exact
+input/output host buffers and enqueues H-to-D, kernel, and D-to-H work on the
+ticket's same nonblocking stream. Five deterministic runtime tests cover
+ordering, leases, and partial-failure cleanup; four live candidate routes cover
+no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+fallback. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
+records 210 chronological samples over 14 routes. The group-eight hypothesis
+fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
+0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
+sequential with 14/15 wins. Synchronous copies therefore remain the default and
+streaming remains an exact explicit experiment. Wall time does not attribute
+physical transfer/kernel overlap.
 Neutral `validated-search-submission-v1` now has one concrete
 CUDA-backed strategy composition:
 `classic-rotate-target-search-submission-v1`. The search ticket retains full-batch
@@ -227,9 +240,9 @@ paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
-Asynchronous ticket transfers, kernel-transfer timeline attribution, event
-instrumentation controls, adaptive group admission, and other kernel/group workloads
-remain open. Other strategy submissions require their own exact state/lifetime
+Kernel-transfer timeline attribution, event instrumentation controls, adaptive
+group admission, and other kernel/group workloads remain open. Other strategy
+submissions require their own exact state/lifetime
 evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through

@@ -382,8 +382,21 @@ lifetime, ordering, cleanup, and CPU-equal output. Retained evidence under `benc
 uses the same workload SHA and records overlap in 2/15, 8/15, and 15/15 samples for
 groups 2/4/8. Median overlap is 0/0.006144/0.015360 ms, median interval concurrency
 is 1.000x/1.072x/1.091x, and maximum peak is 2/3/5. This is diagnostic event-interval
-attribution, not pure kernel duration, SM occupancy, or kernel-transfer overlap. The
-shared boundary now also exposes
+attribution, not pure kernel duration, SM occupancy, or kernel-transfer overlap.
+Opt-in `cuda-independent-stream-ticket-transfer-v1` now registers exact
+input/output host buffers and enqueues H-to-D, kernel, and D-to-H work on the
+ticket's same nonblocking stream. Five deterministic runtime tests cover
+ordering, leases, and partial-failure cleanup; four live candidate routes cover
+no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+fallback. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
+records 210 chronological samples over 14 routes. The group-eight hypothesis
+fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
+0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
+sequential with 14/15 wins. Synchronous copies therefore remain the default and
+streaming remains an exact explicit experiment. Wall time does not attribute
+physical transfer/kernel overlap.
+The shared boundary now also exposes
 `validated-search-submission-v1` through `accelerator/search_submission.py`. One
 exact algorithm/problem/seed/budget request binds an optional ticket plus deferred
 mandatory CPU search. Publication validates capability, algorithm, seed, and
@@ -411,9 +424,9 @@ through a proof-bound 1,024-item candidate ticket; seven tests cover its exact a
 fallback routes. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared,
 11.601x CUDA prepared, and 1.270x one-shot CUDA-ticket improvements over their
 same-run ordinary baselines, all with 15/15 paired wins; CUDA prepared remains
-9.137x faster than the ticket. Other CUDA/ROCm strategies, asynchronous ticket
-transfers, kernel-transfer attribution, event-instrumentation controls, adaptive
-stream/group admission, and other kernel/callback workloads remain open.
+9.137x faster than the ticket. Other CUDA/ROCm strategies, kernel-transfer
+attribution, event-instrumentation controls, adaptive stream/group admission, and
+other kernel/callback workloads remain open.
 
 ## Invariants
 
@@ -509,6 +522,14 @@ fails explicitly without changing correctness rules.
   exact independent CPU bytes for every ticket, and groups 2/4/8. Grouped routes
   improve 1.362x/1.201x/1.322x with 15/15 paired wins. That bundle itself has no
   event attribution; the companion timeline evidence below owns it.
+- `tests/optimizer/test_cuda_independent_ticket_transfers.py` verifies exact
+  same-stream H-to-D/kernel/D-to-H ordering, host-lease protection, and partial-
+  failure cleanup without hardware. Live candidate tests additionally reject
+  synchronous copies, preserve crazy output, reverse wait, and teardown fallback.
+- `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
+  retains 210 chronological samples across 14 routes. Streamed grouped reaches
+  only 0.436x/0.478x/0.494x versus synchronous grouped for groups 2/4/8 and loses
+  0/15 paired samples at every group, so synchronous copies remain default.
 - `tests/optimizer/test_cuda_independent_kernel_timeline.py` verifies event-origin
   setup, active-lifetime rejection, submission-order samples, synthetic overlap,
   launch-failure cleanup, and one live exact route.
@@ -523,8 +544,8 @@ fails explicitly without changing correctness rules.
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
 - Remaining evidence includes other CUDA/ROCm search and hint tickets, ROCm
-  candidate tickets and VM substitution, asynchronous ticket transfers,
-  kernel-transfer attribution, instrumentation controls, adaptive stream/group
+  candidate tickets and VM substitution, kernel-transfer attribution,
+  instrumentation controls, adaptive stream/group
   admission, broader hardware evidence, and matched measurements for other workloads.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

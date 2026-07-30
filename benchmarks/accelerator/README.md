@@ -306,7 +306,16 @@ beat both synchronous grouped and streamed sequential controls with more than
 seven paired wins against each. Failure retains the streamed lifetime as an
 explicit experiment rather than changing the default. Wall time alone does not
 attribute physical H-to-D/kernel/D-to-H overlap; a separate event protocol is
-required for that claim.
+required for that claim. Retained Benchmark Protocol v1 evidence is under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`.
+For groups 2/4/8, synchronous sequential/grouped medians are
+1.7885/1.3863, 3.8243/3.0611, and 7.4564/5.9408 ms; streamed
+sequential/grouped medians are 3.3180/3.1791, 6.7215/6.4038, and
+13.4266/12.0138 ms. Streamed grouped improves 1.044x/1.050x/1.118x over its own
+sequential route with 11/15, 13/15, and 14/15 paired wins, but reaches only
+0.436x/0.478x/0.494x versus synchronous grouped and loses 0/15 at every group.
+The preregistered group-eight hypothesis fails and synchronous copies remain the
+default.
 
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under

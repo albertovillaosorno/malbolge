@@ -344,7 +344,21 @@ timed.
   ordering, cleanup, and exact output. `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` records overlap in 2/15, 8/15,
   and 15/15 samples, median overlap 0/0.006144/0.015360 ms, concurrency
   1.000x/1.072x/1.091x, and peak 2/3/5. This is not pure kernel duration or
-  kernel-transfer overlap. Neutral `validated-search-submission-v1` now binds exact
+  kernel-transfer overlap.
+  Opt-in `cuda-independent-stream-ticket-transfer-v1` now registers exact
+  input/output host buffers and enqueues H-to-D, kernel, and D-to-H work on the
+  ticket's same nonblocking stream. Five deterministic runtime tests cover
+  ordering, leases, and partial-failure cleanup; four live candidate routes
+  cover no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+  fallback. Retained evidence under
+  `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
+  records 210 chronological samples over 14 routes. The group-eight hypothesis
+  fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
+  0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
+  sequential with 14/15 wins. Synchronous copies therefore remain the default
+  and streaming remains an exact explicit experiment. Wall time does not
+  attribute physical transfer/kernel overlap.
+  Neutral `validated-search-submission-v1` now binds exact
   algorithm/problem/seed/budget requests to optional tickets and deferred CPU
   search, validates untrusted proposal publication, and requires cleanup before
   fallback. Ten tests cover its complete state/failure lifetime.
@@ -361,9 +375,8 @@ timed.
   publication and teardown fallback. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records
   16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA ticket same-baseline
   improvements, all with 15/15 paired wins. Other CUDA/ROCm strategy and hint
-  tickets, synthesis/guided and resident search, ROCm VM execution, asynchronous
-  ticket transfers, kernel-transfer attribution, event-instrumentation controls,
-  adaptive stream/group admission, other workloads, and broader hardware remain
-  open.
+  tickets, synthesis/guided and resident search, ROCm VM execution,
+  kernel-transfer attribution, event-instrumentation controls, adaptive stream/group
+  admission, other workloads, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.

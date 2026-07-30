@@ -96,7 +96,21 @@ failure cleanup; one live test preserves exact output. Retained evidence under
 15/15 samples, with median overlap 0/0.006144/0.015360 ms, concurrency
 1.000x/1.072x/1.091x, and maximum peaks 2/3/5. This is positive origin-relative
 event-interval attribution, not pure kernel duration, SM occupancy, or
-kernel-transfer overlap. `search_submission.py` adds
+kernel-transfer overlap.
+Opt-in `cuda-independent-stream-ticket-transfer-v1` now registers exact
+input/output host buffers and enqueues H-to-D, kernel, and D-to-H work on the
+ticket's same nonblocking stream. Five deterministic runtime tests cover
+ordering, leases, and partial-failure cleanup; four live candidate routes cover
+no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+fallback. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
+records 210 chronological samples over 14 routes. The group-eight hypothesis
+fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
+0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
+sequential with 14/15 wins. Synchronous copies therefore remain the default and
+streaming remains an exact explicit experiment. Wall time does not attribute
+physical transfer/kernel overlap.
+`search_submission.py` adds
 `validated-search-submission-v1`: one exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU search. Proposal publication waits for
 capability/algorithm/seed/budget validation; cleanup must succeed before fallback.
