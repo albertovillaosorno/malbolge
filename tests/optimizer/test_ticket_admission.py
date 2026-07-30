@@ -51,6 +51,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from typing import cast
+from typing import final
 
 import pytest
 
@@ -62,14 +64,19 @@ from accelerator.cuda import cuda_ticket_admission_profile
 from accelerator.cuda import cuda_ticket_admission_profile_id
 from accelerator.cuda import cuda_ticket_admission_workload_id
 from accelerator.cuda import execute_retained_cuda_tickets
+from accelerator.cuda import (
+    execute_retained_cuda_tickets_with_attempt_telemetry,
+)
 from accelerator.cuda import execute_retained_cuda_tickets_with_telemetry
 from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.cuda import plan_retained_cuda_tickets
 from accelerator.cuda import plan_retained_cuda_tickets_with_report
 from accelerator.cuda import resolve_cuda_ticket_admission_profile
 from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import MAX_WORD
+from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import prepare_packed_primitive_batch
 from accelerator.ticket_admission import TicketAdmissionError
@@ -81,6 +88,13 @@ from accelerator.ticket_admission import plan_ticket_submissions
 from accelerator.ticket_admission import plan_ticket_submissions_with_report
 from accelerator.ticket_admission import ticket_route_admission_id
 from accelerator.ticket_admission import ticket_route_admission_report_id
+from accelerator.ticket_admission_telemetry import (
+    TicketAdmissionAttemptTelemetry,
+)
+from accelerator.ticket_admission_telemetry import TicketAdmissionFailureKind
+from accelerator.ticket_admission_telemetry import (
+    TicketAdmissionFailureTelemetry,
+)
 from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
 
 if TYPE_CHECKING:
@@ -124,7 +138,28 @@ MATCHING_RUNTIME = CudaRuntimeIdentity(
     toolchain_manifest_sha256=(
         "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
     ),
+
 )
+
+
+@final
+class _RetainedAdapterStub:
+    runtime_identity: CudaRuntimeIdentity = MATCHING_RUNTIME
+
+    @staticmethod
+    def capability() -> AcceleratorCapability:
+        return AcceleratorCapability(
+            backend_id="cuda",
+            device_arch="sm_89",
+            device_name="NVIDIA GeForce RTX 4060",
+        )
+
+
+def _retained_adapter_stub() -> CudaExactPrimitiveAdapter:
+    return cast(
+        "CudaExactPrimitiveAdapter",
+        cast("object", _RetainedAdapterStub()),
+    )
 
 
 def _request(ticket_count: int) -> TicketAdmissionRequest:
@@ -179,6 +214,20 @@ def _prepared_full_domain() -> PreparedPrimitiveBatch:
         accumulators_u32le=b"\0" * len(data),
         data_u32le=data,
         kind=PrimitiveKind.CRAZY,
+    )
+
+
+def _packed_cpu_result(
+    adapter: CudaExactPrimitiveAdapter,
+    prepared: PreparedPrimitiveBatch,
+) -> PackedPrimitiveResult:
+    cpu_result = CpuExactPrimitiveAdapter().evaluate_prepared(prepared)
+    return PackedPrimitiveResult(
+        capability=adapter.capability(),
+        words_u32le=b"".join(
+            value.to_bytes(WORD_BYTES, "little")
+            for value in cpu_result.values
+        ),
     )
 
 
@@ -766,3 +815,89 @@ def test_live_retained_executor_rejects_wrong_prepared_workload() -> None:
         pytest.raises(TicketAdmissionError, match="identity mismatched"),
     ):
         _ = execute_retained_cuda_tickets(cuda, prepared, 1)
+
+
+def test_retained_attempt_telemetry_records_failure_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An admitted accelerator failure is recorded and re-raised unchanged."""
+    prepared = _prepared_full_domain()
+    completed = TicketAdmissionTelemetry(capacity=1)
+    failed = TicketAdmissionFailureTelemetry(capacity=1)
+    telemetry = TicketAdmissionAttemptTelemetry(
+        completed=completed,
+        failed=failed,
+    )
+    failure = AcceleratorExecutionError("sensitive synthetic CUDA detail")
+
+    def reject_execution(*arguments: object, **keywords: object) -> object:
+        del arguments, keywords
+        raise failure
+
+    monkeypatch.setattr(
+        "accelerator.cuda.ticket_admission._execute_plan",
+        reject_execution,
+    )
+    adapter = _retained_adapter_stub()
+
+    with pytest.raises(
+        AcceleratorExecutionError,
+        match="sensitive synthetic CUDA detail",
+    ) as caught:
+        _ = execute_retained_cuda_tickets_with_attempt_telemetry(
+            adapter,
+            prepared,
+            PAIR_GROUP_SIZE,
+            telemetry=telemetry,
+        )
+
+    assert caught.value is failure
+    assert completed.snapshot().observations == ()
+    snapshot = failed.snapshot()
+    assert len(snapshot.observations) == 1
+    observation = snapshot.observations[0]
+    assert observation.failure_kind is TicketAdmissionFailureKind.EXECUTION
+    assert observation.ticket_count == PAIR_GROUP_SIZE
+    assert observation.elapsed_ns >= 0
+    assert not hasattr(observation, "message")
+
+
+def test_retained_attempt_telemetry_records_completed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful admitted attempt mutates only the completed FIFO."""
+    prepared = _prepared_full_domain()
+    telemetry = TicketAdmissionAttemptTelemetry(
+        completed=TicketAdmissionTelemetry(capacity=1),
+        failed=TicketAdmissionFailureTelemetry(capacity=1),
+    )
+    adapter = _retained_adapter_stub()
+    expected = (_packed_cpu_result(adapter, prepared),) * PAIR_GROUP_SIZE
+
+    def complete_execution(
+        *arguments: object,
+        **keywords: object,
+    ) -> tuple[PackedPrimitiveResult, ...]:
+        del arguments, keywords
+        return expected
+
+    monkeypatch.setattr(
+        "accelerator.cuda.ticket_admission._execute_plan",
+        complete_execution,
+    )
+
+    executed = execute_retained_cuda_tickets_with_attempt_telemetry(
+        adapter,
+        prepared,
+        PAIR_GROUP_SIZE,
+        telemetry=telemetry,
+    )
+
+    assert executed is not None
+    assert executed[1] == expected
+    assert telemetry.failed.snapshot().observations == ()
+    observations = telemetry.completed.snapshot().observations
+    assert len(observations) == 1
+    assert observations[0].ticket_count == PAIR_GROUP_SIZE
+    assert observations[0].report_id == executed[0].report_id
+    assert observations[0].elapsed_ns >= 0

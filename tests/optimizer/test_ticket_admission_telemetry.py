@@ -16,11 +16,11 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Bounded completed-plan telemetry regressions.
+#   - Bounded completed- and failed-plan telemetry regressions.
 # - Must-Not:
 #   - Require CUDA, alter admission, or treat observations as policy evidence.
 # - Allows:
-#   - Inputs: synthetic immutable admission reports and elapsed durations.
+#   - Inputs: synthetic reports, durations, and typed accelerator failures.
 #   - Outputs: recorder identity, ordering, eviction, and validation assertions.
 #   - Side effects: bounded in-memory recorder mutation only.
 # - Split-When:
@@ -52,18 +52,33 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from accelerator.exact_primitives import AcceleratorError
+from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.exact_primitives import AcceleratorUnavailableError
+from accelerator.exact_primitives import InvalidPrimitiveBatchError
 from accelerator.ticket_admission import TicketAdmissionRequest
 from accelerator.ticket_admission import TicketRouteCandidate
 from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import plan_ticket_submissions_with_report
+from accelerator.ticket_admission_telemetry import (
+    TicketAdmissionAttemptTelemetry,
+)
+from accelerator.ticket_admission_telemetry import TicketAdmissionFailureKind
+from accelerator.ticket_admission_telemetry import (
+    TicketAdmissionFailureTelemetry,
+)
 from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
 from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetryError
+from accelerator.ticket_admission_telemetry import (
+    ticket_admission_failure_telemetry_id,
+)
 from accelerator.ticket_admission_telemetry import ticket_admission_telemetry_id
 
 if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketAdmissionReport
 
 TELEMETRY_ID = "bounded-ticket-admission-telemetry-v1"
+FAILURE_TELEMETRY_ID = "bounded-ticket-admission-failure-telemetry-v1"
 BACKEND_ID = "cuda"
 DEVICE_ARCH = "sm_test"
 DEVICE_NAME = "test device"
@@ -198,3 +213,141 @@ def test_ticket_admission_telemetry_rejects_before_mutation() -> None:
     assert snapshot.observations == ()
     assert snapshot.dropped_observation_count == 0
     assert snapshot.next_sequence_id == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_kind"),
+    [
+        (
+            AcceleratorUnavailableError("sensitive unavailable detail"),
+            TicketAdmissionFailureKind.UNAVAILABLE,
+        ),
+        (
+            InvalidPrimitiveBatchError("sensitive invalid-input detail"),
+            TicketAdmissionFailureKind.INVALID_INPUT,
+        ),
+        (
+            AcceleratorExecutionError("sensitive execution detail"),
+            TicketAdmissionFailureKind.EXECUTION,
+        ),
+        (
+            AcceleratorError("sensitive generic detail"),
+            TicketAdmissionFailureKind.OTHER,
+        ),
+    ],
+)
+def test_ticket_admission_failure_telemetry_records_stable_category(
+    error: AcceleratorError,
+    expected_kind: TicketAdmissionFailureKind,
+) -> None:
+    """Failure telemetry retains stable categories but never error text."""
+    report = _report()
+    telemetry = TicketAdmissionFailureTelemetry(capacity=2)
+
+    observation = telemetry.record_failed(
+        report,
+        elapsed_ns=ELAPSED_NS,
+        error=error,
+    )
+
+    assert ticket_admission_failure_telemetry_id() == FAILURE_TELEMETRY_ID
+    assert observation.failure_kind is expected_kind
+    assert observation.sequence_id == 0
+    assert observation.backend_id == BACKEND_ID
+    assert observation.ticket_count == PAIR_GROUP_SIZE
+    assert observation.chunk_count == 1
+    assert observation.elapsed_ns == ELAPSED_NS
+    assert observation.estimate_delta_ns == ELAPSED_NS - CANDIDATE_NS
+    assert observation.fallback_ticket_count == 0
+    assert observation.selected_streamed_ticket_count == 0
+    assert observation.selected_synchronous_ticket_count == PAIR_GROUP_SIZE
+    assert observation.selected_evidence_ids == (
+        f"{BENCHMARK_ID}:synchronous:{PAIR_GROUP_SIZE}",
+    )
+    assert not hasattr(observation, "error")
+    assert not hasattr(observation, "message")
+    assert telemetry.snapshot().observations == (observation,)
+
+
+def test_ticket_admission_failure_telemetry_evicts_oldest_observation() -> None:
+    """Failed-attempt eviction is FIFO with monotonic sequence identities."""
+    telemetry = TicketAdmissionFailureTelemetry(capacity=1)
+    first = telemetry.record_failed(
+        _report(),
+        elapsed_ns=ELAPSED_NS,
+        error=AcceleratorExecutionError("first failure"),
+    )
+    second = telemetry.record_failed(
+        _report(),
+        elapsed_ns=SECOND_ELAPSED_NS,
+        error=AcceleratorUnavailableError("second failure"),
+    )
+
+    snapshot = telemetry.snapshot()
+
+    assert first.sequence_id == 0
+    assert second.sequence_id == 1
+    assert snapshot.telemetry_id == FAILURE_TELEMETRY_ID
+    assert snapshot.observations == (second,)
+    assert snapshot.dropped_observation_count == 1
+    assert snapshot.next_sequence_id == PAIR_GROUP_SIZE
+
+
+def test_ticket_admission_failure_telemetry_rejects_before_mutation() -> None:
+    """Malformed reports, timings, and foreign errors leave state unchanged."""
+    telemetry = TicketAdmissionFailureTelemetry(capacity=2)
+    report = _report()
+    malformed = replace(report, fallback_ticket_count=1)
+    failure = AcceleratorExecutionError("synthetic execution failure")
+
+    with pytest.raises(
+        TicketAdmissionTelemetryError,
+        match="aggregate counts mismatched",
+    ):
+        _ = telemetry.record_failed(
+            malformed,
+            elapsed_ns=ELAPSED_NS,
+            error=failure,
+        )
+    with pytest.raises(
+        TicketAdmissionTelemetryError,
+        match="elapsed time must be a non-negative integer",
+    ):
+        _ = telemetry.record_failed(report, elapsed_ns=-1, error=failure)
+    with pytest.raises(
+        TicketAdmissionTelemetryError,
+        match="failure must be an accelerator error",
+    ):
+        _ = telemetry.record_failed(
+            report,
+            elapsed_ns=ELAPSED_NS,
+            error=RuntimeError("foreign failure"),
+        )
+
+    snapshot = telemetry.snapshot()
+    assert snapshot.observations == ()
+    assert snapshot.dropped_observation_count == 0
+    assert snapshot.next_sequence_id == 0
+
+
+def test_attempt_telemetry_keeps_success_and_failure_separate() -> None:
+    """The paired sink delegates to independent completed and failed FIFOs."""
+    completed = TicketAdmissionTelemetry(capacity=1)
+    failed = TicketAdmissionFailureTelemetry(capacity=1)
+    attempts = TicketAdmissionAttemptTelemetry(
+        completed=completed,
+        failed=failed,
+    )
+    report = _report()
+
+    completion = attempts.record_completed(report, elapsed_ns=ELAPSED_NS)
+    failure = attempts.record_failed(
+        report,
+        elapsed_ns=SECOND_ELAPSED_NS,
+        error=AcceleratorExecutionError("failed attempt"),
+    )
+
+    assert completed.snapshot().observations == (completion,)
+    assert failed.snapshot().observations == (failure,)
+    assert completion.sequence_id == 0
+    assert failure.sequence_id == 0

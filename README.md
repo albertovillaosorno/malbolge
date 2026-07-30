@@ -24,8 +24,8 @@ bounded evidence-based accelerator admission.
 The CUDA path remains optional and fail-closed. Retained ticket profiles bind to
 an exact capability, workload, host/runtime identity, driver API, display-driver
 build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
-and bounded completion telemetry explain what ran without changing the selected
-route or learning new policy online.
+and bounded completion/failure telemetry explain what ran without changing the
+selected route, retaining exception text, or learning new policy online.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -168,9 +168,10 @@ adapt to the available machine rather than assume one fixed VRAM budget.
 Ticket concurrency is conservative: missing or mismatched evidence keeps
 singleton synchronous execution. Exact retained profiles may opt into measured
 groups, immutable admission reports explain every eligible or rejected route,
-and caller-owned bounded telemetry can record completed durations. Observations
-do not promote routes automatically and never replace retained benchmark
-evidence.
+and caller-owned bounded telemetry can record completed durations or stable
+accelerator-failure categories. Failure observations omit exception text.
+Observations do not promote routes automatically and never replace retained
+benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

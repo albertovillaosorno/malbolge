@@ -169,15 +169,21 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Thirty-six admission/telemetry,
+facade resolves the same exact profile before reporting. Forty-five
+admission/telemetry,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
-`bounded-ticket-admission-telemetry-v1` recorder now retains only a positive,
-bounded FIFO of completed reports with monotonic sequence/eviction state and
-measured-versus-estimated duration. Malformed observations fail before mutation,
-and the separate CUDA telemetry executor records only after successful ticket
-completion. It performs no persistence, automatic promotion, or policy update.
+`bounded-ticket-admission-telemetry-v1` recorder retains completed reports;
+`bounded-ticket-admission-failure-telemetry-v1` independently retains stable
+accelerator-failure categories without exception text. Both bounded FIFOs expose
+monotonic sequence/eviction state and measured-versus-estimated duration.
+Malformed reports, timings, or foreign failures fail before mutation.
+`TicketAdmissionAttemptTelemetry` pairs the FIFOs, and the separate CUDA attempt
+executor records exactly one outcome before returning or re-raising the same
+accelerator error. Existing ordinary and completion-only executors remain
+unchanged. The recorders perform no persistence, automatic promotion, or policy
+update.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,

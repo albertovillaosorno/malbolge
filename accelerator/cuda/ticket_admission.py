@@ -17,15 +17,15 @@
 # Boundary-Contract:
 # - Owns:
 #   - Retained CUDA profile resolution, reporting, opt-in execution, and
-#     completed-plan telemetry composition.
+#     completed/failed attempt telemetry composition.
 # - Must-Not:
 #   - Read benchmark evidence, generalize identities, or adapt from telemetry.
 # - Allows:
 #   - Inputs: exact CUDA capability, prepared workload, and ticket count.
 #   - Outputs: optional plans, reports, exact results, and caller-owned
-#     completed observations.
-#   - Side effects: scoped CUDA ticket lifetime plus post-completion recorder
-#     append only on the explicit telemetry path.
+#     completed or failed observations.
+#   - Side effects: scoped CUDA ticket lifetime plus one outcome append only on
+#     an explicit telemetry path.
 # - Split-When:
 #   - Split when automatic dispatch gains an independent policy lifecycle.
 # - Merge-When:
@@ -62,6 +62,7 @@ from accelerator.cuda.ticket_admission_profile import (
 from accelerator.cuda.ticket_admission_profile import (
     resolve_cuda_ticket_admission_profile,
 )
+from accelerator.exact_primitives import AcceleratorError
 from accelerator.ticket_admission import TicketAdmissionError
 from accelerator.ticket_admission import TicketSubmissionMode
 
@@ -79,6 +80,9 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.ticket_admission import TicketAdmissionPlan
     from accelerator.ticket_admission import TicketAdmissionReport
+    from accelerator.ticket_admission_telemetry import (
+        TicketAdmissionAttemptTelemetry,
+    )
     from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
 
 CUDA_TICKET_ADMISSION_PROFILE_ID: Final = (
@@ -218,6 +222,50 @@ def execute_retained_cuda_tickets_with_telemetry(
     results = _execute_plan(adapter, prepared, report.plan)
     elapsed_ns = perf_counter_ns() - started_ns
     _ = telemetry.record_completed(report, elapsed_ns=elapsed_ns)
+    return report, results
+
+
+def execute_retained_cuda_tickets_with_attempt_telemetry(
+    adapter: CudaExactPrimitiveAdapter,
+    prepared: PreparedPrimitiveBatch,
+    ticket_count: int,
+    *,
+    telemetry: TicketAdmissionAttemptTelemetry,
+) -> tuple[TicketAdmissionReport, tuple[PackedPrimitiveResult, ...]] | None:
+    """Execute one retained plan and record completion or accelerator failure.
+
+    Returns:
+        Report and input-order results, or ``None`` without an exact profile.
+
+    Raises:
+        AcceleratorError: If admitted CUDA execution fails after planning.
+
+    """
+    capability = adapter.capability()
+    runtime_identity = adapter.runtime_identity
+    profile = cuda_ticket_admission_profile(capability, runtime_identity)
+    if profile is None:
+        return None
+    _validate_prepared_workload(prepared, profile)
+    report = profile.plan_with_report(
+        capability,
+        runtime_identity,
+        ticket_count,
+    )
+    started_ns = perf_counter_ns()
+    try:
+        results = _execute_plan(adapter, prepared, report.plan)
+    except AcceleratorError as error:
+        _ = telemetry.record_failed(
+            report,
+            elapsed_ns=perf_counter_ns() - started_ns,
+            error=error,
+        )
+        raise
+    _ = telemetry.record_completed(
+        report,
+        elapsed_ns=perf_counter_ns() - started_ns,
+    )
     return report, results
 
 

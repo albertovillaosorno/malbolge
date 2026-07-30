@@ -16,21 +16,21 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Bounded caller-owned observations of completed ticket admission plans.
+#   - Bounded caller-owned observations of completed and failed ticket plans.
 # - Must-Not:
 #   - Change admission, read benchmarks, learn routes, or create hidden threads.
 # - Allows:
-#   - Inputs: validated admission reports and observed completion durations.
+#   - Inputs: validated reports, durations, and accelerator failures.
 #   - Outputs: immutable ordered telemetry snapshots with explicit eviction.
 #   - Side effects: bounded in-memory recorder mutation only.
 # - Split-When:
-#   - Split when failure telemetry or adaptive policy gains its own lifecycle.
+#   - Split when persistence or adaptive policy gains its own lifecycle.
 # - Merge-When:
-#   - Merge when another module owns this exact completed-plan observation.
+#   - Merge when another module owns these exact bounded observations.
 # - Summary:
 #   - Bounded opt-in ticket admission telemetry.
 # - Description:
-#   - Records completed plan timing without acquiring admission authority.
+#   - Records completion and stable failure categories without policy authority.
 # - Usage:
 #   - Construct explicitly, pass to an instrumented executor, then snapshot.
 # - Defaults:
@@ -43,15 +43,21 @@
 #   - false
 #
 
-"""Bounded opt-in telemetry for completed ticket admission plans."""
+"""Bounded opt-in telemetry for completed and failed ticket plans."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
+from typing import NoReturn
 from typing import TYPE_CHECKING
 from typing import final
 
+from accelerator.exact_primitives import AcceleratorError
+from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.exact_primitives import AcceleratorUnavailableError
+from accelerator.exact_primitives import InvalidPrimitiveBatchError
 from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import ticket_route_admission_id
 from accelerator.ticket_admission import ticket_route_admission_report_id
@@ -62,10 +68,22 @@ if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketSubmissionChunk
 
 TICKET_ADMISSION_TELEMETRY_ID: Final = "bounded-ticket-admission-telemetry-v1"
+TICKET_ADMISSION_FAILURE_TELEMETRY_ID: Final = (
+    "bounded-ticket-admission-failure-telemetry-v1"
+)
 
 
 class TicketAdmissionTelemetryError(ValueError):
     """Ticket admission telemetry input or retained state is invalid."""
+
+
+class TicketAdmissionFailureKind(StrEnum):
+    """Stable accelerator failure category retained without error text."""
+
+    EXECUTION = "accelerator-execution"
+    INVALID_INPUT = "invalid-input"
+    OTHER = "accelerator-error"
+    UNAVAILABLE = "accelerator-unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +116,40 @@ class TicketAdmissionTelemetrySnapshot:
     dropped_observation_count: int
     next_sequence_id: int
     observations: tuple[TicketAdmissionObservation, ...]
+    telemetry_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionFailureObservation:
+    """One failed execution attempt with a stable non-message category."""
+
+    admission_id: str
+    backend_id: str
+    chunk_count: int
+    device_arch: str
+    device_name: str
+    elapsed_ns: int
+    estimate_delta_ns: int
+    estimated_ns: int
+    failure_kind: TicketAdmissionFailureKind
+    fallback_ticket_count: int
+    report_id: str
+    selected_evidence_ids: tuple[str, ...]
+    selected_streamed_ticket_count: int
+    selected_synchronous_ticket_count: int
+    sequence_id: int
+    ticket_count: int
+    workload_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionFailureTelemetrySnapshot:
+    """Immutable bounded failed-attempt recorder state."""
+
+    capacity: int
+    dropped_observation_count: int
+    next_sequence_id: int
+    observations: tuple[TicketAdmissionFailureObservation, ...]
     telemetry_id: str
 
 
@@ -159,6 +211,107 @@ class TicketAdmissionTelemetry:
         )
 
 
+@final
+class TicketAdmissionFailureTelemetry:
+    """Caller-owned bounded FIFO of failed execution attempts."""
+
+    __slots__ = (
+        "_capacity",
+        "_dropped_observation_count",
+        "_next_sequence_id",
+        "_observations",
+    )
+
+    def __init__(self, capacity: int) -> None:
+        """Create one bounded failed-attempt recorder."""
+        self._capacity = _validated_capacity(capacity)
+        self._dropped_observation_count = 0
+        self._next_sequence_id = 0
+        self._observations: list[TicketAdmissionFailureObservation] = []
+
+    def record_failed(
+        self,
+        report: TicketAdmissionReport,
+        *,
+        elapsed_ns: int,
+        error: object,
+    ) -> TicketAdmissionFailureObservation:
+        """Record one failed accelerator execution without error text.
+
+        Returns:
+            Immutable appended failed-attempt observation.
+
+        """
+        observation = _failed_observation(
+            report,
+            elapsed_ns=elapsed_ns,
+            error=error,
+            sequence_id=self._next_sequence_id,
+        )
+        if len(self._observations) == self._capacity:
+            del self._observations[0]
+            self._dropped_observation_count += 1
+        self._observations.append(observation)
+        self._next_sequence_id += 1
+        return observation
+
+    def snapshot(self) -> TicketAdmissionFailureTelemetrySnapshot:
+        """Return an immutable copy of failed-attempt telemetry state.
+
+        Returns:
+            Stable bounded failed-attempt snapshot.
+
+        """
+        return TicketAdmissionFailureTelemetrySnapshot(
+            capacity=self._capacity,
+            dropped_observation_count=self._dropped_observation_count,
+            next_sequence_id=self._next_sequence_id,
+            observations=tuple(self._observations),
+            telemetry_id=TICKET_ADMISSION_FAILURE_TELEMETRY_ID,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionAttemptTelemetry:
+    """Explicit completed/failed recorder pair for one executor boundary."""
+
+    completed: TicketAdmissionTelemetry
+    failed: TicketAdmissionFailureTelemetry
+
+    def record_completed(
+        self,
+        report: TicketAdmissionReport,
+        *,
+        elapsed_ns: int,
+    ) -> TicketAdmissionObservation:
+        """Delegate one completed report to the completed FIFO.
+
+        Returns:
+            Immutable appended completion observation.
+
+        """
+        return self.completed.record_completed(report, elapsed_ns=elapsed_ns)
+
+    def record_failed(
+        self,
+        report: TicketAdmissionReport,
+        *,
+        elapsed_ns: int,
+        error: object,
+    ) -> TicketAdmissionFailureObservation:
+        """Delegate one accelerator failure to the failed FIFO.
+
+        Returns:
+            Immutable appended failed-attempt observation.
+
+        """
+        return self.failed.record_failed(
+            report,
+            elapsed_ns=elapsed_ns,
+            error=error,
+        )
+
+
 def ticket_admission_telemetry_id() -> str:
     """Return the stable bounded ticket telemetry identity.
 
@@ -167,6 +320,16 @@ def ticket_admission_telemetry_id() -> str:
 
     """
     return TICKET_ADMISSION_TELEMETRY_ID
+
+
+def ticket_admission_failure_telemetry_id() -> str:
+    """Return the stable bounded failed-attempt telemetry identity.
+
+    Returns:
+        Versioned accelerator-failure telemetry identity.
+
+    """
+    return TICKET_ADMISSION_FAILURE_TELEMETRY_ID
 
 
 def _validated_capacity(capacity: int) -> int:
@@ -198,11 +361,7 @@ def _completed_observation(
         estimated_ns=plan.estimated_ns,
         fallback_ticket_count=report.fallback_ticket_count,
         report_id=report.report_id,
-        selected_evidence_ids=tuple(
-            chunk.evidence_id
-            for chunk in plan.chunks
-            if chunk.evidence_id is not None
-        ),
+        selected_evidence_ids=_selected_evidence_ids(report),
         selected_streamed_ticket_count=(
             report.selected_streamed_ticket_count
         ),
@@ -212,6 +371,67 @@ def _completed_observation(
         sequence_id=sequence_id,
         ticket_count=request.ticket_count,
         workload_id=request.workload_id,
+    )
+
+
+def _failed_observation(
+    report: TicketAdmissionReport,
+    *,
+    elapsed_ns: int,
+    error: object,
+    sequence_id: int,
+) -> TicketAdmissionFailureObservation:
+    if type(elapsed_ns) is not int or elapsed_ns < 0:
+        message = "ticket admission elapsed time must be a non-negative integer"
+        raise TicketAdmissionTelemetryError(message)
+    if not isinstance(error, AcceleratorError):
+        _raise_telemetry("failure must be an accelerator error")
+    _validate_report(report)
+    plan = report.plan
+    request = plan.request
+    return TicketAdmissionFailureObservation(
+        admission_id=plan.admission_id,
+        backend_id=request.backend_id,
+        chunk_count=len(plan.chunks),
+        device_arch=request.device_arch,
+        device_name=request.device_name,
+        elapsed_ns=elapsed_ns,
+        estimate_delta_ns=elapsed_ns - plan.estimated_ns,
+        estimated_ns=plan.estimated_ns,
+        failure_kind=_failure_kind(error),
+        fallback_ticket_count=report.fallback_ticket_count,
+        report_id=report.report_id,
+        selected_evidence_ids=_selected_evidence_ids(report),
+        selected_streamed_ticket_count=(
+            report.selected_streamed_ticket_count
+        ),
+        selected_synchronous_ticket_count=(
+            report.selected_synchronous_ticket_count
+        ),
+        sequence_id=sequence_id,
+        ticket_count=request.ticket_count,
+        workload_id=request.workload_id,
+    )
+
+
+def _failure_kind(error: AcceleratorError) -> TicketAdmissionFailureKind:
+    kind = TicketAdmissionFailureKind.OTHER
+    if isinstance(error, AcceleratorUnavailableError):
+        kind = TicketAdmissionFailureKind.UNAVAILABLE
+    elif isinstance(error, InvalidPrimitiveBatchError):
+        kind = TicketAdmissionFailureKind.INVALID_INPUT
+    elif isinstance(error, AcceleratorExecutionError):
+        kind = TicketAdmissionFailureKind.EXECUTION
+    return kind
+
+
+def _selected_evidence_ids(
+    report: TicketAdmissionReport,
+) -> tuple[str, ...]:
+    return tuple(
+        chunk.evidence_id
+        for chunk in report.plan.chunks
+        if chunk.evidence_id is not None
     )
 
 
@@ -380,6 +600,6 @@ def _validate_nonnegative_assessment_counts(
         _raise_telemetry("assessment counts are invalid")
 
 
-def _raise_telemetry(detail: str) -> None:
+def _raise_telemetry(detail: str) -> NoReturn:
     message = f"ticket admission telemetry {detail}"
     raise TicketAdmissionTelemetryError(message)

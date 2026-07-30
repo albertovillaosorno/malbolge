@@ -171,8 +171,8 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Thirty-six admission/telemetry tests cover
-  report
+  only after exact profile resolution. Forty-five admission/telemetry tests
+  cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
   contracts. The schema-v4 product registry is reconstructed byte-for-byte from
@@ -184,11 +184,17 @@ example probe points, not supported-range endpoints.
   display build, Windows host, architecture, and CPython with fake and live routes.
   Missing optional identity leaves ordinary CUDA available but the profile
   unmatched. Runtime and the report never read benchmark evidence, and the report
-  performs no online learning. `bounded-ticket-admission-telemetry-v1` now
-  retains a caller-owned positive-capacity FIFO of completed reports with
-  monotonic sequence/eviction state and measured-versus-estimated duration.
-  Malformed observations fail before mutation, and the separate CUDA telemetry
-  executor records only completed plans. It has no persistence, hidden workers,
-  automatic promotion, or policy authority. Other hosts, Python versions,
+  performs no online learning. `bounded-ticket-admission-telemetry-v1` retains
+  completed reports, while
+  `bounded-ticket-admission-failure-telemetry-v1` independently retains stable
+  accelerator-failure categories without exception text. Both caller-owned
+  positive-capacity FIFOs expose monotonic sequence/eviction state and
+  measured-versus-estimated duration. Malformed reports, timings, or foreign
+  failures fail before mutation. `TicketAdmissionAttemptTelemetry` pairs the
+  FIFOs, and the separate CUDA attempt executor records exactly one outcome
+  before returning or re-raising the same accelerator error. Existing ordinary
+  and completion-only executors remain unchanged. The recorders have no
+  persistence, hidden workers, automatic promotion, or policy authority. Other
+  hosts, Python versions,
   drivers, devices/workloads, persisted telemetry, and adaptive queue/resource
   feedback remain open.
