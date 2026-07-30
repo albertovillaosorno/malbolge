@@ -110,6 +110,9 @@ from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile_id
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_workload_id
 from accelerator.cuda.ticket_admission import execute_retained_cuda_tickets
 from accelerator.cuda.ticket_admission import plan_retained_cuda_tickets
+from accelerator.cuda.ticket_admission import (
+    plan_retained_cuda_tickets_with_report,
+)
 from accelerator.cuda.ticket_admission_profile import (
     CudaTicketAdmissionEvidence,
 )
@@ -186,6 +189,7 @@ __all__ = [
     "measure_cuda_runtime_identity",
     "measure_nvml_display_driver_version",
     "plan_retained_cuda_tickets",
+    "plan_retained_cuda_tickets_with_report",
     "profile_snapshot_host_registration_id",
     "profile_snapshot_overlap_workspace_id",
     "profile_snapshot_stream_workspace_id",

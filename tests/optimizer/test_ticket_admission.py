@@ -16,7 +16,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Evidence-bound ticket route/group admission and exact CUDA profile tests.
+#   - Ticket admission, reporting, and exact CUDA profile regressions.
 # - Must-Not:
 #   - Generalize retained RTX 4060 evidence or weaken synchronous fallback.
 # - Allows:
@@ -31,7 +31,7 @@
 # - Summary:
 #   - Conservative ticket admission regressions.
 # - Description:
-#   - Proves positive grouping, negative streaming, and exact profile binding.
+#   - Proves grouping, rejection reporting, and exact profile binding.
 # - Usage:
 #   - Runs with optimizer tests; live routes skip without CUDA.
 # - Defaults:
@@ -64,6 +64,7 @@ from accelerator.cuda import cuda_ticket_admission_workload_id
 from accelerator.cuda import execute_retained_cuda_tickets
 from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.cuda import plan_retained_cuda_tickets
+from accelerator.cuda import plan_retained_cuda_tickets_with_report
 from accelerator.cuda import resolve_cuda_ticket_admission_profile
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorUnavailableError
@@ -73,14 +74,18 @@ from accelerator.exact_primitives import prepare_packed_primitive_batch
 from accelerator.ticket_admission import TicketAdmissionError
 from accelerator.ticket_admission import TicketAdmissionRequest
 from accelerator.ticket_admission import TicketRouteCandidate
+from accelerator.ticket_admission import TicketRouteRejection
 from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import plan_ticket_submissions
+from accelerator.ticket_admission import plan_ticket_submissions_with_report
 from accelerator.ticket_admission import ticket_route_admission_id
+from accelerator.ticket_admission import ticket_route_admission_report_id
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
 
 GENERIC_ADMISSION_ID = "evidence-bound-ticket-route-admission-v1"
+GENERIC_REPORT_ID = "evidence-bound-ticket-route-admission-report-v1"
 CUDA_PROFILE_ID = "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
 CUDA_WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 BENCHMARK_ID = "test-ticket-route-v1"
@@ -91,6 +96,8 @@ WORKLOAD_ID = "exact-test-workload-v1"
 WORD_BYTES = 4
 FALLBACK_NS = 100
 THREE_FALLBACK_NS = 3 * FALLBACK_NS
+TRIPLE_TICKET_COUNT = 3
+TEN_TICKET_COUNT = 10
 COMPOSED_NS = 680
 PAIR_GROUP_SIZE = 2
 RETAINED_TEN_NS = 7_327_100
@@ -176,6 +183,7 @@ def _prepared_full_domain() -> PreparedPrimitiveBatch:
 def test_ticket_route_admission_identity_is_stable() -> None:
     """Planning and retained CUDA profile identities remain versioned."""
     assert ticket_route_admission_id() == GENERIC_ADMISSION_ID
+    assert ticket_route_admission_report_id() == GENERIC_REPORT_ID
     assert cuda_ticket_admission_profile_id() == CUDA_PROFILE_ID
     assert cuda_ticket_admission_workload_id() == CUDA_WORKLOAD_ID
 
@@ -197,6 +205,154 @@ def test_missing_evidence_keeps_singleton_synchronous_fallback() -> None:
     assert all(
         chunk.mode is TicketSubmissionMode.SYNCHRONOUS for chunk in plan.chunks
     )
+
+
+def test_opt_in_report_preserves_empty_evidence_fallback_plan() -> None:
+    """Reporting an empty evidence set does not coalesce safe fallbacks."""
+    report = plan_ticket_submissions_with_report(
+        _request(3),
+        candidates=(),
+        fallback_ticket_ns=FALLBACK_NS,
+    )
+    ordinary = plan_ticket_submissions(
+        _request(3),
+        candidates=(),
+        fallback_ticket_ns=FALLBACK_NS,
+    )
+
+    assert report.report_id == GENERIC_REPORT_ID
+    assert report.plan == ordinary
+    assert report.assessments == ()
+    assert report.fallback_ticket_count == TRIPLE_TICKET_COUNT
+    assert report.selected_synchronous_ticket_count == 0
+    assert report.selected_streamed_ticket_count == 0
+
+
+def test_opt_in_report_classifies_route_rejections_in_input_order() -> None:
+    """Context, exactness, median, majority, and size failures stay explicit."""
+    candidates = (
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            2,
+            candidate_ns=80,
+            reference_ns=180,
+            paired_wins=15,
+            device_name="another device",
+        ),
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            2,
+            candidate_ns=80,
+            reference_ns=180,
+            paired_wins=15,
+            exact_results=False,
+        ),
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            4,
+            candidate_ns=180,
+            reference_ns=180,
+            paired_wins=15,
+        ),
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            8,
+            candidate_ns=80,
+            reference_ns=180,
+            paired_wins=7,
+        ),
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            16,
+            candidate_ns=80,
+            reference_ns=180,
+            paired_wins=15,
+        ),
+    )
+    report = plan_ticket_submissions_with_report(
+        _request(10),
+        candidates=candidates,
+        fallback_ticket_ns=FALLBACK_NS,
+    )
+
+    assert tuple(
+        assessment.rejection_reasons for assessment in report.assessments
+    ) == (
+        (TicketRouteRejection.CONTEXT_MISMATCH,),
+        (TicketRouteRejection.INEXACT_RESULTS,),
+        (TicketRouteRejection.NO_MEDIAN_IMPROVEMENT,),
+        (TicketRouteRejection.NO_PAIRED_MAJORITY,),
+        (TicketRouteRejection.GROUP_EXCEEDS_QUEUE,),
+    )
+    assert all(not assessment.eligible for assessment in report.assessments)
+    assert report.fallback_ticket_count == TEN_TICKET_COUNT
+
+
+def test_report_never_attributes_use_to_mismatched_route() -> None:
+    """A rejected same-ID route cannot inherit another context's usage."""
+    mismatched = _candidate(
+        TicketSubmissionMode.SYNCHRONOUS,
+        2,
+        candidate_ns=80,
+        reference_ns=180,
+        paired_wins=15,
+        device_name="another device",
+    )
+    matching = _candidate(
+        TicketSubmissionMode.SYNCHRONOUS,
+        2,
+        candidate_ns=80,
+        reference_ns=180,
+        paired_wins=15,
+    )
+    report = plan_ticket_submissions_with_report(
+        _request(2),
+        candidates=(mismatched, matching),
+        fallback_ticket_ns=FALLBACK_NS,
+    )
+
+    rejected, selected = report.assessments
+    assert rejected.evidence_id == selected.evidence_id
+    assert rejected.rejection_reasons == (
+        TicketRouteRejection.CONTEXT_MISMATCH,
+    )
+    assert rejected.selected_chunk_count == 0
+    assert rejected.selected_ticket_count == 0
+    assert selected.selected_chunk_count == 1
+    assert selected.selected_ticket_count == PAIR_GROUP_SIZE
+
+
+def test_opt_in_report_records_selected_and_unused_eligible_routes() -> None:
+    """Eligibility and final-plan selection remain distinct observations."""
+    candidates = tuple(
+        _candidate(
+            mode,
+            2,
+            candidate_ns=80,
+            reference_ns=180,
+            paired_wins=15,
+        )
+        for mode in (
+            TicketSubmissionMode.SYNCHRONOUS,
+            TicketSubmissionMode.STREAMED,
+        )
+    )
+    report = plan_ticket_submissions_with_report(
+        _request(2),
+        candidates=candidates,
+        fallback_ticket_ns=FALLBACK_NS,
+    )
+
+    synchronous, streamed = report.assessments
+    assert synchronous.eligible
+    assert synchronous.selected_chunk_count == 1
+    assert synchronous.selected_ticket_count == PAIR_GROUP_SIZE
+    assert streamed.eligible
+    assert streamed.selected_chunk_count == 0
+    assert streamed.selected_ticket_count == 0
+    assert report.selected_synchronous_ticket_count == PAIR_GROUP_SIZE
+    assert report.selected_streamed_ticket_count == 0
+    assert report.fallback_ticket_count == 0
 
 
 def test_positive_groups_compose_while_streaming_evidence_is_rejected() -> None:
@@ -293,6 +449,23 @@ def test_duplicate_matching_route_evidence_fails_closed() -> None:
     )
     with pytest.raises(TicketAdmissionError, match="duplicate route evidence"):
         _ = plan_ticket_submissions(
+            _request(2),
+            candidates=(candidate, candidate),
+            fallback_ticket_ns=FALLBACK_NS,
+        )
+
+
+def test_opt_in_report_rejects_duplicate_matching_evidence() -> None:
+    """Instrumentation cannot bypass the ordinary duplicate-evidence gate."""
+    candidate = _candidate(
+        TicketSubmissionMode.SYNCHRONOUS,
+        2,
+        candidate_ns=80,
+        reference_ns=180,
+        paired_wins=15,
+    )
+    with pytest.raises(TicketAdmissionError, match="duplicate route evidence"):
+        _ = plan_ticket_submissions_with_report(
             _request(2),
             candidates=(candidate, candidate),
             fallback_ticket_ns=FALLBACK_NS,
@@ -477,6 +650,44 @@ def test_retained_cuda_profile_selects_sync_group_two_plus_eight() -> None:
         chunk.mode is TicketSubmissionMode.SYNCHRONOUS for chunk in plan.chunks
     )
     assert all(chunk.evidence_id is not None for chunk in plan.chunks)
+
+
+def test_retained_cuda_report_matches_ordinary_plan() -> None:
+    """Exact retained instrumentation explains but never changes selection."""
+    capability = AcceleratorCapability(
+        backend_id="cuda",
+        device_arch="sm_89",
+        device_name="NVIDIA GeForce RTX 4060",
+    )
+    ordinary = plan_retained_cuda_tickets(capability, MATCHING_RUNTIME, 10)
+    report = plan_retained_cuda_tickets_with_report(
+        capability,
+        MATCHING_RUNTIME,
+        10,
+    )
+    mismatch = replace(capability, device_name="another sm_89 device")
+
+    assert ordinary is not None
+    assert report is not None
+    assert report.plan == ordinary
+    assert report.report_id == GENERIC_REPORT_ID
+    assert report.fallback_ticket_count == 0
+    assert report.selected_synchronous_ticket_count == TEN_TICKET_COUNT
+    assert report.selected_streamed_ticket_count == 0
+    selected = tuple(
+        assessment.selected_ticket_count
+        for assessment in report.assessments
+        if assessment.selected_ticket_count
+    )
+    assert selected == (2, 8)
+    assert (
+        plan_retained_cuda_tickets_with_report(
+            mismatch,
+            MATCHING_RUNTIME,
+            10,
+        )
+        is None
+    )
 
 
 def test_live_retained_executor_uses_only_synchronous_exact_tickets(

@@ -21,7 +21,7 @@ example probe points, not supported-range endpoints.
 
 - Status: Active
 - Research ID: `adaptive-accelerator-resource-budgeting`
-- Last reviewed: 2026-07-26
+- Last reviewed: 2026-07-30
 
 ## Prior Work
 
@@ -163,14 +163,22 @@ never reads benchmark files. Profile use measures
 startup and requires Driver API 13030 or newer, NVRTC 13.3, the tracked toolchain
 SHA-256, NVML display build `610.88`, Windows 11 Professional build `10.0.26200`,
 `x86_64`, and CPython `3.14.6`. Missing optional identity leaves ordinary CUDA
-available while this profile remains unmatched. Twenty-two admission, twelve
-manifest, and fourteen runtime-identity tests prevent silent drift and direct-plan
-bypass. The registry now selects at most one exact workload/capability/runtime
-record, permits distinct runtime variants, and rejects invalid or ambiguous
-selection. This closes exact queue-size, generated-profile, runtime, display-driver,
-host/Python identity, and registry-resolution slices; evidence for other hosts,
-Python versions, drivers, devices, workloads, and online queue/resource telemetry
-remains open.
+available while this profile remains unmatched. Opt-in
+`evidence-bound-ticket-route-admission-report-v1` publishes immutable input-order
+route assessments for context mismatch, inexact output, absent median improvement,
+absent paired majority, and groups larger than the queue. Eligible but unused
+routes retain zero selected counts; the report embeds the unchanged plan and
+records fallback plus synchronous/streamed selected totals. The retained CUDA
+facade resolves the same exact profile before reporting. Twenty-eight admission,
+twelve manifest, and fourteen runtime-identity tests prevent silent drift,
+direct-plan bypass, or report-only policy changes. The report reads no benchmark
+evidence and performs no online learning. The registry now selects at most one
+exact workload/capability/runtime record, permits distinct runtime variants, and
+rejects invalid or ambiguous selection. This closes exact queue-size,
+generated-profile, runtime, display-driver, host/Python identity,
+registry-resolution, and offline admission-explanation slices; evidence for other
+hosts, Python versions, drivers, devices, workloads, and online queue/resource
+telemetry remains open.
 
 ## Threats to Validity
 

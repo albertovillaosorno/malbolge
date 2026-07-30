@@ -16,19 +16,19 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Exact retained CUDA ticket profile resolution and opt-in execution.
+#   - Retained CUDA profile resolution, reporting, and opt-in execution.
 # - Must-Not:
 #   - Read benchmark evidence at runtime or generalize profile identities.
 # - Allows:
 #   - Inputs: exact CUDA capability, prepared workload, and ticket count.
-#   - Outputs: optional evidence-bound plans and input-order exact results.
+#   - Outputs: optional plans, reports, and input-order exact results.
 #   - Side effects: scoped CUDA ticket submission, wait, and cleanup only.
 # - Split-When:
 #   - Split when automatic dispatch gains an independent policy lifecycle.
 # - Merge-When:
 #   - Merge when another module owns this exact resolution/execution contract.
 # - Summary:
-#   - Resolve and execute retained CUDA ticket-admission profiles.
+#   - Resolve, explain, and execute retained CUDA ticket profiles.
 # - Description:
 #   - Uses a product manifest without embedding retained measurements in code.
 # - Usage:
@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import PackedPrimitiveResult
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.ticket_admission import TicketAdmissionPlan
+    from accelerator.ticket_admission import TicketAdmissionReport
 
 CUDA_TICKET_ADMISSION_PROFILE_ID: Final = (
     "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
@@ -137,6 +138,29 @@ def plan_retained_cuda_tickets(
         None
         if profile is None
         else profile.plan(capability, runtime_identity, ticket_count)
+    )
+
+
+def plan_retained_cuda_tickets_with_report(
+    capability: AcceleratorCapability,
+    runtime_identity: CudaRuntimeIdentity,
+    ticket_count: int,
+) -> TicketAdmissionReport | None:
+    """Plan retained CUDA tickets with opt-in route instrumentation.
+
+    Returns:
+        Exact immutable report, or ``None`` when no exact profile exists.
+
+    """
+    profile = cuda_ticket_admission_profile(capability, runtime_identity)
+    return (
+        None
+        if profile is None
+        else profile.plan_with_report(
+            capability,
+            runtime_identity,
+            ticket_count,
+        )
     )
 
 

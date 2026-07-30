@@ -16,12 +16,12 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Evidence-bound accelerator ticket route and group admission.
+#   - Evidence-bound ticket route/group admission and explanations.
 # - Must-Not:
 #   - Infer support from a GPU name alone or bypass exact-result evidence.
 # - Allows:
 #   - Inputs: one exact request context and retained paired route candidates.
-#   - Outputs: deterministic synchronous/streamed submission chunks.
+#   - Outputs: deterministic plans and opt-in immutable reports.
 #   - Side effects: none.
 # - Split-When:
 #   - Split when online learning or queue telemetry gains its own lifecycle.
@@ -30,7 +30,7 @@
 # - Summary:
 #   - Conservative evidence-bound ticket route admission.
 # - Description:
-#   - Selects measured ticket groups only after exact majority-win evidence.
+#   - Selects measured groups and explains eligibility without learning.
 # - Usage:
 #   - Called by backend-specific profiles; ordinary fallback remains
 #     synchronous.
@@ -53,6 +53,9 @@ from enum import StrEnum
 from typing import Final
 
 TICKET_ROUTE_ADMISSION_ID: Final = "evidence-bound-ticket-route-admission-v1"
+TICKET_ROUTE_ADMISSION_REPORT_ID: Final = (
+    "evidence-bound-ticket-route-admission-report-v1"
+)
 
 
 class TicketAdmissionError(ValueError):
@@ -64,6 +67,16 @@ class TicketSubmissionMode(StrEnum):
 
     SYNCHRONOUS = "synchronous"
     STREAMED = "streamed"
+
+
+class TicketRouteRejection(StrEnum):
+    """Stable reason one validated route was not eligible for planning."""
+
+    CONTEXT_MISMATCH = "context-mismatch"
+    GROUP_EXCEEDS_QUEUE = "group-exceeds-queue"
+    INEXACT_RESULTS = "inexact-results"
+    NO_MEDIAN_IMPROVEMENT = "no-median-improvement"
+    NO_PAIRED_MAJORITY = "no-paired-majority"
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +222,47 @@ class TicketAdmissionPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class TicketRouteAssessment:
+    """One validated route's eligibility and final-plan usage."""
+
+    benchmark_id: str
+    candidate_median_ns: int
+    evidence_id: str
+    exact_results: bool
+    group_size: int
+    mode: TicketSubmissionMode
+    paired_wins: int
+    reference_median_ns: int
+    rejection_reasons: tuple[TicketRouteRejection, ...]
+    sample_count: int
+    selected_chunk_count: int
+    selected_ticket_count: int
+
+    @property
+    def eligible(self) -> bool:
+        """Whether retained evidence may participate in planning."""
+        return not self.rejection_reasons
+
+
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionReport:
+    """Opt-in immutable explanation of one ticket admission decision."""
+
+    assessments: tuple[TicketRouteAssessment, ...]
+    fallback_ticket_count: int
+    plan: TicketAdmissionPlan
+    report_id: str
+    selected_streamed_ticket_count: int
+    selected_synchronous_ticket_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CandidateEvaluation:
+    candidate: TicketRouteCandidate
+    rejection_reasons: tuple[TicketRouteRejection, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _PlanState:
     chunks: tuple[TicketSubmissionChunk, ...]
     estimated_ns: int
@@ -224,6 +278,16 @@ def ticket_route_admission_id() -> str:
     return TICKET_ROUTE_ADMISSION_ID
 
 
+def ticket_route_admission_report_id() -> str:
+    """Return the stable opt-in admission-report identity.
+
+    Returns:
+        Versioned immutable ticket admission explanation identity.
+
+    """
+    return TICKET_ROUTE_ADMISSION_REPORT_ID
+
+
 def plan_ticket_submissions(
     request: TicketAdmissionRequest,
     *,
@@ -236,15 +300,77 @@ def plan_ticket_submissions(
         Fewest-chunk partition, then minimum measured cost for the exact
         context.
 
-    Raises:
-        TicketAdmissionError: If inputs or evidence are malformed.
+    """
+    context, evaluations = _validated_evaluations(
+        request,
+        candidates,
+        fallback_ticket_ns=fallback_ticket_ns,
+    )
+    return _plan_from_evaluations(
+        context,
+        evaluations,
+        fallback_ticket_ns=fallback_ticket_ns,
+    )
+
+
+def plan_ticket_submissions_with_report(
+    request: TicketAdmissionRequest,
+    *,
+    candidates: tuple[TicketRouteCandidate, ...],
+    fallback_ticket_ns: int,
+) -> TicketAdmissionReport:
+    """Plan exact tickets and publish an immutable route explanation.
+
+    Returns:
+        The unchanged conservative plan plus per-route eligibility and usage.
 
     """
+    context, evaluations = _validated_evaluations(
+        request,
+        candidates,
+        fallback_ticket_ns=fallback_ticket_ns,
+    )
+    plan = _plan_from_evaluations(
+        context,
+        evaluations,
+        fallback_ticket_ns=fallback_ticket_ns,
+    )
+    return _admission_report(plan, evaluations)
+
+
+def _validated_evaluations(
+    request: TicketAdmissionRequest,
+    candidates: tuple[TicketRouteCandidate, ...],
+    *,
+    fallback_ticket_ns: int,
+) -> tuple[TicketAdmissionRequest, tuple[_CandidateEvaluation, ...]]:
     context = request.validated()
     if type(fallback_ticket_ns) is not int or fallback_ticket_ns <= 0:
         message = "ticket admission fallback median must be a positive integer"
         raise TicketAdmissionError(message)
-    admitted = _admitted_candidates(context, candidates)
+    return context, _evaluate_candidates(context, candidates)
+
+
+def _plan_from_evaluations(
+    context: TicketAdmissionRequest,
+    evaluations: tuple[_CandidateEvaluation, ...],
+    *,
+    fallback_ticket_ns: int,
+) -> TicketAdmissionPlan:
+    admitted = tuple(
+        sorted(
+            (
+                evaluation.candidate
+                for evaluation in evaluations
+                if not evaluation.rejection_reasons
+            ),
+            key=lambda evidence: (
+                evidence.group_size,
+                evidence.mode.value,
+                evidence.benchmark_id,
+            ),
+        )
+    )
     state = _minimum_plan(context.ticket_count, fallback_ticket_ns, admitted)
     return TicketAdmissionPlan(
         admission_id=TICKET_ROUTE_ADMISSION_ID,
@@ -254,37 +380,126 @@ def plan_ticket_submissions(
     )
 
 
-def _admitted_candidates(
+def _evaluate_candidates(
     request: TicketAdmissionRequest,
     candidates: tuple[TicketRouteCandidate, ...],
-) -> tuple[TicketRouteCandidate, ...]:
+) -> tuple[_CandidateEvaluation, ...]:
     matching: dict[tuple[TicketSubmissionMode, int], TicketRouteCandidate] = {}
+    evaluations: list[_CandidateEvaluation] = []
     for candidate in candidates:
         evidence = candidate.validated()
-        if not _matches(request, evidence):
+        context_matches = _matches(request, evidence)
+        if context_matches:
+            key = (evidence.mode, evidence.group_size)
+            if key in matching:
+                message = (
+                    "ticket admission contains duplicate route evidence: "
+                    f"{evidence.mode.value}/{evidence.group_size}"
+                )
+                raise TicketAdmissionError(message)
+            matching[key] = evidence
+        evaluations.append(_CandidateEvaluation(
+            candidate=evidence,
+            rejection_reasons=_rejection_reasons(
+                request,
+                evidence,
+                context_matches=context_matches,
+            ),
+        ))
+    return tuple(evaluations)
+
+
+def _rejection_reasons(
+    request: TicketAdmissionRequest,
+    candidate: TicketRouteCandidate,
+    *,
+    context_matches: bool,
+) -> tuple[TicketRouteRejection, ...]:
+    if not context_matches:
+        return (TicketRouteRejection.CONTEXT_MISMATCH,)
+    checks = (
+        (TicketRouteRejection.INEXACT_RESULTS, not candidate.exact_results),
+        (
+            TicketRouteRejection.NO_MEDIAN_IMPROVEMENT,
+            candidate.candidate_median_ns >= candidate.reference_median_ns,
+        ),
+        (
+            TicketRouteRejection.NO_PAIRED_MAJORITY,
+            candidate.paired_wins <= candidate.sample_count // 2,
+        ),
+        (
+            TicketRouteRejection.GROUP_EXCEEDS_QUEUE,
+            candidate.group_size > request.ticket_count,
+        ),
+    )
+    return tuple(reason for reason, rejected in checks if rejected)
+
+
+def _admission_report(
+    plan: TicketAdmissionPlan,
+    evaluations: tuple[_CandidateEvaluation, ...],
+) -> TicketAdmissionReport:
+    selected: dict[str, tuple[int, int]] = {}
+    fallback_ticket_count = 0
+    selected_streamed_ticket_count = 0
+    selected_synchronous_ticket_count = 0
+    for chunk in plan.chunks:
+        if chunk.evidence_id is None:
+            fallback_ticket_count += chunk.ticket_count
             continue
-        key = (evidence.mode, evidence.group_size)
-        if key in matching:
-            message = (
-                "ticket admission contains duplicate route evidence: "
-                f"{evidence.mode.value}/{evidence.group_size}"
-            )
-            raise TicketAdmissionError(message)
-        matching[key] = evidence
-    return tuple(
-        sorted(
-            (
-                evidence
-                for evidence in matching.values()
-                if evidence.admitted
-                and evidence.group_size <= request.ticket_count
-            ),
-            key=lambda evidence: (
-                evidence.group_size,
-                evidence.mode.value,
-                evidence.benchmark_id,
-            ),
+        chunk_count, ticket_count = selected.get(chunk.evidence_id, (0, 0))
+        selected[chunk.evidence_id] = (
+            chunk_count + 1,
+            ticket_count + chunk.ticket_count,
         )
+        if chunk.mode is TicketSubmissionMode.STREAMED:
+            selected_streamed_ticket_count += chunk.ticket_count
+        else:
+            selected_synchronous_ticket_count += chunk.ticket_count
+    assessments = tuple(
+        _route_assessment(evaluation, selected) for evaluation in evaluations
+    )
+    return TicketAdmissionReport(
+        assessments=assessments,
+        fallback_ticket_count=fallback_ticket_count,
+        plan=plan,
+        report_id=TICKET_ROUTE_ADMISSION_REPORT_ID,
+        selected_streamed_ticket_count=selected_streamed_ticket_count,
+        selected_synchronous_ticket_count=selected_synchronous_ticket_count,
+    )
+
+
+def _route_assessment(
+    evaluation: _CandidateEvaluation,
+    selected: dict[str, tuple[int, int]],
+) -> TicketRouteAssessment:
+    candidate = evaluation.candidate
+    evidence_id = _candidate_evidence_id(candidate)
+    selected_chunk_count, selected_ticket_count = (
+        (0, 0)
+        if evaluation.rejection_reasons
+        else selected.get(evidence_id, (0, 0))
+    )
+    return TicketRouteAssessment(
+        benchmark_id=candidate.benchmark_id,
+        candidate_median_ns=candidate.candidate_median_ns,
+        evidence_id=evidence_id,
+        exact_results=candidate.exact_results,
+        group_size=candidate.group_size,
+        mode=candidate.mode,
+        paired_wins=candidate.paired_wins,
+        reference_median_ns=candidate.reference_median_ns,
+        rejection_reasons=evaluation.rejection_reasons,
+        sample_count=candidate.sample_count,
+        selected_chunk_count=selected_chunk_count,
+        selected_ticket_count=selected_ticket_count,
+    )
+
+
+def _candidate_evidence_id(candidate: TicketRouteCandidate) -> str:
+    return (
+        f"{candidate.benchmark_id}:{candidate.mode.value}:"
+        f"{candidate.group_size}"
     )
 
 
@@ -375,10 +590,7 @@ def _append_candidate(
 ) -> _PlanState:
     chunk = TicketSubmissionChunk(
         estimated_ns=candidate.candidate_median_ns,
-        evidence_id=(
-            f"{candidate.benchmark_id}:{candidate.mode.value}:"
-            f"{candidate.group_size}"
-        ),
+        evidence_id=_candidate_evidence_id(candidate),
         mode=candidate.mode,
         start=stop - candidate.group_size,
         stop=stop,

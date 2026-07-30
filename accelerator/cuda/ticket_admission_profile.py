@@ -21,7 +21,7 @@
 #   - Read benchmark evidence at runtime or infer missing profile fields.
 # - Allows:
 #   - Inputs: one tracked schema-v4 JSON profile manifest.
-#   - Outputs: validated immutable CUDA admission profiles.
+#   - Outputs: validated profiles, plans, and immutable reports.
 #   - Side effects: manifest file reads only.
 # - Split-When:
 #   - Split when another backend gains an independent manifest schema.
@@ -60,12 +60,14 @@ from accelerator.ticket_admission import TicketAdmissionRequest
 from accelerator.ticket_admission import TicketRouteCandidate
 from accelerator.ticket_admission import TicketSubmissionMode
 from accelerator.ticket_admission import plan_ticket_submissions
+from accelerator.ticket_admission import plan_ticket_submissions_with_report
 
 if TYPE_CHECKING:
     from accelerator.cuda.runtime import CudaHostRuntimeIdentity
     from accelerator.cuda.runtime import CudaRuntimeIdentity
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.ticket_admission import TicketAdmissionPlan
+    from accelerator.ticket_admission import TicketAdmissionReport
 
 PROFILE_SCHEMA_VERSION = 4
 PROFILE_MANIFEST_PATH = Path(__file__).with_name(
@@ -290,6 +292,38 @@ class CudaTicketAdmissionProfile:
             )
             raise TicketAdmissionError(message)
         return plan_ticket_submissions(
+            TicketAdmissionRequest(
+                backend_id=capability.backend_id,
+                device_arch=capability.device_arch,
+                device_name=capability.device_name,
+                ticket_count=ticket_count,
+                workload_id=self.workload_id,
+            ),
+            candidates=self.candidates,
+            fallback_ticket_ns=self.fallback_ticket_ns,
+        )
+
+    def plan_with_report(
+        self,
+        capability: AcceleratorCapability,
+        runtime_identity: CudaRuntimeIdentity,
+        ticket_count: int,
+    ) -> TicketAdmissionReport:
+        """Plan pending tickets with an immutable route explanation.
+
+        Returns:
+            The exact conservative plan plus retained-route assessments.
+
+        Raises:
+            TicketAdmissionError: If capability or runtime identity mismatches.
+
+        """
+        if not self.matches(capability, runtime_identity):
+            message = (
+                "CUDA ticket admission profile capability/runtime mismatched"
+            )
+            raise TicketAdmissionError(message)
+        return plan_ticket_submissions_with_report(
             TicketAdmissionRequest(
                 backend_id=capability.backend_id,
                 device_arch=capability.device_arch,
