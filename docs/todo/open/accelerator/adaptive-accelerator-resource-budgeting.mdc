@@ -171,8 +171,8 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. One hundred two
-admission/telemetry/persistence/summary/collection/overlap/index tests
+  only after exact profile resolution. One hundred fourteen
+  admission/telemetry/persistence/summary/collection/overlap/index/components tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -219,11 +219,15 @@ admission/telemetry/persistence/summary/collection/overlap/index tests
   collection before comparing every unique fingerprint-ordered pair. It defaults
   to a 65,536-pair budget, checks that budget before pairwise work, and publishes
   completed/failed counts for conflicting, matching, no-overlap, and empty pairs.
-  Exact duplicates remain collection occurrences and never create pairs. Pairwise
-  and indexed review never infers common recorder lineage, constructs graph
-  components, or merges snapshots. None of these surfaces recommend routes or
-  modify admission. There is no automatic loading, hidden worker, automatic
-  promotion, or policy authority. Other hosts, Python versions, drivers,
-  devices/workloads, telemetry schema migration or alternate stores, overlap graph
-  components, authenticated recorder lineage attribution, and automatic adaptive
+  Exact duplicates remain collection occurrences and never create pairs.
+  `offline-ticket-admission-telemetry-overlap-components-v1` selects an undirected
+  edge only when completed and failed FIFOs contain at least one exact retained
+  match in total and neither FIFO has conflicting sequence IDs. It retains
+  singleton isolates, fingerprints sorted members and direct edges, and publishes
+  direct/possible/missing edge counts plus a clique flag. A transitive bridge is
+  not pairwise equivalence or recorder lineage. None of these surfaces merge
+  snapshots, recommend routes, or modify admission. There is no automatic loading,
+  hidden worker, automatic promotion, or policy authority. Other hosts, Python
+  versions, drivers, devices/workloads, telemetry schema migration or alternate
+  stores, authenticated recorder lineage attribution, and automatic adaptive
   queue/resource feedback remain open.

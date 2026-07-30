@@ -37,7 +37,10 @@ pairwise report compares completed and failed retained ranges, exact matching
 observations, and conflicting sequence IDs without claiming common lineage. A
 collection-wide index deduplicates first, rejects more than 65,536 unique pairs
 before comparison, orders pair reports by fingerprint, and counts all four overlap
-classifications independently for completed and failed FIFOs.
+classifications independently for completed and failed FIFOs. A compatibility
+graph selects only nonconflicting pairs with at least one exact retained match,
+retains isolated documents, and distinguishes direct cliques from transitive
+bridges. Connectivity is not pairwise equivalence or recorder lineage.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -184,10 +187,11 @@ and caller-owned bounded telemetry can record completed durations or stable
 accelerator-failure categories. Failure observations omit exception text. An
 explicit schema-v1 document can atomically persist and restore both bounded FIFOs;
 duplicate, unknown, oversized, or noncanonical input fails closed. Offline
-summaries never recommend routes or modify admission. Pairwise and collection-wide
-overlap review never infers common lineage, constructs graph components, or merges
-nonidentical snapshots. Observations do not promote routes automatically and never
-replace retained benchmark evidence.
+summaries never recommend routes or modify admission. Pairwise, indexed, and
+component overlap review never infers common lineage or merges nonidentical
+snapshots. A transitive component is only a review aid, not pairwise equivalence.
+Observations do not promote routes automatically and never replace retained
+benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

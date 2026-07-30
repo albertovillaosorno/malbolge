@@ -172,9 +172,15 @@ exact document match is separate from matching retained observations.
 collection before comparing every unique pair. It defaults to a 65,536-pair
 budget, fails before pairwise work when that budget is exceeded, orders reports by
 fingerprint, and publishes completed/failed counts for all four overlap classes.
-Exact duplicates remain collection occurrences and never create pairs. Neither
-overlap surface infers common recorder lineage, constructs graph components, or
-merges snapshots. None of these surfaces recommend routes or modify admission.
+Exact duplicates remain collection occurrences and never create pairs.
+`offline-ticket-admission-telemetry-overlap-components-v1` selects an undirected
+edge only when completed and failed FIFOs contain at least one exact matching
+observation in total and neither FIFO has a conflicting sequence ID. It retains
+isolated unique documents, fingerprints each component, and publishes member,
+direct, possible, and missing edge counts plus a clique flag. A bridged component
+may contain member pairs with no direct edge, so connectivity is neither pairwise
+equivalence nor recorder lineage. Component fingerprint collisions fail closed.
+None of these surfaces merge snapshots, recommend routes, or modify admission.
 There is no automatic loading, hidden worker, automatic promotion, or policy
 authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
@@ -183,8 +189,8 @@ authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One hundred two admission/telemetry/persistence/summary/
-collection/overlap/index tests cover fallback, positive/negative
+every ticket. One hundred fourteen admission/telemetry/persistence/summary/
+collection/overlap/index/components tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact
