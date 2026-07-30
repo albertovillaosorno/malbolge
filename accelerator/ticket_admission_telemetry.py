@@ -24,7 +24,7 @@
 #   - Outputs: immutable ordered telemetry snapshots with explicit eviction.
 #   - Side effects: bounded in-memory recorder mutation only.
 # - Split-When:
-#   - Split when persistence or adaptive policy gains its own lifecycle.
+#   - Split when adaptive policy gains its own lifecycle.
 # - Merge-When:
 #   - Merge when another module owns these exact bounded observations.
 # - Summary:
@@ -37,6 +37,7 @@
 #   - No recorder exists unless a caller opts in; malformed input fails closed.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_persistence.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:
@@ -51,6 +52,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 from typing import NoReturn
+from typing import Self
 from typing import TYPE_CHECKING
 from typing import final
 
@@ -171,6 +173,24 @@ class TicketAdmissionTelemetry:
         self._next_sequence_id = 0
         self._observations: list[TicketAdmissionObservation] = []
 
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: TicketAdmissionTelemetrySnapshot,
+    ) -> Self:
+        """Restore one recorder from validated immutable state.
+
+        Returns:
+            Caller-owned recorder continuing the retained sequence.
+
+        """
+        state = _validated_completed_snapshot(snapshot)
+        telemetry = cls(capacity=state.capacity)
+        telemetry._dropped_observation_count = state.dropped_observation_count
+        telemetry._next_sequence_id = state.next_sequence_id
+        telemetry._observations = list(state.observations)
+        return telemetry
+
     def record_completed(
         self,
         report: TicketAdmissionReport,
@@ -228,6 +248,24 @@ class TicketAdmissionFailureTelemetry:
         self._dropped_observation_count = 0
         self._next_sequence_id = 0
         self._observations: list[TicketAdmissionFailureObservation] = []
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: TicketAdmissionFailureTelemetrySnapshot,
+    ) -> Self:
+        """Restore one failed-attempt recorder from validated state.
+
+        Returns:
+            Caller-owned recorder continuing the retained sequence.
+
+        """
+        state = _validated_failure_snapshot(snapshot)
+        telemetry = cls(capacity=state.capacity)
+        telemetry._dropped_observation_count = state.dropped_observation_count
+        telemetry._next_sequence_id = state.next_sequence_id
+        telemetry._observations = list(state.observations)
+        return telemetry
 
     def record_failed(
         self,
@@ -330,6 +368,215 @@ def ticket_admission_failure_telemetry_id() -> str:
 
     """
     return TICKET_ADMISSION_FAILURE_TELEMETRY_ID
+
+
+def _validated_completed_snapshot(
+    snapshot: TicketAdmissionTelemetrySnapshot,
+) -> TicketAdmissionTelemetrySnapshot:
+    _validate_completed_snapshot_shape(snapshot)
+    _validate_snapshot_accounting(
+        snapshot.capacity,
+        snapshot.dropped_observation_count,
+        snapshot.next_sequence_id,
+        observation_count=len(snapshot.observations),
+    )
+    _validate_completed_snapshot_observations(snapshot)
+    return snapshot
+
+
+def _validate_completed_snapshot_shape(
+    snapshot: TicketAdmissionTelemetrySnapshot,
+) -> None:
+    if type(snapshot) is not TicketAdmissionTelemetrySnapshot:
+        _raise_telemetry("completed snapshot type is invalid")
+    if snapshot.telemetry_id != TICKET_ADMISSION_TELEMETRY_ID:
+        _raise_telemetry("completed snapshot identity mismatched")
+    if type(snapshot.observations) is not tuple:
+        _raise_telemetry("completed snapshot observations must be immutable")
+
+
+def _validate_completed_snapshot_observations(
+    snapshot: TicketAdmissionTelemetrySnapshot,
+) -> None:
+    for offset, observation in enumerate(snapshot.observations):
+        if type(observation) is not TicketAdmissionObservation:
+            _raise_telemetry("completed snapshot observation type is invalid")
+        _validate_retained_observation(
+            observation,
+            expected_sequence_id=snapshot.dropped_observation_count + offset,
+        )
+
+
+def _validated_failure_snapshot(
+    snapshot: TicketAdmissionFailureTelemetrySnapshot,
+) -> TicketAdmissionFailureTelemetrySnapshot:
+    _validate_failure_snapshot_shape(snapshot)
+    _validate_snapshot_accounting(
+        snapshot.capacity,
+        snapshot.dropped_observation_count,
+        snapshot.next_sequence_id,
+        observation_count=len(snapshot.observations),
+    )
+    _validate_failure_snapshot_observations(snapshot)
+    return snapshot
+
+
+def _validate_failure_snapshot_shape(
+    snapshot: TicketAdmissionFailureTelemetrySnapshot,
+) -> None:
+    if type(snapshot) is not TicketAdmissionFailureTelemetrySnapshot:
+        _raise_telemetry("failure snapshot type is invalid")
+    if snapshot.telemetry_id != TICKET_ADMISSION_FAILURE_TELEMETRY_ID:
+        _raise_telemetry("failure snapshot identity mismatched")
+    if type(snapshot.observations) is not tuple:
+        _raise_telemetry("failure snapshot observations must be immutable")
+
+
+def _validate_failure_snapshot_observations(
+    snapshot: TicketAdmissionFailureTelemetrySnapshot,
+) -> None:
+    for offset, observation in enumerate(snapshot.observations):
+        if type(observation) is not TicketAdmissionFailureObservation:
+            _raise_telemetry("failure snapshot observation type is invalid")
+        if type(observation.failure_kind) is not TicketAdmissionFailureKind:
+            _raise_telemetry("failure snapshot category is invalid")
+        _validate_retained_observation(
+            observation,
+            expected_sequence_id=snapshot.dropped_observation_count + offset,
+        )
+
+
+def _validate_snapshot_accounting(
+    capacity: int,
+    dropped: int,
+    next_sequence_id: int,
+    *,
+    observation_count: int,
+) -> None:
+    _ = _validated_capacity(capacity)
+    _ = _validated_nonnegative_integer(dropped, "snapshot dropped count")
+    _ = _validated_nonnegative_integer(
+        next_sequence_id,
+        "snapshot next sequence identity",
+    )
+    if observation_count > capacity:
+        _raise_telemetry("snapshot exceeds recorder capacity")
+    if dropped > 0 and observation_count != capacity:
+        _raise_telemetry("evicted snapshot must retain full capacity")
+    if next_sequence_id != dropped + observation_count:
+        _raise_telemetry("snapshot sequence accounting mismatched")
+
+
+type _RetainedObservation = (
+    TicketAdmissionObservation | TicketAdmissionFailureObservation
+)
+
+
+def _validate_retained_observation(
+    observation: _RetainedObservation,
+    *,
+    expected_sequence_id: int,
+) -> None:
+    _validate_retained_identities(observation)
+    _validate_retained_counts(observation)
+    _validate_retained_sequence(observation, expected_sequence_id)
+    _validate_retained_evidence(observation)
+
+
+def _validate_retained_sequence(
+    observation: _RetainedObservation,
+    expected_sequence_id: int,
+) -> None:
+    if observation.sequence_id != expected_sequence_id:
+        _raise_telemetry("snapshot observation sequence mismatched")
+    if observation.estimate_delta_ns != (
+        observation.elapsed_ns - observation.estimated_ns
+    ):
+        _raise_telemetry("snapshot observation estimate delta mismatched")
+
+
+def _validate_retained_evidence(observation: _RetainedObservation) -> None:
+    evidence_ids = observation.selected_evidence_ids
+    if type(evidence_ids) is not tuple:
+        _raise_telemetry("snapshot evidence identities must be immutable")
+    if any(type(value) is not str or not value for value in evidence_ids):
+        _raise_telemetry("snapshot evidence identity is invalid")
+    expected_chunks = observation.fallback_ticket_count + len(evidence_ids)
+    if observation.chunk_count != expected_chunks:
+        _raise_telemetry("snapshot chunk accounting mismatched")
+    selected = (
+        observation.selected_streamed_ticket_count
+        + observation.selected_synchronous_ticket_count
+    )
+    if bool(evidence_ids) != (selected > 0):
+        _raise_telemetry("snapshot selected evidence accounting mismatched")
+
+
+def _validate_retained_identities(observation: _RetainedObservation) -> None:
+    if observation.admission_id != ticket_route_admission_id():
+        _raise_telemetry("snapshot admission identity mismatched")
+    if observation.report_id != ticket_route_admission_report_id():
+        _raise_telemetry("snapshot report identity mismatched")
+    for label, value in (
+        ("backend", observation.backend_id),
+        ("device architecture", observation.device_arch),
+        ("device name", observation.device_name),
+        ("workload", observation.workload_id),
+    ):
+        if type(value) is not str or not value:
+            _raise_telemetry(f"snapshot {label} identity is invalid")
+
+
+def _validate_retained_counts(observation: _RetainedObservation) -> None:
+    for label, value in _retained_count_fields(observation):
+        _ = _validated_nonnegative_integer(value, f"snapshot {label}")
+    _validate_retained_plan_shape(observation)
+    _validate_retained_selected_count(observation)
+
+
+def _validate_retained_plan_shape(observation: _RetainedObservation) -> None:
+    if (observation.ticket_count == 0) != (observation.chunk_count == 0):
+        _raise_telemetry("snapshot empty plan accounting mismatched")
+    if observation.chunk_count > observation.ticket_count:
+        _raise_telemetry("snapshot chunk count exceeds tickets")
+    if (observation.estimated_ns == 0) != (observation.ticket_count == 0):
+        _raise_telemetry("snapshot estimate accounting mismatched")
+
+
+def _validate_retained_selected_count(
+    observation: _RetainedObservation,
+) -> None:
+    selected_count = (
+        observation.fallback_ticket_count
+        + observation.selected_streamed_ticket_count
+        + observation.selected_synchronous_ticket_count
+    )
+    if selected_count != observation.ticket_count:
+        _raise_telemetry("snapshot ticket counts mismatched")
+
+
+def _retained_count_fields(
+    observation: _RetainedObservation,
+) -> tuple[tuple[str, int], ...]:
+    return (
+        ("chunk count", observation.chunk_count),
+        ("elapsed time", observation.elapsed_ns),
+        ("estimated time", observation.estimated_ns),
+        ("fallback ticket count", observation.fallback_ticket_count),
+        ("streamed ticket count", observation.selected_streamed_ticket_count),
+        (
+            "synchronous ticket count",
+            observation.selected_synchronous_ticket_count,
+        ),
+        ("sequence identity", observation.sequence_id),
+        ("ticket count", observation.ticket_count),
+    )
+
+
+def _validated_nonnegative_integer(value: int, label: str) -> int:
+    if type(value) is not int or value < 0:
+        _raise_telemetry(f"{label} must be a non-negative integer")
+    return value
 
 
 def _validated_capacity(capacity: int) -> int:

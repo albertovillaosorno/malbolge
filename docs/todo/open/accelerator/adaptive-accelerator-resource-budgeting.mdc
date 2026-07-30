@@ -171,7 +171,7 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Forty-five admission/telemetry tests
+  only after exact profile resolution. Sixty-one admission/telemetry/persistence tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -193,8 +193,12 @@ example probe points, not supported-range endpoints.
   failures fail before mutation. `TicketAdmissionAttemptTelemetry` pairs the
   FIFOs, and the separate CUDA attempt executor records exactly one outcome
   before returning or re-raising the same accelerator error. Existing ordinary
-  and completion-only executors remain unchanged. The recorders have no
-  persistence, hidden workers, automatic promotion, or policy authority. Other
-  hosts, Python versions,
-  drivers, devices/workloads, persisted telemetry, and adaptive queue/resource
-  feedback remain open.
+  and completion-only executors remain unchanged.
+  `ticket-admission-telemetry-document-v1` captures both snapshots as compact,
+  sorted-key schema-v1 JSON. Decoding defaults to 1 MiB and 4,096 observations
+  per FIFO, rejects duplicate, unknown, oversized, and noncanonical input, and
+  restores exact sequence/eviction state. Explicit writes use same-directory
+  temporary files and atomic replacement. There is no automatic loading, hidden
+  worker, automatic promotion, or policy authority. Other hosts, Python versions,
+  drivers, devices/workloads, telemetry schema migration or alternate stores,
+  and adaptive queue/resource feedback remain open.

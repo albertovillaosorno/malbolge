@@ -37,15 +37,21 @@ selected-route usage. Malformed reports, timings, or foreign failures fail
 before mutation. `TicketAdmissionAttemptTelemetry` pairs the two FIFOs, and a
 separate retained CUDA attempt executor records exactly one outcome before
 returning or re-raising the same accelerator error. The ordinary and existing
-completion-only executors remain unchanged. The recorders have no persistence,
-worker threads, automatic promotion, or policy authority. The retained
+completion-only executors remain unchanged.
+`ticket-admission-telemetry-document-v1` captures both snapshots as compact,
+sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
+observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
+input, and restores exact sequence and eviction state. File reads and writes are
+explicit; writes use a same-directory temporary file and atomic replacement.
+There is no automatic loading, hidden worker, automatic promotion, or policy
+authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Forty-five admission/telemetry tests cover fallback, positive/negative
+every ticket. Sixty-one admission/telemetry/persistence tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact
