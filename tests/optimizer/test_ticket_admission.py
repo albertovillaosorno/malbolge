@@ -25,7 +25,7 @@
 #     assertions.
 #   - Side effects: scoped optional CUDA execution only.
 # - Split-When:
-#   - Split when online telemetry or another device profile is implemented.
+#   - Split when another device profile gains independent retained evidence.
 # - Merge-When:
 #   - Merge when another suite owns this exact admission contract.
 # - Summary:
@@ -62,6 +62,7 @@ from accelerator.cuda import cuda_ticket_admission_profile
 from accelerator.cuda import cuda_ticket_admission_profile_id
 from accelerator.cuda import cuda_ticket_admission_workload_id
 from accelerator.cuda import execute_retained_cuda_tickets
+from accelerator.cuda import execute_retained_cuda_tickets_with_telemetry
 from accelerator.cuda import load_cuda_ticket_admission_profiles
 from accelerator.cuda import plan_retained_cuda_tickets
 from accelerator.cuda import plan_retained_cuda_tickets_with_report
@@ -80,6 +81,7 @@ from accelerator.ticket_admission import plan_ticket_submissions
 from accelerator.ticket_admission import plan_ticket_submissions_with_report
 from accelerator.ticket_admission import ticket_route_admission_id
 from accelerator.ticket_admission import ticket_route_admission_report_id
+from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
@@ -716,6 +718,40 @@ def test_live_retained_executor_uses_only_synchronous_exact_tickets(
     assert plan.chunks[0].mode is TicketSubmissionMode.SYNCHRONOUS
     assert len(results) == PAIR_GROUP_SIZE
     assert all(result.words_u32le == expected_words for result in results)
+
+
+def test_live_retained_telemetry_records_completed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The explicit telemetry path records only a completed exact plan."""
+    prepared = _prepared_full_domain()
+    telemetry = TicketAdmissionTelemetry(capacity=1)
+
+    def reject_streaming(*arguments: object, **keywords: object) -> object:
+        del arguments, keywords
+        message = "negative streamed evidence was incorrectly admitted"
+        raise AssertionError(message)
+
+    with _cuda() as cuda:
+        monkeypatch.setattr(cuda.ticket_transfers, "submit", reject_streaming)
+        executed = execute_retained_cuda_tickets_with_telemetry(
+            cuda,
+            prepared,
+            PAIR_GROUP_SIZE,
+            telemetry=telemetry,
+        )
+
+    assert executed is not None
+    report, results = executed
+    snapshot = telemetry.snapshot()
+    assert report.plan.request.ticket_count == PAIR_GROUP_SIZE
+    assert len(results) == PAIR_GROUP_SIZE
+    assert len(snapshot.observations) == 1
+    observation = snapshot.observations[0]
+    assert observation.ticket_count == PAIR_GROUP_SIZE
+    assert observation.selected_synchronous_ticket_count == PAIR_GROUP_SIZE
+    assert observation.selected_streamed_ticket_count == 0
+    assert observation.elapsed_ns >= 0
 
 
 def test_live_retained_executor_rejects_wrong_prepared_workload() -> None:

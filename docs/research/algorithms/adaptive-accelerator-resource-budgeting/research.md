@@ -169,16 +169,22 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Twenty-eight admission,
+facade resolves the same exact profile before reporting. Thirty-six admission/telemetry,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
-evidence and performs no online learning. The registry now selects at most one
+evidence and performs no online learning. The caller-owned
+`bounded-ticket-admission-telemetry-v1` recorder now retains only a positive,
+bounded FIFO of completed reports with monotonic sequence/eviction state and
+measured-versus-estimated duration. Malformed observations fail before mutation,
+and the separate CUDA telemetry executor records only after successful ticket
+completion. It performs no persistence, automatic promotion, or policy update.
+The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
-hosts, Python versions, drivers, devices, workloads, and online queue/resource
-telemetry remains open.
+hosts, Python versions, drivers, devices, workloads, persisted telemetry, and
+adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

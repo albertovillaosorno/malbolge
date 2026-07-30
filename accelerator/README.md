@@ -135,17 +135,25 @@ mismatch, inexact results, no median improvement, no paired majority, and a
 group larger than the pending queue. Eligible but unused routes remain visible
 with zero selected counts; the report also records selected chunks/tickets,
 fallback tickets, synchronous/streamed totals, and the unchanged plan. It reads
-no additional evidence, performs no online learning, and changes no default. The retained
+no additional evidence, performs no online learning, and changes no default.
+`bounded-ticket-admission-telemetry-v1` adds a caller-owned, positive-capacity
+FIFO for completed reports. Immutable snapshots expose monotonic sequence IDs,
+eviction counts, measured/estimated duration delta, and exact selected-route
+usage. Malformed reports fail before recorder mutation. The separate retained
+CUDA telemetry executor records only after all tickets complete; the ordinary
+executor remains unchanged. The recorder has no persistence, worker threads,
+automatic promotion, or policy authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Twenty-eight admission tests cover fallback, positive/negative
+every ticket. Thirty-six admission/telemetry tests cover fallback,
+positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
-two live CUDA routes. The seven route records and exact
+three live CUDA routes. The seven route records and exact
 provenance now live in schema-v4
 `accelerator/cuda/ticket_admission_profiles.json`, not Python source.
 `benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those

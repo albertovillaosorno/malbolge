@@ -109,6 +109,9 @@ from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile_id
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_workload_id
 from accelerator.cuda.ticket_admission import execute_retained_cuda_tickets
+from accelerator.cuda.ticket_admission import (
+    execute_retained_cuda_tickets_with_telemetry,
+)
 from accelerator.cuda.ticket_admission import plan_retained_cuda_tickets
 from accelerator.cuda.ticket_admission import (
     plan_retained_cuda_tickets_with_report,
@@ -184,6 +187,7 @@ __all__ = [
     "cuda_ticket_admission_profile_id",
     "cuda_ticket_admission_workload_id",
     "execute_retained_cuda_tickets",
+    "execute_retained_cuda_tickets_with_telemetry",
     "load_cuda_ticket_admission_profiles",
     "measure_cuda_host_runtime_identity",
     "measure_cuda_runtime_identity",

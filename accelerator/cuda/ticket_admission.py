@@ -16,19 +16,22 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Retained CUDA profile resolution, reporting, and opt-in execution.
+#   - Retained CUDA profile resolution, reporting, opt-in execution, and
+#     completed-plan telemetry composition.
 # - Must-Not:
-#   - Read benchmark evidence at runtime or generalize profile identities.
+#   - Read benchmark evidence, generalize identities, or adapt from telemetry.
 # - Allows:
 #   - Inputs: exact CUDA capability, prepared workload, and ticket count.
-#   - Outputs: optional plans, reports, and input-order exact results.
-#   - Side effects: scoped CUDA ticket submission, wait, and cleanup only.
+#   - Outputs: optional plans, reports, exact results, and caller-owned
+#     completed observations.
+#   - Side effects: scoped CUDA ticket lifetime plus post-completion recorder
+#     append only on the explicit telemetry path.
 # - Split-When:
 #   - Split when automatic dispatch gains an independent policy lifecycle.
 # - Merge-When:
 #   - Merge when another module owns this exact resolution/execution contract.
 # - Summary:
-#   - Resolve, explain, and execute retained CUDA ticket profiles.
+#   - Resolve, explain, execute, and observe retained CUDA ticket profiles.
 # - Description:
 #   - Uses a product manifest without embedding retained measurements in code.
 # - Usage:
@@ -49,6 +52,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from time import perf_counter_ns
 from typing import Final
 from typing import TYPE_CHECKING
 
@@ -75,6 +79,7 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.ticket_admission import TicketAdmissionPlan
     from accelerator.ticket_admission import TicketAdmissionReport
+    from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
 
 CUDA_TICKET_ADMISSION_PROFILE_ID: Final = (
     "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
@@ -182,6 +187,45 @@ def execute_retained_cuda_tickets(
         return None
     _validate_prepared_workload(prepared, profile)
     plan = profile.plan(capability, runtime_identity, ticket_count)
+    return plan, _execute_plan(adapter, prepared, plan)
+
+
+def execute_retained_cuda_tickets_with_telemetry(
+    adapter: CudaExactPrimitiveAdapter,
+    prepared: PreparedPrimitiveBatch,
+    ticket_count: int,
+    *,
+    telemetry: TicketAdmissionTelemetry,
+) -> tuple[TicketAdmissionReport, tuple[PackedPrimitiveResult, ...]] | None:
+    """Execute one retained plan and record completed opt-in telemetry.
+
+    Returns:
+        Report and input-order results, or ``None`` without an exact profile.
+
+    """
+    capability = adapter.capability()
+    runtime_identity = adapter.runtime_identity
+    profile = cuda_ticket_admission_profile(capability, runtime_identity)
+    if profile is None:
+        return None
+    _validate_prepared_workload(prepared, profile)
+    report = profile.plan_with_report(
+        capability,
+        runtime_identity,
+        ticket_count,
+    )
+    started_ns = perf_counter_ns()
+    results = _execute_plan(adapter, prepared, report.plan)
+    elapsed_ns = perf_counter_ns() - started_ns
+    _ = telemetry.record_completed(report, elapsed_ns=elapsed_ns)
+    return report, results
+
+
+def _execute_plan(
+    adapter: CudaExactPrimitiveAdapter,
+    prepared: PreparedPrimitiveBatch,
+    plan: TicketAdmissionPlan,
+) -> tuple[PackedPrimitiveResult, ...]:
     results: list[PackedPrimitiveResult] = []
     for chunk in plan.chunks:
         submit = (
@@ -190,7 +234,7 @@ def execute_retained_cuda_tickets(
             else adapter.ticket_transfers.submit
         )
         results.extend(_execute_chunk(submit, prepared, chunk.ticket_count))
-    return plan, tuple(results)
+    return tuple(results)
 
 
 def _execute_chunk(

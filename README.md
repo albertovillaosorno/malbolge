@@ -14,16 +14,28 @@ the compiler itself into Malbolge.
 
 ## Project status
 
-The repository is currently in the specification, research-design, and
-infrastructure phase. The normative 1998 machine specification, documentation
-authority model, research methodology, legal boundaries, bibliography baseline,
-and 85 typed TODO records exist. The production Rust VM, C VM, C frontend,
-compiler backend, optimizer, JIT/AOT engine, and accelerator implementations are
-still planned work.
+The repository now contains an executable and tested foundation rather than
+only a design skeleton. Durable work includes the normative 1998 specification,
+classic and scalable-profile Rust VMs, an independent C VM, capsules and traces,
+execution IR, optional native execution tiers, exact CPU/CUDA primitive paths,
+resident CUDA classic/profile sessions, validated asynchronous submissions, and
+bounded evidence-based accelerator admission.
 
-[`TODO.md`](TODO.md) contains unfinished work only. Every TODO heading has one
-typed record under [`docs/todo/open/`](docs/todo/). A TODO disappears only after
-its contract, implementation or research result, tests, and evidence are
+The CUDA path remains optional and fail-closed. Retained ticket profiles bind to
+an exact capability, workload, host/runtime identity, driver API, display-driver
+build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
+and bounded completion telemetry explain what ran without changing the selected
+route or learning new policy online.
+
+The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
+the complete compiler backend, generated `.malbolge` artifacts for general C,
+self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain
+open work. The repository therefore describes implemented behavior and planned
+behavior separately.
+
+[`TODO.md`](TODO.md) contains unfinished work only. Its 85 headings each have one
+typed record under [`docs/todo/open/`](docs/todo/open/). A TODO disappears only
+after its contract, implementation or research result, tests, and evidence are
 durable.
 
 ## Initialize a checkout
@@ -152,6 +164,19 @@ GPU adapter, not a semantic dependency. The same stochastic, enumerative,
 learned, hybrid, or future search algorithm should be runnable on CPU, CUDA,
 AMD, or another backend where practical. Resource scheduling is intended to
 adapt to the available machine rather than assume one fixed VRAM budget.
+
+Ticket concurrency is conservative: missing or mismatched evidence keeps
+singleton synchronous execution. Exact retained profiles may opt into measured
+groups, immutable admission reports explain every eligible or rejected route,
+and caller-owned bounded telemetry can record completed durations. Observations
+do not promote routes automatically and never replace retained benchmark
+evidence.
+
+Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
+Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime
+dependencies, verifier authorities, or evidence that LLM workloads are already
+supported. Any such integration must remain optional, version-bound, replaceable,
+and downstream of deterministic validation where correctness is claimed.
 
 ## Verification model
 
