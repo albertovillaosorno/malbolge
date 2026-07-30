@@ -25,7 +25,7 @@
 #   - Outputs: canonical SHA-256 identities and per-document offline summaries.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when overlap detection or recommendations gain an independent
+#   - Split when graph components or recommendations gain an independent
 #     contract.
 # - Merge-When:
 #   - Merge when another module owns this exact collection identity boundary.
@@ -43,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_summary.py
 # - accelerator/ticket_admission_telemetry_overlap.py
+# - accelerator/ticket_admission_telemetry_overlap_index.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

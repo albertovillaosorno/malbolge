@@ -24,7 +24,7 @@
 #   - Outputs: symmetric range, match, conflict, and collision assertions.
 #   - Side effects: temporary monkeypatching of the local digest constructor.
 # - Split-When:
-#   - Split when collection-wide overlap indexing gains an evidence protocol.
+#   - Split when graph components or authenticated lineage gain a protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact pairwise comparison behavior.
 # - Summary:
@@ -38,6 +38,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_overlap.py
+# - accelerator/ticket_admission_telemetry_overlap_index.py
 #
 # Large file:
 #   - false

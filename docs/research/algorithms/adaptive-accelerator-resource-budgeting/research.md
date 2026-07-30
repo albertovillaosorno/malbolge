@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Ninety
-admission/telemetry/persistence/summary/collection/overlap,
+facade resolves the same exact profile before reporting. One hundred two
+admission/telemetry/persistence/summary/collection/overlap/index,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -201,19 +201,24 @@ overlap; digest collisions fail closed.
 documents in fingerprint order. Each FIFO reports capacities, retained half-open
 sequence ranges, exact overlap bounds, matching observation counts, and conflicting
 sequence IDs, including empty and no-overlap classifications. Exact document
-equality is distinct from retained-data compatibility. Matching observations may
-be coincidental, so the report never attributes common recorder lineage, merges
-snapshots, recommends routes, promotes evidence, or updates policy. There is no
-automatic loading.
+equality is distinct from retained-data compatibility.
+`offline-ticket-admission-telemetry-overlap-index-v1` first deduplicates the
+bounded canonical collection, then compares every unique fingerprint-ordered pair
+within a configurable budget that defaults to 65,536 pairs. The pair budget is
+checked before comparison. Completed and failed classification summaries count
+conflicting, matching, no-overlap, and empty pairs independently. Exact duplicates
+remain collection occurrences and do not create pair reports. Matching observations
+may be coincidental, so neither pairwise nor indexed review attributes common
+recorder lineage, constructs graph components, merges snapshots, recommends routes,
+promotes evidence, or updates policy. There is no automatic loading.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, collection-wide overlap indexing, authenticated
-recorder lineage attribution, and automatic adaptive queue/resource feedback remain
-open.
+migration or alternate stores, overlap graph components, authenticated recorder
+lineage attribution, and automatic adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

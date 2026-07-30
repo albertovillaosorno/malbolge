@@ -171,8 +171,8 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Ninety
-admission/telemetry/persistence/summary/collection/overlap tests
+  only after exact profile resolution. One hundred two
+admission/telemetry/persistence/summary/collection/overlap/index tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -214,10 +214,16 @@ admission/telemetry/persistence/summary/collection/overlap tests
   in fingerprint order. Completed and failed reports expose capacity equality,
   retained half-open sequence ranges, exact overlap bounds, matching counts, and
   conflicting sequence IDs, including empty and no-overlap classifications. Exact
-  document equality remains distinct from retained-data compatibility. The report
-  never infers common recorder lineage or merges snapshots. None of these surfaces
-  recommend routes or modify admission. There is no automatic loading, hidden
-  worker, automatic promotion, or policy authority. Other hosts, Python versions,
-  drivers, devices/workloads, telemetry schema migration or alternate stores,
-  collection-wide overlap indexing, authenticated recorder lineage attribution,
-  and automatic adaptive queue/resource feedback remain open.
+  document equality remains distinct from retained-data compatibility.
+  `offline-ticket-admission-telemetry-overlap-index-v1` deduplicates the bounded
+  collection before comparing every unique fingerprint-ordered pair. It defaults
+  to a 65,536-pair budget, checks that budget before pairwise work, and publishes
+  completed/failed counts for conflicting, matching, no-overlap, and empty pairs.
+  Exact duplicates remain collection occurrences and never create pairs. Pairwise
+  and indexed review never infers common recorder lineage, constructs graph
+  components, or merges snapshots. None of these surfaces recommend routes or
+  modify admission. There is no automatic loading, hidden worker, automatic
+  promotion, or policy authority. Other hosts, Python versions, drivers,
+  devices/workloads, telemetry schema migration or alternate stores, overlap graph
+  components, authenticated recorder lineage attribution, and automatic adaptive
+  queue/resource feedback remain open.

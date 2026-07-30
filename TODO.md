@@ -1565,18 +1565,24 @@ sequence ranges overlap, and digest collisions fail closed.
 in fingerprint order. Completed and failed reports expose capacity equality,
 retained half-open sequence ranges, exact overlap ranges, matching counts, and
 conflicting sequence IDs, with explicit empty and no-overlap classifications. An
-exact document match is distinct from matching retained observations. The report
-never infers common recorder lineage or merges snapshots. None of these surfaces
-recommend routes or modify admission. No automatic loading, hidden workers,
-automatic promotion, or policy authority are introduced. The retained
+exact document match is distinct from matching retained observations.
+`offline-ticket-admission-telemetry-overlap-index-v1` deduplicates one bounded
+collection before comparing every unique pair. It defaults to a 65,536-pair
+budget, fails before comparison when that budget is exceeded, orders reports by
+fingerprint, and publishes completed/failed counts for all four overlap classes.
+Exact duplicates remain collection occurrences and never create pairs. Pairwise
+and indexed overlap review never infers common recorder lineage, constructs graph
+components, or merges snapshots. None of these surfaces recommend routes or
+modify admission. No automatic loading, hidden workers, automatic promotion, or
+policy authority are introduced. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Ninety admission/telemetry/persistence/summary/collection/overlap
-tests cover fallback, positive/negative
+every ticket. One hundred two admission/telemetry/persistence/summary/
+collection/overlap/index tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact
@@ -1604,9 +1610,9 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, telemetry schema
-migration or alternate stores, collection-wide overlap indexing, authenticated
-recorder lineage attribution, automatic adaptive feedback, and broader live-device
-evidence remain open.
+migration or alternate stores, overlap graph components, authenticated recorder
+lineage attribution, automatic adaptive feedback, and broader live-device evidence
+remain open.
 
 ### TODO - Compilation latency performance budget
 
