@@ -25,7 +25,7 @@
 #     assertions.
 #   - Side effects: temporary monkeypatching of the local digest constructor.
 # - Split-When:
-#   - Split when overlap detection gains an independent evidence protocol.
+#   - Split when collection-wide overlap indexing gains an evidence protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact collection identity behavior.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_collection.py
+# - accelerator/ticket_admission_telemetry_overlap.py
 #
 # Large file:
 #   - false

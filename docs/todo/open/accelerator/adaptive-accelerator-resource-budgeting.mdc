@@ -171,8 +171,8 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Eighty-two
-admission/telemetry/persistence/summary/collection tests
+  only after exact profile resolution. Ninety
+admission/telemetry/persistence/summary/collection/overlap tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -210,8 +210,14 @@ admission/telemetry/persistence/summary/collection tests
   byte-identical occurrences once, publishes input/unique/duplicate byte counts,
   and orders unique entries by fingerprint. Distinct snapshots remain separate
   even when contexts or sequence ranges overlap; digest collisions fail closed.
-  Neither surface recommends routes or modifies admission. There is
-  no automatic loading, hidden worker, automatic promotion, or policy authority.
-  Other hosts, Python versions, drivers, devices/workloads, telemetry schema
-  migration or alternate stores, nonidentical snapshot lineage/overlap detection,
+  `offline-ticket-admission-telemetry-overlap-v1` compares two validated documents
+  in fingerprint order. Completed and failed reports expose capacity equality,
+  retained half-open sequence ranges, exact overlap bounds, matching counts, and
+  conflicting sequence IDs, including empty and no-overlap classifications. Exact
+  document equality remains distinct from retained-data compatibility. The report
+  never infers common recorder lineage or merges snapshots. None of these surfaces
+  recommend routes or modify admission. There is no automatic loading, hidden
+  worker, automatic promotion, or policy authority. Other hosts, Python versions,
+  drivers, devices/workloads, telemetry schema migration or alternate stores,
+  collection-wide overlap indexing, authenticated recorder lineage attribution,
   and automatic adaptive queue/resource feedback remain open.

@@ -40,6 +40,7 @@
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_summary.py
 # - accelerator/ticket_admission_telemetry_collection.py
+# - accelerator/ticket_admission_telemetry_overlap.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

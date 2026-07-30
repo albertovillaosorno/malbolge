@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Eighty-two
-admission/telemetry/persistence/summary/collection,
+facade resolves the same exact profile before reporting. Ninety
+admission/telemetry/persistence/summary/collection/overlap,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -196,16 +196,24 @@ default to 4,096 documents and 16 MiB of canonical input. Exact-byte duplicates
 share one entry with occurrence and input/unique/duplicate byte counts; unique
 entries remain fingerprint-ordered with one summary per distinct document.
 Nonidentical snapshots are never merged even when contexts or sequence ranges
-overlap; digest collisions fail closed. Neither surface recommends, promotes, or
-updates policy. There is no automatic loading.
+overlap; digest collisions fail closed.
+`offline-ticket-admission-telemetry-overlap-v1` compares two validated canonical
+documents in fingerprint order. Each FIFO reports capacities, retained half-open
+sequence ranges, exact overlap bounds, matching observation counts, and conflicting
+sequence IDs, including empty and no-overlap classifications. Exact document
+equality is distinct from retained-data compatibility. Matching observations may
+be coincidental, so the report never attributes common recorder lineage, merges
+snapshots, recommends routes, promotes evidence, or updates policy. There is no
+automatic loading.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, nonidentical snapshot lineage/overlap detection,
-and automatic adaptive queue/resource feedback remain open.
+migration or alternate stores, collection-wide overlap indexing, authenticated
+recorder lineage attribution, and automatic adaptive queue/resource feedback remain
+open.
 
 ## Threats to Validity
 
