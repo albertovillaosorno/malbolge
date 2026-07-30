@@ -53,10 +53,11 @@
 
 use std::str::from_utf8;
 
+#[cfg(feature = "legacy-ben")]
+use malbolge::ProfileMachine;
 use malbolge::{
     CapsuleError, ExecutionErrorKind, ExecutionMachine, ExecutionMode,
-    ProfileMachine, RunOutcome, Termination, build_capsule, current_profile,
-    parse_capsule,
+    RunOutcome, Termination, build_capsule, current_profile, parse_capsule,
 };
 
 use super::{TestResult, check_equal, normalize_result};
