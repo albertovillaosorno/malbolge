@@ -317,6 +317,30 @@ sequential route with 11/15, 13/15, and 14/15 paired wins, but reaches only
 The preregistered group-eight hypothesis fails and synchronous copies remain the
 default.
 
+`independent_ticket_transfer_event_timeline.py` instruments only the explicit
+streamed route with `cuda-independent-stream-ticket-transfer-timeline-v1`. Four
+contiguous CUDA events per ticket delimit upload, exact kernel, and download.
+Groups 2/4/8 submit all tickets before reverse waiting. Each retained observation
+contains per-ticket origin-relative phase endpoints/durations, wall time, phase
+sums, and intersections between the union of transfer intervals and the union of
+kernel intervals. Event-origin setup, preparation, CPU reference, exact validation,
+and origin destruction are outside retained intervals; per-ticket event creation,
+recording, elapsed queries, and destruction remain inside wall time. One warmup
+precedes fifteen retained samples per group with cyclic first-group rotation.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python.exe -m `
+  benchmarks.accelerator.independent_ticket_transfer_event_timeline
+```
+
+The preregistered group-eight hypothesis requires more than one microsecond of
+transfer/kernel event-interval overlap in more than seven samples and a median
+above that threshold. CUDA-event endpoints describe observed stream intervals;
+they do not prove copy-engine occupancy, establish uninstrumented speedup, or
+change the synchronous default.
+
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`. CPU ordinary/prepared medians are 368.3588/22.4264 ms
