@@ -72,13 +72,17 @@ BENCHMARK_ID = "cuda-independent-ticket-transfer-throughput-v1"
 WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 WORKLOAD_KIND = "crazy"
 WORKLOAD_COUNT = 59_049
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 EXPECTED_SAMPLE_COUNT = 15
 RUNTIME_IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
 MINIMUM_DRIVER_API_VERSION = 13_030
 NVRTC_MAJOR = 13
 NVRTC_MINOR = 3
 NVRTC_PACKAGE_NAME = "cuda_nvrtc"
+DISPLAY_DRIVER_VERSION = "610.88"
+EXPECTED_RUN_TOOLCHAIN = (
+    "Python 3.14.6; CUDA 13.3.1 (nvcc 13.3.73); NVIDIA driver 610.88"
+)
 EXPECTED_TOOLCHAIN_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
@@ -150,7 +154,7 @@ def profile_manifest(root: Path = ROOT) -> dict[str, object]:
     """Build one validated profile manifest object.
 
     Returns:
-        Schema-v2 document containing one exact CUDA profile.
+        Schema-v3 document containing one exact CUDA profile.
 
     """
     evidence = root / EVIDENCE_RELATIVE
@@ -209,6 +213,7 @@ def _profile(bundle: _EvidenceBundle) -> dict[str, object]:
         "profile_id": PROFILE_ID,
         "routes": _routes(routes, comparisons),
         "runtime": {
+            "display_driver_version": DISPLAY_DRIVER_VERSION,
             "identity_id": RUNTIME_IDENTITY_ID,
             "minimum_driver_api_version": MINIMUM_DRIVER_API_VERSION,
             "nvrtc_major": NVRTC_MAJOR,
@@ -389,6 +394,7 @@ def _validate_experiment(experiment: dict[str, object]) -> None:
             WORKLOAD_COUNT,
         ),
         (_string(run["commit"], "run.commit"), EXPECTED_SOURCE_COMMIT),
+        (_string(run["toolchain"], "run.toolchain"), EXPECTED_RUN_TOOLCHAIN),
         (
             _string(run["workload_sha256"], "run.workload_sha256"),
             EXPECTED_WORKLOAD_SHA256,

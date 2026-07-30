@@ -318,15 +318,16 @@ The preregistered group-eight hypothesis fails and synchronous copies remain the
 default.
 
 `ticket_admission_profile_manifest.py` converts this exact retained bundle into
-the schema-v2 product registry at
+the schema-v3 product registry at
 `accelerator/cuda/ticket_admission_profiles.json`. It validates benchmark,
 workload, device, sample, route, comparison, experiment, source-commit, raw/
-structured-output hashes, and the exact tracked CUDA toolchain manifest before
-emitting canonical sorted JSON. The runtime block requires Driver API 13030 or
-newer, exact NVRTC 13.3, and the tracked `toolchain.json` SHA-256. It writes only
-to stdout; runtime code loads the product manifest and never reads benchmark
-evidence. Eight manifest tests require generated/tracked byte equality and strict
-rejection of malformed profile or runtime identity documents.
+structured-output hashes, the exact tracked CUDA toolchain manifest, and the
+retained display-driver build before emitting canonical sorted JSON. The runtime
+block requires Driver API 13030 or newer, exact NVRTC 13.3, the tracked
+`toolchain.json` SHA-256, and exact display build `610.88`. It writes only to
+stdout; runtime code loads the product manifest and never reads benchmark evidence.
+Nine manifest tests require generated/tracked byte equality and strict rejection
+of malformed profile or runtime identity documents.
 
 Run with:
 

@@ -20,7 +20,7 @@
 # - Must-Not:
 #   - Read benchmark evidence at runtime or infer missing profile fields.
 # - Allows:
-#   - Inputs: one tracked schema-v2 JSON profile manifest.
+#   - Inputs: one tracked schema-v3 JSON profile manifest.
 # - Outputs: validated immutable CUDA admission profiles.
 # - Side effects: manifest file reads only.
 # - Split-When:
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.ticket_admission import TicketAdmissionPlan
 
-PROFILE_SCHEMA_VERSION = 2
+PROFILE_SCHEMA_VERSION = 3
 PROFILE_MANIFEST_PATH = Path(__file__).with_name(
     "ticket_admission_profiles.json"
 )
@@ -96,6 +96,7 @@ EVIDENCE_KEYS = frozenset((
     "toolchain",
 ))
 RUNTIME_KEYS = frozenset((
+    "display_driver_version",
     "identity_id",
     "minimum_driver_api_version",
     "nvrtc_major",
@@ -114,6 +115,7 @@ _HEX_DIGITS = frozenset("0123456789abcdef")
 _WINDOWS_SEPARATOR = "\\"
 _ABSOLUTE_PREFIXES = ("/", ".")
 _DIRECTORY_SUFFIX = "/"
+_DISPLAY_DRIVER_MIN_COMPONENTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +135,7 @@ class CudaTicketAdmissionEvidence:
 class CudaTicketAdmissionRuntime:
     """Runtime compatibility required by one evidence-backed profile."""
 
+    display_driver_version: str
     identity_id: str
     minimum_driver_api_version: int
     nvrtc_major: int
@@ -143,11 +146,13 @@ class CudaTicketAdmissionRuntime:
         """Check measured runtime compatibility.
 
         Returns:
-            Whether Driver API, NVRTC, protocol, and manifest identity match.
+            Whether display build, Driver API, NVRTC, protocol, and
+            manifest match.
 
         """
         return (
-            identity.identity_id == self.identity_id
+            identity.display_driver_version == self.display_driver_version
+            and identity.identity_id == self.identity_id
             and identity.driver_api_version >= self.minimum_driver_api_version
             and identity.nvrtc_major == self.nvrtc_major
             and identity.nvrtc_minor == self.nvrtc_minor
@@ -436,6 +441,10 @@ def _runtime(
     context = f"{profile_context}.runtime"
     _expect_exact_keys(document, RUNTIME_KEYS, context)
     return CudaTicketAdmissionRuntime(
+        display_driver_version=_expect_display_driver_version(
+            document["display_driver_version"],
+            f"{context}.display_driver_version",
+        ),
         identity_id=_expect_string(
             document["identity_id"],
             f"{context}.identity_id",
@@ -647,6 +656,17 @@ def _expect_bool(value: object, context: str) -> bool:
         message = f"{context} must be boolean"
         raise TicketAdmissionError(message)
     return value
+
+
+def _expect_display_driver_version(value: object, context: str) -> str:
+    observed = _expect_string(value, context)
+    components = observed.split(".")
+    if len(components) < _DISPLAY_DRIVER_MIN_COMPONENTS or not all(
+        component and component.isdigit() for component in components
+    ):
+        message = f"{context} must be a dotted numeric version"
+        raise TicketAdmissionError(message)
+    return observed
 
 
 def _expect_hex(value: object, *, length: int, context: str) -> str:

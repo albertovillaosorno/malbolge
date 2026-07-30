@@ -74,6 +74,7 @@ THROUGHPUT_SHA256 = (
 )
 RAW_SHA256 = "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f"
 ROUTE_COUNT = 7
+DISPLAY_DRIVER_VERSION = "610.88"
 DRIVER_API_VERSION = 13_030
 NVRTC_MAJOR = 13
 NVRTC_MINOR = 3
@@ -81,6 +82,7 @@ TOOLCHAIN_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
 RUNTIME_IDENTITY = CudaRuntimeIdentity(
+    display_driver_version=DISPLAY_DRIVER_VERSION,
     driver_api_version=DRIVER_API_VERSION,
     identity_id="cuda-runtime-toolchain-identity-v1",
     nvrtc_major=NVRTC_MAJOR,
@@ -104,6 +106,7 @@ def test_loaded_profile_preserves_exact_provenance_and_routes() -> None:
     assert profile.evidence.source_commit == SOURCE_COMMIT
     assert profile.evidence.throughput_sha256 == THROUGHPUT_SHA256
     assert profile.evidence.raw_sha256 == RAW_SHA256
+    assert profile.runtime.display_driver_version == DISPLAY_DRIVER_VERSION
     assert profile.runtime.minimum_driver_api_version == DRIVER_API_VERSION
     assert profile.runtime.nvrtc_major == NVRTC_MAJOR
     assert profile.runtime.nvrtc_minor == NVRTC_MINOR
@@ -124,7 +127,7 @@ def test_loader_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     """Duplicate object keys never acquire last-value-wins semantics."""
     manifest = tmp_path / "duplicate.json"
     _ = manifest.write_text(
-        '{"schema_version":2,"schema_version":2,"profiles":[]}',
+        '{"schema_version":3,"schema_version":3,"profiles":[]}',
         encoding="utf-8",
         newline="\n",
     )
@@ -147,7 +150,7 @@ def test_loader_rejects_unknown_root_keys(tmp_path: Path) -> None:
 def test_loader_rejects_unsupported_schema(tmp_path: Path) -> None:
     """Runtime loading never guesses a newer admission schema."""
     document = profile_manifest()
-    document["schema_version"] = 3
+    document["schema_version"] = 4
     manifest = _write_manifest(tmp_path, document, "schema.json")
     with pytest.raises(TicketAdmissionError, match=r"unsupported.*schema"):
         _ = load_cuda_ticket_admission_profiles(manifest)
@@ -162,6 +165,19 @@ def test_loader_rejects_duplicate_route_identity(tmp_path: Path) -> None:
     routes.append(dict(first))
     manifest = _write_manifest(tmp_path, document, "routes.json")
     with pytest.raises(TicketAdmissionError, match="routes duplicates"):
+        _ = load_cuda_ticket_admission_profiles(manifest)
+
+
+def test_loader_rejects_invalid_display_driver_version(
+    tmp_path: Path,
+) -> None:
+    """Malformed display-driver text cannot enter a runtime profile."""
+    document = profile_manifest()
+    profile = _first_profile(document)
+    runtime = cast("dict[str, object]", profile["runtime"])
+    runtime["display_driver_version"] = "610"
+    manifest = _write_manifest(tmp_path, document, "driver.json")
+    with pytest.raises(TicketAdmissionError, match="dotted numeric version"):
         _ = load_cuda_ticket_admission_profiles(manifest)
 
 
@@ -189,11 +205,12 @@ def test_profile_plan_rejects_mismatched_runtime() -> None:
         device_name="NVIDIA GeForce RTX 4060",
     )
     mismatch = CudaRuntimeIdentity(
+        display_driver_version="611.00",
         driver_api_version=DRIVER_API_VERSION,
         identity_id=RUNTIME_IDENTITY.identity_id,
         nvrtc_major=NVRTC_MAJOR,
         nvrtc_minor=NVRTC_MINOR,
-        toolchain_manifest_sha256="0" * 64,
+        toolchain_manifest_sha256=TOOLCHAIN_SHA256,
     )
     with pytest.raises(
         TicketAdmissionError,

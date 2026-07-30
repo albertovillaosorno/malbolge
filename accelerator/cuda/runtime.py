@@ -28,9 +28,9 @@
 # - Merge-When:
 #   - Merge when another file owns the exact same responsibility.
 # - Summary:
-#   - Pinned CUDA 13 Driver/NVRTC boundary using standard-library ctypes.
+#   - Pinned CUDA 13 Driver/NVRTC and optional NVML boundary.
 # - Description:
-#   - Implements the responsibility summarized by this module.
+#   - Owns exact CUDA execution plus optional display-driver identity.
 # - Usage:
 #   - Used through the owning package, executable, or document boundary.
 # - Defaults:
@@ -43,7 +43,7 @@
 #   - false
 #
 
-"""Pinned CUDA 13 Driver/NVRTC boundary using standard-library ctypes."""
+"""Pinned CUDA 13 Driver/NVRTC and optional NVML ctypes boundary."""
 
 from __future__ import annotations
 
@@ -64,6 +64,9 @@ from accelerator.resource_budget import AcceleratorResources
 ROOT: Final = Path(__file__).resolve().parents[2]
 CUDA_TOOLKIT: Final = ROOT / ".dependencies" / "cuda" / "13.3.1" / "toolkit"
 NVRTC_DLL: Final = CUDA_TOOLKIT / "bin" / "x64" / "nvrtc64_130_0.dll"
+NVML_DLL: Final = (
+    Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "nvml.dll"
+)
 CUDA_TOOLCHAIN_MANIFEST: Final = (
     ROOT / "accelerator" / "cuda" / "toolchain.json"
 )
@@ -72,6 +75,9 @@ _HEX_DIGITS: Final = frozenset("0123456789abcdef")
 _SHA256_HEX_LENGTH: Final = 64
 CUDA_SUCCESS: Final = 0
 NVRTC_SUCCESS: Final = 0
+NVML_SUCCESS: Final = 0
+NVML_VERSION_BUFFER_BYTES: Final = 96
+_DISPLAY_DRIVER_MIN_COMPONENTS: Final = 2
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
@@ -94,18 +100,21 @@ CUDA_INDEPENDENT_TICKET_TRANSFER_TIMELINE_ID: Final = (
 CUDA_EVENT_DEFAULT: Final = 0
 
 _CudaFn = Callable[..., int]
+type _NvmlBindings = tuple[_CudaFn, _CudaFn, _CudaFn]
+type _NvmlLoader = Callable[[Path], _NvmlBindings | None]
 type HostWords = ctypes.Array[ctypes.c_uint32]
 
 
 @dataclass(frozen=True, slots=True)
 class CudaRuntimeIdentity:
-    """Measured CUDA Driver API and pinned NVRTC/toolchain identity."""
+    """Measured CUDA, optional display-driver, and toolchain identity."""
 
     driver_api_version: int
     identity_id: str
     nvrtc_major: int
     nvrtc_minor: int
     toolchain_manifest_sha256: str
+    display_driver_version: str | None = None
 
     def validated(self) -> CudaRuntimeIdentity:
         """Validate runtime/toolchain identity shape.
@@ -113,25 +122,11 @@ class CudaRuntimeIdentity:
         Returns:
             The unchanged identity after fail-closed validation.
 
-        Raises:
-            AcceleratorUnavailableError: If a version or digest is invalid.
-
         """
-        if self.identity_id != CUDA_RUNTIME_IDENTITY_ID:
-            message = "CUDA runtime identity protocol mismatched"
-            raise AcceleratorUnavailableError(message)
-        if self.driver_api_version <= 0:
-            message = "CUDA Driver API version must be positive"
-            raise AcceleratorUnavailableError(message)
-        if self.nvrtc_major <= 0 or self.nvrtc_minor < 0:
-            message = "NVRTC version is invalid"
-            raise AcceleratorUnavailableError(message)
-        digest = self.toolchain_manifest_sha256
-        if len(digest) != _SHA256_HEX_LENGTH or any(
-            char not in _HEX_DIGITS for char in digest
-        ):
-            message = "CUDA toolchain manifest SHA-256 is invalid"
-            raise AcceleratorUnavailableError(message)
+        _validate_cuda_runtime_protocol(self)
+        _validate_cuda_runtime_versions(self)
+        _validate_display_driver_version(self.display_driver_version)
+        _validate_sha256(self.toolchain_manifest_sha256)
         return self
 
 
@@ -2153,6 +2148,7 @@ class CudaRuntime:
             self._cu_driver_get_version,
             self._nvrtc_version,
             CUDA_TOOLCHAIN_MANIFEST,
+            display_driver_version=measure_nvml_display_driver_version(),
         )
         self._device = self._open_device(device_id)
         self._context = self._create_context(self._device)
@@ -2608,8 +2604,10 @@ def measure_cuda_runtime_identity(
     driver_version_fn: _CudaFn,
     nvrtc_version_fn: _CudaFn,
     manifest_path: Path,
+    *,
+    display_driver_version: str | None = None,
 ) -> CudaRuntimeIdentity:
-    """Measure Driver API, NVRTC, and exact toolchain manifest identity.
+    """Measure Driver API, NVRTC, toolchain, and optional display build.
 
     Returns:
         Validated immutable runtime identity.
@@ -2638,12 +2636,130 @@ def measure_cuda_runtime_identity(
         message = f"CUDA toolchain manifest unavailable: {error}"
         raise AcceleratorUnavailableError(message) from error
     return CudaRuntimeIdentity(
+        display_driver_version=display_driver_version,
         driver_api_version=driver_version.value,
         identity_id=CUDA_RUNTIME_IDENTITY_ID,
         nvrtc_major=nvrtc_major.value,
         nvrtc_minor=nvrtc_minor.value,
         toolchain_manifest_sha256=manifest_sha256,
     ).validated()
+
+
+def measure_nvml_display_driver_version(
+    dll_path: Path = NVML_DLL,
+    *,
+    loader: _NvmlLoader | None = None,
+) -> str | None:
+    """Read the NVIDIA display-driver build without requiring NVML.
+
+    Returns:
+        Normalized version text, or ``None`` when NVML cannot prove it.
+
+    """
+    bindings = _load_nvml(dll_path) if loader is None else loader(dll_path)
+    return None if bindings is None else _query_nvml_display_driver(*bindings)
+
+
+def _load_nvml(dll_path: Path) -> _NvmlBindings | None:
+    if not dll_path.is_file():
+        return None
+    try:
+        dll = ctypes.WinDLL(str(dll_path))
+        return _bind_nvml(dll)
+    except AttributeError, OSError:
+        return None
+
+
+def _query_nvml_display_driver(
+    init_fn: _CudaFn,
+    version_fn: _CudaFn,
+    shutdown_fn: _CudaFn,
+) -> str | None:
+    if _call_nvml(init_fn) != NVML_SUCCESS:
+        return None
+    buffer = ctypes.create_string_buffer(NVML_VERSION_BUFFER_BYTES)
+    query_result = _call_nvml(version_fn, buffer, len(buffer))
+    shutdown_result = _call_nvml(shutdown_fn)
+    raw = bytes(buffer).split(b"\0", maxsplit=1)[0]
+    version = _decode_ascii(raw)
+    valid = (
+        query_result == NVML_SUCCESS
+        and shutdown_result == NVML_SUCCESS
+        and version is not None
+        and _valid_display_driver_version(version)
+    )
+    return version if valid else None
+
+
+def _call_nvml(function: _CudaFn, *arguments: object) -> int | None:
+    try:
+        return function(*arguments)
+    except (ctypes.ArgumentError, OSError, TypeError, ValueError):
+        return None
+
+
+def _decode_ascii(payload: bytes) -> str | None:
+    try:
+        return payload.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+
+
+def _bind_nvml(dll: ctypes.WinDLL) -> _NvmlBindings:
+    raw_init = dll.nvmlInit_v2
+    raw_init.argtypes = []
+    raw_init.restype = ctypes.c_int
+    raw_version = dll.nvmlSystemGetDriverVersion
+    raw_version.argtypes = [ctypes.c_char_p, ctypes.c_uint]
+    raw_version.restype = ctypes.c_int
+    raw_shutdown = dll.nvmlShutdown
+    raw_shutdown.argtypes = []
+    raw_shutdown.restype = ctypes.c_int
+    return (
+        cast("_CudaFn", raw_init),
+        cast("_CudaFn", raw_version),
+        cast("_CudaFn", raw_shutdown),
+    )
+
+
+def _valid_display_driver_version(version: str) -> bool:
+    components = version.split(".")
+    return (
+        version.strip() == version
+        and len(components) >= _DISPLAY_DRIVER_MIN_COMPONENTS
+        and all(
+            bool(component) and component.isdigit() for component in components
+        )
+    )
+
+
+def _validate_cuda_runtime_protocol(identity: CudaRuntimeIdentity) -> None:
+    if identity.identity_id != CUDA_RUNTIME_IDENTITY_ID:
+        message = "CUDA runtime identity protocol mismatched"
+        raise AcceleratorUnavailableError(message)
+
+
+def _validate_cuda_runtime_versions(identity: CudaRuntimeIdentity) -> None:
+    if identity.driver_api_version <= 0:
+        message = "CUDA Driver API version must be positive"
+        raise AcceleratorUnavailableError(message)
+    if identity.nvrtc_major <= 0 or identity.nvrtc_minor < 0:
+        message = "NVRTC version is invalid"
+        raise AcceleratorUnavailableError(message)
+
+
+def _validate_display_driver_version(version: str | None) -> None:
+    if version is not None and not _valid_display_driver_version(version):
+        message = "NVIDIA display-driver version is invalid"
+        raise AcceleratorUnavailableError(message)
+
+
+def _validate_sha256(digest: str) -> None:
+    if len(digest) != _SHA256_HEX_LENGTH or any(
+        char not in _HEX_DIGITS for char in digest
+    ):
+        message = "CUDA toolchain manifest SHA-256 is invalid"
+        raise AcceleratorUnavailableError(message)
 
 
 def _bind_driver_version(dll: ctypes.WinDLL) -> _CudaFn:

@@ -16,26 +16,26 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - CUDA Driver API, NVRTC, and toolchain-manifest identity regressions.
+#   - CUDA Driver API, NVRTC, NVML, and toolchain identity regressions.
 # - Must-Not:
-#   - Treat Driver API compatibility as display-driver build identity.
+#   - Make optional NVML a prerequisite for ordinary CUDA availability.
 # - Allows:
-#   - Inputs: fake version callbacks, temporary manifests, and scoped live CUDA.
+#   - Inputs: fake FFI callbacks, temporary manifests, and scoped live CUDA.
 # - Outputs: exact identity, failure classification, and live-version
 #   assertions.
 # - Side effects: temporary files and scoped optional CUDA execution only.
 # - Split-When:
-#   - Split when NVML display-driver identity gains an independent contract.
+#   - Split when NVML gains device-management responsibilities.
 # - Merge-When:
 #   - Merge when another suite owns this exact runtime identity boundary.
 # - Summary:
-#   - CUDA runtime/toolchain identity regressions.
+#   - CUDA runtime, display-driver, and toolchain identity regressions.
 # - Description:
-#   - Proves measured compatibility and manifest digest are fail-closed.
+#   - Proves required compatibility and optional NVML identity fail closed.
 # - Usage:
 #   - Runs with optimizer tests; the live route skips without CUDA.
 # - Defaults:
-#   - Query or manifest failure classifies the optional backend unavailable.
+#   - NVML failure leaves CUDA available but evidence profiles unmatched.
 #
 # Related documents:
 # - accelerator/cuda/runtime.py
@@ -45,11 +45,12 @@
 #   - false
 #
 
-"""CUDA Driver API, NVRTC, and toolchain identity tests."""
+"""CUDA Driver API, NVRTC, NVML, and toolchain identity tests."""
 
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
@@ -58,6 +59,7 @@ import pytest
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.cuda import cuda_runtime_identity_id
 from accelerator.cuda import measure_cuda_runtime_identity
+from accelerator.cuda import measure_nvml_display_driver_version
 from accelerator.cuda.runtime import CUDA_TOOLCHAIN_MANIFEST
 from accelerator.exact_primitives import AcceleratorUnavailableError
 
@@ -73,6 +75,7 @@ TOOLCHAIN_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
 FAILURE_STATUS = 7
+DISPLAY_DRIVER_VERSION = "610.88"
 
 
 def _version_callback(
@@ -113,6 +116,34 @@ def _nvrtc_callback(
     return callback
 
 
+@dataclass(slots=True)
+class _FakeNvmlState:
+    init_status: int = 0
+    query_status: int = 0
+    shutdown_calls: int = 0
+    shutdown_status: int = 0
+
+    def load(
+        self,
+        path: Path,
+    ) -> tuple[Callable[..., int], Callable[..., int], Callable[..., int]]:
+        del path
+        return self.init, self.driver_version, self.shutdown
+
+    def init(self) -> int:
+        return self.init_status
+
+    def driver_version(self, buffer: ctypes.c_void_p, size: int) -> int:
+        del size
+        payload = DISPLAY_DRIVER_VERSION.encode("ascii") + b"\0"
+        _ = ctypes.memmove(buffer, payload, len(payload))
+        return self.query_status
+
+    def shutdown(self) -> int:
+        self.shutdown_calls += 1
+        return self.shutdown_status
+
+
 def test_cuda_runtime_identity_protocol_is_stable() -> None:
     """The measured runtime identity remains explicitly versioned."""
     assert cuda_runtime_identity_id() == IDENTITY_ID
@@ -129,7 +160,9 @@ def test_fake_runtime_identity_measures_versions_and_manifest(
         _version_callback(DRIVER_API_VERSION),
         _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
         manifest,
+        display_driver_version=DISPLAY_DRIVER_VERSION,
     )
+    assert identity.display_driver_version == DISPLAY_DRIVER_VERSION
     assert identity.driver_api_version == DRIVER_API_VERSION
     assert identity.identity_id == IDENTITY_ID
     assert identity.nvrtc_major == NVRTC_MAJOR
@@ -177,6 +210,87 @@ def test_missing_toolchain_manifest_is_unavailable(tmp_path: Path) -> None:
         )
 
 
+def test_runtime_identity_rejects_malformed_display_driver(
+    tmp_path: Path,
+) -> None:
+    """Malformed display-driver text never enters a measured identity."""
+    manifest = tmp_path / "toolchain.json"
+    _ = manifest.write_text("{}", encoding="utf-8")
+    with pytest.raises(
+        AcceleratorUnavailableError,
+        match="display-driver version is invalid",
+    ):
+        _ = measure_cuda_runtime_identity(
+            _version_callback(DRIVER_API_VERSION),
+            _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
+            manifest,
+            display_driver_version="610",
+        )
+
+
+def test_missing_nvml_is_optional(tmp_path: Path) -> None:
+    """Missing NVML leaves display build unknown without disabling CUDA."""
+    assert measure_nvml_display_driver_version(tmp_path / "missing.dll") is None
+
+
+def test_fake_nvml_init_failure_is_optional(tmp_path: Path) -> None:
+    """Failed NVML initialization leaves the optional identity unknown."""
+    state = _FakeNvmlState(init_status=FAILURE_STATUS)
+    assert (
+        measure_nvml_display_driver_version(
+            tmp_path / "nvml.dll",
+            loader=state.load,
+        )
+        is None
+    )
+    assert state.shutdown_calls == 0
+
+
+def test_fake_nvml_returns_driver_build_and_shuts_down(
+    tmp_path: Path,
+) -> None:
+    """A successful optional NVML lifetime publishes exact build text."""
+    state = _FakeNvmlState()
+    assert (
+        measure_nvml_display_driver_version(
+            tmp_path / "nvml.dll",
+            loader=state.load,
+        )
+        == DISPLAY_DRIVER_VERSION
+    )
+    assert state.shutdown_calls == 1
+
+
+def test_fake_nvml_query_failure_is_optional_and_shuts_down(
+    tmp_path: Path,
+) -> None:
+    """A failed version query returns unknown after exact shutdown."""
+    state = _FakeNvmlState(query_status=FAILURE_STATUS)
+    assert (
+        measure_nvml_display_driver_version(
+            tmp_path / "nvml.dll",
+            loader=state.load,
+        )
+        is None
+    )
+    assert state.shutdown_calls == 1
+
+
+def test_fake_nvml_shutdown_failure_is_optional(
+    tmp_path: Path,
+) -> None:
+    """Failed NVML shutdown prevents publishing the optional build identity."""
+    state = _FakeNvmlState(shutdown_status=FAILURE_STATUS)
+    assert (
+        measure_nvml_display_driver_version(
+            tmp_path / "nvml.dll",
+            loader=state.load,
+        )
+        is None
+    )
+    assert state.shutdown_calls == 1
+
+
 def test_live_cuda_runtime_identity_matches_current_compatibility() -> None:
     """Live CUDA reports retained API/NVRTC and tracked manifest identity."""
     try:
@@ -185,6 +299,7 @@ def test_live_cuda_runtime_identity_matches_current_compatibility() -> None:
         pytest.skip(f"CUDA unavailable: {error}")
     with adapter:
         identity = adapter.runtime_identity
+    assert identity.display_driver_version == DISPLAY_DRIVER_VERSION
     assert identity.driver_api_version >= DRIVER_API_VERSION
     assert (identity.nvrtc_major, identity.nvrtc_minor) == (
         NVRTC_MAJOR,

@@ -87,7 +87,9 @@ THREE_FALLBACK_NS = 3 * FALLBACK_NS
 COMPOSED_NS = 680
 PAIR_GROUP_SIZE = 2
 RETAINED_TEN_NS = 7_327_100
+DISPLAY_DRIVER_VERSION = "610.88"
 MATCHING_RUNTIME = CudaRuntimeIdentity(
+    display_driver_version=DISPLAY_DRIVER_VERSION,
     driver_api_version=13_030,
     identity_id="cuda-runtime-toolchain-identity-v1",
     nvrtc_major=13,
@@ -318,6 +320,7 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
     "runtime_identity",
     [
         CudaRuntimeIdentity(
+            display_driver_version=DISPLAY_DRIVER_VERSION,
             driver_api_version=13_029,
             identity_id=MATCHING_RUNTIME.identity_id,
             nvrtc_major=13,
@@ -327,6 +330,7 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
             ),
         ),
         CudaRuntimeIdentity(
+            display_driver_version=DISPLAY_DRIVER_VERSION,
             driver_api_version=13_030,
             identity_id=MATCHING_RUNTIME.identity_id,
             nvrtc_major=13,
@@ -336,18 +340,38 @@ def test_cuda_profile_requires_exact_measured_capability() -> None:
             ),
         ),
         CudaRuntimeIdentity(
+            display_driver_version=DISPLAY_DRIVER_VERSION,
             driver_api_version=13_030,
             identity_id=MATCHING_RUNTIME.identity_id,
             nvrtc_major=13,
             nvrtc_minor=3,
             toolchain_manifest_sha256="0" * 64,
         ),
+        CudaRuntimeIdentity(
+            driver_api_version=13_030,
+            identity_id=MATCHING_RUNTIME.identity_id,
+            nvrtc_major=13,
+            nvrtc_minor=3,
+            toolchain_manifest_sha256=(
+                MATCHING_RUNTIME.toolchain_manifest_sha256
+            ),
+        ),
+        CudaRuntimeIdentity(
+            display_driver_version="611.00",
+            driver_api_version=13_030,
+            identity_id=MATCHING_RUNTIME.identity_id,
+            nvrtc_major=13,
+            nvrtc_minor=3,
+            toolchain_manifest_sha256=(
+                MATCHING_RUNTIME.toolchain_manifest_sha256
+            ),
+        ),
     ],
 )
 def test_cuda_profile_rejects_runtime_identity_drift(
     runtime_identity: CudaRuntimeIdentity,
 ) -> None:
-    """Driver API, NVRTC, and manifest mismatch prevent profile resolution."""
+    """Display build, Driver API, NVRTC, and manifest drift are rejected."""
     capability = AcceleratorCapability(
         backend_id="cuda",
         device_arch="sm_89",

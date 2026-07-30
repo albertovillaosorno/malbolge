@@ -98,6 +98,7 @@ from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.cuda.runtime import cuda_runtime_identity_id
 from accelerator.cuda.runtime import measure_cuda_runtime_identity
+from accelerator.cuda.runtime import measure_nvml_display_driver_version
 from accelerator.cuda.submission import CudaPrimitiveCandidateSubmissionAdapter
 from accelerator.cuda.submission import CudaPrimitiveCandidateTicket
 from accelerator.cuda.ticket_admission import cuda_ticket_admission_profile
@@ -166,6 +167,7 @@ __all__ = [
     "execute_retained_cuda_tickets",
     "load_cuda_ticket_admission_profiles",
     "measure_cuda_runtime_identity",
+    "measure_nvml_display_driver_version",
     "plan_retained_cuda_tickets",
     "profile_snapshot_host_registration_id",
     "profile_snapshot_overlap_workspace_id",
