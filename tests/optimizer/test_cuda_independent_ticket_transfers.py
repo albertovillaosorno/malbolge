@@ -21,8 +21,8 @@
 #   - Claim physical transfer overlap, speedup, or semantic authority.
 # - Allows:
 #   - Inputs: fake Driver calls and registered host word buffers.
-# - Outputs: exact enqueue, synchronization, lease, and cleanup assertions.
-# - Side effects: in-memory fake CUDA logs and host-registration state only.
+#   - Outputs: exact enqueue, synchronization, lease, and cleanup assertions.
+#   - Side effects: in-memory fake CUDA logs and host-registration state only.
 # - Split-When:
 #   - Split when transfer-event attribution gains an independent contract.
 # - Merge-When:

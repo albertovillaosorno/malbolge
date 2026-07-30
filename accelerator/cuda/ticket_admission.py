@@ -21,8 +21,8 @@
 #   - Read benchmark evidence at runtime or generalize profile identities.
 # - Allows:
 #   - Inputs: exact CUDA capability, prepared workload, and ticket count.
-# - Outputs: optional evidence-bound plans and input-order exact results.
-# - Side effects: scoped CUDA ticket submission, wait, and cleanup only.
+#   - Outputs: optional evidence-bound plans and input-order exact results.
+#   - Side effects: scoped CUDA ticket submission, wait, and cleanup only.
 # - Split-When:
 #   - Split when automatic dispatch gains an independent policy lifecycle.
 # - Merge-When:

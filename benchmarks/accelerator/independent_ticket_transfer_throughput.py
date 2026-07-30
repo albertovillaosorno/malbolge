@@ -21,8 +21,8 @@
 #   - Infer transfer overlap, cross-device speedup, or semantic authority.
 # - Allows:
 #   - Inputs: one exact full-domain CRAZY workload and groups 1/2/4/8.
-# - Outputs: route timings, paired comparisons, and proof identities.
-# - Side effects: scoped CUDA execution and JSON output only.
+#   - Outputs: route timings, paired comparisons, and proof identities.
+#   - Side effects: scoped CUDA execution and JSON output only.
 # - Split-When:
 #   - Split when transfer-event attribution gains an independent protocol.
 # - Merge-When:

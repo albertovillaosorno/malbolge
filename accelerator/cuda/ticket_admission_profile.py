@@ -21,8 +21,8 @@
 #   - Read benchmark evidence at runtime or infer missing profile fields.
 # - Allows:
 #   - Inputs: one tracked schema-v4 JSON profile manifest.
-# - Outputs: validated immutable CUDA admission profiles.
-# - Side effects: manifest file reads only.
+#   - Outputs: validated immutable CUDA admission profiles.
+#   - Side effects: manifest file reads only.
 # - Split-When:
 #   - Split when another backend gains an independent manifest schema.
 # - Merge-When:

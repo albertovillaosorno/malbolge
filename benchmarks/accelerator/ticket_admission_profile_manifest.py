@@ -21,8 +21,8 @@
 #   - Write product state implicitly or weaken retained comparison checks.
 # - Allows:
 #   - Inputs: one exact throughput evidence bundle.
-# - Outputs: canonical schema-v1 product profile JSON.
-# - Side effects: evidence file reads and explicit stdout only.
+#   - Outputs: canonical schema-v1 product profile JSON.
+#   - Side effects: evidence file reads and explicit stdout only.
 # - Split-When:
 #   - Split when another benchmark family gains a distinct derivation protocol.
 # - Merge-When:

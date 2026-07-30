@@ -21,8 +21,8 @@
 #   - Treat event phases as overlap proof or grant semantic authority.
 # - Allows:
 #   - Inputs: fake Driver events/copies and exact prepared rotate tickets.
-# - Outputs: ordered upload/kernel/download phases and cleanup evidence.
-# - Side effects: in-memory fake logs or scoped live CUDA resources.
+#   - Outputs: ordered upload/kernel/download phases and cleanup evidence.
+#   - Side effects: in-memory fake logs or scoped live CUDA resources.
 # - Split-When:
 #   - Split when phase-derived admission becomes a product policy.
 # - Merge-When:

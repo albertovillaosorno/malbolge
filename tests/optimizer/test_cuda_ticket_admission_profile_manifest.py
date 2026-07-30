@@ -22,8 +22,8 @@
 # - Allows:
 #   - Inputs: retained evidence, tracked JSON, and malformed temporary
 #     documents.
-# - Outputs: byte-equality, provenance, schema, and rejection assertions.
-# - Side effects: temporary manifest files only.
+#   - Outputs: byte-equality, provenance, schema, and rejection assertions.
+#   - Side effects: temporary manifest files only.
 # - Split-When:
 #   - Split when another backend gains an independent admission profile schema.
 # - Merge-When:

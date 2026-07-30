@@ -21,9 +21,9 @@
 #   - Make optional NVML a prerequisite for ordinary CUDA availability.
 # - Allows:
 #   - Inputs: fake FFI callbacks, temporary manifests, and scoped live CUDA.
-# - Outputs: exact identity, failure classification, and live-version
-#   assertions.
-# - Side effects: temporary files and scoped optional CUDA execution only.
+#   - Outputs: exact identity, failure classification, and live-version
+#     assertions.
+#   - Side effects: temporary files and scoped optional CUDA execution only.
 # - Split-When:
 #   - Split when NVML gains device-management responsibilities.
 # - Merge-When:

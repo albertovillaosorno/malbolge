@@ -21,8 +21,8 @@
 #   - Infer support from a GPU name alone or bypass exact-result evidence.
 # - Allows:
 #   - Inputs: one exact request context and retained paired route candidates.
-# - Outputs: deterministic synchronous/streamed submission chunks.
-# - Side effects: none.
+#   - Outputs: deterministic synchronous/streamed submission chunks.
+#   - Side effects: none.
 # - Split-When:
 #   - Split when online learning or queue telemetry gains its own lifecycle.
 # - Merge-When:

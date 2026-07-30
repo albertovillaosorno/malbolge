@@ -21,8 +21,9 @@
 #   - Generalize retained RTX 4060 evidence or weaken synchronous fallback.
 # - Allows:
 #   - Inputs: synthetic comparison records and scoped live CUDA tickets.
-# - Outputs: deterministic chunk, rejection, exactness, and cleanup assertions.
-# - Side effects: scoped optional CUDA execution only.
+#   - Outputs: deterministic chunk, rejection, exactness, and cleanup
+#     assertions.
+#   - Side effects: scoped optional CUDA execution only.
 # - Split-When:
 #   - Split when online telemetry or another device profile is implemented.
 # - Merge-When:

@@ -21,8 +21,8 @@
 #   - Treat event overlap as engine occupancy or change exact semantics.
 # - Allows:
 #   - Inputs: the full-domain CRAZY workload and groups 2/4/8.
-# - Outputs: raw phase intervals, cross-phase overlap, wall time, identities.
-# - Side effects: scoped CUDA execution and JSON output only.
+#   - Outputs: raw phase intervals, cross-phase overlap, wall time, identities.
+#   - Side effects: scoped CUDA execution and JSON output only.
 # - Split-When:
 #   - Split when admission policy or another workload needs a new protocol.
 # - Merge-When:
