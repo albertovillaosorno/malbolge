@@ -24,7 +24,7 @@
 #   - Outputs: immutable exact-count summaries grouped by execution context.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when recommendations or cross-document identity gain a lifecycle.
+#   - Split when recommendations gain an independent lifecycle.
 # - Merge-When:
 #   - Merge when another module owns this exact offline summary contract.
 # - Summary:
@@ -38,6 +38,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_collection.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

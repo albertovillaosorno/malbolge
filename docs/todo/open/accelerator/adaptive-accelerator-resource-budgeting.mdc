@@ -171,8 +171,8 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Sixty-eight
-admission/telemetry/persistence/summary tests
+  only after exact profile resolution. Eighty-two
+admission/telemetry/persistence/summary/collection tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -203,9 +203,15 @@ admission/telemetry/persistence/summary tests
   `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
   and groups exact backend/device/workload/ticket-count contexts into integer
   outcome totals, estimate comparisons, retention ranges, stable failure counts,
-  and sorted evidence appearances. It does not merge documents, recommend routes,
-  or modify admission. There is no automatic loading, hidden worker, automatic
-  promotion, or policy authority. Other hosts, Python versions, drivers,
-  devices/workloads, telemetry schema migration or alternate stores,
-  cross-document identity/deduplication, and automatic adaptive queue/resource
-  feedback remain open.
+  and sorted evidence appearances.
+  `offline-ticket-admission-telemetry-collection-v1` defaults to explicit
+  4,096-document and 16 MiB canonical-input bounds. It fingerprints canonical
+  bytes as `ticket-admission-telemetry-document-v1:sha256:<hex>`, counts
+  byte-identical occurrences once, publishes input/unique/duplicate byte counts,
+  and orders unique entries by fingerprint. Distinct snapshots remain separate
+  even when contexts or sequence ranges overlap; digest collisions fail closed.
+  Neither surface recommends routes or modifies admission. There is
+  no automatic loading, hidden worker, automatic promotion, or policy authority.
+  Other hosts, Python versions, drivers, devices/workloads, telemetry schema
+  migration or alternate stores, nonidentical snapshot lineage/overlap detection,
+  and automatic adaptive queue/resource feedback remain open.

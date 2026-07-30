@@ -156,7 +156,14 @@ explicit; writes use a same-directory temporary file and atomic replacement.
 and groups retained observations by exact backend, device, workload, and ticket
 count. It publishes completed/failed integer totals, estimate-comparison counts,
 retention ranges, stable failure categories, and sorted selected-evidence
-appearances. It does not merge documents, recommend routes, or modify admission.
+appearances.
+`offline-ticket-admission-telemetry-collection-v1` defaults to explicit
+4,096-document and 16 MiB canonical-input bounds. It fingerprints canonical bytes
+as `ticket-admission-telemetry-document-v1:sha256:<hex>`, counts byte-identical
+occurrences once, publishes input/unique/duplicate byte counts, and orders unique
+entries by fingerprint. Different snapshots remain separate even when their
+contexts or sequence ranges overlap; digest collisions fail closed. Neither
+surface recommends routes or modifies admission.
 There is no automatic loading, hidden worker, automatic promotion, or policy
 authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
@@ -165,7 +172,8 @@ authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Sixty-eight admission/telemetry/persistence/summary tests cover fallback, positive/negative
+every ticket. Eighty-two admission/telemetry/persistence/summary/collection
+tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact

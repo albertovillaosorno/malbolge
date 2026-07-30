@@ -29,7 +29,10 @@ selected route, retaining exception text, or learning new policy online. The two
 FIFOs can be captured as canonical bounded JSON and explicitly restored without
 automatic loading. A deterministic offline summary groups one document by exact
 execution context and exposes only integer totals, retention ranges, stable
-failure categories, and selected-evidence appearance counts.
+failure categories, and selected-evidence appearance counts. Explicit document
+collections assign canonical SHA-256 identities and deduplicate only byte-identical
+JSON while retaining separate summaries for every distinct snapshot. Collection
+limits default to 4,096 documents and 16 MiB of canonical input.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -176,8 +179,9 @@ and caller-owned bounded telemetry can record completed durations or stable
 accelerator-failure categories. Failure observations omit exception text. An
 explicit schema-v1 document can atomically persist and restore both bounded FIFOs;
 duplicate, unknown, oversized, or noncanonical input fails closed. Offline
-summaries never recommend routes, merge documents, or modify admission. Observations
-do not promote routes automatically and never replace retained benchmark evidence.
+summaries never recommend routes or modify admission. Collections neither merge
+nonidentical snapshots nor infer overlap or lineage. Observations do not promote
+routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime
