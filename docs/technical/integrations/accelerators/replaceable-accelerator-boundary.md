@@ -394,8 +394,21 @@ records 210 chronological samples over 14 routes. The group-eight hypothesis
 fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
 0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
 sequential with 14/15 wins. Synchronous copies therefore remain the default and
-streaming remains an exact explicit experiment. Wall time does not attribute
-physical transfer/kernel overlap.
+streaming remains an exact explicit experiment. Wall time alone does not
+attribute physical transfer/kernel overlap.
+Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
+contiguous CUDA events around upload, exact kernel, and download on each
+streamed ticket. Three deterministic tests cover phase order, active lifetime,
+and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output and
+monotonic phases. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`
+contains 45 grouped observations and 210 ticket phase rows. Groups 2/4/8 record
+0.000000 ms median transfer/kernel overlap and 0/15 significant samples each, so
+the group-eight hypothesis fails. Group-eight upload/kernel/download sums are
+0.956352/0.340768/0.588512 ms versus 12.9495 ms wall time; only about 14.6% of
+the instrumented wall interval is represented by those summed device phases.
+This closes phase attribution for the retained workload, not a universal claim
+that CUDA hardware can never overlap transfers and kernels.
 The shared boundary now also exposes
 `validated-search-submission-v1` through `accelerator/search_submission.py`. One
 exact algorithm/problem/seed/budget request binds an optional ticket plus deferred
@@ -424,9 +437,9 @@ through a proof-bound 1,024-item candidate ticket; seven tests cover its exact a
 fallback routes. The retained matrix at `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared,
 11.601x CUDA prepared, and 1.270x one-shot CUDA-ticket improvements over their
 same-run ordinary baselines, all with 15/15 paired wins; CUDA prepared remains
-9.137x faster than the ticket. Other CUDA/ROCm strategies, kernel-transfer
-attribution, event-instrumentation controls, adaptive stream/group admission, and
-other kernel/callback workloads remain open.
+9.137x faster than the ticket. Other CUDA/ROCm strategies,
+event-instrumentation controls, adaptive stream/group admission, and other
+kernel/callback workloads remain open.
 
 ## Invariants
 
@@ -530,6 +543,13 @@ fails explicitly without changing correctness rules.
   retains 210 chronological samples across 14 routes. Streamed grouped reaches
   only 0.436x/0.478x/0.494x versus synchronous grouped for groups 2/4/8 and loses
   0/15 paired samples at every group, so synchronous copies remain default.
+- `tests/optimizer/test_cuda_independent_ticket_transfer_timeline.py` verifies
+  four-marker upload/kernel/download ordering, active-lifetime rejection,
+  failed-kernel cleanup, exact event destruction, and one live CPU-equal phase route.
+- `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`
+  retains 45 chronological observations and 210 ticket phase rows. Groups 2/4/8
+  record 0.000000 ms median transfer/kernel overlap and 0/15 significant samples;
+  group eight records 1.885632 ms summed device phases versus 12.9495 ms wall time.
 - `tests/optimizer/test_cuda_independent_kernel_timeline.py` verifies event-origin
   setup, active-lifetime rejection, submission-order samples, synthetic overlap,
   launch-failure cleanup, and one live exact route.
@@ -544,9 +564,9 @@ fails explicitly without changing correctness rules.
   candidate evidence, verifier identity, malformed nested lifetime/result handling,
   and two live CUDA routes for exact hints and teardown-driven empty completion.
 - Remaining evidence includes other CUDA/ROCm search and hint tickets, ROCm
-  candidate tickets and VM substitution, kernel-transfer attribution,
-  instrumentation controls, adaptive stream/group
-  admission, broader hardware evidence, and matched measurements for other workloads.
+  candidate tickets and VM substitution, instrumentation controls, adaptive
+  stream/group admission, broader hardware evidence, and matched measurements for
+  other workloads.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

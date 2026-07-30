@@ -1477,7 +1477,20 @@ grouped reaches 12.0138 ms versus 5.9408 ms synchronous grouped, a 0.494x ratio 
 0/15 paired wins, despite improving 1.118x over streamed sequential with 14/15 wins.
 Groups two/four similarly reach only 0.436x/0.478x versus synchronous grouped. The
 synchronous ticket therefore remains default; streaming remains an exact explicit
-experiment. Wall time still does not attribute physical transfer/kernel overlap.
+experiment. Wall time alone does not attribute physical transfer/kernel overlap.
+Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
+contiguous CUDA events around upload, exact kernel, and download on each
+streamed ticket. Three deterministic tests cover phase order, active lifetime,
+and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output and
+monotonic phases. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`
+contains 45 grouped observations and 210 ticket phase rows. Groups 2/4/8 record
+0.000000 ms median transfer/kernel overlap and 0/15 significant samples each, so
+the group-eight hypothesis fails. Group-eight upload/kernel/download sums are
+0.956352/0.340768/0.588512 ms versus 12.9495 ms wall time; only about 14.6% of
+the instrumented wall interval is represented by those summed device phases.
+This closes phase attribution for the retained workload, not a universal claim
+that CUDA hardware can never overlap transfers and kernels.
 Hardware-neutral search lifetime is now active as
 `validated-search-submission-v1`. One exact algorithm/problem/seed/budget request
 binds an optional ticket and deferred CPU reference. `wait()` validates capability,
@@ -1508,9 +1521,9 @@ tests include live exact publication and teardown fallback. The retained matrix 
 `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
 one-shot CUDA-ticket improvements over their same-run ordinary baselines, all with
 15/15 paired wins. CUDA prepared remains 9.137x faster than the one-shot ticket.
-Other CUDA/ROCm strategies, kernel-transfer timeline attribution, adaptive
-stream/group admission, other callback or kernel workloads, instrumentation
-controls, and broader live-device evidence remain open.
+Other CUDA/ROCm strategies, adaptive stream/group admission, other callback or
+kernel workloads, instrumentation controls, and broader live-device evidence remain
+open.
 
 ### TODO - Compilation latency performance budget
 

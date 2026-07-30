@@ -339,7 +339,17 @@ The preregistered group-eight hypothesis requires more than one microsecond of
 transfer/kernel event-interval overlap in more than seven samples and a median
 above that threshold. CUDA-event endpoints describe observed stream intervals;
 they do not prove copy-engine occupancy, establish uninstrumented speedup, or
-change the synchronous default.
+change the synchronous default. Retained Benchmark Protocol v1 evidence is under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`.
+Groups 2/4/8 record wall medians of 3.4823/6.2380/12.9495 ms and median
+upload/kernel/download sums of 0.242848/0.082560/0.144064,
+0.477696/0.165408/0.288480, and 0.956352/0.340768/0.588512 ms. Every
+upload-kernel, kernel-download, upload-download, and combined transfer-kernel
+median intersection is 0.000000 ms; all groups have 0/15 significant samples.
+The preregistered group-eight hypothesis fails. Its summed device phases represent
+about 14.6% of instrumented wall time, leaving host registration/allocation,
+Driver/Python orchestration, event management, result construction, unregistration,
+and free outside those phase sums.
 
 The matrix separates amortized prepared execution from the full one-shot neutral
 ticket cost. Retained Benchmark Protocol v1 evidence is under

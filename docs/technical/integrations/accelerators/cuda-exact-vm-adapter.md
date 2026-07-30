@@ -213,8 +213,21 @@ records 210 chronological samples over 14 routes. The group-eight hypothesis
 fails: streamed grouped is 12.0138 ms versus 5.9408 ms synchronous grouped, a
 0.494x ratio and 0/15 paired wins, despite improving 1.118x over streamed
 sequential with 14/15 wins. Synchronous copies therefore remain the default and
-streaming remains an exact explicit experiment. Wall time does not attribute
-physical transfer/kernel overlap.
+streaming remains an exact explicit experiment. Wall time alone does not
+attribute physical transfer/kernel overlap.
+Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
+contiguous CUDA events around upload, exact kernel, and download on each
+streamed ticket. Three deterministic tests cover phase order, active lifetime,
+and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output and
+monotonic phases. Retained evidence under
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`
+contains 45 grouped observations and 210 ticket phase rows. Groups 2/4/8 record
+0.000000 ms median transfer/kernel overlap and 0/15 significant samples each, so
+the group-eight hypothesis fails. Group-eight upload/kernel/download sums are
+0.956352/0.340768/0.588512 ms versus 12.9495 ms wall time; only about 14.6% of
+the instrumented wall interval is represented by those summed device phases.
+This closes phase attribution for the retained workload, not a universal claim
+that CUDA hardware can never overlap transfers and kernels.
 Neutral `validated-search-submission-v1` now has one concrete
 CUDA-backed strategy composition:
 `classic-rotate-target-search-submission-v1`. The search ticket retains full-batch
@@ -240,10 +253,9 @@ paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 than the ticket. Prepared setup is untimed; complete ticket preparation and cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
-Kernel-transfer timeline attribution, event instrumentation controls, adaptive
-group admission, and other kernel/group workloads remain open. Other strategy
-submissions require their own exact state/lifetime
-evidence. Optional
+Event instrumentation controls, adaptive group admission, and other kernel/group
+workloads remain open. Other strategy submissions require their own exact
+state/lifetime evidence. Optional
 `validated-verification-assist-submission-v1` now also has a
 CUDA-backed composition through
 `candidate-evidence-verification-submission-v1`. It retains exact verifier and
