@@ -1,0 +1,2991 @@
+{
+  "benchmark_id": "cuda-independent-ticket-transfer-event-timeline-v1",
+  "device": {
+    "arch": "sm_89",
+    "backend": "cuda",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "groups": {
+    "2": {
+      "group_size": 2,
+      "median_download_sum_ms": 0.14406400173902512,
+      "median_kernel_download_overlap_ms": 0.0,
+      "median_kernel_sum_ms": 0.08256000280380249,
+      "median_transfer_kernel_overlap_ms": 0.0,
+      "median_upload_download_overlap_ms": 0.0,
+      "median_upload_kernel_overlap_ms": 0.0,
+      "median_upload_sum_ms": 0.2428480014204979,
+      "median_wall_ns": 3482300,
+      "pstdev_wall_ns": 147734.3628122975,
+      "raw": [
+        {
+          "download_sum_ms": 0.14505599439144135,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08128000050783157,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07302399724721909,
+              "end_ms": 1.2403839826583862,
+              "kernel_duration_ms": 0.041152000427246094,
+              "kernel_end_ms": 1.1673599481582642,
+              "start_ms": 1.006592035293579,
+              "submission_index": 0,
+              "total_duration_ms": 0.2337920069694519,
+              "upload_duration_ms": 0.11961600184440613,
+              "upload_end_ms": 1.126207947731018
+            },
+            {
+              "download_duration_ms": 0.07203199714422226,
+              "end_ms": 2.071903944015503,
+              "kernel_duration_ms": 0.04012800008058548,
+              "kernel_end_ms": 1.9998719692230225,
+              "start_ms": 1.8391040563583374,
+              "submission_index": 1,
+              "total_duration_ms": 0.23280000686645508,
+              "upload_duration_ms": 0.12064000219106674,
+              "upload_end_ms": 1.9597439765930176
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24025600403547287,
+          "wall_ns": 3470000
+        },
+        {
+          "download_sum_ms": 0.14643200486898422,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.0827840007841587,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07260800153017044,
+              "end_ms": 1.3526079654693604,
+              "kernel_duration_ms": 0.04153599962592125,
+              "kernel_end_ms": 1.2799999713897705,
+              "start_ms": 1.1161600351333618,
+              "submission_index": 0,
+              "total_duration_ms": 0.2364480048418045,
+              "upload_duration_ms": 0.12230399996042252,
+              "upload_end_ms": 1.2384639978408813
+            },
+            {
+              "download_duration_ms": 0.07382400333881378,
+              "end_ms": 2.2713279724121094,
+              "kernel_duration_ms": 0.04124800115823746,
+              "kernel_end_ms": 2.1975040435791016,
+              "start_ms": 2.0357120037078857,
+              "submission_index": 1,
+              "total_duration_ms": 0.23561599850654602,
+              "upload_duration_ms": 0.12054400146007538,
+              "upload_end_ms": 2.1562559604644775
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.2428480014204979,
+          "wall_ns": 3686000
+        },
+        {
+          "download_sum_ms": 0.14403200149536133,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.07980800047516823,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 1.175968050956726,
+              "kernel_duration_ms": 0.03977600112557411,
+              "kernel_end_ms": 1.1038399934768677,
+              "start_ms": 0.9451199769973755,
+              "submission_index": 0,
+              "total_duration_ms": 0.23084799945354462,
+              "upload_duration_ms": 0.11894399672746658,
+              "upload_end_ms": 1.0640640258789062
+            },
+            {
+              "download_duration_ms": 0.0719040036201477,
+              "end_ms": 2.0123519897460938,
+              "kernel_duration_ms": 0.040031999349594116,
+              "kernel_end_ms": 1.9404480457305908,
+              "start_ms": 1.7848000526428223,
+              "submission_index": 1,
+              "total_duration_ms": 0.22755199670791626,
+              "upload_duration_ms": 0.11561600118875504,
+              "upload_end_ms": 1.9004160165786743
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.23455999791622162,
+          "wall_ns": 3482300
+        },
+        {
+          "download_sum_ms": 0.14934399724006653,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08323199674487114,
+          "tickets": [
+            {
+              "download_duration_ms": 0.08393599838018417,
+              "end_ms": 1.2000960111618042,
+              "kernel_duration_ms": 0.045791998505592346,
+              "kernel_end_ms": 1.1161600351333618,
+              "start_ms": 0.9379839897155762,
+              "submission_index": 0,
+              "total_duration_ms": 0.26211199164390564,
+              "upload_duration_ms": 0.13238400220870972,
+              "upload_end_ms": 1.0703680515289307
+            },
+            {
+              "download_duration_ms": 0.06540799885988235,
+              "end_ms": 1.9915519952774048,
+              "kernel_duration_ms": 0.03743999823927879,
+              "kernel_end_ms": 1.926144003868103,
+              "start_ms": 1.7920000553131104,
+              "submission_index": 1,
+              "total_duration_ms": 0.1995519995689392,
+              "upload_duration_ms": 0.09670399874448776,
+              "upload_end_ms": 1.8887039422988892
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.22908800095319748,
+          "wall_ns": 3475400
+        },
+        {
+          "download_sum_ms": 0.1316160038113594,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.0735040009021759,
+          "tickets": [
+            {
+              "download_duration_ms": 0.06566400080919266,
+              "end_ms": 1.3047360181808472,
+              "kernel_duration_ms": 0.03673600032925606,
+              "kernel_end_ms": 1.2390719652175903,
+              "start_ms": 1.0864640474319458,
+              "submission_index": 0,
+              "total_duration_ms": 0.21827200055122375,
+              "upload_duration_ms": 0.11587200313806534,
+              "upload_end_ms": 1.2023359537124634
+            },
+            {
+              "download_duration_ms": 0.06595200300216675,
+              "end_ms": 2.1518399715423584,
+              "kernel_duration_ms": 0.036768000572919846,
+              "kernel_end_ms": 2.085887908935547,
+              "start_ms": 1.9343359470367432,
+              "submission_index": 1,
+              "total_duration_ms": 0.21750399470329285,
+              "upload_duration_ms": 0.11478400230407715,
+              "upload_end_ms": 2.0491199493408203
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.2306560054421425,
+          "wall_ns": 3750100
+        },
+        {
+          "download_sum_ms": 0.12771200016140938,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08697599917650223,
+          "tickets": [
+            {
+              "download_duration_ms": 0.0764160007238388,
+              "end_ms": 1.2581119537353516,
+              "kernel_duration_ms": 0.045504000037908554,
+              "kernel_end_ms": 1.1816960573196411,
+              "start_ms": 1.018880009651184,
+              "submission_index": 0,
+              "total_duration_ms": 0.23923200368881226,
+              "upload_duration_ms": 0.1173119992017746,
+              "upload_end_ms": 1.136191964149475
+            },
+            {
+              "download_duration_ms": 0.05129599943757057,
+              "end_ms": 2.219104051589966,
+              "kernel_duration_ms": 0.041471999138593674,
+              "kernel_end_ms": 2.1678080558776855,
+              "start_ms": 2.0060160160064697,
+              "submission_index": 1,
+              "total_duration_ms": 0.2130880057811737,
+              "upload_duration_ms": 0.12031999975442886,
+              "upload_end_ms": 2.126336097717285
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.23763199895620346,
+          "wall_ns": 3828600
+        },
+        {
+          "download_sum_ms": 0.14377599954605103,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08057599887251854,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07251200079917908,
+              "end_ms": 1.0820800065994263,
+              "kernel_duration_ms": 0.04047999903559685,
+              "kernel_end_ms": 1.0095679759979248,
+              "start_ms": 0.8733760118484497,
+              "submission_index": 0,
+              "total_duration_ms": 0.20870399475097656,
+              "upload_duration_ms": 0.09571199864149094,
+              "upload_end_ms": 0.9690880179405212
+            },
+            {
+              "download_duration_ms": 0.07126399874687195,
+              "end_ms": 1.959455966949463,
+              "kernel_duration_ms": 0.04009599983692169,
+              "kernel_end_ms": 1.888192057609558,
+              "start_ms": 1.7335360050201416,
+              "submission_index": 1,
+              "total_duration_ms": 0.22592000663280487,
+              "upload_duration_ms": 0.11456000059843063,
+              "upload_end_ms": 1.8480960130691528
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.21027199923992157,
+          "wall_ns": 3313600
+        },
+        {
+          "download_sum_ms": 0.1478400006890297,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08275200054049492,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 1.2727680206298828,
+              "kernel_duration_ms": 0.04076800122857094,
+              "kernel_end_ms": 1.201151967048645,
+              "start_ms": 1.0383360385894775,
+              "submission_index": 0,
+              "total_duration_ms": 0.23443199694156647,
+              "upload_duration_ms": 0.12204799801111221,
+              "upload_end_ms": 1.1603840589523315
+            },
+            {
+              "download_duration_ms": 0.07622399926185608,
+              "end_ms": 2.2368640899658203,
+              "kernel_duration_ms": 0.04198399931192398,
+              "kernel_end_ms": 2.160640001296997,
+              "start_ms": 1.9927040338516235,
+              "submission_index": 1,
+              "total_duration_ms": 0.244159996509552,
+              "upload_duration_ms": 0.12595200538635254,
+              "upload_end_ms": 2.1186559200286865
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24800000339746475,
+          "wall_ns": 3629300
+        },
+        {
+          "download_sum_ms": 0.14342399686574936,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08256000280380249,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07231999933719635,
+              "end_ms": 1.2150720357894897,
+              "kernel_duration_ms": 0.04182400181889534,
+              "kernel_end_ms": 1.1427520513534546,
+              "start_ms": 0.9809600114822388,
+              "submission_index": 0,
+              "total_duration_ms": 0.2341119945049286,
+              "upload_duration_ms": 0.1199679970741272,
+              "upload_end_ms": 1.1009279489517212
+            },
+            {
+              "download_duration_ms": 0.07110399752855301,
+              "end_ms": 2.047391891479492,
+              "kernel_duration_ms": 0.04073600098490715,
+              "kernel_end_ms": 1.9762879610061646,
+              "start_ms": 1.8124480247497559,
+              "submission_index": 1,
+              "total_duration_ms": 0.23494400084018707,
+              "upload_duration_ms": 0.12310399860143661,
+              "upload_end_ms": 1.9355520009994507
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.2430719956755638,
+          "wall_ns": 3613100
+        },
+        {
+          "download_sum_ms": 0.15135999768972397,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08780800178647041,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07798399776220322,
+              "end_ms": 1.0978879928588867,
+              "kernel_duration_ms": 0.04121600091457367,
+              "kernel_end_ms": 1.0199040174484253,
+              "start_ms": 0.8571199774742126,
+              "submission_index": 0,
+              "total_duration_ms": 0.24076800048351288,
+              "upload_duration_ms": 0.12156800180673599,
+              "upload_end_ms": 0.9786880016326904
+            },
+            {
+              "download_duration_ms": 0.07337599992752075,
+              "end_ms": 1.9114559888839722,
+              "kernel_duration_ms": 0.046592000871896744,
+              "kernel_end_ms": 1.8380800485610962,
+              "start_ms": 1.6693439483642578,
+              "submission_index": 1,
+              "total_duration_ms": 0.24211199581623077,
+              "upload_duration_ms": 0.12214399874210358,
+              "upload_end_ms": 1.7914880514144897
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24371200054883957,
+          "wall_ns": 3390900
+        },
+        {
+          "download_sum_ms": 0.14508800208568573,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.07769599929451942,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07289600372314453,
+              "end_ms": 1.174720048904419,
+              "kernel_duration_ms": 0.03798399865627289,
+              "kernel_end_ms": 1.1018240451812744,
+              "start_ms": 0.942080020904541,
+              "submission_index": 0,
+              "total_duration_ms": 0.23263999819755554,
+              "upload_duration_ms": 0.12176000326871872,
+              "upload_end_ms": 1.0638400316238403
+            },
+            {
+              "download_duration_ms": 0.0721919983625412,
+              "end_ms": 2.1140480041503906,
+              "kernel_duration_ms": 0.039712000638246536,
+              "kernel_end_ms": 2.041856050491333,
+              "start_ms": 1.8780159950256348,
+              "submission_index": 1,
+              "total_duration_ms": 0.23603199422359467,
+              "upload_duration_ms": 0.12412799894809723,
+              "upload_end_ms": 2.0021440982818604
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24588800221681595,
+          "wall_ns": 3460500
+        },
+        {
+          "download_sum_ms": 0.14400000125169754,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.081471998244524,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 1.2003200054168701,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 1.1284480094909668,
+              "start_ms": 0.9658240079879761,
+              "submission_index": 0,
+              "total_duration_ms": 0.23449599742889404,
+              "upload_duration_ms": 0.12163200229406357,
+              "upload_end_ms": 1.0874559879302979
+            },
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 2.052544116973877,
+              "kernel_duration_ms": 0.04047999903559685,
+              "kernel_end_ms": 1.9804160594940186,
+              "start_ms": 1.7827839851379395,
+              "submission_index": 1,
+              "total_duration_ms": 0.26976001262664795,
+              "upload_duration_ms": 0.157151997089386,
+              "upload_end_ms": 1.9399360418319702
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.27878399938344955,
+          "wall_ns": 3480800
+        },
+        {
+          "download_sum_ms": 0.14406400173902512,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08102399855852127,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 1.1765120029449463,
+              "kernel_duration_ms": 0.04092799872159958,
+              "kernel_end_ms": 1.1048959493637085,
+              "start_ms": 0.9410560131072998,
+              "submission_index": 0,
+              "total_duration_ms": 0.23545600473880768,
+              "upload_duration_ms": 0.12291199713945389,
+              "upload_end_ms": 1.0639679431915283
+            },
+            {
+              "download_duration_ms": 0.0724480003118515,
+              "end_ms": 1.896191954612732,
+              "kernel_duration_ms": 0.04009599983692169,
+              "kernel_end_ms": 1.8237440586090088,
+              "start_ms": 1.6630719900131226,
+              "submission_index": 1,
+              "total_duration_ms": 0.23311999440193176,
+              "upload_duration_ms": 0.12057600170373917,
+              "upload_end_ms": 1.7836480140686035
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24348799884319305,
+          "wall_ns": 3273500
+        },
+        {
+          "download_sum_ms": 0.15062399953603745,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08336000144481659,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07356800138950348,
+              "end_ms": 1.2716480493545532,
+              "kernel_duration_ms": 0.04323200136423111,
+              "kernel_end_ms": 1.1980799436569214,
+              "start_ms": 1.0312639474868774,
+              "submission_index": 0,
+              "total_duration_ms": 0.24038399755954742,
+              "upload_duration_ms": 0.12358400225639343,
+              "upload_end_ms": 1.1548479795455933
+            },
+            {
+              "download_duration_ms": 0.07705599814653397,
+              "end_ms": 2.070784091949463,
+              "kernel_duration_ms": 0.04012800008058548,
+              "kernel_end_ms": 1.9937280416488647,
+              "start_ms": 1.8360320329666138,
+              "submission_index": 1,
+              "total_duration_ms": 0.23475199937820435,
+              "upload_duration_ms": 0.1175680011510849,
+              "upload_end_ms": 1.9536000490188599
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24115200340747833,
+          "wall_ns": 3504500
+        },
+        {
+          "download_sum_ms": 0.14396800100803375,
+          "group_size": 2,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.08313599973917007,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07260800153017044,
+              "end_ms": 1.2287039756774902,
+              "kernel_duration_ms": 0.04214400053024292,
+              "kernel_end_ms": 1.1560959815979004,
+              "start_ms": 0.9943040013313293,
+              "submission_index": 0,
+              "total_duration_ms": 0.23440000414848328,
+              "upload_duration_ms": 0.11964800208806992,
+              "upload_end_ms": 1.1139520406723022
+            },
+            {
+              "download_duration_ms": 0.07135999947786331,
+              "end_ms": 2.1889920234680176,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 2.1176319122314453,
+              "start_ms": 1.950719952583313,
+              "submission_index": 1,
+              "total_duration_ms": 0.23827199637889862,
+              "upload_duration_ms": 0.12591999769210815,
+              "upload_end_ms": 2.0766398906707764
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.24556799978017807,
+          "wall_ns": 3540800
+        }
+      ],
+      "transfer_kernel_overlap_samples": 0
+    },
+    "4": {
+      "group_size": 4,
+      "median_download_sum_ms": 0.2884799987077713,
+      "median_kernel_download_overlap_ms": 0.0,
+      "median_kernel_sum_ms": 0.16540800034999847,
+      "median_transfer_kernel_overlap_ms": 0.0,
+      "median_upload_download_overlap_ms": 0.0,
+      "median_upload_kernel_overlap_ms": 0.0,
+      "median_upload_sum_ms": 0.477695994079113,
+      "median_wall_ns": 6238000,
+      "pstdev_wall_ns": 386013.9051036029,
+      "raw": [
+        {
+          "download_sum_ms": 0.28883199393749237,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16528000310063362,
+          "tickets": [
+            {
+              "download_duration_ms": 0.0729919970035553,
+              "end_ms": 1.2055360078811646,
+              "kernel_duration_ms": 0.04249599948525429,
+              "kernel_end_ms": 1.1325440406799316,
+              "start_ms": 0.9707520008087158,
+              "submission_index": 0,
+              "total_duration_ms": 0.23478400707244873,
+              "upload_duration_ms": 0.11929599940776825,
+              "upload_end_ms": 1.0900479555130005
+            },
+            {
+              "download_duration_ms": 0.07142399996519089,
+              "end_ms": 2.1081600189208984,
+              "kernel_duration_ms": 0.04230400174856186,
+              "kernel_end_ms": 2.036736011505127,
+              "start_ms": 1.8749439716339111,
+              "submission_index": 1,
+              "total_duration_ms": 0.23321600258350372,
+              "upload_duration_ms": 0.11948800086975098,
+              "upload_end_ms": 1.994431972503662
+            },
+            {
+              "download_duration_ms": 0.07292799651622772,
+              "end_ms": 3.135711908340454,
+              "kernel_duration_ms": 0.040608000010252,
+              "kernel_end_ms": 3.06278395652771,
+              "start_ms": 2.9041919708251953,
+              "submission_index": 2,
+              "total_duration_ms": 0.23151999711990356,
+              "upload_duration_ms": 0.11798399686813354,
+              "upload_end_ms": 3.0221760272979736
+            },
+            {
+              "download_duration_ms": 0.07148800045251846,
+              "end_ms": 4.0261759757995605,
+              "kernel_duration_ms": 0.039872001856565475,
+              "kernel_end_ms": 3.95468807220459,
+              "start_ms": 3.7959680557250977,
+              "submission_index": 3,
+              "total_duration_ms": 0.23020799458026886,
+              "upload_duration_ms": 0.11884800344705582,
+              "upload_end_ms": 3.914815902709961
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4756160005927086,
+          "wall_ns": 6896300
+        },
+        {
+          "download_sum_ms": 0.28089600801467896,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16911999881267548,
+          "tickets": [
+            {
+              "download_duration_ms": 0.06598400324583054,
+              "end_ms": 1.1237759590148926,
+              "kernel_duration_ms": 0.03759999945759773,
+              "kernel_end_ms": 1.0577919483184814,
+              "start_ms": 0.9238079786300659,
+              "submission_index": 0,
+              "total_duration_ms": 0.19996799528598785,
+              "upload_duration_ms": 0.09638399630784988,
+              "upload_end_ms": 1.02019202709198
+            },
+            {
+              "download_duration_ms": 0.06867200136184692,
+              "end_ms": 1.9466880559921265,
+              "kernel_duration_ms": 0.03766399994492531,
+              "kernel_end_ms": 1.8780159950256348,
+              "start_ms": 1.7254400253295898,
+              "submission_index": 1,
+              "total_duration_ms": 0.22124800086021423,
+              "upload_duration_ms": 0.1149120032787323,
+              "upload_end_ms": 1.8403520584106445
+            },
+            {
+              "download_duration_ms": 0.06598400324583054,
+              "end_ms": 2.9198720455169678,
+              "kernel_duration_ms": 0.03388800099492073,
+              "kernel_end_ms": 2.8538880348205566,
+              "start_ms": 2.7054080963134766,
+              "submission_index": 2,
+              "total_duration_ms": 0.2144639939069748,
+              "upload_duration_ms": 0.11459200084209442,
+              "upload_end_ms": 2.819999933242798
+            },
+            {
+              "download_duration_ms": 0.08025600016117096,
+              "end_ms": 3.8618879318237305,
+              "kernel_duration_ms": 0.059967998415231705,
+              "kernel_end_ms": 3.7816319465637207,
+              "start_ms": 3.5880959033966064,
+              "submission_index": 3,
+              "total_duration_ms": 0.27379199862480164,
+              "upload_duration_ms": 0.13356800377368927,
+              "upload_end_ms": 3.7216639518737793
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4594560042023659,
+          "wall_ns": 6587100
+        },
+        {
+          "download_sum_ms": 0.2884799987077713,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16335999965667725,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07203199714422226,
+              "end_ms": 0.9199039936065674,
+              "kernel_duration_ms": 0.03993599861860275,
+              "kernel_end_ms": 0.8478720188140869,
+              "start_ms": 0.6901760101318359,
+              "submission_index": 0,
+              "total_duration_ms": 0.22972799837589264,
+              "upload_duration_ms": 0.11776000261306763,
+              "upload_end_ms": 0.8079360127449036
+            },
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 1.5953279733657837,
+              "kernel_duration_ms": 0.04009599983692169,
+              "kernel_end_ms": 1.5237120389938354,
+              "start_ms": 1.3649920225143433,
+              "submission_index": 1,
+              "total_duration_ms": 0.230335995554924,
+              "upload_duration_ms": 0.1186240017414093,
+              "upload_end_ms": 1.4836159944534302
+            },
+            {
+              "download_duration_ms": 0.07276800274848938,
+              "end_ms": 2.529344081878662,
+              "kernel_duration_ms": 0.043296001851558685,
+              "kernel_end_ms": 2.456576108932495,
+              "start_ms": 2.287616014480591,
+              "submission_index": 2,
+              "total_duration_ms": 0.24172799289226532,
+              "upload_duration_ms": 0.12566399574279785,
+              "upload_end_ms": 2.4132800102233887
+            },
+            {
+              "download_duration_ms": 0.07206399738788605,
+              "end_ms": 3.310976028442383,
+              "kernel_duration_ms": 0.040031999349594116,
+              "kernel_end_ms": 3.2389121055603027,
+              "start_ms": 3.0801920890808105,
+              "submission_index": 3,
+              "total_duration_ms": 0.23078399896621704,
+              "upload_duration_ms": 0.11868800222873688,
+              "upload_end_ms": 3.1988799571990967
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.48073600232601166,
+          "wall_ns": 6129700
+        },
+        {
+          "download_sum_ms": 0.2887040004134178,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16540800034999847,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07292799651622772,
+              "end_ms": 1.031391978263855,
+              "kernel_duration_ms": 0.041439998894929886,
+              "kernel_end_ms": 0.9584640264511108,
+              "start_ms": 0.7956479787826538,
+              "submission_index": 0,
+              "total_duration_ms": 0.23574399948120117,
+              "upload_duration_ms": 0.12137600034475327,
+              "upload_end_ms": 0.9170240163803101
+            },
+            {
+              "download_duration_ms": 0.07091200351715088,
+              "end_ms": 1.6560640335083008,
+              "kernel_duration_ms": 0.04230400174856186,
+              "kernel_end_ms": 1.58515202999115,
+              "start_ms": 1.4254080057144165,
+              "submission_index": 1,
+              "total_duration_ms": 0.2306559979915619,
+              "upload_duration_ms": 0.11744000017642975,
+              "upload_end_ms": 1.542847990989685
+            },
+            {
+              "download_duration_ms": 0.07417599856853485,
+              "end_ms": 2.5840001106262207,
+              "kernel_duration_ms": 0.042047999799251556,
+              "kernel_end_ms": 2.50982403755188,
+              "start_ms": 2.352128028869629,
+              "submission_index": 2,
+              "total_duration_ms": 0.23187200725078583,
+              "upload_duration_ms": 0.11564800143241882,
+              "upload_end_ms": 2.46777606010437
+            },
+            {
+              "download_duration_ms": 0.07068800181150436,
+              "end_ms": 3.3679680824279785,
+              "kernel_duration_ms": 0.03961599990725517,
+              "kernel_end_ms": 3.2972800731658936,
+              "start_ms": 3.1387839317321777,
+              "submission_index": 3,
+              "total_duration_ms": 0.22918400168418884,
+              "upload_duration_ms": 0.1188800036907196,
+              "upload_end_ms": 3.2576639652252197
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.47334400564432144,
+          "wall_ns": 5991800
+        },
+        {
+          "download_sum_ms": 0.28755199909210205,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.1613440029323101,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07235199958086014,
+              "end_ms": 1.283743977546692,
+              "kernel_duration_ms": 0.041471999138593674,
+              "kernel_end_ms": 1.2113920450210571,
+              "start_ms": 1.0516480207443237,
+              "submission_index": 0,
+              "total_duration_ms": 0.23209600150585175,
+              "upload_duration_ms": 0.11827199906110764,
+              "upload_end_ms": 1.1699199676513672
+            },
+            {
+              "download_duration_ms": 0.07132799923419952,
+              "end_ms": 2.1469759941101074,
+              "kernel_duration_ms": 0.04124800115823746,
+              "kernel_end_ms": 2.075648069381714,
+              "start_ms": 1.9191999435424805,
+              "submission_index": 1,
+              "total_duration_ms": 0.22777600586414337,
+              "upload_duration_ms": 0.1151999980211258,
+              "upload_end_ms": 2.03439998626709
+            },
+            {
+              "download_duration_ms": 0.07158400118350983,
+              "end_ms": 3.116960048675537,
+              "kernel_duration_ms": 0.040832001715898514,
+              "kernel_end_ms": 3.0453760623931885,
+              "start_ms": 2.879487991333008,
+              "submission_index": 2,
+              "total_duration_ms": 0.23747199773788452,
+              "upload_duration_ms": 0.12505599856376648,
+              "upload_end_ms": 3.0045440196990967
+            },
+            {
+              "download_duration_ms": 0.07228799909353256,
+              "end_ms": 3.9235520362854004,
+              "kernel_duration_ms": 0.03779200091958046,
+              "kernel_end_ms": 3.851263999938965,
+              "start_ms": 3.694591999053955,
+              "submission_index": 3,
+              "total_duration_ms": 0.22896000742912292,
+              "upload_duration_ms": 0.1188800036907196,
+              "upload_end_ms": 3.813472032546997
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4774079993367195,
+          "wall_ns": 6688600
+        },
+        {
+          "download_sum_ms": 0.2982719987630844,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.1701439991593361,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07382400333881378,
+              "end_ms": 0.983135998249054,
+              "kernel_duration_ms": 0.04041599854826927,
+              "kernel_end_ms": 0.9093120098114014,
+              "start_ms": 0.7423999905586243,
+              "submission_index": 0,
+              "total_duration_ms": 0.2407359927892685,
+              "upload_duration_ms": 0.12649600207805634,
+              "upload_end_ms": 0.8688960075378418
+            },
+            {
+              "download_duration_ms": 0.08185599744319916,
+              "end_ms": 1.639359951019287,
+              "kernel_duration_ms": 0.04419200122356415,
+              "kernel_end_ms": 1.5575040578842163,
+              "start_ms": 1.3957120180130005,
+              "submission_index": 1,
+              "total_duration_ms": 0.2436479926109314,
+              "upload_duration_ms": 0.11760000139474869,
+              "upload_end_ms": 1.5133119821548462
+            },
+            {
+              "download_duration_ms": 0.0716480016708374,
+              "end_ms": 2.5394880771636963,
+              "kernel_duration_ms": 0.04460800066590309,
+              "kernel_end_ms": 2.4678399562835693,
+              "start_ms": 2.3009281158447266,
+              "submission_index": 2,
+              "total_duration_ms": 0.2385600060224533,
+              "upload_duration_ms": 0.12230399996042252,
+              "upload_end_ms": 2.423232078552246
+            },
+            {
+              "download_duration_ms": 0.07094399631023407,
+              "end_ms": 3.3723199367523193,
+              "kernel_duration_ms": 0.04092799872159958,
+              "kernel_end_ms": 3.3013761043548584,
+              "start_ms": 3.1447041034698486,
+              "submission_index": 3,
+              "total_duration_ms": 0.22761599719524384,
+              "upload_duration_ms": 0.11574400216341019,
+              "upload_end_ms": 3.2604479789733887
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4821440055966377,
+          "wall_ns": 6153200
+        },
+        {
+          "download_sum_ms": 0.303007997572422,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.1582080014050007,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 1.0046720504760742,
+              "kernel_duration_ms": 0.03964800015091896,
+              "kernel_end_ms": 0.9327999949455261,
+              "start_ms": 0.7720320224761963,
+              "submission_index": 0,
+              "total_duration_ms": 0.23263999819755554,
+              "upload_duration_ms": 0.12111999839544296,
+              "upload_end_ms": 0.8931519985198975
+            },
+            {
+              "download_duration_ms": 0.08588799834251404,
+              "end_ms": 1.6924799680709839,
+              "kernel_duration_ms": 0.04153599962592125,
+              "kernel_end_ms": 1.606592059135437,
+              "start_ms": 1.4468480348587036,
+              "submission_index": 1,
+              "total_duration_ms": 0.24563199281692505,
+              "upload_duration_ms": 0.11820799857378006,
+              "upload_end_ms": 1.5650559663772583
+            },
+            {
+              "download_duration_ms": 0.07795199751853943,
+              "end_ms": 2.6747519969940186,
+              "kernel_duration_ms": 0.04025600105524063,
+              "kernel_end_ms": 2.5968000888824463,
+              "start_ms": 2.437056064605713,
+              "submission_index": 2,
+              "total_duration_ms": 0.23769600689411163,
+              "upload_duration_ms": 0.11948800086975098,
+              "upload_end_ms": 2.556544065475464
+            },
+            {
+              "download_duration_ms": 0.06729599833488464,
+              "end_ms": 3.4382400512695312,
+              "kernel_duration_ms": 0.036768000572919846,
+              "kernel_end_ms": 3.370944023132324,
+              "start_ms": 3.2183680534362793,
+              "submission_index": 3,
+              "total_duration_ms": 0.21987199783325195,
+              "upload_duration_ms": 0.11580800265073776,
+              "upload_end_ms": 3.3341760635375977
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.47462400048971176,
+          "wall_ns": 6129000
+        },
+        {
+          "download_sum_ms": 0.2901120036840439,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16790400072932243,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07267200201749802,
+              "end_ms": 1.2574399709701538,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 1.1847679615020752,
+              "start_ms": 1.0209280252456665,
+              "submission_index": 0,
+              "total_duration_ms": 0.23651200532913208,
+              "upload_duration_ms": 0.12319999933242798,
+              "upload_end_ms": 1.1441279649734497
+            },
+            {
+              "download_duration_ms": 0.07209599763154984,
+              "end_ms": 2.2112319469451904,
+              "kernel_duration_ms": 0.04297599941492081,
+              "kernel_end_ms": 2.1391360759735107,
+              "start_ms": 1.9752960205078125,
+              "submission_index": 1,
+              "total_duration_ms": 0.2359360009431839,
+              "upload_duration_ms": 0.12086399644613266,
+              "upload_end_ms": 2.0961599349975586
+            },
+            {
+              "download_duration_ms": 0.07273600250482559,
+              "end_ms": 3.311647891998291,
+              "kernel_duration_ms": 0.04259200021624565,
+              "kernel_end_ms": 3.2389121055603027,
+              "start_ms": 3.073024034500122,
+              "submission_index": 2,
+              "total_duration_ms": 0.23862400650978088,
+              "upload_duration_ms": 0.12329600006341934,
+              "upload_end_ms": 3.196320056915283
+            },
+            {
+              "download_duration_ms": 0.07260800153017044,
+              "end_ms": 4.137887954711914,
+              "kernel_duration_ms": 0.04169600084424019,
+              "kernel_end_ms": 4.065279960632324,
+              "start_ms": 3.8996479511260986,
+              "submission_index": 3,
+              "total_duration_ms": 0.23824000358581543,
+              "upload_duration_ms": 0.1239359974861145,
+              "upload_end_ms": 4.023583889007568
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4912959933280945,
+          "wall_ns": 6969000
+        },
+        {
+          "download_sum_ms": 0.28592000901699066,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16284799575805664,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07251200079917908,
+              "end_ms": 0.9459840059280396,
+              "kernel_duration_ms": 0.0414079986512661,
+              "kernel_end_ms": 0.8734719753265381,
+              "start_ms": 0.7097600102424622,
+              "submission_index": 0,
+              "total_duration_ms": 0.2362239956855774,
+              "upload_duration_ms": 0.12230399996042252,
+              "upload_end_ms": 0.8320639729499817
+            },
+            {
+              "download_duration_ms": 0.07180800288915634,
+              "end_ms": 1.5648000240325928,
+              "kernel_duration_ms": 0.040672000497579575,
+              "kernel_end_ms": 1.4929920434951782,
+              "start_ms": 1.3301759958267212,
+              "submission_index": 1,
+              "total_duration_ms": 0.2346239984035492,
+              "upload_duration_ms": 0.12214399874210358,
+              "upload_end_ms": 1.4523199796676636
+            },
+            {
+              "download_duration_ms": 0.07088000327348709,
+              "end_ms": 2.5499839782714844,
+              "kernel_duration_ms": 0.040863998234272,
+              "kernel_end_ms": 2.4791040420532227,
+              "start_ms": 2.317568063735962,
+              "submission_index": 2,
+              "total_duration_ms": 0.23241600394248962,
+              "upload_duration_ms": 0.12067200243473053,
+              "upload_end_ms": 2.4382400512695312
+            },
+            {
+              "download_duration_ms": 0.07072000205516815,
+              "end_ms": 3.4191999435424805,
+              "kernel_duration_ms": 0.039903998374938965,
+              "kernel_end_ms": 3.348479986190796,
+              "start_ms": 3.190783977508545,
+              "submission_index": 3,
+              "total_duration_ms": 0.22841599583625793,
+              "upload_duration_ms": 0.11779200285673141,
+              "upload_end_ms": 3.3085761070251465
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.48291200399398804,
+          "wall_ns": 6043000
+        },
+        {
+          "download_sum_ms": 0.2903360053896904,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.172800000756979,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07574400305747986,
+              "end_ms": 0.8989760279655457,
+              "kernel_duration_ms": 0.05183999985456467,
+              "kernel_end_ms": 0.8232319951057434,
+              "start_ms": 0.6491519808769226,
+              "submission_index": 0,
+              "total_duration_ms": 0.24982400238513947,
+              "upload_duration_ms": 0.12223999947309494,
+              "upload_end_ms": 0.7713919878005981
+            },
+            {
+              "download_duration_ms": 0.07145600020885468,
+              "end_ms": 1.6094399690628052,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 1.537984013557434,
+              "start_ms": 1.3761919736862183,
+              "submission_index": 1,
+              "total_duration_ms": 0.23324799537658691,
+              "upload_duration_ms": 0.12115199863910675,
+              "upload_end_ms": 1.4973440170288086
+            },
+            {
+              "download_duration_ms": 0.07155200093984604,
+              "end_ms": 2.4184958934783936,
+              "kernel_duration_ms": 0.04095999896526337,
+              "kernel_end_ms": 2.3469440937042236,
+              "start_ms": 2.1841280460357666,
+              "submission_index": 2,
+              "total_duration_ms": 0.2343679964542389,
+              "upload_duration_ms": 0.12185599654912949,
+              "upload_end_ms": 2.3059840202331543
+            },
+            {
+              "download_duration_ms": 0.07158400118350983,
+              "end_ms": 3.2151999473571777,
+              "kernel_duration_ms": 0.03936000168323517,
+              "kernel_end_ms": 3.143615961074829,
+              "start_ms": 2.984895944595337,
+              "submission_index": 3,
+              "total_duration_ms": 0.23030400276184082,
+              "upload_duration_ms": 0.11935999989509583,
+              "upload_end_ms": 3.1042559146881104
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.484607994556427,
+          "wall_ns": 6076500
+        },
+        {
+          "download_sum_ms": 0.2874239981174469,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.1666879951953888,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07292799651622772,
+              "end_ms": 1.2146879434585571,
+              "kernel_duration_ms": 0.0459199994802475,
+              "kernel_end_ms": 1.141759991645813,
+              "start_ms": 0.9728000164031982,
+              "submission_index": 0,
+              "total_duration_ms": 0.24188800156116486,
+              "upload_duration_ms": 0.12303999811410904,
+              "upload_end_ms": 1.0958399772644043
+            },
+            {
+              "download_duration_ms": 0.07116799801588058,
+              "end_ms": 2.0034561157226562,
+              "kernel_duration_ms": 0.04047999903559685,
+              "kernel_end_ms": 1.9322880506515503,
+              "start_ms": 1.7694720029830933,
+              "submission_index": 1,
+              "total_duration_ms": 0.23398399353027344,
+              "upload_duration_ms": 0.1223360002040863,
+              "upload_end_ms": 1.891808032989502
+            },
+            {
+              "download_duration_ms": 0.07180800288915634,
+              "end_ms": 3.0864639282226562,
+              "kernel_duration_ms": 0.040383998304605484,
+              "kernel_end_ms": 3.0146560668945312,
+              "start_ms": 2.851840019226074,
+              "submission_index": 2,
+              "total_duration_ms": 0.2346239984035492,
+              "upload_duration_ms": 0.12243200093507767,
+              "upload_end_ms": 2.9742720127105713
+            },
+            {
+              "download_duration_ms": 0.07152000069618225,
+              "end_ms": 3.961695909500122,
+              "kernel_duration_ms": 0.039903998374938965,
+              "kernel_end_ms": 3.8901760578155518,
+              "start_ms": 3.729408025741577,
+              "submission_index": 3,
+              "total_duration_ms": 0.23228800296783447,
+              "upload_duration_ms": 0.12086399644613266,
+              "upload_end_ms": 3.8502719402313232
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.48867199569940567,
+          "wall_ns": 6592900
+        },
+        {
+          "download_sum_ms": 0.2842880040407181,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.15875199809670448,
+          "tickets": [
+            {
+              "download_duration_ms": 0.0711359977722168,
+              "end_ms": 0.9466559886932373,
+              "kernel_duration_ms": 0.04047999903559685,
+              "kernel_end_ms": 0.8755199909210205,
+              "start_ms": 0.7167999744415283,
+              "submission_index": 0,
+              "total_duration_ms": 0.2298559993505478,
+              "upload_duration_ms": 0.11823999881744385,
+              "upload_end_ms": 0.8350399732589722
+            },
+            {
+              "download_duration_ms": 0.070592001080513,
+              "end_ms": 1.6741759777069092,
+              "kernel_duration_ms": 0.041152000427246094,
+              "kernel_end_ms": 1.6035840511322021,
+              "start_ms": 1.4420160055160522,
+              "submission_index": 1,
+              "total_duration_ms": 0.23216000199317932,
+              "upload_duration_ms": 0.12041600048542023,
+              "upload_end_ms": 1.562432050704956
+            },
+            {
+              "download_duration_ms": 0.06982400268316269,
+              "end_ms": 2.7813758850097656,
+              "kernel_duration_ms": 0.036159999668598175,
+              "kernel_end_ms": 2.7115519046783447,
+              "start_ms": 2.5589759349823,
+              "submission_index": 2,
+              "total_duration_ms": 0.2223999947309494,
+              "upload_duration_ms": 0.11641599982976913,
+              "upload_end_ms": 2.675391912460327
+            },
+            {
+              "download_duration_ms": 0.07273600250482559,
+              "end_ms": 3.750943899154663,
+              "kernel_duration_ms": 0.04095999896526337,
+              "kernel_end_ms": 3.678208112716675,
+              "start_ms": 3.5246078968048096,
+              "submission_index": 3,
+              "total_duration_ms": 0.22633600234985352,
+              "upload_duration_ms": 0.11264000087976456,
+              "upload_end_ms": 3.6372480392456055
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.46771200001239777,
+          "wall_ns": 6642500
+        },
+        {
+          "download_sum_ms": 0.285023994743824,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.16947199776768684,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 0.911296010017395,
+              "kernel_duration_ms": 0.04041599854826927,
+              "kernel_end_ms": 0.839680016040802,
+              "start_ms": 0.681984007358551,
+              "submission_index": 0,
+              "total_duration_ms": 0.229312002658844,
+              "upload_duration_ms": 0.11727999895811081,
+              "upload_end_ms": 0.7992640137672424
+            },
+            {
+              "download_duration_ms": 0.0719359964132309,
+              "end_ms": 1.5618560314178467,
+              "kernel_duration_ms": 0.04787199944257736,
+              "kernel_end_ms": 1.4899200201034546,
+              "start_ms": 1.324031949043274,
+              "submission_index": 1,
+              "total_duration_ms": 0.2378239929676056,
+              "upload_duration_ms": 0.11801599711179733,
+              "upload_end_ms": 1.4420479536056519
+            },
+            {
+              "download_duration_ms": 0.07030399888753891,
+              "end_ms": 2.5709118843078613,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 2.500607967376709,
+              "start_ms": 2.3367679119110107,
+              "submission_index": 2,
+              "total_duration_ms": 0.23414400219917297,
+              "upload_duration_ms": 0.12284799665212631,
+              "upload_end_ms": 2.45961594581604
+            },
+            {
+              "download_duration_ms": 0.07116799801588058,
+              "end_ms": 3.3510398864746094,
+              "kernel_duration_ms": 0.040192000567913055,
+              "kernel_end_ms": 3.279871940612793,
+              "start_ms": 3.1201279163360596,
+              "submission_index": 3,
+              "total_duration_ms": 0.2309119999408722,
+              "upload_duration_ms": 0.11955200135707855,
+              "upload_end_ms": 3.239680051803589
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.477695994079113,
+          "wall_ns": 5933800
+        },
+        {
+          "download_sum_ms": 0.28992000222206116,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.23759999871253967,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07791999727487564,
+              "end_ms": 1.201248049736023,
+              "kernel_duration_ms": 0.040511999279260635,
+              "kernel_end_ms": 1.1233279705047607,
+              "start_ms": 0.9646080136299133,
+              "submission_index": 0,
+              "total_duration_ms": 0.23664000630378723,
+              "upload_duration_ms": 0.11820799857378006,
+              "upload_end_ms": 1.0828160047531128
+            },
+            {
+              "download_duration_ms": 0.07321599870920181,
+              "end_ms": 2.037247896194458,
+              "kernel_duration_ms": 0.041600000113248825,
+              "kernel_end_ms": 1.9640320539474487,
+              "start_ms": 1.7960959672927856,
+              "submission_index": 1,
+              "total_duration_ms": 0.24115200340747833,
+              "upload_duration_ms": 0.1263359934091568,
+              "upload_end_ms": 1.9224319458007812
+            },
+            {
+              "download_duration_ms": 0.06691200286149979,
+              "end_ms": 3.394912004470825,
+              "kernel_duration_ms": 0.11420799791812897,
+              "kernel_end_ms": 3.328000068664551,
+              "start_ms": 3.096575975418091,
+              "submission_index": 2,
+              "total_duration_ms": 0.298335999250412,
+              "upload_duration_ms": 0.11721599847078323,
+              "upload_end_ms": 3.213792085647583
+            },
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 4.333759784698486,
+              "kernel_duration_ms": 0.041280001401901245,
+              "kernel_end_ms": 4.261888027191162,
+              "start_ms": 4.104191780090332,
+              "submission_index": 3,
+              "total_duration_ms": 0.2295680046081543,
+              "upload_duration_ms": 0.11641599982976913,
+              "upload_end_ms": 4.220608234405518
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.4781759902834892,
+          "wall_ns": 7177900
+        },
+        {
+          "download_sum_ms": 0.28751999884843826,
+          "group_size": 4,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.1613759994506836,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07129599899053574,
+              "end_ms": 0.9058560132980347,
+              "kernel_duration_ms": 0.04105599969625473,
+              "kernel_end_ms": 0.834559977054596,
+              "start_ms": 0.6737920045852661,
+              "submission_index": 0,
+              "total_duration_ms": 0.23206399381160736,
+              "upload_duration_ms": 0.11971200257539749,
+              "upload_end_ms": 0.793503999710083
+            },
+            {
+              "download_duration_ms": 0.07148800045251846,
+              "end_ms": 1.564479947090149,
+              "kernel_duration_ms": 0.041152000427246094,
+              "kernel_end_ms": 1.4929920434951782,
+              "start_ms": 1.3363200426101685,
+              "submission_index": 1,
+              "total_duration_ms": 0.22815999388694763,
+              "upload_duration_ms": 0.11552000045776367,
+              "upload_end_ms": 1.4518400430679321
+            },
+            {
+              "download_duration_ms": 0.07395199686288834,
+              "end_ms": 2.4578239917755127,
+              "kernel_duration_ms": 0.03827200084924698,
+              "kernel_end_ms": 2.3838720321655273,
+              "start_ms": 2.228224039077759,
+              "submission_index": 2,
+              "total_duration_ms": 0.2295999974012375,
+              "upload_duration_ms": 0.11737599968910217,
+              "upload_end_ms": 2.345599889755249
+            },
+            {
+              "download_duration_ms": 0.07078400254249573,
+              "end_ms": 3.5257599353790283,
+              "kernel_duration_ms": 0.04089599847793579,
+              "kernel_end_ms": 3.4549760818481445,
+              "start_ms": 3.29420804977417,
+              "submission_index": 3,
+              "total_duration_ms": 0.23155200481414795,
+              "upload_duration_ms": 0.11987199634313583,
+              "upload_end_ms": 3.4140799045562744
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.47247999906539917,
+          "wall_ns": 6238000
+        }
+      ],
+      "transfer_kernel_overlap_samples": 0
+    },
+    "8": {
+      "group_size": 8,
+      "median_download_sum_ms": 0.5885119959712029,
+      "median_kernel_download_overlap_ms": 0.0,
+      "median_kernel_sum_ms": 0.3407679982483387,
+      "median_transfer_kernel_overlap_ms": 0.0,
+      "median_upload_download_overlap_ms": 0.0,
+      "median_upload_kernel_overlap_ms": 0.0,
+      "median_upload_sum_ms": 0.9563519954681396,
+      "median_wall_ns": 12949500,
+      "pstdev_wall_ns": 666850.8385605351,
+      "raw": [
+        {
+          "download_sum_ms": 0.5922559946775436,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3412480019032955,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07078400254249573,
+              "end_ms": 1.0794240236282349,
+              "kernel_duration_ms": 0.04022400081157684,
+              "kernel_end_ms": 1.0086400508880615,
+              "start_ms": 0.8509439826011658,
+              "submission_index": 0,
+              "total_duration_ms": 0.2284799963235855,
+              "upload_duration_ms": 0.11747200042009354,
+              "upload_end_ms": 0.9684159755706787
+            },
+            {
+              "download_duration_ms": 0.07110399752855301,
+              "end_ms": 1.8672000169754028,
+              "kernel_duration_ms": 0.04095999896526337,
+              "kernel_end_ms": 1.7960959672927856,
+              "start_ms": 1.6304320096969604,
+              "submission_index": 1,
+              "total_duration_ms": 0.23676800727844238,
+              "upload_duration_ms": 0.12470400333404541,
+              "upload_end_ms": 1.7551360130310059
+            },
+            {
+              "download_duration_ms": 0.07126399874687195,
+              "end_ms": 2.749023914337158,
+              "kernel_duration_ms": 0.04012800008058548,
+              "kernel_end_ms": 2.677759885787964,
+              "start_ms": 2.519040107727051,
+              "submission_index": 2,
+              "total_duration_ms": 0.22998400032520294,
+              "upload_duration_ms": 0.11859200149774551,
+              "upload_end_ms": 2.637631893157959
+            },
+            {
+              "download_duration_ms": 0.07817599922418594,
+              "end_ms": 3.740000009536743,
+              "kernel_duration_ms": 0.04265600070357323,
+              "kernel_end_ms": 3.6618239879608154,
+              "start_ms": 3.496959924697876,
+              "submission_index": 3,
+              "total_duration_ms": 0.24303999543190002,
+              "upload_duration_ms": 0.12220799922943115,
+              "upload_end_ms": 3.6191680431365967
+            },
+            {
+              "download_duration_ms": 0.07414399832487106,
+              "end_ms": 4.758944034576416,
+              "kernel_duration_ms": 0.04047999903559685,
+              "kernel_end_ms": 4.684800148010254,
+              "start_ms": 4.525055885314941,
+              "submission_index": 4,
+              "total_duration_ms": 0.23388800024986267,
+              "upload_duration_ms": 0.11926399916410446,
+              "upload_end_ms": 4.644320011138916
+            },
+            {
+              "download_duration_ms": 0.07580800354480743,
+              "end_ms": 5.966879844665527,
+              "kernel_duration_ms": 0.04608000069856644,
+              "kernel_end_ms": 5.891071796417236,
+              "start_ms": 5.714943885803223,
+              "submission_index": 5,
+              "total_duration_ms": 0.2519359886646271,
+              "upload_duration_ms": 0.130048006772995,
+              "upload_end_ms": 5.844992160797119
+            },
+            {
+              "download_duration_ms": 0.07891199737787247,
+              "end_ms": 6.784063816070557,
+              "kernel_duration_ms": 0.05052800104022026,
+              "kernel_end_ms": 6.7051520347595215,
+              "start_ms": 6.535168170928955,
+              "submission_index": 6,
+              "total_duration_ms": 0.24889600276947021,
+              "upload_duration_ms": 0.11945600062608719,
+              "upload_end_ms": 6.654623985290527
+            },
+            {
+              "download_duration_ms": 0.07206399738788605,
+              "end_ms": 7.7827839851379395,
+              "kernel_duration_ms": 0.040192000567913055,
+              "kernel_end_ms": 7.710720062255859,
+              "start_ms": 7.5489277839660645,
+              "submission_index": 7,
+              "total_duration_ms": 0.2338559925556183,
+              "upload_duration_ms": 0.12160000205039978,
+              "upload_end_ms": 7.670527935028076
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.973344013094902,
+          "wall_ns": 13218800
+        },
+        {
+          "download_sum_ms": 0.5867519900202751,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3337920047342777,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07116799801588058,
+              "end_ms": 1.050112009048462,
+              "kernel_duration_ms": 0.041152000427246094,
+              "kernel_end_ms": 0.9789440035820007,
+              "start_ms": 0.8171520233154297,
+              "submission_index": 0,
+              "total_duration_ms": 0.23296000063419342,
+              "upload_duration_ms": 0.12064000219106674,
+              "upload_end_ms": 0.9377920031547546
+            },
+            {
+              "download_duration_ms": 0.07199999690055847,
+              "end_ms": 1.789247989654541,
+              "kernel_duration_ms": 0.03977600112557411,
+              "kernel_end_ms": 1.7172479629516602,
+              "start_ms": 1.5587519407272339,
+              "submission_index": 1,
+              "total_duration_ms": 0.23049600422382355,
+              "upload_duration_ms": 0.11872000247240067,
+              "upload_end_ms": 1.6774719953536987
+            },
+            {
+              "download_duration_ms": 0.07292799651622772,
+              "end_ms": 2.683199882507324,
+              "kernel_duration_ms": 0.03964800015091896,
+              "kernel_end_ms": 2.61027193069458,
+              "start_ms": 2.4515199661254883,
+              "submission_index": 2,
+              "total_duration_ms": 0.2316800057888031,
+              "upload_duration_ms": 0.11910399794578552,
+              "upload_end_ms": 2.5706241130828857
+            },
+            {
+              "download_duration_ms": 0.07100799679756165,
+              "end_ms": 3.3662400245666504,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 3.295232057571411,
+              "start_ms": 3.1334400177001953,
+              "submission_index": 3,
+              "total_duration_ms": 0.23280000686645508,
+              "upload_duration_ms": 0.12115199863910675,
+              "upload_end_ms": 3.254591941833496
+            },
+            {
+              "download_duration_ms": 0.07222399860620499,
+              "end_ms": 4.207136154174805,
+              "kernel_duration_ms": 0.04275200143456459,
+              "kernel_end_ms": 4.134912014007568,
+              "start_ms": 3.9744319915771484,
+              "submission_index": 4,
+              "total_duration_ms": 0.23270399868488312,
+              "upload_duration_ms": 0.11772800236940384,
+              "upload_end_ms": 4.092160224914551
+            },
+            {
+              "download_duration_ms": 0.07417599856853485,
+              "end_ms": 5.191103935241699,
+              "kernel_duration_ms": 0.05084799975156784,
+              "kernel_end_ms": 5.1169281005859375,
+              "start_ms": 4.946944236755371,
+              "submission_index": 5,
+              "total_duration_ms": 0.244159996509552,
+              "upload_duration_ms": 0.11913599818944931,
+              "upload_end_ms": 5.066080093383789
+            },
+            {
+              "download_duration_ms": 0.07168000191450119,
+              "end_ms": 6.01907205581665,
+              "kernel_duration_ms": 0.03968000039458275,
+              "kernel_end_ms": 5.947391986846924,
+              "start_ms": 5.790719985961914,
+              "submission_index": 6,
+              "total_duration_ms": 0.22835199534893036,
+              "upload_duration_ms": 0.11699199676513672,
+              "upload_end_ms": 5.907711982727051
+            },
+            {
+              "download_duration_ms": 0.08156800270080566,
+              "end_ms": 6.90447998046875,
+              "kernel_duration_ms": 0.03929600119590759,
+              "kernel_end_ms": 6.822912216186523,
+              "start_ms": 6.665215969085693,
+              "submission_index": 7,
+              "total_duration_ms": 0.23926399648189545,
+              "upload_duration_ms": 0.11840000003576279,
+              "upload_end_ms": 6.783616065979004
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9518719986081123,
+          "wall_ns": 12430500
+        },
+        {
+          "download_sum_ms": 0.5924479961395264,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.33215999603271484,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07305599749088287,
+              "end_ms": 0.9608640074729919,
+              "kernel_duration_ms": 0.04358400031924248,
+              "kernel_end_ms": 0.8878080248832703,
+              "start_ms": 0.7280640006065369,
+              "submission_index": 0,
+              "total_duration_ms": 0.23280000686645508,
+              "upload_duration_ms": 0.11615999788045883,
+              "upload_end_ms": 0.8442239761352539
+            },
+            {
+              "download_duration_ms": 0.07235199958086014,
+              "end_ms": 1.6656960248947144,
+              "kernel_duration_ms": 0.039455998688936234,
+              "kernel_end_ms": 1.59334397315979,
+              "start_ms": 1.4346239566802979,
+              "submission_index": 1,
+              "total_duration_ms": 0.23107199370861053,
+              "upload_duration_ms": 0.11926399916410446,
+              "upload_end_ms": 1.553887963294983
+            },
+            {
+              "download_duration_ms": 0.0713919997215271,
+              "end_ms": 2.5105600357055664,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 2.4391679763793945,
+              "start_ms": 2.279423952102661,
+              "submission_index": 2,
+              "total_duration_ms": 0.2311359941959381,
+              "upload_duration_ms": 0.11910399794578552,
+              "upload_end_ms": 2.3985280990600586
+            },
+            {
+              "download_duration_ms": 0.08278399705886841,
+              "end_ms": 3.3483200073242188,
+              "kernel_duration_ms": 0.04476799815893173,
+              "kernel_end_ms": 3.265536069869995,
+              "start_ms": 3.102911949157715,
+              "submission_index": 3,
+              "total_duration_ms": 0.24540799856185913,
+              "upload_duration_ms": 0.11785600334405899,
+              "upload_end_ms": 3.2207679748535156
+            },
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 4.126143932342529,
+              "kernel_duration_ms": 0.039455998688936234,
+              "kernel_end_ms": 4.05401611328125,
+              "start_ms": 3.8932480812072754,
+              "submission_index": 4,
+              "total_duration_ms": 0.23289600014686584,
+              "upload_duration_ms": 0.12131199985742569,
+              "upload_end_ms": 4.014560222625732
+            },
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 5.117119789123535,
+              "kernel_duration_ms": 0.04016000032424927,
+              "kernel_end_ms": 5.045248031616211,
+              "start_ms": 4.885503768920898,
+              "submission_index": 5,
+              "total_duration_ms": 0.23161600530147552,
+              "upload_duration_ms": 0.11958400160074234,
+              "upload_end_ms": 5.005087852478027
+            },
+            {
+              "download_duration_ms": 0.07344000041484833,
+              "end_ms": 5.995232105255127,
+              "kernel_duration_ms": 0.038975998759269714,
+              "kernel_end_ms": 5.921792030334473,
+              "start_ms": 5.76416015625,
+              "submission_index": 6,
+              "total_duration_ms": 0.23107199370861053,
+              "upload_duration_ms": 0.11865600198507309,
+              "upload_end_ms": 5.882815837860107
+            },
+            {
+              "download_duration_ms": 0.07542400062084198,
+              "end_ms": 6.914720058441162,
+              "kernel_duration_ms": 0.0451200008392334,
+              "kernel_end_ms": 6.839295864105225,
+              "start_ms": 6.676479816436768,
+              "submission_index": 7,
+              "total_duration_ms": 0.23824000358581543,
+              "upload_duration_ms": 0.11769600212574005,
+              "upload_end_ms": 6.79417610168457
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.949632003903389,
+          "wall_ns": 12437300
+        },
+        {
+          "download_sum_ms": 0.5875200033187866,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3500800020992756,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07088000327348709,
+              "end_ms": 1.0303679704666138,
+              "kernel_duration_ms": 0.04025600105524063,
+              "kernel_end_ms": 0.9594879746437073,
+              "start_ms": 0.8007680177688599,
+              "submission_index": 0,
+              "total_duration_ms": 0.2295999974012375,
+              "upload_duration_ms": 0.11846400052309036,
+              "upload_end_ms": 0.9192320108413696
+            },
+            {
+              "download_duration_ms": 0.07135999947786331,
+              "end_ms": 1.7189760208129883,
+              "kernel_duration_ms": 0.04105599969625473,
+              "kernel_end_ms": 1.6476160287857056,
+              "start_ms": 1.5096960067749023,
+              "submission_index": 1,
+              "total_duration_ms": 0.20927999913692474,
+              "upload_duration_ms": 0.0968639999628067,
+              "upload_end_ms": 1.6065599918365479
+            },
+            {
+              "download_duration_ms": 0.07158400118350983,
+              "end_ms": 2.6838080883026123,
+              "kernel_duration_ms": 0.040352001786231995,
+              "kernel_end_ms": 2.6122241020202637,
+              "start_ms": 2.450432062149048,
+              "submission_index": 2,
+              "total_duration_ms": 0.23337599635124207,
+              "upload_duration_ms": 0.12144000083208084,
+              "upload_end_ms": 2.5718719959259033
+            },
+            {
+              "download_duration_ms": 0.07052800059318542,
+              "end_ms": 3.4814720153808594,
+              "kernel_duration_ms": 0.039423998445272446,
+              "kernel_end_ms": 3.4109439849853516,
+              "start_ms": 3.253567934036255,
+              "submission_index": 3,
+              "total_duration_ms": 0.22790400683879852,
+              "upload_duration_ms": 0.11795199662446976,
+              "upload_end_ms": 3.3715200424194336
+            },
+            {
+              "download_duration_ms": 0.07155200093984604,
+              "end_ms": 4.321152210235596,
+              "kernel_duration_ms": 0.039744000881910324,
+              "kernel_end_ms": 4.249599933624268,
+              "start_ms": 4.092927932739258,
+              "submission_index": 4,
+              "total_duration_ms": 0.2282239943742752,
+              "upload_duration_ms": 0.11692799627780914,
+              "upload_end_ms": 4.209856033325195
+            },
+            {
+              "download_duration_ms": 0.0711359977722168,
+              "end_ms": 5.3078718185424805,
+              "kernel_duration_ms": 0.04227200150489807,
+              "kernel_end_ms": 5.236735820770264,
+              "start_ms": 5.060671806335449,
+              "submission_index": 5,
+              "total_duration_ms": 0.24719999730587006,
+              "upload_duration_ms": 0.1337919980287552,
+              "upload_end_ms": 5.194464206695557
+            },
+            {
+              "download_duration_ms": 0.08857599645853043,
+              "end_ms": 6.269440174102783,
+              "kernel_duration_ms": 0.0655359998345375,
+              "kernel_end_ms": 6.180863857269287,
+              "start_ms": 5.994495868682861,
+              "submission_index": 6,
+              "total_duration_ms": 0.274944007396698,
+              "upload_duration_ms": 0.12083200365304947,
+              "upload_end_ms": 6.115327835083008
+            },
+            {
+              "download_duration_ms": 0.0719040036201477,
+              "end_ms": 7.199967861175537,
+              "kernel_duration_ms": 0.041439998894929886,
+              "kernel_end_ms": 7.128064155578613,
+              "start_ms": 6.9653120040893555,
+              "submission_index": 7,
+              "total_duration_ms": 0.23465600609779358,
+              "upload_duration_ms": 0.12131199985742569,
+              "upload_end_ms": 7.0866241455078125
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9475839957594872,
+          "wall_ns": 12747300
+        },
+        {
+          "download_sum_ms": 0.6132799983024597,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3784320056438446,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07638400048017502,
+              "end_ms": 1.00108802318573,
+              "kernel_duration_ms": 0.04355200007557869,
+              "kernel_end_ms": 0.9247040152549744,
+              "start_ms": 0.7496640086174011,
+              "submission_index": 0,
+              "total_duration_ms": 0.25142401456832886,
+              "upload_duration_ms": 0.13148799538612366,
+              "upload_end_ms": 0.8811519742012024
+            },
+            {
+              "download_duration_ms": 0.06707199662923813,
+              "end_ms": 1.8447359800338745,
+              "kernel_duration_ms": 0.037567999213933945,
+              "kernel_end_ms": 1.7776639461517334,
+              "start_ms": 1.6240639686584473,
+              "submission_index": 1,
+              "total_duration_ms": 0.22067199647426605,
+              "upload_duration_ms": 0.11603199690580368,
+              "upload_end_ms": 1.7400959730148315
+            },
+            {
+              "download_duration_ms": 0.07267200201749802,
+              "end_ms": 2.9347519874572754,
+              "kernel_duration_ms": 0.04230400174856186,
+              "kernel_end_ms": 2.8620800971984863,
+              "start_ms": 2.6961920261383057,
+              "submission_index": 2,
+              "total_duration_ms": 0.2385600060224533,
+              "upload_duration_ms": 0.12358400225639343,
+              "upload_end_ms": 2.8197760581970215
+            },
+            {
+              "download_duration_ms": 0.10806400328874588,
+              "end_ms": 3.838495969772339,
+              "kernel_duration_ms": 0.0950080007314682,
+              "kernel_end_ms": 3.7304320335388184,
+              "start_ms": 3.516416072845459,
+              "submission_index": 3,
+              "total_duration_ms": 0.32207998633384705,
+              "upload_duration_ms": 0.11900799721479416,
+              "upload_end_ms": 3.6354238986968994
+            },
+            {
+              "download_duration_ms": 0.07283200323581696,
+              "end_ms": 4.497568130493164,
+              "kernel_duration_ms": 0.04032000154256821,
+              "kernel_end_ms": 4.424736022949219,
+              "start_ms": 4.25984001159668,
+              "submission_index": 4,
+              "total_duration_ms": 0.23772799968719482,
+              "upload_duration_ms": 0.12457600235939026,
+              "upload_end_ms": 4.384416103363037
+            },
+            {
+              "download_duration_ms": 0.07235199958086014,
+              "end_ms": 5.473951816558838,
+              "kernel_duration_ms": 0.0424639992415905,
+              "kernel_end_ms": 5.401599884033203,
+              "start_ms": 5.237760066986084,
+              "submission_index": 5,
+              "total_duration_ms": 0.2361920028924942,
+              "upload_duration_ms": 0.12137600034475327,
+              "upload_end_ms": 5.35913610458374
+            },
+            {
+              "download_duration_ms": 0.07196799665689468,
+              "end_ms": 6.300960063934326,
+              "kernel_duration_ms": 0.0398080013692379,
+              "kernel_end_ms": 6.228991985321045,
+              "start_ms": 6.070271968841553,
+              "submission_index": 6,
+              "total_duration_ms": 0.23068800568580627,
+              "upload_duration_ms": 0.1189119964838028,
+              "upload_end_ms": 6.189184188842773
+            },
+            {
+              "download_duration_ms": 0.0719359964132309,
+              "end_ms": 7.224575996398926,
+              "kernel_duration_ms": 0.037408001720905304,
+              "kernel_end_ms": 7.152639865875244,
+              "start_ms": 6.996992111206055,
+              "submission_index": 7,
+              "total_duration_ms": 0.22758400440216064,
+              "upload_duration_ms": 0.11823999881744385,
+              "upload_end_ms": 7.115231990814209
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9732159897685051,
+          "wall_ns": 12841400
+        },
+        {
+          "download_sum_ms": 0.5729600042104721,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.32022400200366974,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 0.9351680278778076,
+              "kernel_duration_ms": 0.04032000154256821,
+              "kernel_end_ms": 0.8630399703979492,
+              "start_ms": 0.7022719979286194,
+              "submission_index": 0,
+              "total_duration_ms": 0.23289600014686584,
+              "upload_duration_ms": 0.12044800072908401,
+              "upload_end_ms": 0.8227199912071228
+            },
+            {
+              "download_duration_ms": 0.0719359964132309,
+              "end_ms": 1.5872639417648315,
+              "kernel_duration_ms": 0.03948799893260002,
+              "kernel_end_ms": 1.515328049659729,
+              "start_ms": 1.3545600175857544,
+              "submission_index": 1,
+              "total_duration_ms": 0.23270399868488312,
+              "upload_duration_ms": 0.1212799996137619,
+              "upload_end_ms": 1.4758399724960327
+            },
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 2.509567975997925,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 2.4379520416259766,
+              "start_ms": 2.275360107421875,
+              "submission_index": 2,
+              "total_duration_ms": 0.23420800268650055,
+              "upload_duration_ms": 0.12160000205039978,
+              "upload_end_ms": 2.3969600200653076
+            },
+            {
+              "download_duration_ms": 0.07062400132417679,
+              "end_ms": 3.3247039318084717,
+              "kernel_duration_ms": 0.04012800008058548,
+              "kernel_end_ms": 3.254080057144165,
+              "start_ms": 3.092288017272949,
+              "submission_index": 3,
+              "total_duration_ms": 0.23241600394248962,
+              "upload_duration_ms": 0.12166400253772736,
+              "upload_end_ms": 3.21395206451416
+            },
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 4.1656317710876465,
+              "kernel_duration_ms": 0.040063999593257904,
+              "kernel_end_ms": 4.093760013580322,
+              "start_ms": 3.93503999710083,
+              "submission_index": 4,
+              "total_duration_ms": 0.23059199750423431,
+              "upload_duration_ms": 0.11865600198507309,
+              "upload_end_ms": 4.053696155548096
+            },
+            {
+              "download_duration_ms": 0.07075200229883194,
+              "end_ms": 5.086112022399902,
+              "kernel_duration_ms": 0.04028800129890442,
+              "kernel_end_ms": 5.015359878540039,
+              "start_ms": 4.855616092681885,
+              "submission_index": 5,
+              "total_duration_ms": 0.23049600422382355,
+              "upload_duration_ms": 0.11945600062608719,
+              "upload_end_ms": 4.975071907043457
+            },
+            {
+              "download_duration_ms": 0.07238399982452393,
+              "end_ms": 5.937664031982422,
+              "kernel_duration_ms": 0.03836800158023834,
+              "kernel_end_ms": 5.8652801513671875,
+              "start_ms": 5.71068811416626,
+              "submission_index": 6,
+              "total_duration_ms": 0.22697600722312927,
+              "upload_duration_ms": 0.11622399836778641,
+              "upload_end_ms": 5.826911926269531
+            },
+            {
+              "download_duration_ms": 0.0716480016708374,
+              "end_ms": 6.8155198097229,
+              "kernel_duration_ms": 0.04057599976658821,
+              "kernel_end_ms": 6.743872165679932,
+              "start_ms": 6.580031871795654,
+              "submission_index": 7,
+              "total_duration_ms": 0.23548799753189087,
+              "upload_duration_ms": 0.12326399981975555,
+              "upload_end_ms": 6.703296184539795
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9625920057296753,
+          "wall_ns": 12548600
+        },
+        {
+          "download_sum_ms": 0.5818559974431992,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3264319971203804,
+          "tickets": [
+            {
+              "download_duration_ms": 0.08057600259780884,
+              "end_ms": 1.098431944847107,
+              "kernel_duration_ms": 0.04262400045990944,
+              "kernel_end_ms": 1.0178560018539429,
+              "start_ms": 0.879647970199585,
+              "submission_index": 0,
+              "total_duration_ms": 0.21878400444984436,
+              "upload_duration_ms": 0.09558399766683578,
+              "upload_end_ms": 0.9752320051193237
+            },
+            {
+              "download_duration_ms": 0.07126399874687195,
+              "end_ms": 1.9707839488983154,
+              "kernel_duration_ms": 0.040672000497579575,
+              "kernel_end_ms": 1.8995200395584106,
+              "start_ms": 1.7408000230789185,
+              "submission_index": 1,
+              "total_duration_ms": 0.22998400032520294,
+              "upload_duration_ms": 0.11804799735546112,
+              "upload_end_ms": 1.858847975730896
+            },
+            {
+              "download_duration_ms": 0.07030399888753891,
+              "end_ms": 2.95798397064209,
+              "kernel_duration_ms": 0.04092799872159958,
+              "kernel_end_ms": 2.8876800537109375,
+              "start_ms": 2.7258880138397217,
+              "submission_index": 2,
+              "total_duration_ms": 0.23209600150585175,
+              "upload_duration_ms": 0.12086399644613266,
+              "upload_end_ms": 2.8467519283294678
+            },
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 3.661247968673706,
+              "kernel_duration_ms": 0.04022400081157684,
+              "kernel_end_ms": 3.5891199111938477,
+              "start_ms": 3.4293758869171143,
+              "submission_index": 3,
+              "total_duration_ms": 0.23187200725078583,
+              "upload_duration_ms": 0.11952000111341476,
+              "upload_end_ms": 3.548896074295044
+            },
+            {
+              "download_duration_ms": 0.0719040036201477,
+              "end_ms": 4.591839790344238,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 4.5199360847473145,
+              "start_ms": 4.35916805267334,
+              "submission_index": 4,
+              "total_duration_ms": 0.23267200589179993,
+              "upload_duration_ms": 0.11977600306272507,
+              "upload_end_ms": 4.478943824768066
+            },
+            {
+              "download_duration_ms": 0.07177600264549255,
+              "end_ms": 5.565536022186279,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 5.493760108947754,
+              "start_ms": 5.330175876617432,
+              "submission_index": 5,
+              "total_duration_ms": 0.23535999655723572,
+              "upload_duration_ms": 0.12294399738311768,
+              "upload_end_ms": 5.453120231628418
+            },
+            {
+              "download_duration_ms": 0.07292799651622772,
+              "end_ms": 6.469855785369873,
+              "kernel_duration_ms": 0.039903998374938965,
+              "kernel_end_ms": 6.396927833557129,
+              "start_ms": 6.235167980194092,
+              "submission_index": 6,
+              "total_duration_ms": 0.23468799889087677,
+              "upload_duration_ms": 0.12185599654912949,
+              "upload_end_ms": 6.357024192810059
+            },
+            {
+              "download_duration_ms": 0.07097599655389786,
+              "end_ms": 7.444799900054932,
+              "kernel_duration_ms": 0.04044799879193306,
+              "kernel_end_ms": 7.373824119567871,
+              "start_ms": 7.216127872467041,
+              "submission_index": 7,
+              "total_duration_ms": 0.22867199778556824,
+              "upload_duration_ms": 0.11724799871444702,
+              "upload_end_ms": 7.333375930786133
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9358399882912636,
+          "wall_ns": 13644500
+        },
+        {
+          "download_sum_ms": 0.5904959961771965,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3407679982483387,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07286400347948074,
+              "end_ms": 1.1695679426193237,
+              "kernel_duration_ms": 0.04089599847793579,
+              "kernel_end_ms": 1.0967040061950684,
+              "start_ms": 0.9338880181312561,
+              "submission_index": 0,
+              "total_duration_ms": 0.2356799989938736,
+              "upload_duration_ms": 0.12191999703645706,
+              "upload_end_ms": 1.0558079481124878
+            },
+            {
+              "download_duration_ms": 0.07196799665689468,
+              "end_ms": 1.9223359823226929,
+              "kernel_duration_ms": 0.04710400104522705,
+              "kernel_end_ms": 1.8503680229187012,
+              "start_ms": 1.686527967453003,
+              "submission_index": 1,
+              "total_duration_ms": 0.23580799996852875,
+              "upload_duration_ms": 0.11673600226640701,
+              "upload_end_ms": 1.8032640218734741
+            },
+            {
+              "download_duration_ms": 0.07318399846553802,
+              "end_ms": 3.0192320346832275,
+              "kernel_duration_ms": 0.03843199834227562,
+              "kernel_end_ms": 2.9460480213165283,
+              "start_ms": 2.7740159034729004,
+              "submission_index": 2,
+              "total_duration_ms": 0.2452159970998764,
+              "upload_duration_ms": 0.13359999656677246,
+              "upload_end_ms": 2.907615900039673
+            },
+            {
+              "download_duration_ms": 0.08604799956083298,
+              "end_ms": 3.7826879024505615,
+              "kernel_duration_ms": 0.05443200096487999,
+              "kernel_end_ms": 3.6966400146484375,
+              "start_ms": 3.516511917114258,
+              "submission_index": 3,
+              "total_duration_ms": 0.2661759853363037,
+              "upload_duration_ms": 0.12569600343704224,
+              "upload_end_ms": 3.6422080993652344
+            },
+            {
+              "download_duration_ms": 0.07145600020885468,
+              "end_ms": 4.775712013244629,
+              "kernel_duration_ms": 0.040192000567913055,
+              "kernel_end_ms": 4.704256057739258,
+              "start_ms": 4.542463779449463,
+              "submission_index": 4,
+              "total_duration_ms": 0.23324799537658691,
+              "upload_duration_ms": 0.12160000205039978,
+              "upload_end_ms": 4.664063930511475
+            },
+            {
+              "download_duration_ms": 0.07238399982452393,
+              "end_ms": 5.847743988037109,
+              "kernel_duration_ms": 0.03920000046491623,
+              "kernel_end_ms": 5.775360107421875,
+              "start_ms": 5.6145920753479,
+              "submission_index": 5,
+              "total_duration_ms": 0.23315200209617615,
+              "upload_duration_ms": 0.12156800180673599,
+              "upload_end_ms": 5.736159801483154
+            },
+            {
+              "download_duration_ms": 0.07155200093984604,
+              "end_ms": 6.763391971588135,
+              "kernel_duration_ms": 0.04009599983692169,
+              "kernel_end_ms": 6.691840171813965,
+              "start_ms": 6.555647850036621,
+              "submission_index": 6,
+              "total_duration_ms": 0.20774400234222412,
+              "upload_duration_ms": 0.09609600156545639,
+              "upload_end_ms": 6.6517438888549805
+            },
+            {
+              "download_duration_ms": 0.07103999704122543,
+              "end_ms": 7.778687953948975,
+              "kernel_duration_ms": 0.04041599854826927,
+              "kernel_end_ms": 7.707647800445557,
+              "start_ms": 7.5489277839660645,
+              "submission_index": 7,
+              "total_duration_ms": 0.22976000607013702,
+              "upload_duration_ms": 0.11830399930477142,
+              "upload_end_ms": 7.667232036590576
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9555200040340424,
+          "wall_ns": 13431400
+        },
+        {
+          "download_sum_ms": 0.5885119959712029,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3312000036239624,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07225599884986877,
+              "end_ms": 1.1034239530563354,
+              "kernel_duration_ms": 0.04073600098490715,
+              "kernel_end_ms": 1.031167984008789,
+              "start_ms": 0.8592960238456726,
+              "submission_index": 0,
+              "total_duration_ms": 0.2441280037164688,
+              "upload_duration_ms": 0.1311360001564026,
+              "upload_end_ms": 0.9904320240020752
+            },
+            {
+              "download_duration_ms": 0.07231999933719635,
+              "end_ms": 1.862272024154663,
+              "kernel_duration_ms": 0.04073600098490715,
+              "kernel_end_ms": 1.789952039718628,
+              "start_ms": 1.627135992050171,
+              "submission_index": 1,
+              "total_duration_ms": 0.2351360023021698,
+              "upload_duration_ms": 0.122079998254776,
+              "upload_end_ms": 1.7492159605026245
+            },
+            {
+              "download_duration_ms": 0.07091200351715088,
+              "end_ms": 2.7804160118103027,
+              "kernel_duration_ms": 0.040608000010252,
+              "kernel_end_ms": 2.7095038890838623,
+              "start_ms": 2.5477120876312256,
+              "submission_index": 2,
+              "total_duration_ms": 0.23270399868488312,
+              "upload_duration_ms": 0.12118399888277054,
+              "upload_end_ms": 2.668895959854126
+            },
+            {
+              "download_duration_ms": 0.07363200187683105,
+              "end_ms": 3.6463680267333984,
+              "kernel_duration_ms": 0.04342399910092354,
+              "kernel_end_ms": 3.5727360248565674,
+              "start_ms": 3.4058239459991455,
+              "submission_index": 3,
+              "total_duration_ms": 0.24054400622844696,
+              "upload_duration_ms": 0.12348800152540207,
+              "upload_end_ms": 3.5293118953704834
+            },
+            {
+              "download_duration_ms": 0.07561600208282471,
+              "end_ms": 4.395872116088867,
+              "kernel_duration_ms": 0.040832001715898514,
+              "kernel_end_ms": 4.320256233215332,
+              "start_ms": 4.1566081047058105,
+              "submission_index": 4,
+              "total_duration_ms": 0.23926399648189545,
+              "upload_duration_ms": 0.12281599640846252,
+              "upload_end_ms": 4.27942419052124
+            },
+            {
+              "download_duration_ms": 0.07593599706888199,
+              "end_ms": 5.332128047943115,
+              "kernel_duration_ms": 0.04121600091457367,
+              "kernel_end_ms": 5.256192207336426,
+              "start_ms": 5.119999885559082,
+              "submission_index": 5,
+              "total_duration_ms": 0.21212799847126007,
+              "upload_duration_ms": 0.09497600048780441,
+              "upload_end_ms": 5.214975833892822
+            },
+            {
+              "download_duration_ms": 0.07587199658155441,
+              "end_ms": 6.243423938751221,
+              "kernel_duration_ms": 0.040511999279260635,
+              "kernel_end_ms": 6.1675519943237305,
+              "start_ms": 6.0070719718933105,
+              "submission_index": 6,
+              "total_duration_ms": 0.23635199666023254,
+              "upload_duration_ms": 0.1199679970741272,
+              "upload_end_ms": 6.127039909362793
+            },
+            {
+              "download_duration_ms": 0.07196799665689468,
+              "end_ms": 7.13040018081665,
+              "kernel_duration_ms": 0.043136000633239746,
+              "kernel_end_ms": 7.058432102203369,
+              "start_ms": 6.894591808319092,
+              "submission_index": 7,
+              "total_duration_ms": 0.23580799996852875,
+              "upload_duration_ms": 0.12070400267839432,
+              "upload_end_ms": 7.01529598236084
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9563519954681396,
+          "wall_ns": 12592200
+        },
+        {
+          "download_sum_ms": 0.5776639953255653,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.33209599927067757,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07254400104284286,
+              "end_ms": 1.146720051765442,
+              "kernel_duration_ms": 0.04156799986958504,
+              "kernel_end_ms": 1.0741759538650513,
+              "start_ms": 0.9082880020141602,
+              "submission_index": 0,
+              "total_duration_ms": 0.23843200504779816,
+              "upload_duration_ms": 0.12432000041007996,
+              "upload_end_ms": 1.0326080322265625
+            },
+            {
+              "download_duration_ms": 0.0719359964132309,
+              "end_ms": 1.9233280420303345,
+              "kernel_duration_ms": 0.041280001401901245,
+              "kernel_end_ms": 1.8513920307159424,
+              "start_ms": 1.6906239986419678,
+              "submission_index": 1,
+              "total_duration_ms": 0.23270399868488312,
+              "upload_duration_ms": 0.11948800086975098,
+              "upload_end_ms": 1.8101119995117188
+            },
+            {
+              "download_duration_ms": 0.07228799909353256,
+              "end_ms": 2.8043200969696045,
+              "kernel_duration_ms": 0.040511999279260635,
+              "kernel_end_ms": 2.732032060623169,
+              "start_ms": 2.5712640285491943,
+              "submission_index": 2,
+              "total_duration_ms": 0.2330559939146042,
+              "upload_duration_ms": 0.12025599926710129,
+              "upload_end_ms": 2.6915199756622314
+            },
+            {
+              "download_duration_ms": 0.07203199714422226,
+              "end_ms": 3.640671968460083,
+              "kernel_duration_ms": 0.040672000497579575,
+              "kernel_end_ms": 3.5686399936676025,
+              "start_ms": 3.4068799018859863,
+              "submission_index": 3,
+              "total_duration_ms": 0.2337920069694519,
+              "upload_duration_ms": 0.12108799815177917,
+              "upload_end_ms": 3.527967929840088
+            },
+            {
+              "download_duration_ms": 0.07222399860620499,
+              "end_ms": 4.59830379486084,
+              "kernel_duration_ms": 0.040800001472234726,
+              "kernel_end_ms": 4.526080131530762,
+              "start_ms": 4.363264083862305,
+              "submission_index": 4,
+              "total_duration_ms": 0.23503999412059784,
+              "upload_duration_ms": 0.12201599776744843,
+              "upload_end_ms": 4.4852800369262695
+            },
+            {
+              "download_duration_ms": 0.07241600006818771,
+              "end_ms": 5.700319766998291,
+              "kernel_duration_ms": 0.039903998374938965,
+              "kernel_end_ms": 5.627903938293457,
+              "start_ms": 5.467360019683838,
+              "submission_index": 5,
+              "total_duration_ms": 0.23296000063419342,
+              "upload_duration_ms": 0.12064000219106674,
+              "upload_end_ms": 5.5879998207092285
+            },
+            {
+              "download_duration_ms": 0.07273600250482559,
+              "end_ms": 6.585375785827637,
+              "kernel_duration_ms": 0.04646399989724159,
+              "kernel_end_ms": 6.512639999389648,
+              "start_ms": 6.341631889343262,
+              "submission_index": 6,
+              "total_duration_ms": 0.24374400079250336,
+              "upload_duration_ms": 0.12454400211572647,
+              "upload_end_ms": 6.4661760330200195
+            },
+            {
+              "download_duration_ms": 0.07148800045251846,
+              "end_ms": 7.528255939483643,
+              "kernel_duration_ms": 0.04089599847793579,
+              "kernel_end_ms": 7.456768035888672,
+              "start_ms": 7.292960166931152,
+              "submission_index": 7,
+              "total_duration_ms": 0.23529599606990814,
+              "upload_duration_ms": 0.12291199713945389,
+              "upload_end_ms": 7.415872097015381
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9752639979124069,
+          "wall_ns": 12684100
+        },
+        {
+          "download_sum_ms": 0.5804799944162369,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.33295999839901924,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07900799810886383,
+              "end_ms": 1.1316479444503784,
+              "kernel_duration_ms": 0.04070400074124336,
+              "kernel_end_ms": 1.0526399612426758,
+              "start_ms": 0.8888000249862671,
+              "submission_index": 0,
+              "total_duration_ms": 0.2428479939699173,
+              "upload_duration_ms": 0.1231359988451004,
+              "upload_end_ms": 1.0119359493255615
+            },
+            {
+              "download_duration_ms": 0.07215999811887741,
+              "end_ms": 2.0023679733276367,
+              "kernel_duration_ms": 0.04185599833726883,
+              "kernel_end_ms": 1.9302079677581787,
+              "start_ms": 1.76636803150177,
+              "submission_index": 1,
+              "total_duration_ms": 0.23600000143051147,
+              "upload_duration_ms": 0.12198399752378464,
+              "upload_end_ms": 1.8883520364761353
+            },
+            {
+              "download_duration_ms": 0.07206399738788605,
+              "end_ms": 2.891103982925415,
+              "kernel_duration_ms": 0.039583999663591385,
+              "kernel_end_ms": 2.819040060043335,
+              "start_ms": 2.6592960357666016,
+              "submission_index": 2,
+              "total_duration_ms": 0.23180800676345825,
+              "upload_duration_ms": 0.12015999853610992,
+              "upload_end_ms": 2.7794559001922607
+            },
+            {
+              "download_duration_ms": 0.0713919997215271,
+              "end_ms": 3.7167999744415283,
+              "kernel_duration_ms": 0.04025600105524063,
+              "kernel_end_ms": 3.6454079151153564,
+              "start_ms": 3.485663890838623,
+              "submission_index": 3,
+              "total_duration_ms": 0.2311359941959381,
+              "upload_duration_ms": 0.11948800086975098,
+              "upload_end_ms": 3.605151891708374
+            },
+            {
+              "download_duration_ms": 0.07248000055551529,
+              "end_ms": 4.65177583694458,
+              "kernel_duration_ms": 0.04118400067090988,
+              "kernel_end_ms": 4.579296112060547,
+              "start_ms": 4.4154558181762695,
+              "submission_index": 4,
+              "total_duration_ms": 0.23632000386714935,
+              "upload_duration_ms": 0.12265600264072418,
+              "upload_end_ms": 4.538112163543701
+            },
+            {
+              "download_duration_ms": 0.07212799787521362,
+              "end_ms": 5.648799896240234,
+              "kernel_duration_ms": 0.043327998369932175,
+              "kernel_end_ms": 5.576672077178955,
+              "start_ms": 5.437407970428467,
+              "submission_index": 5,
+              "total_duration_ms": 0.21139200031757355,
+              "upload_duration_ms": 0.09593600034713745,
+              "upload_end_ms": 5.53334379196167
+            },
+            {
+              "download_duration_ms": 0.07187200337648392,
+              "end_ms": 6.653088092803955,
+              "kernel_duration_ms": 0.04124800115823746,
+              "kernel_end_ms": 6.581215858459473,
+              "start_ms": 6.419424057006836,
+              "submission_index": 6,
+              "total_duration_ms": 0.23366400599479675,
+              "upload_duration_ms": 0.12054400146007538,
+              "upload_end_ms": 6.539968013763428
+            },
+            {
+              "download_duration_ms": 0.06937599927186966,
+              "end_ms": 7.642848014831543,
+              "kernel_duration_ms": 0.04479999840259552,
+              "kernel_end_ms": 7.573472023010254,
+              "start_ms": 7.409632205963135,
+              "submission_index": 7,
+              "total_duration_ms": 0.23321600258350372,
+              "upload_duration_ms": 0.11903999745845795,
+              "upload_end_ms": 7.528672218322754
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9429439976811409,
+          "wall_ns": 13635600
+        },
+        {
+          "download_sum_ms": 0.6120639964938164,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3497279994189739,
+          "tickets": [
+            {
+              "download_duration_ms": 0.0809599980711937,
+              "end_ms": 0.9984319806098938,
+              "kernel_duration_ms": 0.04076800122857094,
+              "kernel_end_ms": 0.9174720048904419,
+              "start_ms": 0.7536320090293884,
+              "submission_index": 0,
+              "total_duration_ms": 0.24480000138282776,
+              "upload_duration_ms": 0.12307199835777283,
+              "upload_end_ms": 0.8767039775848389
+            },
+            {
+              "download_duration_ms": 0.0729919970035553,
+              "end_ms": 1.6837120056152344,
+              "kernel_duration_ms": 0.040991999208927155,
+              "kernel_end_ms": 1.6107200384140015,
+              "start_ms": 1.4499520063400269,
+              "submission_index": 1,
+              "total_duration_ms": 0.23375999927520752,
+              "upload_duration_ms": 0.11977600306272507,
+              "upload_end_ms": 1.5697280168533325
+            },
+            {
+              "download_duration_ms": 0.0735040009021759,
+              "end_ms": 2.5863680839538574,
+              "kernel_duration_ms": 0.046879999339580536,
+              "kernel_end_ms": 2.512864112854004,
+              "start_ms": 2.3428800106048584,
+              "submission_index": 2,
+              "total_duration_ms": 0.24348799884319305,
+              "upload_duration_ms": 0.12310399860143661,
+              "upload_end_ms": 2.4659841060638428
+            },
+            {
+              "download_duration_ms": 0.0708480030298233,
+              "end_ms": 3.4407999515533447,
+              "kernel_duration_ms": 0.04153599962592125,
+              "kernel_end_ms": 3.3699519634246826,
+              "start_ms": 3.2122559547424316,
+              "submission_index": 3,
+              "total_duration_ms": 0.22854399681091309,
+              "upload_duration_ms": 0.11615999788045883,
+              "upload_end_ms": 3.328416109085083
+            },
+            {
+              "download_duration_ms": 0.07161600142717361,
+              "end_ms": 4.427680015563965,
+              "kernel_duration_ms": 0.04095999896526337,
+              "kernel_end_ms": 4.3560638427734375,
+              "start_ms": 4.195295810699463,
+              "submission_index": 4,
+              "total_duration_ms": 0.23238399624824524,
+              "upload_duration_ms": 0.11980800330638885,
+              "upload_end_ms": 4.315104007720947
+            },
+            {
+              "download_duration_ms": 0.07321599870920181,
+              "end_ms": 5.567967891693115,
+              "kernel_duration_ms": 0.04742399975657463,
+              "kernel_end_ms": 5.494751930236816,
+              "start_ms": 5.325791835784912,
+              "submission_index": 5,
+              "total_duration_ms": 0.24217599630355835,
+              "upload_duration_ms": 0.1215360015630722,
+              "upload_end_ms": 5.447328090667725
+            },
+            {
+              "download_duration_ms": 0.078015998005867,
+              "end_ms": 6.505631923675537,
+              "kernel_duration_ms": 0.04444799944758415,
+              "kernel_end_ms": 6.427616119384766,
+              "start_ms": 6.264800071716309,
+              "submission_index": 6,
+              "total_duration_ms": 0.24083200097084045,
+              "upload_duration_ms": 0.118367999792099,
+              "upload_end_ms": 6.3831682205200195
+            },
+            {
+              "download_duration_ms": 0.09091199934482574,
+              "end_ms": 7.497471809387207,
+              "kernel_duration_ms": 0.046720001846551895,
+              "kernel_end_ms": 7.406559944152832,
+              "start_ms": 7.232480049133301,
+              "submission_index": 7,
+              "total_duration_ms": 0.26499199867248535,
+              "upload_duration_ms": 0.127360001206398,
+              "upload_end_ms": 7.359839916229248
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9691840037703514,
+          "wall_ns": 12949500
+        },
+        {
+          "download_sum_ms": 0.6493440121412277,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.35020800307393074,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07168000191450119,
+              "end_ms": 1.2339199781417847,
+              "kernel_duration_ms": 0.040672000497579575,
+              "kernel_end_ms": 1.1622400283813477,
+              "start_ms": 0.9995520114898682,
+              "submission_index": 0,
+              "total_duration_ms": 0.2343679964542389,
+              "upload_duration_ms": 0.12201599776744843,
+              "upload_end_ms": 1.121567964553833
+            },
+            {
+              "download_duration_ms": 0.07168000191450119,
+              "end_ms": 1.9742720127105713,
+              "kernel_duration_ms": 0.04025600105524063,
+              "kernel_end_ms": 1.9025919437408447,
+              "start_ms": 1.7459839582443237,
+              "submission_index": 1,
+              "total_duration_ms": 0.22828799486160278,
+              "upload_duration_ms": 0.11635199934244156,
+              "upload_end_ms": 1.8623360395431519
+            },
+            {
+              "download_duration_ms": 0.07072000205516815,
+              "end_ms": 3.04748797416687,
+              "kernel_duration_ms": 0.041760001331567764,
+              "kernel_end_ms": 2.9767680168151855,
+              "start_ms": 2.815295934677124,
+              "submission_index": 2,
+              "total_duration_ms": 0.2321919947862625,
+              "upload_duration_ms": 0.11971200257539749,
+              "upload_end_ms": 2.9350080490112305
+            },
+            {
+              "download_duration_ms": 0.07075200229883194,
+              "end_ms": 3.80732798576355,
+              "kernel_duration_ms": 0.044064000248909,
+              "kernel_end_ms": 3.7365760803222656,
+              "start_ms": 3.5727360248565674,
+              "submission_index": 3,
+              "total_duration_ms": 0.234592005610466,
+              "upload_duration_ms": 0.11977600306272507,
+              "upload_end_ms": 3.692512035369873
+            },
+            {
+              "download_duration_ms": 0.07155200093984604,
+              "end_ms": 4.723584175109863,
+              "kernel_duration_ms": 0.04076800122857094,
+              "kernel_end_ms": 4.652031898498535,
+              "start_ms": 4.496416091918945,
+              "submission_index": 4,
+              "total_duration_ms": 0.2271679937839508,
+              "upload_duration_ms": 0.11484800279140472,
+              "upload_end_ms": 4.611264228820801
+            },
+            {
+              "download_duration_ms": 0.07497599720954895,
+              "end_ms": 5.791967868804932,
+              "kernel_duration_ms": 0.04864000156521797,
+              "kernel_end_ms": 5.716991901397705,
+              "start_ms": 5.541888236999512,
+              "submission_index": 5,
+              "total_duration_ms": 0.2500799894332886,
+              "upload_duration_ms": 0.12646399438381195,
+              "upload_end_ms": 5.668352127075195
+            },
+            {
+              "download_duration_ms": 0.07449600100517273,
+              "end_ms": 6.673151969909668,
+              "kernel_duration_ms": 0.04726399853825569,
+              "kernel_end_ms": 6.598656177520752,
+              "start_ms": 6.453248023986816,
+              "submission_index": 6,
+              "total_duration_ms": 0.21990400552749634,
+              "upload_duration_ms": 0.09814400225877762,
+              "upload_end_ms": 6.551392078399658
+            },
+            {
+              "download_duration_ms": 0.14348800480365753,
+              "end_ms": 7.735424041748047,
+              "kernel_duration_ms": 0.04678399860858917,
+              "kernel_end_ms": 7.591936111450195,
+              "start_ms": 7.421951770782471,
+              "submission_index": 7,
+              "total_duration_ms": 0.3134720027446747,
+              "upload_duration_ms": 0.12319999933242798,
+              "upload_end_ms": 7.545152187347412
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9405120015144348,
+          "wall_ns": 13100400
+        },
+        {
+          "download_sum_ms": 0.5723199844360352,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.3449600003659725,
+          "tickets": [
+            {
+              "download_duration_ms": 0.06803199648857117,
+              "end_ms": 2.9270401000976562,
+              "kernel_duration_ms": 0.03798399865627289,
+              "kernel_end_ms": 2.8590080738067627,
+              "start_ms": 2.6572799682617188,
+              "submission_index": 0,
+              "total_duration_ms": 0.26976001262664795,
+              "upload_duration_ms": 0.1637440025806427,
+              "upload_end_ms": 2.821023941040039
+            },
+            {
+              "download_duration_ms": 0.07398399710655212,
+              "end_ms": 3.9027199745178223,
+              "kernel_duration_ms": 0.044096000492572784,
+              "kernel_end_ms": 3.8287360668182373,
+              "start_ms": 3.6628479957580566,
+              "submission_index": 1,
+              "total_duration_ms": 0.23987199366092682,
+              "upload_duration_ms": 0.12179200351238251,
+              "upload_end_ms": 3.784640073776245
+            },
+            {
+              "download_duration_ms": 0.07100799679756165,
+              "end_ms": 4.853087902069092,
+              "kernel_duration_ms": 0.04412800073623657,
+              "kernel_end_ms": 4.782080173492432,
+              "start_ms": 4.6162238121032715,
+              "submission_index": 2,
+              "total_duration_ms": 0.23686400055885315,
+              "upload_duration_ms": 0.12172800302505493,
+              "upload_end_ms": 4.73795223236084
+            },
+            {
+              "download_duration_ms": 0.07088000327348709,
+              "end_ms": 5.726431846618652,
+              "kernel_duration_ms": 0.04495999962091446,
+              "kernel_end_ms": 5.655551910400391,
+              "start_ms": 5.486591815948486,
+              "submission_index": 3,
+              "total_duration_ms": 0.23984000086784363,
+              "upload_duration_ms": 0.12399999797344208,
+              "upload_end_ms": 5.610591888427734
+            },
+            {
+              "download_duration_ms": 0.0721919983625412,
+              "end_ms": 6.6565117835998535,
+              "kernel_duration_ms": 0.044064000248909,
+              "kernel_end_ms": 6.584320068359375,
+              "start_ms": 6.416384220123291,
+              "submission_index": 4,
+              "total_duration_ms": 0.24012799561023712,
+              "upload_duration_ms": 0.12387199699878693,
+              "upload_end_ms": 6.540256023406982
+            },
+            {
+              "download_duration_ms": 0.07311999797821045,
+              "end_ms": 7.694752216339111,
+              "kernel_duration_ms": 0.0432640016078949,
+              "kernel_end_ms": 7.621632099151611,
+              "start_ms": 7.456768035888672,
+              "submission_index": 5,
+              "total_duration_ms": 0.23798400163650513,
+              "upload_duration_ms": 0.12160000205039978,
+              "upload_end_ms": 7.578368186950684
+            },
+            {
+              "download_duration_ms": 0.07203199714422226,
+              "end_ms": 8.612192153930664,
+              "kernel_duration_ms": 0.045823998749256134,
+              "kernel_end_ms": 8.540160179138184,
+              "start_ms": 8.373248100280762,
+              "submission_index": 6,
+              "total_duration_ms": 0.23894399404525757,
+              "upload_duration_ms": 0.12108799815177917,
+              "upload_end_ms": 8.494336128234863
+            },
+            {
+              "download_duration_ms": 0.07107199728488922,
+              "end_ms": 9.519519805908203,
+              "kernel_duration_ms": 0.04064000025391579,
+              "kernel_end_ms": 9.448448181152344,
+              "start_ms": 9.31328010559082,
+              "submission_index": 7,
+              "total_duration_ms": 0.2062399983406067,
+              "upload_duration_ms": 0.09452799707651138,
+              "upload_end_ms": 9.407808303833008
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9923520013689995,
+          "wall_ns": 15130500
+        },
+        {
+          "download_sum_ms": 0.5909760072827339,
+          "group_size": 8,
+          "kernel_download_overlap_ms": 0.0,
+          "kernel_sum_ms": 0.34831999987363815,
+          "tickets": [
+            {
+              "download_duration_ms": 0.07180800288915634,
+              "end_ms": 0.9616640210151672,
+              "kernel_duration_ms": 0.03996799886226654,
+              "kernel_end_ms": 0.8898559808731079,
+              "start_ms": 0.7292799949645996,
+              "submission_index": 0,
+              "total_duration_ms": 0.23238399624824524,
+              "upload_duration_ms": 0.12060800194740295,
+              "upload_end_ms": 0.849888026714325
+            },
+            {
+              "download_duration_ms": 0.07283200323581696,
+              "end_ms": 1.625216007232666,
+              "kernel_duration_ms": 0.040352001786231995,
+              "kernel_end_ms": 1.5523840188980103,
+              "start_ms": 1.3916159868240356,
+              "submission_index": 1,
+              "total_duration_ms": 0.23360000550746918,
+              "upload_duration_ms": 0.12041600048542023,
+              "upload_end_ms": 1.5120320320129395
+            },
+            {
+              "download_duration_ms": 0.07107199728488922,
+              "end_ms": 2.6218559741973877,
+              "kernel_duration_ms": 0.04105599969625473,
+              "kernel_end_ms": 2.550784111022949,
+              "start_ms": 2.3900160789489746,
+              "submission_index": 2,
+              "total_duration_ms": 0.23183999955654144,
+              "upload_duration_ms": 0.11971200257539749,
+              "upload_end_ms": 2.509727954864502
+            },
+            {
+              "download_duration_ms": 0.0713919997215271,
+              "end_ms": 3.530463933944702,
+              "kernel_duration_ms": 0.04041599854826927,
+              "kernel_end_ms": 3.4590721130371094,
+              "start_ms": 3.2983040809631348,
+              "submission_index": 3,
+              "total_duration_ms": 0.23216000199317932,
+              "upload_duration_ms": 0.12035199999809265,
+              "upload_end_ms": 3.41865611076355
+            },
+            {
+              "download_duration_ms": 0.0674239993095398,
+              "end_ms": 4.5208001136779785,
+              "kernel_duration_ms": 0.05532800033688545,
+              "kernel_end_ms": 4.453375816345215,
+              "start_ms": 4.279295921325684,
+              "submission_index": 4,
+              "total_duration_ms": 0.2415039986371994,
+              "upload_duration_ms": 0.11875200271606445,
+              "upload_end_ms": 4.398047924041748
+            },
+            {
+              "download_duration_ms": 0.08409599959850311,
+              "end_ms": 5.668992042541504,
+              "kernel_duration_ms": 0.04508800059556961,
+              "kernel_end_ms": 5.584896087646484,
+              "start_ms": 5.413887977600098,
+              "submission_index": 5,
+              "total_duration_ms": 0.2551040053367615,
+              "upload_duration_ms": 0.12591999769210815,
+              "upload_end_ms": 5.5398077964782715
+            },
+            {
+              "download_duration_ms": 0.08054400235414505,
+              "end_ms": 6.75600004196167,
+              "kernel_duration_ms": 0.045343998819589615,
+              "kernel_end_ms": 6.6754560470581055,
+              "start_ms": 6.515711784362793,
+              "submission_index": 6,
+              "total_duration_ms": 0.24028800427913666,
+              "upload_duration_ms": 0.1143999993801117,
+              "upload_end_ms": 6.630112171173096
+            },
+            {
+              "download_duration_ms": 0.07180800288915634,
+              "end_ms": 7.693439960479736,
+              "kernel_duration_ms": 0.04076800122857094,
+              "kernel_end_ms": 7.621632099151611,
+              "start_ms": 7.459839820861816,
+              "submission_index": 7,
+              "total_duration_ms": 0.23360000550746918,
+              "upload_duration_ms": 0.1210239976644516,
+              "upload_end_ms": 7.580863952636719
+            }
+          ],
+          "transfer_kernel_overlap_ms": 0.0,
+          "upload_download_overlap_ms": 0.0,
+          "upload_kernel_overlap_ms": 0.0,
+          "upload_sum_ms": 0.9611840024590492,
+          "wall_ns": 13164400
+        }
+      ],
+      "transfer_kernel_overlap_samples": 0
+    }
+  },
+  "hypothesis": "group-eight streamed tickets produce more than one microsecond of CUDA-event transfer/kernel phase overlap in more than seven samples",
+  "hypothesis_outcome": {
+    "group_size": 8,
+    "passed": false,
+    "reason": "significant transfer/kernel event overlap not observed"
+  },
+  "identities": {
+    "kernel_launch": "cuda-independent-stream-kernel-launch-v1",
+    "prepared_storage": "proof-bound-u32le-primitive-input-v1",
+    "streamed_transfer": "cuda-independent-stream-ticket-transfer-v1",
+    "transfer_timeline": "cuda-independent-stream-ticket-transfer-timeline-v1"
+  },
+  "interpretation_limit": "origin-relative CUDA-event phases describe observed stream intervals; they do not prove copy-engine occupancy or uninstrumented performance",
+  "measurement": {
+    "adapter_setup_timed": false,
+    "event_origin_setup_timed": false,
+    "ordering": "cyclic first-group rotation across groups 2, 4, and 8",
+    "overlap_epsilon_ms": 0.001,
+    "preparation_timed": false,
+    "sample_count": 15,
+    "timeline_close_timed": false,
+    "validation_timed": false,
+    "warmup_count": 1
+  },
+  "rejection_rule": "reject transfer/kernel overlap attribution when group eight has at most seven significant samples, median overlap is not above one microsecond, or any exact identity/output/phase-order check fails",
+  "workload": {
+    "count_per_ticket": 59049,
+    "group_sizes": [
+      2,
+      4,
+      8
+    ],
+    "identity": "classic-crazy-full-domain-ticket-transfer-v1",
+    "kind": "crazy",
+    "sha256": "a523502c24560424c7139b527019e3f26ded512db205dec12a073e4801d7f7dc",
+    "total_words_by_group": {
+      "2": 118098,
+      "4": 236196,
+      "8": 472392
+    }
+  }
+}

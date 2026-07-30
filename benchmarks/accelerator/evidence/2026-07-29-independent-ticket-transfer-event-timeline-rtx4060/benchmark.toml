@@ -1,0 +1,46 @@
+schema_version = 1
+
+[study]
+id = "cuda-independent-ticket-transfer-event-timeline-v1"
+experiment_manifest = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/experiment.toml"
+kind = "deterministic"
+question = "Do grouped streamed CUDA tickets show transfer/kernel CUDA-event phase overlap for the full-domain CRAZY workload?"
+hypothesis = "Group eight shows transfer/kernel phase overlap above one microsecond in more than seven of fifteen samples, positive median overlap, and exact CPU-equal output."
+baseline = "same-run streamed phase timelines at groups 2 and 4 plus the retained uninstrumented streamed throughput workload identity"
+rejection_observation = "Group eight has at most seven significant transfer/kernel-overlap samples, median overlap at or below one microsecond, or any workload, phase, launch, transfer, storage, backend, or output identity check fails."
+
+[workload]
+identity = "classic-crazy-full-domain-ticket-transfer-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 1
+repetitions = 15
+warmup_policy = "one untimed complete profiled streamed group per group size"
+ordering = "fixed"
+stopping_rule = "exactly fifteen retained samples per group with cyclic first-group rotation"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "standard-deviation"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["wall_ns", "upload_sum_ms", "kernel_sum_ms", "download_sum_ms", "upload_kernel_overlap_ms", "kernel_download_overlap_ms", "upload_download_overlap_ms", "transfer_kernel_overlap_ms"]
+tradeoff_policy = "all outputs must match independent CPU bytes; origin-relative CUDA-event phases may include interleaved work and instrumentation perturbation, so overlap is diagnostic and cannot establish engine occupancy or uninstrumented speedup"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x86-64"
+accelerator = "NVIDIA GeForce RTX 4060 sm_89"
+memory_mib = 8188
+
+[raw]
+path = "benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/observations.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
