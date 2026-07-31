@@ -229,13 +229,14 @@ duplicate, unknown, oversized, or noncanonical input fails closed. Offline
 summaries never recommend routes or modify admission. Pairwise, indexed, and
 component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
-Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
-route, or admission authority. Caller-owned bounded rotation, secret-free
-manifests, an explicit synchronous provider port, a caller-owned alternate
-telemetry store, and lossless explicit schema-v1/schema-v2 migration exist, but
-there is no asymmetric signature, built-in provider, automatic discovery, retry,
-cache, provider lifecycle, PKI, or automatic trust loading. Observations do not
-promote routes automatically and never replace retained benchmark evidence.
+Authenticated lineage requires caller-selected trust and still grants no merge,
+route, or admission authority. Caller-owned HMAC rotation, secret-free manifests,
+an explicit synchronous secret-provider port, detached public-key signer/verifier
+ports, a caller-owned alternate telemetry store, and lossless explicit
+schema-v1/schema-v2 migration exist. No concrete public-key signature algorithm,
+key generation, certificate chain, PKI, automatic discovery, retry, cache, provider
+lifecycle, or automatic trust loading is supplied. Observations do not promote
+routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

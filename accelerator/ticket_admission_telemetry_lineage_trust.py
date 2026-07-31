@@ -25,7 +25,8 @@
 #   - Outputs: immutable trust sets and independently verified comparisons.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures or provider lifecycles gain contracts.
+#   - Split when concrete signature algorithms, PKI, or provider lifecycles
+#     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact caller-owned trust boundary.
 # - Summary:
@@ -39,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage.py
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

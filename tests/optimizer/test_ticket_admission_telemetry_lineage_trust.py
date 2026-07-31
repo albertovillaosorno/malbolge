@@ -24,7 +24,8 @@
 #   - Outputs: ordering, window, rotation, comparison, and failure assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures or provider lifecycles gain tests.
+#   - Split when concrete signature algorithms, PKI, or provider lifecycles
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact lineage trust behavior.
 # - Summary:
@@ -37,6 +38,7 @@
 #   - Uses two deterministic caller-owned HMAC keys.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_trust.py
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py

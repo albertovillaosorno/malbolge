@@ -27,8 +27,8 @@
 #     lineage reports.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures or asynchronous provider
-#     lifecycles gain contracts.
+#   - Split when concrete signature algorithms, PKI, or asynchronous
+#     provider lifecycles gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact authenticated-lineage boundary.
 # - Summary:
@@ -45,6 +45,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_collection.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py

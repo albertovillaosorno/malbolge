@@ -169,9 +169,9 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Two hundred ninety-nine
+facade resolves the same exact profile before reporting. Three hundred fifty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
-index/components/lineage/trust/manifest/provider,
+index/components/lineage/trust/manifest/provider/signature,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -268,17 +268,30 @@ budget, default 256, complete before provider work. Requests are immutable and
 canonical-key ordered; each reference is called once. Typed `unavailable` or
 `failed` results stop without retry, and no vendor text enters the contract.
 Repeated explicit resolution performs a new provider walk. Resolved bytes remain
-unverified until attestation authentication. There is no asymmetric signature,
-built-in provider, discovery, retry, retained cache, persistence, asynchronous
-lifecycle, PKI, automatic trust loading, snapshot merge, route recommendation,
-evidence promotion, or policy update.
+unverified until attestation authentication.
+`caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
+algorithm-neutral synchronous detached signer and verifier ports. Canonical
+attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
+completed/failed streams, capture sequence, public-key ID, SHA-256 of the exact
+caller-owned public-key bytes, and optional HMAC or signature predecessor. Signers
+return typed `signed`, `unavailable`, or `failed`; verifiers return `verified`,
+`invalid`, `unavailable`, or `failed`. Each explicit operation calls its port once
+without retry or cache. Verification checks the exact public-key fingerprint before
+the port call, then reuses the common verified-lineage comparison for public-key
+rotation and an explicit HMAC-to-signature transition. No concrete signature
+algorithm, key generation, private-key storage, certificate chain, PKI, trust
+discovery, provider lifecycle, or security claim is supplied by this boundary.
+There is no built-in secret provider, discovery, retry, retained cache,
+persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
+merge, route recommendation, evidence promotion, or policy update.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
-hosts, Python versions, drivers, devices, workloads, asymmetric lineage
-signatures, and automatic adaptive queue/resource feedback remain open.
+hosts, Python versions, drivers, devices, workloads, concrete public-key
+signature algorithms and PKI/trust distribution, and automatic adaptive
+queue/resource feedback remain open.
 
 ## Threats to Validity
 

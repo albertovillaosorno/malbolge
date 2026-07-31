@@ -24,7 +24,8 @@
 #   - Outputs: canonical manifests, identities, and caller-owned trust sets.
 #   - Side effects: explicit bounded file reads and atomic replacement only.
 # - Split-When:
-#   - Split when asymmetric signatures or asynchronous providers gain contracts.
+#   - Split when concrete signature algorithms, PKI, or asynchronous providers
+#     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact secret-free manifest boundary.
 # - Summary:
@@ -37,6 +38,7 @@
 #   - At most 256 entries and 64 KiB of canonical UTF-8 JSON.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py

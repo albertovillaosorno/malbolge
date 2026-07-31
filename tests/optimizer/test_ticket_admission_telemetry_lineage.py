@@ -27,7 +27,8 @@
 #   - Side effects: temporary monkeypatching of local digest and identity
 #     helpers.
 # - Split-When:
-#   - Split when asymmetric signatures or provider lifecycles gain tests.
+#   - Split when concrete signature algorithms, PKI, or provider lifecycles
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact authenticated-lineage behavior.
 # - Summary:
@@ -41,6 +42,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage.py
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_trust.py
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py

@@ -1629,20 +1629,31 @@ order, and accepts only typed `resolved`, `unavailable`, or `failed` results. Ea
 entry is called exactly once; non-success stops without retry, while repeated
 explicit resolution performs a fresh provider walk. Requests expose only manifest,
 provider, key/reference, capture-window, and index metadata. Secret bytes remain
-hidden and unverified until an attestation authenticates. There is no asymmetric
-signature, built-in provider, discovery, retry, retained cache, persistence,
-asynchronous lifecycle, PKI, or automatic trust loading. None of these surfaces
-merge snapshots, recommend routes, or modify admission. No hidden workers,
-automatic promotion, or policy authority are introduced. The retained
+hidden and unverified until an attestation authenticates.
+`caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
+algorithm-neutral synchronous detached signer and verifier ports. Canonical
+attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
+completed/failed streams, capture sequence, public-key ID, SHA-256 of the exact
+caller-owned public-key bytes, and optional HMAC or signature predecessor. Signers
+return typed `signed`, `unavailable`, or `failed`; verifiers return `verified`,
+`invalid`, `unavailable`, or `failed`. Each explicit operation calls its port once
+without retry or cache. Verification checks the exact public-key fingerprint before
+the port call, then reuses the common verified-lineage comparison for public-key
+rotation and an explicit HMAC-to-signature transition. No concrete signature
+algorithm, key generation, private-key storage, certificate chain, PKI, trust
+discovery, provider lifecycle, or security claim is supplied by this boundary.
+There is no built-in secret provider, discovery, retry, retained cache,
+persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
+merge, route recommendation, or policy authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Two hundred ninety-nine admission/telemetry/persistence/store/migration/
-summary/collection/overlap/index/components/lineage/trust/manifest/provider
-tests cover
+every ticket. Three hundred fifty-three admission/telemetry/persistence/store/migration/
+summary/collection/overlap/index/components/lineage/trust/manifest/provider/
+signature tests cover
 fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
@@ -1671,9 +1682,9 @@ NVML lifetimes, host validation, exact live host measurement, and one live CUDA
 route. Other hosts, Python versions, driver builds, devices, and workloads remain
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
-callback or kernel workloads, event/timeline controls, asymmetric lineage
-signatures, automatic adaptive feedback, and broader live-device evidence remain
-open.
+callback or kernel workloads, event/timeline controls, concrete public-key
+signature algorithms and PKI/trust distribution, automatic adaptive feedback, and
+broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

@@ -41,6 +41,7 @@
 #   - At most 256 requests; empty manifests make no provider calls.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py
