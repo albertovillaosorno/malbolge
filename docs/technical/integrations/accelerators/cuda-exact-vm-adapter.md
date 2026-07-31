@@ -494,10 +494,27 @@ fingerprint checks, and trust construction; empty manifests make no provider cal
 The adapter creates no event loop, task, concurrency, sleep, artificial yield,
 session lifecycle, file, environment, network, discovery, retry, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
+`memory-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the explicit async provider-session port.
+Construction validates the memory service, builds its bounded inline batch adapter,
+and stores only caller-owned serial lifecycle state. `open` and `close` complete
+inline without scheduling. One active lifecycle is allowed: an exact nonempty open
+request with matching provider identity and bounded request count returns `opened`
+with the hidden memory batch adapter; a second or mismatched open returns `failed`
+without replacing active state. Close requests require the exact persisted manifest
+fingerprint, provider identity, and request count. A mismatch returns `failed` and
+retains active state; an exact close returns `closed`, clears the active request,
+increments a nonnegative completed-lifecycle count, and permits serial reuse. The
+existing session boundary still preflights manifests and budgets, performs no
+lifecycle calls for empty manifests, and closes after success or batch failure. The
+adapter creates no event loop, task, lock, concurrency, sleep, artificial yield,
+file, environment, network, discovery, retry, persistence, certificate validation,
+PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
-service and its inline sequential and batch async adapters. There is no built-in secret
-provider, external key service, automatic
-provider session, discovery, retry, retained cache, persistence, automatic trust
+service, its inline sequential and batch async adapters, and its serial
+session adapter. There is no built-in secret provider or external key
+service. No session is opened automatically; there is no discovery, retry,
+retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, or policy authority. There is no
 hidden worker or
 automatic promotion. The retained
@@ -507,13 +524,14 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Six hundred fifty-one
+every ticket. Seven hundred
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider/memory-async-public-key-provider/
-memory-batch-public-key-provider tests cover fallback,
+memory-batch-public-key-provider/
+memory-session-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

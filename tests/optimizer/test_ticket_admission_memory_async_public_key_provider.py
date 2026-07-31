@@ -25,7 +25,7 @@
 #   - Outputs: inline-await, integration, metadata, and failure assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when memory session adapter or external services gain tests.
+#   - Split when external services gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact inline async adaptation.
 # - Summary:
@@ -41,6 +41,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 #
 # Large file:

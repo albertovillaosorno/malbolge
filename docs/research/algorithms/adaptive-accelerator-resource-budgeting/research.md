@@ -169,7 +169,7 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Six hundred fifty-one
+facade resolves the same exact profile before reporting. Seven hundred
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
@@ -407,10 +407,27 @@ fingerprint checks, and trust construction; empty manifests make no provider cal
 The adapter creates no event loop, task, concurrency, sleep, artificial yield,
 session lifecycle, file, environment, network, discovery, retry, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
+`memory-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the explicit async provider-session port.
+Construction validates the memory service, builds its bounded inline batch adapter,
+and stores only caller-owned serial lifecycle state. `open` and `close` complete
+inline without scheduling. One active lifecycle is allowed: an exact nonempty open
+request with matching provider identity and bounded request count returns `opened`
+with the hidden memory batch adapter; a second or mismatched open returns `failed`
+without replacing active state. Close requests require the exact persisted manifest
+fingerprint, provider identity, and request count. A mismatch returns `failed` and
+retains active state; an exact close returns `closed`, clears the active request,
+increments a nonnegative completed-lifecycle count, and permits serial reuse. The
+existing session boundary still preflights manifests and budgets, performs no
+lifecycle calls for empty manifests, and closes after success or batch failure. The
+adapter creates no event loop, task, lock, concurrency, sleep, artificial yield,
+file, environment, network, discovery, retry, persistence, certificate validation,
+PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
-service and its inline sequential and batch async adapters. There is no built-in secret
-provider, external key service, automatic
-provider session, discovery, retry, retained cache, persistence, automatic trust
+service, its inline sequential and batch async adapters, and its serial
+session adapter. There is no built-in secret provider or external key
+service. No session is opened automatically; there is no discovery, retry,
+retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
 update. The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
@@ -418,7 +435,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, in-memory session adapter, external public-key
+signature algorithms, external public-key
 services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
