@@ -25,8 +25,8 @@
 #   - Outputs: ordering, resolution, integrity, and fail-closed assertions.
 #   - Side effects: none beyond explicit in-process calls.
 # - Split-When:
-#   - Split when async adapters, external services, certificates, or PKI gain
-#     tests.
+#   - Split when batch/session adapters, external services, certificates,
+#     or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact memory-provider behavior.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #
@@ -49,7 +50,7 @@
 
 """Bounded caller-owned in-memory public-key provider tests."""
 
-# ruff: file-ignore[line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 

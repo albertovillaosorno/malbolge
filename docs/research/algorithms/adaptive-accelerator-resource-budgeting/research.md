@@ -169,7 +169,7 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Five hundred eighty-six
+facade resolves the same exact profile before reporting. Six hundred thirteen
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
@@ -378,8 +378,23 @@ services are valid and resolve nothing. The object is reusable caller-owned memo
 not an automatic or hidden cache. It performs no file, environment, network,
 discovery, mutation, retry, persistence, async adaptation, certificate validation,
 PKI, algorithm selection, or admission-policy operation.
-The only built-in public-key implementation is the bounded caller-owned memory
-service. There is no built-in secret provider, external key service, automatic
+`bounded-in-memory-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the sequential async provider port.
+Construction validates the complete wrapped service and retains only its provider
+identity, key count, stable adapter identity, and a hidden service reference. Every
+await revalidates the adapter binding and the complete memory service before invoking
+the synchronous lookup inline. It returns the same typed `resolved`, `unavailable`,
+or `failed` outcome and introduces no internal suspension point; the caller-owned
+event loop cannot run another task merely because this adapter was awaited. The
+existing sequential async boundary still performs manifest preflight, canonical
+ordering, fingerprint checks, stable exception wrapping, and trust construction.
+Empty manifests perform no lookup, while explicit adapter construction already
+validates the service. The adapter creates no event loop, task, sleep, artificial
+yield, batch/session lifecycle, file, environment, network, discovery, retry,
+persistence, certificate validation, PKI, algorithm selection, or policy operation.
+The built-in public-key implementations are the bounded caller-owned memory
+service and its inline sequential async adapter. There is no built-in secret
+provider, external key service, automatic
 provider session, discovery, retry, retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
 update. The registry now selects at most one
@@ -388,7 +403,8 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, in-memory async adapters, external public-key services,
+signature algorithms, in-memory batch/session adapters, external public-key
+services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 

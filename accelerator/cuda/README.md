@@ -226,8 +226,23 @@ services are valid and resolve nothing. The object is reusable caller-owned memo
 not an automatic or hidden cache. It performs no file, environment, network,
 discovery, mutation, retry, persistence, async adaptation, certificate validation,
 PKI, algorithm selection, or admission-policy operation.
-The only built-in public-key implementation is the bounded caller-owned memory
-service. There is no built-in secret provider, external key service, automatic
+`bounded-in-memory-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the sequential async provider port.
+Construction validates the complete wrapped service and retains only its provider
+identity, key count, stable adapter identity, and a hidden service reference. Every
+await revalidates the adapter binding and the complete memory service before invoking
+the synchronous lookup inline. It returns the same typed `resolved`, `unavailable`,
+or `failed` outcome and introduces no internal suspension point; the caller-owned
+event loop cannot run another task merely because this adapter was awaited. The
+existing sequential async boundary still performs manifest preflight, canonical
+ordering, fingerprint checks, stable exception wrapping, and trust construction.
+Empty manifests perform no lookup, while explicit adapter construction already
+validates the service. The adapter creates no event loop, task, sleep, artificial
+yield, batch/session lifecycle, file, environment, network, discovery, retry,
+persistence, certificate validation, PKI, algorithm selection, or policy operation.
+The built-in public-key implementations are the bounded caller-owned memory
+service and its inline sequential async adapter. There is no built-in secret
+provider, external key service, automatic
 provider session, discovery, retry, retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, or policy authority. There is no
 hidden worker or
@@ -238,12 +253,12 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Five hundred eighty-six
+every ticket. Six hundred thirteen
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
-memory-public-key-provider tests cover fallback,
+memory-public-key-provider/memory-async-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

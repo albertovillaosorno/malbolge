@@ -25,7 +25,7 @@
 #   - Outputs: stable typed provider results for exact manifest requests.
 #   - Side effects: none; retained key bytes remain caller-owned in memory.
 # - Split-When:
-#   - Split when async adapters, external services, certificates, or PKI gain
+#   - Split when batch/session adapters, external services, certificates, or PKI gain
 #     contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact bounded memory-provider boundary.
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
@@ -179,6 +180,18 @@ def build_ticket_admission_telemetry_lineage_memory_public_key_provider(
         provider_id=validated_provider_id,
         service_id=TICKET_ADMISSION_TELEMETRY_LINEAGE_MEMORY_PUBLIC_KEY_PROVIDER_ID,
     )
+
+
+def validate_ticket_admission_telemetry_lineage_memory_public_key_provider(
+    provider: TicketAdmissionTelemetryLineageMemoryPublicKeyProvider,
+) -> TicketAdmissionTelemetryLineageMemoryPublicKeyProvider:
+    """Validate one exact bounded memory-provider object.
+
+    Returns:
+        The exact validated caller-owned provider.
+
+    """
+    return _validated_service(provider)
 
 
 def _validated_build_inputs(

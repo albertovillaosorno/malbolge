@@ -235,8 +235,9 @@ an explicit synchronous secret-provider port, detached public-key signer/verifie
 ports, bounded in-memory public-key trust, a canonical key-free public-key trust
 manifest, explicit synchronous, sequential async, caller-controlled async batch,
 and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous
-key service, a caller-owned alternate telemetry store, and lossless explicit
-schema-v1/schema-v2 migration exist. No concrete public-key signature algorithm,
+key service with an inline sequential async adapter, a caller-owned alternate
+telemetry store, and lossless explicit schema-v1/schema-v2 migration exist. No
+concrete public-key signature algorithm,
 external key service, certificate chain, PKI, automatic discovery, retry, hidden
 cache, library-owned concurrency, or automatic trust loading is supplied.
 Observations do not promote routes automatically and never replace retained
