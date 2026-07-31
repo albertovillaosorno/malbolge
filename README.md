@@ -233,12 +233,13 @@ Authenticated lineage requires caller-selected trust and still grants no merge,
 route, or admission authority. Caller-owned HMAC rotation, secret-free manifests,
 an explicit synchronous secret-provider port, detached public-key signer/verifier
 ports, bounded in-memory public-key trust, a canonical key-free public-key trust
-manifest, explicit synchronous and sequential async public-key-provider ports, a
-caller-owned alternate telemetry store, and lossless explicit schema-v1/schema-v2
-migration exist. No concrete public-key signature algorithm, built-in key service,
-certificate chain, PKI, automatic discovery, retry, cache, provider session
-lifecycle, concurrency policy, or automatic trust loading is supplied. Observations
-do not promote routes automatically and never replace retained benchmark evidence.
+manifest, explicit synchronous, sequential async, and caller-controlled async batch
+public-key-provider ports, a caller-owned alternate telemetry store, and lossless
+explicit schema-v1/schema-v2 migration exist. No concrete public-key signature
+algorithm, built-in key service, certificate chain, PKI, automatic discovery, retry,
+cache, provider session lifecycle, library-owned concurrency, or automatic trust
+loading is supplied. Observations do not promote routes automatically and never
+replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

@@ -184,6 +184,19 @@ propagates to the caller. Exact public-key fingerprints are checked before trust
 construction. No event loop, task, provider session lifecycle, concurrency policy,
 discovery, retry, cache, persistence, certificate validation, PKI, algorithm
 selection, or admission authority is supplied.
+`explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
+accepts one caller-supplied async batch provider. Manifest, provider identity, and
+the default 256-request budget are validated before the first await. Empty manifests
+make no provider call; nonempty manifests produce one immutable batch containing the
+full canonical `(algorithm_id, public_key_id)` request tuple and exactly one provider
+await. The provider owns all scheduling and may resolve the batch sequentially or
+concurrently. The boundary requires one exact positional result tuple with matching
+cardinality, validates every shared typed item result, propagates cancellation, and
+converts ordinary provider exceptions to stable errors without vendor text. Reversed,
+missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched results
+fail closed before trust is returned. No event loop, task, concurrency implementation,
+provider session lifecycle, discovery, retry, cache, persistence, certificate
+validation, PKI, algorithm selection, or admission authority is supplied.
 There is no built-in secret-provider or public-key-provider implementation,
 discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
@@ -195,10 +208,11 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Four hundred seventy-eight
+every ticket. Five hundred nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest/public-key-provider/async-public-key-provider tests cover fallback,
+signature-manifest/public-key-provider/async-public-key-provider/
+async-batch-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

@@ -1,7 +1,7 @@
 # File:
-#   - ticket_admission_telemetry_lineage_async_public_key_provider.py
+#   - ticket_admission_telemetry_lineage_public_key_batch_provider.py
 # Path:
-#   - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
+#   - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -16,30 +16,30 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Explicit sequential async public-key resolution for signature trust.
+#   - Explicit caller-controlled async batch public-key resolution.
 # - Must-Not:
-#   - Create event loops, spawn tasks, parallelize, discover, retry, cache,
+#   - Create event loops or tasks, choose concurrency, discover, retry, cache,
 #     persist, log key bytes, validate certificates, or change policy.
 # - Allows:
-#   - Inputs: one manifest, provider identity, and caller-supplied async port.
-#   - Outputs: manifest-bound caller-owned signature trust.
-#   - Side effects: one ordered awaited provider call per manifest entry.
+#   - Inputs: one manifest, provider identity, and caller-supplied batch port.
+#   - Outputs: one canonical batch request and manifest-bound signature trust.
+#   - Side effects: at most one awaited batch-provider call per resolution.
 # - Split-When:
-#   - Split when provider session lifecycle or concurrency gains a contract.
+#   - Split when provider session lifecycle gains a contract.
 # - Merge-When:
-#   - Merge when another module owns this exact async provider boundary.
+#   - Merge when another module owns this exact async batch boundary.
 # - Summary:
-#   - Caller-driven sequential async detached-key provider port.
+#   - Explicit async batch detached-key provider port.
 # - Description:
-#   - Awaits canonical requests without hidden scheduling or retained state.
+#   - Delegates all scheduling and concurrency decisions to the caller port.
 # - Usage:
-#   - Await from a caller-owned event loop, then verify signatures explicitly.
+#   - Await one caller-owned batch provider, then verify signatures explicitly.
 # - Defaults:
 #   - At most 256 requests; empty manifests make no provider calls.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
@@ -47,12 +47,14 @@
 #   - false
 #
 
-"""Sequential caller-driven async public-key provider for lineage trust."""
+"""Caller-controlled async batch public-key provider for lineage trust."""
 
 # ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from dataclasses import field
 from re import compile as compile_pattern
 from typing import Final
 from typing import Never
@@ -80,10 +82,12 @@ from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
     TicketAdmissionTelemetryLineagePublicKeyResultKind,
 )
 
-TICKET_ADMISSION_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_ID: Final = (
-    "explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1"
+_BATCH_PROVIDER_ID_PREFIX: Final = "explicit-async-batch-ticket-admission-"
+_BATCH_PROVIDER_ID_SUFFIX: Final = "telemetry-lineage-public-key-provider-v1"
+TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_BATCH_PROVIDER_ID: Final = (
+    f"{_BATCH_PROVIDER_ID_PREFIX}{_BATCH_PROVIDER_ID_SUFFIX}"
 )
-DEFAULT_MAX_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_REQUESTS: Final = (
+DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BATCH_PROVIDER_REQUESTS: Final = (
     DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_REQUESTS
 )
 
@@ -92,47 +96,65 @@ _IDENTIFIER_PATTERN: Final = compile_pattern(
 )
 
 
-class TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(ValueError):
-    """An explicit async public-key resolution is invalid or unsuccessful."""
+class TicketAdmissionTelemetryLineagePublicKeyBatchProviderError(ValueError):
+    """An explicit async batch resolution is invalid or unsuccessful."""
 
 
-class TicketAdmissionTelemetryLineageAsyncPublicKeyProvider(Protocol):
-    """Caller-supplied async resolver without scheduling or lifecycle policy."""
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionTelemetryLineagePublicKeyBatchRequest:
+    """One immutable canonical batch supplied to a caller-owned provider."""
+
+    manifest_fingerprint: str
+    provider_id: str
+    requests: tuple[TicketAdmissionTelemetryLineagePublicKeyRequest, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionTelemetryLineagePublicKeyBatchResult:
+    """One exact positional result tuple with hidden public-key material."""
+
+    results: tuple[TicketAdmissionTelemetryLineagePublicKeyResult, ...] = field(
+        repr=False
+    )
+
+
+class TicketAdmissionTelemetryLineagePublicKeyBatchProvider(Protocol):
+    """Caller-supplied async batch resolver with caller-owned concurrency."""
 
     async def __call__(
         self,
-        request: TicketAdmissionTelemetryLineagePublicKeyRequest,
-    ) -> TicketAdmissionTelemetryLineagePublicKeyResult:
-        """Return one typed result for an exact immutable request."""
+        request: TicketAdmissionTelemetryLineagePublicKeyBatchRequest,
+    ) -> TicketAdmissionTelemetryLineagePublicKeyBatchResult:
+        """Resolve one complete canonical batch."""
         ...
 
 
-def ticket_admission_telemetry_lineage_async_public_key_provider_id() -> str:
-    """Return the stable explicit async provider-port identity.
+def ticket_admission_telemetry_lineage_public_key_batch_provider_id() -> str:
+    """Return the stable explicit async batch-provider identity.
 
     Returns:
-        Versioned async provider-port identity.
+        Versioned batch-provider port identity.
 
     """
-    return TICKET_ADMISSION_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_ID
+    return TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_BATCH_PROVIDER_ID
 
 
-async def resolve_ticket_admission_telemetry_lineage_signature_trust_async(
+async def resolve_ticket_admission_telemetry_lineage_signature_trust_async_batch(
     manifest: m.TicketAdmissionTelemetryLineageSignatureTrustManifest,
-    provider: TicketAdmissionTelemetryLineageAsyncPublicKeyProvider,
+    provider: TicketAdmissionTelemetryLineagePublicKeyBatchProvider,
     *,
     provider_id: str,
     max_requests: int = (
-        DEFAULT_MAX_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_REQUESTS
+        DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BATCH_PROVIDER_REQUESTS
     ),
 ) -> TicketAdmissionTelemetryLineagePublicKeyProviderTrust:
-    """Resolve one signature manifest with ordered caller-driven awaits.
+    """Resolve one manifest through one caller-controlled async batch call.
 
     Returns:
         Manifest-bound signature trust and non-key request metadata.
 
     Raises:
-        TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError: Preflight,
+        TicketAdmissionTelemetryLineagePublicKeyBatchProviderError: Preflight,
             provider execution, result validation, or trust construction fails.
 
     """
@@ -147,7 +169,7 @@ async def resolve_ticket_admission_telemetry_lineage_signature_trust_async(
         m.TicketAdmissionTelemetryLineageSignatureTrustManifestError
     ) as error:
         message = f"invalid signature trust manifest: {error}"
-        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
+        raise TicketAdmissionTelemetryLineagePublicKeyBatchProviderError(
             message
         ) from error
     if len(manifest.entries) > request_limit:
@@ -157,18 +179,25 @@ async def resolve_ticket_admission_telemetry_lineage_signature_trust_async(
         manifest_fingerprint=manifest_id,
         provider_id=validated_provider_id,
     )
-    resolved = [
-        await _resolve_request(provider, request) for request in requests
-    ]
+    if requests:
+        batch = TicketAdmissionTelemetryLineagePublicKeyBatchRequest(
+            manifest_fingerprint=manifest_id,
+            provider_id=validated_provider_id,
+            requests=requests,
+        )
+        results = await _resolve_batch(provider, batch)
+    else:
+        results = ()
+    resolved = tuple(map(_resolved_public_key, requests, results, strict=True))
     try:
-        resolved_trust = _resolve_manifest(manifest, tuple(resolved))
+        resolved_trust = _resolve_manifest(manifest, resolved)
     except (
         m.TicketAdmissionTelemetryLineageSignatureTrustManifestError
     ) as error:
         message = (
-            f"cannot build async-provider-resolved signature trust: {error}"
+            f"cannot build batch-provider-resolved signature trust: {error}"
         )
-        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
+        raise TicketAdmissionTelemetryLineagePublicKeyBatchProviderError(
             message
         ) from error
     return TicketAdmissionTelemetryLineagePublicKeyProviderTrust(
@@ -232,31 +261,34 @@ def _requests(
     )
 
 
-async def _resolve_request(
-    provider: TicketAdmissionTelemetryLineageAsyncPublicKeyProvider,
-    request: TicketAdmissionTelemetryLineagePublicKeyRequest,
-) -> m.TicketAdmissionTelemetryLineageResolvedPublicKey:
+async def _resolve_batch(
+    provider: TicketAdmissionTelemetryLineagePublicKeyBatchProvider,
+    request: TicketAdmissionTelemetryLineagePublicKeyBatchRequest,
+) -> tuple[TicketAdmissionTelemetryLineagePublicKeyResult, ...]:
     try:
         result = await provider(request)
     except Exception as error:
-        message = (
-            f"provider raised during request index {request.request_index}"
-        )
-        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
+        message = "batch provider raised during resolution"
+        raise TicketAdmissionTelemetryLineagePublicKeyBatchProviderError(
             message
         ) from error
-    validated = _validated_result(result)
-    resolved_kind = TicketAdmissionTelemetryLineagePublicKeyResultKind.RESOLVED
-    if validated.kind is not resolved_kind:
-        detail = (
-            f"provider returned {validated.kind.value} at request index "
-            f"{request.request_index}"
-        )
-        _raise_provider(detail)
+    if type(result) is not TicketAdmissionTelemetryLineagePublicKeyBatchResult:
+        _raise_provider("result must use the exact batch result type")
+    if type(result.results) is not tuple:
+        _raise_provider("batch results must use the exact tuple type")
+    if len(result.results) != len(request.requests):
+        _raise_provider("batch result count does not match request count")
+    return result.results
+
+
+def _resolved_public_key(
+    request: TicketAdmissionTelemetryLineagePublicKeyRequest,
+    result: TicketAdmissionTelemetryLineagePublicKeyResult,
+) -> m.TicketAdmissionTelemetryLineageResolvedPublicKey:
+    validated = _validated_result(result, request_index=request.request_index)
     if type(validated.public_key) is not bytes:
-        _raise_provider(
-            "resolved provider result must use exact public-key bytes"
-        )
+        detail = f"resolved result needs exact bytes at index {request.request_index}"
+        _raise_provider(detail)
     return m.TicketAdmissionTelemetryLineageResolvedPublicKey(
         algorithm_id=request.algorithm_id,
         public_key=validated.public_key,
@@ -267,19 +299,27 @@ async def _resolve_request(
 
 def _validated_result(
     result: TicketAdmissionTelemetryLineagePublicKeyResult,
+    *,
+    request_index: int,
 ) -> TicketAdmissionTelemetryLineagePublicKeyResult:
     if type(result) is not TicketAdmissionTelemetryLineagePublicKeyResult:
-        _raise_provider("result must use the exact provider result type")
+        detail = f"result at index {request_index} must use the exact type"
+        _raise_provider(detail)
     if (
         type(result.kind)
         is not TicketAdmissionTelemetryLineagePublicKeyResultKind
     ):
-        _raise_provider("result kind must use the exact provider result enum")
+        detail = f"result kind at index {request_index} must use the exact enum"
+        _raise_provider(detail)
     resolved_kind = TicketAdmissionTelemetryLineagePublicKeyResultKind.RESOLVED
-    if result.kind is not resolved_kind and result.public_key is not None:
-        _raise_provider(
-            "nonresolved provider result cannot contain public-key bytes"
+    if result.kind is not resolved_kind:
+        if result.public_key is not None:
+            detail = f"nonresolved result has bytes at index {request_index}"
+            _raise_provider(detail)
+        detail = (
+            f"provider returned {result.kind.value} at index {request_index}"
         )
+        _raise_provider(detail)
     return result
 
 
@@ -299,6 +339,6 @@ def _validated_positive_limit(value: int, field_name: str) -> int:
 
 def _raise_provider(detail: str) -> Never:
     message = (
-        f"ticket admission telemetry lineage async public-key provider {detail}"
+        f"ticket admission telemetry lineage public-key batch provider {detail}"
     )
-    raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(message)
+    raise TicketAdmissionTelemetryLineagePublicKeyBatchProviderError(message)

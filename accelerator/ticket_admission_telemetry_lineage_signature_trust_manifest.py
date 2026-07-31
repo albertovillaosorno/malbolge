@@ -25,8 +25,7 @@
 #   - Outputs: canonical manifests and caller-owned signature trust sets.
 #   - Side effects: explicit bounded file reads and atomic replacement only.
 # - Split-When:
-#   - Split when provider sessions, explicit concurrency, certificates, or PKI
-#     gain contracts.
+#   - Split when provider sessions, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact public-key manifest boundary.
 # - Summary:
@@ -43,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
