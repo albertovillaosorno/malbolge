@@ -169,10 +169,11 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Three hundred eighty-eight
+facade resolves the same exact profile before reporting. Four hundred twenty-eight
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
-index/components/lineage/trust/manifest/provider/signature,
-twelve manifest, and fourteen runtime-identity tests prevent silent drift,
+index/components/lineage/trust/manifest/provider/signature/signature-trust/
+signature-manifest, twelve profile-manifest, and fourteen runtime-identity
+tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
 `bounded-ticket-admission-telemetry-v1` recorder retains completed reports;
@@ -293,6 +294,19 @@ fingerprint mismatch, unknown identities, out-of-window captures, and tampered
 trust metadata fail closed. Public-key bytes are hidden from representations. No
 manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
 policy authority is supplied.
+`ticket-admission-telemetry-lineage-signature-trust-manifest-v1` persists
+algorithm identity, public-key identity, one opaque public-key reference, the
+required exact public-key fingerprint, and inclusive capture windows as canonical
+key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite identity,
+requires globally unique references, publishes a stable SHA-256 fingerprint, and
+supports only explicit bounded reads or atomic replacement. Resolution requires
+exact caller-supplied algorithm/key/reference coverage and exact public-key bytes
+matching the persisted fingerprint before building manifest-bound in-memory
+signature trust. The same public-key ID may exist under distinct algorithms.
+Duplicate identities or references, malformed or noncanonical JSON, incomplete or
+excessive coverage, reference or fingerprint mismatch, and storage failures fail
+closed. No public-key bytes, provider, certificate, PKI, trust discovery, algorithm
+selection, or policy authority are supplied.
 There is no built-in secret provider, discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
 merge, route recommendation, evidence promotion, or policy update.
@@ -302,7 +316,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, external public-key manifests/providers, certificates,
+signature algorithms, external public-key providers, certificates,
 PKI/trust distribution, and automatic adaptive queue/resource feedback remain
 open.
 

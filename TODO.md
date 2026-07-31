@@ -1654,6 +1654,19 @@ fingerprint mismatch, unknown identities, out-of-window captures, and tampered
 trust metadata fail closed. Public-key bytes are hidden from representations. No
 manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
 policy authority is supplied.
+`ticket-admission-telemetry-lineage-signature-trust-manifest-v1` persists
+algorithm identity, public-key identity, one opaque public-key reference, the
+required exact public-key fingerprint, and inclusive capture windows as canonical
+key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite identity,
+requires globally unique references, publishes a stable SHA-256 fingerprint, and
+supports only explicit bounded reads or atomic replacement. Resolution requires
+exact caller-supplied algorithm/key/reference coverage and exact public-key bytes
+matching the persisted fingerprint before building manifest-bound in-memory
+signature trust. The same public-key ID may exist under distinct algorithms.
+Duplicate identities or references, malformed or noncanonical JSON, incomplete or
+excessive coverage, reference or fingerprint mismatch, and storage failures fail
+closed. No public-key bytes, provider, certificate, PKI, trust discovery, algorithm
+selection, or policy authority are supplied.
 There is no built-in secret provider, discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
 merge, route recommendation, or policy authority. The retained
@@ -1663,11 +1676,10 @@ merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Three hundred eighty-eight
+every ticket. Four hundred twenty-eight
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
-index/components/lineage/trust/manifest/provider/signature/signature-trust
-tests cover
-fallback,
+index/components/lineage/trust/manifest/provider/signature/signature-trust/
+signature-manifest tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
@@ -1696,7 +1708,7 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
-signature algorithms, external public-key manifests/providers, certificates,
+signature algorithms, external public-key providers, certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.
 

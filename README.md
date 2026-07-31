@@ -232,12 +232,12 @@ snapshots. A transitive component is only a review aid, not pairwise equivalence
 Authenticated lineage requires caller-selected trust and still grants no merge,
 route, or admission authority. Caller-owned HMAC rotation, secret-free manifests,
 an explicit synchronous secret-provider port, detached public-key signer/verifier
-ports, bounded in-memory public-key trust, a caller-owned alternate telemetry store,
-and lossless explicit schema-v1/schema-v2 migration exist. No concrete public-key
-signature algorithm, external public-key manifest/provider, certificate chain, PKI,
-automatic discovery, retry, cache, provider lifecycle, or automatic trust loading
-is supplied. Observations do not promote routes automatically and never replace
-retained benchmark evidence.
+ports, bounded in-memory public-key trust, a canonical key-free public-key trust
+manifest, a caller-owned alternate telemetry store, and lossless explicit
+schema-v1/schema-v2 migration exist. No concrete public-key signature algorithm,
+external public-key provider, certificate chain, PKI, automatic discovery, retry,
+cache, provider lifecycle, or automatic trust loading is supplied. Observations do
+not promote routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

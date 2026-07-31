@@ -171,10 +171,10 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Three hundred eighty-eight
+  only after exact profile resolution. Four hundred twenty-eight
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
-  index/components/lineage/trust/manifest/provider/signature tests
-  cover report
+  index/components/lineage/trust/manifest/provider/signature/signature-trust/
+  signature-manifest tests cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
   contracts. The schema-v4 product registry is reconstructed byte-for-byte from
@@ -300,10 +300,23 @@ example probe points, not supported-range endpoints.
   trust metadata fail closed. Public-key bytes are hidden from representations. No
   manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
   policy authority is supplied.
+  `ticket-admission-telemetry-lineage-signature-trust-manifest-v1` persists
+  algorithm identity, public-key identity, one opaque public-key reference, the
+  required exact public-key fingerprint, and inclusive capture windows as canonical
+  key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite identity,
+  requires globally unique references, publishes a stable SHA-256 fingerprint, and
+  supports only explicit bounded reads or atomic replacement. Resolution requires
+  exact caller-supplied algorithm/key/reference coverage and exact public-key bytes
+  matching the persisted fingerprint before building manifest-bound in-memory
+  signature trust. The same public-key ID may exist under distinct algorithms.
+  Duplicate identities or references, malformed or noncanonical JSON, incomplete or
+  excessive coverage, reference or fingerprint mismatch, and storage failures fail
+  closed. No public-key bytes, provider, certificate, PKI, trust discovery,
+  algorithm selection, or policy authority are supplied.
   There is no built-in secret provider, discovery, retry, retained cache,
   persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
   merge, route recommendation, or policy authority. Other hosts, Python versions,
   drivers, devices/workloads, concrete public-key signature algorithms,
-  external public-key manifests/providers, certificates, and PKI/trust
-  distribution, and automatic adaptive queue/resource feedback remain
+  external public-key providers, certificates, and PKI/trust distribution,
+  and automatic adaptive queue/resource feedback remain
   open.
