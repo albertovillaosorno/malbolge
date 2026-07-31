@@ -25,7 +25,8 @@
 #   - Outputs: request, resolution, rotation, and failure assertions.
 #   - Side effects: explicit in-process provider calls only.
 # - Split-When:
-#   - Split when asynchronous providers, certificates, or PKI gain tests.
+#   - Split when provider sessions, explicit concurrency, certificates, or PKI
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact public-key provider behavior.
 # - Summary:
@@ -39,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #

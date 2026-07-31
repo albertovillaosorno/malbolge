@@ -171,10 +171,10 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Four hundred fifty-three
+  only after exact profile resolution. Four hundred seventy-eight
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/signature/signature-trust/
-  signature-manifest/public-key-provider tests cover report
+  signature-manifest/public-key-provider/async-public-key-provider tests cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
   contracts. The schema-v4 product registry is reconstructed byte-for-byte from
@@ -325,11 +325,25 @@ example probe points, not supported-range endpoints.
   the manifest fingerprint before in-memory signature trust is constructed. No
   provider discovery, built-in key service, retry, cache, persistence, hidden worker,
   certificate validation, PKI, algorithm selection, or policy authority is supplied.
+  `explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
+  accepts one caller-supplied async provider and reuses the synchronous request,
+  result, and resolved-trust contracts. The caller owns and starts the coroutine and
+  event loop. Manifest, provider identity, and the default 256-request budget are
+  validated before the first provider await. Requests are awaited sequentially in
+  canonical `(algorithm_id, public_key_id)` order, with no task creation or hidden
+  parallelism; each entry is awaited exactly once and repeated explicit resolution
+  performs a fresh walk. Typed non-success stops without retry. Ordinary provider
+  exceptions become stable boundary errors without vendor text, while cancellation
+  propagates to the caller. Exact public-key fingerprints are checked before trust
+  construction. No event loop, task, provider session lifecycle, concurrency policy,
+  discovery, retry, cache, persistence, certificate validation, PKI, algorithm
+  selection, or admission authority is supplied.
   There is no built-in secret-provider or public-key-provider implementation,
   discovery, retry, retained cache,
   persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
   merge, route recommendation, or policy authority. Other hosts, Python versions,
   drivers, devices/workloads, concrete public-key signature algorithms,
-  asynchronous public-key provider lifecycles, certificates, and PKI/trust
+  public-key provider session lifecycles, explicit concurrency, certificates,
+  and PKI/trust
   distribution, and automatic adaptive queue/resource feedback remain
   open.

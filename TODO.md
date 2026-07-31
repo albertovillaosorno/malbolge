@@ -1679,6 +1679,19 @@ fresh provider walk. Resolved bytes are hidden from representations and must mat
 the manifest fingerprint before in-memory signature trust is constructed. No
 provider discovery, built-in key service, retry, cache, persistence, hidden worker,
 certificate validation, PKI, algorithm selection, or policy authority is supplied.
+`explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
+accepts one caller-supplied async provider and reuses the synchronous request,
+result, and resolved-trust contracts. The caller owns and starts the coroutine and
+event loop. Manifest, provider identity, and the default 256-request budget are
+validated before the first provider await. Requests are awaited sequentially in
+canonical `(algorithm_id, public_key_id)` order, with no task creation or hidden
+parallelism; each entry is awaited exactly once and repeated explicit resolution
+performs a fresh walk. Typed non-success stops without retry. Ordinary provider
+exceptions become stable boundary errors without vendor text, while cancellation
+propagates to the caller. Exact public-key fingerprints are checked before trust
+construction. No event loop, task, provider session lifecycle, concurrency policy,
+discovery, retry, cache, persistence, certificate validation, PKI, algorithm
+selection, or admission authority is supplied.
 There is no built-in secret-provider or public-key-provider implementation,
 discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
@@ -1689,10 +1702,10 @@ merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Four hundred fifty-three
+every ticket. Four hundred seventy-eight
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest/public-key-provider tests cover fallback,
+signature-manifest/public-key-provider/async-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
@@ -1721,7 +1734,7 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
-signature algorithms, asynchronous public-key provider lifecycles,
+signature algorithms, public-key provider session lifecycles and explicit concurrency,
 certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.

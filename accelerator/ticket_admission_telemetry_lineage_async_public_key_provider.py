@@ -1,7 +1,7 @@
 # File:
-#   - ticket_admission_telemetry_lineage_public_key_provider.py
+#   - ticket_admission_telemetry_lineage_async_public_key_provider.py
 # Path:
-#   - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
+#   - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -16,53 +16,46 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Explicit synchronous public-key provider for signature trust manifests.
+#   - Explicit sequential async public-key resolution for signature trust.
 # - Must-Not:
-#   - Discover, retry, cache, persist, log key bytes, spawn workers, select
-#     algorithms, validate certificates, or change policy.
+#   - Create event loops, spawn tasks, parallelize, discover, retry, cache,
+#     persist, log key bytes, validate certificates, or change policy.
 # - Allows:
-#   - Inputs: one manifest, provider identity, and caller-supplied port.
-#   - Outputs: immutable requests and manifest-bound signature trust.
-#   - Side effects: exactly one explicit provider call per manifest entry.
+#   - Inputs: one manifest, provider identity, and caller-supplied async port.
+#   - Outputs: manifest-bound caller-owned signature trust.
+#   - Side effects: one ordered awaited provider call per manifest entry.
 # - Split-When:
-#   - Split when provider sessions, explicit concurrency, certificates, or PKI
-#     gain contracts.
+#   - Split when provider session lifecycle or concurrency gains a contract.
 # - Merge-When:
-#   - Merge when another module owns this live public-key provider boundary.
+#   - Merge when another module owns this exact async provider boundary.
 # - Summary:
-#   - Explicit one-pass detached-lineage public-key provider port.
+#   - Caller-driven sequential async detached-key provider port.
 # - Description:
-#   - Resolves canonical references without discovery or retained caches.
+#   - Awaits canonical requests without hidden scheduling or retained state.
 # - Usage:
-#   - Pass one provider explicitly, resolve once, then verify signatures.
+#   - Await from a caller-owned event loop, then verify signatures explicitly.
 # - Defaults:
 #   - At most 256 requests; empty manifests make no provider calls.
 #
 # Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:
 #   - false
 #
 
-"""Explicit one-pass public-key provider for detached lineage trust."""
+"""Sequential caller-driven async public-key provider for lineage trust."""
 
-# ruff: file-ignore[line-too-long]
+# ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
-from enum import StrEnum
 from re import compile as compile_pattern
 from typing import Final
 from typing import Never
 from typing import Protocol
-from typing import TYPE_CHECKING
 
 from accelerator import (
     ticket_admission_telemetry_lineage_signature_trust_manifest as m,
@@ -70,17 +63,27 @@ from accelerator import (
 from accelerator.ticket_admission_telemetry_lineage import (
     MAX_TELEMETRY_LINEAGE_IDENTIFIER_LENGTH,
 )
-
-if TYPE_CHECKING:
-    from accelerator.ticket_admission_telemetry_lineage_signature_trust import (
-        TicketAdmissionTelemetryLineageSignatureTrust,
-    )
-
-TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_ID: Final = (
-    "explicit-ticket-admission-telemetry-lineage-public-key-provider-v1"
+from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
+    DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_REQUESTS,
 )
-DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_REQUESTS: Final = (
-    m.DEFAULT_MAX_TELEMETRY_LINEAGE_SIGNATURE_TRUST_MANIFEST_ENTRIES
+from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
+    TicketAdmissionTelemetryLineagePublicKeyProviderTrust,
+)
+from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
+    TicketAdmissionTelemetryLineagePublicKeyRequest,
+)
+from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
+    TicketAdmissionTelemetryLineagePublicKeyResult,
+)
+from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
+    TicketAdmissionTelemetryLineagePublicKeyResultKind,
+)
+
+TICKET_ADMISSION_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_ID: Final = (
+    "explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1"
+)
+DEFAULT_MAX_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_REQUESTS: Final = (
+    DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_REQUESTS
 )
 
 _IDENTIFIER_PATTERN: Final = compile_pattern(
@@ -88,45 +91,14 @@ _IDENTIFIER_PATTERN: Final = compile_pattern(
 )
 
 
-class TicketAdmissionTelemetryLineagePublicKeyProviderError(ValueError):
-    """An explicit public-key provider request or result is invalid."""
+class TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(ValueError):
+    """An explicit async public-key resolution is invalid or unsuccessful."""
 
 
-@dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineagePublicKeyRequest:
-    """One immutable manifest-bound request for exact public-key bytes."""
+class TicketAdmissionTelemetryLineageAsyncPublicKeyProvider(Protocol):
+    """Caller-supplied async resolver without scheduling or lifecycle policy."""
 
-    algorithm_id: str
-    first_capture_sequence_id: int
-    last_capture_sequence_id: int | None
-    manifest_fingerprint: str
-    provider_id: str
-    public_key_fingerprint: str
-    public_key_id: str
-    public_key_reference_id: str
-    request_index: int
-
-
-class TicketAdmissionTelemetryLineagePublicKeyResultKind(StrEnum):
-    """Stable provider outcome without exception or vendor text."""
-
-    RESOLVED = "resolved"
-    UNAVAILABLE = "unavailable"
-    FAILED = "failed"
-
-
-@dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineagePublicKeyResult:
-    """Typed provider outcome with hidden optional public-key bytes."""
-
-    kind: TicketAdmissionTelemetryLineagePublicKeyResultKind
-    public_key: bytes | None = field(default=None, repr=False)
-
-
-class TicketAdmissionTelemetryLineagePublicKeyProvider(Protocol):
-    """Synchronous caller-supplied resolver without a lifecycle contract."""
-
-    def __call__(
+    async def __call__(
         self,
         request: TicketAdmissionTelemetryLineagePublicKeyRequest,
     ) -> TicketAdmissionTelemetryLineagePublicKeyResult:
@@ -134,47 +106,33 @@ class TicketAdmissionTelemetryLineagePublicKeyProvider(Protocol):
         ...
 
 
-@dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineagePublicKeyProviderTrust:
-    """Manifest-bound trust and non-key provider request metadata."""
-
-    algorithm_ids: tuple[str, ...]
-    manifest_fingerprint: str
-    provider_id: str
-    public_key_fingerprints: tuple[str, ...]
-    public_key_ids: tuple[str, ...]
-    public_key_reference_ids: tuple[str, ...]
-    request_count: int
-    trust: TicketAdmissionTelemetryLineageSignatureTrust
-
-
-def ticket_admission_telemetry_lineage_public_key_provider_id() -> str:
-    """Return the stable explicit public-key provider port identity.
+def ticket_admission_telemetry_lineage_async_public_key_provider_id() -> str:
+    """Return the stable explicit async provider-port identity.
 
     Returns:
-        Versioned provider-port identity.
+        Versioned async provider-port identity.
 
     """
-    return TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_ID
+    return TICKET_ADMISSION_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_ID
 
 
-def resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider(
+async def resolve_ticket_admission_telemetry_lineage_signature_trust_async(
     manifest: m.TicketAdmissionTelemetryLineageSignatureTrustManifest,
-    provider: TicketAdmissionTelemetryLineagePublicKeyProvider,
+    provider: TicketAdmissionTelemetryLineageAsyncPublicKeyProvider,
     *,
     provider_id: str,
     max_requests: int = (
-        DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_PROVIDER_REQUESTS
+        DEFAULT_MAX_TELEMETRY_LINEAGE_ASYNC_PUBLIC_KEY_PROVIDER_REQUESTS
     ),
 ) -> TicketAdmissionTelemetryLineagePublicKeyProviderTrust:
-    """Resolve one signature manifest through an explicit provider.
+    """Resolve one signature manifest with ordered caller-driven awaits.
 
     Returns:
-        Manifest-bound caller-owned signature trust and request metadata.
+        Manifest-bound signature trust and non-key request metadata.
 
     Raises:
-        TicketAdmissionTelemetryLineagePublicKeyProviderError: Validation,
-            provider execution, or trust construction fails.
+        TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError: Preflight,
+            provider execution, result validation, or trust construction fails.
 
     """
     validated_provider_id = _validated_identifier(
@@ -188,7 +146,7 @@ def resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider(
         m.TicketAdmissionTelemetryLineageSignatureTrustManifestError
     ) as error:
         message = f"invalid signature trust manifest: {error}"
-        raise TicketAdmissionTelemetryLineagePublicKeyProviderError(
+        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
             message
         ) from error
     if len(manifest.entries) > request_limit:
@@ -198,16 +156,18 @@ def resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider(
         manifest_fingerprint=manifest_id,
         provider_id=validated_provider_id,
     )
-    resolved = tuple(
-        _resolve_request(provider, request) for request in requests
-    )
+    resolved = [
+        await _resolve_request(provider, request) for request in requests
+    ]
     try:
-        resolved_trust = _resolve_manifest(manifest, resolved)
+        resolved_trust = _resolve_manifest(manifest, tuple(resolved))
     except (
         m.TicketAdmissionTelemetryLineageSignatureTrustManifestError
     ) as error:
-        message = f"cannot build provider-resolved signature trust: {error}"
-        raise TicketAdmissionTelemetryLineagePublicKeyProviderError(
+        message = (
+            f"cannot build async-provider-resolved signature trust: {error}"
+        )
+        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
             message
         ) from error
     return TicketAdmissionTelemetryLineagePublicKeyProviderTrust(
@@ -271,11 +231,19 @@ def _requests(
     )
 
 
-def _resolve_request(
-    provider: TicketAdmissionTelemetryLineagePublicKeyProvider,
+async def _resolve_request(
+    provider: TicketAdmissionTelemetryLineageAsyncPublicKeyProvider,
     request: TicketAdmissionTelemetryLineagePublicKeyRequest,
 ) -> m.TicketAdmissionTelemetryLineageResolvedPublicKey:
-    result = provider(request)
+    try:
+        result = await provider(request)
+    except Exception as error:
+        message = (
+            f"provider raised during request index {request.request_index}"
+        )
+        raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(
+            message
+        ) from error
     validated = _validated_result(result)
     resolved_kind = TicketAdmissionTelemetryLineagePublicKeyResultKind.RESOLVED
     if validated.kind is not resolved_kind:
@@ -329,5 +297,7 @@ def _validated_positive_limit(value: int, field_name: str) -> int:
 
 
 def _raise_provider(detail: str) -> Never:
-    message = f"ticket admission telemetry lineage public-key provider {detail}"
-    raise TicketAdmissionTelemetryLineagePublicKeyProviderError(message)
+    message = (
+        f"ticket admission telemetry lineage async public-key provider {detail}"
+    )
+    raise TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError(message)

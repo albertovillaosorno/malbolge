@@ -169,10 +169,11 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Four hundred fifty-three
+facade resolves the same exact profile before reporting. Four hundred seventy-eight
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest/public-key-provider, twelve profile-manifest, and fourteen
+signature-manifest/public-key-provider/async-public-key-provider,
+twelve profile-manifest, and fourteen
 runtime-identity
 tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
@@ -320,6 +321,19 @@ fresh provider walk. Resolved bytes are hidden from representations and must mat
 the manifest fingerprint before in-memory signature trust is constructed. No
 provider discovery, built-in key service, retry, cache, persistence, hidden worker,
 certificate validation, PKI, algorithm selection, or policy authority is supplied.
+`explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
+accepts one caller-supplied async provider and reuses the synchronous request,
+result, and resolved-trust contracts. The caller owns and starts the coroutine and
+event loop. Manifest, provider identity, and the default 256-request budget are
+validated before the first provider await. Requests are awaited sequentially in
+canonical `(algorithm_id, public_key_id)` order, with no task creation or hidden
+parallelism; each entry is awaited exactly once and repeated explicit resolution
+performs a fresh walk. Typed non-success stops without retry. Ordinary provider
+exceptions become stable boundary errors without vendor text, while cancellation
+propagates to the caller. Exact public-key fingerprints are checked before trust
+construction. No event loop, task, provider session lifecycle, concurrency policy,
+discovery, retry, cache, persistence, certificate validation, PKI, algorithm
+selection, or admission authority is supplied.
 There is no built-in secret-provider or public-key-provider implementation,
 discovery, retry, retained cache, persistence, asynchronous provider lifecycle,
 automatic trust loading, snapshot merge, route recommendation, evidence
@@ -329,7 +343,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, asynchronous public-key provider lifecycles,
+signature algorithms, public-key provider session lifecycles and explicit concurrency,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 
