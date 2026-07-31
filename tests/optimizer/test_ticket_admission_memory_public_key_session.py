@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_s.py
 #

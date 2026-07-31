@@ -169,10 +169,10 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Seven hundred
+facade resolves the same exact profile before reporting. Seven hundred seventy-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest/public-key-provider/async-public-key-provider/
+signature-manifest/public-key-bundle/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider,
 twelve profile-manifest, and fourteen
@@ -423,10 +423,25 @@ lifecycle calls for empty manifests, and closes after success or batch failure. 
 adapter creates no event loop, task, lock, concurrency, sleep, artificial yield,
 file, environment, network, discovery, retry, persistence, certificate validation,
 PKI, algorithm selection, or policy operation.
+`ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one explicit
+bounded public-key service as canonical compact UTF-8 JSON. Unlike the key-free
+trust manifest, this separate document intentionally contains public-key bytes as
+lowercase hexadecimal. Construction reuses the memory provider to validate exact
+bytes, fingerprints, identities, windows, uniqueness, cardinality, and reference
+ordering. Encoding uses sorted keys and one trailing newline; decoding requires byte
+identity with that canonical encoding, rejects duplicate or unknown JSON keys, and
+is bounded by 256 entries and 1 MiB by default. Explicit writes atomically replace
+one caller-selected path. Explicit reads consume at most the configured byte limit.
+Each explicit load rereads the path, fingerprints canonical bytes, and builds a new
+caller-owned memory provider with hidden key material and stable non-key metadata.
+There is no path discovery, automatic loading, watch, retained cache, retry, network
+fetch, session creation, certificate validation, PKI, algorithm selection, or policy
+operation.
 The built-in public-key implementations are the bounded caller-owned memory
-service, its inline sequential and batch async adapters, and its serial
-session adapter. There is no built-in secret provider or external key
-service. No session is opened automatically; there is no discovery, retry,
+service, its inline sequential and batch async adapters, its serial session
+adapter, and explicit canonical file bundles. There is no built-in secret
+provider or network key service. No bundle or session is loaded automatically;
+there is no discovery, retry,
 retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
 update. The registry now selects at most one
@@ -435,8 +450,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, external public-key
-services,
+signature algorithms, network public-key services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 

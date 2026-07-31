@@ -25,7 +25,7 @@
 #   - Outputs: one inline batch provider and exact typed close outcomes.
 #   - Side effects: caller-owned serial lifecycle state only.
 # - Split-When:
-#   - Split when external services, certificates, or PKI gain contracts.
+#   - Split when network services, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact memory-session adaptation.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_s.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
