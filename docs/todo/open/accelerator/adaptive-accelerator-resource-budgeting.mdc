@@ -171,8 +171,9 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. One hundred fourteen
-  admission/telemetry/persistence/summary/collection/overlap/index/components tests
+  only after exact profile resolution. One hundred thirty-eight
+  admission/telemetry/persistence/summary/collection/overlap/index/components/
+  lineage tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -225,9 +226,19 @@ example probe points, not supported-range endpoints.
   match in total and neither FIFO has conflicting sequence IDs. It retains
   singleton isolates, fingerprints sorted members and direct edges, and publishes
   direct/possible/missing edge counts plus a clique flag. A transitive bridge is
-  not pairwise equivalence or recorder lineage. None of these surfaces merge
-  snapshots, recommend routes, or modify admission. There is no automatic loading,
-  hidden worker, automatic promotion, or policy authority. Other hosts, Python
-  versions, drivers, devices/workloads, telemetry schema migration or alternate
-  stores, authenticated recorder lineage attribution, and automatic adaptive
+  not pairwise equivalence or recorder lineage.
+  `authenticated-ticket-admission-telemetry-lineage-v1` separately binds the exact
+  document fingerprint to caller-supplied recorder, completed/failed stream,
+  capture sequence, key, and optional immediate-predecessor identities. Canonical
+  HMAC-SHA-256 uses at least 32 caller-owned secret bytes and stores no secret.
+  Explicit verification requires the trusted key identity and secret. Forks,
+  adjacent predecessor mismatch, nonadjacent direct links, MAC/document mismatch,
+  and hash collisions fail closed. Different recorder or stream identities remain
+  separate lineages; ordered gaps are common lineage without a direct link. The
+  caller owns key legitimacy. There is no asymmetric signature, key rotation,
+  PKI, or trust store. None of these surfaces merge snapshots, recommend routes,
+  or modify admission. There is no automatic loading, hidden worker, automatic
+  promotion, or policy authority. Other hosts, Python versions, drivers,
+  devices/workloads, telemetry schema migration or alternate stores, asymmetric
+  lineage signatures, key rotation, external trust stores, and automatic adaptive
   queue/resource feedback remain open.

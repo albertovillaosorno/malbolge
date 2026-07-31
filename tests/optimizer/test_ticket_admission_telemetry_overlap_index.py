@@ -25,7 +25,7 @@
 #     assertions.
 #   - Side effects: temporary monkeypatching of the local pair comparator.
 # - Split-When:
-#   - Split when authenticated lineage or recommendations gain a protocol.
+#   - Split when asymmetric lineage or recommendations gain a protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact all-pairs index behavior.
 # - Summary:
@@ -40,6 +40,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
 #   - false

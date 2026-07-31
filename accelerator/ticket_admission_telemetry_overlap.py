@@ -24,7 +24,7 @@
 #   - Outputs: immutable symmetric completed/failed overlap reports.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when authenticated lineage or recommendations gain a contract.
+#   - Split when asymmetric lineage or recommendations gain a contract.
 # - Merge-When:
 #   - Merge when another module owns this exact pairwise overlap boundary.
 # - Summary:
@@ -42,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:

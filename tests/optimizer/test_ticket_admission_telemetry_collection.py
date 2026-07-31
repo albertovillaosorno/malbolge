@@ -25,7 +25,7 @@
 #     assertions.
 #   - Side effects: temporary monkeypatching of the local digest constructor.
 # - Split-When:
-#   - Split when authenticated lineage gains an evidence protocol.
+#   - Split when asymmetric lineage gains an evidence protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact collection identity behavior.
 # - Summary:
@@ -42,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_overlap.py
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
 #   - false

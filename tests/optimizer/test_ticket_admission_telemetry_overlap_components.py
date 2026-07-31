@@ -26,7 +26,7 @@
 #   - Side effects: temporary monkeypatching of the component digest
 #     constructor.
 # - Split-When:
-#   - Split when authenticated lineage or recommendation policy gains a
+#   - Split when asymmetric lineage or recommendation policy gains a
 #     protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact compatibility-graph behavior.
@@ -42,6 +42,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
 #   - false

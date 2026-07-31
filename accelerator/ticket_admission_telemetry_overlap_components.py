@@ -24,7 +24,7 @@
 #   - Outputs: immutable compatibility edges and connected review components.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when authenticated lineage or recommendation policy gains a
+#   - Split when asymmetric lineage or recommendation policy gains a
 #     contract.
 # - Merge-When:
 #   - Merge when another module owns this exact compatibility-graph boundary.

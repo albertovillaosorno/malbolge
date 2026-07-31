@@ -310,17 +310,26 @@ isolated unique documents, fingerprints each component, and publishes member,
 direct, possible, and missing edge counts plus a clique flag. A bridged component
 may contain member pairs with no direct edge, so connectivity is neither pairwise
 equivalence nor recorder lineage. Component fingerprint collisions fail closed.
-None of these surfaces merge snapshots, recommend routes, or modify admission.
-There is no automatic loading, hidden worker, automatic promotion, or policy
-authority. The retained
+`authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
+document fingerprint to caller-supplied recorder, completed/failed stream, capture
+sequence, key, and optional immediate-predecessor identities. Canonical
+HMAC-SHA-256 uses at least 32 caller-owned secret bytes; the secret is never stored.
+Verification requires an explicit trusted key identity and secret. Same-sequence
+forks, adjacent predecessor mismatch, nonadjacent direct links, MAC mismatch, and
+fingerprint collisions fail closed. Different recorder or stream identities remain
+separate lineages; ordered gaps are common lineage without a direct link. The
+caller owns key legitimacy. There is no asymmetric signature, key rotation, PKI,
+or trust store. None of these surfaces merge snapshots, recommend routes, or
+modify admission. There is no automatic loading, hidden worker, automatic
+promotion, or policy authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One hundred fourteen admission/telemetry/persistence/summary/
-collection/overlap/index/components tests cover fallback, positive/negative
+every ticket. One hundred thirty-eight admission/telemetry/persistence/summary/
+collection/overlap/index/components/lineage tests cover fallback, positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact

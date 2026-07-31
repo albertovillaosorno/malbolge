@@ -24,7 +24,7 @@
 #   - Outputs: symmetric range, match, conflict, and collision assertions.
 #   - Side effects: temporary monkeypatching of the local digest constructor.
 # - Split-When:
-#   - Split when authenticated lineage or recommendations gain a protocol.
+#   - Split when asymmetric lineage or recommendations gain a protocol.
 # - Merge-When:
 #   - Merge when another suite owns this exact pairwise comparison behavior.
 # - Summary:
@@ -40,6 +40,7 @@
 # - accelerator/ticket_admission_telemetry_overlap.py
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
 #   - false

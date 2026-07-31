@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One hundred fourteen
-admission/telemetry/persistence/summary/collection/overlap/index/components,
+facade resolves the same exact profile before reporting. One hundred thirty-eight
+admission/telemetry/persistence/summary/collection/overlap/index/components/lineage,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -216,16 +216,26 @@ stable SHA-256 identity over sorted members and direct edges, direct/possible/mi
 edge counts, and a clique flag. A transitive bridge may connect documents that have
 no direct edge, so connectivity is not pairwise equivalence or recorder lineage.
 Matching observations may be coincidental; pairwise, indexed, and component review
-never merges snapshots, recommends routes, promotes evidence, or updates policy.
-There is no automatic loading.
+never attributes lineage.
+`authenticated-ticket-admission-telemetry-lineage-v1` separately binds the exact
+canonical document fingerprint to caller-supplied recorder, completed/failed stream,
+capture sequence, key, and optional immediate-predecessor identities. Canonical
+HMAC-SHA-256 uses a caller-owned secret of at least 32 bytes and stores only the
+key identity and MAC. Explicit verification reselects the trusted key identity and
+secret. Same-sequence forks, adjacent predecessor mismatch, nonadjacent direct
+links, MAC mismatch, document mismatch, and hash collisions fail closed. Different
+recorder or stream identities are not common lineage; ordered gaps retain common
+lineage without a direct link. Key legitimacy remains caller-owned. There is no
+asymmetric signature, key rotation, PKI, trust store, automatic loading, snapshot
+merge, route recommendation, evidence promotion, or policy update.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, authenticated recorder lineage attribution, and
-automatic adaptive queue/resource feedback remain open.
+migration or alternate stores, asymmetric lineage signatures, key rotation,
+external trust stores, and automatic adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

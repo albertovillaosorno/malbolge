@@ -41,6 +41,12 @@ classifications independently for completed and failed FIFOs. A compatibility
 graph selects only nonconflicting pairs with at least one exact retained match,
 retains isolated documents, and distinguishes direct cliques from transitive
 bridges. Connectivity is not pairwise equivalence or recorder lineage.
+`authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
+document fingerprint to caller-supplied recorder, completed/failed stream, capture
+sequence, key, and optional immediate-predecessor identities with canonical
+HMAC-SHA-256. The secret is never stored; verification requires the caller to
+select the trusted key identity and provide at least 32 secret bytes. Capture
+forks, adjacent predecessor mismatch, and nonadjacent direct links fail closed.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -190,7 +196,9 @@ duplicate, unknown, oversized, or noncanonical input fails closed. Offline
 summaries never recommend routes or modify admission. Pairwise, indexed, and
 component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
-Observations do not promote routes automatically and never replace retained
+Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
+route, or admission authority. There is no built-in PKI, key rotation, or trust
+store. Observations do not promote routes automatically and never replace retained
 benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
