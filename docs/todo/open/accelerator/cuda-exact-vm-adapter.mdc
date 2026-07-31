@@ -429,6 +429,15 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   removal releases budgets. Invalid input, overflow, collisions, and retained
   decode failures fail closed. There is no filesystem I/O, automatic loading,
   summary, merge, recommendation, lineage inference, or route change.
+  `ticket-admission-telemetry-schema-migration-v1` publishes an explicit lossless
+  1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+  sorted JSON wrapping the exact canonical schema-v1 bytes as standard Base64 plus
+  the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
+  defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096 observations
+  per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
+  unchanged. Schema-v2 adds no telemetry semantics. There is no automatic migration,
+  file loading, snapshot reinterpretation, merge, recommendation, lineage inference,
+  or policy change.
   `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
   and groups exact execution contexts into integer outcomes, estimate comparisons,
   retention ranges, stable failure counts, and sorted evidence appearances.
@@ -483,9 +492,9 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. Two hundred fifty
-  admission/telemetry/persistence/store/summary/collection/overlap/index/
-  components/lineage/trust/manifest/provider tests cover fallback,
+  closes every ticket. Two hundred ninety-nine
+  admission/telemetry/persistence/store/migration/summary/collection/
+  overlap/index/components/lineage/trust/manifest/provider tests cover fallback,
   positive/negative evidence, duplicate/malformed records, exact profile matching,
   seven isolated runtime drifts, multi-profile selection, invalid/unknown workloads,
   ambiguity, and three live CUDA routes. The seven route records

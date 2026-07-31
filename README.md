@@ -34,8 +34,16 @@ to 4,096 unique documents and 16 MiB, treats exact duplicate puts as idempotent,
 and exposes only explicit put/get/remove/snapshot operations. Limits are immutable,
 removal releases budget, snapshots are fingerprint-ordered, and collisions or
 corrupted retained bytes fail closed. It performs no filesystem I/O, automatic
-loading, summaries, merging, recommendations, or policy changes. A deterministic
-offline summary groups one document by exact
+loading, summaries, merging, recommendations, or policy changes.
+`ticket-admission-telemetry-schema-migration-v1` publishes a fixed lossless
+1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+sorted JSON containing the exact canonical schema-v1 bytes as standard Base64,
+plus the required schema-v1 document identity and SHA-256 fingerprint. Versioned
+decoding defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
+observations per FIFO. Upgrade and downgrade are explicit; schema-v1 bytes remain
+unchanged. There is no automatic migration, file loading, snapshot
+reinterpretation, merge, recommendation, lineage inference, or policy change.
+A deterministic offline summary groups one document by exact
 execution context and exposes only integer totals, retention ranges, stable
 failure categories, and selected-evidence appearance counts. Explicit document
 collections assign canonical SHA-256 identities and deduplicate only byte-identical
@@ -223,11 +231,11 @@ component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
 route, or admission authority. Caller-owned bounded rotation, secret-free
-manifests, an explicit synchronous provider port, and a caller-owned alternate
-telemetry store exist, but there is no telemetry schema migration, asymmetric
-signature, built-in provider, automatic discovery, retry, cache, provider lifecycle,
-PKI, or automatic trust loading. Observations do not promote routes automatically
-and never replace retained benchmark evidence.
+manifests, an explicit synchronous provider port, a caller-owned alternate
+telemetry store, and lossless explicit schema-v1/schema-v2 migration exist, but
+there is no asymmetric signature, built-in provider, automatic discovery, retry,
+cache, provider lifecycle, PKI, or automatic trust loading. Observations do not
+promote routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

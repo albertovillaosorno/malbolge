@@ -53,6 +53,14 @@ fingerprint, and removal releases exact document and byte budgets. Invalid
 fingerprints/documents, budget overflow, collisions, or retained decode failure fail
 closed without partial mutation. The memory adapter performs no filesystem I/O,
 automatic loading, summaries, merging, recommendations, or admission changes.
+`ticket-admission-telemetry-schema-migration-v1` publishes a fixed lossless
+1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+sorted JSON containing the exact canonical schema-v1 bytes as standard Base64,
+plus the required schema-v1 document identity and SHA-256 fingerprint. Versioned
+decoding defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
+observations per FIFO. Upgrade and downgrade are explicit; schema-v1 bytes remain
+unchanged. There is no automatic migration, file loading, snapshot
+reinterpretation, merge, recommendation, lineage inference, or policy change.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups retained observations by exact backend, device, workload, and ticket
 count. It publishes completed/failed integer totals, estimate-comparison counts,
@@ -124,8 +132,9 @@ no hidden worker, automatic promotion, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Two hundred fifty admission/telemetry/persistence/store/summary/
-collection/overlap/index/components/lineage/trust/manifest/provider tests
+every ticket. Two hundred ninety-nine admission/telemetry/persistence/store/migration/
+summary/collection/overlap/index/components/lineage/trust/manifest/
+provider tests
 cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated

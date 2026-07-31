@@ -41,6 +41,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py
 # - accelerator/ticket_admission_telemetry_summary.py
 # - accelerator/ticket_admission_telemetry_overlap.py

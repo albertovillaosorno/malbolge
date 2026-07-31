@@ -169,9 +169,9 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Two hundred fifty
-admission/telemetry/persistence/store/summary/collection/overlap/index/
-components/lineage/trust/manifest/provider,
+facade resolves the same exact profile before reporting. Two hundred ninety-nine
+admission/telemetry/persistence/store/migration/summary/collection/overlap/
+index/components/lineage/trust/manifest/provider,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -197,6 +197,15 @@ fingerprints, byte counts, and immutable limits; removal releases exact budgets.
 Invalid fingerprints/documents, capacity overflow, collisions, or retained decode
 failure fail closed. There is no filesystem access, automatic loading, summary,
 merge, recommendation, lineage inference, or policy update.
+`ticket-admission-telemetry-schema-migration-v1` publishes an explicit lossless
+1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+sorted JSON wrapping the exact canonical schema-v1 bytes as standard Base64 plus
+the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
+defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096 observations
+per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
+unchanged. Schema-v2 adds no telemetry semantics. There is no automatic migration,
+file loading, snapshot reinterpretation, merge, recommendation, lineage inference,
+or policy change.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups exact backend/device/workload/ticket-count contexts into integer
 completed/failed totals, estimate comparisons, retention ranges, failure-category
@@ -268,9 +277,8 @@ exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
-hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration, asymmetric lineage signatures, and automatic adaptive queue/resource
-feedback remain open.
+hosts, Python versions, drivers, devices, workloads, asymmetric lineage
+signatures, and automatic adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

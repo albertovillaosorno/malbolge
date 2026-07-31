@@ -24,7 +24,7 @@
 #   - Outputs: strict schema, limit, atomic-write, and restoration assertions.
 #   - Side effects: temporary-directory file replacement only.
 # - Split-When:
-#   - Split when schema migration gains an independent compatibility matrix.
+#   - Split when schema-v3 or lossy migration changes persistence tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact persistence contract.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py
 #
 # Large file:

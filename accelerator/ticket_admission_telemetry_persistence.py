@@ -26,7 +26,7 @@
 #   - Side effects: explicit bounded file reads and atomic file replacement
 #     only.
 # - Split-When:
-#   - Split when migration or another telemetry family gains its own schema.
+#   - Split when another telemetry family gains its own schema.
 # - Merge-When:
 #   - Merge when another module owns this exact persistence contract.
 # - Summary:

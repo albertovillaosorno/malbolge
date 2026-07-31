@@ -171,9 +171,9 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Two hundred fifty
-  admission/telemetry/persistence/store/summary/collection/overlap/index/
-  components/lineage/trust/manifest/provider tests
+  only after exact profile resolution. Two hundred ninety-nine
+  admission/telemetry/persistence/store/migration/summary/collection/overlap/
+  index/components/lineage/trust/manifest/provider tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -210,6 +210,15 @@ example probe points, not supported-range endpoints.
   collisions, and retained decode failures fail closed without partial mutation.
   It performs no filesystem I/O, automatic loading, summary, merge, recommendation,
   lineage inference, or admission update.
+  `ticket-admission-telemetry-schema-migration-v1` publishes an explicit lossless
+  1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+  sorted JSON wrapping the exact canonical schema-v1 bytes as standard Base64 plus
+  the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
+  defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096 observations
+  per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
+  unchanged. Schema-v2 adds no telemetry semantics. There is no automatic migration,
+  file loading, snapshot reinterpretation, merge, recommendation, lineage inference,
+  or policy change.
   `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
   and groups exact backend/device/workload/ticket-count contexts into integer
   outcome totals, estimate comparisons, retention ranges, stable failure counts,
@@ -271,6 +280,5 @@ example probe points, not supported-range endpoints.
   persistence, asynchronous lifecycle, PKI, or automatic trust loading. None of
   these surfaces merge snapshots, recommend routes, or modify admission. There is
   no hidden worker, automatic promotion, or policy authority. Other hosts, Python
-  versions, drivers, devices/workloads, telemetry schema migration,
-  asymmetric lineage signatures, and automatic adaptive queue/resource
-  feedback remain open.
+  versions, drivers, devices/workloads, asymmetric lineage signatures, and
+  automatic adaptive queue/resource feedback remain open.
