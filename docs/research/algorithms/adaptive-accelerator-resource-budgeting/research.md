@@ -169,10 +169,11 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Four hundred twenty-eight
+facade resolves the same exact profile before reporting. Four hundred fifty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest, twelve profile-manifest, and fourteen runtime-identity
+signature-manifest/public-key-provider, twelve profile-manifest, and fourteen
+runtime-identity
 tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -307,18 +308,30 @@ Duplicate identities or references, malformed or noncanonical JSON, incomplete o
 excessive coverage, reference or fingerprint mismatch, and storage failures fail
 closed. No public-key bytes, provider, certificate, PKI, trust discovery, algorithm
 selection, or policy authority are supplied.
-There is no built-in secret provider, discovery, retry, retained cache,
-persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
-merge, route recommendation, evidence promotion, or policy update.
-The registry now selects at most one
+`explicit-ticket-admission-telemetry-lineage-public-key-provider-v1` accepts one
+caller-supplied synchronous provider. It validates the signature trust manifest and
+a default 256-request budget before the first call, then emits immutable requests
+in canonical `(algorithm_id, public_key_id)` order. Each request carries only the
+manifest/provider identities, algorithm/key/reference identities, required exact
+public-key fingerprint, capture window, and request index. Providers return typed
+`resolved`, `unavailable`, or `failed` results. Each entry is called exactly once;
+non-success stops without retry, while repeated explicit resolution performs a
+fresh provider walk. Resolved bytes are hidden from representations and must match
+the manifest fingerprint before in-memory signature trust is constructed. No
+provider discovery, built-in key service, retry, cache, persistence, hidden worker,
+certificate validation, PKI, algorithm selection, or policy authority is supplied.
+There is no built-in secret-provider or public-key-provider implementation,
+discovery, retry, retained cache, persistence, asynchronous provider lifecycle,
+automatic trust loading, snapshot merge, route recommendation, evidence
+promotion, or policy update. The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, external public-key providers, certificates,
-PKI/trust distribution, and automatic adaptive queue/resource feedback remain
-open.
+signature algorithms, asynchronous public-key provider lifecycles,
+certificates, PKI/trust distribution, and automatic adaptive queue/resource
+feedback remain open.
 
 ## Threats to Validity
 

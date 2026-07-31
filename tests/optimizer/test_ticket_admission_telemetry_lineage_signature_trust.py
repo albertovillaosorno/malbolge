@@ -26,7 +26,8 @@
 #     assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when external providers, certificates, or PKI gain tests.
+#   - Split when asynchronous provider lifecycles, certificates, or PKI gain
+#     tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact signature trust behavior.
 # - Summary:
@@ -42,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_trust.py
 #
 # Large file:

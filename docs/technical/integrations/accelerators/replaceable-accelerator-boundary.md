@@ -583,7 +583,20 @@ Duplicate identities or references, malformed or noncanonical JSON, incomplete o
 excessive coverage, reference or fingerprint mismatch, and storage failures fail
 closed. No public-key bytes, provider, certificate, PKI, trust discovery, algorithm
 selection, or policy authority are supplied.
-There is no built-in secret provider, discovery, retry, retained cache,
+`explicit-ticket-admission-telemetry-lineage-public-key-provider-v1` accepts one
+caller-supplied synchronous provider. It validates the signature trust manifest and
+a default 256-request budget before the first call, then emits immutable requests
+in canonical `(algorithm_id, public_key_id)` order. Each request carries only the
+manifest/provider identities, algorithm/key/reference identities, required exact
+public-key fingerprint, capture window, and request index. Providers return typed
+`resolved`, `unavailable`, or `failed` results. Each entry is called exactly once;
+non-success stops without retry, while repeated explicit resolution performs a
+fresh provider walk. Resolved bytes are hidden from representations and must match
+the manifest fingerprint before in-memory signature trust is constructed. No
+provider discovery, built-in key service, retry, cache, persistence, hidden worker,
+certificate validation, PKI, algorithm selection, or policy authority is supplied.
+There is no built-in secret-provider or public-key-provider implementation,
+discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
 merge, route recommendation, or policy authority. There is no hidden worker or
 automatic promotion. The retained
@@ -593,10 +606,10 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Four hundred twenty-eight
+every ticket. Four hundred fifty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
-signature-manifest tests cover fallback,
+signature-manifest/public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

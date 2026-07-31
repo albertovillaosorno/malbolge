@@ -25,8 +25,8 @@
 #   - Outputs: canonical detached attestations and verified lineage material.
 #   - Side effects: exactly one signer or verifier call per explicit operation.
 # - Split-When:
-#   - Split when external providers, concrete algorithms, certificates, or
-#     PKI gain contracts.
+#   - Split when asynchronous provider lifecycles, concrete algorithms,
+#     certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact detached-signature boundary.
 # - Summary:
@@ -43,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_lineage.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_migration.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
