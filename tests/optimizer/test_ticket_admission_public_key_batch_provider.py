@@ -25,7 +25,7 @@
 #   - Outputs: batch, concurrency, cardinality, resolution, and failure checks.
 #   - Side effects: caller-owned standard-library event loops and tasks only.
 # - Split-When:
-#   - Split when provider session lifecycle gains tests.
+#   - Split when built-in services, certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact async batch behavior.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #
@@ -48,7 +49,7 @@
 
 """Caller-controlled async batch public-key provider tests."""
 
-# ruff: file-ignore[line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 

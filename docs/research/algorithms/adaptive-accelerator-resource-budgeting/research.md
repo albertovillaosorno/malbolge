@@ -169,11 +169,11 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Five hundred nine
+facade resolves the same exact profile before reporting. Five hundred thirty-nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
-async-batch-public-key-provider,
+async-batch-public-key-provider/provider-session,
 twelve profile-manifest, and fourteen
 runtime-identity
 tests prevent silent drift,
@@ -332,9 +332,9 @@ parallelism; each entry is awaited exactly once and repeated explicit resolution
 performs a fresh walk. Typed non-success stops without retry. Ordinary provider
 exceptions become stable boundary errors without vendor text, while cancellation
 propagates to the caller. Exact public-key fingerprints are checked before trust
-construction. No event loop, task, provider session lifecycle, concurrency policy,
-discovery, retry, cache, persistence, certificate validation, PKI, algorithm
-selection, or admission authority is supplied.
+construction. This sequential port creates no event loop, task, provider session,
+concurrency policy, discovery, retry, cache, persistence, certificate validation,
+PKI, algorithm selection, or admission authority.
 `explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
 accepts one caller-supplied async batch provider. Manifest, provider identity, and
 the default 256-request budget are validated before the first await. Empty manifests
@@ -345,19 +345,34 @@ concurrently. The boundary requires one exact positional result tuple with match
 cardinality, validates every shared typed item result, propagates cancellation, and
 converts ordinary provider exceptions to stable errors without vendor text. Reversed,
 missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched results
-fail closed before trust is returned. No event loop, task, concurrency implementation,
-provider session lifecycle, discovery, retry, cache, persistence, certificate
-validation, PKI, algorithm selection, or admission authority is supplied.
-There is no built-in secret-provider or public-key-provider implementation,
-discovery, retry, retained cache, persistence, asynchronous provider lifecycle,
-automatic trust loading, snapshot merge, route recommendation, evidence
+fail closed before trust is returned. This batch port creates no event loop, task,
+concurrency implementation, provider session, discovery, retry, cache, persistence,
+certificate validation, PKI, algorithm selection, or admission authority.
+`explicit-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
+accepts one caller-supplied async lifecycle port around the batch provider. Manifest,
+provider identity, and the default 256-request budget are validated before opening.
+Empty manifests perform no lifecycle calls. Nonempty manifests call `open` exactly
+once with immutable manifest fingerprint, provider identity, and request count;
+typed outcomes are `opened`, `unavailable`, or `failed`, and only `opened` may carry
+a hidden callable batch provider. The existing canonical batch boundary then runs
+once. Every opened session receives exactly one `close` request with a stable
+`completed`, `failed`, or `cancelled` reason; close outcomes are `closed` or
+`failed`. Opening exceptions become stable errors without vendor text and opening
+cancellation propagates without closing. After opening, failure or cancellation
+attempts one close. Cancellation propagates only after successful close; close
+failure replaces the preceding outcome and fails closed. No built-in service,
+event loop, task, discovery, retry, cache, persistence, certificate validation,
+PKI, algorithm selection, or admission authority is supplied.
+There is no built-in secret-provider, public-key-provider, or provider-session
+implementation, discovery, retry, retained cache, persistence, automatic trust
+loading, snapshot merge, route recommendation, evidence
 promotion, or policy update. The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, public-key provider session lifecycles,
+signature algorithms, built-in public-key provider services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 

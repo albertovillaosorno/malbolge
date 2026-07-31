@@ -25,7 +25,7 @@
 #   - Outputs: manifest-bound caller-owned signature trust.
 #   - Side effects: one ordered awaited provider call per manifest entry.
 # - Split-When:
-#   - Split when provider session lifecycle or concurrency gains a contract.
+#   - Split when built-in services, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact async provider boundary.
 # - Summary:
@@ -40,6 +40,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #

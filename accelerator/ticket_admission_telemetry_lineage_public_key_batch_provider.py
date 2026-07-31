@@ -25,7 +25,7 @@
 #   - Outputs: one canonical batch request and manifest-bound signature trust.
 #   - Side effects: at most one awaited batch-provider call per resolution.
 # - Split-When:
-#   - Split when provider session lifecycle gains a contract.
+#   - Split when built-in services, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact async batch boundary.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md

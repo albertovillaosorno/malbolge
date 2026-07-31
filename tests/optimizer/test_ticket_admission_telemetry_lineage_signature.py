@@ -26,7 +26,7 @@
 #     assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when provider sessions, concrete algorithms, certificates, or PKI
+#   - Split when built-in services, concrete algorithms, certificates, or PKI
 #     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact detached-signature behavior.
@@ -46,6 +46,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
@@ -53,6 +54,8 @@
 #
 
 """Detached caller-supplied public-key lineage signature tests."""
+
+# ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 
