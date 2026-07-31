@@ -25,7 +25,8 @@
 #   - Outputs: canonical bundles and caller-owned in-memory key providers.
 #   - Side effects: explicit bounded reads and atomic replacement only.
 # - Split-When:
-#   - Split when network services, certificates, or PKI gain contracts.
+#   - Split when concrete network transports, certificates, or PKI gain
+#     contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact canonical key-bundle boundary.
 # - Summary:
@@ -40,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
@@ -287,6 +289,39 @@ def read_ticket_admission_telemetry_lineage_public_key_bundle(
     )
 
 
+def materialize_ticket_admission_public_key_bundle_provider(
+    bundle: TicketAdmissionTelemetryLineagePublicKeyBundle,
+    *,
+    max_entries: int = DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_ENTRIES,
+) -> TicketAdmissionTelemetryLineageLoadedPublicKeyBundle:
+    """Build one caller-owned memory provider from an explicit decoded bundle.
+
+    Returns:
+        Stable bundle metadata and hidden bounded memory provider.
+
+    """
+    payload = encode_ticket_admission_telemetry_lineage_public_key_bundle(
+        bundle
+    )
+    provider = _memory_provider_for_bundle(bundle, max_entries=max_entries)
+    return TicketAdmissionTelemetryLineageLoadedPublicKeyBundle(
+        bundle_fingerprint=(
+            ticket_admission_telemetry_lineage_public_key_bundle_fingerprint(
+                bundle
+            )
+        ),
+        byte_count=len(payload),
+        key_count=provider.key_count,
+        provider=provider,
+        provider_id=provider.provider_id,
+    )
+
+
+_materialize_provider: Final = (
+    materialize_ticket_admission_public_key_bundle_provider
+)
+
+
 def load_ticket_admission_telemetry_lineage_public_key_bundle_provider(
     path: Path,
     *,
@@ -304,20 +339,9 @@ def load_ticket_admission_telemetry_lineage_public_key_bundle_provider(
         max_bytes=max_bytes,
         max_entries=max_entries,
     )
-    payload = encode_ticket_admission_telemetry_lineage_public_key_bundle(
-        bundle
-    )
-    provider = _memory_provider_for_bundle(bundle, max_entries=max_entries)
-    return TicketAdmissionTelemetryLineageLoadedPublicKeyBundle(
-        bundle_fingerprint=(
-            ticket_admission_telemetry_lineage_public_key_bundle_fingerprint(
-                bundle
-            )
-        ),
-        byte_count=len(payload),
-        key_count=provider.key_count,
-        provider=provider,
-        provider_id=provider.provider_id,
+    return _materialize_provider(
+        bundle,
+        max_entries=max_entries,
     )
 
 

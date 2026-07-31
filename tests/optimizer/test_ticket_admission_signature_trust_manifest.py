@@ -25,7 +25,7 @@
 #   - Outputs: canonical, bounded, resolution, rotation, and failure assertions.
 #   - Side effects: temporary-directory file creation only.
 # - Split-When:
-#   - Split when network services, certificates, or PKI
+#   - Split when concrete network transports, certificates, or PKI
 #     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact public-key manifest behavior.
@@ -52,6 +52,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 #
 # Large file:
 #   - false

@@ -25,7 +25,7 @@
 #   - Outputs: inline-await, positional, integration, and failure assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when network services gain tests.
+#   - Split when concrete network transports gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact inline batch adaptation.
 # - Summary:
@@ -41,6 +41,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 #

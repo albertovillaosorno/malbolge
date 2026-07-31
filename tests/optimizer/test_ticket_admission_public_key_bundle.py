@@ -25,7 +25,7 @@
 #   - Outputs: canonical, bounded, load, integration, and failure assertions.
 #   - Side effects: temporary-directory file creation only.
 # - Split-When:
-#   - Split when network public-key services gain tests.
+#   - Split when concrete network transports gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact canonical bundle boundary.
 # - Summary:
@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
@@ -99,6 +100,9 @@ _bundle_fingerprint = (
 )
 _load_provider = (
     bundle.load_ticket_admission_telemetry_lineage_public_key_bundle_provider
+)
+_materialize_provider = (
+    bundle.materialize_ticket_admission_public_key_bundle_provider
 )
 _read_bundle = bundle.read_ticket_admission_telemetry_lineage_public_key_bundle
 _write_bundle = (
@@ -304,6 +308,18 @@ def test_same_key_id_under_distinct_algorithms_is_allowed() -> None:
         OLD_ALGORITHM_ID,
         NEW_ALGORITHM_ID,
     )
+
+
+def test_materialize_bundle_builds_provider_without_path() -> None:
+    built = _bundle()
+
+    loaded = _materialize_provider(built)
+
+    assert loaded.bundle_fingerprint == _bundle_fingerprint(built)
+    assert loaded.byte_count == len(_encode_bundle(built))
+    assert loaded.key_count == TWO_KEYS
+    assert loaded.provider_id == PROVIDER_ID
+    assert loaded.provider.key_count == TWO_KEYS
 
 
 def test_explicit_write_read_and_load_are_exact(tmp_path: Path) -> None:
