@@ -26,7 +26,7 @@
 #     assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when memory batch/session adapters, external services, concrete algorithms,
+#   - Split when memory session adapter, external services, concrete algorithms,
 #     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact detached-signature behavior.
@@ -49,6 +49,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:

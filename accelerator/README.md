@@ -349,8 +349,23 @@ Empty manifests perform no lookup, while explicit adapter construction already
 validates the service. The adapter creates no event loop, task, sleep, artificial
 yield, batch/session lifecycle, file, environment, network, discovery, retry,
 persistence, certificate validation, PKI, algorithm selection, or policy operation.
+`bounded-memory-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the caller-controlled async batch port.
+Construction validates the complete wrapped service and a positive request limit of
+at most the caller-selected boundary, defaulting to 256. Every await revalidates the
+adapter binding and complete memory service, then validates the exact batch request,
+nonempty manifest/provider identities, immutable request tuple, configured count,
+positional indices, and every item manifest/provider binding. Requests are resolved
+inline in tuple order through the synchronous memory service and returned as one
+hidden positional result tuple, preserving typed `resolved`, `unavailable`, and
+`failed` outcomes. Direct empty batches are valid. The existing batch trust boundary
+still performs manifest preflight, one nonempty provider await, exact cardinality and
+fingerprint checks, and trust construction; empty manifests make no provider call.
+The adapter creates no event loop, task, concurrency, sleep, artificial yield,
+session lifecycle, file, environment, network, discovery, retry, persistence,
+certificate validation, PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
-service and its inline sequential async adapter. There is no built-in secret
+service and its inline sequential and batch async adapters. There is no built-in secret
 provider, external key service, automatic
 provider session, discovery, retry, retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, or policy authority. There is no
@@ -362,12 +377,13 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Six hundred thirteen
+every ticket. Six hundred fifty-one
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
-memory-public-key-provider/memory-async-public-key-provider tests cover fallback,
+memory-public-key-provider/memory-async-public-key-provider/
+memory-batch-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

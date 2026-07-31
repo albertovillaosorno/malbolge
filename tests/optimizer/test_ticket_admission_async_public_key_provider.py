@@ -25,7 +25,7 @@
 #   - Outputs: preflight, ordering, awaiting, resolution, and failure assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when memory batch/session adapters, external services, certificates, or PKI
+#   - Split when memory session adapter, external services, certificates, or PKI
 #     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact async provider behavior.
@@ -44,6 +44,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #

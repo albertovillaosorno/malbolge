@@ -25,7 +25,7 @@
 #   - Outputs: typed lifecycle requests and manifest-bound signature trust.
 #   - Side effects: one open and one close call for each nonempty resolution.
 # - Split-When:
-#   - Split when memory batch/session adapters, external services, certificates, or PKI
+#   - Split when memory session adapter, external services, certificates, or PKI
 #     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact provider-session boundary.
@@ -42,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md

@@ -169,7 +169,7 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Six hundred thirteen
+facade resolves the same exact profile before reporting. Six hundred fifty-one
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
@@ -392,8 +392,23 @@ Empty manifests perform no lookup, while explicit adapter construction already
 validates the service. The adapter creates no event loop, task, sleep, artificial
 yield, batch/session lifecycle, file, environment, network, discovery, retry,
 persistence, certificate validation, PKI, algorithm selection, or policy operation.
+`bounded-memory-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
+adapts one exact bounded memory service to the caller-controlled async batch port.
+Construction validates the complete wrapped service and a positive request limit of
+at most the caller-selected boundary, defaulting to 256. Every await revalidates the
+adapter binding and complete memory service, then validates the exact batch request,
+nonempty manifest/provider identities, immutable request tuple, configured count,
+positional indices, and every item manifest/provider binding. Requests are resolved
+inline in tuple order through the synchronous memory service and returned as one
+hidden positional result tuple, preserving typed `resolved`, `unavailable`, and
+`failed` outcomes. Direct empty batches are valid. The existing batch trust boundary
+still performs manifest preflight, one nonempty provider await, exact cardinality and
+fingerprint checks, and trust construction; empty manifests make no provider call.
+The adapter creates no event loop, task, concurrency, sleep, artificial yield,
+session lifecycle, file, environment, network, discovery, retry, persistence,
+certificate validation, PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
-service and its inline sequential async adapter. There is no built-in secret
+service and its inline sequential and batch async adapters. There is no built-in secret
 provider, external key service, automatic
 provider session, discovery, retry, retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
@@ -403,7 +418,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, in-memory batch/session adapters, external public-key
+signature algorithms, in-memory session adapter, external public-key
 services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
