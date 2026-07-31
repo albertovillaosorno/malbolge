@@ -26,7 +26,8 @@
 #     assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when a concrete signature algorithm or PKI gains tests.
+#   - Split when external trust manifests, concrete algorithms, or PKI gain
+#     tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact detached-signature behavior.
 # - Summary:
@@ -40,6 +41,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
+# - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
 # - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:

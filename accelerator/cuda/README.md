@@ -134,6 +134,18 @@ the port call, then reuses the common verified-lineage comparison for public-key
 rotation and an explicit HMAC-to-signature transition. No concrete signature
 algorithm, key generation, private-key storage, certificate chain, PKI, trust
 discovery, provider lifecycle, or security claim is supplied by this boundary.
+`caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
+an explicit in-memory set of at most 256 unique `(algorithm_id, public_key_id)`
+pairs sorted by that composite identity. Each entry binds exact public-key bytes,
+their required SHA-256 fingerprint, and an inclusive first/optional-last capture
+window. Empty sets trust nothing. Verification selects the exact algorithm, key
+identity, fingerprint, and capture window before calling the verifier; independently
+verified items preserve same-key, public-key rotation, algorithm rotation, ordered
+gap, and fork checks. Duplicate identities, malformed windows, invalid key bytes,
+fingerprint mismatch, unknown identities, out-of-window captures, and tampered
+trust metadata fail closed. Public-key bytes are hidden from representations. No
+manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
+policy authority is supplied.
 There is no built-in secret provider, discovery, retry, retained cache,
 persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
 merge, route recommendation, or policy authority. There is no hidden worker or
@@ -144,9 +156,10 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Three hundred fifty-three admission/telemetry/persistence/store/migration/
-summary/collection/overlap/index/components/lineage/trust/manifest/provider/
-signature tests
+every ticket. Three hundred eighty-eight
+admission/telemetry/persistence/store/migration/summary/collection/overlap/
+index/components/lineage/trust/manifest/provider/signature/signature-trust
+tests cover
 cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated

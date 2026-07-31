@@ -171,7 +171,7 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Three hundred fifty-three
+  only after exact profile resolution. Three hundred eighty-eight
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/signature tests
   cover report
@@ -288,9 +288,22 @@ example probe points, not supported-range endpoints.
   an explicit HMAC-to-signature transition. This boundary supplies no concrete
   signature algorithm, key generation, private-key storage, certificate chain,
   PKI, trust discovery, provider lifecycle, or cryptographic security claim.
+  `caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
+  an explicit in-memory set of at most 256 unique `(algorithm_id, public_key_id)`
+  pairs sorted by that composite identity. Each entry binds exact public-key bytes,
+  their required SHA-256 fingerprint, and an inclusive first/optional-last capture
+  window. Empty sets trust nothing. Verification selects the exact algorithm, key
+  identity, fingerprint, and capture window before calling the verifier; independently
+  verified items preserve same-key, public-key rotation, algorithm rotation, ordered
+  gap, and fork checks. Duplicate identities, malformed windows, invalid key bytes,
+  fingerprint mismatch, unknown identities, out-of-window captures, and tampered
+  trust metadata fail closed. Public-key bytes are hidden from representations. No
+  manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
+  policy authority is supplied.
   There is no built-in secret provider, discovery, retry, retained cache,
   persistence, asynchronous provider lifecycle, automatic trust loading, snapshot
   merge, route recommendation, or policy authority. Other hosts, Python versions,
-  drivers, devices/workloads, concrete public-key signature algorithms and
-  PKI/trust distribution, and automatic adaptive queue/resource feedback remain
+  drivers, devices/workloads, concrete public-key signature algorithms,
+  external public-key manifests/providers, certificates, and PKI/trust
+  distribution, and automatic adaptive queue/resource feedback remain
   open.
