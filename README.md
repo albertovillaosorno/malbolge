@@ -234,12 +234,13 @@ route, or admission authority. Caller-owned HMAC rotation, secret-free manifests
 an explicit synchronous secret-provider port, detached public-key signer/verifier
 ports, bounded in-memory public-key trust, a canonical key-free public-key trust
 manifest, explicit synchronous, sequential async, caller-controlled async batch,
-and one-use provider-session ports, a caller-owned alternate telemetry store, and
-lossless explicit schema-v1/schema-v2 migration exist. No concrete public-key
-signature algorithm, built-in key service, certificate chain, PKI, automatic
-discovery, retry, cache, library-owned concurrency, or automatic trust loading is
-supplied. Observations do not promote routes automatically and never replace
-retained benchmark evidence.
+and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous
+key service, a caller-owned alternate telemetry store, and lossless explicit
+schema-v1/schema-v2 migration exist. No concrete public-key signature algorithm,
+external key service, certificate chain, PKI, automatic discovery, retry, hidden
+cache, library-owned concurrency, or automatic trust loading is supplied.
+Observations do not promote routes automatically and never replace retained
+benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

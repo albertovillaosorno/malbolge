@@ -171,11 +171,12 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. Five hundred thirty-nine
+  only after exact profile resolution. Five hundred eighty-six
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/signature/signature-trust/
   signature-manifest/public-key-provider/async-public-key-provider/
-  async-batch-public-key-provider/provider-session tests cover report
+  async-batch-public-key-provider/provider-session/
+  memory-public-key-provider tests cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
   contracts. The schema-v4 product registry is reconstructed byte-for-byte from
@@ -367,11 +368,26 @@ example probe points, not supported-range endpoints.
   failure replaces the preceding outcome and fails closed. No built-in service,
   event loop, task, discovery, retry, cache, persistence, certificate validation,
   PKI, algorithm selection, or admission authority is supplied.
-  There is no built-in secret-provider, public-key-provider, or provider-session
-  implementation, discovery, retry, retained cache, persistence, automatic trust
+  `bounded-in-memory-ticket-admission-telemetry-lineage-public-key-provider-v1`
+  implements the synchronous provider port with one caller-owned immutable key tuple.
+  Construction accepts at most 256 entries, validates canonical provider, algorithm,
+  key, and reference identities, validates inclusive capture windows, recomputes every
+  exact public-key SHA-256 fingerprint, rejects duplicate composite identities and
+  references, and sorts entries by reference identity. Key bytes are hidden from
+  representations. Every explicit lookup revalidates service identity, count, tuple,
+  ordering, metadata, and exact key bytes. An absent reference returns typed
+  `unavailable`; a known reference with different algorithm, key, fingerprint, or
+  window returns typed `failed`; only an exact request returns `resolved`. Empty
+  services are valid and resolve nothing. The object is reusable caller-owned memory,
+  not an automatic or hidden cache. It performs no file, environment, network,
+  discovery, mutation, retry, persistence, async adaptation, certificate validation,
+  PKI, algorithm selection, or admission-policy operation.
+  The only built-in public-key implementation is the bounded caller-owned memory
+  service. There is no built-in secret provider, external key service, automatic
+  provider session, discovery, retry, retained cache, persistence, automatic trust
   loading, snapshot merge, route recommendation, or policy authority. Other hosts,
   Python versions,
   drivers, devices/workloads, concrete public-key signature algorithms,
-  built-in public-key provider services, certificates, and PKI/trust
+  in-memory async adapters, external public-key services, certificates, and PKI/trust
   distribution, and automatic adaptive queue/resource feedback remain
   open.

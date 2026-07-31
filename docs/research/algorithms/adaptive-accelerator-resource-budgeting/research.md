@@ -169,11 +169,12 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Five hundred thirty-nine
+facade resolves the same exact profile before reporting. Five hundred eighty-six
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
-async-batch-public-key-provider/provider-session,
+async-batch-public-key-provider/provider-session/
+memory-public-key-provider,
 twelve profile-manifest, and fourteen
 runtime-identity
 tests prevent silent drift,
@@ -363,16 +364,31 @@ attempts one close. Cancellation propagates only after successful close; close
 failure replaces the preceding outcome and fails closed. No built-in service,
 event loop, task, discovery, retry, cache, persistence, certificate validation,
 PKI, algorithm selection, or admission authority is supplied.
-There is no built-in secret-provider, public-key-provider, or provider-session
-implementation, discovery, retry, retained cache, persistence, automatic trust
-loading, snapshot merge, route recommendation, evidence
-promotion, or policy update. The registry now selects at most one
+`bounded-in-memory-ticket-admission-telemetry-lineage-public-key-provider-v1`
+implements the synchronous provider port with one caller-owned immutable key tuple.
+Construction accepts at most 256 entries, validates canonical provider, algorithm,
+key, and reference identities, validates inclusive capture windows, recomputes every
+exact public-key SHA-256 fingerprint, rejects duplicate composite identities and
+references, and sorts entries by reference identity. Key bytes are hidden from
+representations. Every explicit lookup revalidates service identity, count, tuple,
+ordering, metadata, and exact key bytes. An absent reference returns typed
+`unavailable`; a known reference with different algorithm, key, fingerprint, or
+window returns typed `failed`; only an exact request returns `resolved`. Empty
+services are valid and resolve nothing. The object is reusable caller-owned memory,
+not an automatic or hidden cache. It performs no file, environment, network,
+discovery, mutation, retry, persistence, async adaptation, certificate validation,
+PKI, algorithm selection, or admission-policy operation.
+The only built-in public-key implementation is the bounded caller-owned memory
+service. There is no built-in secret provider, external key service, automatic
+provider session, discovery, retry, retained cache, persistence, automatic trust
+loading, snapshot merge, route recommendation, evidence promotion, or policy
+update. The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, built-in public-key provider services,
+signature algorithms, in-memory async adapters, external public-key services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 

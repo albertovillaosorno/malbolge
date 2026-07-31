@@ -636,8 +636,23 @@ attempts one close. Cancellation propagates only after successful close; close
 failure replaces the preceding outcome and fails closed. No built-in service,
 event loop, task, discovery, retry, cache, persistence, certificate validation,
 PKI, algorithm selection, or admission authority is supplied.
-There is no built-in secret-provider, public-key-provider, or provider-session
-implementation, discovery, retry, retained cache, persistence, automatic trust
+`bounded-in-memory-ticket-admission-telemetry-lineage-public-key-provider-v1`
+implements the synchronous provider port with one caller-owned immutable key tuple.
+Construction accepts at most 256 entries, validates canonical provider, algorithm,
+key, and reference identities, validates inclusive capture windows, recomputes every
+exact public-key SHA-256 fingerprint, rejects duplicate composite identities and
+references, and sorts entries by reference identity. Key bytes are hidden from
+representations. Every explicit lookup revalidates service identity, count, tuple,
+ordering, metadata, and exact key bytes. An absent reference returns typed
+`unavailable`; a known reference with different algorithm, key, fingerprint, or
+window returns typed `failed`; only an exact request returns `resolved`. Empty
+services are valid and resolve nothing. The object is reusable caller-owned memory,
+not an automatic or hidden cache. It performs no file, environment, network,
+discovery, mutation, retry, persistence, async adaptation, certificate validation,
+PKI, algorithm selection, or admission-policy operation.
+The only built-in public-key implementation is the bounded caller-owned memory
+service. There is no built-in secret provider, external key service, automatic
+provider session, discovery, retry, retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, or policy authority. There is no
 hidden worker or
 automatic promotion. The retained
@@ -647,11 +662,12 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Five hundred thirty-nine
+every ticket. Five hundred eighty-six
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-provider/async-public-key-provider/
-async-batch-public-key-provider/provider-session tests cover fallback,
+async-batch-public-key-provider/provider-session/
+memory-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

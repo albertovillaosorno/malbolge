@@ -25,7 +25,8 @@
 #   - Outputs: batch, concurrency, cardinality, resolution, and failure checks.
 #   - Side effects: caller-owned standard-library event loops and tasks only.
 # - Split-When:
-#   - Split when built-in services, certificates, or PKI gain tests.
+#   - Split when memory async adapters, external services, certificates, or PKI
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact async batch behavior.
 # - Summary:
@@ -40,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #
