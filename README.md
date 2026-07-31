@@ -52,6 +52,12 @@ in-memory trust set of at most 256 unique HMAC keys. Keys are selected by exact
 identity and inclusive capture-sequence windows, allowing independently verified
 comparisons across rotations. Empty sets trust nothing; secrets are not displayed,
 loaded, or persisted.
+`ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key identities,
+opaque external reference identities, and inclusive capture windows. Canonical
+sorted JSON is bounded to 256 entries and 64 KiB, has a stable SHA-256 fingerprint,
+and is read or atomically written only through explicit calls. Secret resolution
+requires exact caller-supplied coverage; resolving a reference does not certify the
+secret until an attestation verifies.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -202,10 +208,10 @@ summaries never recommend routes or modify admission. Pairwise, indexed, and
 component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
-route, or admission authority. Caller-owned bounded rotation exists, but there is
-no asymmetric signature, external key loading, PKI, or external trust store.
-Observations do not promote routes automatically and never replace retained
-benchmark evidence.
+route, or admission authority. Caller-owned bounded rotation and secret-free
+external manifests exist, but there is no asymmetric signature, live secret
+provider, PKI, or automatic trust loading. Observations do not promote routes
+automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

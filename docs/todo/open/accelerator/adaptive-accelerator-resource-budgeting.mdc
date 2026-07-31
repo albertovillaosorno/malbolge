@@ -171,9 +171,9 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. One hundred sixty-one
+  only after exact profile resolution. One hundred ninety-three
   admission/telemetry/persistence/summary/collection/overlap/index/components/
-  lineage/trust tests
+  lineage/trust/manifest tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -243,10 +243,18 @@ example probe points, not supported-range endpoints.
   verified canonical materials preserve cross-key direct-successor, gap, fork,
   and collision checks. Duplicate identities, malformed windows, unknown keys,
   out-of-window captures, and incorrect secrets fail closed. Secret fields are
-  hidden from representations. There is no asymmetric signature, key loading or
-  persistence, PKI, or external trust store. None of these surfaces merge
-  snapshots, recommend routes, or modify admission. There is no automatic loading,
-  hidden worker, automatic promotion, or policy authority. Other hosts, Python
-  versions, drivers, devices/workloads, telemetry schema migration or alternate
-  stores, asymmetric lineage signatures, external trust stores, and automatic
-  adaptive queue/resource feedback remain open.
+  hidden from representations.
+  `ticket-admission-telemetry-lineage-trust-manifest-v1` persists key identity,
+  opaque key-reference identity, and inclusive capture windows as canonical
+  secret-free JSON. It defaults to 256 entries and 64 KiB, fingerprints canonical
+  bytes, and supports only explicit bounded reads or atomic replacement. Resolution
+  requires exact caller-supplied key/reference coverage and returns manifest-bound
+  in-memory trust; the secret remains unverified until an attestation authenticates.
+  Duplicate identities, malformed/noncanonical JSON, incomplete or excessive
+  coverage, reference mismatch, and storage failures fail closed. There is no
+  asymmetric signature, live secret provider, PKI, or automatic trust loading.
+  None of these surfaces merge snapshots, recommend routes, or modify admission.
+  There is no hidden worker, automatic promotion, or policy authority. Other hosts,
+  Python versions, drivers, devices/workloads, telemetry schema migration or
+  alternate stores, asymmetric lineage signatures, live secret providers, and
+  automatic adaptive queue/resource feedback remain open.

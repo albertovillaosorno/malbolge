@@ -448,19 +448,24 @@ timed.
   windows select the exact HMAC key, and independently verified items may cross a
   rotation. Duplicate identities, malformed windows, unknown or out-of-window
   keys, and incorrect secrets fail closed; secret fields are hidden from `repr`.
-  Asymmetric signatures, key loading or persistence, PKI, and external trust
-  stores are not implemented. None of these surfaces recommend or change routes.
-  There is no automatic loading, hidden worker, automatic promotion, or policy
-  authority. The retained
+  `ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key IDs,
+  opaque key-reference IDs, and inclusive windows as bounded canonical JSON. It
+  fingerprints canonical bytes and resolves only from exact caller-supplied
+  coverage; resolution does not certify a secret before attestation verification.
+  Duplicate IDs, malformed/noncanonical JSON, coverage mismatch, reference
+  mismatch, and storage failures fail closed. Asymmetric signatures, live secret
+  providers, PKI, and automatic trust loading are not implemented. None of these
+  surfaces recommend or change routes. There is no hidden worker, automatic
+  promotion, or policy authority. The retained
   `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the
   RTX 4060 `sm_89` capability and full-domain CRAZY workload to source commit
   `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. One hundred sixty-one
+  closes every ticket. One hundred ninety-three
   admission/telemetry/persistence/summary/collection/overlap/index/
-  components/lineage/trust tests cover fallback,
+  components/lineage/trust/manifest tests cover fallback,
   positive/negative evidence, duplicate/malformed records, exact profile matching,
   seven isolated runtime drifts, multi-profile selection, invalid/unknown workloads,
   ambiguity, and three live CUDA routes. The seven route records

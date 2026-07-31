@@ -24,7 +24,7 @@
 #   - Outputs: ordering, window, rotation, comparison, and failure assertions.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures or external trust stores gain tests.
+#   - Split when asymmetric signatures or live secret providers gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact lineage trust behavior.
 # - Summary:
@@ -38,6 +38,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_trust.py
+# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 #
 # Large file:
 #   - false

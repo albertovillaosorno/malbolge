@@ -27,7 +27,7 @@
 #     lineage reports.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures or external trust stores gain
+#   - Split when asymmetric signatures or live secret providers gain
 #     contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact authenticated-lineage boundary.
