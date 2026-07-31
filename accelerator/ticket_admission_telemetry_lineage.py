@@ -27,7 +27,7 @@
 #     lineage reports.
 #   - Side effects: none.
 # - Split-When:
-#   - Split when asymmetric signatures, key rotation, or trust stores gain
+#   - Split when asymmetric signatures or external trust stores gain
 #     contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact authenticated-lineage boundary.
@@ -194,6 +194,15 @@ class TicketAdmissionTelemetryVerifiedLineage:
 
 
 @dataclass(frozen=True, slots=True)
+class TicketAdmissionTelemetryVerifiedLineageItem:
+    """Canonical bytes and verified claim for one lineage item."""
+
+    attestation_bytes: bytes
+    document_bytes: bytes
+    verified: TicketAdmissionTelemetryVerifiedLineage
+
+
+@dataclass(frozen=True, slots=True)
 class TicketAdmissionTelemetryLineageComparison:
     """Deterministic relation between two authenticated recorder claims."""
 
@@ -209,13 +218,6 @@ class TicketAdmissionTelemetryLineageComparison:
 
 class _DuplicateKeyError(ValueError):
     """A decoded lineage JSON object contains a duplicate key."""
-
-
-@dataclass(frozen=True, slots=True)
-class _VerifiedMaterial:
-    attestation_bytes: bytes
-    document_bytes: bytes
-    verified: TicketAdmissionTelemetryVerifiedLineage
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,6 +348,25 @@ def verify_ticket_admission_telemetry_lineage_attestation(
         Authenticated lineage fields and canonical attestation identity.
 
     """
+    return verify_ticket_admission_telemetry_lineage_item(
+        item,
+        secret_key=secret_key,
+        trusted_key_id=trusted_key_id,
+    ).verified
+
+
+def verify_ticket_admission_telemetry_lineage_item(
+    item: TicketAdmissionTelemetryLineageItem,
+    *,
+    secret_key: bytes,
+    trusted_key_id: str,
+) -> TicketAdmissionTelemetryVerifiedLineageItem:
+    """Verify one item and retain its exact canonical comparison material.
+
+    Returns:
+        Canonical document and attestation bytes with the verified claim.
+
+    """
     validated_item = _validated_item(item)
     key = _validated_secret_key(secret_key)
     trusted_id = _validated_identifier(trusted_key_id, "trusted key identity")
@@ -358,21 +379,25 @@ def verify_ticket_admission_telemetry_lineage_attestation(
     expected_mac = _mac_hex(key, _unsigned_payload_bytes(validated))
     if not compare_digest(validated.mac_hex, expected_mac):
         _raise_lineage("attestation authentication failed")
-    canonical_bytes = encode_ticket_admission_telemetry_lineage_attestation(
+    attestation_bytes = encode_ticket_admission_telemetry_lineage_attestation(
         validated
     )
-    return TicketAdmissionTelemetryVerifiedLineage(
-        attestation_fingerprint=_attestation_fingerprint(canonical_bytes),
-        canonical_byte_count=len(canonical_bytes),
-        capture_sequence_id=validated.capture_sequence_id,
-        completed_stream_id=validated.completed_stream_id,
-        document_fingerprint=validated.document_fingerprint,
-        failed_stream_id=validated.failed_stream_id,
-        key_id=validated.key_id,
-        previous_attestation_fingerprint=(
-            validated.previous_attestation_fingerprint
+    return TicketAdmissionTelemetryVerifiedLineageItem(
+        attestation_bytes=attestation_bytes,
+        document_bytes=_document_bytes(validated_item.document),
+        verified=TicketAdmissionTelemetryVerifiedLineage(
+            attestation_fingerprint=_attestation_fingerprint(attestation_bytes),
+            canonical_byte_count=len(attestation_bytes),
+            capture_sequence_id=validated.capture_sequence_id,
+            completed_stream_id=validated.completed_stream_id,
+            document_fingerprint=validated.document_fingerprint,
+            failed_stream_id=validated.failed_stream_id,
+            key_id=validated.key_id,
+            previous_attestation_fingerprint=(
+                validated.previous_attestation_fingerprint
+            ),
+            recorder_id=validated.recorder_id,
         ),
-        recorder_id=validated.recorder_id,
     )
 
 
@@ -389,16 +414,32 @@ def compare_ticket_admission_telemetry_lineage(
         Canonically ordered recorder, stream, capture, and chain relation.
 
     """
-    first_material = _verified_material(
-        first,
-        secret_key=secret_key,
-        trusted_key_id=trusted_key_id,
+    return compare_verified_ticket_admission_telemetry_lineage(
+        verify_ticket_admission_telemetry_lineage_item(
+            first,
+            secret_key=secret_key,
+            trusted_key_id=trusted_key_id,
+        ),
+        verify_ticket_admission_telemetry_lineage_item(
+            second,
+            secret_key=secret_key,
+            trusted_key_id=trusted_key_id,
+        ),
     )
-    second_material = _verified_material(
-        second,
-        secret_key=secret_key,
-        trusted_key_id=trusted_key_id,
-    )
+
+
+def compare_verified_ticket_admission_telemetry_lineage(
+    first: TicketAdmissionTelemetryVerifiedLineageItem,
+    second: TicketAdmissionTelemetryVerifiedLineageItem,
+) -> TicketAdmissionTelemetryLineageComparison:
+    """Compare two independently verified canonical lineage materials.
+
+    Returns:
+        Canonically ordered recorder, stream, capture, and chain relation.
+
+    """
+    first_material = _validated_verified_item(first)
+    second_material = _validated_verified_item(second)
     _reject_fingerprint_collisions(first_material, second_material)
     earlier, later = tuple(
         sorted((first_material, second_material), key=_material_identity)
@@ -781,28 +822,6 @@ def _document_bytes(document: TicketAdmissionTelemetryDocument) -> bytes:
         raise TicketAdmissionTelemetryLineageError(message) from error
 
 
-def _verified_material(
-    item: TicketAdmissionTelemetryLineageItem,
-    *,
-    secret_key: bytes,
-    trusted_key_id: str,
-) -> _VerifiedMaterial:
-    validated = _validated_item(item)
-    return _VerifiedMaterial(
-        attestation_bytes=(
-            encode_ticket_admission_telemetry_lineage_attestation(
-                validated.attestation
-            )
-        ),
-        document_bytes=_document_bytes(validated.document),
-        verified=verify_ticket_admission_telemetry_lineage_attestation(
-            validated,
-            secret_key=secret_key,
-            trusted_key_id=trusted_key_id,
-        ),
-    )
-
-
 def _validated_item(
     item: TicketAdmissionTelemetryLineageItem,
 ) -> TicketAdmissionTelemetryLineageItem:
@@ -811,8 +830,22 @@ def _validated_item(
     return item
 
 
+def _validated_verified_item(
+    item: TicketAdmissionTelemetryVerifiedLineageItem,
+) -> TicketAdmissionTelemetryVerifiedLineageItem:
+    if type(item) is not TicketAdmissionTelemetryVerifiedLineageItem:
+        _raise_lineage("verified item must use the exact lineage material type")
+    if type(item.attestation_bytes) is not bytes:
+        _raise_lineage("verified attestation material must use exact bytes")
+    if type(item.document_bytes) is not bytes:
+        _raise_lineage("verified document material must use exact bytes")
+    if type(item.verified) is not TicketAdmissionTelemetryVerifiedLineage:
+        _raise_lineage("verified claim must use the exact lineage type")
+    return item
+
+
 def _material_identity(
-    material: _VerifiedMaterial,
+    material: TicketAdmissionTelemetryVerifiedLineageItem,
 ) -> tuple[str, str, str, int, str]:
     verified = material.verified
     return (
@@ -825,8 +858,8 @@ def _material_identity(
 
 
 def _reject_fingerprint_collisions(
-    first: _VerifiedMaterial,
-    second: _VerifiedMaterial,
+    first: TicketAdmissionTelemetryVerifiedLineageItem,
+    second: TicketAdmissionTelemetryVerifiedLineageItem,
 ) -> None:
     if (
         first.verified.attestation_fingerprint

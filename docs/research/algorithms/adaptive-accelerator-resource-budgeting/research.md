@@ -169,8 +169,9 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One hundred thirty-eight
-admission/telemetry/persistence/summary/collection/overlap/index/components/lineage,
+facade resolves the same exact profile before reporting. One hundred sixty-one
+admission/telemetry/persistence/summary/collection/overlap/index/components/
+lineage/trust,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -225,17 +226,25 @@ key identity and MAC. Explicit verification reselects the trusted key identity a
 secret. Same-sequence forks, adjacent predecessor mismatch, nonadjacent direct
 links, MAC mismatch, document mismatch, and hash collisions fail closed. Different
 recorder or stream identities are not common lineage; ordered gaps retain common
-lineage without a direct link. Key legitimacy remains caller-owned. There is no
-asymmetric signature, key rotation, PKI, trust store, automatic loading, snapshot
-merge, route recommendation, evidence promotion, or policy update.
+lineage without a direct link. Key legitimacy remains caller-owned.
+`caller-owned-ticket-admission-telemetry-lineage-trust-v1` creates an explicit
+in-memory set of at most 256 unique HMAC keys sorted by identity. Each entry owns
+an inclusive first/optional-last capture sequence window; empty sets trust nothing.
+Exact key identity and window selection precede MAC verification. Independently
+verified canonical materials preserve cross-key direct-successor, ordered-gap,
+fork, and collision checks. Duplicate identities, malformed windows, unknown keys,
+out-of-window captures, and incorrect secrets fail closed. Secret fields are hidden
+from representations. There is no asymmetric signature, key loading or persistence,
+PKI, external trust store, automatic loading, snapshot merge, route recommendation,
+evidence promotion, or policy update.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
 rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, asymmetric lineage signatures, key rotation,
-external trust stores, and automatic adaptive queue/resource feedback remain open.
+migration or alternate stores, asymmetric lineage signatures, external trust
+stores, and automatic adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

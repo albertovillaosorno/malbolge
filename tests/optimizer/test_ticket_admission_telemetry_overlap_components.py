@@ -43,6 +43,8 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_overlap_components.py
 # - accelerator/ticket_admission_telemetry_lineage.py
+# - accelerator/ticket_admission_telemetry_lineage_trust.py
+# - accelerator/ticket_admission_telemetry_lineage.py
 #
 # Large file:
 #   - false

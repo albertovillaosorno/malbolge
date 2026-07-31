@@ -503,18 +503,26 @@ Verification requires an explicit trusted key identity and secret. Same-sequence
 forks, adjacent predecessor mismatch, nonadjacent direct links, MAC mismatch, and
 fingerprint collisions fail closed. Different recorder or stream identities remain
 separate lineages; ordered gaps are common lineage without a direct link. The
-caller owns key legitimacy. There is no asymmetric signature, key rotation, PKI,
-or trust store. None of these surfaces merge snapshots, recommend routes, or
-modify admission. There is no automatic loading, hidden worker, automatic
-promotion, or policy authority. The retained
+caller owns key legitimacy.
+`caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
+in-memory set of at most 256 unique HMAC keys, sorted by `key_id`. Each key has an
+inclusive first/optional-last capture sequence window; empty sets trust nothing.
+Verification selects the exact key identity and window, and independently verified
+items may be compared across a rotation. Duplicate identities, malformed windows,
+unknown keys, out-of-window captures, and incorrect secrets fail closed. Secret
+fields are hidden from representations. There is no asymmetric signature, key
+loading or persistence, PKI, or external trust store. None of these surfaces merge
+snapshots, recommend routes, or modify admission. There is no automatic loading,
+hidden worker, automatic promotion, or policy authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One hundred thirty-eight admission/telemetry/persistence/summary/
-collection/overlap/index/components/lineage tests cover fallback, positive/negative
+every ticket. One hundred sixty-one admission/telemetry/persistence/summary/
+collection/overlap/index/components/lineage/trust tests cover fallback,
+positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
 three live CUDA routes. The seven route records and exact

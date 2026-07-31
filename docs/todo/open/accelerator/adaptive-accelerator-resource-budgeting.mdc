@@ -171,9 +171,9 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. One hundred thirty-eight
+  only after exact profile resolution. One hundred sixty-one
   admission/telemetry/persistence/summary/collection/overlap/index/components/
-  lineage tests
+  lineage/trust tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -235,10 +235,18 @@ example probe points, not supported-range endpoints.
   adjacent predecessor mismatch, nonadjacent direct links, MAC/document mismatch,
   and hash collisions fail closed. Different recorder or stream identities remain
   separate lineages; ordered gaps are common lineage without a direct link. The
-  caller owns key legitimacy. There is no asymmetric signature, key rotation,
-  PKI, or trust store. None of these surfaces merge snapshots, recommend routes,
-  or modify admission. There is no automatic loading, hidden worker, automatic
-  promotion, or policy authority. Other hosts, Python versions, drivers,
-  devices/workloads, telemetry schema migration or alternate stores, asymmetric
-  lineage signatures, key rotation, external trust stores, and automatic adaptive
-  queue/resource feedback remain open.
+  caller owns key legitimacy.
+  `caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
+  in-memory set of at most 256 unique HMAC keys sorted by identity. Each key owns
+  an inclusive first/optional-last capture sequence window; empty sets trust
+  nothing. Verification selects the exact key and window, while independently
+  verified canonical materials preserve cross-key direct-successor, gap, fork,
+  and collision checks. Duplicate identities, malformed windows, unknown keys,
+  out-of-window captures, and incorrect secrets fail closed. Secret fields are
+  hidden from representations. There is no asymmetric signature, key loading or
+  persistence, PKI, or external trust store. None of these surfaces merge
+  snapshots, recommend routes, or modify admission. There is no automatic loading,
+  hidden worker, automatic promotion, or policy authority. Other hosts, Python
+  versions, drivers, devices/workloads, telemetry schema migration or alternate
+  stores, asymmetric lineage signatures, external trust stores, and automatic
+  adaptive queue/resource feedback remain open.

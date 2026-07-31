@@ -46,6 +46,7 @@
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
 # - accelerator/ticket_admission_telemetry_lineage.py
+# - accelerator/ticket_admission_telemetry_lineage_trust.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
 # Large file:
