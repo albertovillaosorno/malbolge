@@ -171,9 +171,9 @@ example probe points, not supported-range endpoints.
   `evidence-bound-ticket-route-admission-report-v1` explains every validated route
   in input order with stable rejection reasons and selected-use counts while
   embedding the unchanged plan. The retained CUDA facade exposes the same report
-  only after exact profile resolution. One hundred ninety-three
+  only after exact profile resolution. Two hundred sixteen
   admission/telemetry/persistence/summary/collection/overlap/index/components/
-  lineage/trust/manifest tests
+  lineage/trust/manifest/provider tests
   cover report
   identity, fallback, five isolated rejection classes, eligible but unused routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
@@ -251,10 +251,17 @@ example probe points, not supported-range endpoints.
   requires exact caller-supplied key/reference coverage and returns manifest-bound
   in-memory trust; the secret remains unverified until an attestation authenticates.
   Duplicate identities, malformed/noncanonical JSON, incomplete or excessive
-  coverage, reference mismatch, and storage failures fail closed. There is no
-  asymmetric signature, live secret provider, PKI, or automatic trust loading.
-  None of these surfaces merge snapshots, recommend routes, or modify admission.
-  There is no hidden worker, automatic promotion, or policy authority. Other hosts,
-  Python versions, drivers, devices/workloads, telemetry schema migration or
-  alternate stores, asymmetric lineage signatures, live secret providers, and
-  automatic adaptive queue/resource feedback remain open.
+  coverage, reference mismatch, and storage failures fail closed.
+  `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+  caller-supplied synchronous port. It validates the manifest and request budget
+  before any call, sends one immutable canonical-order request per entry, and
+  accepts only typed `resolved`, `unavailable`, or `failed` results. Non-success
+  stops without retry; repeated explicit resolution performs a fresh provider walk.
+  Secret bytes remain hidden and unverified until attestation authentication. There
+  is no asymmetric signature, built-in provider, discovery, retry, retained cache,
+  persistence, asynchronous lifecycle, PKI, or automatic trust loading. None of
+  these surfaces merge snapshots, recommend routes, or modify admission. There is
+  no hidden worker, automatic promotion, or policy authority. Other hosts, Python
+  versions, drivers, devices/workloads, telemetry schema migration or alternate
+  stores, asymmetric lineage signatures, and automatic adaptive queue/resource
+  feedback remain open.

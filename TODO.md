@@ -1602,18 +1602,27 @@ atomic replacement. Resolution requires exact caller-supplied key/reference
 coverage and returns manifest-bound in-memory trust. A resolved secret remains
 unverified until an attestation authenticates. Duplicate identities, malformed or
 noncanonical JSON, incomplete or excessive coverage, reference mismatch, and
-storage failures fail closed. There is no asymmetric signature, live secret
-provider, PKI, or automatic trust loading. None of these surfaces merge snapshots,
-recommend routes, or modify admission. No hidden workers, automatic promotion, or
-policy authority are introduced. The retained
+storage failures fail closed.
+`explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+caller-supplied synchronous provider. It validates the manifest and a default
+256-request budget before the first call, emits immutable requests in canonical key
+order, and accepts only typed `resolved`, `unavailable`, or `failed` results. Each
+entry is called exactly once; non-success stops without retry, while repeated
+explicit resolution performs a fresh provider walk. Requests expose only manifest,
+provider, key/reference, capture-window, and index metadata. Secret bytes remain
+hidden and unverified until an attestation authenticates. There is no asymmetric
+signature, built-in provider, discovery, retry, retained cache, persistence,
+asynchronous lifecycle, PKI, or automatic trust loading. None of these surfaces
+merge snapshots, recommend routes, or modify admission. No hidden workers,
+automatic promotion, or policy authority are introduced. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One hundred ninety-three admission/telemetry/persistence/summary/
-collection/overlap/index/components/lineage/trust/manifest tests cover fallback,
+every ticket. Two hundred sixteen admission/telemetry/persistence/summary/collection/
+overlap/index/components/lineage/trust/manifest/provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
@@ -1642,9 +1651,8 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, telemetry schema
-migration or alternate stores, asymmetric lineage signatures, live secret
-providers, automatic adaptive feedback, and broader live-device evidence remain
-open.
+migration or alternate stores, asymmetric lineage signatures, automatic
+adaptive feedback, and broader live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

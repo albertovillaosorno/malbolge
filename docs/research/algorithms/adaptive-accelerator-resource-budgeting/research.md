@@ -169,9 +169,9 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One hundred ninety-three
+facade resolves the same exact profile before reporting. Two hundred sixteen
 admission/telemetry/persistence/summary/collection/overlap/index/components/
-lineage/trust/manifest,
+lineage/trust/manifest/provider,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -242,8 +242,16 @@ to canonical bytes, and resolves only from exact caller-supplied secret coverage
 Resolution binds in-memory trust to the manifest identity but does not certify a
 secret until an attestation verifies. Duplicate keys/references, malformed or
 noncanonical JSON, incomplete or excessive coverage, reference mismatch, and
-storage failures fail closed. There is no asymmetric signature, live secret
-provider, PKI, automatic trust loading, snapshot merge, route recommendation,
+storage failures fail closed.
+`explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts exactly one
+caller-supplied synchronous port. Manifest validation and the configurable request
+budget, default 256, complete before provider work. Requests are immutable and
+canonical-key ordered; each reference is called once. Typed `unavailable` or
+`failed` results stop without retry, and no vendor text enters the contract.
+Repeated explicit resolution performs a new provider walk. Resolved bytes remain
+unverified until attestation authentication. There is no asymmetric signature,
+built-in provider, discovery, retry, retained cache, persistence, asynchronous
+lifecycle, PKI, automatic trust loading, snapshot merge, route recommendation,
 evidence promotion, or policy update.
 The registry now selects at most one
 exact workload/capability/runtime record, permits distinct runtime variants, and
@@ -251,8 +259,8 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, asymmetric lineage signatures, live secret
-providers, and automatic adaptive queue/resource feedback remain open.
+migration or alternate stores, asymmetric lineage signatures, and automatic
+adaptive queue/resource feedback remain open.
 
 ## Threats to Validity
 

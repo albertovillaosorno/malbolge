@@ -24,7 +24,7 @@
 #   - Outputs: canonical manifests, identities, and caller-owned trust sets.
 #   - Side effects: explicit bounded file reads and atomic replacement only.
 # - Split-When:
-#   - Split when asymmetric signatures or live secret providers gain contracts.
+#   - Split when asymmetric signatures or asynchronous providers gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact secret-free manifest boundary.
 # - Summary:

@@ -519,18 +519,27 @@ requires exact caller-supplied key/reference coverage and produces manifest-boun
 in-memory trust. A resolved secret is not certified until an attestation verifies.
 Duplicate keys/references, malformed or noncanonical JSON, incomplete or excessive
 coverage, reference mismatch, and storage failures fail closed. Secrets never enter
-manifest bytes. There is no asymmetric signature, live secret provider, PKI, or
-automatic trust loading. None of these surfaces merge snapshots, recommend routes,
-or modify admission. There is no hidden worker, automatic promotion, or policy
-authority. The retained
+manifest bytes.
+`explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+caller-supplied synchronous provider. Manifest validation and a default 256-request
+budget complete before the first call. Immutable requests follow canonical key
+order and carry manifest/provider identity, key/reference identity, capture window,
+and request index. Providers return only typed `resolved`, `unavailable`, or
+`failed` results; non-success stops without retry, and each entry is called exactly
+once. Repeated explicit resolutions call the provider again. Secret bytes remain
+hidden, and resolution still does not authenticate them before attestation use.
+There is no asymmetric signature, built-in provider, discovery, retry, retained
+cache, persistence, asynchronous lifecycle, PKI, or automatic trust loading. None
+of these surfaces merge snapshots, recommend routes, or modify admission. There is
+no hidden worker, automatic promotion, or policy authority. The retained
 `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the RTX
 4060 `sm_89` capability and full-domain CRAZY workload to source commit
 `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One hundred ninety-three admission/telemetry/persistence/summary/
-collection/overlap/index/components/lineage/trust/manifest tests cover fallback,
+every ticket. Two hundred sixteen admission/telemetry/persistence/summary/collection/
+overlap/index/components/lineage/trust/manifest/provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

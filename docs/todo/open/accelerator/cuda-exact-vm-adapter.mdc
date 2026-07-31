@@ -459,19 +459,25 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   fingerprints canonical bytes and resolves only from exact caller-supplied
   coverage; resolution does not certify a secret before attestation verification.
   Duplicate IDs, malformed/noncanonical JSON, coverage mismatch, reference
-  mismatch, and storage failures fail closed. Asymmetric signatures, live secret
-  providers, PKI, and automatic trust loading are not implemented. None of these
-  surfaces recommend or change routes. There is no hidden worker, automatic
-  promotion, or policy authority. The retained
+  mismatch, and storage failures fail closed.
+  `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+  caller-supplied synchronous port, validates the manifest and request budget before
+  calls, and sends one immutable canonical-order request per entry. Typed
+  `unavailable` or `failed` outcomes stop without retry; repeated explicit
+  resolution calls the provider again. Secrets remain hidden and unverified until
+  attestation use. Asymmetric signatures, built-in providers, discovery, retries,
+  retained caches, persistence, asynchronous lifecycles, PKI, and automatic trust
+  loading are not implemented. None of these surfaces recommend or change routes.
+  There is no hidden worker, automatic promotion, or policy authority. The retained
   `rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1` profile binds the
   RTX 4060 `sm_89` capability and full-domain CRAZY workload to source commit
   `431f542ab6321eeb12b7bcb9195318f25cf376a5`. It admits synchronous groups 2/4/8
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. One hundred ninety-three
+  closes every ticket. Two hundred sixteen
   admission/telemetry/persistence/summary/collection/overlap/index/
-  components/lineage/trust/manifest tests cover fallback,
+  components/lineage/trust/manifest/provider tests cover fallback,
   positive/negative evidence, duplicate/malformed records, exact profile matching,
   seven isolated runtime drifts, multi-profile selection, invalid/unknown workloads,
   ambiguity, and three live CUDA routes. The seven route records

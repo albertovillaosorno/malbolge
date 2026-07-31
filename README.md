@@ -58,6 +58,12 @@ sorted JSON is bounded to 256 entries and 64 KiB, has a stable SHA-256 fingerpri
 and is read or atomically written only through explicit calls. Secret resolution
 requires exact caller-supplied coverage; resolving a reference does not certify the
 secret until an attestation verifies.
+`explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+caller-supplied synchronous provider and validates the manifest plus a default
+256-request budget before the first call. It emits immutable requests in canonical
+key order and accepts only typed `resolved`, `unavailable`, or `failed` outcomes.
+Each entry is requested exactly once. There is no discovery, retry, cache,
+persistence, provider lifecycle, or hidden worker.
 
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
@@ -208,10 +214,11 @@ summaries never recommend routes or modify admission. Pairwise, indexed, and
 component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
-route, or admission authority. Caller-owned bounded rotation and secret-free
-external manifests exist, but there is no asymmetric signature, live secret
-provider, PKI, or automatic trust loading. Observations do not promote routes
-automatically and never replace retained benchmark evidence.
+route, or admission authority. Caller-owned bounded rotation, secret-free
+manifests, and an explicit synchronous provider port exist, but there is no
+asymmetric signature, built-in provider, automatic discovery, retry, cache,
+provider lifecycle, PKI, or automatic trust loading. Observations do not promote
+routes automatically and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime
