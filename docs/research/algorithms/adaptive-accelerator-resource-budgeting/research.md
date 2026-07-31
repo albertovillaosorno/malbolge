@@ -169,9 +169,9 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Two hundred sixteen
-admission/telemetry/persistence/summary/collection/overlap/index/components/
-lineage/trust/manifest/provider,
+facade resolves the same exact profile before reporting. Two hundred fifty
+admission/telemetry/persistence/store/summary/collection/overlap/index/
+components/lineage/trust/manifest/provider,
 twelve manifest, and fourteen runtime-identity tests prevent silent drift,
 direct-plan bypass, or report-only policy changes. The report reads no benchmark
 evidence and performs no online learning. The caller-owned
@@ -187,6 +187,16 @@ unchanged. `ticket-admission-telemetry-document-v1` captures both snapshots as
 compact sorted-key schema-v1 JSON. Bounded decoding rejects duplicate, unknown,
 oversized, noncanonical, and inconsistent state; explicit writes use atomic
 replacement, and restoration preserves exact sequence and eviction state.
+`caller-owned-ticket-admission-telemetry-store-v1` defines a minimal
+put/get/remove/snapshot port and one bounded in-memory adapter. Construction fixes
+positive unique-document, per-FIFO observation, and canonical-byte limits.
+Defaults are 4,096 documents, 4,096 observations per FIFO, and 16 MiB.
+Puts validate schema-v1 canonical bytes before mutation, reuse the established
+fingerprint, and treat exact duplicates as idempotent. Snapshots publish only sorted
+fingerprints, byte counts, and immutable limits; removal releases exact budgets.
+Invalid fingerprints/documents, capacity overflow, collisions, or retained decode
+failure fail closed. There is no filesystem access, automatic loading, summary,
+merge, recommendation, lineage inference, or policy update.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups exact backend/device/workload/ticket-count contexts into integer
 completed/failed totals, estimate comparisons, retention ranges, failure-category
@@ -259,8 +269,8 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, telemetry schema
-migration or alternate stores, asymmetric lineage signatures, and automatic
-adaptive queue/resource feedback remain open.
+migration, asymmetric lineage signatures, and automatic adaptive queue/resource
+feedback remain open.
 
 ## Threats to Validity
 

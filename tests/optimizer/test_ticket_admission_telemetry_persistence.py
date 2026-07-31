@@ -39,6 +39,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_store.py
 #
 # Large file:
 #   - false

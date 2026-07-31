@@ -152,6 +152,16 @@ sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
 observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
 input, and restores exact sequence and eviction state. File reads and writes are
 explicit; writes use a same-directory temporary file and atomic replacement.
+`caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
+put/get/remove/snapshot port and a bounded caller-owned memory adapter.
+Defaults are 4,096 unique documents, 4,096 observations per FIFO, and 16 MiB
+of exact schema-v1 canonical bytes. Fingerprints
+reuse `ticket-admission-telemetry-document-v1:sha256:<hex>`; duplicate puts are
+idempotent, limits cannot be widened after construction, snapshots are ordered by
+fingerprint, and removal releases exact document and byte budgets. Invalid
+fingerprints/documents, budget overflow, collisions, or retained decode failure fail
+closed without partial mutation. The memory adapter performs no filesystem I/O,
+automatic loading, summaries, merging, recommendations, or admission changes.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups retained observations by exact backend, device, workload, and ticket
 count. It publishes completed/failed integer totals, estimate-comparison counts,
@@ -223,8 +233,9 @@ no hidden worker, automatic promotion, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Two hundred sixteen admission/telemetry/persistence/summary/collection/
-overlap/index/components/lineage/trust/manifest/provider tests cover fallback,
+every ticket. Two hundred fifty admission/telemetry/persistence/store/summary/
+collection/overlap/index/components/lineage/trust/manifest/provider tests
+cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and

@@ -40,6 +40,7 @@
 # - accelerator/ticket_admission_telemetry.py
 # - accelerator/ticket_admission_telemetry_collection.py
 # - accelerator/ticket_admission_telemetry_persistence.py
+# - accelerator/ticket_admission_telemetry_store.py
 # - accelerator/ticket_admission_telemetry_overlap_index.py
 # - accelerator/ticket_admission_telemetry_overlap_components.py
 # - accelerator/ticket_admission_telemetry_lineage.py

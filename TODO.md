@@ -1550,6 +1550,16 @@ compact sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and
 4,096 observations per FIFO, rejects duplicate, unknown, oversized, and
 noncanonical input, and restores exact sequence/eviction state. Explicit file
 writes use same-directory temporary files and atomic replacement.
+`caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
+alternate-store port and bounded memory adapter. It defaults to 4,096 unique
+schema-v1 documents, 4,096 observations per FIFO, and 16 MiB of canonical
+bytes, reuses the established document
+fingerprint, and exposes only put/get/remove/snapshot operations. Exact duplicate
+puts are idempotent, limits are immutable after construction, snapshots are sorted,
+and removal releases exact budgets. Invalid fingerprints/documents, budget overflow,
+collisions, or retained decode failure fail closed without partial mutation. It
+performs no filesystem I/O, automatic loading, summaries, merges, recommendations,
+or admission changes.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups retained observations by exact backend, device, workload, and ticket
 count. It publishes only integer outcome totals, estimate-comparison counts,
@@ -1621,8 +1631,9 @@ automatic promotion, or policy authority are introduced. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Two hundred sixteen admission/telemetry/persistence/summary/collection/
-overlap/index/components/lineage/trust/manifest/provider tests cover fallback,
+every ticket. Two hundred fifty admission/telemetry/persistence/store/summary/
+collection/overlap/index/components/lineage/trust/manifest/provider tests cover
+fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
 runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
@@ -1651,8 +1662,8 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, telemetry schema
-migration or alternate stores, asymmetric lineage signatures, automatic
-adaptive feedback, and broader live-device evidence remain open.
+migration, asymmetric lineage signatures, automatic adaptive feedback, and broader
+live-device evidence remain open.
 
 ### TODO - Compilation latency performance budget
 

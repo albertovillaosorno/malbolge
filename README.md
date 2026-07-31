@@ -27,7 +27,15 @@ build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
 and bounded completion/failure telemetry explain what ran without changing the
 selected route, retaining exception text, or learning new policy online. The two
 FIFOs can be captured as canonical bounded JSON and explicitly restored without
-automatic loading. A deterministic offline summary groups one document by exact
+automatic loading. `caller-owned-ticket-admission-telemetry-store-v1` adds an
+explicit alternate-store port plus a bounded memory adapter. It retains exact
+schema-v1 canonical bytes under the established SHA-256 document identity, defaults
+to 4,096 unique documents and 16 MiB, treats exact duplicate puts as idempotent,
+and exposes only explicit put/get/remove/snapshot operations. Limits are immutable,
+removal releases budget, snapshots are fingerprint-ordered, and collisions or
+corrupted retained bytes fail closed. It performs no filesystem I/O, automatic
+loading, summaries, merging, recommendations, or policy changes. A deterministic
+offline summary groups one document by exact
 execution context and exposes only integer totals, retention ranges, stable
 failure categories, and selected-evidence appearance counts. Explicit document
 collections assign canonical SHA-256 identities and deduplicate only byte-identical
@@ -215,10 +223,11 @@ component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires a caller-trusted HMAC key and still grants no merge,
 route, or admission authority. Caller-owned bounded rotation, secret-free
-manifests, and an explicit synchronous provider port exist, but there is no
-asymmetric signature, built-in provider, automatic discovery, retry, cache,
-provider lifecycle, PKI, or automatic trust loading. Observations do not promote
-routes automatically and never replace retained benchmark evidence.
+manifests, an explicit synchronous provider port, and a caller-owned alternate
+telemetry store exist, but there is no telemetry schema migration, asymmetric
+signature, built-in provider, automatic discovery, retry, cache, provider lifecycle,
+PKI, or automatic trust loading. Observations do not promote routes automatically
+and never replace retained benchmark evidence.
 
 Possible future inference integrations include TensorRT, cuDNN frontend, ONNX
 Runtime, TensorRT-LLM, and tokenizer/model tooling. They are not current runtime

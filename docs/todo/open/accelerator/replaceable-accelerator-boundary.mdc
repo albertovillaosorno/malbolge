@@ -415,6 +415,14 @@ timed.
   sorted-key schema-v1 JSON. Bounded decoding rejects duplicate, unknown,
   oversized, noncanonical, and inconsistent state; explicit writes use atomic
   replacement and restoration preserves sequence/eviction state.
+  `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
+  put/get/remove/snapshot port and bounded in-memory adapter. It defaults to
+  4,096 unique schema-v1 documents, 4,096 observations per FIFO, and 16 MiB of
+  canonical bytes. Exact duplicates are
+  idempotent, limits remain immutable, snapshots are fingerprint-ordered, and
+  removal releases budgets. Invalid input, overflow, collisions, and retained
+  decode failures fail closed. There is no filesystem I/O, automatic loading,
+  summary, merge, recommendation, lineage inference, or route change.
   `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
   and groups exact execution contexts into integer outcomes, estimate comparisons,
   retention ranges, stable failure counts, and sorted evidence appearances.
@@ -469,8 +477,8 @@ timed.
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. Two hundred sixteen
-  admission/telemetry/persistence/summary/collection/overlap/index/
+  closes every ticket. Two hundred fifty
+  admission/telemetry/persistence/store/summary/collection/overlap/index/
   components/lineage/trust/manifest/provider tests cover fallback,
   positive/negative evidence, duplicate/malformed records, exact profile matching,
   seven isolated runtime drifts, multi-profile selection, invalid/unknown workloads,
