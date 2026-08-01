@@ -25,8 +25,8 @@
 #   - Outputs: one hidden caller-owned bounded Authorization value and metadata.
 #   - Side effects: exactly one explicit provider call per successful preflight.
 # - Split-When:
-#   - Split when async credential providers, hosted APIs, certificates, or
-#     PKI gain contracts.
+#   - Split when concrete credential providers, hosted APIs, certificates,
+#     or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact Authorization-provider boundary.
 # - Summary:
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
@@ -154,6 +155,14 @@ class TicketAdmissionTelemetryLineageResolvedHttpsAuthorization:
     source_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class TicketAdmissionTelemetryLineagePreparedHttpsAuthorization:
+    """Validated nonsecret preflight for one Authorization resolution."""
+
+    max_authorization_bytes: int
+    request: TicketAdmissionTelemetryLineageHttpsAuthorizationRequest
+
+
 def ticket_admission_https_authorization_provider_id() -> str:
     """Return the stable explicit HTTPS Authorization provider identity.
 
@@ -178,6 +187,30 @@ def resolve_ticket_admission_https_authorization(  # ruff: ignore[too-many-argum
         Hidden bounded Authorization value and stable request metadata.
 
     """
+    prepared = prepare_ticket_admission_https_authorization(
+        fetcher,
+        request,
+        authorization_provider_id=authorization_provider_id,
+        max_authorization_bytes=max_authorization_bytes,
+    )
+    _validate_provider(provider)
+    result = _call_provider(provider, prepared.request)
+    return materialize_ticket_admission_https_authorization(prepared, result)
+
+
+def prepare_ticket_admission_https_authorization(
+    fetcher: https.TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcher,
+    request: fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest,
+    *,
+    authorization_provider_id: str,
+    max_authorization_bytes: int = DEFAULT_MAX_HTTPS_AUTHORIZATION_BYTES,
+) -> TicketAdmissionTelemetryLineagePreparedHttpsAuthorization:
+    """Validate nonsecret inputs before one sync or async provider call.
+
+    Returns:
+        Immutable exact provider request and bounded byte limit.
+
+    """
     validated_fetcher = _validated_https_fetcher(fetcher)
     validated_request = _validated_fetch_request(request)
     validated_provider_id = _validated_identifier(
@@ -185,7 +218,6 @@ def resolve_ticket_admission_https_authorization(  # ruff: ignore[too-many-argum
         "authorization provider identity",
     )
     byte_limit = _validated_byte_limit(max_authorization_bytes)
-    _validate_provider(provider)
     _validate_fetch_binding(validated_fetcher, validated_request)
     provider_request = TicketAdmissionTelemetryLineageHttpsAuthorizationRequest(
         authorization_provider_id=validated_provider_id,
@@ -194,7 +226,45 @@ def resolve_ticket_admission_https_authorization(  # ruff: ignore[too-many-argum
         resource_id=validated_request.resource_id,
         source_id=validated_request.source_id,
     )
-    result = _call_provider(provider, provider_request)
+    _ = validate_ticket_admission_https_authorization_request(provider_request)
+    return TicketAdmissionTelemetryLineagePreparedHttpsAuthorization(
+        max_authorization_bytes=byte_limit,
+        request=provider_request,
+    )
+
+
+def validate_ticket_admission_prepared_https_authorization(
+    prepared: TicketAdmissionTelemetryLineagePreparedHttpsAuthorization,
+) -> TicketAdmissionTelemetryLineagePreparedHttpsAuthorization:
+    """Validate one exact nonsecret Authorization preflight.
+
+    Returns:
+        The same exact prepared value after complete validation.
+
+    """
+    if (
+        type(prepared)
+        is not TicketAdmissionTelemetryLineagePreparedHttpsAuthorization
+    ):
+        _raise_provider("prepared value must use the exact preflight type")
+    _ = validate_ticket_admission_https_authorization_request(prepared.request)
+    _ = _validated_byte_limit(prepared.max_authorization_bytes)
+    return prepared
+
+
+def materialize_ticket_admission_https_authorization(
+    prepared: TicketAdmissionTelemetryLineagePreparedHttpsAuthorization,
+    result: TicketAdmissionTelemetryLineageHttpsAuthorizationResult,
+) -> TicketAdmissionTelemetryLineageResolvedHttpsAuthorization:
+    """Validate one provider result and build caller-owned Authorization state.
+
+    Returns:
+        Hidden bounded Authorization value and stable request metadata.
+
+    """
+    validated_prepared = validate_ticket_admission_prepared_https_authorization(
+        prepared
+    )
     validated_result = validate_ticket_admission_https_authorization_result(
         result
     )
@@ -205,17 +275,18 @@ def resolve_ticket_admission_https_authorization(  # ruff: ignore[too-many-argum
         _raise_provider(f"provider returned {validated_result.kind.value}")
     authorization_value = _validated_authorization_value(
         validated_result.authorization_value,
-        max_bytes=byte_limit,
+        max_bytes=validated_prepared.max_authorization_bytes,
     )
+    provider_request = validated_prepared.request
     return TicketAdmissionTelemetryLineageResolvedHttpsAuthorization(
         authorization_byte_count=len(authorization_value.encode("ascii")),
-        authorization_provider_id=validated_provider_id,
+        authorization_provider_id=provider_request.authorization_provider_id,
         authorization_value=authorization_value,
-        bundle_fingerprint=validated_request.bundle_fingerprint,
-        fetch_provider_id=validated_request.provider_id,
+        bundle_fingerprint=provider_request.bundle_fingerprint,
+        fetch_provider_id=provider_request.fetch_provider_id,
         header_name=HTTPS_AUTHORIZATION_HEADER_NAME,
-        resource_id=validated_request.resource_id,
-        source_id=validated_request.source_id,
+        resource_id=provider_request.resource_id,
+        source_id=provider_request.source_id,
     )
 
 

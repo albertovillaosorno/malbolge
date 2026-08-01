@@ -25,8 +25,8 @@
 #   - Outputs: request, resolution, rotation, and failure assertions.
 #   - Side effects: explicit in-process provider calls only.
 # - Split-When:
-#   - Split when native async HTTPS, synchronous or async credential
-#     providers, hosted APIs, certificates, or PKI gain tests.
+#   - Split when native async HTTPS, concrete credential providers,
+#     hosted APIs, certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact public-key provider behavior.
 # - Summary:
@@ -51,6 +51,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py

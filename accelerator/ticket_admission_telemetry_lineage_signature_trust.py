@@ -25,8 +25,8 @@
 #   - Outputs: immutable trust sets and independently verified comparisons.
 #   - Side effects: verifier calls only after exact trust selection succeeds.
 # - Split-When:
-#   - Split when native async HTTPS, synchronous or async credential
-#     providers, hosted APIs, certificates, or PKI gain contracts.
+#   - Split when native async HTTPS, concrete credential providers,
+#     hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact public-key trust boundary.
 # - Summary:
@@ -54,6 +54,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py

@@ -25,8 +25,8 @@
 #   - Outputs: preflight, one-call, bounds, secrecy, and failure assertions.
 #   - Side effects: in-memory caller-provider recording only.
 # - Split-When:
-#   - Split when async credential providers, hosted APIs, certificates, or
-#     PKI gain tests.
+#   - Split when concrete credential providers, hosted APIs, certificates,
+#     or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact Authorization-provider boundary.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
@@ -79,12 +80,16 @@ AuthRequest = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest
 AuthResult = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResult
 AuthKind = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResultKind
 ResolvedAuth = auth.TicketAdmissionTelemetryLineageResolvedHttpsAuthorization
+PreparedAuth = auth.TicketAdmissionTelemetryLineagePreparedHttpsAuthorization
 HttpsFetcher = https.TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcher
 HttpsConfig = (
     https.TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcherConfig
 )
 FetchRequest = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest
 _resolve = auth.resolve_ticket_admission_https_authorization
+_prepare = auth.prepare_ticket_admission_https_authorization
+_materialize = auth.materialize_ticket_admission_https_authorization
+_validate_prepared = auth.validate_ticket_admission_prepared_https_authorization
 _validate_request = auth.validate_ticket_admission_https_authorization_request
 _validate_result = auth.validate_ticket_admission_https_authorization_result
 _build_https = https.build_ticket_admission_https_public_key_bundle_fetcher
@@ -597,3 +602,99 @@ def test_public_result_validator_rejects_nonresolved_payload() -> None:
 
     with pytest.raises(AuthError, match="cannot contain credential text"):
         _ = _validate_result(result)
+
+
+def test_public_preflight_contains_exact_nonsecret_metadata() -> None:
+    prepared = _prepare(
+        _fetcher(),
+        _request(),
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+        max_authorization_bytes=len(AUTHORIZATION_VALUE),
+    )
+
+    assert _validate_prepared(prepared) is prepared
+    assert prepared.max_authorization_bytes == len(AUTHORIZATION_VALUE)
+    assert prepared.request == AuthRequest(
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+        bundle_fingerprint=BUNDLE_FINGERPRINT,
+        fetch_provider_id=FETCH_PROVIDER_ID,
+        resource_id=RESOURCE_ID,
+        source_id=SOURCE_ID,
+    )
+    assert AUTHORIZATION_BYTES not in repr(prepared).encode("utf-8")
+
+
+def test_public_materializer_matches_synchronous_resolution() -> None:
+    result = _resolved(BASIC_VALUE)
+    prepared = _prepare(
+        _fetcher(),
+        _request(),
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+    )
+
+    materialized = _materialize(prepared, result)
+    resolved = _resolve_value(_Provider(result))
+
+    assert materialized == resolved
+
+
+def test_public_preflight_validator_rejects_foreign_type() -> None:
+    with pytest.raises(AuthError, match="exact preflight type"):
+        _ = _validate_prepared(cast("PreparedAuth", object()))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("max_authorization_bytes", 0, "positive integer"),
+        (
+            "request",
+            cast("AuthRequest", object()),
+            "exact authorization request type",
+        ),
+    ],
+)
+def test_public_preflight_validator_rejects_tampering(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    prepared = _prepare(
+        _fetcher(),
+        _request(),
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+    )
+
+    with pytest.raises(AuthError, match=match):
+        _ = _validate_prepared(replace(prepared, **{field: value}))
+
+
+def test_public_materializer_rejects_foreign_preflight() -> None:
+    with pytest.raises(AuthError, match="exact preflight type"):
+        _ = _materialize(
+            cast("PreparedAuth", object()),
+            _resolved(),
+        )
+
+
+def test_public_materializer_rejects_foreign_result() -> None:
+    prepared = _prepare(
+        _fetcher(),
+        _request(),
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+    )
+
+    with pytest.raises(AuthError, match="exact authorization result type"):
+        _ = _materialize(prepared, cast("AuthResult", object()))
+
+
+def test_public_materializer_enforces_prepared_byte_limit() -> None:
+    prepared = _prepare(
+        _fetcher(),
+        _request(),
+        authorization_provider_id=AUTHORIZATION_PROVIDER_ID,
+        max_authorization_bytes=8,
+    )
+
+    with pytest.raises(AuthError, match="exceeds configured byte limit"):
+        _ = _materialize(prepared, _resolved("X" * 9))

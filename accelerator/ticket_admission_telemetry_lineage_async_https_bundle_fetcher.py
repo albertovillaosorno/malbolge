@@ -25,8 +25,8 @@
 #   - Outputs: the shared typed fetched, unavailable, or failed transport result.
 #   - Side effects: exactly one caller-supplied offloader await per matched call.
 # - Split-When:
-#   - Split when native async HTTPS, synchronous or async credential
-#     providers, hosted APIs, certificates, or PKI gain contracts.
+#   - Split when native async HTTPS, concrete credential providers,
+#     hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact caller-offloaded async boundary.
 # - Summary:
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py

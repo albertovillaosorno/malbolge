@@ -787,6 +787,23 @@ provider again. The port does not choose an authorization scheme, inject a heade
 open a connection, discover credentials, retry, cache, persist, log values, create
 workers, own a hosted-service API, validate certificates, distribute PKI, select a
 signature algorithm, or change admission policy.
+`explicit-async-ticket-admission-lineage-https-authorization-provider-v1`
+defines one caller-driven async port for resolving the same bounded opaque HTTPS
+`Authorization` value. The synchronous port now exposes one immutable nonsecret
+preflight plus one exact result materializer, and both sync and async resolution use
+those same validators. Preflight validates the exact HTTPS fetcher, canonical bundle
+request, source/resource binding, authorization-provider identity, and positive byte
+limit before the first `await`; a noncallable provider also fails before awaiting.
+One successful preflight awaits the caller-supplied provider exactly once with the
+same exact immutable request. The provider controls whether that await suspends.
+Cancellation propagates directly. Ordinary provider exceptions become stable async
+errors without vendor text. The shared materializer enforces exact result type and
+enum, forbids credential text in nonresolved outcomes, requires bounded nonempty
+ASCII field text for `resolved`, and returns the same hidden caller-owned metadata as
+the synchronous path. Repeated explicit resolutions await again with no cache or
+refresh. The port creates no event loop, task, thread, executor, worker, retry,
+discovery, refresh, header injection, hosted-service policy, certificate rule, PKI
+operation, algorithm choice, or admission-policy operation.
 `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
 Authorization value. Construction and every call revalidate the wrapped HTTPS
@@ -823,8 +840,9 @@ The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
-a caller-offloaded async HTTPS adapter, an explicit Authorization-provider
-port, an explicit authorized HTTPS adapter, and a caller-offloaded async
+a caller-offloaded async HTTPS adapter, explicit synchronous and async
+Authorization-provider ports, an explicit authorized HTTPS adapter, and a
+caller-offloaded async
 authorized HTTPS adapter. There is no built-in secret provider implementation,
 native nonblocking HTTPS client, concrete credential provider, automatic
 credential refresh, or hosted key service.
@@ -840,12 +858,13 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand one hundred forty
+every ticket. One thousand one hundred ninety-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
+async-https-authorization-provider/
 authorized-https-public-key-bundle-fetcher/
 async-authorized-https-public-key-bundle-fetcher/
 public-key-provider/async-public-key-provider/
