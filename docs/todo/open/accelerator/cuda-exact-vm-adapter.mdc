@@ -847,6 +847,24 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   or hosted APIs, retries, persists, logs names or values, creates workers, chooses an
   Authorization scheme, refreshes credentials, validates certificates, distributes
   PKI, selects algorithms, or changes admission policy.
+  `offloaded-async-environment-ticket-admission-lineage-https-authorization-provider-v1`
+  adapts one exact explicit environment Authorization provider to the shared async
+  port through one caller-supplied offloader. Construction and every call fully
+  revalidate the adapter identity, hidden wrapped provider, copied binding count,
+  entry and byte limits, provider identity, and callable offloader. The shared
+  request is validated before the first `await`; a provider-identity mismatch
+  returns typed `failed` without invoking the offloader. A matched request awaits
+  the offloader exactly once with the same exact provider and immutable request.
+  The caller alone chooses whether the environment read completes inline, runs in
+  a thread or executor, or suspends by another mechanism. Cancellation propagates
+  directly. Ordinary offloader exceptions become stable adapter errors without
+  vendor text. Returned typed results are revalidated after the await, including
+  exact enum and type, nonresolved payload absence, and bounded canonical ASCII
+  text for resolved values. Repeated calls offload and reread the environment, so
+  rotation and removal remain visible without a cache. The adapter creates no event
+  loop, task, thread, executor, worker, discovery, refresh, retry, persistence,
+  logging, hosted-service policy, certificate rule, PKI operation, algorithm
+  choice, or admission-policy operation.
   `memory-async-ticket-admission-lineage-https-authorization-provider-v1`
   adapts one exact bounded memory Authorization provider to the shared async provider
   port without introducing a scheduling point. Construction and every call revalidate
@@ -903,11 +921,12 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   a caller-offloaded async HTTPS adapter, explicit synchronous and async
   Authorization-provider ports, a bounded caller-owned memory Authorization
   provider with an inline async adapter, an explicit environment
-  Authorization provider, an explicit authorized HTTPS adapter,
+  Authorization provider with a caller-offloaded async adapter, an explicit
+  authorized HTTPS adapter,
   and a caller-offloaded async authorized HTTPS adapter.
   There is no built-in external secret-store integration, hosted
-  credential provider, native async file-secret I/O, native
-  nonblocking HTTPS client,
+  credential provider, native async file-secret I/O, native async environment
+  access, native nonblocking HTTPS client,
   automatic credential refresh, or hosted key service.
   No bundle or session is loaded automatically; there is no
   discovery, retry, retained
@@ -921,7 +940,7 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. One thousand six hundred one
+  closes every ticket. One thousand six hundred fifty-eight
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/memory-secret-provider/
   async-secret-provider/memory-async-secret-provider/file-secret-provider/
@@ -933,6 +952,7 @@ teardown fallback. `benchmarks/accelerator/evidence/2026-07-29-crazy-target-perf
   async-https-authorization-provider/
   memory-https-authorization-provider/
   environment-https-authorization-provider/
+  environment-async-https-authorization-provider/
   memory-async-https-authorization-provider/
   authorized-https-public-key-bundle-fetcher/
   async-authorized-https-public-key-bundle-fetcher/
