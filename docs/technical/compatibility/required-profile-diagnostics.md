@@ -22,12 +22,14 @@ This document currently governs:
 
 - `malbolge.json`
 - `scripts/validate/target_profile.py`
+- `scripts/validate/profile_requirements.py`
 - `vm/src/profile.rs`
 - `vm/src/profile_generated.rs`
 - `vm/src/execution.rs`
 - `tests/test_target_profile.py`
 - `tests/vm/profile_requirements.rs`
-- `tests/compatibility/`
+- `tests/compatibility/test_profile_requirements.py`
+- `tests/compatibility/test_scalable_memory.py`
 
 ## Current Behavior
 
@@ -57,6 +59,20 @@ Both advertise the same defining semantic features: byte input/output, crazy,
 deterministic sequential execution, post-instruction encryption, rotate, and
 self-modification. Capability identity describes implementation capacity, not a
 new language semantic profile.
+
+### Python Consumer Preflight
+
+`scripts/validate/profile_requirements.py` derives immutable requirements from a
+fully validated `malbolge.json` document and accepts only an explicit immutable
+runtime capability. It does not copy profile geometry into a second authority,
+inspect host capacity, select a profile, load an artifact, or execute guest code.
+
+The Python boundary uses the same normative feature order and the same explicit
+`safe-rust-classic` and `safe-rust-profiled` envelopes as Rust. It validates the
+selected profile's own capacity before runtime capacity, preserves exact
+`malbolge-1998`, `malbolge-2026.1`, and `malbolge-2026.2` identities, rejects
+unknown IDs without fallback, and emits byte-identical `MALBOLGE-PROFILE-001`
+and `MALBOLGE-PROFILE-002` text for the shared reference cases.
 
 The current `malbolge-2026.2` profile therefore fails preflight when explicitly
 sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by
@@ -132,15 +148,20 @@ by `safe-rust-profiled`. A request beyond the selected profile's own capacity
 reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead of
 selecting another profile.
 
-Compiler artifact metadata, top-level runtime profile selection, and other
-non-VM consumers do not yet universally carry this requirement object. This
-contract therefore remains active rather than claiming repository-wide profile
-diagnostic completion.
+Python validation consumers can now construct and preflight the immutable
+requirement object without invoking a VM. Compiler artifact metadata, top-level
+runtime profile selection, and product consumers do not yet universally carry it.
+This contract therefore remains active rather than claiming repository-wide
+profile diagnostic completion.
 
 ## Verification
 
 - `tests/test_target_profile.py` proves the checked-in Rust projection is
   byte-exactly generated from canonical `malbolge.json`.
+- `tests/compatibility/test_profile_requirements.py` verifies immutable Python
+  requirement/capability objects, profile-before-runtime precedence, no fallback,
+  malformed-input rejection, stable missing-dimension order, and byte-exact Rust
+  diagnostic parity for current/classic and historical-capacity failures.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
   classic facade before loading, transition-profile acceptance, classic default
   identity, exact historical-ceiling diagnostics, and no-fallback lookup.

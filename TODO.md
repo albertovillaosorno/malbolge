@@ -360,10 +360,11 @@ still rejects them before its ten-trit loader, so runtime choice remains explici
 ### TODO - Required-profile diagnostics
 
 Emit deterministic diagnostics naming required profile/features/capacity and
-runtime capability. The safe Rust facade now rejects `malbolge-2026.2` before
-loading with exact 14-trit/4,782,969-word requirements and reports classic
-capacity overflow as a 59,049-word historical-profile ceiling; propagation into
-compiler artifacts and other runtime consumers remains open.
+runtime capability. Safe Rust and the Python non-VM preflight now reject
+`malbolge-2026.2` with byte-identical 14-trit/4,782,969-word diagnostics, report
+classic overflow as a 59,049-word historical-profile ceiling, and preserve
+profile-before-runtime precedence. Propagation into compiler artifacts, top-level
+runtime selection, and product consumers remains open.
 
 ### TODO - Custom target profile identity
 

@@ -37,7 +37,8 @@
 #   - Invalid inputs or broken invariants fail closed.
 #
 # Related documents:
-# - None.
+# - scripts/validate/profile_requirements.py
+# - docs/technical/compatibility/required-profile-diagnostics.md
 #
 # Large file:
 #   - false

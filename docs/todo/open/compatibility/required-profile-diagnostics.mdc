@@ -19,11 +19,12 @@ scope:
   - "vm/src/profile_generated.rs"
   - "vm/src/execution.rs"
   - "scripts/validate/target_profile.py"
+  - "scripts/validate/profile_requirements.py"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
   - "tests/vm/profile_requirements.rs"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -53,8 +54,14 @@ historical-profile constraint.
   `constraint=historical-profile-ceiling` and its exact 59,049-word capacity.
 - The equivalent ten-trit `malbolge-2026.1` profile is admitted without losing
   its profile identity, and unknown profile IDs never fall back implicitly.
-- Compiler artifact metadata and non-VM runtime consumers do not yet all carry
-  these requirements, so repository-wide completion remains open.
+- `scripts/validate/profile_requirements.py` now gives Python/non-VM consumers
+  immutable profile requirements and explicit runtime envelopes derived from the
+  validated canonical document. Its `001` current/classic and `002` historical
+  ceiling diagnostics are byte-identical to Rust, with profile capacity checked
+  before runtime capacity and missing dimensions kept in stable order.
+- Compiler artifact metadata, top-level runtime selection, and product runtime
+  consumers do not yet all carry these requirements, so repository-wide
+  completion remains open.
 
 ## Acceptance
 
@@ -71,8 +78,11 @@ historical-profile constraint.
 ## Evidence
 
 - Current durable evidence includes `vm/src/profile.rs`, the generated
-  `vm/src/profile_generated.rs` projection, `tests/vm/profile_requirements.rs`,
-  and the compatibility/profile Python suites.
+  `vm/src/profile_generated.rs` projection,
+  `scripts/validate/profile_requirements.py`,
+  `tests/compatibility/test_profile_requirements.py`,
+  `tests/vm/profile_requirements.rs`, and the remaining compatibility/profile
+  Python suites.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
