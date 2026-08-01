@@ -619,6 +619,23 @@ the synchronous path. Repeated explicit resolutions await again with no cache or
 refresh. The port creates no event loop, task, thread, executor, worker, retry,
 discovery, refresh, header injection, hosted-service policy, certificate rule, PKI
 operation, algorithm choice, or admission-policy operation.
+`memory-ticket-admission-lineage-https-authorization-provider-v1`
+implements one reusable bounded caller-owned synchronous Authorization provider over
+explicit immutable in-memory entries. Each entry binds one hidden Authorization
+value and exact byte count to one canonical bundle fingerprint, fetch-provider
+identity, resource identity, and source identity. One service binds all entries to
+one authorization-provider identity, permits at most 64 entries by default and 4096
+at the supported maximum, requires canonical deterministic ordering, and rejects
+duplicate request bindings. Construction and every call revalidate the exact service
+type and identity, provider identity, limits, entry tuple, shared request metadata,
+shared Authorization text rules, byte counts, ordering, and uniqueness. A request
+with a different authorization-provider identity returns typed `failed`; a valid
+unmatched request returns `unavailable`; an exact match returns `resolved` with the
+unchanged hidden caller-owned value. Repeated calls perform the same validation and
+lookup without mutation or an external cache. The provider reads no environment,
+file, network, process credential state, secret store, or hosted API and performs no
+discovery, refresh, retry, persistence, logging, task creation, certificate rule,
+PKI operation, algorithm choice, or admission-policy operation.
 `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
 Authorization value. Construction and every call revalidate the wrapped HTTPS
@@ -656,11 +673,11 @@ service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
-Authorization-provider ports, an explicit authorized HTTPS adapter, and a
-caller-offloaded async
-authorized HTTPS adapter. There is no built-in secret provider implementation,
-native nonblocking HTTPS client, concrete credential provider, automatic
-credential refresh, or hosted key service.
+Authorization-provider ports, a bounded caller-owned memory Authorization
+provider, an explicit authorized HTTPS adapter, and a caller-offloaded async
+authorized HTTPS adapter. There is no built-in environment, file, external
+secret-store, or hosted credential provider, native nonblocking HTTPS client,
+automatic credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
@@ -673,13 +690,14 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand one hundred ninety-three
+every ticket. One thousand two hundred forty-two
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
 async-https-authorization-provider/
+memory-https-authorization-provider/
 authorized-https-public-key-bundle-fetcher/
 async-authorized-https-public-key-bundle-fetcher/
 public-key-provider/async-public-key-provider/

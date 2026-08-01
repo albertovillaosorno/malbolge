@@ -26,8 +26,8 @@
 #   - Outputs: caller-owned memory providers bound to canonical bundle bytes.
 #   - Side effects: exactly one awaited fetcher call per invocation.
 # - Split-When:
-#   - Split when native async HTTPS, concrete credential providers,
-#     hosted APIs, certificates, or PKI gain contracts.
+#   - Split when native async HTTPS, async memory auth, external
+#     credentials, hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact async bundle-fetch boundary.
 # - Summary:
@@ -44,6 +44,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py

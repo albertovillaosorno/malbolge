@@ -25,8 +25,8 @@
 #   - Outputs: preflight, await, cancellation, bounds, secrecy, and failures.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when concrete credential providers, hosted APIs, certificates, or
-#     PKI gain tests.
+#   - Split when async memory auth, external credentials, hosted APIs,
+#     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact async Authorization boundary.
 # - Summary:
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py

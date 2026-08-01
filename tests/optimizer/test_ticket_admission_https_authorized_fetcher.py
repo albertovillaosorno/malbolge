@@ -25,8 +25,8 @@
 #   - Outputs: binding, header, response, secrecy, and tampering assertions.
 #   - Side effects: monkeypatched in-memory HTTPS connections only.
 # - Split-When:
-#   - Split when concrete credential providers, hosted APIs, certificates,
-#     or PKI gain tests.
+#   - Split when async memory auth, external credentials, hosted APIs,
+#     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact authorized HTTPS boundary.
 # - Summary:
@@ -42,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
