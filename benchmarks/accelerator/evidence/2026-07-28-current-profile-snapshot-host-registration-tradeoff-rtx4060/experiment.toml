@@ -10,6 +10,7 @@ seed = 0
 family = "current-profile-14-trit-resident-snapshot-host-registration-64-step-no-op-v1"
 difficulty = 4782969
 target_profile = "malbolge-2026.2"
+target_profile_fingerprint = "malbolge-profile-v1:sha256:e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50"
 
 [budget]
 evaluations = 99

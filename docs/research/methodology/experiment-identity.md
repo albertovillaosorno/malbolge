@@ -50,7 +50,9 @@ mirror carries `algorithms/<id>/experiment.toml` with:
 
 - `schema_version = 1`;
 - `[experiment]` identity, record kind, method class, and deterministic seed;
-- `[challenge]` family, positive difficulty, and target profile;
+- `[challenge]` family, positive difficulty, target profile, and exact
+  `malbolge-profile-v1` fingerprint whenever the target is one canonical
+  profile;
 - `[budget]` with at least one positive integer stopping bound;
 - `[verification]` with `required = true` and an explicit oracle; and
 - `[provenance]` with exact implementation, configuration, and local-output
@@ -64,6 +66,15 @@ and the repository-relative raw-output path. Accepted outcomes include success,
 no solution, candidate invalidity, resource exhaustion, and tool failure so
 negative evidence remains reconstructible instead of disappearing from analysis.
 
+Canonical target profiles are content-bound, not name-only. A manifest naming
+`malbolge-1998`, `malbolge-2026.1`, or `malbolge-2026.2` must carry
+`challenge.target_profile_fingerprint`, and the validator recomputes the expected
+fingerprint from validated `malbolge.json`. A mismatch emits stable
+`MALBOLGE-PROFILE-ID-001`; an unknown ID never falls back. Explicit aggregate
+research scopes (`profile-independent`, `multi-profile`, and the classic-word
+benchmark domain) must omit the fingerprint so they cannot masquerade as one
+canonical semantic profile.
+
 Algorithm-specific tables may extend the core manifest without weakening these
 required identities. Source claims still resolve through `docs/bibliography/`.
 TOML is a [cataloged configuration
@@ -74,9 +85,10 @@ format](../../bibliography/specifications-and-standards/toml.md).
 - All eight current research-mirror manifests validate under schema v1, including
   the checked-in template.
 - `tests/test_experiment_manifest.py` proves repository identity, exact run
-  commit/workload hashes, retained negative outcomes, fail-closed outcome
-  vocabulary, positive stopping bounds, mandatory verification, and strict
-  plan-versus-run separation.
+  commit/workload hashes, canonical profile fingerprint requirements and
+  mismatch diagnostics, explicit noncanonical scopes, retained negative
+  outcomes, fail-closed outcome vocabulary, positive stopping bounds,
+  mandatory verification, and strict plan-versus-run separation.
 - `.dependencies/python/3.14.6/Scripts/python-jig.cmd
   scripts/validate/experiment_manifest.py` validates the checked-in corpus and
   reports the exact manifest count.
@@ -86,9 +98,11 @@ format](../../bibliography/specifications-and-standards/toml.md).
 
 ## Results
 
-Eight checked-in research plans now share one validated schema. Recorded-run
-fixtures demonstrate that source commit, workload hash, environment identity,
-outcome, and raw-output path are mandatory only when observed evidence is claimed.
+Eight checked-in research plans now share one validated schema, and every
+canonical-profile plan is bound to the generated profile fingerprint.
+Recorded-run fixtures demonstrate that source commit, workload hash,
+environment identity, outcome, and raw-output path are mandatory only when
+observed evidence is claimed.
 The schema therefore distinguishes preregistration/configuration from observation
 without requiring placeholder hardware or tool versions for work not yet run.
 
@@ -105,9 +119,9 @@ interpreted by schema v1.
 
 Experiment manifest schema v1 is the active reproducible-identity contract. A
 checked-in plan is not evidence of a run; a recorded run must bind exact source,
-workload, environment, outcome, and raw-output identity. This closes manifest
-identity while leaving statistical adequacy and study conclusions to downstream
-owners.
+workload, environment, outcome, raw-output identity, and canonical target
+profile fingerprint where applicable. This closes manifest identity while
+leaving statistical adequacy and study conclusions to downstream owners.
 
 ## References
 

@@ -16,13 +16,15 @@ scope:
   - "docs/technical/specification/"
   - "scripts/validate/target_profile.py"
   - "scripts/validate/profile_identity.py"
+  - "scripts/validate/experiment_manifest.py"
   - "vm/src/profile.rs"
   - "vm/src/profile_generated.rs"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
+  - "tests/test_experiment_manifest.py"
   - "tests/vm/profile_requirements.rs"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_identity.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/test_experiment_manifest.py tests/compatibility/test_profile_identity.py"
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -51,8 +53,13 @@ that reverse engineering can be made cryptographically impossible.
 - `.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity` prints or verifies fingerprints.
   Mismatch uses stable code `MALBOLGE-PROFILE-ID-001` with expected/observed
   identities and never silently substitutes another configuration.
+- Experiment Manifest v1 now requires exact generated fingerprints for
+  canonical target IDs, rejects stale hashes with `MALBOLGE-PROFILE-ID-001`,
+  rejects unknown IDs without fallback, and forbids fingerprints on aggregate
+  research scopes. Ten checked-in manifests carry the binding.
 - SHA-256 is used for identity/integrity only; no secrecy or anti-reverse-
-  engineering claim is made. Artifact-wide propagation remains open.
+  engineering claim is made. Compiler/container and product artifact
+  propagation remain open.
 
 ## Acceptance
 
@@ -69,7 +76,8 @@ that reverse engineering can be made cryptographically impossible.
 ## Evidence
 
 - Current durable evidence includes the generated fingerprint manifest,
-  external example, identity CLI, Rust projection, and profile-identity tests.
+  external example, identity CLI, Rust projection, profile-identity tests,
+  fingerprint-bound experiment plans, and retained benchmark manifests.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`.

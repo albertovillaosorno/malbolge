@@ -48,8 +48,9 @@ Prior-work claims must resolve through canonical records under
 Benchmark evidence protocol v1 is validated by
 `scripts/validate/benchmark_protocol.py`. A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
-toolchain, and run outcome therefore come from the reproducible experiment
-identity rather than being recopied into statistical metadata. The benchmark
+toolchain, run outcome, and canonical target-profile fingerprint where
+applicable therefore come from the reproducible experiment identity rather
+than being recopied into statistical metadata. The benchmark
 record must agree with that run on host, accelerator, and raw-output path.
 
 Every comparison additionally fixes:
@@ -86,7 +87,8 @@ stochastic records plus linked run manifests and retained raw CSV files.
   fixtures.
 - Their linked `.experiment.toml` records demonstrate that benchmark host,
   accelerator, and raw-output identity must agree with exact source/workload/
-  toolchain run provenance.
+  toolchain run provenance plus canonical target-profile identity where
+applicable.
 - `.dependencies/python/3.14.6/Scripts/python-jig.cmd -m
   scripts.validate.benchmark_protocol` validates the checked-in protocol corpus.
 

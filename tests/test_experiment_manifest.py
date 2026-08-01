@@ -37,7 +37,10 @@
 #   - Invalid inputs or broken invariants fail closed.
 #
 # Related documents:
-# - None.
+# - docs/research/methodology/experiment-identity.md
+# - docs/technical/compatibility/custom-target-profile-identity.md
+# - scripts/validate/experiment_manifest.py
+# - scripts/validate/target_profile.py
 #
 # Large file:
 #   - false
@@ -62,6 +65,12 @@ EXPECTED_IDS = (
 RESOURCE_EXHAUSTED = "resource-exhausted"
 RUN_COMMIT = "a" * 40
 RUN_HASH = "b" * 64
+CURRENT_PROFILE_FINGERPRINT = (
+    "malbolge-profile-v1:sha256:"
+    "e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50"
+)
+MISMATCH_FINGERPRINT = "malbolge-profile-v1:sha256:" + ("0" * 64)
+PROFILE_INDEPENDENT = "profile-independent"
 
 
 def _run_manifest(**overrides: str) -> str:
@@ -87,6 +96,7 @@ seed = 7
 family = "fixture"
 difficulty = 1
 target_profile = "malbolge-2026.2"
+target_profile_fingerprint = "{CURRENT_PROFILE_FINGERPRINT}"
 
 [budget]
 seconds = 1
@@ -175,3 +185,65 @@ def test_plan_cannot_smuggle_recorded_run_metadata() -> None:
     _expect_failure(
         text, "plan experiment manifest must not contain a run table"
     )
+
+
+def test_canonical_target_profile_requires_fingerprint() -> None:
+    """Canonical IDs cannot appear in manifests without immutable identity."""
+    text = _run_manifest().replace(
+        f'target_profile_fingerprint = "{CURRENT_PROFILE_FINGERPRINT}"\n',
+        "",
+    )
+    _expect_failure(text, "target_profile_fingerprint is required")
+
+
+def test_canonical_target_profile_mismatch_is_deterministic() -> None:
+    """A stale artifact binding uses the shared profile mismatch diagnostic."""
+    text = _run_manifest().replace(
+        CURRENT_PROFILE_FINGERPRINT,
+        MISMATCH_FINGERPRINT,
+    )
+    expected = " ".join((
+        "MALBOLGE-PROFILE-ID-001",
+        "profile=malbolge-2026.2",
+        f"expected={MISMATCH_FINGERPRINT}",
+        f"observed={CURRENT_PROFILE_FINGERPRINT}",
+    ))
+    _expect_failure(text, expected)
+
+
+def test_unknown_target_profile_never_falls_back() -> None:
+    """Unknown artifact target identity cannot select a nearby profile."""
+    text = _run_manifest().replace(
+        'target_profile = "malbolge-2026.2"',
+        'target_profile = "malbolge-current-ish"',
+    )
+    _expect_failure(text, "unsupported manifest challenge target profile")
+
+
+def test_noncanonical_target_scope_forbids_profile_fingerprint() -> None:
+    """Meta scopes cannot masquerade as canonical profile identities."""
+    text = _run_manifest().replace(
+        'target_profile = "malbolge-2026.2"',
+        'target_profile = "profile-independent"',
+    )
+    _expect_failure(text, "must be absent for noncanonical target scope")
+
+
+def test_profile_independent_scope_is_valid_without_fingerprint() -> None:
+    """A declared profile-independent experiment remains explicitly unbound."""
+    text = (
+        _run_manifest()
+        .replace(
+            'target_profile = "malbolge-2026.2"',
+            'target_profile = "profile-independent"',
+        )
+        .replace(
+            f'target_profile_fingerprint = "{CURRENT_PROFILE_FINGERPRINT}"\n',
+            "",
+        )
+    )
+
+    manifest = validator.parse_manifest(text)
+
+    assert manifest.target_profile == PROFILE_INDEPENDENT
+    assert manifest.target_profile_fingerprint is None

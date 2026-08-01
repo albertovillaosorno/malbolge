@@ -10,6 +10,7 @@ method_class = "optimization"
 family = "classic-vm-table-factorization"
 difficulty = 59049
 target_profile = "malbolge-1998"
+target_profile_fingerprint = "malbolge-profile-v1:sha256:f292eae8bc88cd084e9fbc5cacf65ccde53b02d33b597ae76cc07f4a4b0ebd26"
 
 [budget]
 samples_per_implementation = 15

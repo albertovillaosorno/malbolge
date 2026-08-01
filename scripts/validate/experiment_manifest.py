@@ -37,7 +37,10 @@
 #   - Invalid inputs or broken invariants fail closed.
 #
 # Related documents:
-# - None.
+# - malbolge.json
+# - docs/research/methodology/experiment-identity.md
+# - docs/technical/compatibility/custom-target-profile-identity.md
+# - scripts/validate/target_profile.py
 #
 # Large file:
 #   - false
@@ -55,6 +58,8 @@ import tomllib
 from typing import Never
 from typing import cast
 
+from scripts.validate import target_profile
+
 ROOT = Path(__file__).resolve().parents[2]
 ALGORITHMS_ROOT = ROOT / "algorithms"
 SCHEMA_VERSION = 1
@@ -70,6 +75,19 @@ METHOD_CLASSES = frozenset({
     "replication",
 })
 RECORD_KINDS = frozenset({PLAN_RECORD_KIND, RUN_RECORD_KIND})
+NONCANONICAL_TARGET_SCOPES = frozenset({
+    "malbolge-1998-classic-word-domain",
+    "multi-profile",
+    "profile-independent",
+})
+NONCANONICAL_FINGERPRINT_ERROR = (
+    "manifest.challenge.target_profile_fingerprint must be absent for "
+    "noncanonical target scope"
+)
+CANONICAL_FINGERPRINT_REQUIRED_ERROR = (
+    "manifest.challenge.target_profile_fingerprint is required for canonical "
+    "target profile"
+)
 RUN_OUTCOMES = frozenset({
     "candidate-invalid",
     "no-solution",
@@ -121,6 +139,7 @@ class ExperimentManifest:
     run: RunIdentity | None
     seed: int
     target_profile: str
+    target_profile_fingerprint: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +155,7 @@ class _ChallengeFields:
     difficulty: int
     family: str
     target_profile: str
+    target_profile_fingerprint: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,11 +269,57 @@ def _challenge_fields(document: dict[str, object]) -> _ChallengeFields:
     difficulty = _integer(table, "difficulty", "manifest.challenge")
     if difficulty <= 0:
         _fail("manifest.challenge.difficulty must be positive")
+    profile_id = _string(table, "target_profile", "manifest.challenge")
     return _ChallengeFields(
         difficulty=difficulty,
         family=_string(table, "family", "manifest.challenge"),
-        target_profile=_string(table, "target_profile", "manifest.challenge"),
+        target_profile=profile_id,
+        target_profile_fingerprint=_target_profile_fingerprint(
+            table,
+            profile_id,
+        ),
     )
+
+
+def _target_profile_fingerprint(
+    challenge: dict[str, object],
+    profile_id: str,
+) -> str | None:
+    declared = challenge.get("target_profile_fingerprint")
+    if profile_id in NONCANONICAL_TARGET_SCOPES:
+        return _noncanonical_target_fingerprint(declared)
+    return _canonical_target_fingerprint(profile_id, declared)
+
+
+def _noncanonical_target_fingerprint(declared: object) -> None:
+    if declared is not None:
+        _fail(NONCANONICAL_FINGERPRINT_ERROR)
+
+
+def _canonical_target_fingerprint(profile_id: str, declared: object) -> str:
+    canonical = target_profile.load_document(target_profile.DEFAULT_PROFILE)
+    try:
+        observed = target_profile.profile_fingerprint(canonical, profile_id)
+    except target_profile.ProfileValidationError:
+        _fail(f"unsupported manifest challenge target profile: {profile_id}")
+    if type(declared) is not str or not declared:
+        _fail(CANONICAL_FINGERPRINT_REQUIRED_ERROR)
+    if declared != observed:
+        _fail(_profile_fingerprint_mismatch(profile_id, declared, observed))
+    return declared
+
+
+def _profile_fingerprint_mismatch(
+    profile_id: str,
+    declared: str,
+    observed: str,
+) -> str:
+    return " ".join((
+        "MALBOLGE-PROFILE-ID-001",
+        f"profile={profile_id}",
+        f"expected={declared}",
+        f"observed={observed}",
+    ))
 
 
 def _provenance_fields(document: dict[str, object]) -> _ProvenanceFields:
@@ -345,6 +411,7 @@ def parse_manifest(text: str) -> ExperimentManifest:
         run=_optional_run(document, experiment.record_kind),
         seed=experiment.seed,
         target_profile=challenge.target_profile,
+        target_profile_fingerprint=challenge.target_profile_fingerprint,
     )
 
 

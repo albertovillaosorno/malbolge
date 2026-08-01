@@ -370,9 +370,11 @@ runtime selection, and product consumers remains open.
 
 Allow user-supplied target profiles with canonical hashing and explicit artifact
 identity. `malbolge-profile-v1` fingerprints and the verification CLI now detect
-external configuration mismatch; compiler/container propagation and any
-profile-dependent encoding research remain open without claiming cryptographic
-resistance to reverse engineering.
+external configuration mismatch. Experiment Manifest v1 now binds canonical
+target IDs to exact generated fingerprints and rejects stale or unknown
+identity; compiler/container propagation and any profile-dependent encoding
+research remain open without claiming cryptographic resistance to reverse
+engineering.
 
 ### TODO - Hexagonal authoring-layout experiment
 

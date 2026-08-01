@@ -23,10 +23,12 @@ This document currently governs:
 - `compatibility/custom-profile.example.json`
 - `scripts/validate/target_profile.py`
 - `scripts/validate/profile_identity.py`
+- `scripts/validate/experiment_manifest.py`
 - `vm/src/profile.rs`
 - `vm/src/profile_generated.rs`
 - `tests/test_target_profile.py`
 - `tests/compatibility/test_profile_identity.py`
+- `tests/test_experiment_manifest.py`
 
 ## Current Behavior
 
@@ -130,6 +132,20 @@ The example profile currently fingerprints to:
 
 `malbolge-profile-v1:sha256:221015e0ac4cbde88444ad6d55c703a2e2cc96904bd65b81cb44e256aa1f3177`.
 
+### Experiment Manifest Binding
+
+Experiment Manifest v1 is the first repository artifact family to require this
+content-bound identity. Canonical target IDs must include the exact generated
+`target_profile_fingerprint`; the validator recomputes it from `malbolge.json`
+and emits `MALBOLGE-PROFILE-ID-001` on mismatch. Unknown IDs fail rather than
+falling back. Explicit aggregate research scopes remain legal only without a
+fingerprint because they do not identify one canonical semantic profile.
+
+Ten checked-in canonical-profile manifests currently carry this binding: five
+algorithm plans and five retained current-profile accelerator evidence records.
+Compiler objects, executable containers, and product-level artifact metadata are
+still open and must not be inferred from this research-manifest integration.
+
 ### Security Boundary
 
 SHA-256 gives a compact collision-resistant identity for the exact canonical
@@ -163,9 +179,9 @@ A structurally valid profile whose computed fingerprint differs from the
 artifact expectation fails with `MALBOLGE-PROFILE-ID-001`; the external profile
 is never silently substituted for the expected identity.
 
-Compiler artifacts do not yet universally carry this fingerprint, so this
-contract remains active. The identity primitive is implemented and ready for
-artifact/container integration.
+Experiment manifests now carry this fingerprint for canonical research
+artifacts. Compiler objects, executable containers, and product-level
+artifacts do not yet universally carry it, so this contract remains active.
 
 ## Verification
 
@@ -175,6 +191,9 @@ artifact/container integration.
   key-order independence, canonical/external equivalence, profile-ID
   participation, semantic drift, canonical-ID collision, and exact mismatch
   diagnostics.
+- `tests/test_experiment_manifest.py` covers canonical artifact fingerprints,
+  unknown-ID rejection, noncanonical-scope separation, and the shared exact
+  mismatch diagnostic.
 - `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
   the generated canonical fingerprint.
 - The CLI is smoke-tested with matching and mismatching expected fingerprints.
