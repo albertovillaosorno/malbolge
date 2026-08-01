@@ -821,6 +821,24 @@ timed.
   file, network, process credential state, secret store, or hosted API and performs no
   discovery, refresh, retry, persistence, logging, task creation, certificate rule,
   PKI operation, algorithm choice, or admission-policy operation.
+  `offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1`
+  adapts one exact explicit file Authorization provider to the shared async port
+  through one caller-supplied offloader. Construction and every call revalidate the
+  adapter identity, hidden wrapped provider, copied authorization count, entry and
+  byte limits, provider identity, and callable offloader. The shared request is
+  validated before the first `await`; a provider-identity mismatch returns typed
+  `failed` without invoking the offloader. A matched provider identity awaits the
+  offloader exactly once with the same exact provider and immutable request. The
+  caller alone chooses whether the file read completes inline, suspends, or runs in
+  a caller-owned thread or executor. Cancellation propagates directly. Ordinary
+  offloader exceptions become stable adapter errors without path or vendor text.
+  Returned results are revalidated after the await, including exact result type and
+  enum, nonresolved payload absence, canonical ASCII text, and the wrapped provider
+  byte limit for resolved values. Repeated calls offload and reread the file so
+  rotation and removal remain visible without a cache. The adapter creates no event
+  loop, task, thread, executor, worker, discovery, retry, refresh, persistence,
+  logging, scheme selection, certificate rule, PKI operation, algorithm choice, or
+  admission-policy operation.
   `explicit-file-ticket-admission-lineage-https-authorization-provider-v1`
   binds exact nonsecret Authorization requests to caller-selected absolute file
   paths. Paths and entries stay hidden from representations. Build and validation
@@ -930,8 +948,8 @@ timed.
   transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
   a caller-offloaded async HTTPS adapter, explicit synchronous and async
   Authorization-provider ports, a bounded caller-owned memory Authorization
-  provider with an inline async adapter, an explicit file Authorization
-  provider, an explicit environment Authorization provider with a
+  provider with an inline async adapter, an explicit file Authorization provider with a caller-offloaded async
+  adapter, an explicit environment Authorization provider with a
   caller-offloaded async adapter, an explicit
   authorized HTTPS adapter,
   and a caller-offloaded async authorized HTTPS adapter.
@@ -951,7 +969,7 @@ timed.
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. One thousand seven hundred thirty
+  closes every ticket. One thousand seven hundred eighty-nine
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/memory-secret-provider/
   async-secret-provider/memory-async-secret-provider/file-secret-provider/
@@ -963,6 +981,7 @@ timed.
   async-https-authorization-provider/
   memory-https-authorization-provider/
   file-https-authorization-provider/
+  file-async-https-authorization-provider/
   environment-https-authorization-provider/
   environment-async-https-authorization-provider/
   memory-async-https-authorization-provider/

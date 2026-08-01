@@ -1,7 +1,7 @@
 # File:
-#   - ticket_admission_environment_async_https_auth_provider.py
+#   - ticket_admission_file_async_https_auth_provider.py
 # Path:
-#   - accelerator/ticket_admission_environment_async_https_auth_provider.py
+#   - accelerator/ticket_admission_file_async_https_auth_provider.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -16,40 +16,37 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Caller-offloaded async adaptation of one exact environment Authorization
-#     provider.
+#   - Caller-offloaded async adaptation of one exact file Authorization provider.
 # - Must-Not:
-#   - Create event loops, tasks, threads, executors, enumerate or mutate the
-#     environment, discover names, retry, cache, persist, log names or values,
-#     refresh credentials, inject headers, or change policy.
+#   - Create event loops, tasks, threads, executors, discover paths, read files
+#     directly, retry, cache, persist, log paths or values, refresh credentials,
+#     inject headers, or change policy.
 # - Allows:
-#   - Inputs: one exact environment provider, one caller offloader, and exact
-#     nonsecret Authorization requests.
+#   - Inputs: one exact file provider, one caller offloader, and exact nonsecret
+#     Authorization requests.
 #   - Outputs: the shared typed resolved, unavailable, or failed result.
 #   - Side effects: exactly one caller-supplied offloader await per matched
 #     provider-identity call.
 # - Split-When:
-#   - Split when native async environment access, external stores, hosted APIs,
-#     certificates, or PKI gain contracts.
+#   - Split when native async file I/O, external stores, hosted APIs,
+#     certificates, PKI, or refresh gain contracts.
 # - Merge-When:
-#   - Merge when another module owns this exact caller-offloaded environment
-#     boundary.
+#   - Merge when another module owns this exact caller-offloaded file boundary.
 # - Summary:
-#   - Caller-offloaded async adapter for explicit environment Authorization.
+#   - Caller-offloaded async adapter for explicit file Authorization.
 # - Description:
-#   - Reuses exact environment-provider validation without owning scheduling.
+#   - Reuses exact file-provider validation without owning scheduling.
 # - Usage:
-#   - Build with one environment provider and a caller-selected async offloader.
+#   - Build with one file provider and a caller-selected async offloader.
 # - Defaults:
-#   - No default offloader; caller owns all environment-read placement.
+#   - No default offloader; caller owns all blocking-file-work placement.
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
+# - accelerator/ticket_admission_environment_async_https_auth_provider.py
+# - accelerator/ticket_admission_file_async_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
@@ -60,7 +57,7 @@
 #   - false
 #
 
-"""Caller-offloaded async adapter for environment HTTPS Authorization."""
+"""Caller-offloaded async adapter for file HTTPS Authorization."""
 
 # ruff: file-ignore[line-too-long,doc-line-too-long]
 
@@ -74,18 +71,18 @@ from typing import Never
 from typing import Protocol
 
 from accelerator import (
-    ticket_admission_telemetry_lineage_environment_https_auth_provider as environment,
+    ticket_admission_telemetry_lineage_file_https_auth_provider as file_provider,
 )
 from accelerator import (
     ticket_admission_telemetry_lineage_https_auth_provider as auth,
 )
 
-_ADAPTER_ID_PREFIX: Final = (
-    "offloaded-async-environment-ticket-admission-lineage-"
+_ADAPTER_ID_PREFIX: Final = "offloaded-async-file-ticket-admission-lineage-"
+TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_ASYNC_HTTPS_AUTH_PROVIDER_ID: Final = (
+    f"{_ADAPTER_ID_PREFIX}https-authorization-provider-v1"
 )
-TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_ASYNC_HTTPS_AUTH_PROVIDER_ID: Final = f"{_ADAPTER_ID_PREFIX}https-authorization-provider-v1"
-_validate_environment_provider: Final = (  # fmt: skip
-    environment.validate_ticket_admission_environment_https_authorization_provider
+_validate_file_provider: Final = (  # fmt: skip
+    file_provider.validate_ticket_admission_file_https_authorization_provider
 )
 _validate_request: Final = (
     auth.validate_ticket_admission_https_authorization_request
@@ -102,18 +99,18 @@ _RESOLVED: Final = (
 )
 
 
-class TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+class TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
     ValueError
 ):
-    """A caller-offloaded async environment Authorization adapter is invalid."""
+    """A caller-offloaded async file Authorization adapter is invalid."""
 
 
-class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader(Protocol):
-    """Caller-owned placement of one synchronous environment-provider call."""
+class TicketAdmissionTelemetryLineageFileHttpsAuthOffloader(Protocol):
+    """Caller-owned placement of one synchronous file-provider invocation."""
 
     async def __call__(
         self,
-        provider: environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
+        provider: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
         request: auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest,
     ) -> auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResult:
         """Run one exact synchronous provider call under caller scheduling."""
@@ -121,17 +118,17 @@ class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider:
-    """Immutable async adapter with hidden environment provider and offloader."""
+class TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider:
+    """Immutable async adapter with hidden file provider and offloader."""
 
     adapter_id: str
-    entry_count: int
+    authorization_count: int
     max_authorization_bytes: int
     max_entries: int
-    offloader: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader = (
-        field(repr=False)
+    offloader: TicketAdmissionTelemetryLineageFileHttpsAuthOffloader = field(
+        repr=False
     )
-    provider: environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider = field(
+    provider: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider = field(
         repr=False
     )
     provider_id: str
@@ -160,33 +157,33 @@ class TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider:
         )
 
 
-def ticket_admission_environment_async_https_authorization_provider_id() -> str:
-    """Return the stable caller-offloaded environment adapter identity.
+def ticket_admission_file_async_https_authorization_provider_id() -> str:
+    """Return the stable caller-offloaded file adapter identity.
 
     Returns:
-        Versioned async environment Authorization adapter identity.
+        Versioned async file Authorization adapter identity.
 
     """
-    return TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_ASYNC_HTTPS_AUTH_PROVIDER_ID
+    return TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_ASYNC_HTTPS_AUTH_PROVIDER_ID
 
 
-def build_ticket_admission_environment_async_https_authorization_provider(
-    provider: environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
-    offloader: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader,
-) -> TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider:
-    """Build one caller-offloaded adapter over exact environment state.
+def build_ticket_admission_file_async_https_authorization_provider(
+    provider: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+    offloader: TicketAdmissionTelemetryLineageFileHttpsAuthOffloader,
+) -> TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider:
+    """Build one caller-offloaded adapter over exact file state.
 
     Returns:
         Validated immutable async adapter with hidden provider and offloader.
 
     """
-    validated = _validated_environment_provider(provider)
+    validated = _validated_file_provider(provider)
     _validate_offloader(offloader)
-    return TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider(
+    return TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider(
         adapter_id=(
-            TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_ASYNC_HTTPS_AUTH_PROVIDER_ID
+            TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_ASYNC_HTTPS_AUTH_PROVIDER_ID
         ),
-        entry_count=len(validated.entries),
+        authorization_count=validated.authorization_count,
         max_authorization_bytes=validated.max_authorization_bytes,
         max_entries=validated.max_entries,
         offloader=offloader,
@@ -195,10 +192,10 @@ def build_ticket_admission_environment_async_https_authorization_provider(
     )
 
 
-def validate_ticket_admission_environment_async_https_authorization_provider(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
-) -> TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider:
-    """Validate one exact immutable caller-offloaded environment adapter.
+def validate_ticket_admission_file_async_https_authorization_provider(
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
+) -> TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider:
+    """Validate one exact immutable caller-offloaded file adapter.
 
     Returns:
         The same exact adapter after complete binding validation.
@@ -208,17 +205,17 @@ def validate_ticket_admission_environment_async_https_authorization_provider(
 
 
 def _validated_adapter(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
-) -> TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider:
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
+) -> TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider:
     _validate_adapter_shape(adapter)
-    validated = _validated_environment_provider(adapter.provider)
+    validated = _validated_file_provider(adapter.provider)
     _validate_adapter_binding(adapter, validated)
     _validate_offloader(adapter.offloader)
     return adapter
 
 
 def _validate_adapter_shape(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
 ) -> None:
     _validate_adapter_identity(adapter)
     _validate_adapter_limits(adapter)
@@ -226,22 +223,22 @@ def _validate_adapter_shape(
 
 
 def _validate_adapter_identity(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
 ) -> None:
     if (
         type(adapter)
-        is not TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider
+        is not TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider
     ):
-        _raise_adapter("adapter must use the exact environment-async auth type")
+        _raise_adapter("adapter must use the exact file-async auth type")
     if (
         adapter.adapter_id
-        != TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_ASYNC_HTTPS_AUTH_PROVIDER_ID
+        != TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_ASYNC_HTTPS_AUTH_PROVIDER_ID
     ):
         _raise_adapter("adapter identity is unsupported")
 
 
 def _validate_adapter_limits(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
 ) -> None:
     if type(adapter.max_entries) is not int or adapter.max_entries <= 0:
         _raise_adapter("adapter entry limit must be a positive integer")
@@ -255,38 +252,61 @@ def _validate_adapter_limits(
 
 
 def _validate_adapter_metadata(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
 ) -> None:
-    if type(adapter.entry_count) is not int or adapter.entry_count < 0:
-        _raise_adapter("adapter entry count must be a nonnegative integer")
+    if (
+        type(adapter.authorization_count) is not int
+        or adapter.authorization_count < 0
+    ):
+        _raise_adapter(
+            "adapter authorization count must be a nonnegative integer"
+        )
     if type(adapter.provider_id) is not str or not adapter.provider_id:
         _raise_adapter("adapter provider identity must be a nonempty string")
 
 
 def _validate_adapter_binding(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
-    validated: environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
+    validated: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
 ) -> None:
-    if adapter.entry_count != len(validated.entries):
-        _raise_adapter("adapter entry count does not match provider")
+    _validate_adapter_count_binding(adapter, validated)
+    _validate_adapter_limit_binding(adapter, validated)
+    if adapter.provider_id != validated.provider_id:
+        _raise_adapter("adapter provider identity does not match provider")
+
+
+def _validate_adapter_count_binding(
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
+    validated: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+) -> None:
+    if adapter.authorization_count != validated.authorization_count:
+        _raise_adapter("adapter authorization count does not match provider")
+    if adapter.authorization_count != len(validated.entries):
+        _raise_adapter("adapter authorization count does not match entries")
+
+
+def _validate_adapter_limit_binding(
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
+    validated: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+) -> None:
     if adapter.max_entries != validated.max_entries:
         _raise_adapter("adapter entry limit does not match provider")
     if adapter.max_authorization_bytes != validated.max_authorization_bytes:
         _raise_adapter(
             "adapter Authorization byte limit does not match provider"
         )
-    if adapter.provider_id != validated.provider_id:
-        _raise_adapter("adapter provider identity does not match provider")
 
 
-def _validated_environment_provider(
-    value: environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
-) -> environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
+def _validated_file_provider(
+    value: file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+) -> file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProvider:
     try:
-        return _validate_environment_provider(value)
-    except environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError as error:
-        message = "invalid synchronous environment Authorization provider"
-        raise TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+        return _validate_file_provider(value)
+    except (
+        file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProviderError
+    ) as error:
+        message = "invalid synchronous file Authorization provider"
+        raise TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
             message
         ) from error
 
@@ -304,14 +324,14 @@ def _validated_shared_request(
     except (
         auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProviderError
     ) as error:
-        message = "invalid caller-offloaded environment Authorization request"
-        raise TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+        message = "invalid caller-offloaded file Authorization request"
+        raise TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
             message
         ) from error
 
 
 async def _await_offloader(
-    adapter: TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProvider,
+    adapter: TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProvider,
     request: auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest,
 ) -> auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResult:
     try:
@@ -320,10 +340,9 @@ async def _await_offloader(
         raise
     except Exception as error:
         message = (
-            "caller environment Authorization offloader raised during "
-            "explicit read"
+            "caller file Authorization offloader raised during explicit read"
         )
-        raise TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+        raise TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
             message
         ) from error
 
@@ -348,10 +367,9 @@ def _validated_shared_result(
         auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProviderError
     ) as error:
         message = (
-            "caller environment Authorization offloader returned an invalid "
-            "result"
+            "caller file Authorization offloader returned an invalid result"
         )
-        raise TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+        raise TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
             message
         ) from error
     return validated
@@ -367,9 +385,9 @@ def _failed_result() -> (
 
 def _raise_adapter(detail: str) -> Never:
     message = (
-        "ticket admission telemetry lineage environment async HTTPS "
-        f"Authorization provider {detail}"
+        "ticket admission telemetry lineage file async HTTPS Authorization "
+        f"provider {detail}"
     )
-    raise TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError(
+    raise TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError(
         message
     )
