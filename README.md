@@ -121,6 +121,22 @@ validate it again. The adapter reads no environment, file, network, process
 credential state, external secret store, or hosted API and adds no retry, cache,
 refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
 
+`explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one bounded read-only provider over caller-supplied absolute raw-secret
+paths. Every hidden path is bound to an exact manifest fingerprint, key reference,
+key identity, and capture window. Construction and validation perform no file I/O.
+A provider mismatch returns typed `failed`; an unknown manifest/reference returns
+`unavailable`; conflicting key/window metadata returns `failed`; all three outcomes
+occur before any open. An exact match opens the selected path once and reads at most
+`max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
+errors, oversized files, and bytes outside the shared 32-to-4096-byte key contract
+return `failed` without operating-system text. Exact raw bytes, including trailing
+newlines, are preserved. Repeated calls reopen and reread the file, so rotation is
+caller-controlled and no secret cache exists. The provider does not discover paths,
+write files, scan directories, inspect ownership or permissions, validate symlinks,
+decrypt values, create workers, retry, persist, log paths or secrets, choose
+algorithms, or change admission policy.
+
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
 self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain

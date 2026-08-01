@@ -173,7 +173,7 @@ facade resolves the same exact profile before reporting. One thousand three
 hundred thirty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
-async-secret-provider/memory-async-secret-provider/
+async-secret-provider/memory-async-secret-provider/file-secret-provider/
 signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
@@ -323,6 +323,21 @@ hidden task. Repeated calls reuse only explicit immutable caller-owned memory an
 validate it again. The adapter reads no environment, file, network, process
 credential state, external secret store, or hosted API and adds no retry, cache,
 refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
+`explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one bounded read-only provider over caller-supplied absolute raw-secret
+paths. Every hidden path is bound to an exact manifest fingerprint, key reference,
+key identity, and capture window. Construction and validation perform no file I/O.
+A provider mismatch returns typed `failed`; an unknown manifest/reference returns
+`unavailable`; conflicting key/window metadata returns `failed`; all three outcomes
+occur before any open. An exact match opens the selected path once and reads at most
+`max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
+errors, oversized files, and bytes outside the shared 32-to-4096-byte key contract
+return `failed` without operating-system text. Exact raw bytes, including trailing
+newlines, are preserved. Repeated calls reopen and reread the file, so rotation is
+caller-controlled and no secret cache exists. The provider does not discover paths,
+write files, scan directories, inspect ownership or permissions, validate symlinks,
+decrypt values, create workers, retry, persist, log paths or secrets, choose
+algorithms, or change admission policy.
 `caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
@@ -645,7 +660,8 @@ worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
 operation.
 The built-in HMAC-secret implementations are the bounded caller-owned memory
-service and its inline sequential async adapter. The built-in public-key
+service, its inline sequential async adapter, and the explicit read-only
+file provider. The built-in public-key
 implementations are the bounded caller-owned
 memory service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
@@ -653,10 +669,10 @@ transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
 provider with an inline async adapter, an explicit authorized HTTPS adapter,
-and a caller-offloaded async authorized HTTPS adapter. There is no built-in
-environment, file, external
-secret-store, or hosted credential provider, native nonblocking HTTPS client,
-automatic credential refresh, or hosted key service.
+and a caller-offloaded async authorized HTTPS adapter.
+There is no built-in environment provider, external secret-store integration,
+hosted credential provider, native nonblocking HTTPS client, automatic
+credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
@@ -668,8 +684,7 @@ generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
 signature algorithms, native async HTTPS public-key transports,
-environment/file/external
-secret-store providers, hosted-service
+environment/external secret-store providers, hosted-service
 integrations,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
