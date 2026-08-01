@@ -25,8 +25,8 @@
 #   - Outputs: preflight, open, close, cancellation, and failure assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when native async HTTPS transports, credentials,
-#     hosted-service APIs, certificates, or PKI gain tests.
+#   - Split when native async HTTPS, concrete Authorization providers,
+#     header injection, hosted APIs, certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact session-lifecycle behavior.
 # - Summary:
@@ -47,6 +47,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py

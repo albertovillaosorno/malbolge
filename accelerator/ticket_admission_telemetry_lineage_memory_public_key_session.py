@@ -25,8 +25,8 @@
 #   - Outputs: one inline batch provider and exact typed close outcomes.
 #   - Side effects: caller-owned serial lifecycle state only.
 # - Split-When:
-#   - Split when native async HTTPS transports, credentials,
-#     hosted-service APIs, certificates, or PKI gain contracts.
+#   - Split when native async HTTPS, concrete Authorization providers,
+#     header injection, hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact memory-session adaptation.
 # - Summary:
@@ -43,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py

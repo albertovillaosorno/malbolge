@@ -1853,12 +1853,32 @@ the outer async materialization boundary. Repeated calls revalidate and offload
 again. The adapter creates no event loop, task, thread, executor, worker, retry,
 redirect, cache, trust root, credential, hosted-service policy, algorithm choice, or
 admission-policy operation.
+`explicit-ticket-admission-lineage-https-authorization-provider-v1`
+defines one synchronous caller-owned port for resolving an opaque HTTPS
+`Authorization` value. Preflight validates the exact HTTPS fetcher, exact canonical
+bundle-fetch request, source/resource binding, canonical authorization-provider
+identity, callable provider, and positive byte limit before the provider is called.
+The default limit is 4096 ASCII bytes and the supported maximum is 16384. One
+immutable request carries only the bundle fingerprint and nonsecret provider,
+resource, and source identities. Each successful preflight makes exactly one
+provider call. Stable `resolved`, `unavailable`, and `failed` outcomes carry no
+vendor text; nonresolved outcomes cannot carry credential text. A resolved value
+must be exact nonempty ASCII field text containing only spaces and visible
+characters, with no edge spaces and no normalization. The value is hidden from
+representations and returned only in caller-owned state with its exact byte count
+and the fixed `Authorization` header name. Repeated explicit resolutions call the
+provider again. The port does not choose an authorization scheme, inject a header,
+open a connection, discover credentials, retry, cache, persist, log values, create
+workers, own a hosted-service API, validate certificates, distribute PKI, select a
+signature algorithm, or change admission policy.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
-and a caller-offloaded async HTTPS adapter. There is no built-in secret provider,
-native nonblocking HTTPS client, credential handling, or hosted key service.
+a caller-offloaded async HTTPS adapter, and an explicit Authorization-provider
+port. There is no built-in secret provider implementation, native nonblocking
+HTTPS client, concrete credential provider, header injection, or hosted key
+service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
@@ -1869,12 +1889,12 @@ loading, snapshot merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Nine hundred eighty-eight
+every ticket. One thousand forty-two
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
-async-https-public-key-bundle-fetcher/
+async-https-public-key-bundle-fetcher/https-authorization-provider/
 public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider/memory-async-public-key-provider/
@@ -1908,8 +1928,9 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
-signature algorithms, native async HTTPS public-key transports,
-credentialed or hosted-service integrations,
+signature algorithms, native async HTTPS public-key transports, concrete
+Authorization providers,
+credential injection or hosted-service integrations,
 certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.

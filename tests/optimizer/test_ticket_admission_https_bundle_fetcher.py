@@ -25,8 +25,8 @@
 #   - Outputs: request, TLS, status, header, limit, close, and binding assertions.
 #   - Side effects: monkeypatched in-process connection recording only.
 # - Split-When:
-#   - Split when native async HTTPS, credentials, hosted-service APIs, or PKI
-#     gain tests.
+#   - Split when native async HTTPS, concrete Authorization providers,
+#     header injection, hosted APIs, certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact synchronous HTTPS behavior.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py

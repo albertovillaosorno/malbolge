@@ -25,8 +25,8 @@
 #   - Outputs: shared typed fetched, unavailable, or failed transport results.
 #   - Side effects: one direct HTTPS connection and one close per call.
 # - Split-When:
-#   - Split when native async HTTPS, credentials, hosted-service APIs, or PKI
-#     gain contracts.
+#   - Split when native async HTTPS, concrete Authorization providers,
+#     header injection, hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact synchronous HTTPS boundary.
 # - Summary:
@@ -42,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #

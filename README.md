@@ -238,10 +238,11 @@ and one-use provider-session ports, plus a bounded caller-owned in-memory synchr
 key service with inline sequential and batch async adapters plus a serial session
 adapter, an explicit canonical file bundle for public-key bytes, synchronous and
 async transport-neutral bundle-fetch ports, a concrete synchronous HTTPS GET
-adapter, and a caller-offloaded async HTTPS adapter, a caller-owned alternate
-telemetry store, and lossless explicit schema-v1/schema-v2 migration exist. No
-concrete public-key signature algorithm, native nonblocking HTTPS client, credential
-integration, hosted key service, certificate-chain or PKI ownership, automatic
+adapter, a caller-offloaded async HTTPS adapter, and an explicit bounded
+Authorization-provider port, a caller-owned alternate telemetry store, and lossless
+explicit schema-v1/schema-v2 migration exist. No concrete public-key signature
+algorithm, native nonblocking HTTPS client, concrete credential provider, header
+injection, hosted key service, certificate-chain or PKI ownership, automatic
 discovery, retry, hidden cache, library-owned concurrency, or automatic trust
 loading is supplied.
 Observations do not promote routes automatically and never replace retained

@@ -42,6 +42,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
+# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_persistence.py
 # - accelerator/ticket_admission_telemetry_migration.py
 # - accelerator/ticket_admission_telemetry_store.py
