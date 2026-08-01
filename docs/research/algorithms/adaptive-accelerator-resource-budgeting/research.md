@@ -169,11 +169,11 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Eight hundred seventeen
+facade resolves the same exact profile before reporting. Eight hundred fifty-nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
-public-key-provider/async-public-key-provider/
+async-public-key-bundle-fetcher/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider,
 twelve profile-manifest, and fourteen
@@ -452,11 +452,24 @@ explicit invocations call the transport again and retain no cache. The boundary
 implements no HTTP, TLS, endpoint discovery, credential handling, redirect, retry,
 watch, persistence, certificate validation, PKI, algorithm selection, or policy
 operation.
+`explicit-async-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+defines the caller-driven async form of the same transport-neutral boundary. The
+caller owns the coroutine and event loop. The exact shared request is completely
+validated before the first await, and each invocation awaits the supplied fetcher
+exactly once. The shared typed result, bounded canonical decode, fingerprint and
+provider bindings, and caller-owned memory-provider materialization remain the
+single synchronous source of validation truth. Ordinary fetcher exceptions become
+stable async-boundary errors without vendor text, while cancellation propagates
+directly. Repeated explicit invocations await the transport again and retain no
+cache. The boundary creates no event loop, task, worker, concurrency policy,
+endpoint discovery, credential handling, redirect, retry, watch, persistence,
+certificate validation, PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
-adapter, explicit canonical file bundles, and a transport-neutral fetch
-port. There is no built-in secret provider, concrete network transport, or
-hosted key service. No bundle or session is loaded automatically;
+adapter, explicit canonical file bundles, and synchronous plus async
+transport-neutral fetch ports. There is no built-in secret provider,
+concrete network transport, or hosted key service. No bundle or session is
+loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
@@ -466,7 +479,8 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, concrete HTTP/TLS public-key transports and hosted services,
+signature algorithms, concrete synchronous/async HTTP/TLS public-key
+transports and hosted services,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
 

@@ -1,7 +1,7 @@
 # File:
-#   - test_ticket_admission_public_key_bundle_fetcher.py
+#   - test_ticket_admission_async_bundle_fetcher.py
 # Path:
-#   - tests/optimizer/test_ticket_admission_public_key_bundle_fetcher.py
+#   - tests/optimizer/test_ticket_admission_async_bundle_fetcher.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -16,53 +16,53 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Explicit synchronous public-key bundle fetch-port regressions.
+#   - Caller-driven async public-key bundle fetch-port regressions.
 # - Must-Not:
-#   - Require CUDA, HTTP, network access, credentials, retry, discovery,
-#     certificates, PKI, secure cryptography, or admission-policy changes.
+#   - Require CUDA, HTTP, sockets, credentials, hidden tasks, retry, discovery,
+#     certificates, PKI, secure cryptography, or policy changes.
 # - Allows:
-#   - Inputs: synthetic requests, fetch results, bundles, and tampering.
-#   - Outputs: preflight, call-count, binding, load, and failure assertions.
-#   - Side effects: in-process caller-supplied fetcher recording only.
+#   - Inputs: synthetic requests, async fetchers, bundles, and failures.
+#   - Outputs: preflight, awaiting, cancellation, binding, and load assertions.
+#   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when concrete network transports gain tests.
+#   - Split when concrete async network transports gain tests.
 # - Merge-When:
-#   - Merge when another suite owns this exact bundle-fetch boundary.
+#   - Merge when another suite owns this exact async bundle-fetch behavior.
 # - Summary:
-#   - One-call transport-neutral public-key bundle fetch regressions.
+#   - One-await transport-neutral public-key bundle fetch regressions.
 # - Description:
-#   - Proves exact expected metadata binds every fetched canonical bundle.
+#   - Proves async fetching adds no tasks, retry, cache, or duplicate validation.
 # - Usage:
-#   - Runs without sockets, files, accelerator hardware, or external services.
+#   - Runs without pytest async plugins, files, sockets, or accelerator hardware.
 # - Defaults:
 #   - Uses two synthetic keys, 256 entries, and a 1 MiB byte limit.
 #
 # Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
 #
 # Large file:
 #   - false
 #
 
-"""Explicit transport-neutral detached public-key bundle fetch tests."""
+"""Caller-driven async detached public-key bundle fetch tests."""
 
-# ruff: file-ignore[line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
+from accelerator import (
+    ticket_admission_telemetry_lineage_async_bundle_fetcher as async_fetch,
+)
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle as bundle,
 )
@@ -72,6 +72,12 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_signature_trust_manifest as manifest,
 )
+from accelerator.ticket_admission_telemetry_lineage_async_bundle_fetcher import (
+    fetch_ticket_admission_public_key_bundle_provider_async as _fetch_async,
+)
+from accelerator.ticket_admission_telemetry_lineage_async_bundle_fetcher import (
+    ticket_admission_async_public_key_bundle_fetcher_id as _async_fetcher_id,
+)
 from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
     resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider,
 )
@@ -79,7 +85,13 @@ from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
 
-FetchError = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetcherError
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+AsyncFetchError = (
+    async_fetch.TicketAdmissionTelemetryLineageAsyncPublicKeyBundleFetcherError
+)
 FetchRequest = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest
 FetchResult = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchResult
 FetchKind = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchResultKind
@@ -87,9 +99,6 @@ FetchedBundle = fetch.TicketAdmissionTelemetryLineageFetchedPublicKeyBundle
 BundleEntry = bundle.TicketAdmissionTelemetryLineagePublicKeyBundleEntry
 ManifestEntry = (
     manifest.TicketAdmissionTelemetryLineageSignatureTrustManifestEntry
-)
-_fetch_provider = (
-    fetch.fetch_ticket_admission_telemetry_lineage_public_key_bundle_provider
 )
 _build_bundle = (
     bundle.build_ticket_admission_telemetry_lineage_public_key_bundle
@@ -107,12 +116,13 @@ _resolve_provider = (
     resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider
 )
 
-FETCHER_ID = (
-    "explicit-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1"
+ASYNC_FETCHER_ID = (
+    "explicit-async-ticket-admission-telemetry-lineage-"
+    "public-key-bundle-fetcher-v1"
 )
-PROVIDER_ID = "provider.test.remote-public-keys"
+PROVIDER_ID = "provider.test.async-remote-public-keys"
 OTHER_PROVIDER_ID = "provider.test.other-public-keys"
-SOURCE_ID = "source.test.remote-key-service"
+SOURCE_ID = "source.test.async-key-service"
 RESOURCE_ID = "resource.test.public-key-bundle.current"
 OTHER_RESOURCE_ID = "resource.test.public-key-bundle.other"
 OLD_ALGORITHM_ID = "test-only-public-digest-v1"
@@ -124,27 +134,53 @@ NEW_REFERENCE_ID = "vault.public-key.2026-08"
 OLD_PUBLIC_KEY = b"caller-owned-old-test-public-key"
 NEW_PUBLIC_KEY = b"caller-owned-new-test-public-key"
 REPLACEMENT_PUBLIC_KEY = b"caller-owned-replacement-public-key"
-WRONG_PUBLIC_KEY = b"caller-owned-wrong-test-public-key"
-PUBLIC_KEY_FIELD = b"public_key=b"
-PAYLOAD_FIELD = b"payload=b"
-PROVIDER_FIELD = b"provider="
+VENDOR_DETAIL = "vendor endpoint detail must not cross the boundary"
 GENESIS_SEQUENCE_ID = 0
 SUCCESSOR_SEQUENCE_ID = 1
 TWO_KEYS = 2
 TWO_FETCHES = 2
 
 
-class _Fetcher:
+class _AsyncFetcher:
     def __init__(
         self,
         callback: Callable[[FetchRequest], FetchResult],
+        *,
+        suspend: bool = True,
     ) -> None:
         self._callback: Callable[[FetchRequest], FetchResult] = callback
+        self._suspend: bool = suspend
+        self.requests: list[FetchRequest] = []
+        self.tasks: list[asyncio.Task[object] | None] = []
+        self.task_counts: list[int] = []
+        self.active_count: int = 0
+        self.max_active_count: int = 0
+
+    async def __call__(self, request: FetchRequest) -> FetchResult:
+        self.active_count += 1
+        self.max_active_count = max(self.max_active_count, self.active_count)
+        self.requests.append(request)
+        self.tasks.append(asyncio.current_task())
+        self.task_counts.append(len(asyncio.all_tasks()))
+        if self._suspend:
+            await asyncio.sleep(0)
+        self.active_count -= 1
+        return self._callback(request)
+
+
+class _CancellingFetcher:
+    async def __call__(self, request: FetchRequest) -> FetchResult:
+        _ = request
+        raise asyncio.CancelledError
+
+
+class _RaisingFetcher:
+    def __init__(self) -> None:
         self.requests: list[FetchRequest] = []
 
-    def __call__(self, request: FetchRequest) -> FetchResult:
+    async def __call__(self, request: FetchRequest) -> FetchResult:
         self.requests.append(request)
-        return self._callback(request)
+        raise RuntimeError(VENDOR_DETAIL)
 
 
 def _fingerprint(public_key: bytes) -> str:
@@ -155,7 +191,6 @@ def _entry(  # ruff: ignore[too-many-arguments]
     *,
     algorithm_id: str = OLD_ALGORITHM_ID,
     public_key: bytes = OLD_PUBLIC_KEY,
-    public_key_fingerprint: str | None = None,
     public_key_id: str = OLD_KEY_ID,
     public_key_reference_id: str = OLD_REFERENCE_ID,
     window: tuple[int, int | None] = (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
@@ -166,11 +201,7 @@ def _entry(  # ruff: ignore[too-many-arguments]
         first_capture_sequence_id=first_capture_sequence_id,
         last_capture_sequence_id=last_capture_sequence_id,
         public_key=public_key,
-        public_key_fingerprint=(
-            _fingerprint(public_key)
-            if public_key_fingerprint is None
-            else public_key_fingerprint
-        ),
+        public_key_fingerprint=_fingerprint(public_key),
         public_key_id=public_key_id,
         public_key_reference_id=public_key_reference_id,
     )
@@ -244,24 +275,30 @@ def _fetched(payload: bytes) -> FetchResult:
     return FetchResult(kind=FetchKind.FETCHED, payload=payload)
 
 
-def _constant_fetcher(result: FetchResult) -> _Fetcher:
+def _constant_fetcher(
+    result: FetchResult, *, suspend: bool = True
+) -> _AsyncFetcher:
     def callback(request: FetchRequest) -> FetchResult:
         _ = request
         return result
 
-    return _Fetcher(callback)
+    return _AsyncFetcher(callback, suspend=suspend)
 
 
-def _fetcher(payload: bytes | None = None) -> _Fetcher:
+def _fetcher(
+    payload: bytes | None = None, *, suspend: bool = True
+) -> _AsyncFetcher:
     selected = _payload() if payload is None else payload
-    return _constant_fetcher(_fetched(selected))
+    return _constant_fetcher(_fetched(selected), suspend=suspend)
 
 
-def _fetch(
-    fetcher: _Fetcher,
+def _run(
+    fetcher: async_fetch.TicketAdmissionTelemetryLineageAsyncPublicKeyBundleFetcher,
     request: FetchRequest | None = None,
 ) -> FetchedBundle:
-    return _fetch_provider(fetcher, _request() if request is None else request)
+    return asyncio.run(
+        _fetch_async(fetcher, _request() if request is None else request)
+    )
 
 
 def _manifest(
@@ -289,74 +326,53 @@ def _manifest(
     ))
 
 
-def test_fetcher_identity_result_values_and_defaults_are_stable() -> None:
-    assert (
-        fetch.ticket_admission_telemetry_lineage_public_key_bundle_fetcher_id()
-        == FETCHER_ID
-    )
-    assert tuple(kind.value for kind in FetchKind) == (
-        "fetched",
-        "unavailable",
-        "failed",
-    )
-    assert (
-        fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_BYTES
-        == bundle.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_BYTES
-    )
-    assert (
-        fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES
-        == bundle.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_ENTRIES
-    )
+def test_async_fetcher_identity_is_stable() -> None:
+    assert _async_fetcher_id() == ASYNC_FETCHER_ID
 
 
-def test_public_request_validator_returns_same_immutable_request() -> None:
-    request = _request()
+def test_coroutine_does_not_start_before_caller_runs_it() -> None:
+    transport = _fetcher()
+    coroutine = _fetch_async(transport, _request())
 
-    validated = fetch.validate_ticket_admission_public_key_bundle_fetch_request(
-        request
-    )
+    assert transport.requests == []
+    loaded = asyncio.run(coroutine)
 
-    assert validated is request
-
-
-def test_public_result_materializer_requires_no_transport_call() -> None:
-    request = _request()
-    result = _fetched(_payload())
-
-    loaded = fetch.materialize_ticket_admission_public_key_bundle_fetch_result(
-        request,
-        result,
-    )
-
-    assert loaded.bundle_fingerprint == request.bundle_fingerprint
-    assert loaded.provider_id == request.provider_id
-    assert loaded.resource_id == request.resource_id
-    assert loaded.source_id == request.source_id
     assert loaded.key_count == TWO_KEYS
+    assert len(transport.requests) == 1
 
 
-def test_exact_request_makes_one_call_and_returns_bound_metadata() -> None:
+def test_exact_request_makes_one_await_in_same_task() -> None:
     transport = _fetcher()
     request = _request()
 
-    loaded = _fetch(transport, request)
+    loaded = _run(transport, request)
 
     assert transport.requests == [request]
     assert transport.requests[0] is request
+    assert transport.max_active_count == 1
+    assert len(set(transport.tasks)) == 1
+    assert transport.task_counts == [1]
     assert loaded.bundle_fingerprint == request.bundle_fingerprint
-    assert loaded.byte_count == len(_payload())
-    assert loaded.key_count == TWO_KEYS
     assert loaded.provider_id == PROVIDER_ID
     assert loaded.resource_id == RESOURCE_ID
     assert loaded.source_id == SOURCE_ID
-    assert loaded.provider.key_count == TWO_KEYS
 
 
-def test_empty_bundle_still_uses_one_explicit_fetch() -> None:
+def test_fetcher_controls_whether_the_await_suspends() -> None:
+    transport = _fetcher(suspend=False)
+
+    loaded = _run(transport)
+
+    assert loaded.key_count == TWO_KEYS
+    assert len(transport.requests) == 1
+    assert transport.task_counts == [1]
+
+
+def test_empty_bundle_still_uses_one_explicit_await() -> None:
     empty = _bundle(entries=())
     transport = _fetcher(_encode_bundle(empty))
 
-    loaded = _fetch(transport, _request(expected_bundle=empty))
+    loaded = _run(transport, _request(expected_bundle=empty))
 
     assert len(transport.requests) == 1
     assert loaded.key_count == 0
@@ -364,7 +380,7 @@ def test_empty_bundle_still_uses_one_explicit_fetch() -> None:
 
 
 def test_fetched_provider_builds_manifest_bound_trust() -> None:
-    loaded = _fetch(_fetcher())
+    loaded = _run(_fetcher())
 
     resolved = _resolve_provider(
         _manifest(),
@@ -379,7 +395,7 @@ def test_fetched_provider_builds_manifest_bound_trust() -> None:
     assert resolved.trust.key_count == TWO_KEYS
 
 
-def test_repeated_explicit_fetch_has_no_cache() -> None:
+def test_repeated_explicit_await_has_no_cache() -> None:
     first_payload = _payload()
     replacement_entries = _entries(old_public_key=REPLACEMENT_PUBLIC_KEY)
     second_bundle = _bundle(entries=replacement_entries)
@@ -389,10 +405,10 @@ def test_repeated_explicit_fetch_has_no_cache() -> None:
         _ = request
         return _fetched(payloads.pop(0))
 
-    transport = _Fetcher(next_payload)
+    transport = _AsyncFetcher(next_payload)
 
-    first = _fetch(transport)
-    second = _fetch(transport, _request(expected_bundle=second_bundle))
+    first = _run(transport)
+    second = _run(transport, _request(expected_bundle=second_bundle))
 
     assert len(transport.requests) == TWO_FETCHES
     assert first.bundle_fingerprint != second.bundle_fingerprint
@@ -400,10 +416,10 @@ def test_repeated_explicit_fetch_has_no_cache() -> None:
     assert second.provider.entries[0].public_key == REPLACEMENT_PUBLIC_KEY
 
 
-def test_same_key_id_under_distinct_algorithms_fetches_and_resolves() -> None:
+def test_same_key_id_under_distinct_algorithms_is_preserved() -> None:
     entries = _entries(same_key_id=True)
     built = _bundle(entries=entries)
-    loaded = _fetch(
+    loaded = _run(
         _fetcher(_encode_bundle(built)),
         _request(expected_bundle=built),
     )
@@ -418,26 +434,24 @@ def test_same_key_id_under_distinct_algorithms_fetches_and_resolves() -> None:
     assert resolved.algorithm_ids == (OLD_ALGORITHM_ID, NEW_ALGORITHM_ID)
 
 
-def test_fetch_result_and_loaded_repr_hide_bytes_and_provider() -> None:
-    payload = _payload()
-    result = _fetched(payload)
-    loaded = _fetch(_fetcher(payload))
-    result_repr = repr(result).encode("utf-8")
-    loaded_repr = repr(loaded).encode("utf-8")
-
-    assert payload not in result_repr
-    assert PAYLOAD_FIELD not in result_repr
-    assert OLD_PUBLIC_KEY not in loaded_repr
-    assert NEW_PUBLIC_KEY not in loaded_repr
-    assert PUBLIC_KEY_FIELD not in loaded_repr
-    assert PROVIDER_FIELD not in loaded_repr
-
-
-def test_foreign_request_type_fails_before_fetch() -> None:
+def test_resource_identity_remains_transport_metadata() -> None:
+    request = replace(_request(), resource_id=OTHER_RESOURCE_ID)
     transport = _fetcher()
 
-    with pytest.raises(FetchError, match="exact fetch request type"):
-        _ = _fetch_provider(transport, cast("FetchRequest", object()))
+    loaded = _run(transport, request)
+
+    assert transport.requests == [request]
+    assert loaded.resource_id == OTHER_RESOURCE_ID
+    assert loaded.source_id == SOURCE_ID
+
+
+def test_foreign_request_type_fails_before_first_await() -> None:
+    transport = _fetcher()
+
+    with pytest.raises(
+        AsyncFetchError, match="invalid async public-key bundle"
+    ):
+        _ = _run(transport, cast("FetchRequest", object()))
 
     assert transport.requests == []
 
@@ -451,59 +465,68 @@ def test_foreign_request_type_fails_before_fetch() -> None:
         cast("str", object()),
     ],
 )
-def test_malformed_fingerprint_fails_before_fetch(
+def test_malformed_fingerprint_fails_before_first_await(
     bundle_fingerprint: str,
 ) -> None:
     transport = _fetcher()
     request = _request(bundle_fingerprint=bundle_fingerprint)
 
-    with pytest.raises(FetchError, match="bundle fingerprint is malformed"):
-        _ = _fetch(transport, request)
+    with pytest.raises(
+        AsyncFetchError, match="invalid async public-key bundle"
+    ):
+        _ = _run(transport, request)
 
     assert transport.requests == []
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "match"),
+    ("field", "value"),
     [
-        ("provider_id", "", "provider identity must use"),
-        ("provider_id", "bad provider", "provider identity must use"),
-        ("resource_id", "", "resource identity must use"),
-        ("resource_id", "bad resource", "resource identity must use"),
-        ("source_id", "", "source identity must use"),
-        ("source_id", "bad source", "source identity must use"),
+        ("provider_id", "bad provider"),
+        ("resource_id", "bad resource"),
+        ("source_id", "bad source"),
     ],
 )
-def test_identifier_preflight_fails_before_fetch(
+def test_invalid_identity_fails_before_first_await(
     field: str,
     value: str,
-    match: str,
 ) -> None:
     transport = _fetcher()
     request = replace(_request(), **{field: value})
 
-    with pytest.raises(FetchError, match=match):
-        _ = _fetch(transport, request)
+    with pytest.raises(
+        AsyncFetchError, match="invalid async public-key bundle"
+    ):
+        _ = _run(transport, request)
 
     assert transport.requests == []
 
 
-@pytest.mark.parametrize("max_bytes", [0, True])
-def test_byte_limit_requires_positive_exact_integer_before_fetch(
-    max_bytes: int,
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_bytes", 0),
+        ("max_bytes", True),
+        ("max_entries", 0),
+        ("max_entries", True),
+    ],
+)
+def test_invalid_limit_fails_before_first_await(
+    field: str,
+    value: int,
 ) -> None:
     transport = _fetcher()
-    request = replace(_request(), max_bytes=max_bytes)
+    request = replace(_request(), **{field: value})
 
     with pytest.raises(
-        FetchError, match="byte limit must be a positive integer"
+        AsyncFetchError, match="invalid async public-key bundle"
     ):
-        _ = _fetch(transport, request)
+        _ = _run(transport, request)
 
     assert transport.requests == []
 
 
-def test_byte_limit_cannot_exceed_supported_maximum() -> None:
+def test_limit_above_supported_maximum_fails_before_first_await() -> None:
     transport = _fetcher()
     request = replace(
         _request(),
@@ -514,60 +537,28 @@ def test_byte_limit_cannot_exceed_supported_maximum() -> None:
     )
 
     with pytest.raises(
-        FetchError, match="byte limit exceeds supported maximum"
+        AsyncFetchError, match="invalid async public-key bundle"
     ):
-        _ = _fetch(transport, request)
+        _ = _run(transport, request)
 
     assert transport.requests == []
 
 
-@pytest.mark.parametrize("max_entries", [0, True])
-def test_entry_limit_requires_positive_exact_integer_before_fetch(
-    max_entries: int,
-) -> None:
-    transport = _fetcher()
-    request = replace(_request(), max_entries=max_entries)
+@pytest.mark.parametrize("kind", [FetchKind.UNAVAILABLE, FetchKind.FAILED])
+def test_typed_nonfetched_result_fails_without_retry(kind: FetchKind) -> None:
+    transport = _constant_fetcher(FetchResult(kind=kind))
 
-    with pytest.raises(
-        FetchError, match="entry limit must be a positive integer"
-    ):
-        _ = _fetch(transport, request)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(transport)
 
-    assert transport.requests == []
-
-
-def test_entry_limit_cannot_exceed_supported_maximum() -> None:
-    transport = _fetcher()
-    request = replace(
-        _request(),
-        max_entries=(
-            fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES
-            + 1
-        ),
-    )
-
-    with pytest.raises(
-        FetchError, match="entry limit exceeds supported maximum"
-    ):
-        _ = _fetch(transport, request)
-
-    assert transport.requests == []
-
-
-def test_exact_payload_byte_limit_is_accepted() -> None:
-    payload = _payload()
-    request = replace(_request(), max_bytes=len(payload))
-
-    loaded = _fetch(_fetcher(payload), request)
-
-    assert loaded.byte_count == len(payload)
+    assert len(transport.requests) == 1
 
 
 def test_foreign_result_type_fails_closed() -> None:
     transport = _constant_fetcher(cast("FetchResult", object()))
 
-    with pytest.raises(FetchError, match="exact fetch result type"):
-        _ = _fetch(transport)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(transport)
 
     assert len(transport.requests) == 1
 
@@ -579,72 +570,40 @@ def test_foreign_result_enum_fails_closed() -> None:
     )
     transport = _constant_fetcher(result)
 
-    with pytest.raises(FetchError, match="exact fetch result enum"):
-        _ = _fetch(transport)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(transport)
 
 
-@pytest.mark.parametrize("kind", [FetchKind.UNAVAILABLE, FetchKind.FAILED])
-def test_nonfetched_result_fails_closed(kind: FetchKind) -> None:
-    transport = _constant_fetcher(FetchResult(kind=kind))
+def test_nonfetched_result_cannot_carry_bytes() -> None:
+    result = FetchResult(kind=FetchKind.FAILED, payload=_payload())
 
-    with pytest.raises(
-        FetchError, match=f"bundle fetcher returned {kind.value}"
-    ):
-        _ = _fetch(transport)
-
-
-@pytest.mark.parametrize("kind", [FetchKind.UNAVAILABLE, FetchKind.FAILED])
-def test_nonfetched_result_cannot_contain_bytes(kind: FetchKind) -> None:
-    transport = _constant_fetcher(FetchResult(kind=kind, payload=_payload()))
-
-    with pytest.raises(FetchError, match="nonfetched result cannot contain"):
-        _ = _fetch(transport)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_constant_fetcher(result))
 
 
 @pytest.mark.parametrize(
-    ("payload", "match"),
+    "payload",
     [
-        (None, "requires exact payload bytes"),
-        (cast("bytes", cast("object", bytearray(b"{}\n"))), "requires exact"),
-        (b"", "fetched payload cannot be empty"),
+        None,
+        b"",
+        cast("bytes | None", cast("object", bytearray(b"{}\n"))),
     ],
 )
-def test_fetched_payload_type_and_presence_are_exact(
+def test_fetched_result_requires_exact_nonempty_bytes(
     payload: bytes | None,
-    match: str,
 ) -> None:
-    transport = _constant_fetcher(
-        FetchResult(kind=FetchKind.FETCHED, payload=payload)
-    )
+    result = FetchResult(kind=FetchKind.FETCHED, payload=payload)
 
-    with pytest.raises(FetchError, match=match):
-        _ = _fetch(transport)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_constant_fetcher(result))
 
 
 def test_fetched_payload_respects_requested_byte_limit() -> None:
     payload = _payload()
     request = replace(_request(), max_bytes=len(payload) - 1)
 
-    with pytest.raises(FetchError, match="exceeds requested byte limit"):
-        _ = _fetch(_fetcher(payload), request)
-
-
-def test_fetcher_exception_is_wrapped_without_vendor_text() -> None:
-    vendor_text = "vendor-secret-endpoint-detail"
-
-    def raise_vendor(request: FetchRequest) -> FetchResult:
-        _ = request
-        raise RuntimeError(vendor_text)
-
-    transport = _Fetcher(raise_vendor)
-
-    with pytest.raises(
-        FetchError, match="raised during explicit fetch"
-    ) as caught:
-        _ = _fetch(transport)
-
-    assert vendor_text not in str(caught.value)
-    assert len(transport.requests) == 1
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_fetcher(payload), request)
 
 
 @pytest.mark.parametrize(
@@ -655,28 +614,24 @@ def test_fetcher_exception_is_wrapped_without_vendor_text() -> None:
         _payload().rstrip(b"\n"),
     ],
 )
-def test_invalid_or_noncanonical_bundle_is_wrapped(payload: bytes) -> None:
-    with pytest.raises(
-        FetchError, match="cannot decode fetched public-key bundle"
-    ):
-        _ = _fetch(_fetcher(payload))
+def test_invalid_or_noncanonical_bundle_fails_closed(payload: bytes) -> None:
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_fetcher(payload))
 
 
-def test_entry_limit_is_applied_during_decode() -> None:
+def test_entry_limit_is_applied_during_result_processing() -> None:
     request = replace(_request(), max_entries=1)
 
-    with pytest.raises(
-        FetchError, match="cannot decode fetched public-key bundle"
-    ):
-        _ = _fetch(_fetcher(), request)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_fetcher(), request)
 
 
 def test_expected_fingerprint_mismatch_fails_closed() -> None:
     other = _bundle(entries=_entries(old_public_key=REPLACEMENT_PUBLIC_KEY))
     request = _request(expected_bundle=other)
 
-    with pytest.raises(FetchError, match="fingerprint does not match request"):
-        _ = _fetch(_fetcher(), request)
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(_fetcher(), request)
 
 
 def test_expected_provider_identity_mismatch_fails_closed() -> None:
@@ -687,18 +642,33 @@ def test_expected_provider_identity_mismatch_fails_closed() -> None:
         provider_id=PROVIDER_ID,
     )
 
+    with pytest.raises(AsyncFetchError, match="cannot process async fetched"):
+        _ = _run(transport, request)
+
+
+def test_fetcher_exception_is_wrapped_without_vendor_text() -> None:
+    transport = _RaisingFetcher()
+
     with pytest.raises(
-        FetchError, match="provider identity does not match request"
-    ):
-        _ = _fetch(transport, request)
+        AsyncFetchError,
+        match="async bundle fetcher raised during explicit fetch",
+    ) as caught:
+        _ = _run(transport)
+
+    assert VENDOR_DETAIL not in str(caught.value)
+    assert len(transport.requests) == 1
 
 
-def test_resource_identity_is_metadata_not_transport_discovery() -> None:
-    request = replace(_request(), resource_id=OTHER_RESOURCE_ID)
-    transport = _fetcher()
+def test_cancellation_propagates_to_the_caller() -> None:
+    with pytest.raises(asyncio.CancelledError, match=r"^$"):
+        _ = _run(_CancellingFetcher())
 
-    loaded = _fetch(transport, request)
 
-    assert transport.requests == [request]
-    assert loaded.resource_id == OTHER_RESOURCE_ID
-    assert loaded.source_id == SOURCE_ID
+def test_shared_fetch_result_and_loaded_provider_hide_bytes() -> None:
+    payload = _payload()
+    result = _fetched(payload)
+    loaded = _run(_constant_fetcher(result))
+
+    assert payload not in repr(result).encode("utf-8")
+    assert OLD_PUBLIC_KEY not in repr(loaded).encode("utf-8")
+    assert NEW_PUBLIC_KEY not in repr(loaded).encode("utf-8")

@@ -237,9 +237,11 @@ manifest, explicit synchronous, sequential async, caller-controlled async batch,
 and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous
 key service with inline sequential and batch async adapters plus a serial session
 adapter, an explicit canonical file bundle for public-key bytes, and a synchronous
-transport-neutral bundle-fetch port, a caller-owned alternate telemetry store, and
+synchronous and async transport-neutral bundle-fetch ports, a caller-owned
+alternate telemetry store, and
 lossless explicit schema-v1/schema-v2 migration exist. No concrete public-key
-signature algorithm, HTTP/TLS transport, hosted key service, certificate chain, PKI,
+signature algorithm, concrete synchronous/async HTTP/TLS transport, hosted
+key service, certificate chain, PKI,
 automatic discovery, retry, hidden cache, library-owned concurrency, or automatic
 trust loading is supplied.
 Observations do not promote routes automatically and never replace retained

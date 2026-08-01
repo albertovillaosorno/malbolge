@@ -41,6 +41,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
+# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
@@ -180,30 +181,25 @@ def fetch_ticket_admission_telemetry_lineage_public_key_bundle_provider(
         Stable source metadata and hidden caller-owned memory provider.
 
     """
-    validated_request = _validated_request(request)
-    payload = _fetch_payload(fetcher, validated_request)
-    decoded = _decode_payload(payload, request=validated_request)
-    loaded = _materialize(decoded, max_entries=validated_request.max_entries)
-    if loaded.bundle_fingerprint != validated_request.bundle_fingerprint:
-        _raise_fetcher("fetched bundle fingerprint does not match request")
-    if loaded.provider_id != validated_request.provider_id:
-        _raise_fetcher(
-            "fetched bundle provider identity does not match request"
-        )
-    return TicketAdmissionTelemetryLineageFetchedPublicKeyBundle(
-        bundle_fingerprint=loaded.bundle_fingerprint,
-        byte_count=loaded.byte_count,
-        key_count=loaded.key_count,
-        provider=loaded.provider,
-        provider_id=loaded.provider_id,
-        resource_id=validated_request.resource_id,
-        source_id=validated_request.source_id,
+    validated_request = (
+        validate_ticket_admission_public_key_bundle_fetch_request(request)
+    )
+    result = _invoke_fetcher(fetcher, validated_request)
+    return materialize_ticket_admission_public_key_bundle_fetch_result(
+        validated_request,
+        result,
     )
 
 
-def _validated_request(
+def validate_ticket_admission_public_key_bundle_fetch_request(
     request: TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest,
 ) -> TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest:
+    """Validate one exact transport-neutral fetch request.
+
+    Returns:
+        The same immutable request after complete preflight.
+
+    """
     if (
         type(request)
         is not TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest
@@ -226,13 +222,41 @@ def _validated_request(
     return request
 
 
-def _fetch_payload(
-    fetcher: TicketAdmissionTelemetryLineagePublicKeyBundleFetcher,
+def materialize_ticket_admission_public_key_bundle_fetch_result(
     request: TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest,
-) -> bytes:
-    result = _invoke_fetcher(fetcher, request)
-    validated = _validated_result(result)
-    return _validated_fetched_payload(validated, max_bytes=request.max_bytes)
+    result: TicketAdmissionTelemetryLineagePublicKeyBundleFetchResult,
+) -> TicketAdmissionTelemetryLineageFetchedPublicKeyBundle:
+    """Validate one typed fetch result and materialize its memory provider.
+
+    Returns:
+        Stable source metadata and hidden caller-owned memory provider.
+
+    """
+    validated_request = (
+        validate_ticket_admission_public_key_bundle_fetch_request(request)
+    )
+    validated_result = _validated_result(result)
+    payload = _validated_fetched_payload(
+        validated_result,
+        max_bytes=validated_request.max_bytes,
+    )
+    decoded = _decode_payload(payload, request=validated_request)
+    loaded = _materialize(decoded, max_entries=validated_request.max_entries)
+    if loaded.bundle_fingerprint != validated_request.bundle_fingerprint:
+        _raise_fetcher("fetched bundle fingerprint does not match request")
+    if loaded.provider_id != validated_request.provider_id:
+        _raise_fetcher(
+            "fetched bundle provider identity does not match request"
+        )
+    return TicketAdmissionTelemetryLineageFetchedPublicKeyBundle(
+        bundle_fingerprint=loaded.bundle_fingerprint,
+        byte_count=loaded.byte_count,
+        key_count=loaded.key_count,
+        provider=loaded.provider,
+        provider_id=loaded.provider_id,
+        resource_id=validated_request.resource_id,
+        source_id=validated_request.source_id,
+    )
 
 
 def _invoke_fetcher(

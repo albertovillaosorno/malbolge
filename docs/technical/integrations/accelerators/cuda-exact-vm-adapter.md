@@ -538,11 +538,24 @@ explicit invocations call the transport again and retain no cache. The boundary
 implements no HTTP, TLS, endpoint discovery, credential handling, redirect, retry,
 watch, persistence, certificate validation, PKI, algorithm selection, or policy
 operation.
+`explicit-async-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+defines the caller-driven async form of the same transport-neutral boundary. The
+caller owns the coroutine and event loop. The exact shared request is completely
+validated before the first await, and each invocation awaits the supplied fetcher
+exactly once. The shared typed result, bounded canonical decode, fingerprint and
+provider bindings, and caller-owned memory-provider materialization remain the
+single synchronous source of validation truth. Ordinary fetcher exceptions become
+stable async-boundary errors without vendor text, while cancellation propagates
+directly. Repeated explicit invocations await the transport again and retain no
+cache. The boundary creates no event loop, task, worker, concurrency policy,
+endpoint discovery, credential handling, redirect, retry, watch, persistence,
+certificate validation, PKI, algorithm selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
-adapter, explicit canonical file bundles, and a transport-neutral fetch
-port. There is no built-in secret provider, concrete network transport, or
-hosted key service. No bundle or session is loaded automatically;
+adapter, explicit canonical file bundles, and synchronous plus async
+transport-neutral fetch ports. There is no built-in secret provider,
+concrete network transport, or hosted key service. No bundle or session is
+loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, or policy authority. There is no
@@ -554,11 +567,11 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eight hundred seventeen
+every ticket. Eight hundred fifty-nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
-public-key-provider/async-public-key-provider/
+async-public-key-bundle-fetcher/public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider/memory-async-public-key-provider/
 memory-batch-public-key-provider/
