@@ -25,7 +25,8 @@
 #   - Outputs: preflight, awaiting, cancellation, binding, and load assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when concrete async network transports gain tests.
+#   - Split when async HTTPS transports, credentials, hosted-service APIs,
+#     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact async bundle-fetch behavior.
 # - Summary:
@@ -40,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 #

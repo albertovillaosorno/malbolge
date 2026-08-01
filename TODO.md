@@ -1819,11 +1819,30 @@ directly. Repeated explicit invocations await the transport again and retain no
 cache. The boundary creates no event loop, task, worker, concurrency policy,
 endpoint discovery, credential handling, redirect, retry, watch, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
+`explicit-https-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+implements one concrete synchronous stdlib HTTPS GET transport. Its exact immutable
+config binds a canonical lowercase ASCII host, TCP port, origin-form target,
+source/resource identities, a positive finite timeout capped at 300 seconds, and a
+caller-owned `SSLContext`. Build and every use require hostname checking,
+`CERT_REQUIRED`, and TLS 1.2 or newer; the module never creates or loads trust roots.
+Each invocation revalidates the config and shared fetch request, requires exact
+source/resource matches, opens one new `HTTPSConnection` with the same caller
+context, sends only `GET` with JSON/identity/close headers and no credentials, and
+closes once. Status 200 may return `fetched`; 404 and 410 return `unavailable`; all
+other statuses, including redirects, return `failed`. Successful responses require
+JSON content type with optional UTF-8 charset, absent or identity content encoding,
+an optional canonical positive content length within the request limit, and an exact
+nonempty bytes body read with a `max_bytes + 1` bound. Connection, request, response,
+body-read, or close failures return typed `failed` without vendor text. There is no
+plaintext HTTP, endpoint discovery, credential handling, redirect following, retry,
+watch, cache, persistence, hosted-service API, certificate/PKI ownership, algorithm
+selection, or policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
-adapter, explicit canonical file bundles, and synchronous plus async
-transport-neutral fetch ports. There is no built-in secret provider,
-concrete network transport, or hosted key service. No bundle or session is
+adapter, explicit canonical file bundles, synchronous plus async
+transport-neutral fetch ports, and a concrete synchronous HTTPS GET
+adapter. There is no built-in secret provider, async network transport,
+credential handling, or hosted key service. No bundle or session is
 loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
@@ -1834,11 +1853,12 @@ loading, snapshot merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. Eight hundred fifty-nine
+every ticket. Nine hundred fifty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
-async-public-key-bundle-fetcher/public-key-provider/async-public-key-provider/
+async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
+public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider/memory-async-public-key-provider/
 memory-batch-public-key-provider/
@@ -1871,8 +1891,8 @@ route. Other hosts, Python versions, driver builds, devices, and workloads remai
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
-signature algorithms, concrete synchronous/async HTTP/TLS public-key
-transports and hosted services,
+signature algorithms, concrete async HTTPS public-key transports,
+credentialed or hosted-service integrations,
 certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.

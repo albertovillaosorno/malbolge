@@ -236,14 +236,13 @@ ports, bounded in-memory public-key trust, a canonical key-free public-key trust
 manifest, explicit synchronous, sequential async, caller-controlled async batch,
 and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous
 key service with inline sequential and batch async adapters plus a serial session
-adapter, an explicit canonical file bundle for public-key bytes, and a synchronous
-synchronous and async transport-neutral bundle-fetch ports, a caller-owned
-alternate telemetry store, and
-lossless explicit schema-v1/schema-v2 migration exist. No concrete public-key
-signature algorithm, concrete synchronous/async HTTP/TLS transport, hosted
-key service, certificate chain, PKI,
-automatic discovery, retry, hidden cache, library-owned concurrency, or automatic
-trust loading is supplied.
+adapter, an explicit canonical file bundle for public-key bytes, synchronous and
+async transport-neutral bundle-fetch ports, and a concrete synchronous HTTPS GET
+adapter, a caller-owned alternate telemetry store, and lossless explicit
+schema-v1/schema-v2 migration exist. No concrete public-key signature algorithm,
+async HTTPS transport, credential integration, hosted key service, certificate-chain
+or PKI ownership, automatic discovery, retry, hidden cache, library-owned
+concurrency, or automatic trust loading is supplied.
 Observations do not promote routes automatically and never replace retained
 benchmark evidence.
 

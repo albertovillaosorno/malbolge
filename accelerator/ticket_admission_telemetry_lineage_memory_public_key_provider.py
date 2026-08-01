@@ -25,8 +25,8 @@
 #   - Outputs: stable typed provider results for exact manifest requests.
 #   - Side effects: none; retained key bytes remain caller-owned in memory.
 # - Split-When:
-#   - Split when concrete network transports, certificates, or PKI gain
-#     contracts.
+#   - Split when async HTTPS transports, credentials, hosted-service APIs,
+#     certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact bounded memory-provider boundary.
 # - Summary:
@@ -45,6 +45,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_signature.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py

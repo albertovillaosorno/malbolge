@@ -25,7 +25,8 @@
 #   - Outputs: serial lifecycle, integration, reuse, and failure assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
-#   - Split when external provider-session services gain tests.
+#   - Split when async HTTPS transports, credentials, hosted-service APIs,
+#     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact memory-session adaptation.
 # - Summary:
@@ -41,6 +42,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider_s.py
