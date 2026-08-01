@@ -97,6 +97,10 @@ pub enum CapsuleError {
     ProfileFingerprintMismatch {
         /// Canonical profile whose sideband fingerprint did not match.
         profile_id: &'static str,
+        /// Fingerprint declared by the capsule sideband.
+        expected: Box<str>,
+        /// Fingerprint recomputed from canonical profile authority.
+        observed: &'static str,
     },
     /// The sideband selected a profile absent from the canonical registry.
     UnknownProfile {
@@ -155,10 +159,15 @@ impl Display for CapsuleError {
             Self::Malformed => {
                 f.write_str("MALBOLGE-CAPSULE-001 malformed capsule sideband")
             },
-            Self::ProfileFingerprintMismatch { profile_id } => write!(
-                f,
-                "MALBOLGE-CAPSULE-005 profile={profile_id} fingerprint mismatch"
-            ),
+            Self::ProfileFingerprintMismatch {
+                profile_id,
+                expected,
+                observed,
+            } => {
+                f.write_str("MALBOLGE-PROFILE-ID-001 ")?;
+                write!(f, "profile={profile_id} expected={expected} ")?;
+                write!(f, "observed={observed}")
+            },
             Self::UnknownProfile { profile_id } => {
                 write!(f, "MALBOLGE-CAPSULE-004 unknown profile={profile_id}")
             },
@@ -408,6 +417,8 @@ fn parse_frame(frame: &[u8]) -> Result<Capsule, CapsuleError> {
     if fingerprint != profile.fingerprint() {
         return Err(CapsuleError::ProfileFingerprintMismatch {
             profile_id: profile.id(),
+            expected: fingerprint.into(),
+            observed: profile.fingerprint(),
         });
     }
     Ok(Capsule { payload, profile })

@@ -57,9 +57,12 @@ that reverse engineering can be made cryptographically impossible.
   canonical target IDs, rejects stale hashes with `MALBOLGE-PROFILE-ID-001`,
   rejects unknown IDs without fallback, and forbids fingerprints on aggregate
   research scopes. Ten checked-in manifests carry the binding.
+- The `MALBCAP1` runtime capsule also carries the canonical ID/fingerprint pair,
+  emits the shared expected/observed mismatch diagnostic after valid-checksum
+  tampering, and rejects unknown profile IDs without fallback before payload use.
 - SHA-256 is used for identity/integrity only; no secrecy or anti-reverse-
-  engineering claim is made. Compiler/container and product artifact
-  propagation remain open.
+  engineering claim is made. Compiler-object and product artifact propagation
+  remain open.
 
 ## Acceptance
 
@@ -77,7 +80,8 @@ that reverse engineering can be made cryptographically impossible.
 
 - Current durable evidence includes the generated fingerprint manifest,
   external example, identity CLI, Rust projection, profile-identity tests,
-  fingerprint-bound experiment plans, and retained benchmark manifests.
+  fingerprint-bound experiment plans, retained benchmark manifests, and
+  checksum-valid capsule mismatch/unknown-profile tests.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`.

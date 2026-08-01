@@ -51,6 +51,7 @@
 
 //! Historical-fallback capsule compatibility and runtime-boundary fixtures.
 
+use std::ops::Range;
 use std::str::from_utf8;
 
 #[cfg(feature = "legacy-ben")]
@@ -62,9 +63,20 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
+const BITS_PER_BYTE: usize = 8;
+const CHECKSUM_BYTES: usize = 8;
 const CURRENT_CAPSULE_HEX: &str =
     include_str!("../compatibility/capsule/current-profile-capsule.hex");
+const FALLBACK: &[u8] = b"(C<;_\"K";
+const FNV1A64_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
+const FRAME_HEADER_BYTES: usize = 18;
 const PAYLOAD: &[u8] = b"ctO\n";
+const SPACE: u8 = b' ';
+const TAB: u8 = b'\t';
+const UNKNOWN_PROFILE: &[u8] = b"malbolge-2026.x";
+
+type IdentityRanges = (Range<usize>, Range<usize>);
 
 fn capsule_fixture() -> TestResult<Vec<u8>> {
     let digits: Vec<u8> = CURRENT_CAPSULE_HEX
@@ -84,6 +96,105 @@ fn capsule_fixture() -> TestResult<Vec<u8>> {
         decoded.push(byte);
     }
     Ok(decoded)
+}
+
+fn decoded_frame(source: &[u8]) -> TestResult<Vec<u8>> {
+    let sideband = source
+        .strip_prefix(FALLBACK)
+        .ok_or_else(|| String::from("capsule fixture lacks fallback prefix"))?;
+    let (chunks, remainder) = sideband.as_chunks::<BITS_PER_BYTE>();
+    if !remainder.is_empty() {
+        return Err(String::from("capsule sideband is not byte aligned"));
+    }
+    let mut frame = Vec::new();
+    for chunk in chunks {
+        let mut value = 0u8;
+        for symbol in chunk.iter().copied() {
+            value = value
+                .checked_mul(2)
+                .ok_or_else(|| String::from("capsule test decode overflow"))?;
+            match symbol {
+                SPACE => {},
+                TAB => value = value.saturating_add(1),
+                _ => {
+                    return Err(String::from(
+                        "capsule sideband symbol is invalid",
+                    ));
+                },
+            }
+        }
+        frame.push(value);
+    }
+    Ok(frame)
+}
+
+fn encoded_capsule(frame: &[u8]) -> Vec<u8> {
+    let mut source = Vec::from(FALLBACK);
+    for byte in frame.iter().copied() {
+        for shift in (0..BITS_PER_BYTE).rev() {
+            source.push(if byte & (1u8 << shift) == 0 {
+                SPACE
+            } else {
+                TAB
+            });
+        }
+    }
+    source
+}
+
+fn frame_identity_ranges(frame: &[u8]) -> TestResult<IdentityRanges> {
+    let profile_len = frame_u16(frame, 10)?;
+    let fingerprint_len = frame_u16(frame, 12)?;
+    let profile_end = FRAME_HEADER_BYTES
+        .checked_add(profile_len)
+        .ok_or_else(|| String::from("capsule profile range overflow"))?;
+    let fingerprint_end = profile_end
+        .checked_add(fingerprint_len)
+        .ok_or_else(|| String::from("capsule fingerprint range overflow"))?;
+    if frame.get(FRAME_HEADER_BYTES..fingerprint_end).is_none() {
+        return Err(String::from("capsule identity range is truncated"));
+    }
+    Ok((
+        FRAME_HEADER_BYTES..profile_end,
+        profile_end..fingerprint_end,
+    ))
+}
+
+fn frame_u16(frame: &[u8], start: usize) -> TestResult<usize> {
+    let end = start
+        .checked_add(2)
+        .ok_or_else(|| String::from("capsule field range overflow"))?;
+    let bytes: [u8; 2] = frame
+        .get(start..end)
+        .ok_or_else(|| String::from("capsule field is truncated"))?
+        .try_into()
+        .map_err(|error| format!("capsule field width is invalid: {error}"))?;
+    Ok(usize::from(u16::from_be_bytes(bytes)))
+}
+
+fn refresh_checksum(frame: &mut [u8]) -> TestResult {
+    let checksum_start = frame
+        .len()
+        .checked_sub(CHECKSUM_BYTES)
+        .ok_or_else(|| String::from("capsule frame lacks checksum"))?;
+    let checksum =
+        fnv1a64(frame.get(..checksum_start).ok_or_else(|| {
+            String::from("capsule checksum input is invalid")
+        })?);
+    let target = frame
+        .get_mut(checksum_start..)
+        .ok_or_else(|| String::from("capsule checksum field is invalid"))?;
+    target.copy_from_slice(&checksum.to_be_bytes());
+    Ok(())
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = FNV1A64_OFFSET;
+    for byte in bytes.iter().copied() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV1A64_PRIME);
+    }
+    hash
 }
 
 #[test]
@@ -227,5 +338,94 @@ fn trailing_whitespace_on_fallback_is_not_capsule() -> TestResult {
         &normalize_result(parse_capsule(b"(C<;_\"K \t \t"))?.is_none(),
         &true,
         "ordinary trailing whitespace recognition",
+    )
+}
+
+#[test]
+fn fingerprint_mismatch_uses_shared_identity_diagnostic() -> TestResult {
+    let mut frame = decoded_frame(&capsule_fixture()?)?;
+    let (_, fingerprint_range) = frame_identity_ranges(&frame)?;
+    let first = frame
+        .get_mut(fingerprint_range.start)
+        .ok_or_else(|| String::from("capsule fingerprint is empty"))?;
+    *first = if *first == b'x' {
+        b'y'
+    } else {
+        b'x'
+    };
+    let declared =
+        from_utf8(frame.get(fingerprint_range).ok_or_else(|| {
+            String::from("capsule fingerprint is unavailable")
+        })?)
+        .map_err(|error| format!("capsule fingerprint is not UTF-8: {error}"))?
+        .to_owned();
+    refresh_checksum(&mut frame)?;
+
+    let Err(error) = parse_capsule(&encoded_capsule(&frame)) else {
+        return Err(String::from(
+            "mismatched capsule fingerprint was accepted",
+        ));
+    };
+    let canonical_profile_id = current_profile().id();
+    let canonical_fingerprint = current_profile().fingerprint();
+    let expected_message = format!(
+        concat!(
+            "MALBOLGE-PROFILE-ID-001 profile={profile_id} ",
+            "expected={declared} observed={observed}"
+        ),
+        profile_id = canonical_profile_id,
+        declared = declared,
+        observed = canonical_fingerprint,
+    );
+    check_equal(
+        &format!("{error}"),
+        &expected_message,
+        "shared capsule profile identity diagnostic",
+    )?;
+    let CapsuleError::ProfileFingerprintMismatch {
+        profile_id,
+        expected,
+        observed,
+    } = error
+    else {
+        return Err(String::from("unexpected capsule mismatch error category"));
+    };
+    check_equal(&profile_id, &current_profile().id(), "mismatch profile")?;
+    check_equal(expected.as_ref(), declared.as_str(), "declared fingerprint")?;
+    check_equal(
+        &observed,
+        &current_profile().fingerprint(),
+        "canonical fingerprint",
+    )
+}
+
+#[test]
+fn unknown_profile_remains_explicit_without_fallback() -> TestResult {
+    let mut frame = decoded_frame(&capsule_fixture()?)?;
+    let (profile_range, _) = frame_identity_ranges(&frame)?;
+    let target = frame.get_mut(profile_range).ok_or_else(|| {
+        String::from("capsule profile identity is unavailable")
+    })?;
+    if target.len() != UNKNOWN_PROFILE.len() {
+        return Err(String::from("unknown profile fixture width changed"));
+    }
+    target.copy_from_slice(UNKNOWN_PROFILE);
+    refresh_checksum(&mut frame)?;
+
+    let Err(error) = parse_capsule(&encoded_capsule(&frame)) else {
+        return Err(String::from("unknown capsule profile was accepted"));
+    };
+    check_equal(
+        &format!("{error}"),
+        &String::from("MALBOLGE-CAPSULE-004 unknown profile=malbolge-2026.x"),
+        "unknown capsule profile diagnostic",
+    )?;
+    let CapsuleError::UnknownProfile { profile_id } = error else {
+        return Err(String::from("unexpected unknown-profile error category"));
+    };
+    check_equal(
+        profile_id.as_ref(),
+        "malbolge-2026.x",
+        "unknown capsule profile identity",
     )
 }

@@ -132,9 +132,9 @@ The example profile currently fingerprints to:
 
 `malbolge-profile-v1:sha256:221015e0ac4cbde88444ad6d55c703a2e2cc96904bd65b81cb44e256aa1f3177`.
 
-### Experiment Manifest Binding
+### Artifact And Container Binding
 
-Experiment Manifest v1 is the first repository artifact family to require this
+Experiment Manifest v1 and the `MALBCAP1` runtime capsule both require this
 content-bound identity. Canonical target IDs must include the exact generated
 `target_profile_fingerprint`; the validator recomputes it from `malbolge.json`
 and emits `MALBOLGE-PROFILE-ID-001` on mismatch. Unknown IDs fail rather than
@@ -143,8 +143,10 @@ fingerprint because they do not identify one canonical semantic profile.
 
 Ten checked-in canonical-profile manifests currently carry this binding: five
 algorithm plans and five retained current-profile accelerator evidence records.
-Compiler objects, executable containers, and product-level artifact metadata are
-still open and must not be inferred from this research-manifest integration.
+The `MALBCAP1` capsule carries the same ID/fingerprint pair, recomputes canonical
+identity before exposing payload, emits shared `MALBOLGE-PROFILE-ID-001` on
+mismatch, and rejects unknown IDs without fallback. Compiler objects and
+product-level artifact metadata remain open.
 
 ### Security Boundary
 
@@ -179,9 +181,10 @@ A structurally valid profile whose computed fingerprint differs from the
 artifact expectation fails with `MALBOLGE-PROFILE-ID-001`; the external profile
 is never silently substituted for the expected identity.
 
-Experiment manifests now carry this fingerprint for canonical research
-artifacts. Compiler objects, executable containers, and product-level
-artifacts do not yet universally carry it, so this contract remains active.
+Experiment manifests and `MALBCAP1` capsules now carry this fingerprint for
+canonical research and runtime-container artifacts. Compiler objects and
+product-level artifacts do not yet universally carry it, so this contract
+remains active.
 
 ## Verification
 
@@ -194,6 +197,9 @@ artifacts do not yet universally carry it, so this contract remains active.
 - `tests/test_experiment_manifest.py` covers canonical artifact fingerprints,
   unknown-ID rejection, noncanonical-scope separation, and the shared exact
   mismatch diagnostic.
+- `tests/vm/capsule.rs` covers exact capsule fingerprint mismatch fields/text,
+  unknown-profile rejection without fallback, checksum-valid tampering, and
+  canonical payload exposure only after identity verification.
 - `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
   the generated canonical fingerprint.
 - The CLI is smoke-tested with matching and mismatching expected fingerprints.

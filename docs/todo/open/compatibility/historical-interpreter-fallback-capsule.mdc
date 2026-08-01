@@ -51,6 +51,10 @@ metadata that the original loader ignores.
   implicit runtime substitution occurs.
 - Rust and independent Python fixtures prove the fallback surface, legacy output,
   checksum, profile binding, corruption detection, and ordinary-source boundary.
+- A valid-checksum fingerprint mutation now emits shared
+  `MALBOLGE-PROFILE-ID-001` with exact declared/canonical values, while a valid-
+  checksum unknown profile emits `MALBOLGE-CAPSULE-004` without selecting a
+  fallback profile.
 
 ## Acceptance
 
@@ -69,7 +73,8 @@ metadata that the original loader ignores.
 ## Evidence
 
 - Durable evidence now includes the safe-Rust capsule API, checked-in capsule
-  fixture, legacy-mode Rust tests, and independent Python frame/fallback tests.
+  fixture, shared identity-mismatch and unknown-profile Rust tests, legacy-mode
+  execution, and independent Python frame/fallback tests.
 - Required evidence: classic specification-conformance corpus plus
   extension/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `scalable-malbolge-memory-model`,

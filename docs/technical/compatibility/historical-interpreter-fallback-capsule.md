@@ -171,7 +171,9 @@ After exact magic recognition:
 - unsupported version -> `MALBOLGE-CAPSULE-002`;
 - checksum mismatch -> `MALBOLGE-CAPSULE-003`;
 - unknown canonical profile -> `MALBOLGE-CAPSULE-004`;
-- profile fingerprint mismatch -> `MALBOLGE-CAPSULE-005`;
+- profile fingerprint mismatch -> shared `MALBOLGE-PROFILE-ID-001`,
+  naming the profile plus declared `expected` and canonical `observed`
+  fingerprints;
 - unsupported flags -> `MALBOLGE-CAPSULE-006`.
 
 Build-time length overflow uses `MALBOLGE-CAPSULE-BUILD-001`.
@@ -182,7 +184,8 @@ through the modern capsule path.
 ## Verification
 
 - `tests/vm/capsule.rs` locks the Rust builder against the checked-in fixture,
-  validates recognition and checksum tampering, proves ordinary-source
+  validates recognition, checksum tampering, exact shared fingerprint mismatch,
+  and unknown-profile rejection without fallback; proves ordinary-source
   non-recognition, verifies the historical visible bytes, runs the fixed fallback
   under explicit `legacy-ben`, and proves current-profile execution reaches
   capability preflight before payload loading.
