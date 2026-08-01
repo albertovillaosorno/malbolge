@@ -25,7 +25,7 @@
 #   - Outputs: stable typed results for exact nonsecret authorization requests.
 #   - Side effects: none; retained Authorization values remain caller-owned.
 # - Split-When:
-#   - Split when async memory adaptation, hosted APIs, certificates, or PKI gain
+#   - Split when external credentials, hosted APIs, certificates, or PKI gain
 #     contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact bounded memory-auth boundary.
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
+# - accelerator/ticket_admission_memory_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py

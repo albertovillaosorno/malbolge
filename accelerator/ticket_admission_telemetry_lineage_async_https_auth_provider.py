@@ -25,8 +25,8 @@
 #   - Outputs: one hidden caller-owned bounded Authorization value and metadata.
 #   - Side effects: exactly one awaited provider call per successful preflight.
 # - Split-When:
-#   - Split when async memory auth, external credentials, hosted APIs,
-#     certificates, or PKI gain contracts.
+#   - Split when external credentials, hosted APIs, certificates, or PKI
+#     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact async Authorization boundary.
 # - Summary:
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
+# - accelerator/ticket_admission_memory_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py

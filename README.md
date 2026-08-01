@@ -240,7 +240,8 @@ adapter, an explicit canonical file bundle for public-key bytes, synchronous and
 async transport-neutral bundle-fetch ports, a concrete synchronous HTTPS GET
 adapter, a caller-offloaded async HTTPS adapter, explicit bounded synchronous and
 async Authorization-provider ports, a bounded caller-owned memory Authorization
-provider, an explicit authorized HTTPS adapter, and a caller-offloaded async
+provider with an inline async adapter, an explicit authorized HTTPS adapter, and
+a caller-offloaded async
 authorized HTTPS adapter, a caller-owned alternate telemetry store, and lossless
 explicit schema-v1/schema-v2 migration exist. No concrete
 public-key signature algorithm, native nonblocking HTTPS client, environment/file/

@@ -25,7 +25,7 @@
 #   - Outputs: exact lookup, bounds, secrecy, ordering, and failure assertions.
 #   - Side effects: none beyond explicit in-process calls.
 # - Split-When:
-#   - Split when async memory adaptation, hosted APIs, certificates, or PKI gain
+#   - Split when external credentials, hosted APIs, certificates, or PKI gain
 #     tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact memory-auth behavior.
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
+# - accelerator/ticket_admission_memory_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py

@@ -1905,6 +1905,20 @@ lookup without mutation or an external cache. The provider reads no environment,
 file, network, process credential state, secret store, or hosted API and performs no
 discovery, refresh, retry, persistence, logging, task creation, certificate rule,
 PKI operation, algorithm choice, or admission-policy operation.
+`memory-async-ticket-admission-lineage-https-authorization-provider-v1`
+adapts one exact bounded memory Authorization provider to the shared async provider
+port without introducing a scheduling point. Construction and every call revalidate
+the exact adapter type and identity, wrapped memory service, copied entry count,
+entry limit, and authorization-provider identity. A direct await delegates once to
+the same synchronous memory lookup and returns the same typed `resolved`,
+`unavailable`, or `failed` result before any other caller task can run. The shared
+async Authorization boundary can therefore materialize the exact hidden value and
+metadata while preserving its own preflight and result validation. Repeated awaits
+reuse only the explicit immutable memory state and perform validation again. The
+adapter creates no event loop, task, thread, executor, worker, scheduling point,
+environment or file read, network access, secret-store call, discovery, refresh,
+retry, external cache, persistence, logging, hosted-service policy, certificate
+rule, PKI operation, algorithm choice, or admission-policy operation.
 `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
 Authorization value. Construction and every call revalidate the wrapped HTTPS
@@ -1943,7 +1957,8 @@ adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
-provider, an explicit authorized HTTPS adapter, and a caller-offloaded async
+provider with an inline async adapter, an explicit authorized HTTPS adapter,
+and a caller-offloaded async
 authorized HTTPS adapter. There is no built-in environment, file, external
 secret-store, or hosted credential provider, native nonblocking HTTPS client,
 automatic credential refresh, or hosted key service.
@@ -1957,7 +1972,7 @@ loading, snapshot merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand two hundred forty-two
+every ticket. One thousand two hundred seventy-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
@@ -1965,6 +1980,7 @@ async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
 async-https-authorization-provider/
 memory-https-authorization-provider/
+memory-async-https-authorization-provider/
 authorized-https-public-key-bundle-fetcher/
 async-authorized-https-public-key-bundle-fetcher/
 public-key-provider/async-public-key-provider/
@@ -2001,8 +2017,8 @@ open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
 signature algorithms, native async HTTPS public-key transports,
-inline async memory Authorization adaptation, environment/file/external
-secret-store providers, hosted-service integrations,
+environment/file/external secret-store providers, hosted-service
+integrations,
 certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.

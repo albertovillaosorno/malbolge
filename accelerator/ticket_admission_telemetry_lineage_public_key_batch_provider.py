@@ -25,8 +25,8 @@
 #   - Outputs: one canonical batch request and manifest-bound signature trust.
 #   - Side effects: at most one awaited batch-provider call per resolution.
 # - Split-When:
-#   - Split when native async HTTPS, async memory auth, external
-#     credentials, hosted APIs, certificates, or PKI gain contracts.
+#   - Split when native async HTTPS, external credentials, hosted APIs,
+#     certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact async batch boundary.
 # - Summary:
@@ -50,6 +50,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
+# - accelerator/ticket_admission_memory_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
