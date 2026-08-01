@@ -25,8 +25,8 @@
 #   - Outputs: ordering, resolution, integrity, and fail-closed assertions.
 #   - Side effects: none beyond explicit in-process calls.
 # - Split-When:
-#   - Split when async HTTPS transports, credentials, hosted-service APIs,
-#     certificates, or PKI gain tests.
+#   - Split when native async HTTPS transports, credentials,
+#     hosted-service APIs, certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact memory-provider behavior.
 # - Summary:
@@ -46,6 +46,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py

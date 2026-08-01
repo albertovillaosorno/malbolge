@@ -25,7 +25,7 @@
 #   - Outputs: shared typed fetched, unavailable, or failed transport results.
 #   - Side effects: one direct HTTPS connection and one close per call.
 # - Split-When:
-#   - Split when async HTTPS, credentials, hosted-service APIs, or PKI
+#   - Split when native async HTTPS, credentials, hosted-service APIs, or PKI
 #     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact synchronous HTTPS boundary.
@@ -41,6 +41,7 @@
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
@@ -216,6 +217,18 @@ def build_ticket_admission_https_public_key_bundle_fetcher(
             TICKET_ADMISSION_TELEMETRY_LINEAGE_HTTPS_PUBLIC_KEY_BUNDLE_FETCHER_ID
         ),
     )
+
+
+def validate_ticket_admission_https_public_key_bundle_fetcher(
+    value: TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcher,
+) -> TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcher:
+    """Validate one exact immutable synchronous HTTPS fetcher.
+
+    Returns:
+        The same exact fetcher after complete configuration validation.
+
+    """
+    return _validated_fetcher(value)
 
 
 def _validated_fetcher(

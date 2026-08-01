@@ -169,11 +169,12 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. Nine hundred fifty-three
+facade resolves the same exact profile before reporting. Nine hundred eighty-eight
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
+async-https-public-key-bundle-fetcher/
 public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider,
@@ -483,13 +484,29 @@ body-read, or close failures return typed `failed` without vendor text. There is
 plaintext HTTP, endpoint discovery, credential handling, redirect following, retry,
 watch, cache, persistence, hosted-service API, certificate/PKI ownership, algorithm
 selection, or policy operation.
+`offloaded-async-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
+adapts the exact synchronous HTTPS fetcher to the shared async port through one
+caller-supplied offloader. Construction and every call fully revalidate the wrapped
+HTTPS fetcher, stable adapter identity, copied fetcher/source/resource bindings, and
+callable offloader. The shared request is validated before the first await; a
+source/resource mismatch returns typed `failed` without calling the offloader. A
+matched request awaits the offloader exactly once with the same exact fetcher and
+request. The caller alone decides whether that await runs inline, in a thread,
+through an executor, or through another scheduling mechanism. Cancellation
+propagates directly. Ordinary offloader exceptions become stable adapter errors
+without vendor text. Returned results are revalidated for exact type, enum, payload
+presence, exact bytes, nonempty content, and the request byte limit before they reach
+the outer async materialization boundary. Repeated calls revalidate and offload
+again. The adapter creates no event loop, task, thread, executor, worker, retry,
+redirect, cache, trust root, credential, hosted-service policy, algorithm choice, or
+admission-policy operation.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
-transport-neutral fetch ports, and a concrete synchronous HTTPS GET
-adapter. There is no built-in secret provider, async network transport,
-credential handling, or hosted key service. No bundle or session is
-loaded automatically;
+transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
+and a caller-offloaded async HTTPS adapter. There is no built-in secret provider,
+native nonblocking HTTPS client, credential handling, or hosted key service.
+No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
 loading, snapshot merge, route recommendation, evidence promotion, or policy
@@ -499,7 +516,7 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, concrete async HTTPS public-key transports,
+signature algorithms, native async HTTPS public-key transports,
 credentialed or hosted-service integrations,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.

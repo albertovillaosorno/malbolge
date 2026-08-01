@@ -25,8 +25,8 @@
 #   - Outputs: caller-owned memory providers bound to canonical bundle bytes.
 #   - Side effects: exactly one caller-supplied fetcher call per invocation.
 # - Split-When:
-#   - Split when async HTTPS transports, credentials, hosted-service APIs,
-#     certificates, or PKI gain contracts.
+#   - Split when native async HTTPS transports, credentials,
+#     hosted-service APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact explicit bundle-fetch boundary.
 # - Summary:
@@ -43,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
@@ -221,6 +222,26 @@ def validate_ticket_admission_public_key_bundle_fetch_request(
         maximum=DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES,
     )
     return request
+
+
+def validate_ticket_admission_public_key_bundle_fetch_result(
+    result: TicketAdmissionTelemetryLineagePublicKeyBundleFetchResult,
+    *,
+    max_bytes: int,
+) -> TicketAdmissionTelemetryLineagePublicKeyBundleFetchResult:
+    """Validate one exact bounded transport-neutral fetch result.
+
+    Returns:
+        The same immutable result after exact shape and payload validation.
+
+    """
+    validated = _validated_result(result)
+    if (
+        validated.kind
+        is TicketAdmissionTelemetryLineagePublicKeyBundleFetchResultKind.FETCHED
+    ):
+        _ = _validated_fetched_payload(validated, max_bytes=max_bytes)
+    return validated
 
 
 def materialize_ticket_admission_public_key_bundle_fetch_result(

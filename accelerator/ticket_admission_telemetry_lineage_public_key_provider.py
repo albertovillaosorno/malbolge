@@ -25,8 +25,8 @@
 #   - Outputs: immutable requests and manifest-bound signature trust.
 #   - Side effects: exactly one explicit provider call per manifest entry.
 # - Split-When:
-#   - Split when async HTTPS transports, credentials, hosted-service APIs,
-#     certificates, or PKI gain contracts.
+#   - Split when native async HTTPS transports, credentials,
+#     hosted-service APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this live public-key provider boundary.
 # - Summary:
@@ -52,6 +52,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
 #
