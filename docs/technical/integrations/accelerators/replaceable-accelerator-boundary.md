@@ -787,14 +787,29 @@ provider again. The port does not choose an authorization scheme, inject a heade
 open a connection, discover credentials, retry, cache, persist, log values, create
 workers, own a hosted-service API, validate certificates, distribute PKI, select a
 signature algorithm, or change admission policy.
+`authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
+binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
+Authorization value. Construction and every call revalidate the wrapped HTTPS
+fetcher, resolved Authorization value, stable adapter identity, copied byte count,
+authorization-provider identity, bundle fingerprint, fetch-provider identity, and
+source/resource bindings. A request must exactly match the bound bundle fingerprint,
+fetch provider, source, and resource; any mismatch returns typed `failed` before a
+connection is opened. A matched call opens one connection, sends one `GET` with the
+base JSON/identity/close headers plus exactly one unchanged `Authorization` header,
+reuses the base response/status/body validation, and closes once. The explicit
+adapter may be reused with the same caller-owned authorization object, but it never
+calls a credential provider, refreshes credentials, retries, redirects, caches
+hidden state, normalizes or selects a scheme, logs credential text, discovers an
+endpoint, creates workers, owns a hosted-service API, validates certificates,
+distributes PKI, selects a signature algorithm, or changes admission policy.
 The built-in public-key implementations are the bounded caller-owned memory
 service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
-a caller-offloaded async HTTPS adapter, and an explicit Authorization-provider
-port. There is no built-in secret provider implementation, native nonblocking
-HTTPS client, concrete credential provider, header injection, or hosted key
-service.
+a caller-offloaded async HTTPS adapter, an explicit Authorization-provider
+port, and an explicit authorized HTTPS adapter. There is no built-in secret
+provider implementation, native nonblocking HTTPS client, concrete credential
+provider, automatic credential injection, or hosted key service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
@@ -807,12 +822,13 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand forty-two
+every ticket. One thousand one hundred two
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
+authorized-https-public-key-bundle-fetcher/
 public-key-provider/async-public-key-provider/
 async-batch-public-key-provider/provider-session/
 memory-public-key-provider/memory-async-public-key-provider/

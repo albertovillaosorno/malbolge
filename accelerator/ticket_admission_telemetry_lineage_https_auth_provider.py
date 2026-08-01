@@ -25,8 +25,8 @@
 #   - Outputs: one hidden caller-owned bounded Authorization value and metadata.
 #   - Side effects: exactly one explicit provider call per successful preflight.
 # - Split-When:
-#   - Split when transport injection, async providers, hosted APIs, or PKI gain
-#     contracts.
+#   - Split when async providers or Authorization injection, hosted APIs,
+#     certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact Authorization-provider boundary.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
@@ -278,6 +279,54 @@ def validate_ticket_admission_https_authorization_result(
             "nonresolved authorization result cannot contain credential text"
         )
     return result
+
+
+def validate_ticket_admission_resolved_https_authorization(
+    value: TicketAdmissionTelemetryLineageResolvedHttpsAuthorization,
+) -> TicketAdmissionTelemetryLineageResolvedHttpsAuthorization:
+    """Validate one exact caller-owned resolved Authorization value.
+
+    Returns:
+        The same exact resolved value after complete binding validation.
+
+    """
+    if (
+        type(value)
+        is not TicketAdmissionTelemetryLineageResolvedHttpsAuthorization
+    ):
+        _raise_provider(
+            "resolved authorization must use the exact resolved type"
+        )
+    _ = _validated_identifier(
+        value.authorization_provider_id,
+        "authorization provider identity",
+    )
+    _ = _validated_identifier(
+        value.fetch_provider_id,
+        "fetch provider identity",
+    )
+    _ = _validated_identifier(value.resource_id, "resource identity")
+    _ = _validated_identifier(value.source_id, "source identity")
+    if (
+        type(value.bundle_fingerprint) is not str
+        or _BUNDLE_FINGERPRINT_PATTERN.fullmatch(value.bundle_fingerprint)
+        is None
+    ):
+        _raise_provider("resolved bundle fingerprint is malformed")
+    if value.header_name != HTTPS_AUTHORIZATION_HEADER_NAME:
+        _raise_provider("resolved header name is unsupported")
+    authorization_value = _validated_authorization_value(
+        value.authorization_value,
+        max_bytes=MAX_HTTPS_AUTHORIZATION_BYTES,
+    )
+    byte_count = len(authorization_value.encode("ascii"))
+    if type(value.authorization_byte_count) is not int or (
+        value.authorization_byte_count != byte_count
+    ):
+        _raise_provider(
+            "resolved authorization byte count does not match value"
+        )
+    return value
 
 
 def _validated_https_fetcher(

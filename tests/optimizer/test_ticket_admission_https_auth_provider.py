@@ -25,8 +25,8 @@
 #   - Outputs: preflight, one-call, bounds, secrecy, and failure assertions.
 #   - Side effects: in-memory caller-provider recording only.
 # - Split-When:
-#   - Split when transport injection, async providers, hosted APIs, or PKI gain
-#     tests.
+#   - Split when async providers or Authorization injection, hosted APIs,
+#     certificates, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact Authorization-provider boundary.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
