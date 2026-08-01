@@ -91,7 +91,7 @@ struct CoffCompileCase {
 }
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
-    decode_hex_fixture(include_str!("execution/fixtures/region-effect-v1.hex"))
+    decode_hex_fixture(include_str!("execution/fixtures/region-effect-v2.hex"))
 }
 
 fn decode_hex_fixture(text: &str) -> Result<Vec<u8>, String> {
@@ -156,6 +156,7 @@ fn program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
+        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from("malbolge-profile-v1:sha256:fixture"),
         step_budget: 8,
     }
@@ -243,9 +244,13 @@ fn canonical_ir_changes_when_any_semantic_field_changes() -> Result<(), String>
         .map_err(|error| format!("canonical baseline failed: {error:?}"))?;
     let mut variants = Vec::new();
 
-    let mut profile = baseline.clone();
-    profile.profile_fingerprint.push('x');
-    variants.push(profile);
+    let mut profile_id = baseline.clone();
+    profile_id.profile_id.push('x');
+    variants.push(profile_id);
+
+    let mut profile_fingerprint = baseline.clone();
+    profile_fingerprint.profile_fingerprint.push('x');
+    variants.push(profile_fingerprint);
 
     let mut budget = baseline.clone();
     budget.step_budget = budget.step_budget.saturating_add(1);
@@ -280,6 +285,24 @@ fn canonical_ir_changes_when_any_semantic_field_changes() -> Result<(), String>
                 "semantic IR mutation kept canonical bytes",
             ));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn cache_key_includes_declared_profile_identity() -> Result<(), String> {
+    let program = program();
+    let target = NativeTargetIdentity::new(base_target_config());
+    let base = NativeArtifactKey::new(&program, target.clone())
+        .map_err(|error| format!("base profile key failed: {error:?}"))?;
+    let mut renamed = program;
+    renamed.profile_id = String::from("malbolge-2026.2-alias");
+    let candidate = NativeArtifactKey::new(&renamed, target)
+        .map_err(|error| format!("renamed profile key failed: {error:?}"))?;
+    if base == candidate {
+        return Err(String::from(
+            "declared profile identity did not change cache key",
+        ));
     }
     Ok(())
 }
@@ -470,6 +493,7 @@ fn native_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 2,
         },
+        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:native-bootstrap-fixture",
         ),
@@ -528,6 +552,7 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
+        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
         ),
@@ -571,6 +596,7 @@ fn direct_initial_halt_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
+        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
         ),
@@ -963,6 +989,14 @@ fn native_bootstrap_source_is_deterministic_atomic_and_key_bound()
         return Err(String::from("native source lost exact artifact key"));
     }
     let source = first.source();
+    if !source.contains("/* Profile ID: malbolge-2026.2 */") {
+        return Err(String::from("native source lost profile identity"));
+    }
+    let fingerprint_comment =
+        format!("/* Profile fingerprint: {} */", program.profile_fingerprint);
+    if !source.contains(&fingerprint_comment) {
+        return Err(String::from("native source lost profile fingerprint"));
+    }
     let guard = source
         .find("state->memory_words <= MB_U64(7)")
         .ok_or_else(|| String::from("native memory preflight missing"))?;

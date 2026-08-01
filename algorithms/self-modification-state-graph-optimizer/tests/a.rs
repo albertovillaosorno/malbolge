@@ -197,6 +197,16 @@ fn artifact_verifier_rejects_effect_tampering() -> Result<(), String> {
 }
 
 #[test]
+fn artifact_verifier_rejects_profile_identity_tampering() -> Result<(), String>
+{
+    let (_entry, region) = verified_fixture()?;
+    let source = UntrustedRegionArtifact::from_verified_region(&region);
+    let mut program = source.program().clone();
+    program.profile_id = String::from("malbolge-2026.2-alias");
+    check_rejected(program, &region, "profile identity")
+}
+
+#[test]
 fn artifact_verifier_rejects_profile_tampering() -> Result<(), String> {
     let (_entry, region) = verified_fixture()?;
     let source = UntrustedRegionArtifact::from_verified_region(&region);

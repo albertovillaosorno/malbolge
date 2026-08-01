@@ -138,6 +138,7 @@ impl UntrustedRegionArtifact {
                     })
                     .collect(),
                 outcome: region.outcome(),
+                profile_id: String::from(region.entry().profile_id()),
                 profile_fingerprint: String::from(
                     region.entry().profile_fingerprint(),
                 ),
@@ -174,6 +175,7 @@ impl UntrustedRegionArtifact {
                 })
                 .collect(),
             outcome: region.outcome(),
+            profile_id: String::from(region.entry().profile_id()),
             profile_fingerprint: String::from(
                 region.entry().profile_fingerprint(),
             ),

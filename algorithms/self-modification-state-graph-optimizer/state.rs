@@ -381,6 +381,12 @@ impl IndexedMachineState {
         )
     }
 
+    /// Returns the exact profile identity bound to this state lineage.
+    #[must_use]
+    pub const fn profile_id(&self) -> &'static str {
+        self.profile.id()
+    }
+
     /// Returns the canonical profile fingerprint bound to this state lineage.
     #[must_use]
     pub const fn profile_fingerprint(&self) -> &'static str {

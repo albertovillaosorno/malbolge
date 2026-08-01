@@ -371,9 +371,11 @@ impl<'program> LoweringPlan<'program> {
             "/* Malbolge untrusted native bootstrap candidate. */"
         )
         .map_err(|_error| NativeArtifactError::Rendering)?;
+        writeln!(&mut output, "/* Profile ID: {} */", self.program.profile_id)
+            .map_err(|_error| NativeArtifactError::Rendering)?;
         writeln!(
             &mut output,
-            "/* Profile: {} */",
+            "/* Profile fingerprint: {} */",
             self.program.profile_fingerprint
         )
         .map_err(|_error| NativeArtifactError::Rendering)?;

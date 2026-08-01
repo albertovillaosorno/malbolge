@@ -55,7 +55,7 @@ use malbolge::{
 };
 
 /// First portable bounded-region effect-IR schema version.
-pub const EFFECT_IR_VERSION: u16 = 1;
+pub const EFFECT_IR_VERSION: u16 = 2;
 const IR_MAGIC: &[u8; 4] = b"MBIR";
 
 /// One architecture-neutral state-changing operation from a verified VM step.
@@ -93,6 +93,8 @@ pub struct RegionEffectProgram {
     pub memory_live_ins: Vec<MemoryLiveIn>,
     /// Verified bounded-run outcome.
     pub outcome: RunOutcome,
+    /// Exact declared target-profile identity.
+    pub profile_id: String,
     /// Canonical target-profile fingerprint.
     pub profile_fingerprint: String,
     /// Verified semantic-step budget.
@@ -136,6 +138,7 @@ impl RegionEffectProgram {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(IR_MAGIC);
         push_u16(&mut bytes, self.format_version);
+        push_bytes(&mut bytes, self.profile_id.as_bytes())?;
         push_bytes(&mut bytes, self.profile_fingerprint.as_bytes())?;
         push_usize(&mut bytes, self.step_budget)?;
         push_run_outcome(&mut bytes, self.outcome)?;
