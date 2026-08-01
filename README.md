@@ -314,13 +314,13 @@ adapter, an explicit canonical file bundle for public-key bytes, synchronous and
 async transport-neutral bundle-fetch ports, a concrete synchronous HTTPS GET
 adapter, a caller-offloaded async HTTPS adapter, explicit bounded synchronous and
 async Authorization-provider ports, a bounded caller-owned memory Authorization
-provider with an inline async adapter, an explicit authorized HTTPS adapter, and
-a caller-offloaded async
+provider with an inline async adapter, an explicit environment Authorization
+provider, an explicit authorized HTTPS adapter, and a caller-offloaded async
 authorized HTTPS adapter, a caller-owned alternate telemetry store, and lossless
 explicit schema-v1/schema-v2 migration exist. No concrete
-public-key signature algorithm, native nonblocking HTTPS client, environment/file/
-external secret-store credential provider, automatic credential
-refresh, hosted key service, certificate-chain or PKI
+public-key signature algorithm, native async file-secret I/O, native
+nonblocking HTTPS client, external secret-store credential provider, automatic
+credential refresh, hosted key service, certificate-chain or PKI
 ownership, automatic discovery, retry, hidden cache, library-owned concurrency, or
 automatic trust loading is supplied.
 Observations do not promote routes automatically and never replace retained

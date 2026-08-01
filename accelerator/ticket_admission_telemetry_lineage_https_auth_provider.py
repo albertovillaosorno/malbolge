@@ -43,6 +43,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
 # - accelerator/ticket_admission_memory_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
@@ -60,6 +61,9 @@
 #
 
 """Explicit bounded HTTPS Authorization credential-provider port."""
+
+# ruff: file-ignore[line-too-long,doc-line-too-long]
+
 
 from __future__ import annotations
 

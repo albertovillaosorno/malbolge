@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One thousand four
-hundred fifty-one
+facade resolves the same exact profile before reporting. One thousand five
+hundred twenty-five
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
 async-secret-provider/memory-async-secret-provider/file-secret-provider/
@@ -181,6 +181,7 @@ async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
 async-https-authorization-provider/
 memory-https-authorization-provider/
+environment-https-authorization-provider/
 memory-async-https-authorization-provider/
 authorized-https-public-key-bundle-fetcher/
 async-authorized-https-public-key-bundle-fetcher/
@@ -630,6 +631,26 @@ lookup without mutation or an external cache. The provider reads no environment,
 file, network, process credential state, secret store, or hosted API and performs no
 discovery, refresh, retry, persistence, logging, task creation, certificate rule,
 PKI operation, algorithm choice, or admission-policy operation.
+`explicit-environment-ticket-admission-lineage-https-authorization-provider-v1`
+implements one bounded synchronous Authorization provider over explicit immutable
+request-to-variable bindings. Each entry hides one canonical uppercase ASCII
+environment name and binds it to one exact bundle fingerprint, fetch-provider
+identity, resource identity, and source identity. One service binds all entries to
+one authorization-provider identity, permits at most 64 entries by default and 4096
+at the supported maximum, limits resolved values to 4096 bytes by default and 16384
+at the supported maximum, canonicalizes ordering, and rejects duplicate request
+bindings. Construction and validation read no environment state. A provider-identity
+mismatch returns typed `failed`; a valid unmatched request returns `unavailable`;
+only an exact match performs one lookup of the caller-named variable. A missing
+variable returns `unavailable`; an operating-system or Unicode lookup failure, an
+invalid nonempty-ASCII Authorization value, or an oversized value returns `failed`
+without variable names, values, or operating-system text. An exact valid value
+returns `resolved` unchanged. Repeated calls reread the environment, so caller-owned
+rotation and removal are visible without a cache. The provider never enumerates or
+mutates environment state, discovers names, reads files, network, external stores,
+or hosted APIs, retries, persists, logs names or values, creates workers, chooses an
+Authorization scheme, refreshes credentials, validates certificates, distributes
+PKI, selects algorithms, or changes admission policy.
 `memory-async-ticket-admission-lineage-https-authorization-provider-v1`
 adapts one exact bounded memory Authorization provider to the shared async provider
 port without introducing a scheduling point. Construction and every call revalidate
@@ -685,10 +706,11 @@ adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
-provider with an inline async adapter, an explicit authorized HTTPS adapter,
+provider with an inline async adapter, an explicit environment Authorization
+provider, an explicit authorized HTTPS adapter,
 and a caller-offloaded async authorized HTTPS adapter.
-There is no built-in environment provider, external secret-store integration,
-hosted credential provider, native async file I/O, native nonblocking HTTPS
+There is no built-in external secret-store integration,
+hosted credential provider, native async file-secret I/O, native nonblocking HTTPS
 client, automatic
 credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
@@ -702,7 +724,7 @@ generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
 signature algorithms, native async file-secret I/O, native async HTTPS
-public-key transports, environment/external secret-store providers, hosted-service
+public-key transports, external secret-store providers, hosted-service
 integrations,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
