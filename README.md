@@ -137,6 +137,23 @@ write files, scan directories, inspect ownership or permissions, validate symlin
 decrypt values, create workers, retry, persist, log paths or secrets, choose
 algorithms, or change admission policy.
 
+`offloaded-async-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact explicit file provider through a caller-supplied async offloader.
+Construction and every call revalidate the adapter identity, hidden wrapped
+provider, copied provider identity, secret count, entry and byte limits, and
+callable offloader. Each request is fully validated before the first await; a
+provider-identity mismatch returns typed `failed` without awaiting. An exact
+request awaits the offloader once with the same immutable provider and request.
+The caller alone chooses whether that await completes inline, uses a thread or
+executor, or suspends by another mechanism. Cancellation propagates directly;
+ordinary offloader exceptions become stable adapter errors without vendor text.
+Returned results reuse the shared exact type and enum validation; nonresolved
+results cannot carry secret bytes, while resolved bytes must use the exact bytes
+type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
+calls offload and reread again. The adapter creates no event loop, task, thread,
+executor, worker, path discovery, retry, cache, persistence, environment access,
+external-store integration, secret logging, algorithm choice, or policy action.
+
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
 self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain

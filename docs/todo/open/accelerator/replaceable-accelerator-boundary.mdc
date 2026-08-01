@@ -530,6 +530,22 @@ timed.
   write files, scan directories, inspect ownership or permissions, validate symlinks,
   decrypt values, create workers, retry, persist, log paths or secrets, choose
   algorithms, or change admission policy.
+  `offloaded-async-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+  adapts one exact explicit file provider through a caller-supplied async offloader.
+  Construction and every call revalidate the adapter identity, hidden wrapped
+  provider, copied provider identity, secret count, entry and byte limits, and
+  callable offloader. Each request is fully validated before the first await; a
+  provider-identity mismatch returns typed `failed` without awaiting. An exact
+  request awaits the offloader once with the same immutable provider and request.
+  The caller alone chooses whether that await completes inline, uses a thread or
+  executor, or suspends by another mechanism. Cancellation propagates directly;
+  ordinary offloader exceptions become stable adapter errors without vendor text.
+  Returned results reuse the shared exact type and enum validation; nonresolved
+  results cannot carry secret bytes, while resolved bytes must use the exact bytes
+  type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
+  calls offload and reread again. The adapter creates no event loop, task, thread,
+  executor, worker, path discovery, retry, cache, persistence, environment access,
+  external-store integration, secret logging, algorithm choice, or policy action.
   `caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
   algorithm-neutral synchronous detached signer and verifier ports. Canonical
   attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
@@ -852,8 +868,8 @@ timed.
   policy, certificate rule, PKI operation, algorithm choice, or admission-policy
   operation.
   The built-in HMAC-secret implementations are the bounded caller-owned memory
-  service, its inline sequential async adapter, and the explicit read-only
-  file provider. The built-in public-key
+  service, its inline sequential async adapter, the explicit read-only file
+  provider, and its caller-offloaded async adapter. The built-in public-key
   implementations are the bounded caller-owned
   memory service, its inline sequential and batch async adapters, its serial session
   adapter, explicit canonical file bundles, synchronous plus async
@@ -863,7 +879,8 @@ timed.
   provider with an inline async adapter, an explicit authorized HTTPS adapter,
   and a caller-offloaded async authorized HTTPS adapter.
   There is no built-in environment provider, external secret-store
-  integration, hosted credential provider, native nonblocking HTTPS client,
+  integration, hosted credential provider, native async file I/O, native
+  nonblocking HTTPS client,
   automatic credential refresh, or hosted key service.
   No bundle or session is loaded automatically; there is no
   discovery, retry, retained
@@ -877,10 +894,11 @@ timed.
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
-  closes every ticket. One thousand four hundred seventy-four
+  closes every ticket. One thousand five hundred twenty-seven
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/memory-secret-provider/
   async-secret-provider/memory-async-secret-provider/file-secret-provider/
+  file-async-secret-provider/
   signature/signature-trust/
   signature-manifest/public-key-bundle/public-key-bundle-fetcher/
   async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/

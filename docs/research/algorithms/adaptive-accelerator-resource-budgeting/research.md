@@ -169,11 +169,12 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One thousand three
-hundred thirty-three
+facade resolves the same exact profile before reporting. One thousand four
+hundred fifty-one
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
 async-secret-provider/memory-async-secret-provider/file-secret-provider/
+file-async-secret-provider/
 signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
@@ -338,6 +339,22 @@ caller-controlled and no secret cache exists. The provider does not discover pat
 write files, scan directories, inspect ownership or permissions, validate symlinks,
 decrypt values, create workers, retry, persist, log paths or secrets, choose
 algorithms, or change admission policy.
+`offloaded-async-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact explicit file provider through a caller-supplied async offloader.
+Construction and every call revalidate the adapter identity, hidden wrapped
+provider, copied provider identity, secret count, entry and byte limits, and
+callable offloader. Each request is fully validated before the first await; a
+provider-identity mismatch returns typed `failed` without awaiting. An exact
+request awaits the offloader once with the same immutable provider and request.
+The caller alone chooses whether that await completes inline, uses a thread or
+executor, or suspends by another mechanism. Cancellation propagates directly;
+ordinary offloader exceptions become stable adapter errors without vendor text.
+Returned results reuse the shared exact type and enum validation; nonresolved
+results cannot carry secret bytes, while resolved bytes must use the exact bytes
+type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
+calls offload and reread again. The adapter creates no event loop, task, thread,
+executor, worker, path discovery, retry, cache, persistence, environment access,
+external-store integration, secret logging, algorithm choice, or policy action.
 `caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
@@ -660,8 +677,8 @@ worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
 operation.
 The built-in HMAC-secret implementations are the bounded caller-owned memory
-service, its inline sequential async adapter, and the explicit read-only
-file provider. The built-in public-key
+service, its inline sequential async adapter, the explicit read-only file
+provider, and its caller-offloaded async adapter. The built-in public-key
 implementations are the bounded caller-owned
 memory service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
@@ -671,7 +688,8 @@ Authorization-provider ports, a bounded caller-owned memory Authorization
 provider with an inline async adapter, an explicit authorized HTTPS adapter,
 and a caller-offloaded async authorized HTTPS adapter.
 There is no built-in environment provider, external secret-store integration,
-hosted credential provider, native nonblocking HTTPS client, automatic
+hosted credential provider, native async file I/O, native nonblocking HTTPS
+client, automatic
 credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
@@ -683,8 +701,8 @@ rejects invalid or ambiguous selection. This closes exact queue-size,
 generated-profile, runtime, display-driver, host/Python identity,
 registry-resolution, and offline admission-explanation slices; evidence for other
 hosts, Python versions, drivers, devices, workloads, concrete public-key
-signature algorithms, native async HTTPS public-key transports,
-environment/external secret-store providers, hosted-service
+signature algorithms, native async file-secret I/O, native async HTTPS
+public-key transports, environment/external secret-store providers, hosted-service
 integrations,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
 feedback remain open.
