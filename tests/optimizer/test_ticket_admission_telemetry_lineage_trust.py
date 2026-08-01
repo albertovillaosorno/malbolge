@@ -43,6 +43,8 @@
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+# - accelerator/ticket_admission_memory_async_secret_provider.py
 #
 # Large file:
 #   - false

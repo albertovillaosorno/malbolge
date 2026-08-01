@@ -25,8 +25,8 @@
 #   - Outputs: stable typed results for exact manifest-bound requests.
 #   - Side effects: none; retained secret bytes remain caller-owned.
 # - Split-When:
-#   - Split when async adaptation, external credentials, hosted APIs,
-#     certificates, or PKI gain contracts.
+#   - Split when external credentials, hosted APIs, certificates, or PKI
+#     gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact bounded memory-secret boundary.
 # - Summary:
@@ -40,6 +40,8 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+# - accelerator/ticket_admission_memory_async_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_trust.py
 # - accelerator/ticket_admission_telemetry_lineage.py

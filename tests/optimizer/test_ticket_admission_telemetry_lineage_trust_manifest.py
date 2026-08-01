@@ -24,8 +24,8 @@
 #   - Outputs: canonical, bounded, resolution, rotation, and failure assertions.
 #   - Side effects: temporary-directory file creation only.
 # - Split-When:
-#   - Split when concrete signature algorithms, PKI, or asynchronous providers
-#     gain tests.
+#   - Split when concrete signature algorithms, external credential stores,
+#     provider lifecycles, or PKI gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact trust-manifest behavior.
 # - Summary:
@@ -42,6 +42,8 @@
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+# - accelerator/ticket_admission_memory_async_secret_provider.py
 #
 # Large file:
 #   - false

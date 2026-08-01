@@ -25,8 +25,8 @@
 #   - Outputs: exact lookup, binding, limits, secrecy, and failure assertions.
 #   - Side effects: none beyond explicit in-process calls.
 # - Split-When:
-#   - Split when async adaptation, external credentials, hosted APIs,
-#     certificates, or PKI gain tests.
+#   - Split when external credentials, hosted APIs, certificates, or PKI
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact memory-secret behavior.
 # - Summary:
@@ -40,6 +40,8 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+# - accelerator/ticket_admission_memory_async_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 # - accelerator/ticket_admission_telemetry_lineage_trust.py

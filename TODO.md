@@ -1647,6 +1647,27 @@ validate and resolve again without mutation or an external cache. The service re
 no environment, file, network, process credential state, secret store, or hosted API
 and performs no discovery, refresh, retry, persistence, logging, worker creation,
 certificate rule, PKI operation, algorithm choice, or admission-policy operation.
+`explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+defines one caller-driven sequential async port over the same manifest-bound
+requests and typed outcomes. The synchronous port exposes one immutable nonsecret
+preflight, exact request/result validators, one result materializer, and one final
+trust materializer; both routes share those contracts. Manifest validation,
+provider identity, and the request budget complete before the first `await`. The
+provider is awaited once per entry in canonical order and never concurrently.
+Cancellation propagates directly; ordinary provider exceptions become stable errors
+without vendor text; typed non-success stops the walk without retry. Repeated
+explicit resolutions await again. The port creates no event loop, task, thread,
+executor, worker, cache, lifecycle, discovery, refresh, persistence, secret-store
+access, certificate rule, PKI operation, algorithm choice, or policy operation.
+`bounded-in-memory-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact bounded memory secret provider to that async port. Construction and
+every call revalidate the adapter identity, hidden wrapped service, provider
+identity, secret count, and entry limit. Each await delegates exactly once to the
+synchronous memory lookup and completes inline without an internal suspension or
+hidden task. Repeated calls reuse only explicit immutable caller-owned memory and
+validate it again. The adapter reads no environment, file, network, process
+credential state, external secret store, or hosted API and adds no retry, cache,
+refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
 `caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
@@ -1968,8 +1989,9 @@ refresh credentials. The adapter creates no event loop, task, thread, executor,
 worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
 operation.
-The built-in HMAC-secret implementation is the bounded caller-owned memory
-service. The built-in public-key implementations are the bounded caller-owned
+The built-in HMAC-secret implementations are the bounded caller-owned memory
+service and its inline sequential async adapter. The built-in public-key
+implementations are the bounded caller-owned
 memory service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
@@ -1990,9 +2012,10 @@ loading, snapshot merge, route recommendation, or policy authority. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand three hundred thirty-three
+every ticket. One thousand four hundred nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
+async-secret-provider/memory-async-secret-provider/
 signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
@@ -2036,9 +2059,7 @@ open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
 signature algorithms, native async HTTPS public-key transports,
-async memory secret-provider adaptation, environment/file/external
-secret-store providers, hosted-service
-integrations,
+environment/file/external secret-store providers, hosted-service integrations,
 certificates,
 PKI/trust distribution, automatic adaptive feedback, and broader live-device
 evidence remain open.

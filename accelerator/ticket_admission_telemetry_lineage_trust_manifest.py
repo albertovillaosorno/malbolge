@@ -24,8 +24,8 @@
 #   - Outputs: canonical manifests, identities, and caller-owned trust sets.
 #   - Side effects: explicit bounded file reads and atomic replacement only.
 # - Split-When:
-#   - Split when concrete signature algorithms, PKI, or asynchronous providers
-#     gain contracts.
+#   - Split when concrete signature algorithms, external credential stores,
+#     provider lifecycles, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact secret-free manifest boundary.
 # - Summary:

@@ -99,6 +99,28 @@ no environment, file, network, process credential state, secret store, or hosted
 and performs no discovery, refresh, retry, persistence, logging, worker creation,
 certificate rule, PKI operation, algorithm choice, or admission-policy operation.
 
+`explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+defines one caller-driven sequential async port over the same manifest-bound
+requests and typed outcomes. The synchronous port exposes one immutable nonsecret
+preflight, exact request/result validators, one result materializer, and one final
+trust materializer; both routes share those contracts. Manifest validation,
+provider identity, and the request budget complete before the first `await`. The
+provider is awaited once per entry in canonical order and never concurrently.
+Cancellation propagates directly; ordinary provider exceptions become stable errors
+without vendor text; typed non-success stops the walk without retry. Repeated
+explicit resolutions await again. The port creates no event loop, task, thread,
+executor, worker, cache, lifecycle, discovery, refresh, persistence, secret-store
+access, certificate rule, PKI operation, algorithm choice, or policy operation.
+`bounded-in-memory-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact bounded memory secret provider to that async port. Construction and
+every call revalidate the adapter identity, hidden wrapped service, provider
+identity, secret count, and entry limit. Each await delegates exactly once to the
+synchronous memory lookup and completes inline without an internal suspension or
+hidden task. Repeated calls reuse only explicit immutable caller-owned memory and
+validate it again. The adapter reads no environment, file, network, process
+credential state, external secret store, or hosted API and adds no retry, cache,
+refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
+
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
 self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain
@@ -249,8 +271,8 @@ component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires caller-selected trust and still grants no merge,
 route, or admission authority. Caller-owned HMAC rotation, secret-free manifests,
-an explicit synchronous secret-provider port with a bounded caller-owned memory
-implementation, detached public-key signer/verifier
+explicit synchronous and sequential async secret-provider ports with bounded
+caller-owned memory implementations, detached public-key signer/verifier
 ports, bounded in-memory public-key trust, a canonical key-free public-key trust
 manifest, explicit synchronous, sequential async, caller-controlled async batch,
 and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous

@@ -25,7 +25,8 @@
 #   - Outputs: request, budget, failure, rotation, and noncaching assertions.
 #   - Side effects: in-memory provider-call recording only.
 # - Split-When:
-#   - Split when asynchronous providers or provider lifecycles gain tests.
+#   - Split when external credentials, hosted APIs, certificates, or PKI
+#     gain tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact provider-port behavior.
 # - Summary:
@@ -47,6 +48,8 @@
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+# - accelerator/ticket_admission_memory_async_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
 #
 # Large file:
@@ -63,6 +66,10 @@ from typing import cast
 
 import pytest
 
+from accelerator import (
+    ticket_admission_telemetry_lineage_secret_provider as provider_port,
+)
+
 if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketAdmissionReport
     from accelerator.ticket_admission_telemetry_lineage import (
@@ -70,6 +77,9 @@ if TYPE_CHECKING:
     )
     from accelerator.ticket_admission_telemetry_lineage_secret_provider import (
         TicketAdmissionTelemetryLineageSecretRequest,
+    )
+    from accelerator.ticket_admission_telemetry_lineage_trust_manifest import (
+        TicketAdmissionTelemetryLineageResolvedSecret,
     )
     from accelerator.ticket_admission_telemetry_lineage_trust_manifest import (
         TicketAdmissionTelemetryLineageTrustManifest,
@@ -138,6 +148,25 @@ from accelerator.ticket_admission_telemetry_persistence import (
     capture_ticket_admission_telemetry_document,
 )
 
+_prepare = (
+    provider_port.prepare_ticket_admission_telemetry_lineage_secret_provider
+)
+_validate_prepared = (
+    provider_port.validate_ticket_admission_prepared_secret_provider
+)
+_validate_request = (
+    provider_port.validate_ticket_admission_telemetry_lineage_secret_request
+)
+_validate_result = (
+    provider_port.validate_ticket_admission_telemetry_lineage_secret_result
+)
+_materialize_result = (
+    provider_port.materialize_ticket_admission_telemetry_lineage_secret_result
+)
+_materialize_trust = (
+    provider_port.materialize_ticket_admission_telemetry_lineage_provider_trust
+)
+
 PORT_ID = "explicit-ticket-admission-telemetry-lineage-secret-provider-v1"
 PROVIDER_ID = "provider.test"
 OLD_KEY_ID = "local.lineage-key.2026-07"
@@ -197,12 +226,10 @@ def _provider(
     *,
     old_secret: bytes = OLD_SECRET,
 ) -> _Provider:
-    return _Provider(
-        {
-            OLD_REFERENCE_ID: _resolved(old_secret),
-            NEW_REFERENCE_ID: _resolved(NEW_SECRET),
-        }
-    )
+    return _Provider({
+        OLD_REFERENCE_ID: _resolved(old_secret),
+        NEW_REFERENCE_ID: _resolved(NEW_SECRET),
+    })
 
 
 def _report() -> TicketAdmissionReport:
@@ -298,20 +325,18 @@ def _entry(
 
 
 def _manifest() -> TicketAdmissionTelemetryLineageTrustManifest:
-    return build_ticket_admission_telemetry_lineage_trust_manifest(
-        (
-            _entry(
-                NEW_KEY_ID,
-                NEW_REFERENCE_ID,
-                (SUCCESSOR_SEQUENCE_ID, None),
-            ),
-            _entry(
-                OLD_KEY_ID,
-                OLD_REFERENCE_ID,
-                (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
-            ),
-        )
-    )
+    return build_ticket_admission_telemetry_lineage_trust_manifest((
+        _entry(
+            NEW_KEY_ID,
+            NEW_REFERENCE_ID,
+            (SUCCESSOR_SEQUENCE_ID, None),
+        ),
+        _entry(
+            OLD_KEY_ID,
+            OLD_REFERENCE_ID,
+            (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
+        ),
+    ))
 
 
 def test_empty_manifest_is_stable_and_makes_no_provider_calls() -> None:
@@ -341,8 +366,8 @@ def test_provider_requests_follow_canonical_manifest_order() -> None:
     """Each manifest entry produces one immutable request in key order."""
     manifest = _manifest()
     provider = _provider()
-    fingerprint = (
-        ticket_admission_telemetry_lineage_trust_manifest_fingerprint(manifest)
+    fingerprint = ticket_admission_telemetry_lineage_trust_manifest_fingerprint(
+        manifest
     )
 
     resolved = resolve_ticket_admission_telemetry_lineage_trust_with_provider(
@@ -357,9 +382,10 @@ def test_provider_requests_follow_canonical_manifest_order() -> None:
         OLD_REFERENCE_ID,
         NEW_REFERENCE_ID,
     )
-    assert tuple(
-        request.request_index for request in provider.requests
-    ) == (0, 1)
+    assert tuple(request.request_index for request in provider.requests) == (
+        0,
+        1,
+    )
     assert tuple(request.key_id for request in provider.requests) == (
         OLD_KEY_ID,
         NEW_KEY_ID,
@@ -369,14 +395,12 @@ def test_provider_requests_follow_canonical_manifest_order() -> None:
         for request in provider.requests
     )
     assert all(
-        request.provider_id == PROVIDER_ID
-        for request in provider.requests
+        request.provider_id == PROVIDER_ID for request in provider.requests
     )
     assert provider.requests[0].first_capture_sequence_id == GENESIS_SEQUENCE_ID
     assert provider.requests[0].last_capture_sequence_id == GENESIS_SEQUENCE_ID
     assert (
-        provider.requests[1].first_capture_sequence_id
-        == SUCCESSOR_SEQUENCE_ID
+        provider.requests[1].first_capture_sequence_id == SUCCESSOR_SEQUENCE_ID
     )
     assert provider.requests[1].last_capture_sequence_id is None
 
@@ -533,14 +557,12 @@ def test_typed_provider_failure_stops_without_retry(
     kind: TicketAdmissionTelemetryLineageSecretResultKind,
 ) -> None:
     """Unavailable and failed outcomes stop after the first exact request."""
-    provider = _Provider(
-        {
-            OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
-                kind=kind
-            ),
-            NEW_REFERENCE_ID: _resolved(NEW_SECRET),
-        }
-    )
+    provider = _Provider({
+        OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
+            kind=kind
+        ),
+        NEW_REFERENCE_ID: _resolved(NEW_SECRET),
+    })
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSecretProviderError,
@@ -558,15 +580,13 @@ def test_typed_provider_failure_stops_without_retry(
 
 def test_nonresolved_result_cannot_carry_secret_bytes() -> None:
     """Failure outcomes cannot smuggle secret material into diagnostics."""
-    provider = _Provider(
-        {
-            OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
-                kind=TicketAdmissionTelemetryLineageSecretResultKind.FAILED,
-                secret_key=OLD_SECRET,
-            ),
-            NEW_REFERENCE_ID: _resolved(NEW_SECRET),
-        }
-    )
+    provider = _Provider({
+        OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
+            kind=TicketAdmissionTelemetryLineageSecretResultKind.FAILED,
+            secret_key=OLD_SECRET,
+        ),
+        NEW_REFERENCE_ID: _resolved(NEW_SECRET),
+    })
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSecretProviderError,
@@ -615,12 +635,10 @@ def test_foreign_provider_result_kind_fails_closed() -> None:
         ),
         secret_key=OLD_SECRET,
     )
-    provider = _Provider(
-        {
-            OLD_REFERENCE_ID: result,
-            NEW_REFERENCE_ID: _resolved(NEW_SECRET),
-        }
-    )
+    provider = _Provider({
+        OLD_REFERENCE_ID: result,
+        NEW_REFERENCE_ID: _resolved(NEW_SECRET),
+    })
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSecretProviderError,
@@ -641,15 +659,13 @@ def test_resolved_result_requires_exact_bytes(
     secret_key: bytes | None,
 ) -> None:
     """A resolved outcome requires exact immutable bytes."""
-    provider = _Provider(
-        {
-            OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
-                kind=TicketAdmissionTelemetryLineageSecretResultKind.RESOLVED,
-                secret_key=secret_key,
-            ),
-            NEW_REFERENCE_ID: _resolved(NEW_SECRET),
-        }
-    )
+    provider = _Provider({
+        OLD_REFERENCE_ID: TicketAdmissionTelemetryLineageSecretResult(
+            kind=TicketAdmissionTelemetryLineageSecretResultKind.RESOLVED,
+            secret_key=secret_key,
+        ),
+        NEW_REFERENCE_ID: _resolved(NEW_SECRET),
+    })
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSecretProviderError,
@@ -755,3 +771,201 @@ def test_provider_result_kinds_have_stable_string_values() -> None:
     assert tuple(
         kind.value for kind in TicketAdmissionTelemetryLineageSecretResultKind
     ) == ("resolved", "unavailable", "failed")
+
+
+def test_shared_preflight_exposes_exact_nonsecret_requests() -> None:
+    """Shared preflight emits exact canonical nonsecret request metadata."""
+    manifest = _manifest()
+    prepared = _prepare(
+        manifest,
+        provider_id=PROVIDER_ID,
+        max_requests=TWO_REQUESTS,
+    )
+
+    assert prepared.manifest is manifest
+    assert prepared.manifest_fingerprint == (
+        ticket_admission_telemetry_lineage_trust_manifest_fingerprint(manifest)
+    )
+    assert prepared.max_requests == TWO_REQUESTS
+    assert prepared.provider_id == PROVIDER_ID
+    assert tuple(request.key_id for request in prepared.requests) == (
+        OLD_KEY_ID,
+        NEW_KEY_ID,
+    )
+    assert tuple(request.request_index for request in prepared.requests) == (
+        0,
+        1,
+    )
+    assert _validate_prepared(prepared) is prepared
+
+
+def test_shared_preflight_repr_contains_no_secret_bytes() -> None:
+    """Prepared state contains no secret bytes or secret field names."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+    representation = repr(prepared).encode("utf-8")
+
+    assert OLD_SECRET not in representation
+    assert NEW_SECRET not in representation
+    assert SECRET_FIELD_NAME not in representation
+
+
+def test_foreign_preflight_type_fails_closed() -> None:
+    """Preflight validation rejects foreign lookalike objects."""
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="exact preflight type",
+    ):
+        _ = _validate_prepared(
+            cast(
+                "provider_port.TicketAdmissionTelemetryLineagePreparedSecretProvider",
+                object(),
+            )
+        )
+
+
+def test_tampered_preflight_fingerprint_fails_closed() -> None:
+    """Prepared fingerprints must still match the exact manifest."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+    tampered = replace(prepared, manifest_fingerprint="malformed")
+
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="fingerprint does not match manifest",
+    ):
+        _ = _validate_prepared(tampered)
+
+
+def test_tampered_preflight_requests_fail_closed() -> None:
+    """Prepared request tuples must match a fresh canonical preflight."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+    changed = replace(prepared.requests[0], request_index=1)
+    tampered = replace(prepared, requests=(changed, prepared.requests[1]))
+
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="requests do not match manifest preflight",
+    ):
+        _ = _validate_prepared(tampered)
+
+
+def test_shared_request_and_result_validators_return_exact_values() -> None:
+    """Public validators preserve exact validated request and result objects."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+    request = prepared.requests[0]
+    result = _resolved(OLD_SECRET)
+
+    assert _validate_request(request) is request
+    assert _validate_result(result) is result
+
+
+@pytest.mark.parametrize(
+    ("candidate", "message"),
+    [
+        (
+            cast("TicketAdmissionTelemetryLineageSecretRequest", object()),
+            "exact secret-provider request type",
+        ),
+        (
+            replace(
+                _prepare(_manifest(), provider_id=PROVIDER_ID).requests[0],
+                manifest_fingerprint="malformed",
+            ),
+            "canonical SHA-256",
+        ),
+        (
+            replace(
+                _prepare(_manifest(), provider_id=PROVIDER_ID).requests[0],
+                request_index=True,
+            ),
+            "nonnegative integer",
+        ),
+    ],
+)
+def test_shared_request_validator_rejects_invalid_values(
+    candidate: TicketAdmissionTelemetryLineageSecretRequest,
+    message: str,
+) -> None:
+    """Shared request validation rejects foreign or malformed metadata."""
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match=message,
+    ):
+        _ = _validate_request(candidate)
+
+
+def test_shared_result_validator_rejects_foreign_type() -> None:
+    """Shared result validation rejects foreign lookalike objects."""
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="exact provider result type",
+    ):
+        _ = _validate_result(
+            cast("TicketAdmissionTelemetryLineageSecretResult", object())
+        )
+
+
+def test_shared_result_materializer_binds_exact_hidden_bytes() -> None:
+    """Result materialization binds exact hidden bytes to request metadata."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+
+    resolved = _materialize_result(
+        prepared.requests[0],
+        _resolved(OLD_SECRET),
+    )
+
+    assert resolved.key_id == OLD_KEY_ID
+    assert resolved.key_reference_id == OLD_REFERENCE_ID
+    assert resolved.secret_key is OLD_SECRET
+    assert OLD_SECRET not in repr(resolved).encode("utf-8")
+
+
+def test_shared_trust_materializer_matches_sync_resolver() -> None:
+    """Shared trust materialization equals the synchronous resolver output."""
+    manifest = _manifest()
+    prepared = _prepare(manifest, provider_id=PROVIDER_ID)
+    resolved = tuple(
+        _materialize_result(
+            request,
+            _resolved(OLD_SECRET if index == 0 else NEW_SECRET),
+        )
+        for index, request in enumerate(prepared.requests)
+    )
+
+    materialized = _materialize_trust(prepared, resolved)
+    synchronous = (
+        resolve_ticket_admission_telemetry_lineage_trust_with_provider(
+            manifest,
+            _provider(),
+            provider_id=PROVIDER_ID,
+        )
+    )
+
+    assert materialized == synchronous
+
+
+def test_shared_trust_materializer_requires_exact_tuple() -> None:
+    """Trust materialization rejects foreign resolved-secret containers."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="exact immutable tuple",
+    ):
+        _ = _materialize_trust(
+            prepared,
+            cast(
+                "tuple[TicketAdmissionTelemetryLineageResolvedSecret, ...]",
+                object(),
+            ),
+        )
+
+
+def test_shared_trust_materializer_requires_exact_cardinality() -> None:
+    """Trust materialization requires one result per prepared request."""
+    prepared = _prepare(_manifest(), provider_id=PROVIDER_ID)
+
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageSecretProviderError,
+        match="count does not match prepared requests",
+    ):
+        _ = _materialize_trust(prepared, ())
