@@ -222,12 +222,34 @@ fn artifact_verifier_rejects_metadata_tampering() -> Result<(), String> {
     let source = UntrustedRegionArtifact::from_verified_region(&region);
     let original = source.program();
 
+    let mut profile_features = original.clone();
+    let _removed_feature = profile_features.profile_requirement.features.pop();
+    check_rejected(profile_features, &region, "profile features")?;
+
+    let mut profile_memory = original.clone();
+    profile_memory.profile_requirement.memory_words = profile_memory
+        .profile_requirement
+        .memory_words
+        .saturating_add(1);
+    check_rejected(profile_memory, &region, "profile memory")?;
+
+    let mut profile_version = original.clone();
+    profile_version.profile_requirement.version.push('x');
+    check_rejected(profile_version, &region, "profile version")?;
+
+    let mut profile_word_trits = original.clone();
+    profile_word_trits.profile_requirement.word_trits = profile_word_trits
+        .profile_requirement
+        .word_trits
+        .saturating_add(1);
+    check_rejected(profile_word_trits, &region, "profile word trits")?;
+
     let mut version = original.clone();
     version.format_version = version.format_version.saturating_add(1);
     check_rejected(version, &region, "format version")?;
 
     let mut dependencies = original.clone();
-    let _removed = dependencies.memory_live_ins.pop();
+    let _removed_dependency = dependencies.memory_live_ins.pop();
     check_rejected(dependencies, &region, "memory live-ins")?;
 
     let mut budget = original.clone();

@@ -65,6 +65,7 @@ use execution_cache::{
 };
 use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
+    TargetProfileRequirement,
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
@@ -81,7 +82,7 @@ use execution_native::{
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, RunOutcome, Termination, TraceInput,
+    ProfileRegisters, RunOutcome, Termination, TraceInput, current_profile,
 };
 
 #[derive(Clone, Copy)]
@@ -91,7 +92,7 @@ struct CoffCompileCase {
 }
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
-    decode_hex_fixture(include_str!("execution/fixtures/region-effect-v2.hex"))
+    decode_hex_fixture(include_str!("execution/fixtures/region-effect-v3.hex"))
 }
 
 fn decode_hex_fixture(text: &str) -> Result<Vec<u8>, String> {
@@ -109,6 +110,10 @@ fn decode_hex_fixture(text: &str) -> Result<Vec<u8>, String> {
         bytes.push(value);
     }
     Ok(bytes)
+}
+
+fn current_profile_requirement() -> TargetProfileRequirement {
+    TargetProfileRequirement::from_descriptor(current_profile())
 }
 
 fn observation(seed: u32) -> ProfileMachineObservation {
@@ -158,6 +163,7 @@ fn program() -> RegionEffectProgram {
         },
         profile_fingerprint: String::from("malbolge-profile-v1:sha256:fixture"),
         profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
         step_budget: 8,
     }
 }
@@ -252,6 +258,28 @@ fn canonical_ir_changes_when_any_semantic_field_changes() -> Result<(), String>
     profile_fingerprint.profile_fingerprint.push('x');
     variants.push(profile_fingerprint);
 
+    let mut profile_features = baseline.clone();
+    let _removed = profile_features.profile_requirement.features.pop();
+    variants.push(profile_features);
+
+    let mut profile_memory = baseline.clone();
+    profile_memory.profile_requirement.memory_words = profile_memory
+        .profile_requirement
+        .memory_words
+        .saturating_add(1);
+    variants.push(profile_memory);
+
+    let mut profile_version = baseline.clone();
+    profile_version.profile_requirement.version.push('x');
+    variants.push(profile_version);
+
+    let mut profile_word_trits = baseline.clone();
+    profile_word_trits.profile_requirement.word_trits = profile_word_trits
+        .profile_requirement
+        .word_trits
+        .saturating_add(1);
+    variants.push(profile_word_trits);
+
     let mut budget = baseline.clone();
     budget.step_budget = budget.step_budget.saturating_add(1);
     variants.push(budget);
@@ -297,6 +325,7 @@ fn cache_key_includes_declared_profile_identity() -> Result<(), String> {
         .map_err(|error| format!("base profile key failed: {error:?}"))?;
     if base.ir().profile_id() != program.profile_id
         || base.ir().profile_fingerprint() != program.profile_fingerprint
+        || base.ir().profile_requirement() != &program.profile_requirement
     {
         return Err(String::from("native key lost exact profile identity"));
     }
@@ -502,6 +531,7 @@ fn native_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:native-bootstrap-fixture",
         ),
         profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
         step_budget: 2,
     }
 }
@@ -561,6 +591,7 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
         ),
         profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -605,6 +636,7 @@ fn direct_initial_halt_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
         ),
         profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -944,6 +976,27 @@ fn assert_direct_profile_metadata_mismatch(
         != Err(CoffAdmissionError::ProfileMetadata)
     {
         return Err(String::from("object/key profile mismatch was admitted"));
+    }
+
+    let mut geometry_program = program.clone();
+    geometry_program.profile_requirement.word_trits = geometry_program
+        .profile_requirement
+        .word_trits
+        .saturating_add(1);
+    let geometry = emit_direct_deopt_coff(
+        &geometry_program,
+        direct_deopt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let geometry_mismatch = UntrustedNativeObjectArtifact::from_emitter_output(
+        geometry.key().clone(),
+        artifact.object().to_vec(),
+        artifact.target_triple(),
+    );
+    if structurally_admit_coff(&geometry_mismatch)
+        != Err(CoffAdmissionError::ProfileMetadata)
+    {
+        return Err(String::from("object/key geometry mismatch was admitted"));
     }
     Ok(())
 }

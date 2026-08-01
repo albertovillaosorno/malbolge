@@ -50,7 +50,9 @@
 
 use std::sync::Arc;
 
-use crate::execution_ir::{IrEncodingError, RegionEffectProgram};
+use crate::execution_ir::{
+    IrEncodingError, RegionEffectProgram, TargetProfileRequirement,
+};
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
@@ -111,6 +113,7 @@ pub struct RegionEffectIdentity {
     canonical_bytes: Arc<[u8]>,
     profile_fingerprint: Arc<str>,
     profile_id: Arc<str>,
+    profile_requirement: TargetProfileRequirement,
 }
 
 /// Full native artifact reuse key.
@@ -275,6 +278,12 @@ impl RegionEffectIdentity {
         &self.profile_id
     }
 
+    /// Returns canonical profile geometry and semantic capabilities.
+    #[must_use]
+    pub const fn profile_requirement(&self) -> &TargetProfileRequirement {
+        &self.profile_requirement
+    }
+
     fn with_digest(
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
@@ -287,6 +296,7 @@ impl RegionEffectIdentity {
                 program.profile_fingerprint.as_str(),
             ),
             profile_id: Arc::from(program.profile_id.as_str()),
+            profile_requirement: program.profile_requirement.clone(),
         })
     }
 }

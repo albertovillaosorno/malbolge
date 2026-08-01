@@ -381,6 +381,12 @@ impl IndexedMachineState {
         )
     }
 
+    /// Returns the canonical profile descriptor bound to this state lineage.
+    #[must_use]
+    pub const fn profile_descriptor(&self) -> &'static ProfileDescriptor {
+        self.profile
+    }
+
     /// Returns the canonical profile fingerprint bound to this state lineage.
     #[must_use]
     pub const fn profile_fingerprint(&self) -> &'static str {

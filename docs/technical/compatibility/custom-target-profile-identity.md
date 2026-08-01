@@ -145,10 +145,11 @@ Ten checked-in canonical-profile manifests currently carry this binding: five
 algorithm plans and five retained current-profile accelerator evidence records.
 The `MALBCAP1` capsule carries the same ID/fingerprint pair, recomputes canonical
 identity before exposing payload, emits shared `MALBOLGE-PROFILE-ID-001` on
-mismatch, and rejects unknown IDs without fallback. Portable effect IR v2 and
-its native cache key now retain the exact ID/fingerprint pair. Semantically
-admitted direct COFF objects also embed that pair in a versioned read-only
-`.mbprof` section that structural admission compares with the key. Bootstrap
+mismatch, and rejects unknown IDs without fallback. Portable effect IR v3 and
+its native cache key now retain the exact ID/fingerprint pair plus canonical
+version/features/geometry. Semantically admitted direct COFF objects embed the
+same envelope in a versioned read-only `.mbprof` section that structural
+admission compares with the key. Bootstrap
 compiler objects and product-level artifact metadata remain open.
 
 ### Security Boundary
@@ -184,7 +185,7 @@ A structurally valid profile whose computed fingerprint differs from the
 artifact expectation fails with `MALBOLGE-PROFILE-ID-001`; the external profile
 is never silently substituted for the expected identity.
 
-Experiment manifests, `MALBCAP1` capsules, portable effect IR v2, native cache
+Experiment manifests, `MALBCAP1` capsules, portable effect IR v3, native cache
 keys, and direct COFF objects now carry this fingerprint with the declared
 profile ID. Bootstrap compiler objects and product-level artifacts do not yet
 universally carry it, so this contract remains active.
@@ -205,9 +206,10 @@ universally carry it, so this contract remains active.
   canonical payload exposure only after identity verification.
 - `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
   the generated canonical fingerprint.
-- `tests/tiered_execution.rs` freezes IR v2 and all direct COFF bytes, verifies
-  key accessors retain ID/fingerprint, and rejects missing, tampered, or
-  key-mismatched `.mbprof` metadata before semantic admission.
+- `tests/tiered_execution.rs` freezes IR v3 and all direct COFF bytes, verifies
+  key accessors retain ID/fingerprint/version/features/geometry, and rejects
+  missing, tampered, or key-mismatched `.mbprof` metadata before semantic
+  admission.
 - The CLI is smoke-tested with matching and mismatching expected fingerprints.
 - `jig validate --root .` remains the repository-wide closure gate.
 

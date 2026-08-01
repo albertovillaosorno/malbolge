@@ -69,7 +69,7 @@ const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
 const PROFILE_METADATA_MAGIC: &[u8; 4] = b"MBPF";
 const PROFILE_METADATA_SECTION: &str = ".mbprof";
-const PROFILE_METADATA_VERSION: u16 = 1;
+const PROFILE_METADATA_VERSION: u16 = 2;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 
 /// Structural rejection while inspecting one untrusted Windows COFF object.
@@ -366,23 +366,30 @@ fn validate_sections(
 pub(super) fn canonical_profile_metadata(
     key: &NativeArtifactKey,
 ) -> Option<Vec<u8>> {
-    let profile_id = key.ir().profile_id().as_bytes();
-    let profile_fingerprint = key.ir().profile_fingerprint().as_bytes();
-    let profile_id_len = u32::try_from(profile_id.len()).ok()?;
-    let profile_fingerprint_len =
-        u32::try_from(profile_fingerprint.len()).ok()?;
-    let capacity = 16usize
-        .checked_add(profile_id.len())?
-        .checked_add(profile_fingerprint.len())?;
-    let mut bytes = Vec::with_capacity(capacity);
+    let ir = key.ir();
+    let requirement = ir.profile_requirement();
+    let feature_count = u32::try_from(requirement.features.len()).ok()?;
+    let mut bytes = Vec::new();
     bytes.extend_from_slice(PROFILE_METADATA_MAGIC);
     bytes.extend_from_slice(&PROFILE_METADATA_VERSION.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
-    bytes.extend_from_slice(&profile_id_len.to_le_bytes());
-    bytes.extend_from_slice(profile_id);
-    bytes.extend_from_slice(&profile_fingerprint_len.to_le_bytes());
-    bytes.extend_from_slice(profile_fingerprint);
+    push_metadata_bytes(&mut bytes, ir.profile_id().as_bytes())?;
+    push_metadata_bytes(&mut bytes, ir.profile_fingerprint().as_bytes())?;
+    push_metadata_bytes(&mut bytes, requirement.version.as_bytes())?;
+    bytes.extend_from_slice(&feature_count.to_le_bytes());
+    for feature in &requirement.features {
+        push_metadata_bytes(&mut bytes, feature.as_bytes())?;
+    }
+    bytes.push(requirement.word_trits);
+    bytes.extend_from_slice(&requirement.memory_words.to_le_bytes());
     Some(bytes)
+}
+
+fn push_metadata_bytes(output: &mut Vec<u8>, value: &[u8]) -> Option<()> {
+    let length = u32::try_from(value.len()).ok()?;
+    output.extend_from_slice(&length.to_le_bytes());
+    output.extend_from_slice(value);
+    Some(())
 }
 
 fn validate_profile_metadata(

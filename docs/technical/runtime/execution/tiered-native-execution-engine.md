@@ -27,15 +27,18 @@ This document governs the following declared TODO scope:
 
 ### Implemented Foundation
 
-`execution/ir/main.rs` now owns portable effect IR v2 as product code. It
-defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram` under the existing
+`execution/ir/main.rs` now owns portable effect IR v3 as product code. It
+defines `EffectOp`, `MemoryLiveIn`, `TargetProfileRequirement`, and
+`RegionEffectProgram` under the existing
 responsibility-oriented topology; Cargo composition uses explicit paths rather
 than introducing a language-shaped crate boundary.
 
 State-graph verification projects normative `ProfileStepTrace` records into that
 IR only after exact region verification. An untrusted portable artifact must
 match IR version, exact declared profile ID, canonical profile fingerprint,
-verifier-derived live-ins, semantic-step budget, bounded outcome, and every
+published profile version, stable semantic features, word trits, profile
+capacity, verifier-derived live-ins, semantic-step budget, bounded outcome, and
+every
 state-changing effect before a
 verified artifact exists. Guard hits apply only admitted effects. Guard misses
 run the normative `ProfileMachine` for the same verified budget and reconstruct
@@ -45,7 +48,8 @@ unchanged.
 `execution/cache/main.rs` now owns collision-safe native artifact identity.
 `RegionEffectProgram` has a versioned layout-independent canonical byte
 encoding, frozen by an independently rendered fixture. Native keys retain the
-exact profile ID/fingerprint pair and additionally bind host OS,
+exact profile ID/fingerprint plus the canonical requirement envelope and
+additionally bind host OS,
 x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and sorted
 required features. FNV-1a is only a bucket accelerator; full canonical
 IR and target equality remain authoritative after collisions.
@@ -73,9 +77,10 @@ functions or undefined external symbols, and admits relocations only when their
 targets are defined inside the same object. ARM64's compiler-generated `.rdata`
 constant relocations therefore remain valid while host-library dependencies fail
 closed. Direct backends additionally require one initialized, read-only,
-non-relocated `.mbprof` section. Its versioned `MBPF` payload must match the
-profile ID and fingerprint retained by the native key exactly; missing or
-mismatched direct metadata fails before semantic admission. Bootstrap Clang
+non-relocated `.mbprof` section. Its `MBPF` v2 payload must match the profile
+ID, fingerprint, published version, stable features, word trits, and capacity
+retained by the native key exactly; missing or mismatched direct metadata fails
+before semantic admission. Bootstrap Clang
 objects remain legal without this section until their compiler path emits it.
 The result is named `StructurallyAdmittedNativeObjectArtifact`; it still has no
 semantic execution authority.
@@ -85,7 +90,7 @@ native program only: a direct deoptimization stub. The x86-64 sequence is
 `mov eax, 1; ret`; the AArch64 sequence is `mov w0, #1; ret`. Both are wrapped in
 a deterministic minimal COFF object with timestamp zero, one executable `.text`,
 one read-only `.mbprof`, one external entry symbol, and no relocations.
-Independent hex fixtures freeze the complete 239-byte x86-64 and 241-byte
+Independent hex fixtures freeze the complete 405-byte x86-64 and 407-byte
 AArch64 objects. Promotion to
 `VerifiedDeoptNativeObjectArtifact` first requires structural COFF admission and
 then exact equality with the canonical object bytes. A changed opcode can remain

@@ -54,11 +54,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
-- Active foundation: `execution/ir/main.rs` owns portable effect IR v2
-  (`EffectOp`, `MemoryLiveIn`, `RegionEffectProgram`) without creating a Rust
+- Active foundation: `execution/ir/main.rs` owns portable effect IR v3
+  (`EffectOp`, `MemoryLiveIn`, `TargetProfileRequirement`, and
+  `RegionEffectProgram`) without creating a Rust
   crate boundary. State-graph research reprojects verifier traces into this IR,
-  rejects tampered profile-ID/fingerprint/live-in/budget/outcome/effect fields,
-  and preserves
+  rejects tampered profile-ID/fingerprint/version/features/geometry,
+  live-in/budget/outcome/effect fields, and preserves
   deterministic interpreter deoptimization on guard miss.
 - `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
   OS, ISA, backend revision, native ABI revision, and required features. Digest
@@ -71,8 +72,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
   identity, and relocation/symbol closure without trusting LLVM inspection.
   Direct `direct-*` objects must also carry exact read-only `.mbprof` metadata
-  matching the profile ID/fingerprint retained by their native key; absence or
-  mismatch fails structurally. Bootstrap Clang objects do not yet emit it.
+  matching the profile ID/fingerprint, published version, semantic features,
+  word trits, and capacity retained by their native key; absence or mismatch
+  fails structurally. Bootstrap Clang objects do not yet emit it.
 - A direct deopt-only backend now emits canonical x86-64/AArch64 COFF without
   Clang. Complete byte fixtures plus structural validation admit only the exact
   `return guard-miss` programs; opcode mutation fails semantic admission. This is

@@ -151,11 +151,11 @@ VM evidence.
   normative VM for the same verified budget and rebuild the original incremental
   lineage from real traces. Valid fallback, shortcut, and typed-rejection cases
   all match their normative baselines exactly.
-- `artifact.rs` now defines portable effect IR v2 as an explicitly untrusted
+- `artifact.rs` now defines portable effect IR v3 as an explicitly untrusted
   artifact. Independent admission reprojects profile identity, live-ins, budget,
   outcome, and every compact state effect from the verified region. Tampering
   any field fails; admitted shortcut/deopt results equal the verified-region
-  baseline. Production `execution/ir/` now owns effect IR v2; host-code
+  baseline. Production `execution/ir/` now owns effect IR v3; host-code
   artifacts remain open.
 
 ## Acceptance

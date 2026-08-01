@@ -59,10 +59,14 @@ historical-profile constraint.
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
   before runtime capacity and missing dimensions kept in stable order.
-- Direct COFF `.mbprof` metadata now carries exact profile ID/fingerprint, but
-  not the complete required geometry/features. Bootstrap compiler artifacts,
-  top-level runtime selection, and product runtime consumers do not yet all carry
-  these requirements, so repository-wide completion remains open.
+- Portable effect IR v3, native keys, and direct COFF `MBPF` v2 metadata now
+  carry exact profile ID/fingerprint plus published version, ordered semantic
+  features, word trits, and profile capacity. These are all canonical
+  profile-side inputs for `MALBOLGE-PROFILE-001`; runtime consumption remains
+  explicit and unimplemented above this artifact boundary.
+- Program-specific requested memory for `MALBOLGE-PROFILE-002`, bootstrap
+  compiler artifacts, top-level runtime selection, and product runtime consumers
+  remain open, so repository-wide completion is not claimed.
 
 ## Acceptance
 

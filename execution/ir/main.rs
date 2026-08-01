@@ -50,12 +50,12 @@
 //! Portable bounded-region effect IR for tiered execution.
 
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileStepTrace, RunOutcome, Termination, TraceInput,
+    ProfileDescriptor, ProfileMachineObservation, ProfileMemoryDelta,
+    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, Termination, TraceInput,
 };
 
-/// First portable bounded-region effect-IR schema version.
-pub const EFFECT_IR_VERSION: u16 = 2;
+/// Current portable bounded-region effect-IR schema version.
+pub const EFFECT_IR_VERSION: u16 = 3;
 const IR_MAGIC: &[u8; 4] = b"MBIR";
 
 /// One architecture-neutral state-changing operation from a verified VM step.
@@ -82,6 +82,19 @@ pub struct MemoryLiveIn {
     pub value: u32,
 }
 
+/// Immutable canonical target-profile requirement carried by an artifact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetProfileRequirement {
+    /// Defining semantic capabilities in stable diagnostic order.
+    pub features: Vec<String>,
+    /// Exact directly addressed profile capacity.
+    pub memory_words: u32,
+    /// Published immutable language version.
+    pub version: String,
+    /// Number of ternary digits in one profile word.
+    pub word_trits: u8,
+}
+
 /// Versioned architecture-neutral bounded-region program.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegionEffectProgram {
@@ -97,8 +110,26 @@ pub struct RegionEffectProgram {
     pub profile_fingerprint: String,
     /// Exact declared target-profile identity.
     pub profile_id: String,
+    /// Canonical geometry and semantic capability requirement.
+    pub profile_requirement: TargetProfileRequirement,
     /// Verified semantic-step budget.
     pub step_budget: usize,
+}
+
+impl TargetProfileRequirement {
+    /// Projects one validated canonical profile descriptor into artifact data.
+    #[must_use]
+    pub fn from_descriptor(profile: &ProfileDescriptor) -> Self {
+        Self {
+            features: ProfileDescriptor::required_features()
+                .iter()
+                .map(|feature| String::from(feature.stable_id()))
+                .collect(),
+            memory_words: profile.memory_words(),
+            version: String::from(profile.version()),
+            word_trits: profile.word_trits(),
+        }
+    }
 }
 
 impl EffectOp {
@@ -140,6 +171,7 @@ impl RegionEffectProgram {
         push_u16(&mut bytes, self.format_version);
         push_bytes(&mut bytes, self.profile_id.as_bytes())?;
         push_bytes(&mut bytes, self.profile_fingerprint.as_bytes())?;
+        push_profile_requirement(&mut bytes, &self.profile_requirement)?;
         push_usize(&mut bytes, self.step_budget)?;
         push_run_outcome(&mut bytes, self.outcome)?;
         push_usize(&mut bytes, self.memory_live_ins.len())?;
@@ -216,6 +248,20 @@ fn push_observation(
     push_u32(output, observation.registers.code_pointer);
     push_u32(output, observation.registers.data_pointer);
     push_termination(output, observation.termination);
+    Ok(())
+}
+
+fn push_profile_requirement(
+    output: &mut Vec<u8>,
+    requirement: &TargetProfileRequirement,
+) -> Result<(), IrEncodingError> {
+    push_bytes(output, requirement.version.as_bytes())?;
+    push_usize(output, requirement.features.len())?;
+    for feature in &requirement.features {
+        push_bytes(output, feature.as_bytes())?;
+    }
+    output.push(requirement.word_trits);
+    push_u32(output, requirement.memory_words);
     Ok(())
 }
 

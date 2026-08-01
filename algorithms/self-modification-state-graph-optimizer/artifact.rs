@@ -53,6 +53,7 @@ use malbolge::RunOutcome;
 
 use crate::execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
+    TargetProfileRequirement,
 };
 use crate::indexed_state::IndexedMachineState;
 use crate::region_certificate::{
@@ -142,6 +143,9 @@ impl UntrustedRegionArtifact {
                     region.entry().profile_fingerprint(),
                 ),
                 profile_id: String::from(region.entry().profile_id()),
+                profile_requirement: TargetProfileRequirement::from_descriptor(
+                    region.entry().profile_descriptor(),
+                ),
                 step_budget: region.step_budget(),
             },
         }
@@ -179,6 +183,9 @@ impl UntrustedRegionArtifact {
                 region.entry().profile_fingerprint(),
             ),
             profile_id: String::from(region.entry().profile_id()),
+            profile_requirement: TargetProfileRequirement::from_descriptor(
+                region.entry().profile_descriptor(),
+            ),
             step_budget: region.step_budget(),
         };
         if self.program != expected {
