@@ -138,10 +138,10 @@ impl UntrustedRegionArtifact {
                     })
                     .collect(),
                 outcome: region.outcome(),
-                profile_id: String::from(region.entry().profile_id()),
                 profile_fingerprint: String::from(
                     region.entry().profile_fingerprint(),
                 ),
+                profile_id: String::from(region.entry().profile_id()),
                 step_budget: region.step_budget(),
             },
         }
@@ -175,10 +175,10 @@ impl UntrustedRegionArtifact {
                 })
                 .collect(),
             outcome: region.outcome(),
-            profile_id: String::from(region.entry().profile_id()),
             profile_fingerprint: String::from(
                 region.entry().profile_fingerprint(),
             ),
+            profile_id: String::from(region.entry().profile_id()),
             step_budget: region.step_budget(),
         };
         if self.program != expected {

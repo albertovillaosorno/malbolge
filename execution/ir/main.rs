@@ -93,10 +93,10 @@ pub struct RegionEffectProgram {
     pub memory_live_ins: Vec<MemoryLiveIn>,
     /// Verified bounded-run outcome.
     pub outcome: RunOutcome,
-    /// Exact declared target-profile identity.
-    pub profile_id: String,
     /// Canonical target-profile fingerprint.
     pub profile_fingerprint: String,
+    /// Exact declared target-profile identity.
+    pub profile_id: String,
     /// Verified semantic-step budget.
     pub step_budget: usize,
 }

@@ -251,14 +251,17 @@ machine code before execution, specialize hot or mutation-sensitive regions at
 runtime, and deoptimize safely to the interpreter whenever a code-version guard
 or speculative assumption fails. The normative VM contract remains the semantic
 baseline; native tiers are accelerators of identical observable behavior.
-Portable effect IR v1 is now product-owned under `execution/ir/`, and the
+Portable effect IR v2 is now product-owned under `execution/ir/`, and the
 verifier/deoptimization research boundary exercises it directly. The first
 host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
 atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
 Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
 checks target ISA, executable/non-writable `.text`, exact entry identity,
-self-contained relocations, and absence of undefined host dependencies. This is
-structural admission only for Clang output. A separate direct deopt backend now
+self-contained relocations, and absence of undefined host dependencies. Direct
+objects additionally require versioned read-only `.mbprof` metadata matching the
+profile ID/fingerprint retained by their native key; absence, tampering, or
+object/key mismatch fails structurally. Bootstrap Clang objects do not yet emit
+that section. A separate direct deopt backend now
 emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
 verified: they return guard miss without touching state, providing the first
 semantically admitted native artifact and deterministic fallback floor. A second
@@ -274,7 +277,7 @@ unsupported host formats fail explicitly.
 General region-effect fast paths, cache/orchestration, executable invocation, and
 full AOT/JIT tier selection remain open.
 
-Current implementation foundation: portable effect IR v1, verifier admission,
+Current implementation foundation: portable effect IR v2, verifier admission,
 deterministic deoptimization, canonical native cache identity, and an untrusted
 cross-ISA bootstrap object boundary are implemented. Direct x86-64/AArch64
 instruction selection, executable-memory integration, durable cache storage, and
@@ -363,8 +366,9 @@ Emit deterministic diagnostics naming required profile/features/capacity and
 runtime capability. Safe Rust and the Python non-VM preflight now reject
 `malbolge-2026.2` with byte-identical 14-trit/4,782,969-word diagnostics, report
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
-profile-before-runtime precedence. Propagation into compiler artifacts, top-level
-runtime selection, and product consumers remains open.
+profile-before-runtime precedence. Direct COFF metadata now carries exact profile
+ID/fingerprint but not complete requirement geometry/features. Bootstrap compiler
+artifacts, top-level runtime selection, and product consumers remain open.
 
 ### TODO - Custom target profile identity
 
@@ -373,9 +377,11 @@ identity. `malbolge-profile-v1` fingerprints and the verification CLI now detect
 external configuration mismatch. Experiment Manifest v1 and the `MALBCAP1`
 runtime capsule bind canonical target IDs to exact generated fingerprints,
 share the expected/observed mismatch diagnostic, and reject unknown identity
-without fallback. Compiler-object propagation and any profile-dependent
-encoding research remain open without claiming cryptographic resistance to
-reverse engineering.
+without fallback. Portable effect IR v2/native cache keys retain the exact pair,
+and direct x86-64/AArch64 COFF embeds it in read-only `.mbprof` metadata checked
+against the key before semantic admission. Bootstrap compiler-object and product
+artifact propagation plus any profile-dependent encoding research remain open,
+without claiming cryptographic resistance to reverse engineering.
 
 ### TODO - Hexagonal authoring-layout experiment
 
@@ -657,11 +663,12 @@ microseconds versus 889.60 microseconds for the prepared direct VM
 region, about 129.36x. Tier selection now also has an executable
 deoptimization boundary: guard hits use verified effects, while guard misses run
 the normative VM for the same region budget and reconstruct the incremental
-lineage from real traces; normative rejection is propagated unchanged. A portable effect-IR v1
-research artifact now admits only exact verifier reprojections of profile,
-live-ins, budget, outcome, and compact state-changing effects; tampering any
+lineage from real traces; normative rejection is propagated unchanged. A portable effect-IR v2
+research artifact now admits only exact verifier reprojections of profile ID,
+fingerprint, live-ins, budget, outcome, and compact state-changing effects;
+tampering any
 field fails and admitted shortcut/deopt results match the existing region
-baseline. Product `execution/ir/` now owns effect IR v1, and
+baseline. Product `execution/ir/` now owns effect IR v2, and
 `execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
 revisions, and required features with full equality after bucket collisions.
 `execution/native/` now lowers those effects into atomic C23 host-code candidates,

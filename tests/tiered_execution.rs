@@ -156,8 +156,8 @@ fn program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
-        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from("malbolge-profile-v1:sha256:fixture"),
+        profile_id: String::from("malbolge-2026.2"),
         step_budget: 8,
     }
 }
@@ -295,6 +295,11 @@ fn cache_key_includes_declared_profile_identity() -> Result<(), String> {
     let target = NativeTargetIdentity::new(base_target_config());
     let base = NativeArtifactKey::new(&program, target.clone())
         .map_err(|error| format!("base profile key failed: {error:?}"))?;
+    if base.ir().profile_id() != program.profile_id
+        || base.ir().profile_fingerprint() != program.profile_fingerprint
+    {
+        return Err(String::from("native key lost exact profile identity"));
+    }
     let mut renamed = program;
     renamed.profile_id = String::from("malbolge-2026.2-alias");
     let candidate = NativeArtifactKey::new(&renamed, target)
@@ -493,10 +498,10 @@ fn native_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 2,
         },
-        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:native-bootstrap-fixture",
         ),
+        profile_id: String::from("malbolge-2026.2"),
         step_budget: 2,
     }
 }
@@ -552,10 +557,10 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
-        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
         ),
+        profile_id: String::from("malbolge-2026.2"),
         step_budget: 1,
     }
 }
@@ -596,10 +601,10 @@ fn direct_initial_halt_program() -> RegionEffectProgram {
             reason: Termination::HaltInstruction,
             steps: 1,
         },
-        profile_id: String::from("malbolge-2026.2"),
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
         ),
+        profile_id: String::from("malbolge-2026.2"),
         step_budget: 1,
     }
 }
@@ -917,6 +922,97 @@ fn direct_deopt_objects_are_byte_exact_and_semantically_admitted()
         }
     }
     Ok(())
+}
+
+fn assert_direct_profile_metadata_mismatch(
+    program: &RegionEffectProgram,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let mut renamed_program = program.clone();
+    renamed_program.profile_id = String::from("malbolge-2026.2-alias");
+    let renamed = emit_direct_deopt_coff(
+        &renamed_program,
+        direct_deopt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mismatched = UntrustedNativeObjectArtifact::from_emitter_output(
+        renamed.key().clone(),
+        artifact.object().to_vec(),
+        artifact.target_triple(),
+    );
+    if structurally_admit_coff(&mismatched)
+        != Err(CoffAdmissionError::ProfileMetadata)
+    {
+        return Err(String::from("object/key profile mismatch was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_missing_direct_profile_metadata(
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let mut missing = artifact.object().to_vec();
+    let section_name = b".mbprof";
+    let section_offset = missing
+        .windows(section_name.len())
+        .position(|window| window == section_name)
+        .ok_or_else(|| String::from("direct object lacks profile section"))?;
+    let section_marker = missing
+        .get_mut(section_offset.saturating_add(1))
+        .ok_or_else(|| String::from("profile section name offset invalid"))?;
+    *section_marker = b'x';
+    let missing_artifact = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        missing,
+        artifact.target_triple(),
+    );
+    if structurally_admit_coff(&missing_artifact)
+        != Err(CoffAdmissionError::ProfileMetadata)
+    {
+        return Err(String::from(
+            "direct object without metadata was admitted",
+        ));
+    }
+    Ok(())
+}
+
+fn assert_tampered_direct_profile_metadata(
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let mut tampered = artifact.object().to_vec();
+    let metadata_offset = tampered
+        .windows(4)
+        .position(|window| window == b"MBPF")
+        .ok_or_else(|| String::from("direct object lacks profile metadata"))?;
+    let metadata_version = tampered
+        .get_mut(metadata_offset.saturating_add(4))
+        .ok_or_else(|| {
+            String::from("profile metadata version offset invalid")
+        })?;
+    *metadata_version ^= 1;
+    let tampered_artifact = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        tampered,
+        artifact.target_triple(),
+    );
+    if structurally_admit_coff(&tampered_artifact)
+        != Err(CoffAdmissionError::ProfileMetadata)
+    {
+        return Err(String::from("tampered profile metadata was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_profile_metadata_rejects_missing_tampered_and_mismatched_identity()
+-> Result<(), String> {
+    let program = native_program();
+    let artifact =
+        emit_direct_deopt_coff(&program, direct_deopt_target(HostIsa::X86_64))
+            .map_err(|error| error.to_string())?;
+    assert_missing_direct_profile_metadata(&artifact)?;
+    assert_tampered_direct_profile_metadata(&artifact)?;
+    assert_direct_profile_metadata_mismatch(&program, &artifact)
 }
 
 #[test]

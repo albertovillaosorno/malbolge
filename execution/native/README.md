@@ -12,6 +12,7 @@ explicitly untrusted native compilation artifacts.
 - exact binding to `NativeArtifactKey` target assumptions;
 - untrusted native source/object artifact containers;
 - fail-closed structural admission of self-contained Windows COFF objects;
+- versioned read-only direct-object profile metadata matched to native keys;
 - canonical direct x86-64/AArch64 deopt-only objects with byte-exact semantic
   verification;
 - target triples for the pinned Clang bootstrap backend.
@@ -49,7 +50,13 @@ parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine
 identity against the native target key, requires one executable/non-writable
 `.text`, requires the exact `malbolge_native_region_apply` entry, rejects other
 external functions and undefined external dependencies, and permits relocations
-only when they resolve to symbols defined inside the same object. The resulting
+only when they resolve to symbols defined inside the same object. A backend whose
+identity starts with `direct-` must also contain one initialized, read-only,
+non-relocated `.mbprof` section. Its `MBPF` v1 payload carries the exact profile
+ID and fingerprint and must equal the values retained by the native key. Missing,
+duplicated, executable, writable, relocated, malformed, or mismatched metadata
+fails structurally. Bootstrap Clang objects remain admissible without `.mbprof`
+until that compiler path emits the section. The resulting
 `StructurallyAdmittedNativeObjectArtifact` is still not semantic authority. An
 independent semantic validator must establish that boundary before executable
 promotion exists.
@@ -58,7 +65,8 @@ The first direct backend is intentionally a deoptimization floor rather than a
 fast path. `direct.rs` emits one deterministic Windows COFF object per ISA whose
 only callable function returns native status `1` (`guard miss`) without reading
 or writing the supplied state pointer. The exact x86-64 and AArch64 objects are
-frozen by independently rendered hex fixtures. Semantic promotion requires
+frozen by independently rendered hex fixtures. Each includes executable `.text`
+and read-only `.mbprof` bound to the same native key. Semantic promotion requires
 structural COFF admission plus byte-for-byte equality with the canonical object;
 a one-byte opcode mutation remains structurally valid but fails semantic
 admission. This establishes an executable native tier that is correct by always
@@ -81,8 +89,9 @@ outside this reviewed subset.
 selection for the implemented Windows surface. It classifies IR before creating
 a backend identity: exact zero-register halt selects `direct-initial-halt`, any
 other zero-counter/no-I/O/no-memory one-step halt selects
-`direct-halt-registers`, and every other IR selects the byte-verified deopt stub. Backend/emission/verification errors are
-never reinterpreted as fallback, and unsupported host formats fail explicitly.
+`direct-halt-registers`, and every other IR selects the byte-verified deopt
+stub. Backend/emission/verification errors are never reinterpreted as fallback,
+and unsupported host formats fail explicitly.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
 
 `direct-halt-registers` generalizes the halt template across the complete 32-bit

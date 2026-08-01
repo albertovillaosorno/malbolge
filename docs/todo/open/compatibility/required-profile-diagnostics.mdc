@@ -59,9 +59,10 @@ historical-profile constraint.
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
   before runtime capacity and missing dimensions kept in stable order.
-- Compiler artifact metadata, top-level runtime selection, and product runtime
-  consumers do not yet all carry these requirements, so repository-wide
-  completion remains open.
+- Direct COFF `.mbprof` metadata now carries exact profile ID/fingerprint, but
+  not the complete required geometry/features. Bootstrap compiler artifacts,
+  top-level runtime selection, and product runtime consumers do not yet all carry
+  these requirements, so repository-wide completion remains open.
 
 ## Acceptance
 

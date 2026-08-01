@@ -22,7 +22,7 @@
 //   - output.
 // - Allows:
 //   - Inputs: portable region IR and exact Windows native target identity.
-//   - Outputs: canonical COFF candidates and verified deopt-only artifacts.
+//   - Outputs: profile-bound COFF candidates and verified direct artifacts.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when general region-effect instruction selection outgrows
@@ -55,6 +55,7 @@ use malbolge::{
     RunOutcome, Termination,
 };
 
+use super::coff::canonical_profile_metadata;
 use super::{
     CoffAdmissionError, NATIVE_REGION_ABI_REVISION,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,
@@ -75,21 +76,23 @@ const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
 const IMAGE_SCN_X86_TEXT: u32 = 0x6050_0020;
 const IMAGE_SCN_ARM64_TEXT: u32 = 0x6030_0020;
+const IMAGE_SCN_PROFILE_METADATA: u32 = 0x4030_0040;
 const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
+
 /// Backend identity for the first direct, semantically admitted native tier.
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
-pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 2;
 /// Backend identity for the first state-applying direct native fast path.
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.
-pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 2;
 /// Backend identity for arbitrary-register one-step direct halt.
 pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
 /// Direct arbitrary-register halt code-generation revision.
-pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 2;
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -102,9 +105,9 @@ pub enum DirectDeoptError {
     ObjectBytes,
     /// Target backend/revision/native ABI is not the direct deopt contract.
     TargetBackend,
-    /// Direct deopt v1 has no target-specific feature specializations.
+    /// Direct deopt v2 has no target-specific feature specializations.
     TargetFeatures,
-    /// Direct deopt v1 emits Windows COFF only.
+    /// Direct deopt v2 emits Windows COFF only.
     TargetFormat,
 }
 
@@ -156,9 +159,9 @@ pub enum DirectHaltRegistersError {
     ProgramShape,
     /// Target backend/revision/native ABI is not the register-halt contract.
     TargetBackend,
-    /// Register-halt v1 has no target-specific feature specializations.
+    /// Register-halt v2 has no target-specific feature specializations.
     TargetFeatures,
-    /// Register-halt v1 emits Windows COFF only.
+    /// Register-halt v2 emits Windows COFF only.
     TargetFormat,
 }
 
@@ -215,9 +218,9 @@ pub enum DirectInitialHaltError {
     ProgramShape,
     /// Target backend/revision/native ABI is not the initial-halt contract.
     TargetBackend,
-    /// Direct initial-halt v1 has no target-specific feature specializations.
+    /// Direct initial-halt v2 has no target-specific feature specializations.
     TargetFeatures,
-    /// Direct initial-halt v1 emits Windows COFF only.
+    /// Direct initial-halt v2 emits Windows COFF only.
     TargetFormat,
 }
 
@@ -505,7 +508,7 @@ pub fn emit_direct_deopt_coff(
     validate_target(&target)?;
     let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
-    let object = canonical_coff(key.target().host_isa())?;
+    let object = canonical_coff(&key)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -524,7 +527,7 @@ pub fn emit_direct_halt_registers_coff(
     validate_halt_registers_target(&target)?;
     let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
-    let object = halt_registers_coff(key.target().host_isa(), registers)?;
+    let object = halt_registers_coff(&key, registers)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -544,7 +547,7 @@ pub fn emit_direct_initial_halt_coff(
     validate_initial_halt_target(&target)?;
     let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
-    let object = initial_halt_coff(key.target().host_isa())?;
+    let object = initial_halt_coff(&key)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -565,7 +568,7 @@ pub fn verify_direct_deopt_stub(
 ) -> Result<VerifiedDeoptNativeObjectArtifact, DirectDeoptError> {
     validate_target(artifact.key().target())?;
     let admitted = structurally_admit_coff(artifact)?;
-    let expected = canonical_coff(artifact.key().target().host_isa())?;
+    let expected = canonical_coff(artifact.key())?;
     if admitted.object() != expected {
         return Err(DirectDeoptError::ObjectBytes);
     }
@@ -590,8 +593,7 @@ pub fn verify_direct_halt_registers(
         return Err(DirectHaltRegistersError::ProgramShape);
     }
     let admitted = structurally_admit_coff(artifact)?;
-    let expected =
-        halt_registers_coff(artifact.key().target().host_isa(), registers)?;
+    let expected = halt_registers_coff(artifact.key(), registers)?;
     if admitted.object() != expected {
         return Err(DirectHaltRegistersError::ObjectBytes);
     }
@@ -616,31 +618,38 @@ pub fn verify_direct_initial_halt(
         return Err(DirectInitialHaltError::ProgramShape);
     }
     let admitted = structurally_admit_coff(artifact)?;
-    let expected = initial_halt_coff(artifact.key().target().host_isa())?;
+    let expected = initial_halt_coff(artifact.key())?;
     if admitted.object() != expected {
         return Err(DirectInitialHaltError::ObjectBytes);
     }
     Ok(VerifiedInitialHaltNativeObjectArtifact { artifact: admitted })
 }
 
-fn canonical_coff(isa: HostIsa) -> Result<Vec<u8>, DirectDeoptError> {
-    let text = match isa {
+fn canonical_coff(
+    key: &NativeArtifactKey,
+) -> Result<Vec<u8>, DirectDeoptError> {
+    let text = match key.target().host_isa() {
         HostIsa::AArch64 => aarch64::deopt_code(),
         HostIsa::X86_64 => x86_64::deopt_code(),
     };
-    build_minimal_coff(isa, text).ok_or(DirectDeoptError::ObjectBytes)
+    build_minimal_coff(key, text).ok_or(DirectDeoptError::ObjectBytes)
 }
 
-fn build_minimal_coff(isa: HostIsa, text: &[u8]) -> Option<Vec<u8>> {
-    let (machine, characteristics) = match isa {
+fn build_minimal_coff(key: &NativeArtifactKey, text: &[u8]) -> Option<Vec<u8>> {
+    let (machine, text_characteristics) = match key.target().host_isa() {
         HostIsa::AArch64 => (IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT),
         HostIsa::X86_64 => (IMAGE_FILE_MACHINE_AMD64, IMAGE_SCN_X86_TEXT),
     };
-    let raw_start = COFF_HEADER_BYTES.checked_add(COFF_SECTION_BYTES)?;
-    let symbol_start = raw_start.checked_add(text.len())?;
+    let metadata = canonical_profile_metadata(key)?;
+    let section_headers = COFF_SECTION_BYTES.checked_mul(2)?;
+    let text_start = COFF_HEADER_BYTES.checked_add(section_headers)?;
+    let metadata_start = text_start.checked_add(text.len())?;
+    let symbol_start = metadata_start.checked_add(metadata.len())?;
     let symbol_start_u32 = u32::try_from(symbol_start).ok()?;
-    let raw_start_u32 = u32::try_from(raw_start).ok()?;
+    let text_start_u32 = u32::try_from(text_start).ok()?;
+    let metadata_start_u32 = u32::try_from(metadata_start).ok()?;
     let text_len = u32::try_from(text.len()).ok()?;
+    let metadata_len = u32::try_from(metadata.len()).ok()?;
     let string_length =
         4usize.checked_add(REQUIRED_ENTRY.len())?.checked_add(1)?;
     let string_length_u32 = u32::try_from(string_length).ok()?;
@@ -649,45 +658,79 @@ fn build_minimal_coff(isa: HostIsa, text: &[u8]) -> Option<Vec<u8>> {
         .checked_add(string_length)?;
 
     let mut object = Vec::with_capacity(capacity);
-    push_u16(&mut object, machine);
-    push_u16(&mut object, 1);
-    push_u32(&mut object, 0);
-    push_u32(&mut object, symbol_start_u32);
-    push_u32(&mut object, 1);
-    push_u16(&mut object, 0);
-    push_u16(&mut object, 0);
-
-    object.extend_from_slice(b".text\0\0\0");
-    push_u32(&mut object, 0);
-    push_u32(&mut object, 0);
-    push_u32(&mut object, text_len);
-    push_u32(&mut object, raw_start_u32);
-    push_u32(&mut object, 0);
-    push_u32(&mut object, 0);
-    push_u16(&mut object, 0);
-    push_u16(&mut object, 0);
-    push_u32(&mut object, characteristics);
+    push_coff_header(&mut object, machine, symbol_start_u32);
+    push_text_section(
+        &mut object,
+        text_len,
+        text_start_u32,
+        text_characteristics,
+    );
+    push_profile_section(&mut object, metadata_len, metadata_start_u32);
     object.extend_from_slice(text);
-
-    push_u32(&mut object, 0);
-    push_u32(&mut object, 4);
-    push_u32(&mut object, 0);
-    push_u16(&mut object, 1);
-    push_u16(&mut object, IMAGE_SYM_DTYPE_FUNCTION);
-    object.push(IMAGE_SYM_CLASS_EXTERNAL);
-    object.push(0);
-
-    push_u32(&mut object, string_length_u32);
-    object.extend_from_slice(REQUIRED_ENTRY.as_bytes());
-    object.push(0);
+    object.extend_from_slice(&metadata);
+    push_entry_symbol(&mut object, string_length_u32);
     Some(object)
 }
 
+fn push_coff_header(output: &mut Vec<u8>, machine: u16, symbol_start: u32) {
+    push_u16(output, machine);
+    push_u16(output, 2);
+    push_u32(output, 0);
+    push_u32(output, symbol_start);
+    push_u32(output, 1);
+    push_u16(output, 0);
+    push_u16(output, 0);
+}
+
+fn push_profile_section(output: &mut Vec<u8>, raw_len: u32, raw_start: u32) {
+    output.extend_from_slice(b".mbprof\0");
+    push_u32(output, 0);
+    push_u32(output, 0);
+    push_u32(output, raw_len);
+    push_u32(output, raw_start);
+    push_u32(output, 0);
+    push_u32(output, 0);
+    push_u16(output, 0);
+    push_u16(output, 0);
+    push_u32(output, IMAGE_SCN_PROFILE_METADATA);
+}
+
+fn push_text_section(
+    output: &mut Vec<u8>,
+    raw_len: u32,
+    raw_start: u32,
+    characteristics: u32,
+) {
+    output.extend_from_slice(b".text\0\0\0");
+    push_u32(output, 0);
+    push_u32(output, 0);
+    push_u32(output, raw_len);
+    push_u32(output, raw_start);
+    push_u32(output, 0);
+    push_u32(output, 0);
+    push_u16(output, 0);
+    push_u16(output, 0);
+    push_u32(output, characteristics);
+}
+
+fn push_entry_symbol(output: &mut Vec<u8>, string_length: u32) {
+    push_u32(output, 0);
+    push_u32(output, 4);
+    push_u32(output, 0);
+    push_u16(output, 1);
+    push_u16(output, IMAGE_SYM_DTYPE_FUNCTION);
+    output.push(IMAGE_SYM_CLASS_EXTERNAL);
+    output.push(0);
+    push_u32(output, string_length);
+    output.extend_from_slice(REQUIRED_ENTRY.as_bytes());
+    output.push(0);
+}
+
 fn halt_registers_coff(
-    isa: HostIsa,
+    key: &NativeArtifactKey,
     registers: ProfileRegisters,
 ) -> Result<Vec<u8>, DirectHaltRegistersError> {
-    let text = match isa {
+    let text = match key.target().host_isa() {
         HostIsa::AArch64 => aarch64::halt_registers_code(
             registers.accumulator,
             registers.code_pointer,
@@ -699,15 +742,17 @@ fn halt_registers_coff(
             registers.data_pointer,
         ),
     };
-    build_minimal_coff(isa, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
+    build_minimal_coff(key, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
 }
 
-fn initial_halt_coff(isa: HostIsa) -> Result<Vec<u8>, DirectInitialHaltError> {
-    let text = match isa {
+fn initial_halt_coff(
+    key: &NativeArtifactKey,
+) -> Result<Vec<u8>, DirectInitialHaltError> {
+    let text = match key.target().host_isa() {
         HostIsa::AArch64 => aarch64::initial_halt_code(),
         HostIsa::X86_64 => x86_64::initial_halt_code(),
     };
-    build_minimal_coff(isa, text).ok_or(DirectInitialHaltError::ObjectBytes)
+    build_minimal_coff(key, text).ok_or(DirectInitialHaltError::ObjectBytes)
 }
 
 fn is_zero_observation(observation: ProfileMachineObservation) -> bool {

@@ -109,6 +109,8 @@ pub struct NativeTargetIdentity {
 pub struct RegionEffectIdentity {
     bucket_digest: u64,
     canonical_bytes: Arc<[u8]>,
+    profile_fingerprint: Arc<str>,
+    profile_id: Arc<str>,
 }
 
 /// Full native artifact reuse key.
@@ -261,6 +263,18 @@ impl RegionEffectIdentity {
         Self::with_digest(program, fnv_bytes)
     }
 
+    /// Returns the canonical profile fingerprint bound into this IR.
+    #[must_use]
+    pub fn profile_fingerprint(&self) -> &str {
+        &self.profile_fingerprint
+    }
+
+    /// Returns the exact declared profile identity bound into this IR.
+    #[must_use]
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
     fn with_digest(
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
@@ -269,6 +283,10 @@ impl RegionEffectIdentity {
         Ok(Self {
             bucket_digest: digest(&canonical),
             canonical_bytes: Arc::from(canonical),
+            profile_fingerprint: Arc::from(
+                program.profile_fingerprint.as_str(),
+            ),
+            profile_id: Arc::from(program.profile_id.as_str()),
         })
     }
 }

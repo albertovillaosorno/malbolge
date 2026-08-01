@@ -149,10 +149,13 @@ reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead o
 selecting another profile.
 
 Python validation consumers can now construct and preflight the immutable
-requirement object without invoking a VM. Compiler artifact metadata, top-level
-runtime profile selection, and product consumers do not yet universally carry it.
-This contract therefore remains active rather than claiming repository-wide
-profile diagnostic completion.
+requirement object without invoking a VM. Direct COFF objects carry profile ID
+and fingerprint in `.mbprof`, but they do not yet carry the complete requirement
+geometry/features needed to render these diagnostics independently. Bootstrap
+compiler artifacts, top-level runtime profile selection, and product consumers
+do not yet universally carry the requirement object. This contract therefore
+remains active rather than claiming repository-wide profile diagnostic
+completion.
 
 ## Verification
 

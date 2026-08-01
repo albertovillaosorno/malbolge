@@ -16,7 +16,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Fail-closed structural admission of bootstrap Windows COFF objects.
+//   - Fail-closed structural admission of untrusted Windows COFF objects.
 // - Must-Not:
 //   - Claim semantic equivalence, execute machine code, or invoke LLVM tools.
 // - Allows:
@@ -34,7 +34,7 @@
 // - Description:
 //   - Confirms ISA, sections, entry symbol, relocations, and symbol closure.
 // - Usage:
-//   - Used after untrusted Clang bootstrap compilation and before semantics.
+//   - Used after untrusted object emission and before semantic admission.
 // - Defaults:
 //   - Only Windows x86-64/AArch64 COFF objects are admitted by this module.
 //
@@ -46,7 +46,7 @@
 //   - false
 //
 
-//! Structural Windows COFF admission for untrusted native bootstrap objects.
+//! Structural Windows COFF admission for untrusted native objects.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::str::from_utf8;
@@ -61,11 +61,15 @@ const COFF_SYMBOL_BYTES: usize = 18;
 const IMAGE_FILE_MACHINE_AMD64: u16 = 0x8664;
 const IMAGE_FILE_MACHINE_ARM64: u16 = 0xaa64;
 const IMAGE_SCN_CNT_CODE: u32 = 0x0000_0020;
+const IMAGE_SCN_CNT_INITIALIZED_DATA: u32 = 0x0000_0040;
 const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
 const IMAGE_SCN_MEM_READ: u32 = 0x4000_0000;
 const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
 const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
+const PROFILE_METADATA_MAGIC: &[u8; 4] = b"MBPF";
+const PROFILE_METADATA_SECTION: &str = ".mbprof";
+const PROFILE_METADATA_VERSION: u16 = 1;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 
 /// Structural rejection while inspecting one untrusted Windows COFF object.
@@ -85,6 +89,8 @@ pub enum CoffAdmissionError {
     Machine,
     /// Object header includes an executable-image optional header.
     OptionalHeader,
+    /// Direct object profile metadata is absent, malformed, or mismatched.
+    ProfileMetadata,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
     /// Object does not contain one usable `.text` section.
@@ -112,6 +118,9 @@ impl Display for CoffAdmissionError {
             },
             Self::OptionalHeader => {
                 "COFF bootstrap object must not contain an optional header"
+            },
+            Self::ProfileMetadata => {
+                "COFF profile metadata is absent, malformed, or mismatched"
             },
             Self::TargetFormat => {
                 "COFF admission requires a Windows native target"
@@ -209,6 +218,7 @@ pub fn structurally_admit_coff(
     }
     let parsed = parse_coff(object)?;
     validate_sections(object, &parsed.sections)?;
+    validate_profile_metadata(object, &parsed.sections, artifact.key())?;
     validate_symbols_and_relocations(object, &parsed)?;
     Ok(StructurallyAdmittedNativeObjectArtifact {
         artifact: artifact.clone(),
@@ -350,6 +360,66 @@ fn validate_sections(
         Ok(())
     } else {
         Err(CoffAdmissionError::TextSection)
+    }
+}
+
+pub(super) fn canonical_profile_metadata(
+    key: &NativeArtifactKey,
+) -> Option<Vec<u8>> {
+    let profile_id = key.ir().profile_id().as_bytes();
+    let profile_fingerprint = key.ir().profile_fingerprint().as_bytes();
+    let profile_id_len = u32::try_from(profile_id.len()).ok()?;
+    let profile_fingerprint_len =
+        u32::try_from(profile_fingerprint.len()).ok()?;
+    let capacity = 16usize
+        .checked_add(profile_id.len())?
+        .checked_add(profile_fingerprint.len())?;
+    let mut bytes = Vec::with_capacity(capacity);
+    bytes.extend_from_slice(PROFILE_METADATA_MAGIC);
+    bytes.extend_from_slice(&PROFILE_METADATA_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&profile_id_len.to_le_bytes());
+    bytes.extend_from_slice(profile_id);
+    bytes.extend_from_slice(&profile_fingerprint_len.to_le_bytes());
+    bytes.extend_from_slice(profile_fingerprint);
+    Some(bytes)
+}
+
+fn validate_profile_metadata(
+    object: &[u8],
+    sections: &[CoffSection],
+    key: &NativeArtifactKey,
+) -> Result<(), CoffAdmissionError> {
+    let mut matches = sections
+        .iter()
+        .filter(|section| section.name == PROFILE_METADATA_SECTION);
+    let metadata_section = matches.next();
+    if matches.next().is_some() {
+        return Err(CoffAdmissionError::ProfileMetadata);
+    }
+    let Some(metadata) = metadata_section else {
+        if key.target().backend_id().starts_with("direct-") {
+            return Err(CoffAdmissionError::ProfileMetadata);
+        }
+        return Ok(());
+    };
+    let required = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
+    if metadata.raw_size == 0
+        || metadata.relocation_count != 0
+        || metadata.characteristics & required != required
+        || metadata.characteristics
+            & (IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_WRITE)
+            != 0
+    {
+        return Err(CoffAdmissionError::ProfileMetadata);
+    }
+    let observed = slice(object, metadata.raw_start, metadata.raw_size)?;
+    let expected = canonical_profile_metadata(key)
+        .ok_or(CoffAdmissionError::ProfileMetadata)?;
+    if observed == expected {
+        Ok(())
+    } else {
+        Err(CoffAdmissionError::ProfileMetadata)
     }
 }
 
