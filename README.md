@@ -81,6 +81,24 @@ key order and accepts only typed `resolved`, `unavailable`, or `failed` outcomes
 Each entry is requested exactly once. There is no discovery, retry, cache,
 persistence, provider lifecycle, or hidden worker.
 
+`bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one reusable bounded caller-owned synchronous provider over explicit
+immutable secret entries. Each hidden key is bound to one canonical manifest
+fingerprint, key reference, key identity, and inclusive capture window. The service
+permits 256 entries by default and 4096 at the supported maximum, sorts entries by
+manifest fingerprint and reference, and rejects duplicate manifest/reference
+bindings. Construction and every call revalidate the exact service type and
+identity, provider identity, configured limit, secret count, entry tuple, canonical
+ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden key. A
+different provider identity returns typed `failed`; an unknown manifest/reference
+returns `unavailable`; a known binding with conflicting key/window metadata returns
+`failed`; and an exact binding returns `resolved` with unchanged hidden bytes.
+Request index remains ordering context rather than a secret binding. Repeated calls
+validate and resolve again without mutation or an external cache. The service reads
+no environment, file, network, process credential state, secret store, or hosted API
+and performs no discovery, refresh, retry, persistence, logging, worker creation,
+certificate rule, PKI operation, algorithm choice, or admission-policy operation.
+
 The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
 the complete compiler backend, generated `.malbolge` artifacts for general C,
 self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain
@@ -231,7 +249,8 @@ component overlap review never infers common lineage or merges nonidentical
 snapshots. A transitive component is only a review aid, not pairwise equivalence.
 Authenticated lineage requires caller-selected trust and still grants no merge,
 route, or admission authority. Caller-owned HMAC rotation, secret-free manifests,
-an explicit synchronous secret-provider port, detached public-key signer/verifier
+an explicit synchronous secret-provider port with a bounded caller-owned memory
+implementation, detached public-key signer/verifier
 ports, bounded in-memory public-key trust, a canonical key-free public-key trust
 manifest, explicit synchronous, sequential async, caller-controlled async batch,
 and one-use provider-session ports, plus a bounded caller-owned in-memory synchronous

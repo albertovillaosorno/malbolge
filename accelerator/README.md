@@ -231,6 +231,23 @@ and request index. Providers return only typed `resolved`, `unavailable`, or
 `failed` results; non-success stops without retry, and each entry is called exactly
 once. Repeated explicit resolutions call the provider again. Secret bytes remain
 hidden, and resolution still does not authenticate them before attestation use.
+`bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one reusable bounded caller-owned synchronous provider over explicit
+immutable secret entries. Each hidden key is bound to one canonical manifest
+fingerprint, key reference, key identity, and inclusive capture window. The service
+permits 256 entries by default and 4096 at the supported maximum, sorts entries by
+manifest fingerprint and reference, and rejects duplicate manifest/reference
+bindings. Construction and every call revalidate the exact service type and
+identity, provider identity, configured limit, secret count, entry tuple, canonical
+ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden key. A
+different provider identity returns typed `failed`; an unknown manifest/reference
+returns `unavailable`; a known binding with conflicting key/window metadata returns
+`failed`; and an exact binding returns `resolved` with unchanged hidden bytes.
+Request index remains ordering context rather than a secret binding. Repeated calls
+validate and resolve again without mutation or an external cache. The service reads
+no environment, file, network, process credential state, secret store, or hosted API
+and performs no discovery, refresh, retry, persistence, logging, worker creation,
+certificate rule, PKI operation, algorithm choice, or admission-policy operation.
 `caller-owned-ticket-admission-telemetry-lineage-signature-v1` defines
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
@@ -552,15 +569,16 @@ refresh credentials. The adapter creates no event loop, task, thread, executor,
 worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
 operation.
-The built-in public-key implementations are the bounded caller-owned memory
-service, its inline sequential and batch async adapters, its serial session
+The built-in HMAC-secret implementation is the bounded caller-owned memory
+service. The built-in public-key implementations are the bounded caller-owned
+memory service, its inline sequential and batch async adapters, its serial session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
 provider with an inline async adapter, an explicit authorized HTTPS adapter,
-and a caller-offloaded async
-authorized HTTPS adapter. There is no built-in environment, file, external
+and a caller-offloaded async authorized HTTPS adapter. There is no built-in
+environment, file, external
 secret-store, or hosted credential provider, native nonblocking HTTPS client,
 automatic credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
@@ -575,9 +593,10 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
-every ticket. One thousand two hundred seventy-three
+every ticket. One thousand three hundred thirty-three
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
-index/components/lineage/trust/manifest/provider/signature/signature-trust/
+index/components/lineage/trust/manifest/provider/memory-secret-provider/
+signature/signature-trust/
 signature-manifest/public-key-bundle/public-key-bundle-fetcher/
 async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
