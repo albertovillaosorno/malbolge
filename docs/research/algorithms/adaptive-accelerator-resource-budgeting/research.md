@@ -169,8 +169,8 @@ route assessments for context mismatch, inexact output, absent median improvemen
 absent paired majority, and groups larger than the queue. Eligible but unused
 routes retain zero selected counts; the report embeds the unchanged plan and
 records fallback plus synchronous/streamed selected totals. The retained CUDA
-facade resolves the same exact profile before reporting. One thousand five
-hundred eighty-two
+facade resolves the same exact profile before reporting. One thousand six
+hundred fifty-four
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
 async-secret-provider/memory-async-secret-provider/file-secret-provider/
@@ -181,6 +181,7 @@ async-public-key-bundle-fetcher/https-public-key-bundle-fetcher/
 async-https-public-key-bundle-fetcher/https-authorization-provider/
 async-https-authorization-provider/
 memory-https-authorization-provider/
+file-https-authorization-provider/
 environment-https-authorization-provider/
 environment-async-https-authorization-provider/
 memory-async-https-authorization-provider/
@@ -632,6 +633,22 @@ lookup without mutation or an external cache. The provider reads no environment,
 file, network, process credential state, secret store, or hosted API and performs no
 discovery, refresh, retry, persistence, logging, task creation, certificate rule,
 PKI operation, algorithm choice, or admission-policy operation.
+`explicit-file-ticket-admission-lineage-https-authorization-provider-v1`
+binds exact nonsecret Authorization requests to caller-selected absolute file
+paths. Paths and entries stay hidden from representations. Build and validation
+perform no file I/O; every call revalidates the exact service, provider identity,
+copied authorization count, entry and byte limits, canonical ordering, request
+metadata, and absolute paths before lookup. A provider-identity mismatch returns
+typed `failed` without I/O, while an unmatched request returns `unavailable`.
+One exact match opens one path once in binary mode and reads at most the configured
+byte limit plus one. Missing files return `unavailable`; operating-system errors,
+oversized content, non-ASCII bytes, empty or noncanonical text, whitespace, control
+bytes, and NUL return `failed` without path or system text. Valid ASCII text is
+revalidated through the shared Authorization materializer without trimming or
+normalization. Repeated calls reread the file so rotation and removal remain
+visible without a cache. The provider performs no discovery, writes, permission
+inspection, retries, persistence, logging, worker creation, scheme selection,
+credential refresh, certificate validation, PKI, algorithm choice, or policy.
 `explicit-environment-ticket-admission-lineage-https-authorization-provider-v1`
 implements one bounded synchronous Authorization provider over explicit immutable
 request-to-variable bindings. Each entry hides one canonical uppercase ASCII
@@ -725,12 +742,13 @@ adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
-provider with an inline async adapter, an explicit environment Authorization
-provider with a caller-offloaded async adapter, an explicit authorized HTTPS adapter,
+provider with an inline async adapter, an explicit file Authorization provider,
+an explicit environment Authorization provider with a caller-offloaded async adapter,
+an explicit authorized HTTPS adapter,
 and a caller-offloaded async authorized HTTPS adapter.
 There is no built-in external secret-store integration,
-hosted credential provider, native async file-secret I/O, native async environment
-access, native nonblocking HTTPS
+hosted credential provider, native async file-secret or file-Authorization I/O, native async
+environment access, native nonblocking HTTPS
 client, automatic
 credential refresh, or hosted key service.
 No bundle or session is loaded automatically;

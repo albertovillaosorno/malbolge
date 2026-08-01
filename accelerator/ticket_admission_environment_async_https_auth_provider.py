@@ -44,6 +44,7 @@
 #   - No default offloader; caller owns all environment-read placement.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py

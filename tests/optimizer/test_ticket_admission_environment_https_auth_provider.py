@@ -39,6 +39,7 @@
 #   - Uses two explicit variables, 64 bindings, and a 4096-byte value limit.
 #
 # Related documents:
+# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
 # - accelerator/ticket_admission_environment_async_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py

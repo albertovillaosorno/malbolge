@@ -1,7 +1,7 @@
 # File:
-#   - ticket_admission_telemetry_lineage_environment_https_auth_provider.py
+#   - ticket_admission_telemetry_lineage_file_https_auth_provider.py
 # Path:
-#   - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
+#   - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
 #
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
@@ -16,37 +16,36 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Explicit bounded environment-backed HTTPS Authorization resolution.
+#   - Explicit bounded read-only files for HTTPS Authorization requests.
 # - Must-Not:
-#   - Enumerate environment state, discover names, mutate environment, read files,
-#     network, external stores, retry, cache, persist, log names or values, create
+#   - Discover paths, write files, retry, cache Authorization text, inspect
+#     permissions, follow provider lifecycles, log values or paths, create
 #     workers, select schemes, refresh credentials, or change policy.
 # - Allows:
-#   - Inputs: one provider identity and explicit request-to-variable bindings.
-#   - Outputs: stable typed results for exact nonsecret authorization requests.
-#   - Side effects: one exact environment lookup for one matched request.
+#   - Inputs: one provider identity and explicit request-bound absolute paths.
+#   - Outputs: stable typed results containing exact caller-file ASCII text.
+#   - Side effects: one bounded explicit file read for one exact matched request.
 # - Split-When:
-#   - Split when external stores, hosted APIs, certificates, PKI, or refresh gain
-#     contracts.
+#   - Split when native async file I/O, external stores, hosted APIs,
+#     certificates, PKI, or refresh gain contracts.
 # - Merge-When:
-#   - Merge when another module owns this exact explicit environment boundary.
+#   - Merge when another module owns this exact explicit file-auth boundary.
 # - Summary:
-#   - Exact environment-backed HTTPS Authorization provider.
+#   - Exact read-only file-backed HTTPS Authorization provider.
 # - Description:
-#   - Reads one caller-named variable only after complete request binding.
+#   - Reads one caller-selected file only after exact request binding.
 # - Usage:
-#   - Build explicitly, then pass the service to the synchronous auth port.
+#   - Build explicitly from absolute paths, then pass to the synchronous port.
 # - Defaults:
-#   - At most 64 bindings and 4096 Authorization bytes per matched variable.
+#   - At most 64 bindings and 4096 Authorization bytes per matched file.
 #
 # Related documents:
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
+# - accelerator/ticket_admission_environment_async_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
+# - accelerator/ticket_admission_file_async_secret_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md
@@ -55,7 +54,7 @@
 #   - false
 #
 
-"""Explicit bounded environment-backed HTTPS Authorization provider."""
+"""Explicit bounded read-only files for HTTPS Authorization requests."""
 
 # ruff: file-ignore[line-too-long,doc-line-too-long]
 
@@ -63,7 +62,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
-from os import environ
+from pathlib import Path
 from re import compile as compile_pattern
 from typing import Final
 from typing import Never
@@ -78,26 +77,24 @@ from accelerator.ticket_admission_telemetry_lineage import (
     MAX_TELEMETRY_LINEAGE_IDENTIFIER_LENGTH,
 )
 
-TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTH_PROVIDER_ID: Final = (
-    "explicit-environment-ticket-admission-lineage-https-"
-    "authorization-provider-v1"
+TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_HTTPS_AUTH_PROVIDER_ID: Final = (
+    "explicit-file-ticket-admission-lineage-https-authorization-provider-v1"
 )
-DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATIONS: Final = (
+DEFAULT_MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATIONS: Final = (
     memory.DEFAULT_MAX_TELEMETRY_LINEAGE_MEMORY_HTTPS_AUTHORIZATIONS
 )
-MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATIONS: Final = (
+MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATIONS: Final = (
     memory.MAX_TELEMETRY_LINEAGE_MEMORY_HTTPS_AUTHORIZATIONS
 )
-DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATION_BYTES: Final = (
+DEFAULT_MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATION_BYTES: Final = (
     auth.DEFAULT_MAX_HTTPS_AUTHORIZATION_BYTES
 )
-MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATION_BYTES: Final = (
+MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATION_BYTES: Final = (
     auth.MAX_HTTPS_AUTHORIZATION_BYTES
 )
 _IDENTIFIER_PATTERN: Final = compile_pattern(
     r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
 )
-_ENVIRONMENT_VARIABLE_PATTERN: Final = compile_pattern(r"[A-Z][A-Z0-9_]{0,127}")
 _RESOLVED: Final = (
     auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResultKind.RESOLVED
 )
@@ -107,31 +104,31 @@ _UNAVAILABLE: Final = (
 _FAILED: Final = (
     auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResultKind.FAILED
 )
+_NUL: Final = chr(0)
 
 
-class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError(
-    ValueError
-):
-    """An explicit environment HTTPS Authorization provider is invalid."""
+class TicketAdmissionTelemetryLineageFileHttpsAuthProviderError(ValueError):
+    """An explicit bounded file HTTPS Authorization provider is invalid."""
 
 
 @dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization:
-    """One exact request binding and hidden canonical environment name."""
+class TicketAdmissionTelemetryLineageFileHttpsAuthorization:
+    """One exact request binding and hidden absolute Authorization path."""
 
+    authorization_path: str = field(repr=False)
     bundle_fingerprint: str
-    environment_variable_name: str = field(repr=False)
     fetch_provider_id: str
     resource_id: str
     source_id: str
 
 
 @dataclass(frozen=True, slots=True)
-class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
-    """Immutable explicit environment service implementing the auth port."""
+class TicketAdmissionTelemetryLineageFileHttpsAuthProvider:
+    """Immutable explicit read-only file service implementing the auth port."""
 
+    authorization_count: int
     entries: tuple[
-        TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+        TicketAdmissionTelemetryLineageFileHttpsAuthorization,
         ...,
     ] = field(repr=False)
     max_authorization_bytes: int
@@ -143,7 +140,7 @@ class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
         self,
         request: auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest,
     ) -> auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResult:
-        """Read one exact matched environment value after full revalidation.
+        """Read one exact matched file after complete revalidation.
 
         Returns:
             Stable resolved, unavailable, or failed provider result.
@@ -156,41 +153,39 @@ class TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
         entry = _matching_entry(service.entries, validated_request)
         if entry is None:
             return _result(_UNAVAILABLE)
-        return _environment_result(
+        return _file_result(
             entry,
             validated_request,
             max_authorization_bytes=service.max_authorization_bytes,
         )
 
 
-def ticket_admission_environment_https_authorization_provider_id() -> str:
-    """Return the stable explicit environment provider identity.
+def ticket_admission_file_https_authorization_provider_id() -> str:
+    """Return the stable explicit file provider identity.
 
     Returns:
-        Versioned environment-service identity.
+        Versioned file-service identity.
 
     """
-    return TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTH_PROVIDER_ID
+    return TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_HTTPS_AUTH_PROVIDER_ID
 
 
-def build_ticket_admission_environment_https_authorization_provider(
+def build_ticket_admission_file_https_authorization_provider(
     entries: tuple[
-        TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+        TicketAdmissionTelemetryLineageFileHttpsAuthorization,
         ...,
     ],
     *,
     provider_id: str,
-    max_entries: int = (
-        DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATIONS
-    ),
+    max_entries: int = DEFAULT_MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATIONS,
     max_authorization_bytes: int = (
-        DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATION_BYTES
+        DEFAULT_MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATION_BYTES
     ),
-) -> TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
-    """Build one bounded provider from explicit environment-name bindings.
+) -> TicketAdmissionTelemetryLineageFileHttpsAuthProvider:
+    """Build one bounded provider from explicit absolute file bindings.
 
     Returns:
-        Canonically ordered service with hidden variable names.
+        Canonically ordered service with hidden caller-selected paths.
 
     """
     validated_provider_id = _validated_identifier(
@@ -204,35 +199,35 @@ def build_ticket_admission_environment_https_authorization_provider(
         provider_id=validated_provider_id,
         max_entries=entry_limit,
     )
-    return TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider(
+    return TicketAdmissionTelemetryLineageFileHttpsAuthProvider(
+        authorization_count=len(ordered),
         entries=ordered,
         max_authorization_bytes=byte_limit,
         max_entries=entry_limit,
         provider_id=validated_provider_id,
-        service_id=(
-            TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTH_PROVIDER_ID
-        ),
+        service_id=TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_HTTPS_AUTH_PROVIDER_ID,
     )
 
 
-def validate_ticket_admission_environment_https_authorization_provider(
-    service: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
-) -> TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
-    """Validate one exact bounded environment Authorization provider.
+def validate_ticket_admission_file_https_authorization_provider(
+    service: TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+) -> TicketAdmissionTelemetryLineageFileHttpsAuthProvider:
+    """Validate one exact bounded file Authorization provider.
 
     Returns:
-        The same exact service after complete non-lookup revalidation.
+        The same exact service after complete non-I/O revalidation.
 
     """
     return _validated_service(service)
 
 
 def _validated_service(
-    service: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
-) -> TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider:
+    service: TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+) -> TicketAdmissionTelemetryLineageFileHttpsAuthProvider:
     _validate_service_shape(service)
     entry_limit = _validated_max_entries(service.max_entries)
     _ = _validated_max_authorization_bytes(service.max_authorization_bytes)
+    _validate_service_count(service, entry_limit=entry_limit)
     validated = _ordered_entries(
         service.entries,
         provider_id=service.provider_id,
@@ -244,35 +239,57 @@ def _validated_service(
 
 
 def _validate_service_shape(
-    service: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider,
+    service: TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
 ) -> None:
     if (
         type(service)
-        is not TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProvider
+        is not TicketAdmissionTelemetryLineageFileHttpsAuthProvider
     ):
-        _raise_service(
-            "service must use the exact environment auth provider type"
-        )
+        _raise_service("service must use the exact file auth provider type")
     if (
         service.service_id
-        != TICKET_ADMISSION_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTH_PROVIDER_ID
+        != TICKET_ADMISSION_TELEMETRY_LINEAGE_FILE_HTTPS_AUTH_PROVIDER_ID
     ):
         _raise_service("service identity is unsupported")
     _ = _validated_identifier(
         service.provider_id,
         "authorization provider identity",
     )
+    if type(service.entries) is not tuple:
+        _raise_service(
+            "service entries must use the exact immutable tuple type"
+        )
+
+
+def _validate_service_count(
+    service: TicketAdmissionTelemetryLineageFileHttpsAuthProvider,
+    *,
+    entry_limit: int,
+) -> None:
+    if (
+        type(service.authorization_count) is not int
+        or service.authorization_count < 0
+    ):
+        _raise_service(
+            "service authorization count must be a nonnegative integer"
+        )
+    if service.authorization_count != len(service.entries):
+        _raise_service("service authorization count does not match entries")
+    if service.authorization_count > entry_limit:
+        _raise_service(
+            "service authorization count exceeds configured entry limit"
+        )
 
 
 def _ordered_entries(
     entries: tuple[
-        TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+        TicketAdmissionTelemetryLineageFileHttpsAuthorization,
         ...,
     ],
     *,
     provider_id: str,
     max_entries: int,
-) -> tuple[TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization, ...]:
+) -> tuple[TicketAdmissionTelemetryLineageFileHttpsAuthorization, ...]:
     if type(entries) is not tuple:
         _raise_service("entries must use the exact immutable tuple type")
     if len(entries) > max_entries:
@@ -287,17 +304,12 @@ def _ordered_entries(
 
 
 def _validated_entry(
-    entry: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+    entry: TicketAdmissionTelemetryLineageFileHttpsAuthorization,
     *,
     provider_id: str,
-) -> TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization:
-    if (
-        type(entry)
-        is not TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization
-    ):
-        _raise_service(
-            "entry must use the exact environment authorization type"
-        )
+) -> TicketAdmissionTelemetryLineageFileHttpsAuthorization:
+    if type(entry) is not TicketAdmissionTelemetryLineageFileHttpsAuthorization:
+        _raise_service("entry must use the exact file authorization type")
     request = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest(
         authorization_provider_id=provider_id,
         bundle_fingerprint=entry.bundle_fingerprint,
@@ -311,10 +323,10 @@ def _validated_entry(
         auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProviderError
     ) as error:
         message = "entry contains invalid authorization request metadata"
-        raise TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError(
+        raise TicketAdmissionTelemetryLineageFileHttpsAuthProviderError(
             message
         ) from error
-    _ = _validated_environment_variable_name(entry.environment_variable_name)
+    _ = _validated_absolute_path(entry.authorization_path)
     return entry
 
 
@@ -328,33 +340,57 @@ def _validated_request(
     except (
         auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProviderError
     ) as error:
-        message = "invalid environment-provider Authorization request"
-        raise TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError(
+        message = "invalid file-provider Authorization request"
+        raise TicketAdmissionTelemetryLineageFileHttpsAuthProviderError(
             message
         ) from error
 
 
-def _environment_result(
-    entry: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+def _file_result(
+    entry: TicketAdmissionTelemetryLineageFileHttpsAuthorization,
     request: auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest,
     *,
     max_authorization_bytes: int,
 ) -> auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResult:
+    kind, candidate = _read_authorization_bytes(
+        entry.authorization_path,
+        max_authorization_bytes=max_authorization_bytes,
+    )
+    if kind is not _RESOLVED or candidate is None:
+        return _result(kind)
     try:
-        candidate = _read_environment_value(entry.environment_variable_name)
-    except OSError, UnicodeError:
+        authorization_value = candidate.decode("ascii")
+    except UnicodeDecodeError:
         return _result(_FAILED)
-    if candidate is None:
-        return _result(_UNAVAILABLE)
     return _validated_candidate_result(
         request,
-        candidate,
+        authorization_value,
         max_authorization_bytes=max_authorization_bytes,
     )
 
 
-def _read_environment_value(variable_name: str) -> str | None:
-    return environ.get(variable_name)
+def _read_authorization_bytes(
+    authorization_path: str,
+    *,
+    max_authorization_bytes: int,
+) -> tuple[
+    auth.TicketAdmissionTelemetryLineageHttpsAuthorizationResultKind,
+    bytes | None,
+]:
+    kind = _FAILED
+    authorization_bytes: bytes | None = None
+    try:
+        with Path(authorization_path).open("rb") as stream:
+            candidate = stream.read(max_authorization_bytes + 1)
+    except FileNotFoundError:
+        kind = _UNAVAILABLE
+    except OSError:
+        kind = _FAILED
+    else:
+        if len(candidate) <= max_authorization_bytes:
+            kind = _RESOLVED
+            authorization_bytes = candidate
+    return (kind, authorization_bytes)
 
 
 def _validated_candidate_result(
@@ -380,11 +416,11 @@ def _validated_candidate_result(
 
 def _matching_entry(
     entries: tuple[
-        TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+        TicketAdmissionTelemetryLineageFileHttpsAuthorization,
         ...,
     ],
     request: auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest,
-) -> TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization | None:
+) -> TicketAdmissionTelemetryLineageFileHttpsAuthorization | None:
     identity = (
         request.bundle_fingerprint,
         request.fetch_provider_id,
@@ -398,7 +434,7 @@ def _matching_entry(
 
 
 def _entry_identity(
-    entry: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+    entry: TicketAdmissionTelemetryLineageFileHttpsAuthorization,
 ) -> tuple[str, str, str, str]:
     return (
         entry.bundle_fingerprint,
@@ -409,9 +445,9 @@ def _entry_identity(
 
 
 def _entry_sort_key(
-    entry: TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization,
+    entry: TicketAdmissionTelemetryLineageFileHttpsAuthorization,
 ) -> tuple[str, str, str, str, str]:
-    return (*_entry_identity(entry), entry.environment_variable_name)
+    return (*_entry_identity(entry), entry.authorization_path)
 
 
 def _result(
@@ -425,16 +461,11 @@ def _result(
     )
 
 
-def _validated_environment_variable_name(value: str) -> str:
-    if (
-        type(value) is not str
-        or _ENVIRONMENT_VARIABLE_PATTERN.fullmatch(value) is None
-    ):
-        _raise_service(
-            "environment variable name must use canonical uppercase ASCII form"
-        )
-    if len(value) > MAX_TELEMETRY_LINEAGE_IDENTIFIER_LENGTH:
-        _raise_service("environment variable name exceeds configured length")
+def _validated_absolute_path(value: str) -> str:
+    if type(value) is not str or not value or _NUL in value:
+        _raise_service("authorization path must be a nonempty path string")
+    if not Path(value).is_absolute():
+        _raise_service("authorization path must be absolute")
     return value
 
 
@@ -449,7 +480,7 @@ def _validated_identifier(value: str, field_name: str) -> str:
 def _validated_max_entries(value: int) -> int:
     if type(value) is not int or value <= 0:
         _raise_service("maximum authorization count must be a positive integer")
-    if value > MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATIONS:
+    if value > MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATIONS:
         _raise_service("maximum authorization count exceeds supported limit")
     return value
 
@@ -457,16 +488,14 @@ def _validated_max_entries(value: int) -> int:
 def _validated_max_authorization_bytes(value: int) -> int:
     if type(value) is not int or value <= 0:
         _raise_service("maximum authorization bytes must be a positive integer")
-    if value > MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATION_BYTES:
+    if value > MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATION_BYTES:
         _raise_service("maximum authorization bytes exceeds supported limit")
     return value
 
 
 def _raise_service(detail: str) -> Never:
     message = (
-        "ticket admission telemetry lineage environment HTTPS Authorization "
-        f"provider {detail}"
+        "ticket admission telemetry lineage file HTTPS Authorization provider "
+        f"{detail}"
     )
-    raise TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError(
-        message
-    )
+    raise TicketAdmissionTelemetryLineageFileHttpsAuthProviderError(message)
