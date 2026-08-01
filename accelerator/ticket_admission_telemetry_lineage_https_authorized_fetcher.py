@@ -25,8 +25,8 @@
 #   - Outputs: the shared typed fetched, unavailable, or failed transport result.
 #   - Side effects: one HTTPS connection, one GET, and one close per matched call.
 # - Split-When:
-#   - Split when async authorization, hosted APIs, certificates, or PKI gain
-#     contracts.
+#   - Split when async credential providers, hosted APIs, certificates, or
+#     PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact authorized HTTPS boundary.
 # - Summary:
@@ -40,6 +40,7 @@
 #
 # Related documents:
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py

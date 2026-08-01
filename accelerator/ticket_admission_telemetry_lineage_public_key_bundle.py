@@ -25,9 +25,8 @@
 #   - Outputs: canonical bundles and caller-owned in-memory key providers.
 #   - Side effects: explicit bounded reads and atomic replacement only.
 # - Split-When:
-#   - Split when native async HTTPS, concrete Authorization providers,
-#     async Authorization injection, hosted APIs, certificates, or PKI gain
-#     contracts.
+#   - Split when native async HTTPS, synchronous or async credential
+#     providers, hosted APIs, certificates, or PKI gain contracts.
 # - Merge-When:
 #   - Merge when another module owns this exact canonical key-bundle boundary.
 # - Summary:
@@ -46,6 +45,7 @@
 # - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
 # - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
+# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
 # - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py

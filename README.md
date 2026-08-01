@@ -239,12 +239,13 @@ key service with inline sequential and batch async adapters plus a serial sessio
 adapter, an explicit canonical file bundle for public-key bytes, synchronous and
 async transport-neutral bundle-fetch ports, a concrete synchronous HTTPS GET
 adapter, a caller-offloaded async HTTPS adapter, an explicit bounded
-Authorization-provider port, and an explicit authorized HTTPS adapter, a caller-owned
-alternate telemetry store, and lossless explicit schema-v1/schema-v2 migration
-exist. No concrete public-key signature algorithm, native nonblocking HTTPS client,
-concrete credential provider, automatic credential injection, hosted key service,
-certificate-chain or PKI ownership, automatic discovery, retry, hidden cache,
-library-owned concurrency, or automatic trust loading is supplied.
+Authorization-provider port, an explicit authorized HTTPS adapter, and a
+caller-offloaded async authorized HTTPS adapter, a caller-owned alternate telemetry
+store, and lossless explicit schema-v1/schema-v2 migration exist. No concrete
+public-key signature algorithm, native nonblocking HTTPS client, concrete credential
+provider, automatic credential refresh, hosted key service, certificate-chain or PKI
+ownership, automatic discovery, retry, hidden cache, library-owned concurrency, or
+automatic trust loading is supplied.
 Observations do not promote routes automatically and never replace retained
 benchmark evidence.
 
