@@ -11,13 +11,16 @@ future AOT and JIT backends after deterministic verifier admission.
 - `MemoryLiveIn`: one verifier-derived entry-memory dependency.
 - `RegionEffectProgram`: profile-bound bounded-region metadata plus ordered
   effects.
-- `TargetProfileRequirement`: canonical version, semantic features, word width,
-  and directly addressed profile capacity required by the artifact.
+- Transport of the VM-owned `TargetProfileRequirement`: canonical version,
+  semantic features, word width, and directly addressed profile capacity required
+  by the artifact. `main.rs` re-exports the semantic type rather than duplicating
+  it.
 - `EFFECT_IR_VERSION`: the portable schema identity.
 
 ## Does Not Own
 
-- Malbolge semantics or VM transition rules.
+- Malbolge semantics, target-profile requirement semantics, or runtime
+  capability preflight.
 - Region verification or optimization acceptance.
 - x86-64/AArch64 instruction encoding.
 - Native cache serialization or executable-memory policy.

@@ -55,12 +55,18 @@ baseline; native tiers are accelerators of identical observable behavior.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
 - Active foundation: `execution/ir/main.rs` owns portable effect IR v3
-  (`EffectOp`, `MemoryLiveIn`, `TargetProfileRequirement`, and
-  `RegionEffectProgram`) without creating a Rust
-  crate boundary. State-graph research reprojects verifier traces into this IR,
+  (`EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`) and re-exports the
+  VM-owned `TargetProfileRequirement` without creating a Rust crate boundary.
+  State-graph research reprojects verifier traces into this IR,
   rejects tampered profile-ID/fingerprint/version/features/geometry,
   live-in/budget/outcome/effect fields, and preserves
   deterministic interpreter deoptimization on guard miss.
+- `vm/src/profile.rs::preflight_runtime_requirement()` consumes an independently
+  admitted IR requirement against an explicit runtime capability. Current IR
+  produces byte-identical `MALBOLGE-PROFILE-001` text to canonical descriptor
+  preflight under `safe-rust-classic`, is admitted by `safe-rust-profiled`, and
+  rejects unknown feature IDs explicitly. Top-level tier selection still does not
+  invoke this boundary automatically.
 - `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
   OS, ISA, backend revision, native ABI revision, and required features. Digest
   collisions never authorize reuse because full canonical/key equality remains

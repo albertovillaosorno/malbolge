@@ -49,8 +49,11 @@
 
 use malbolge::{
     ExecutionErrorKind, ExecutionMachine, ExecutionMode, ProfileKind,
-    ProfileRequirementErrorKind, current_profile, historical_profile,
-    preflight_profile, safe_rust_classic_capability, target_profile,
+    ProfileRequirementErrorKind, RuntimeProfileRequirementError,
+    TargetProfileRequirement, current_profile, historical_profile,
+    preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
+    target_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -128,6 +131,74 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
         )),
         "exact current-profile diagnostic",
     )
+}
+
+#[test]
+fn portable_requirement_matches_canonical_runtime_diagnostic() -> TestResult {
+    let current = current_profile();
+    let requirement = TargetProfileRequirement::from_descriptor(current);
+    let Err(canonical) = preflight_profile(
+        current,
+        current.memory_words(),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("canonical current requirement was accepted"));
+    };
+    let Err(portable) = preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("portable current requirement was accepted"));
+    };
+    check_equal(
+        &RuntimeProfileRequirementError::CODE,
+        &canonical.code(),
+        "portable diagnostic code",
+    )?;
+    check_equal(
+        &portable.profile_id(),
+        &current.id(),
+        "portable profile identity",
+    )?;
+    check_equal(
+        portable.requirement(),
+        &requirement,
+        "portable requirement access",
+    )?;
+    check_equal(
+        &format!("{portable}"),
+        &format!("{canonical}"),
+        "portable/canonical diagnostic parity",
+    )?;
+    preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("profiled runtime rejected envelope: {error}"))
+}
+
+#[test]
+fn portable_requirement_rejects_unknown_feature_fail_closed() -> TestResult {
+    let current = current_profile();
+    let mut requirement = TargetProfileRequirement::from_descriptor(current);
+    requirement
+        .features
+        .push(String::from("unknown-capability"));
+    let Err(error) = preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from("unknown portable feature was accepted"));
+    };
+    let diagnostic = format!("{error}");
+    if diagnostic.ends_with("missing=unknown-capability") {
+        Ok(())
+    } else {
+        Err(format!("unknown feature diagnostic mismatch: {diagnostic}"))
+    }
 }
 
 #[test]

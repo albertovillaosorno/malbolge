@@ -49,9 +49,10 @@
 
 //! Portable bounded-region effect IR for tiered execution.
 
+pub use malbolge::TargetProfileRequirement;
 use malbolge::{
-    ProfileDescriptor, ProfileMachineObservation, ProfileMemoryDelta,
-    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, Termination, TraceInput,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
+    ProfileStepTrace, RunOutcome, Termination, TraceInput,
 };
 
 /// Current portable bounded-region effect-IR schema version.
@@ -82,19 +83,6 @@ pub struct MemoryLiveIn {
     pub value: u32,
 }
 
-/// Immutable canonical target-profile requirement carried by an artifact.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TargetProfileRequirement {
-    /// Defining semantic capabilities in stable diagnostic order.
-    pub features: Vec<String>,
-    /// Exact directly addressed profile capacity.
-    pub memory_words: u32,
-    /// Published immutable language version.
-    pub version: String,
-    /// Number of ternary digits in one profile word.
-    pub word_trits: u8,
-}
-
 /// Versioned architecture-neutral bounded-region program.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegionEffectProgram {
@@ -114,22 +102,6 @@ pub struct RegionEffectProgram {
     pub profile_requirement: TargetProfileRequirement,
     /// Verified semantic-step budget.
     pub step_budget: usize,
-}
-
-impl TargetProfileRequirement {
-    /// Projects one validated canonical profile descriptor into artifact data.
-    #[must_use]
-    pub fn from_descriptor(profile: &ProfileDescriptor) -> Self {
-        Self {
-            features: ProfileDescriptor::required_features()
-                .iter()
-                .map(|feature| String::from(feature.stable_id()))
-                .collect(),
-            memory_words: profile.memory_words(),
-            version: String::from(profile.version()),
-            word_trits: profile.word_trits(),
-        }
-    }
 }
 
 impl EffectOp {

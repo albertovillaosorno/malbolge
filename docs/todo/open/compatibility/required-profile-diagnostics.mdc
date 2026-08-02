@@ -61,12 +61,14 @@ historical-profile constraint.
   before runtime capacity and missing dimensions kept in stable order.
 - Portable effect IR v3, native keys, and direct COFF `MBPF` v2 metadata now
   carry exact profile ID/fingerprint plus published version, ordered semantic
-  features, word trits, and profile capacity. These are all canonical
-  profile-side inputs for `MALBOLGE-PROFILE-001`; runtime consumption remains
-  explicit and unimplemented above this artifact boundary.
+  features, word trits, and profile capacity.
+- VM-owned `preflight_runtime_requirement()` consumes an independently admitted
+  envelope against explicit classic/profiled runtime capability. Current IR
+  produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,
+  profiled capability accepts it, and unknown feature IDs fail closed.
 - Program-specific requested memory for `MALBOLGE-PROFILE-002`, bootstrap
-  compiler artifacts, top-level runtime selection, and product runtime consumers
-  remain open, so repository-wide completion is not claimed.
+  compiler artifacts, top-level runtime/tier selection, and universal product
+  invocation remain open, so repository-wide completion is not claimed.
 
 ## Acceptance
 

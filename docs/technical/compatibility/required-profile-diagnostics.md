@@ -26,8 +26,10 @@ This document currently governs:
 - `vm/src/profile.rs`
 - `vm/src/profile_generated.rs`
 - `vm/src/execution.rs`
+- `execution/ir/main.rs`
 - `tests/test_target_profile.py`
 - `tests/vm/profile_requirements.rs`
+- `tests/tiered_execution.rs`
 - `tests/compatibility/test_profile_requirements.py`
 - `tests/compatibility/test_scalable_memory.py`
 
@@ -97,6 +99,25 @@ through `ExecutionMachine::profile()`.
 Unknown textual profile IDs return no descriptor. There is no `current-ish`,
 nearest-version, or implicit historical fallback.
 
+### Portable Artifact Preflight
+
+`TargetProfileRequirement` is now VM-owned semantic data and is re-exported by
+`execution/ir/main.rs` for transport in effect IR. It carries the published
+version, stable feature IDs, word trits, and profile capacity without copying the
+canonical profile registry into the execution layer.
+
+`preflight_runtime_requirement()` consumes an independently admitted profile ID
+and requirement envelope plus one explicit `RuntimeCapability`. It shares the
+same geometry comparison and `MALBOLGE-PROFILE-001` formatter as canonical
+descriptor preflight. The current-profile envelope is therefore rejected by
+`safe-rust-classic` with byte-identical text and accepted by
+`safe-rust-profiled`. An unknown feature ID fails closed and is surfaced in the
+stable `missing=` list.
+
+This boundary does not prove that an arbitrary envelope is canonical. Profile
+ID/fingerprint and requirement equality remain the responsibility of capsule,
+verifier, cache-key, and COFF admission before runtime preflight.
+
 ### Stable Diagnostic Categories
 
 `MALBOLGE-PROFILE-001` means that the selected runtime cannot implement the
@@ -148,19 +169,18 @@ by `safe-rust-profiled`. A request beyond the selected profile's own capacity
 reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead of
 selecting another profile.
 
-Python validation consumers can now construct and preflight the immutable
+Python validation consumers can construct and preflight the immutable
 requirement object without invoking a VM. Portable effect IR v3, native keys, and
 direct COFF `MBPF` v2 metadata carry the canonical published version, stable
-features, word trits, and profile capacity alongside ID/fingerprint. The
-envelope therefore contains every canonical profile-side input required by
-`MALBOLGE-PROFILE-001` without reloading the profile document.
+features, word trits, and profile capacity alongside ID/fingerprint. Safe Rust
+can now consume an independently admitted envelope against either explicit
+runtime capability without reloading the profile document.
 
 The artifact still does not carry the program-specific requested-memory value
 needed to distinguish `MALBOLGE-PROFILE-002`. Bootstrap compiler artifacts,
-top-level runtime profile selection, and product consumers also do not yet
-universally consume the envelope against a runtime capability. This contract
-therefore remains active rather
-than claiming repository-wide profile diagnostic completion.
+top-level runtime profile/tier selection, and product execution paths do not yet
+universally invoke portable preflight. This contract therefore remains active
+rather than claiming repository-wide profile diagnostic completion.
 
 ## Verification
 
@@ -172,7 +192,11 @@ than claiming repository-wide profile diagnostic completion.
   diagnostic parity for current/classic and historical-capacity failures.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
   classic facade before loading, transition-profile acceptance, classic default
-  identity, exact historical-ceiling diagnostics, and no-fallback lookup.
+  identity, exact historical-ceiling diagnostics, portable/canonical `001`
+  parity, explicit profiled-runtime acceptance, unknown-feature rejection, and
+  no-fallback lookup.
+- `tests/tiered_execution.rs` proves effect IR can use the shared portable
+  preflight without changing diagnostic text.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

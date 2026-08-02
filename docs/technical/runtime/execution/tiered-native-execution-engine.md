@@ -28,22 +28,31 @@ This document governs the following declared TODO scope:
 ### Implemented Foundation
 
 `execution/ir/main.rs` now owns portable effect IR v3 as product code. It
-defines `EffectOp`, `MemoryLiveIn`, `TargetProfileRequirement`, and
-`RegionEffectProgram` under the existing
-responsibility-oriented topology; Cargo composition uses explicit paths rather
-than introducing a language-shaped crate boundary.
+defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`, and re-exports the
+VM-owned `TargetProfileRequirement` under the existing responsibility-oriented
+topology. Cargo composition uses explicit paths rather than introducing a
+language-shaped crate boundary.
 
 State-graph verification projects normative `ProfileStepTrace` records into that
 IR only after exact region verification. An untrusted portable artifact must
 match IR version, exact declared profile ID, canonical profile fingerprint,
 published profile version, stable semantic features, word trits, profile
 capacity, verifier-derived live-ins, semantic-step budget, bounded outcome, and
-every
-state-changing effect before a
-verified artifact exists. Guard hits apply only admitted effects. Guard misses
+every state-changing effect before a verified artifact exists. Guard hits apply
+only admitted effects. Guard misses
 run the normative `ProfileMachine` for the same verified budget and reconstruct
 the incremental lineage from real traces; typed VM rejection propagates
 unchanged.
+
+`vm/src/profile.rs` now owns the portable requirement type and
+`preflight_runtime_requirement()`. Given an independently admitted profile ID and
+envelope, it compares word width, profile capacity, and every declared semantic
+feature with an explicit `RuntimeCapability`. Current-profile IR is rejected by
+`safe-rust-classic` with byte-identical `MALBOLGE-PROFILE-001` text to canonical
+descriptor preflight and accepted by `safe-rust-profiled`; unknown feature IDs
+fail closed and are named in `missing=`. This consumes artifact metadata without
+reloading `malbolge.json`, but does not replace profile identity/fingerprint or
+verifier admission.
 
 `execution/cache/main.rs` now owns collision-safe native artifact identity.
 `RegionEffectProgram` has a versioned layout-independent canonical byte

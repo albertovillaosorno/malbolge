@@ -83,6 +83,8 @@ use execution_native::{
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisters, RunOutcome, Termination, TraceInput, current_profile,
+    preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
 };
 
 #[derive(Clone, Copy)]
@@ -356,6 +358,41 @@ fn cache_key_includes_host_and_backend_assumptions() -> Result<(), String> {
         )?;
     }
     Ok(())
+}
+
+#[test]
+fn portable_ir_uses_shared_runtime_diagnostic() -> Result<(), String> {
+    let program = program();
+    let current = current_profile();
+    let Err(canonical) = preflight_profile(
+        current,
+        current.memory_words(),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from(
+            "classic runtime unexpectedly admitted current profile",
+        ));
+    };
+    let Err(portable) = preflight_runtime_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from(
+            "classic runtime unexpectedly admitted portable requirement",
+        ));
+    };
+    if format!("{portable}") != format!("{canonical}") {
+        return Err(String::from(
+            "portable IR requirement changed shared runtime diagnostic",
+        ));
+    }
+    preflight_runtime_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("profiled runtime rejected portable IR: {error}"))
 }
 
 #[test]

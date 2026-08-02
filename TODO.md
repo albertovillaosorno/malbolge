@@ -369,9 +369,11 @@ runtime capability. Safe Rust and the Python non-VM preflight now reject
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
 profile-before-runtime precedence. Portable effect IR v3, native keys, and direct
 COFF `MBPF` v2 metadata now carry every canonical profile-side input for
-`MALBOLGE-PROFILE-001`. Program-specific requested memory for
-`MALBOLGE-PROFILE-002`, bootstrap compiler artifacts, runtime consumption,
-top-level selection, and product consumers remain open.
+`MALBOLGE-PROFILE-001`. VM-owned portable preflight consumes independently
+admitted IR against explicit classic/profiled capability with byte-identical
+canonical diagnostics and fail-closed unknown features. Program-specific memory
+for `MALBOLGE-PROFILE-002`, bootstrap artifacts, top-level tier selection, and
+universal product invocation remain open.
 
 ### TODO - Custom target profile identity
 

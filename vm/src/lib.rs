@@ -98,9 +98,11 @@ pub use memory::{Memory, MemoryError};
 pub use mode::{ExecutionMode, ExecutionModeParseError};
 pub use profile::{
     ProfileDescriptor, ProfileFeature, ProfileKind, ProfileRequirementError,
-    ProfileRequirementErrorKind, RuntimeCapability, current_profile,
-    historical_profile, preflight_profile, safe_rust_classic_capability,
-    safe_rust_profiled_capability, target_profile,
+    ProfileRequirementErrorKind, RuntimeCapability,
+    RuntimeProfileRequirementError, TargetProfileRequirement, current_profile,
+    historical_profile, preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
+    target_profile,
 };
 pub use profile_machine::{
     ProfileLoadError, ProfileMachine, ProfileMachineError,

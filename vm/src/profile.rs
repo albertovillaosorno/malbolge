@@ -145,6 +145,24 @@ impl ProfileFeature {
         }
     }
 
+    /// Parses one exact stable capability spelling.
+    #[must_use]
+    pub fn from_stable_id(value: &str) -> Option<Self> {
+        match value {
+            "byte-input" => Some(Self::ByteInput),
+            "byte-output" => Some(Self::ByteOutput),
+            "crazy-operation" => Some(Self::CrazyOperation),
+            "deterministic" => Some(Self::Deterministic),
+            "post-instruction-encryption" => {
+                Some(Self::PostInstructionEncryption)
+            },
+            "rotate" => Some(Self::Rotate),
+            "self-modification" => Some(Self::SelfModification),
+            "sequential-guest" => Some(Self::SequentialGuest),
+            _ => None,
+        }
+    }
+
     /// Returns the stable diagnostic spelling for this capability.
     #[must_use]
     pub const fn stable_id(self) -> &'static str {
@@ -258,6 +276,35 @@ impl ProfileDescriptor {
     }
 }
 
+/// Portable immutable target-profile requirement envelope.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetProfileRequirement {
+    /// Defining semantic capabilities in stable diagnostic order.
+    pub features: Vec<String>,
+    /// Exact directly addressed profile capacity.
+    pub memory_words: u32,
+    /// Published immutable language version.
+    pub version: String,
+    /// Number of ternary digits in one profile word.
+    pub word_trits: u8,
+}
+
+impl TargetProfileRequirement {
+    /// Projects one validated canonical profile descriptor into owned data.
+    #[must_use]
+    pub fn from_descriptor(profile: &ProfileDescriptor) -> Self {
+        Self {
+            features: ProfileDescriptor::required_features()
+                .iter()
+                .map(|feature| String::from(feature.stable_id()))
+                .collect(),
+            memory_words: profile.memory_words(),
+            version: String::from(profile.version()),
+            word_trits: profile.word_trits(),
+        }
+    }
+}
+
 /// One explicit execution-runtime capability envelope.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeCapability {
@@ -305,6 +352,37 @@ pub struct ProfileRequirementError {
     runtime: &'static RuntimeCapability,
 }
 
+/// Runtime-capability rejection for an admitted portable requirement envelope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeProfileRequirementError<'requirement> {
+    profile_id: &'requirement str,
+    requirement: &'requirement TargetProfileRequirement,
+    runtime: &'static RuntimeCapability,
+}
+
+impl<'requirement> RuntimeProfileRequirementError<'requirement> {
+    /// Stable machine-readable diagnostic code.
+    pub const CODE: &'static str = "MALBOLGE-PROFILE-001";
+
+    /// Returns the declared profile identity that failed preflight.
+    #[must_use]
+    pub const fn profile_id(self) -> &'requirement str {
+        self.profile_id
+    }
+
+    /// Returns the portable requirement envelope checked by this preflight.
+    #[must_use]
+    pub const fn requirement(self) -> &'requirement TargetProfileRequirement {
+        self.requirement
+    }
+
+    /// Returns the runtime capability checked by this preflight.
+    #[must_use]
+    pub const fn runtime(self) -> &'static RuntimeCapability {
+        self.runtime
+    }
+}
+
 impl ProfileRequirementError {
     /// Returns the stable machine-readable diagnostic code.
     #[must_use]
@@ -344,6 +422,19 @@ impl ProfileRequirementError {
     }
 }
 
+impl Display for RuntimeProfileRequirementError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write_runtime_requirement(f, RuntimeRequirementView {
+            features: RequirementFeatures::Portable(&self.requirement.features),
+            memory_words: self.requirement.memory_words,
+            profile_id: self.profile_id,
+            runtime: *self.runtime,
+            version: &self.requirement.version,
+            word_trits: self.requirement.word_trits,
+        })
+    }
+}
+
 impl Display for ProfileRequirementError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self.kind {
@@ -357,6 +448,22 @@ impl Display for ProfileRequirementError {
     }
 }
 
+#[derive(Clone, Copy)]
+enum RequirementFeatures<'requirement> {
+    Canonical,
+    Portable(&'requirement [String]),
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeRequirementView<'requirement> {
+    features: RequirementFeatures<'requirement>,
+    memory_words: u32,
+    profile_id: &'requirement str,
+    runtime: RuntimeCapability,
+    version: &'requirement str,
+    word_trits: u8,
+}
+
 /// Returns the canonical current target profile.
 #[must_use]
 pub fn current_profile() -> &'static ProfileDescriptor {
@@ -367,6 +474,35 @@ pub fn current_profile() -> &'static ProfileDescriptor {
 #[must_use]
 pub fn historical_profile() -> &'static ProfileDescriptor {
     generated::HISTORICAL_PROFILE
+}
+
+/// Checks one admitted portable profile envelope against a runtime capability.
+///
+/// # Errors
+///
+/// Returns the shared `MALBOLGE-PROFILE-001` diagnostic when the runtime cannot
+/// implement the declared word width, memory capacity, or semantic features.
+pub fn preflight_runtime_requirement<'requirement>(
+    profile_id: &'requirement str,
+    requirement: &'requirement TargetProfileRequirement,
+    runtime: &'static RuntimeCapability,
+) -> Result<(), RuntimeProfileRequirementError<'requirement>> {
+    let view = RuntimeRequirementView {
+        features: RequirementFeatures::Portable(&requirement.features),
+        memory_words: requirement.memory_words,
+        profile_id,
+        runtime: *runtime,
+        version: &requirement.version,
+        word_trits: requirement.word_trits,
+    };
+    if runtime_requirement_missing(view) {
+        return Err(RuntimeProfileRequirementError {
+            profile_id,
+            requirement,
+            runtime,
+        });
+    }
+    Ok(())
 }
 
 /// Checks one program/profile requirement against one runtime capability.
@@ -391,9 +527,11 @@ pub const fn preflight_profile(
     }
     let missing_features =
         ProfileFeatureSet::NORMATIVE.missing_from(runtime.features);
-    if profile.word_trits > runtime.max_word_trits
-        || profile.memory_words > runtime.max_memory_words
-        || !missing_features.is_empty()
+    if runtime_geometry_missing(
+        profile.word_trits,
+        profile.memory_words,
+        *runtime,
+    ) || !missing_features.is_empty()
     {
         return Err(ProfileRequirementError {
             kind: ProfileRequirementErrorKind::RuntimeCapabilityMissing,
@@ -426,6 +564,36 @@ pub fn target_profile(id: &str) -> Option<&'static ProfileDescriptor> {
         .find(|profile| profile.id == id)
 }
 
+const fn runtime_geometry_missing(
+    word_trits: u8,
+    memory_words: u32,
+    runtime: RuntimeCapability,
+) -> bool {
+    word_trits > runtime.max_word_trits
+        || memory_words > runtime.max_memory_words
+}
+
+fn runtime_requirement_missing(view: RuntimeRequirementView<'_>) -> bool {
+    if runtime_geometry_missing(
+        view.word_trits,
+        view.memory_words,
+        view.runtime,
+    ) {
+        return true;
+    }
+    match view.features {
+        RequirementFeatures::Canonical => !ProfileFeatureSet::NORMATIVE
+            .missing_from(view.runtime.features)
+            .is_empty(),
+        RequirementFeatures::Portable(features) => {
+            features.iter().any(|feature| {
+                ProfileFeature::from_stable_id(feature)
+                    .is_none_or(|known| !view.runtime.features.contains(known))
+            })
+        },
+    }
+}
+
 fn write_capacity_error(
     formatter: &mut Formatter<'_>,
     error: ProfileRequirementError,
@@ -449,44 +617,81 @@ fn write_capacity_error(
 
 fn write_feature_list(
     formatter: &mut Formatter<'_>,
-    features: &[ProfileFeature],
+    features: RequirementFeatures<'_>,
 ) -> FormatResult {
-    for (index, feature) in features.iter().copied().enumerate() {
-        if index != 0 {
-            formatter.write_str(",")?;
-        }
-        formatter.write_str(feature.stable_id())?;
+    match features {
+        RequirementFeatures::Canonical => {
+            for (index, feature) in
+                REQUIRED_FEATURES.iter().copied().enumerate()
+            {
+                if index != 0 {
+                    formatter.write_str(",")?;
+                }
+                formatter.write_str(feature.stable_id())?;
+            }
+        },
+        RequirementFeatures::Portable(values) => {
+            for (index, feature) in values.iter().enumerate() {
+                if index != 0 {
+                    formatter.write_str(",")?;
+                }
+                formatter.write_str(feature)?;
+            }
+        },
     }
     Ok(())
 }
 
-fn write_missing_features(
+fn write_list_item(
     formatter: &mut Formatter<'_>,
-    missing_features: ProfileFeatureSet,
+    value: &str,
+    needs_separator: &mut bool,
+) -> FormatResult {
+    if *needs_separator {
+        formatter.write_str(",")?;
+    }
+    formatter.write_str(value)?;
+    *needs_separator = true;
+    Ok(())
+}
+
+fn write_missing_feature_ids(
+    formatter: &mut Formatter<'_>,
+    view: RuntimeRequirementView<'_>,
     prefix_present: bool,
 ) -> FormatResult {
     let mut needs_separator = prefix_present;
-    for feature in REQUIRED_FEATURES {
-        if missing_features.contains(feature) {
-            if needs_separator {
-                formatter.write_str(",")?;
+    match view.features {
+        RequirementFeatures::Canonical => {
+            for feature in REQUIRED_FEATURES {
+                if !view.runtime.features.contains(feature) {
+                    write_list_item(
+                        formatter,
+                        feature.stable_id(),
+                        &mut needs_separator,
+                    )?;
+                }
             }
-            formatter.write_str(feature.stable_id())?;
-            needs_separator = true;
-        }
+        },
+        RequirementFeatures::Portable(values) => {
+            for feature in values {
+                let supported = ProfileFeature::from_stable_id(feature)
+                    .is_some_and(|known| view.runtime.features.contains(known));
+                if !supported {
+                    write_list_item(formatter, feature, &mut needs_separator)?;
+                }
+            }
+        },
     }
     Ok(())
 }
 
 fn write_missing_runtime_dimensions(
     formatter: &mut Formatter<'_>,
-    profile: ProfileDescriptor,
-    runtime: RuntimeCapability,
+    view: RuntimeRequirementView<'_>,
 ) -> FormatResult {
-    let missing_features =
-        ProfileFeatureSet::NORMATIVE.missing_from(runtime.features);
-    let word_missing = profile.word_trits > runtime.max_word_trits;
-    let memory_missing = profile.memory_words > runtime.max_memory_words;
+    let word_missing = view.word_trits > view.runtime.max_word_trits;
+    let memory_missing = view.memory_words > view.runtime.max_memory_words;
     let prefix_present = match (word_missing, memory_missing) {
         (false, false) => false,
         (false, true) => {
@@ -502,26 +707,24 @@ fn write_missing_runtime_dimensions(
             true
         },
     };
-    write_missing_features(formatter, missing_features, prefix_present)
+    write_missing_feature_ids(formatter, view, prefix_present)
 }
 
-fn write_runtime_error(
+fn write_runtime_requirement(
     formatter: &mut Formatter<'_>,
-    error: ProfileRequirementError,
+    view: RuntimeRequirementView<'_>,
 ) -> FormatResult {
-    let code = error.code();
-    let profile = error.profile;
-    let profile_id = profile.id;
-    let version = profile.version;
-    write!(formatter, "{code} profile={profile_id} version={version} ")?;
-    formatter.write_str("required_features=")?;
-    write_feature_list(formatter, ProfileDescriptor::required_features())?;
-    let required_word_trits = profile.word_trits;
-    let required_memory_words = profile.memory_words;
-    let runtime = error.runtime;
-    let runtime_id = runtime.id;
-    let max_word_trits = runtime.max_word_trits;
-    let max_memory_words = runtime.max_memory_words;
+    formatter.write_str("MALBOLGE-PROFILE-001 profile=")?;
+    formatter.write_str(view.profile_id)?;
+    formatter.write_str(" version=")?;
+    formatter.write_str(view.version)?;
+    formatter.write_str(" required_features=")?;
+    write_feature_list(formatter, view.features)?;
+    let runtime_id = view.runtime.id;
+    let max_word_trits = view.runtime.max_word_trits;
+    let max_memory_words = view.runtime.max_memory_words;
+    let required_word_trits = view.word_trits;
+    let required_memory_words = view.memory_words;
     write!(formatter, " required_word_trits={required_word_trits} ")?;
     write!(formatter, "required_memory_words={required_memory_words} ")?;
     write!(
@@ -529,5 +732,20 @@ fn write_runtime_error(
         "runtime={runtime_id} max_word_trits={max_word_trits} "
     )?;
     write!(formatter, "max_memory_words={max_memory_words} missing=")?;
-    write_missing_runtime_dimensions(formatter, *profile, *runtime)
+    write_missing_runtime_dimensions(formatter, view)
+}
+
+fn write_runtime_error(
+    formatter: &mut Formatter<'_>,
+    error: ProfileRequirementError,
+) -> FormatResult {
+    let profile = error.profile;
+    write_runtime_requirement(formatter, RuntimeRequirementView {
+        features: RequirementFeatures::Canonical,
+        memory_words: profile.memory_words,
+        profile_id: profile.id,
+        runtime: *error.runtime,
+        version: profile.version,
+        word_trits: profile.word_trits,
+    })
 }
