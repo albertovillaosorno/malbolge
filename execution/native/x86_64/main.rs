@@ -48,7 +48,7 @@
 
 //! Reviewed x86-64 instruction templates for direct native execution.
 
-use super::direct::{DirectEntryObservation, DirectNoOperationCommit};
+use super::direct::{DirectCodeWriteCommit, DirectEntryObservation};
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -182,7 +182,7 @@ fn fetched_termination_code(
 pub(super) fn no_operation_code(
     observation: DirectEntryObservation,
     live_in_value: u32,
-    commit: DirectNoOperationCommit,
+    commit: DirectCodeWriteCommit,
 ) -> Option<Vec<u8>> {
     let mut code = Vec::with_capacity(160);
     let mut guard_jumps = Vec::with_capacity(11);

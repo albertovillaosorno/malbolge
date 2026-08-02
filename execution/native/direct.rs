@@ -126,7 +126,7 @@ pub(super) struct DirectEntryObservation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct DirectNoOperationCommit {
+pub(super) struct DirectCodeWriteCommit {
     pub(super) encrypted_value: u32,
     pub(super) next_code_pointer: u32,
     pub(super) next_data_pointer: u32,
@@ -1657,7 +1657,7 @@ fn no_operation_coff(
         HostIsa::AArch64 => aarch64::no_operation_code(
             observation,
             selected.live_in.value,
-            DirectNoOperationCommit {
+            DirectCodeWriteCommit {
                 encrypted_value: selected.encrypted_value,
                 next_code_pointer: selected.next_code_pointer,
                 next_data_pointer: selected.next_data_pointer,
@@ -1666,7 +1666,7 @@ fn no_operation_coff(
         HostIsa::X86_64 => x86_64::no_operation_code(
             observation,
             selected.live_in.value,
-            DirectNoOperationCommit {
+            DirectCodeWriteCommit {
                 encrypted_value: selected.encrypted_value,
                 next_code_pointer: selected.next_code_pointer,
                 next_data_pointer: selected.next_data_pointer,
