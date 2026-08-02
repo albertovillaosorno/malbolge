@@ -38,7 +38,8 @@
 use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectRotateCommit, DirectRotateGuard,
+    DirectJumpDataGuard, DirectOutputCommit, DirectRotateCommit,
+    DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -244,6 +245,50 @@ pub(super) fn jump_code_code(
         0x2a1f_03e0,
         0xd65f_03c0,
     ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+/// Encodes one exact output transition with an atomic byte append.
+#[must_use]
+pub(super) fn output_code(
+    observation: DirectEntryObservation,
+    guard: DirectFetchedCellGuard,
+    commit: DirectOutputCommit,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(96);
+    let mut guard_branches = Vec::with_capacity(14);
+    push_fetched_cell_guards(
+        &mut words,
+        &mut guard_branches,
+        observation,
+        guard,
+    )?;
+    words.push(0xf940_140b);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_000b);
+    words.push(0xf940_180c);
+    push_u64_x9(&mut words, commit.output_index)?;
+    words.push(0xeb09_019f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0009);
+    words.extend_from_slice(&[
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
+        0xf940_1c0a,
+        0x8b0a_016b,
+        movz_w9(u32::from(commit.output_byte)),
+        0x3900_0169,
+    ]);
+    push_u64_x9(&mut words, commit.next_output_len)?;
+    words.extend_from_slice(&[0xf900_1c09, 0x2a1f_03e0, 0xd65f_03c0]);
     let guard_miss = words.len();
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;

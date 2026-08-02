@@ -272,6 +272,17 @@ successor helpers. Both ISAs guard the complete entry, exact 9-word footprint,
 structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
 remains rejected.
 
+`direct-output` revision 1 adds the first reviewed direct I/O transition.
+Admission requires one live-in at entry `C`, VM-decoded `/`, one VM-owned low
+byte, output length incremented by one, exact code encryption, modular `C/D`
+successors, no input, and one exhausted step. Both ISAs guard the complete
+entry, exact 9-word footprint, `memory[5]=112`, non-null output pointer, and
+capacity greater than index 3 before committing byte `0xa8` and
+`output_len:3->4`. Independent objects are 642/724 bytes. Development x86-64
+execution proves exact hit and atomic code/capacity/output-pointer/footprint/
+null
+memory misses; independent AArch64 decoding confirms eleven common-miss guards.
+
 All memory-backed direct templates compare ABI `memory_words` with the exact
 `NativeArtifactKey` IR footprint before any dereference or commit. The metadata
 and executable guards therefore bind the same output-reachable memory domain.
@@ -295,7 +306,8 @@ use
 exact
 non-graphical termination uses `direct-non-graphical`, exact non-aliasing
 jump-code uses `direct-jump-code`, jump-data uses `direct-jump-data`, rotate
-uses `direct-rotate`, crazy uses `direct-crazy`, and exact no-op execution uses
+uses `direct-rotate`, crazy uses `direct-crazy`, output uses `direct-output`,
+and exact no-op execution uses
 `direct-no-operation`, and otherwise the selector emits/verifies direct deopt.
 Only admitted program shape controls this fallback; profile, emission, or
 admission errors are propagated rather than silently retried. Non-Windows host
@@ -305,7 +317,7 @@ All state-applying emitter/verifier pairs independently repeat the
 profile-capacity shape check. A caller bypassing the selector cannot
 semantically
 promote an initial-halt, register-halt, halt-fetch, non-graphical, no-operation,
-jump-code, jump-data, rotate, or crazy object whose IR footprint
+jump-code, jump-data, rotate, crazy, or output object whose IR footprint
 exceeds its embedded profile envelope.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
@@ -329,7 +341,8 @@ privately
 wraps the generic cache and accepts values only through successful direct
 emission
 and semantic admission. Results distinguish `Inserted` from full-key `Hit`;
-all ten current templates match uncached selection byte-for-byte and reuse the
+all eleven current templates match uncached selection byte-for-byte and reuse
+the
 same immutable `Arc` allocation rather than cloning verified object bytes. A
 populated
 cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and
@@ -351,8 +364,8 @@ outside.
 
 ### Remaining Implementation
 
-Semantic admission beyond the reviewed terminal/no-op/jump/rotate/crazy
-family, I/O x86-64/AArch64 selection, executable-memory policy/invocation,
+Semantic admission beyond the reviewed terminal/no-op/jump/rotate/crazy/output
+family, Input x86-64/AArch64 selection, executable-memory policy/invocation,
 durable native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The

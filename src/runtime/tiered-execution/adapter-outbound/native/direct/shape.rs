@@ -498,6 +498,112 @@ pub(super) fn validate_crazy_target(
     Ok(())
 }
 
+pub(super) fn validate_output_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectOutputProgram, DirectOutputError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 1
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectOutputError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectOutputError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or(DirectOutputError::ProgramShape)?;
+    derive_output_program(program, effect, live_in)
+        .ok_or(DirectOutputError::ProgramShape)
+}
+
+pub(super) fn derive_output_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+) -> Option<DirectOutputProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let memory_words = program.profile_requirement.memory_words;
+    if before.termination.is_some()
+        || live_in.address != code_pointer
+        || decode_profile_instruction(live_in.value, code_pointer) != Some(b'/')
+    {
+        return None;
+    }
+    let next_output_len = before.output_len.checked_add(1)?;
+    let encrypted_value = encrypt_profile_cell(live_in.value)?;
+    let next_code_pointer =
+        profile_pointer_successor(code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(before.registers.data_pointer, memory_words)?;
+    let output_byte = profile_low_byte(before.registers.accumulator);
+    let expected_after = ProfileMachineObservation {
+        output_len: next_output_len,
+        registers: ProfileRegisters {
+            accumulator: before.registers.accumulator,
+            code_pointer: next_code_pointer,
+            data_pointer: next_data_pointer,
+        },
+        ..before
+    };
+    let expected_encryption =
+        (live_in.value != encrypted_value).then_some(ProfileMemoryWrite {
+            address: code_pointer,
+            after: encrypted_value,
+            before: live_in.value,
+        });
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output != Some(output_byte)
+        || effect.memory_delta
+            != (ProfileMemoryDelta {
+                data: None,
+                encryption: expected_encryption,
+            })
+    {
+        return None;
+    }
+    Some(DirectOutputProgram {
+        commit: DirectOutputCommit {
+            encrypted_address: code_pointer,
+            encrypted_value,
+            next_code_pointer,
+            next_data_pointer,
+            next_output_len: u64::try_from(next_output_len).ok()?,
+            output_byte,
+            output_index: u64::try_from(before.output_len).ok()?,
+        },
+        live_in,
+        observation: before,
+    })
+}
+
+pub(super) fn validate_output_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectOutputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectOutputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_OUTPUT_BACKEND_ID
+        || target.backend_revision() != DIRECT_OUTPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectOutputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectOutputError::TargetFeatures);
+    }
+    Ok(())
+}
+
 pub(super) fn validate_rotate_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectRotateProgram, DirectRotateError> {

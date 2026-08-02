@@ -53,14 +53,16 @@ pub use emit::{
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
-    emit_direct_non_graphical_coff, emit_direct_rotate_coff,
+    emit_direct_non_graphical_coff, emit_direct_output_coff,
+    emit_direct_rotate_coff,
 };
 use emit::{
     emit_direct_crazy_with_key, emit_direct_deopt_with_key,
     emit_direct_halt_fetch_with_key, emit_direct_halt_registers_with_key,
     emit_direct_initial_halt_with_key, emit_direct_jump_code_with_key,
     emit_direct_jump_data_with_key, emit_direct_no_operation_with_key,
-    emit_direct_non_graphical_with_key, emit_direct_rotate_with_key,
+    emit_direct_non_graphical_with_key, emit_direct_output_with_key,
+    emit_direct_rotate_with_key,
 };
 pub use error::*;
 use malbolge::{
@@ -69,7 +71,7 @@ use malbolge::{
     RuntimeCapability, Termination, decode_profile_instruction,
     encrypt_profile_cell, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
-    profile_crazy, profile_pointer_successor, profile_rotate,
+    profile_crazy, profile_low_byte, profile_pointer_successor, profile_rotate,
 };
 use plan::target_triple;
 pub use plan::{
@@ -82,7 +84,7 @@ pub use verify::{
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
-    verify_direct_rotate,
+    verify_direct_output, verify_direct_rotate,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -160,6 +162,11 @@ pub const DIRECT_ROTATE_BACKEND_ID: &str = "direct-rotate";
 /// Direct rotate code-generation revision.
 pub const DIRECT_ROTATE_BACKEND_REVISION: u32 = 1;
 
+/// Backend identity for exact one-step output execution.
+pub const DIRECT_OUTPUT_BACKEND_ID: &str = "direct-output";
+/// Direct output code-generation revision.
+pub const DIRECT_OUTPUT_BACKEND_REVISION: u32 = 1;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectEntryObservation {
     pub(super) accumulator: u32,
@@ -206,6 +213,17 @@ pub(super) struct DirectRotateGuard {
     pub(super) code_live_in: u32,
     pub(super) data_live_in: u32,
     pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectOutputCommit {
+    pub(super) encrypted_address: u32,
+    pub(super) encrypted_value: u32,
+    pub(super) next_code_pointer: u32,
+    pub(super) next_data_pointer: u32,
+    pub(super) next_output_len: u64,
+    pub(super) output_byte: u8,
+    pub(super) output_index: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -263,6 +281,13 @@ struct DirectCrazyProgram {
     code_live_in: MemoryLiveIn,
     commit: DirectCrazyCommit,
     data_live_in: MemoryLiveIn,
+    observation: ProfileMachineObservation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectOutputProgram {
+    commit: DirectOutputCommit,
+    live_in: MemoryLiveIn,
     observation: ProfileMachineObservation,
 }
 

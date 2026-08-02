@@ -434,6 +434,59 @@ impl From<NativeIdentityError> for DirectCrazyError {
     }
 }
 
+/// Failure while emitting or verifying exact one-step output.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectOutputError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical output object.
+    ObjectBytes,
+    /// Portable IR is outside the exact output subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Output v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct output currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectOutputError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "direct output COFF structure was rejected",
+            Self::Identity(_error) => {
+                "direct output identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct output object differs from canonical bytes"
+            },
+            Self::ProgramShape => "portable IR is outside direct output subset",
+            Self::TargetBackend => {
+                "target does not select direct output backend"
+            },
+            Self::TargetFeatures => {
+                "direct output backend requires no CPU features"
+            },
+            Self::TargetFormat => "direct output backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectOutputError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectOutputError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact non-aliasing rotate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectRotateError {
@@ -625,6 +678,8 @@ pub enum DirectSelectionError<'requirement> {
     NoOperation(Box<DirectNoOperationError>),
     /// Non-graphical artifact emission or admission failed.
     NonGraphical(Box<DirectNonGraphicalError>),
+    /// Output artifact emission or admission failed.
+    Output(Box<DirectOutputError>),
     /// Selected runtime cannot implement the admitted profile requirement.
     Profile(Box<PortableProfileRequirementError<'requirement>>),
     /// Rotate artifact emission or admission failed.
@@ -645,6 +700,7 @@ impl Display for DirectSelectionError<'_> {
             Self::JumpData(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
+            Self::Output(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
             Self::Rotate(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(

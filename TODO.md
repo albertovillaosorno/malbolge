@@ -325,7 +325,13 @@ transition. VM-owned decode, `profile_crazy()`, encryption, and successor
 helpers derive `memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`,
 `C:5->6`, and `D:7->8`. Independent 577/731-byte objects bind the exact 9-word
 footprint, two live-in guards, two writes, and three register commits. Aliasing
-and out-of-domain data or accumulator operands remain rejected. Every
+and out-of-domain data or accumulator operands remain rejected.
+`direct-output` revision 1 adds the first direct I/O transition. VM-owned
+decode,
+`profile_low_byte()`, encryption, and successors derive `memory[5]:112->68`,
+byte `0xa8`, `C:5->6`, `D:7->8`, and `output_len:3->4`. Independent 642/724-byte
+objects bind the exact 9-word footprint plus output pointer and capacity guards;
+x86-64 execution proves atomic code/capacity/pointer/footprint misses. Every
 memory-backed direct template now guards ABI `memory_words` against the exact
 key-bound IR footprint before any read or write. Direct-template selection
 requires an explicit runtime capability, derives exact `u64` region memory
@@ -334,8 +340,8 @@ from C/D pointers, live-ins, and writes, and applies
 After admission, zero-register halt chooses the smallest specialization, other
 no-live-in halts choose observation-bound code, graphical halt fetch and
 non-graphical termination choose their terminal live-in templates, exact
-non-aliasing jump-code, jump-data, rotate, crazy, and no-op IR choose
-reviewed memory-writing templates, and remaining IR chooses verified deopt;
+non-aliasing jump-code, jump-data, rotate, crazy, output, and no-op IR choose
+reviewed state-applying templates, and remaining IR chooses verified deopt;
 unsupported direct host formats remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps
 only
@@ -346,7 +352,7 @@ but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
 plus halt-fetch/non-graphical/no-operation revision-2 and
-jump-code/jump-data/rotate/crazy revision-1 objects bind that exact
+jump-code/jump-data/rotate/crazy/output revision-1 objects bind that exact
 footprint in `MBPF` v3, and same-profile footprint mismatch fails structural
 admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
@@ -361,7 +367,7 @@ key
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for
-all ten templates, and shares the same immutable `Arc` allocation on hits.
+all eleven templates, and shares the same immutable `Arc` allocation on hits.
 Exact invalidation removes one full-equality key from future reuse without
 revoking held
 plans. Exact-program invalidation constructs canonical region identity before
@@ -372,7 +378,7 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, remaining I/O selection,
+eviction, synchronization policy, remaining Input selection,
 executable invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,

@@ -266,6 +266,28 @@ pub(super) fn crazy_coff(
     build_minimal_coff(key, &text).ok_or(DirectCrazyError::ObjectBytes)
 }
 
+pub(super) fn output_coff(
+    key: &NativeArtifactKey,
+    selected: DirectOutputProgram,
+) -> Result<Vec<u8>, DirectOutputError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectOutputError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::output_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::output_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectOutputError::ObjectBytes)?;
+    build_minimal_coff(key, &text).ok_or(DirectOutputError::ObjectBytes)
+}
+
 pub(super) fn rotate_coff(
     key: &NativeArtifactKey,
     selected: DirectRotateProgram,

@@ -158,6 +158,21 @@ pub fn emit_direct_crazy_coff(
     emit_direct_crazy_with_key(key, selected)
 }
 
+/// Emits one exact output fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectOutputError`] when IR/target is outside this subset.
+pub fn emit_direct_output_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectOutputError> {
+    let selected = validate_output_program(program)?;
+    validate_output_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_output_with_key(key, selected)
+}
+
 /// Emits one exact non-aliasing rotate fast path.
 ///
 /// # Errors
@@ -269,6 +284,17 @@ pub(super) fn emit_direct_crazy_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectCrazyError> {
     let triple = target_triple(key.target().host_isa());
     let object = crazy_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+pub(super) fn emit_direct_output_with_key(
+    key: NativeArtifactKey,
+    selected: DirectOutputProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectOutputError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = output_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))

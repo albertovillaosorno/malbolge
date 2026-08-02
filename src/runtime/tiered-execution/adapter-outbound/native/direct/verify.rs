@@ -226,6 +226,30 @@ pub fn verify_direct_crazy(
     Ok(VerifiedCrazyNativeObjectArtifact { artifact: admitted })
 }
 
+/// Promotes only the canonical output object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectOutputError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_output(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedOutputNativeObjectArtifact, DirectOutputError> {
+    let selected = validate_output_program(program)?;
+    validate_output_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectOutputError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = output_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectOutputError::ObjectBytes);
+    }
+    Ok(VerifiedOutputNativeObjectArtifact { artifact: admitted })
+}
+
 /// Promotes only the canonical rotate object for its exact IR.
 ///
 /// # Errors

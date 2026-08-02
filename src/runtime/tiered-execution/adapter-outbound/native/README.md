@@ -93,8 +93,8 @@ The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
-`direct-jump-code`, `direct-jump-data`, `direct-rotate`, and `direct-crazy`
-start at revision 1. All ten use `MBPF` metadata version 3.
+`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`, and
+`direct-output` start at revision 1. All eleven use `MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -129,7 +129,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-jump-code`, an exact non-aliasing `j` transition selects
 `direct-jump-data`, an exact non-aliasing `*` transition selects
 `direct-rotate`, an exact non-aliasing `p` transition selects `direct-crazy`, an
-exact no-op fetch/encryption/advance selects
+exact `/` transition selects `direct-output`, and an exact no-op
+fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
 fallback, and an unsupported host format still fails explicitly when the profile
@@ -183,8 +184,8 @@ pointers
 therefore cannot escape the supplied backing image. Direct calls that bypass the
 selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
 `direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`,
-`direct-jump-code`, `direct-jump-data`, `direct-rotate`, or `direct-crazy` when
-the declared
+`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`, or
+`direct-output` when the declared
 profile envelope is too small; they fail as out-of-contract program shape before
 object promotion.
 
@@ -281,6 +282,15 @@ footprint, `memory[5]=57`, and `memory[7]=10` before committing
 AArch64. Byte-exact fixtures and semantic tampering rejection bind the contract.
 Aliasing `C == D` remains rejected.
 
+`direct-output` revision 1 is the first reviewed direct I/O transition. One
+code-cell live-in must VM-decode as `/`; VM-owned `profile_low_byte()` derives
+the appended byte. Both ISAs guard the complete entry, exact 9-word footprint,
+`memory[5]=112`, non-null output storage, and capacity greater than output index
+3 before committing `memory[5]:112->68`, `C:5->6`, `D:7->8`, byte `0xa8`, and
+`output_len:3->4`. Independent complete objects are 642 bytes on x86-64 and 724
+bytes on AArch64. x86-64 execution proves exact hit plus atomic code, capacity,
+output-pointer, footprint, and memory-pointer misses.
+
 `direct-no-operation` revision 2 is the first admitted non-terminal direct
 effect
 and the first direct guest-memory write. It accepts exactly one code-cell
@@ -294,7 +304,7 @@ cell guards and commit only the encrypted code word plus the two advanced
 pointers. Independent complete objects are 557 bytes on x86-64 and 658 bytes on
 AArch64. Development execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8`,
 and atomic live-in/capacity/null-memory misses; independent AArch64 decoding
-confirms the same writes and one common miss target. I/O effects, linking,
+confirms the same writes and one common miss target. Input effects, linking,
 executable-memory ownership, and invocation policy remain outside this subset.
 
 `direct-non-graphical` revision 2 is the first direct template whose eligibility

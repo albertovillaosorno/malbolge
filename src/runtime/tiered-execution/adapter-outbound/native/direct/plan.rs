@@ -45,6 +45,7 @@ enum SelectedDirectTarget {
     JumpData(NativeTargetIdentity),
     NoOperation(NativeTargetIdentity),
     NonGraphical(NativeTargetIdentity),
+    Output(NativeTargetIdentity),
     Rotate(NativeTargetIdentity),
 }
 
@@ -59,6 +60,7 @@ enum PreparedDirectTarget {
     JumpData(NativeArtifactKey),
     NoOperation(NativeArtifactKey),
     NonGraphical(NativeArtifactKey),
+    Output(NativeArtifactKey),
     Rotate(NativeArtifactKey),
 }
 
@@ -173,6 +175,7 @@ impl PreparedDirectTarget {
                 emit_verified_non_graphical(key, program)
             },
             Self::NoOperation(key) => emit_verified_no_operation(key, program),
+            Self::Output(key) => emit_verified_output(key, program),
             Self::Rotate(key) => emit_verified_rotate(key, program),
         }
     }
@@ -188,6 +191,7 @@ impl PreparedDirectTarget {
             | Self::JumpData(key)
             | Self::NonGraphical(key)
             | Self::NoOperation(key)
+            | Self::Output(key)
             | Self::Rotate(key) => key,
         }
     }
@@ -252,6 +256,7 @@ impl SelectedDirectTarget {
             Self::NoOperation(target) => {
                 prepare_no_operation_target(program, target)
             },
+            Self::Output(target) => prepare_output_target(program, target),
             Self::Rotate(target) => prepare_rotate_target(program, target),
         }
     }
@@ -307,6 +312,19 @@ fn prepare_no_operation_target(
             DirectSelectionError::NoOperation(Box::new(
                 DirectNoOperationError::Identity(error),
             ))
+        })
+}
+
+fn prepare_output_target(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+    NativeArtifactKey::new(program, target)
+        .map(PreparedDirectTarget::Output)
+        .map_err(|error| {
+            DirectSelectionError::Output(Box::new(DirectOutputError::Identity(
+                error,
+            )))
         })
 }
 
@@ -396,6 +414,21 @@ fn emit_verified_non_graphical(
     let verified = verify_direct_non_graphical(&artifact, program)
         .map_err(|error| DirectSelectionError::NonGraphical(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::NonGraphical(verified))
+}
+
+fn emit_verified_output(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_output_program(program)
+        .map_err(|error| DirectSelectionError::Output(Box::new(error)))?;
+    validate_output_target(key.target())
+        .map_err(|error| DirectSelectionError::Output(Box::new(error)))?;
+    let artifact = emit_direct_output_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::Output(Box::new(error)))?;
+    let verified = verify_direct_output(&artifact, program)
+        .map_err(|error| DirectSelectionError::Output(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::Output(verified))
 }
 
 fn emit_verified_rotate(
@@ -584,13 +617,11 @@ fn select_direct_target(
     if validate_rotate_program(program).is_ok() {
         return selected_rotate_target(host_os, host_isa);
     }
+    if validate_output_program(program).is_ok() {
+        return selected_output_target(host_os, host_isa);
+    }
     if validate_no_operation_program(program).is_ok() {
-        return SelectedDirectTarget::NoOperation(direct_target(
-            DIRECT_NO_OPERATION_BACKEND_ID,
-            DIRECT_NO_OPERATION_BACKEND_REVISION,
-            host_os,
-            host_isa,
-        ));
+        return selected_no_operation_target(host_os, host_isa);
     }
     SelectedDirectTarget::Deopt(direct_target(
         DIRECT_DEOPT_BACKEND_ID,
@@ -607,6 +638,30 @@ fn selected_crazy_target(
     SelectedDirectTarget::Crazy(direct_target(
         DIRECT_CRAZY_BACKEND_ID,
         DIRECT_CRAZY_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
+fn selected_no_operation_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::NoOperation(direct_target(
+        DIRECT_NO_OPERATION_BACKEND_ID,
+        DIRECT_NO_OPERATION_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
+fn selected_output_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::Output(direct_target(
+        DIRECT_OUTPUT_BACKEND_ID,
+        DIRECT_OUTPUT_BACKEND_REVISION,
         host_os,
         host_isa,
     ))

@@ -88,9 +88,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   independent
   578/732-byte objects. `direct-crazy` revision 1 uses the same reviewed
   two-read/two-write machine shape with independent VM-owned `p`/Crazy
-  admission, a 9-word footprint, and independent 577/731-byte objects. All
-  memory-backed templates guard the exact key-bound IR footprint.
-  Remaining I/O selection, executable-memory
+  admission, a 9-word footprint, and independent 577/731-byte objects.
+  `direct-output` revision 1 adds output-pointer and strict capacity guards, an
+  exact byte append, and independent 642/724-byte objects. All memory-backed
+  templates guard the exact key-bound IR footprint.
+  Remaining Input selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

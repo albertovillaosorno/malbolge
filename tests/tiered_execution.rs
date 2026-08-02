@@ -67,26 +67,28 @@ use execution_native::{
     DIRECT_JUMP_DATA_BACKEND_ID, DIRECT_JUMP_DATA_BACKEND_REVISION,
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
+    DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectJumpCodeError, DirectJumpDataError,
     DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectRotateError, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, PreflightedExecutionTier,
+    DirectOutputError, DirectRotateError, DirectSelectionError,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
     UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
-    emit_direct_non_graphical_coff, emit_direct_rotate_coff, lower_clang_c23,
+    emit_direct_non_graphical_coff, emit_direct_output_coff,
+    emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_halt_fetch, verify_direct_halt_registers,
     verify_direct_initial_halt, verify_direct_jump_code,
     verify_direct_jump_data, verify_direct_no_operation,
-    verify_direct_non_graphical, verify_direct_rotate,
+    verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -1291,6 +1293,64 @@ fn direct_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_output_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 3,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_bea8,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        output_len: 4,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_bea8,
+            code_pointer: 6,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta {
+                data: None,
+                encryption: Some(ProfileMemoryWrite {
+                    address: 5,
+                    after: 68,
+                    before: 112,
+                }),
+            },
+            output: Some(0xa8),
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 112 }],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-output-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_output_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_OUTPUT_BACKEND_ID),
+        backend_revision: DIRECT_OUTPUT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_rotate_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0x0000_0001_2345_6789,
@@ -1536,6 +1596,7 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
         (direct_jump_data_program(), DirectNativeKind::JumpData),
         (direct_crazy_program(), DirectNativeKind::Crazy),
         (direct_rotate_program(), DirectNativeKind::Rotate),
+        (direct_output_program(), DirectNativeKind::Output),
         (direct_no_operation_program(), DirectNativeKind::NoOperation),
         (native_program(), DirectNativeKind::Deopt),
     ];
@@ -1977,7 +2038,7 @@ fn selected_direct_triple(
     }
 }
 
-fn direct_selection_cases() -> [DirectSelectionCase; 10] {
+fn direct_selection_cases() -> [DirectSelectionCase; 11] {
     [
         (
             direct_initial_halt_program(),
@@ -2018,6 +2079,11 @@ fn direct_selection_cases() -> [DirectSelectionCase; 10] {
             direct_rotate_program(),
             DirectNativeKind::Rotate,
             DIRECT_ROTATE_BACKEND_ID,
+        ),
+        (
+            direct_output_program(),
+            DirectNativeKind::Output,
+            DIRECT_OUTPUT_BACKEND_ID,
         ),
         (
             direct_no_operation_program(),
@@ -2950,6 +3016,139 @@ fn direct_crazy_rejects_ir_and_opcode_tampering() -> Result<(), String> {
 }
 
 #[test]
+fn direct_output_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-output-x86_64-coff.hex"),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!("execution/fixtures/native-output-aarch64-coff.hex"),
+        ),
+    ];
+    let program = direct_output_program();
+    for (isa, fixture) in cases {
+        let artifact =
+            emit_direct_output_coff(&program, direct_output_target(isa))
+                .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!("direct output fixture mismatch for {isa:?}"));
+        }
+        let verified = verify_direct_output(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified output identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_output_shape_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_decode = program.clone();
+    wrong_decode
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("output fixture lost live-in"))?
+        .value = 77;
+    if emit_direct_output_coff(
+        &wrong_decode,
+        direct_output_target(HostIsa::X86_64),
+    ) != Err(DirectOutputError::ProgramShape)
+    {
+        return Err(String::from("no-op decode was admitted as output"));
+    }
+    let mut wrong_output = program.clone();
+    wrong_output
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("output fixture lost effect"))?
+        .output = Some(0xa9);
+    if emit_direct_output_coff(
+        &wrong_output,
+        direct_output_target(HostIsa::X86_64),
+    ) != Err(DirectOutputError::ProgramShape)
+    {
+        return Err(String::from("wrong output byte was admitted"));
+    }
+    let mut wrong_length = program.clone();
+    wrong_length
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("output fixture lost effect"))?
+        .after
+        .output_len = 5;
+    if emit_direct_output_coff(
+        &wrong_length,
+        direct_output_target(HostIsa::X86_64),
+    ) != Err(DirectOutputError::ProgramShape)
+    {
+        return Err(String::from("wrong output length was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_output_revision_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_OUTPUT_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_output_coff(program, obsolete)
+        == Err(DirectOutputError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete output revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_output_rejects_ir_and_opcode_tampering() -> Result<(), String> {
+    let program = direct_output_program();
+    let artifact = emit_direct_output_coff(
+        &program,
+        direct_output_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0x43u8, 0xc6, 0x04, 0x13, 0xa8];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("output byte commit missing"))?;
+    let byte = mutated_object
+        .get_mut(offset.saturating_add(4))
+        .ok_or_else(|| String::from("output byte immediate missing"))?;
+    *byte = 0xa9;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered output structure: {error}"))?;
+    if verify_direct_output(&tampered, &program)
+        != Err(DirectOutputError::ObjectBytes)
+    {
+        return Err(String::from("tampered output object was admitted"));
+    }
+    assert_output_shape_rejections(&program)?;
+    assert_output_revision_rejected(&program)
+}
+
+#[test]
 fn direct_rotate_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [
@@ -3556,6 +3755,20 @@ fn assert_crazy_capacity_rejected() -> Result<(), String> {
     }
 }
 
+fn assert_output_capacity_rejected() -> Result<(), String> {
+    let mut output = direct_output_program();
+    output.profile_requirement.memory_words = 8;
+    if emit_direct_output_coff(&output, direct_output_target(HostIsa::X86_64))
+        == Err(DirectOutputError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "output profile-capacity mismatch was admitted",
+        ))
+    }
+}
+
 fn assert_rotate_capacity_rejected() -> Result<(), String> {
     let mut rotate = direct_rotate_program();
     rotate.profile_requirement.memory_words = 7;
@@ -3591,6 +3804,7 @@ fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
 {
     assert_jump_code_capacity_rejected()?;
     assert_crazy_capacity_rejected()?;
+    assert_output_capacity_rejected()?;
     assert_rotate_capacity_rejected()?;
     assert_jump_data_capacity_rejected()?;
     let mut register_halt = direct_halt_registers_program();

@@ -55,6 +55,8 @@ pub enum DirectNativeKind {
     NoOperation,
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical,
+    /// Exact one-step output transition with one byte append.
+    Output,
     /// Exact non-aliasing one-step rotate transition.
     Rotate,
 }
@@ -264,6 +266,33 @@ impl VerifiedCrazyNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement exact one-step output.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedOutputNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedOutputNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement exact non-aliasing rotate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRotateNativeObjectArtifact {
@@ -366,6 +395,8 @@ pub enum VerifiedDirectNativeArtifact {
     NoOperation(VerifiedNoOperationNativeObjectArtifact),
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical(VerifiedNonGraphicalNativeObjectArtifact),
+    /// Exact one-step output transition with one byte append.
+    Output(VerifiedOutputNativeObjectArtifact),
     /// Exact non-aliasing one-step rotate transition.
     Rotate(VerifiedRotateNativeObjectArtifact),
 }
@@ -421,6 +452,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
             Self::NoOperation(artifact) => artifact.key(),
+            Self::Output(artifact) => artifact.key(),
             Self::Rotate(artifact) => artifact.key(),
         }
     }
@@ -438,6 +470,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(_artifact) => DirectNativeKind::JumpData,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
             Self::NoOperation(_artifact) => DirectNativeKind::NoOperation,
+            Self::Output(_artifact) => DirectNativeKind::Output,
             Self::Rotate(_artifact) => DirectNativeKind::Rotate,
         }
     }
@@ -455,6 +488,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
             Self::NoOperation(artifact) => artifact.object(),
+            Self::Output(artifact) => artifact.object(),
             Self::Rotate(artifact) => artifact.object(),
         }
     }
@@ -472,6 +506,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),
             Self::NoOperation(artifact) => artifact.target_triple(),
+            Self::Output(artifact) => artifact.target_triple(),
             Self::Rotate(artifact) => artifact.target_triple(),
         }
     }

@@ -166,17 +166,26 @@ successor helpers. Both ISAs guard the complete entry, exact 9-word footprint,
 structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
 remains rejected.
 
+`direct-output` revision 1 adds the first reviewed output append. One live-in
+binds the entry code cell and must VM-decode as `/`; `profile_low_byte()`
+derives
+byte `0xa8`. Both ISAs guard the exact 9-word footprint, `memory[5]=112`, output
+pointer, strict capacity, and prior live termination before committing encrypted
+code 68, `C/D=6/8`, byte index 3, and `output_len=4`. Independent complete
+objects are 642/724 bytes. x86-64 execution proves exact hit and five atomic
+miss classes; independent AArch64 decoding confirms one common miss target.
+
 All memory-backed templates consume the exact key-bound IR footprint as their
 ABI
-capacity guard before any dereference. I/O effects remain outside this reviewed
-subset.
+capacity guard before any dereference. Input effects remain outside this
+reviewed subset.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
 remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
-jump-data, rotate, and crazy emitters/verifiers are implemented for both
-ISAs; I/O selection,
+jump-data, rotate, crazy, and output emitters/verifiers are implemented for
+both ISAs; Input selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 
