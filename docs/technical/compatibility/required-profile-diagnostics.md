@@ -183,8 +183,9 @@ selecting another profile.
 
 Python validation consumers can construct and preflight the immutable
 requirement object without invoking a VM. Portable effect IR v3, native keys, and
-direct COFF `MBPF` v2 metadata carry the canonical published version, stable
-features, word trits, and profile capacity alongside ID/fingerprint. Safe Rust
+direct COFF `MBPF` v3 metadata carry the canonical published version, stable
+features, word trits, profile capacity, and exact derived region memory alongside
+ID/fingerprint. Safe Rust
 can now consume an independently admitted envelope against either explicit
 runtime capability without reloading the profile document.
 
@@ -193,6 +194,8 @@ distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.
 Although raw IR remains serializable for deterministic rejection,
 `RegionEffectIdentity` and `NativeArtifactKey` reject a footprint beyond the
 embedded profile capacity before bootstrap or direct artifact construction.
+Direct `MBPF` v3 objects additionally retain that exact footprint, so structural
+admission detects same-profile object/key disagreement before runtime preflight.
 Other artifact families do not yet universally expose an equivalent program
 requirement, and bootstrap compiler artifacts, top-level AOT/JIT/runtime
 orchestration, and product execution paths do not yet universally invoke combined
@@ -213,8 +216,9 @@ rather than claiming repository-wide profile diagnostic completion.
   `002` parity, explicit profiled-runtime acceptance, unknown-feature rejection,
   and no-fallback lookup.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
-  `u32::MAX`, native-identity rejection of inconsistent capacity, emitter
-  propagation, and direct-template precedence `002` then `001` then host/backend.
+  `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
+  footprint mismatch rejection, emitter propagation, and direct-template
+  precedence `002` then `001` then host/backend.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

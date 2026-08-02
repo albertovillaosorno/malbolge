@@ -69,7 +69,7 @@ const IMAGE_SYM_CLASS_EXTERNAL: u8 = 2;
 const IMAGE_SYM_DTYPE_FUNCTION: u16 = 0x0020;
 const PROFILE_METADATA_MAGIC: &[u8; 4] = b"MBPF";
 const PROFILE_METADATA_SECTION: &str = ".mbprof";
-const PROFILE_METADATA_VERSION: u16 = 2;
+const PROFILE_METADATA_VERSION: u16 = 3;
 const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 
 /// Structural rejection while inspecting one untrusted Windows COFF object.
@@ -382,6 +382,7 @@ pub(super) fn canonical_profile_metadata(
     }
     bytes.push(requirement.word_trits);
     bytes.extend_from_slice(&requirement.memory_words.to_le_bytes());
+    bytes.extend_from_slice(&ir.required_memory_words().to_le_bytes());
     Some(bytes)
 }
 

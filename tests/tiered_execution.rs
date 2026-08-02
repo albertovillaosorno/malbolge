@@ -421,6 +421,7 @@ fn cache_key_includes_declared_profile_identity() -> Result<(), String> {
     if base.ir().profile_id() != program.profile_id
         || base.ir().profile_fingerprint() != program.profile_fingerprint
         || base.ir().profile_requirement() != &program.profile_requirement
+        || base.ir().required_memory_words() != program.required_memory_words()
     {
         return Err(String::from("native key lost exact profile identity"));
     }
@@ -1245,6 +1246,40 @@ fn assert_direct_profile_metadata_mismatch(
     Ok(())
 }
 
+fn assert_direct_profile_footprint_mismatch(
+    program: &RegionEffectProgram,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let mut footprint_program = program.clone();
+    let footprint_live_in = footprint_program
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("profile fixture has no memory live-in"))?;
+    footprint_live_in.address = footprint_live_in.address.saturating_add(1);
+    let footprint = emit_direct_deopt_coff(
+        &footprint_program,
+        direct_deopt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    if footprint.key().ir().required_memory_words()
+        == artifact.key().ir().required_memory_words()
+    {
+        return Err(String::from("footprint mutation kept native identity"));
+    }
+    let mismatch = UntrustedNativeObjectArtifact::from_emitter_output(
+        footprint.key().clone(),
+        artifact.object().to_vec(),
+        artifact.target_triple(),
+    );
+    if structurally_admit_coff(&mismatch)
+        == Err(CoffAdmissionError::ProfileMetadata)
+    {
+        Ok(())
+    } else {
+        Err(String::from("object/key footprint mismatch was admitted"))
+    }
+}
+
 fn assert_missing_direct_profile_metadata(
     artifact: &UntrustedNativeObjectArtifact,
 ) -> Result<(), String> {
@@ -1309,7 +1344,8 @@ fn direct_profile_metadata_rejects_missing_tampered_and_mismatched_identity()
             .map_err(|error| error.to_string())?;
     assert_missing_direct_profile_metadata(&artifact)?;
     assert_tampered_direct_profile_metadata(&artifact)?;
-    assert_direct_profile_metadata_mismatch(&program, &artifact)
+    assert_direct_profile_metadata_mismatch(&program, &artifact)?;
+    assert_direct_profile_footprint_mismatch(&program, &artifact)
 }
 
 #[test]

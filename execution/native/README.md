@@ -56,9 +56,10 @@ identity against the native target key, requires one executable/non-writable
 external functions and undefined external dependencies, and permits relocations
 only when they resolve to symbols defined inside the same object. A backend whose
 identity starts with `direct-` must also contain one initialized, read-only,
-non-relocated `.mbprof` section. Its `MBPF` v2 payload carries the exact profile
-ID/fingerprint plus published version, stable semantic features, word trits, and
-profile capacity; the complete envelope must equal the native key. Missing,
+non-relocated `.mbprof` section. Its `MBPF` v3 payload carries the exact profile
+ID/fingerprint plus published version, stable semantic features, word trits,
+profile capacity, and derived `u64` region memory requirement; the complete
+envelope must equal the native key. Missing,
 duplicated, executable, writable, relocated, malformed, or mismatched metadata
 fails structurally. Bootstrap Clang objects remain admissible without `.mbprof`
 until that compiler path emits the section. The resulting
@@ -71,12 +72,13 @@ fast path. `direct.rs` emits one deterministic Windows COFF object per ISA whose
 only callable function returns native status `1` (`guard miss`) without reading
 or writing the supplied state pointer. The exact x86-64 and AArch64 objects are
 frozen by independently rendered hex fixtures. Each includes executable `.text`
-and read-only `.mbprof` v2 bound to the same native key. Semantic promotion
+and read-only `.mbprof` v3 bound to the same native key. Semantic promotion
 requires
 structural COFF admission plus byte-for-byte equality with the canonical object;
 a one-byte opcode mutation remains structurally valid but fails semantic
 admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
+All three direct backends use revision 4 for the `MBPF` v3 object contract.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect

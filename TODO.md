@@ -258,9 +258,10 @@ atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
 Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
 checks target ISA, executable/non-writable `.text`, exact entry identity,
 self-contained relocations, and absence of undefined host dependencies. Direct
-objects additionally require `MBPF` v2 read-only `.mbprof` metadata matching
+objects additionally require `MBPF` v3 read-only `.mbprof` metadata matching
 profile ID/fingerprint, published version, ordered semantic features, word trits,
-and profile capacity retained by their native key; absence, tampering, or
+profile capacity, and exact derived `u64` region memory retained by their native
+key; absence, tampering, or
 object/key mismatch fails structurally. Bootstrap Clang objects do not yet emit
 that section. A separate direct deopt backend now
 emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
@@ -280,8 +281,9 @@ remaining IR chooses verified deopt; unsupported host formats fail explicitly.
 Raw untrusted IR remains canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
-construction. General region-effect fast paths, cache/orchestration, executable
-invocation, and
+construction. Direct revision-4 objects bind that exact footprint in `MBPF` v3,
+and same-profile footprint mismatch fails structural admission. General
+region-effect fast paths, cache/orchestration, executable invocation, and
 full AOT/JIT tier selection remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
@@ -375,8 +377,9 @@ runtime capability. Safe Rust and the Python non-VM preflight now reject
 `malbolge-2026.2` with byte-identical 14-trit/4,782,969-word diagnostics, report
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
 profile-before-runtime precedence. Portable effect IR v3, native keys, and direct
-COFF `MBPF` v2 metadata now carry every canonical profile-side input for
-`MALBOLGE-PROFILE-001`. VM-owned portable preflight consumes independently
+COFF `MBPF` v3 metadata now carry every canonical profile-side input for
+`MALBOLGE-PROFILE-001` plus exact region memory for
+`MALBOLGE-PROFILE-002`. VM-owned portable preflight consumes independently
 admitted IR against explicit classic/profiled capability with byte-identical
 canonical diagnostics and fail-closed unknown features. Effect IR now derives
 exact region memory and direct selection applies byte-identical

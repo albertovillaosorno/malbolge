@@ -16,18 +16,21 @@ objects for x86-64 and AArch64. Every direct object contains:
 3. the exact `malbolge_native_region_apply` external function symbol; and
 4. no undefined host dependency.
 
-`.mbprof` starts with `MBPF`, metadata version 2, and a reserved zero field. It
+`.mbprof` starts with `MBPF`, metadata version 3, and a reserved zero field. It
 then uses `u32` length prefixes for profile ID, fingerprint, published version,
 and each feature; a `u32` feature count preserves stable order, followed by the
-word-trit byte and `u32` profile capacity. COFF structural admission compares the
-complete payload against the artifact key. Missing, duplicated, writable,
-executable, relocated, malformed, or mismatched metadata fails closed before
-semantic machine-code admission.
+word-trit byte, `u32` profile capacity, and exact derived `u64` region memory
+requirement. COFF structural admission compares the complete payload against the
+artifact key. Missing, duplicated, writable, executable, relocated, malformed,
+or mismatched metadata fails closed before semantic machine-code admission.
 
-The envelope is sufficient to compare a selected runtime with the complete
-profile requirements used by `MALBOLGE-PROFILE-001`. It intentionally does not
-claim the program-specific requested-memory value needed for
-`MALBOLGE-PROFILE-002`.
+The envelope carries every input required to preflight direct objects for both
+`MALBOLGE-PROFILE-001` and `MALBOLGE-PROFILE-002`. A same-profile object paired
+with a key for a different region footprint fails structural admission.
+
+Direct backend revision 4 and metadata v3 produce exact object sizes of 413/415
+bytes for deopt, 477/528 for register halt, and 466/490 for initial halt on
+x86-64/AArch64 respectively.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters; fixture

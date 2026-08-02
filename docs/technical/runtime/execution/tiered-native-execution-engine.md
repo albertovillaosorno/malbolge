@@ -89,10 +89,11 @@ functions or undefined external symbols, and admits relocations only when their
 targets are defined inside the same object. ARM64's compiler-generated `.rdata`
 constant relocations therefore remain valid while host-library dependencies fail
 closed. Direct backends additionally require one initialized, read-only,
-non-relocated `.mbprof` section. Its `MBPF` v2 payload must match the profile
-ID, fingerprint, published version, stable features, word trits, and capacity
-retained by the native key exactly; missing or mismatched direct metadata fails
-before semantic admission. Bootstrap Clang
+non-relocated `.mbprof` section. Its `MBPF` v3 payload must match the profile
+ID, fingerprint, published version, stable features, word trits, profile capacity,
+and exact derived `u64` region memory requirement retained by the native key.
+Missing or mismatched direct metadata, including a same-profile footprint mismatch,
+fails before semantic admission. Bootstrap Clang
 objects remain legal without this section until their compiler path emits it.
 The result is named `StructurallyAdmittedNativeObjectArtifact`; it still has no
 semantic execution authority.
@@ -102,8 +103,8 @@ native program only: a direct deoptimization stub. The x86-64 sequence is
 `mov eax, 1; ret`; the AArch64 sequence is `mov w0, #1; ret`. Both are wrapped in
 a deterministic minimal COFF object with timestamp zero, one executable `.text`,
 one read-only `.mbprof`, one external entry symbol, and no relocations.
-Independent hex fixtures freeze the complete 405-byte x86-64 and 407-byte
-AArch64 objects. Promotion to
+Independent hex fixtures freeze the complete 413-byte x86-64 and 415-byte
+AArch64 revision-4 objects. Promotion to
 `VerifiedDeoptNativeObjectArtifact` first requires structural COFF admission and
 then exact equality with the canonical object bytes. A changed opcode can remain
 structurally valid but is rejected semantically.
@@ -189,7 +190,8 @@ backend errors.
   effects/deoptimization match their normative baselines, canonical IR matches a
   byte-exact independent fixture, forced bucket collisions never authorize
   native-cache reuse, profile-invalid IR cannot gain cache/bootstrap/direct
-  identity, bootstrap source is deterministic/atomic/key-bound, direct selection
+  identity, direct `MBPF` v3 binds exact region memory, bootstrap source is
+  deterministic/atomic/key-bound, direct selection
   preflights profile capability before host/backend selection, and
   pinned Clang emits real x86-64 and AArch64 COFF object candidates.
 - Safe-Rust COFF tests admit both real objects, including ARM64 internal

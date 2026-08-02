@@ -84,15 +84,15 @@ const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 /// Backend identity for the first direct, semantically admitted native tier.
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
-pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 3;
+pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 4;
 /// Backend identity for the first state-applying direct native fast path.
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.
-pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 3;
+pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 4;
 /// Backend identity for arbitrary-register one-step direct halt.
 pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
 /// Direct arbitrary-register halt code-generation revision.
-pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 3;
+pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 4;
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,7 +105,7 @@ pub enum DirectDeoptError {
     ObjectBytes,
     /// Target backend/revision/native ABI is not the direct deopt contract.
     TargetBackend,
-    /// Direct deopt v3 has no target-specific feature specializations.
+    /// Direct deopt v4 has no target-specific feature specializations.
     TargetFeatures,
     /// Direct deopt v3 emits Windows COFF only.
     TargetFormat,
@@ -159,7 +159,7 @@ pub enum DirectHaltRegistersError {
     ProgramShape,
     /// Target backend/revision/native ABI is not the register-halt contract.
     TargetBackend,
-    /// Register-halt v3 has no target-specific feature specializations.
+    /// Register-halt v4 has no target-specific feature specializations.
     TargetFeatures,
     /// Register-halt v3 emits Windows COFF only.
     TargetFormat,
@@ -218,7 +218,7 @@ pub enum DirectInitialHaltError {
     ProgramShape,
     /// Target backend/revision/native ABI is not the initial-halt contract.
     TargetBackend,
-    /// Direct initial-halt v3 has no target-specific feature specializations.
+    /// Direct initial-halt v4 has no target-specific feature specializations.
     TargetFeatures,
     /// Direct initial-halt v3 emits Windows COFF only.
     TargetFormat,

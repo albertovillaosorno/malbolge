@@ -59,9 +59,9 @@ historical-profile constraint.
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
   before runtime capacity and missing dimensions kept in stable order.
-- Portable effect IR v3, native keys, and direct COFF `MBPF` v2 metadata now
+- Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now
   carry exact profile ID/fingerprint plus published version, ordered semantic
-  features, word trits, and profile capacity.
+  features, word trits, profile capacity, and derived `u64` region memory.
 - VM-owned `preflight_runtime_requirement()` consumes an independently admitted
   envelope against explicit classic/profiled runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,
@@ -73,7 +73,8 @@ historical-profile constraint.
   selection; neither profile error is converted to deopt fallback.
 - Raw IR remains transportable for verifier rejection, while cache/native identity
   rejects profile-capacity-inconsistent addressing before bootstrap or direct
-  artifact construction.
+  artifact construction. Direct structural admission also rejects same-profile
+  object/key footprint mismatch through `MBPF` v3.
 - Equivalent program-memory requirements for non-IR artifact families, bootstrap
   compiler artifacts, broader AOT/JIT/runtime orchestration, and universal product
   invocation remain open, so repository-wide completion is not claimed.

@@ -129,6 +129,7 @@ pub struct RegionEffectIdentity {
     profile_fingerprint: Arc<str>,
     profile_id: Arc<str>,
     profile_requirement: TargetProfileRequirement,
+    required_memory_words: u64,
 }
 
 /// Full native artifact reuse key.
@@ -302,11 +303,20 @@ impl RegionEffectIdentity {
         &self.profile_requirement
     }
 
+    /// Returns the exact derived region memory footprint in words.
+    #[must_use]
+    pub const fn required_memory_words(&self) -> u64 {
+        self.required_memory_words
+    }
+
     fn with_digest(
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
     ) -> Result<Self, NativeIdentityError> {
-        if !program.fits_declared_profile_capacity() {
+        let required_memory_words = program.required_memory_words();
+        if required_memory_words
+            > u64::from(program.profile_requirement.memory_words)
+        {
             return Err(NativeIdentityError::ProfileCapacity);
         }
         let canonical = program.canonical_bytes()?;
@@ -318,6 +328,7 @@ impl RegionEffectIdentity {
             ),
             profile_id: Arc::from(program.profile_id.as_str()),
             profile_requirement: program.profile_requirement.clone(),
+            required_memory_words,
         })
     }
 }
