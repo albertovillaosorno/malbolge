@@ -13,7 +13,8 @@ storage before durable cache persistence exists.
 - backend and native ABI revisions;
 - sorted required code-generation features;
 - non-authoritative lookup digests excluded from exact identity equality;
-- process-local exact-key lookup, insertion, replacement, removal, and clearing.
+- process-local exact-key lookup, insertion, replacement, exact removal,
+  region-wide variant removal, and clearing.
 
 ## Does Not Own
 
@@ -48,9 +49,11 @@ the derived bucket digest. The store checks the preferred bucket first, then
 searches remaining buckets by complete key equality when necessary. Therefore an
 accelerator-function change cannot duplicate, hide, or prevent removal of an
 otherwise identical key, while distinct keys in one forced-collision bucket remain
-independently readable and removable. Stored values gain no semantic authority
-merely by being cached; callers must insert only artifacts admitted by their
-owning boundary.
+independently readable and removable. `remove_region()` explicitly drops every
+host/backend variant whose complete retained `RegionEffectIdentity` equals the
+caller-supplied identity; unrelated regions remain. Stored values gain no semantic
+authority merely by being cached; callers must insert only artifacts admitted by
+their owning boundary.
 
 The cache has no implicit limit, eviction, synchronization, persistence, retry,
 or discovery. `clear()` is explicit, and dropping the caller-owned value releases

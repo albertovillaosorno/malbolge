@@ -301,8 +301,11 @@ canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
 three templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
-plans; requesting it again reinserts identical key/bytes under a new allocation.
-Planning performs `002`, `001`, and host-format selection before lookup, so
+plans. Exact-program invalidation constructs canonical region identity before
+mutation and removes every host/backend variant while preserving unrelated
+regions; profile-invalid IR fails without changing the cache. Requesting removed
+variants again reinserts identical keys/bytes under new allocations. Planning
+performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
 eviction, synchronization policy, general region-effect fast paths, executable
 invocation, and broader AOT/JIT performance policy remain open.

@@ -527,6 +527,43 @@ fn cache_key_includes_host_and_backend_assumptions() -> Result<(), String> {
 }
 
 #[test]
+fn process_cache_removes_all_variants_for_exact_region() -> Result<(), String> {
+    let program = program();
+    let mut other_program = program.clone();
+    other_program.profile_id.push_str("-other");
+    let x86 = NativeArtifactKey::new(
+        &program,
+        target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new()),
+    )
+    .map_err(|error| format!("x86 region key failed: {error:?}"))?;
+    let arm = NativeArtifactKey::new(
+        &program,
+        target(HostOperatingSystem::Windows, HostIsa::AArch64, Vec::new()),
+    )
+    .map_err(|error| format!("ARM region key failed: {error:?}"))?;
+    let other = NativeArtifactKey::new(
+        &other_program,
+        target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new()),
+    )
+    .map_err(|error| format!("other region key failed: {error:?}"))?;
+    let identity = RegionEffectIdentity::new(&program)
+        .map_err(|error| format!("region identity failed: {error:?}"))?;
+    let mut cache = NativeArtifactCache::default();
+    let _x86 = cache.insert(x86, "x86");
+    let _arm = cache.insert(arm, "arm");
+    let _other = cache.insert(other.clone(), "other");
+    if cache.remove_region(&identity) != 2
+        || cache.remove_region(&identity) != 0
+        || cache.len() != 1
+        || cache.get(&other) != Some(&"other")
+    {
+        Err(String::from("region invalidation crossed exact identity"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
 fn portable_ir_uses_shared_runtime_diagnostic() -> Result<(), String> {
     let program = program();
     let current = current_profile();
@@ -1128,6 +1165,28 @@ fn assert_cached_capacity_preflight(
     }
 }
 
+fn insert_cached_direct_for_isa(
+    cache: &mut VerifiedDirectNativeCache,
+    program: &RegionEffectProgram,
+    isa: HostIsa,
+) -> Result<Arc<execution_native::VerifiedDirectNativeArtifact>, String> {
+    let selected = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, isa),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = selected
+    else {
+        return Err(String::from("direct cache fixture was not inserted"));
+    };
+    Ok(artifact)
+}
+
 #[test]
 fn verified_direct_cache_invalidation_is_exact_and_nonrevoking()
 -> Result<(), String> {
@@ -1177,6 +1236,70 @@ fn verified_direct_cache_invalidation_is_exact_and_nonrevoking()
         || !cache.is_empty()
     {
         Err(String::from("invalidation changed exact-key semantics"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn verified_cache_invalidates_program_variants() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let survivor = native_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    let x86 =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::X86_64)?;
+    let arm =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::AArch64)?;
+    let survivor_artifact =
+        insert_cached_direct_for_isa(&mut cache, &survivor, HostIsa::X86_64)?;
+    let mut invalid = program.clone();
+    invalid.profile_requirement.memory_words = 0;
+    if cache.invalidate_program(&invalid)
+        != Err(NativeIdentityError::ProfileCapacity)
+        || cache.len() != 3
+    {
+        return Err(String::from("invalid program mutated verified cache"));
+    }
+    if cache
+        .invalidate_program(&program)
+        .map_err(|error| format!("{error:?}"))?
+        != 2
+        || cache
+            .invalidate_program(&program)
+            .map_err(|error| format!("{error:?}"))?
+            != 0
+        || cache.len() != 1
+        || x86.object().is_empty()
+        || arm.object().is_empty()
+    {
+        return Err(String::from("program invalidation lost exact variants"));
+    }
+    let new_x86 =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::X86_64)?;
+    let new_arm =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::AArch64)?;
+    let survivor_plan = select_cached_preflighted_execution_tier(
+        &survivor,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: survivor_hit,
+        cache: DirectCacheDisposition::Hit,
+    } = survivor_plan
+    else {
+        return Err(String::from("unrelated program was invalidated"));
+    };
+    if Arc::ptr_eq(&x86, &new_x86)
+        || Arc::ptr_eq(&arm, &new_arm)
+        || x86.key() != new_x86.key()
+        || arm.key() != new_arm.key()
+        || !Arc::ptr_eq(&survivor_artifact, &survivor_hit)
+        || cache.len() != 3
+    {
+        Err(String::from("program invalidation changed cache semantics"))
     } else {
         Ok(())
     }

@@ -67,6 +67,7 @@ use super::{
 use crate::execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
     NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
+    RegionEffectIdentity,
 };
 use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
 
@@ -484,6 +485,23 @@ impl VerifiedDirectNativeCache {
         artifact: &VerifiedDirectNativeArtifact,
     ) -> bool {
         self.entries.remove(artifact.key()).is_some()
+    }
+
+    /// Invalidates future reuse of every direct variant for one exact program.
+    ///
+    /// Outstanding [`Arc`] owners remain valid. Program identity construction
+    /// fails before mutation when the IR exceeds its declared profile capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeIdentityError`] when exact region identity cannot be
+    /// constructed.
+    pub fn invalidate_program(
+        &mut self,
+        program: &RegionEffectProgram,
+    ) -> Result<usize, NativeIdentityError> {
+        let identity = RegionEffectIdentity::new(program)?;
+        Ok(self.entries.remove_region(&identity))
     }
 
     /// Reports whether no verified direct artifacts are retained.

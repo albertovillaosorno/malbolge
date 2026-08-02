@@ -293,6 +293,23 @@ impl<Value> NativeArtifactCache<Value> {
         }
         Some(value)
     }
+
+    /// Removes every target/backend variant for one exact region identity.
+    ///
+    /// Returns the number of removed entries. Region equality excludes the
+    /// non-authoritative bucket digest and confirms complete retained identity.
+    pub fn remove_region(&mut self, identity: &RegionEffectIdentity) -> usize {
+        let mut removed = 0usize;
+        self.buckets.retain(|_digest, bucket| {
+            let before = bucket.len();
+            bucket.retain(|entry| entry.key.ir() != identity);
+            removed =
+                removed.saturating_add(before.saturating_sub(bucket.len()));
+            !bucket.is_empty()
+        });
+        self.entries = self.entries.saturating_sub(removed);
+        removed
+    }
 }
 
 impl NativeArtifactKey {

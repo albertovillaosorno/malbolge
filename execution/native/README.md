@@ -138,13 +138,15 @@ check. The result is either `DirectCacheDisposition::Hit` or a newly admitted
 `Arc<VerifiedDirectNativeArtifact>`, so a hit does not clone object bytes. Only
 verified direct artifacts can enter this wrapper; the generic cache remains
 non-authoritative. `VerifiedDirectNativeCache::invalidate()` removes future reuse
-for one exact verified key. It returns whether an entry existed, and outstanding
-`Arc` plans remain valid; reinsertion of the same IR/host produces the same
-key/bytes under a new allocation. Interpreter selection and profile failures do
-not mutate the cache. There is no automatic eviction or revocation. Persistence,
-eviction policy, synchronization policy, linking, executable memory, and
-invocation remain outside; `Arc` supplies ownership only, not concurrent
-execution.
+for one exact verified key. `invalidate_program()` constructs exact region
+identity before mutation and removes every host/backend variant of that program;
+profile-capacity-invalid IR returns `NativeIdentityError::ProfileCapacity` without
+changing the cache. Both operations leave outstanding `Arc` plans valid;
+reinsertion produces the same keys/bytes under new allocations. Unrelated regions,
+interpreter selection, and profile failures remain unchanged. There is no
+automatic eviction or revocation. Persistence, eviction policy, synchronization
+policy, linking, executable memory, and invocation remain outside; `Arc` supplies
+ownership only, not concurrent execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass
