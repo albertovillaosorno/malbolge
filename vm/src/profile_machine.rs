@@ -1208,6 +1208,17 @@ pub fn decode_profile_instruction(cell: u32, code_pointer: u32) -> Option<u8> {
     DECODE_TABLE.get(index).copied()
 }
 
+/// Reports whether one profile-width cell decodes to a no-op at this position.
+#[must_use]
+pub fn profile_cell_decodes_to_no_operation(
+    cell: u32,
+    code_pointer: u32,
+) -> bool {
+    decode_profile_instruction(cell, code_pointer).is_some_and(|decoded| {
+        profile_instruction(decoded) == ProfileInstruction::NoOperation
+    })
+}
+
 /// Encrypts one graphical profile-width code cell after a committed step.
 ///
 /// Returns `None` outside graphical ASCII. The mapping is independent of the
@@ -1241,11 +1252,27 @@ const fn profile_rotate(value: u32, modulus: u32) -> u32 {
     quotient.saturating_add(low_trit.saturating_mul(high_weight))
 }
 
-const fn successor(value: u32, modulus: u32) -> u32 {
-    if value == modulus.saturating_sub(1) {
-        0
+/// Advances one in-domain profile pointer with exact modular wraparound.
+///
+/// Returns `None` when `modulus` is zero or `value` is outside the domain.
+#[must_use]
+pub const fn profile_pointer_successor(
+    value: u32,
+    modulus: u32,
+) -> Option<u32> {
+    if modulus == 0 || value >= modulus {
+        None
+    } else if value == modulus.saturating_sub(1) {
+        Some(0)
     } else {
-        value.saturating_add(1)
+        Some(value.saturating_add(1))
+    }
+}
+
+const fn successor(value: u32, modulus: u32) -> u32 {
+    match profile_pointer_successor(value, modulus) {
+        Some(next) => next,
+        None => 0,
     }
 }
 

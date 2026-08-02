@@ -46,9 +46,11 @@ The public `profile_cell_is_graphical()` predicate owns the profile-width
 33-through-126 decode boundary used by tracing, execution, and verified native
 eligibility. `decode_profile_instruction()` owns the corresponding positional
 translation and reduces wider code pointers by the normative 94-position phase.
-`encrypt_profile_cell()` owns the post-step `XLAT2` transformation for graphical
-cells. Native backends consume these VM-owned functions rather than redefining
-Malbolge cell semantics or translation tables.
+`profile_cell_decodes_to_no_operation()` owns no-op classification,
+`encrypt_profile_cell()` owns the post-step `XLAT2` transformation, and
+`profile_pointer_successor()` owns exact profile-domain pointer wraparound. Native
+backends consume these VM-owned functions rather than redefining Malbolge cell
+semantics, translation tables, or pointer arithmetic.
 
 Both traced and untraced APIs still invoke the same transition engine. The
 internal profile step result now carries both the already-validated memory delta

@@ -48,8 +48,9 @@
 //! Independent scalar equivalence tests for optimized classic word operations.
 
 use malbolge::{
-    MAX_WORD_VALUE, Word, decode_instruction, decode_profile_instruction,
-    encrypt_profile_cell,
+    MAX_WORD_VALUE, Word, current_profile, decode_instruction,
+    decode_profile_instruction, encrypt_profile_cell, historical_profile,
+    profile_cell_decodes_to_no_operation, profile_pointer_successor,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -175,6 +176,65 @@ fn decode_table_matches_scalar_definition_for_every_position() -> TestResult {
         pointer_raw = pointer_raw.saturating_add(1);
     }
     Ok(())
+}
+
+#[test]
+fn profile_noop_classification_matches_every_decode_phase() -> TestResult {
+    let operation_bytes = b"*/<ijpv";
+    let mut pointer = 0u16;
+    while pointer < u16::try_from(DECODE_TABLE_LEN).unwrap_or(0) {
+        let mut cell = GRAPHICAL_START;
+        while cell <= 126 {
+            let decoded =
+                decode_profile_instruction(u32::from(cell), u32::from(pointer))
+                    .ok_or_else(|| {
+                        String::from("graphical profile decode failed")
+                    })?;
+            let expected = !operation_bytes.contains(&decoded);
+            check_equal(
+                &profile_cell_decodes_to_no_operation(
+                    u32::from(cell),
+                    u32::from(pointer),
+                ),
+                &expected,
+                "profile no-op classification equals decoded opcode set",
+            )?;
+            cell = cell.saturating_add(1);
+        }
+        pointer = pointer.saturating_add(1);
+    }
+    check_equal(
+        &profile_cell_decodes_to_no_operation(32, u32::MAX),
+        &false,
+        "non-graphical cell is not no-op",
+    )
+}
+
+#[test]
+fn profile_pointer_successor_wraps_exact_domains() -> TestResult {
+    for profile in [historical_profile(), current_profile()] {
+        let modulus = profile.memory_words();
+        check_equal(
+            &profile_pointer_successor(0, modulus),
+            &Some(1),
+            "profile pointer advances from zero",
+        )?;
+        check_equal(
+            &profile_pointer_successor(modulus.saturating_sub(1), modulus),
+            &Some(0),
+            "profile pointer wraps at maximum",
+        )?;
+        check_equal(
+            &profile_pointer_successor(modulus, modulus),
+            &None,
+            "out-of-domain profile pointer is rejected",
+        )?;
+    }
+    check_equal(
+        &profile_pointer_successor(0, 0),
+        &None,
+        "zero profile modulus is rejected",
+    )
 }
 
 #[test]
