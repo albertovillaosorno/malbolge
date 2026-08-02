@@ -87,8 +87,9 @@ admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
-`direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` start at
-revision 1; all six use `MBPF` metadata version 3.
+`direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
+revision 2 after binding their runtime capacity guard to the exact IR footprint;
+`direct-jump-data` starts at revision 1. All seven use `MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -117,7 +118,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-initial-halt`, any other no-live-in one-step halt selects
 `direct-halt-registers`, an exact graphical `v` fetch selects
 `direct-halt-fetch`, an exact non-graphical fetch selects
-`direct-non-graphical`, an exact no-op fetch/encryption/advance selects
+`direct-non-graphical`, an exact non-aliasing `j` transition selects
+`direct-jump-data`, an exact no-op fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
 fallback, and an unsupported host format still fails explicitly when the profile
@@ -157,11 +159,14 @@ policy, synchronization policy, linking, executable memory, and invocation remai
 outside; `Arc` supplies ownership only, not concurrent execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
-footprint against the profile capacity embedded in IR. Direct calls that bypass
-the selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
-`direct-halt-fetch`, `direct-non-graphical`, or `direct-no-operation` when the
-declared profile envelope is too small; they fail as out-of-contract program
-shape before object promotion.
+footprint against the profile capacity embedded in IR. Every memory-backed direct
+object additionally compares ABI `memory_words` against the exact
+`NativeArtifactKey` IR footprint before any dereference or commit; output pointers
+therefore cannot escape the supplied backing image. Direct calls that bypass the
+selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
+`direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`, or
+`direct-jump-data` when the declared profile envelope is too small; they fail as
+out-of-contract program shape before object promotion.
 
 `direct-halt-registers` revision 5 generalizes the halt template across the
 complete 32-bit `A`, `C`, and `D` domains plus full 64-bit `input_consumed` and
@@ -178,17 +183,29 @@ counter miss; ARM64 full-width immediates and the common miss target are decoded
 independently from the fixture. Executable invocation policy remains outside this
 module.
 
-`direct-halt-fetch` revision 1 binds the halt termination to real verifier-owned
+`direct-halt-fetch` revision 2 binds the halt termination to real verifier-owned
 code memory. It accepts exactly one live-in at `C` whose VM-owned
 `decode_profile_instruction()` result is `v`. Both ISAs reuse the fetched-terminal
-guard sequence: full entry observation, non-null memory, `memory_words > C`, exact
+guard sequence: full entry observation, non-null memory, exact IR footprint,
 `memory[C]`, and prior live termination precede the sole write of tag `1`.
 Independent complete objects are 535 bytes on x86-64 and 628 bytes on AArch64.
 Development execution proves x86-64 hit plus atomic live-in, capacity, and null
 memory misses; independent AArch64 decoding confirms the full guards, halt tag,
 and common miss target.
 
-`direct-no-operation` revision 1 is the first admitted non-terminal direct effect
+`direct-jump-data` revision 1 adds the first instruction-specific semantic data
+read. It admits exactly two distinct live-ins at entry `C` and `D`; the VM-owned
+decoder must classify `memory[C]` as `j`, and aliasing `C == D` remains rejected.
+The verifier derives code encryption, `C+1`, and `memory[D]+1` through VM-owned
+helpers and requires the exact no-I/O exit observation and encryption delta. Both
+ISAs guard the complete entry, exact 125-word footprint, code live-in 35, and data
+live-in 123 before atomically committing `memory[5]:35->93`, `C:5->6`, and
+`D:7->124`. Independent complete objects are 564 bytes on x86-64 and 699 bytes on
+AArch64. Development execution proves exact hit behavior plus atomic code-live-in,
+data-live-in, footprint, and null-memory misses; independent AArch64 decoding
+confirms both reads, the exact commit, and one common miss target.
+
+`direct-no-operation` revision 2 is the first admitted non-terminal direct effect
 and the first direct guest-memory write. It accepts exactly one code-cell live-in
 at `C` that the VM-owned `profile_cell_decodes_to_no_operation()` classifies as
 no-op. The verifier independently derives `encrypt_profile_cell(memory[C])` and
@@ -202,12 +219,12 @@ confirms the same writes and one common miss target. Instruction-specific data
 writes, I/O effects, linking, executable-memory ownership, and invocation policy
 remain outside this subset.
 
-`direct-non-graphical` revision 1 is the first direct template whose eligibility
+`direct-non-graphical` revision 2 is the first direct template whose eligibility
 and machine code depend on verifier-owned memory evidence. It accepts exactly one
 non-graphical termination effect with one live-in at the entry code pointer. The
 VM-owned `profile_cell_is_graphical()` predicate classifies the live-in; native
 code does not redefine the graphical ASCII boundary. Both ISAs guard the complete
-entry observation, non-null memory pointer, `memory_words > C`, exact
+entry observation, non-null memory pointer, exact IR footprint, exact
 `memory[C]`, and prior live termination before writing only termination tag `2`.
 Independent complete objects are 538 bytes on x86-64 and 631 bytes on AArch64.
 Development execution proves x86-64 hit plus atomic live-in, capacity, and null

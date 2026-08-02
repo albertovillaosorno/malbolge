@@ -48,7 +48,10 @@
 
 //! Reviewed x86-64 instruction templates for direct native execution.
 
-use super::direct::{DirectCodeWriteCommit, DirectEntryObservation};
+use super::direct::{
+    DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
+    DirectJumpDataGuard,
+};
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -135,33 +138,28 @@ fn push_u64_guard(
 #[must_use]
 pub(super) fn halt_fetch_code(
     observation: DirectEntryObservation,
-    live_in_value: u32,
+    guard: DirectFetchedCellGuard,
 ) -> Option<Vec<u8>> {
-    fetched_termination_code(observation, live_in_value, 1)
+    fetched_termination_code(observation, guard, 1)
 }
 
 /// Encodes exact non-graphical fetch preflight and termination commit.
 #[must_use]
 pub(super) fn non_graphical_code(
     observation: DirectEntryObservation,
-    live_in_value: u32,
+    guard: DirectFetchedCellGuard,
 ) -> Option<Vec<u8>> {
-    fetched_termination_code(observation, live_in_value, 2)
+    fetched_termination_code(observation, guard, 2)
 }
 
 fn fetched_termination_code(
     observation: DirectEntryObservation,
-    live_in_value: u32,
+    guard: DirectFetchedCellGuard,
     termination_tag: u8,
 ) -> Option<Vec<u8>> {
     let mut code = Vec::with_capacity(128);
     let mut guard_jumps = Vec::with_capacity(11);
-    push_fetched_cell_guards(
-        &mut code,
-        &mut guard_jumps,
-        observation,
-        live_in_value,
-    )?;
+    push_fetched_cell_guards(&mut code, &mut guard_jumps, observation, guard);
     code.extend_from_slice(&[
         0xc6,
         0x41,
@@ -177,21 +175,82 @@ fn fetched_termination_code(
     Some(code)
 }
 
+/// Encodes one exact non-aliasing jump-data transition.
+#[must_use]
+pub(super) fn jump_data_code(
+    observation: DirectEntryObservation,
+    guard: DirectJumpDataGuard,
+    commit: DirectCodeWriteCommit,
+) -> Option<Vec<u8>> {
+    let code_offset = memory_byte_offset(observation.code_pointer)?;
+    let data_offset = memory_byte_offset(observation.data_pointer)?;
+    let mut code = Vec::with_capacity(176);
+    let mut guard_jumps = Vec::with_capacity(12);
+    push_observation_guards(&mut code, &mut guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.code_live_in,
+    );
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        data_offset,
+        guard.data_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0xeb, 0x01]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&code_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn memory_byte_offset(address: u32) -> Option<u32> {
+    let offset = address.checked_mul(4)?;
+    let _signed_offset = i32::try_from(offset).ok()?;
+    Some(offset)
+}
+
+fn push_direct_memory_guard(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    offset: u32,
+    value: u32,
+) {
+    code.extend_from_slice(&[0x81, 0xba]);
+    code.extend_from_slice(&offset.to_le_bytes());
+    code.extend_from_slice(&value.to_le_bytes());
+    push_guard_jump(code, guard_jumps, 0x75);
+}
+
 /// Encodes one exact no-op fetch, encryption, and pointer advance.
 #[must_use]
 pub(super) fn no_operation_code(
     observation: DirectEntryObservation,
-    live_in_value: u32,
+    guard: DirectFetchedCellGuard,
     commit: DirectCodeWriteCommit,
 ) -> Option<Vec<u8>> {
     let mut code = Vec::with_capacity(160);
     let mut guard_jumps = Vec::with_capacity(11);
-    push_fetched_cell_guards(
-        &mut code,
-        &mut guard_jumps,
-        observation,
-        live_in_value,
-    )?;
+    push_fetched_cell_guards(&mut code, &mut guard_jumps, observation, guard);
     code.extend_from_slice(&[0xeb, 0x01]);
     let guard_miss = code.len();
     code.push(0xc3);
@@ -210,24 +269,22 @@ fn push_fetched_cell_guards(
     code: &mut Vec<u8>,
     guard_jumps: &mut Vec<usize>,
     observation: DirectEntryObservation,
-    live_in_value: u32,
-) -> Option<()> {
-    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
+    guard: DirectFetchedCellGuard,
+) {
     push_observation_guards(code, guard_jumps, observation);
     code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
     push_guard_jump(code, guard_jumps, 0x74);
     code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
-    code.extend_from_slice(&required_words.to_le_bytes());
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
     code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
     push_guard_jump(code, guard_jumps, 0x72);
     code.extend_from_slice(&[0x48, 0x8b, 0x11, 0x41, 0xb9]);
     code.extend_from_slice(&observation.code_pointer.to_le_bytes());
     code.extend_from_slice(&[0x42, 0x81, 0x3c, 0x8a]);
-    code.extend_from_slice(&live_in_value.to_le_bytes());
+    code.extend_from_slice(&guard.live_in_value.to_le_bytes());
     push_guard_jump(code, guard_jumps, 0x75);
     code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
     push_guard_jump(code, guard_jumps, 0x75);
-    Some(())
 }
 
 /// Returns the canonical zero-register specialization of halt preflight/commit.

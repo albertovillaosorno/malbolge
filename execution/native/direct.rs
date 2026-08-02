@@ -35,7 +35,7 @@
 // - Description:
 //   - Emits reviewed x86-64/AArch64 objects for exact verified IR subsets.
 // - Usage:
-//   - Provides a safe deopt floor plus reviewed terminal/no-op fast paths.
+//   - Provides a safe deopt floor plus reviewed exact direct fast paths.
 // - Defaults:
 //   - Unsupported IR is rejected; no direct template is selected implicitly.
 //
@@ -104,17 +104,22 @@ pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 5;
 /// Backend identity for exact graphical halt fetch termination.
 pub const DIRECT_HALT_FETCH_BACKEND_ID: &str = "direct-halt-fetch";
 /// Direct graphical halt-fetch code-generation revision.
-pub const DIRECT_HALT_FETCH_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_HALT_FETCH_BACKEND_REVISION: u32 = 2;
 
 /// Backend identity for exact non-graphical fetch termination.
 pub const DIRECT_NON_GRAPHICAL_BACKEND_ID: &str = "direct-non-graphical";
 /// Direct non-graphical termination code-generation revision.
-pub const DIRECT_NON_GRAPHICAL_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_NON_GRAPHICAL_BACKEND_REVISION: u32 = 2;
 
 /// Backend identity for exact one-step no-operation execution.
 pub const DIRECT_NO_OPERATION_BACKEND_ID: &str = "direct-no-operation";
 /// Direct no-operation code-generation revision.
-pub const DIRECT_NO_OPERATION_BACKEND_REVISION: u32 = 1;
+pub const DIRECT_NO_OPERATION_BACKEND_REVISION: u32 = 2;
+
+/// Backend identity for exact non-aliasing one-step jump-data execution.
+pub const DIRECT_JUMP_DATA_BACKEND_ID: &str = "direct-jump-data";
+/// Direct jump-data code-generation revision.
+pub const DIRECT_JUMP_DATA_BACKEND_REVISION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectEntryObservation {
@@ -133,6 +138,19 @@ pub(super) struct DirectCodeWriteCommit {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectFetchedCellGuard {
+    pub(super) live_in_value: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectJumpDataGuard {
+    pub(super) code_live_in: u32,
+    pub(super) data_live_in: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DirectFetchedTerminalProgram {
     live_in: MemoryLiveIn,
     observation: ProfileMachineObservation,
@@ -144,6 +162,14 @@ struct DirectNoOperationProgram {
     live_in: MemoryLiveIn,
     next_code_pointer: u32,
     next_data_pointer: u32,
+    observation: ProfileMachineObservation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectJumpDataProgram {
+    code_live_in: MemoryLiveIn,
+    commit: DirectCodeWriteCommit,
+    data_live_in: MemoryLiveIn,
     observation: ProfileMachineObservation,
 }
 
@@ -376,6 +402,65 @@ impl From<NativeIdentityError> for DirectNonGraphicalError {
     }
 }
 
+/// Failure while emitting or verifying exact non-aliasing jump-data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectJumpDataError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical jump-data object.
+    ObjectBytes,
+    /// Portable IR is outside the exact jump-data subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Jump-data v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct jump-data currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectJumpDataError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "direct jump-data COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "direct jump-data identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct jump-data object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "portable IR is outside direct jump-data subset"
+            },
+            Self::TargetBackend => {
+                "target does not select direct jump-data backend"
+            },
+            Self::TargetFeatures => {
+                "direct jump-data backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "direct jump-data backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectJumpDataError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectJumpDataError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact one-step no-operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectNoOperationError {
@@ -505,6 +590,8 @@ pub enum DirectNativeKind {
     HaltRegisters,
     /// Exact one-step zero-state halt fast path.
     InitialHalt,
+    /// Exact non-aliasing one-step jump-data transition.
+    JumpData,
     /// Exact one-step no-operation with one code-cell write.
     NoOperation,
     /// Exact non-graphical code-cell termination fast path.
@@ -540,6 +627,8 @@ pub enum DirectSelectionError<'requirement> {
     HaltRegisters(Box<DirectHaltRegistersError>),
     /// Initial-halt artifact emission or admission failed.
     InitialHalt(Box<DirectInitialHaltError>),
+    /// Jump-data artifact emission or admission failed.
+    JumpData(Box<DirectJumpDataError>),
     /// No-operation artifact emission or admission failed.
     NoOperation(Box<DirectNoOperationError>),
     /// Non-graphical artifact emission or admission failed.
@@ -557,6 +646,7 @@ impl Display for DirectSelectionError<'_> {
             Self::HaltRegisters(error) => Display::fmt(error, f),
             Self::HaltFetch(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
+            Self::JumpData(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
@@ -674,6 +764,33 @@ impl VerifiedNonGraphicalNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement exact non-aliasing jump-data.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedJumpDataNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedJumpDataNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement one exact no-operation transition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedNoOperationNativeObjectArtifact {
@@ -739,6 +856,8 @@ pub enum VerifiedDirectNativeArtifact {
     HaltRegisters(VerifiedHaltRegistersNativeObjectArtifact),
     /// Exact zero-state one-step halt fast path.
     InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
+    /// Exact non-aliasing one-step jump-data transition.
+    JumpData(VerifiedJumpDataNativeObjectArtifact),
     /// Exact one-step no-operation with one code-cell write.
     NoOperation(VerifiedNoOperationNativeObjectArtifact),
     /// Exact non-graphical code-cell termination fast path.
@@ -789,6 +908,7 @@ enum SelectedDirectTarget {
     HaltFetch(NativeTargetIdentity),
     HaltRegisters(NativeTargetIdentity),
     InitialHalt(NativeTargetIdentity),
+    JumpData(NativeTargetIdentity),
     NoOperation(NativeTargetIdentity),
     NonGraphical(NativeTargetIdentity),
 }
@@ -799,6 +919,7 @@ enum PreparedDirectTarget {
     HaltFetch(NativeArtifactKey),
     HaltRegisters(NativeArtifactKey),
     InitialHalt(NativeArtifactKey),
+    JumpData(NativeArtifactKey),
     NoOperation(NativeArtifactKey),
     NonGraphical(NativeArtifactKey),
 }
@@ -922,6 +1043,7 @@ impl PreparedDirectTarget {
                 })?;
                 Ok(VerifiedDirectNativeArtifact::InitialHalt(verified))
             },
+            Self::JumpData(key) => emit_verified_jump_data(key, program),
             Self::NonGraphical(key) => {
                 emit_verified_non_graphical(key, program)
             },
@@ -935,6 +1057,7 @@ impl PreparedDirectTarget {
             | Self::HaltFetch(key)
             | Self::HaltRegisters(key)
             | Self::InitialHalt(key)
+            | Self::JumpData(key)
             | Self::NonGraphical(key)
             | Self::NoOperation(key) => key,
         }
@@ -979,6 +1102,13 @@ impl SelectedDirectTarget {
                         ))
                     })
             },
+            Self::JumpData(target) => NativeArtifactKey::new(program, target)
+                .map(PreparedDirectTarget::JumpData)
+                .map_err(|error| {
+                    DirectSelectionError::JumpData(Box::new(
+                        DirectJumpDataError::Identity(error),
+                    ))
+                }),
             Self::NonGraphical(target) => {
                 NativeArtifactKey::new(program, target)
                     .map(PreparedDirectTarget::NonGraphical)
@@ -1010,6 +1140,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.key(),
             Self::HaltRegisters(artifact) => artifact.key(),
             Self::InitialHalt(artifact) => artifact.key(),
+            Self::JumpData(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
             Self::NoOperation(artifact) => artifact.key(),
         }
@@ -1023,6 +1154,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(_artifact) => DirectNativeKind::HaltFetch,
             Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
             Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
+            Self::JumpData(_artifact) => DirectNativeKind::JumpData,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
             Self::NoOperation(_artifact) => DirectNativeKind::NoOperation,
         }
@@ -1036,6 +1168,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.object(),
             Self::HaltRegisters(artifact) => artifact.object(),
             Self::InitialHalt(artifact) => artifact.object(),
+            Self::JumpData(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
             Self::NoOperation(artifact) => artifact.object(),
         }
@@ -1049,6 +1182,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.target_triple(),
             Self::HaltRegisters(artifact) => artifact.target_triple(),
             Self::InitialHalt(artifact) => artifact.target_triple(),
+            Self::JumpData(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),
             Self::NoOperation(artifact) => artifact.target_triple(),
         }
@@ -1068,6 +1202,21 @@ fn emit_verified_halt_fetch(
     let verified = verify_direct_halt_fetch(&artifact, program)
         .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::HaltFetch(verified))
+}
+
+fn emit_verified_jump_data(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_jump_data_program(program)
+        .map_err(|error| DirectSelectionError::JumpData(Box::new(error)))?;
+    validate_jump_data_target(key.target())
+        .map_err(|error| DirectSelectionError::JumpData(Box::new(error)))?;
+    let artifact = emit_direct_jump_data_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::JumpData(Box::new(error)))?;
+    let verified = verify_direct_jump_data(&artifact, program)
+        .map_err(|error| DirectSelectionError::JumpData(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::JumpData(verified))
 }
 
 fn emit_verified_non_graphical(
@@ -1103,7 +1252,8 @@ fn emit_verified_no_operation(
 /// Selects the narrowest semantically admitted direct native template.
 ///
 /// Program/profile capacity and runtime preflight occur before host/backend
-/// selection. Exact halt, fetched-terminal, and no-op subsets select reviewed
+/// selection. Exact halt, fetched-terminal, no-op, and jump-data subsets select
+/// reviewed
 /// state-applying fast paths; every remaining IR selects verified
 /// deoptimization. Selection never converts profile, emitter, or verifier
 /// errors into fallback; only admitted program shape controls which backend
@@ -1273,6 +1423,21 @@ pub fn emit_direct_non_graphical_coff(
     emit_direct_non_graphical_with_key(key, selected)
 }
 
+/// Emits one exact non-aliasing jump-data fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectJumpDataError`] when IR/target is outside this subset.
+pub fn emit_direct_jump_data_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectJumpDataError> {
+    let selected = validate_jump_data_program(program)?;
+    validate_jump_data_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_jump_data_with_key(key, selected)
+}
+
 /// Emits one exact no-operation fetch/encryption/advance fast path.
 ///
 /// # Errors
@@ -1336,6 +1501,17 @@ fn emit_direct_non_graphical_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectNonGraphicalError> {
     let triple = target_triple(key.target().host_isa());
     let object = non_graphical_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+fn emit_direct_jump_data_with_key(
+    key: NativeArtifactKey,
+    selected: DirectJumpDataProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectJumpDataError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = jump_data_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -1470,6 +1646,30 @@ pub fn verify_direct_non_graphical(
         return Err(DirectNonGraphicalError::ObjectBytes);
     }
     Ok(VerifiedNonGraphicalNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical jump-data object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectJumpDataError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_jump_data(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedJumpDataNativeObjectArtifact, DirectJumpDataError> {
+    let selected = validate_jump_data_program(program)?;
+    validate_jump_data_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectJumpDataError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = jump_data_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectJumpDataError::ObjectBytes);
+    }
+    Ok(VerifiedJumpDataNativeObjectArtifact { artifact: admitted })
 }
 
 /// Promotes only the canonical no-operation object for its exact IR.
@@ -1617,13 +1817,13 @@ fn halt_fetch_coff(
 ) -> Result<Vec<u8>, DirectHaltFetchError> {
     let observation = direct_entry_observation(selected.observation)
         .ok_or(DirectHaltFetchError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
     let text = match key.target().host_isa() {
-        HostIsa::AArch64 => {
-            aarch64::halt_fetch_code(observation, selected.live_in.value)
-        },
-        HostIsa::X86_64 => {
-            x86_64::halt_fetch_code(observation, selected.live_in.value)
-        },
+        HostIsa::AArch64 => aarch64::halt_fetch_code(observation, guard),
+        HostIsa::X86_64 => x86_64::halt_fetch_code(observation, guard),
     }
     .ok_or(DirectHaltFetchError::ObjectBytes)?;
     build_minimal_coff(key, &text).ok_or(DirectHaltFetchError::ObjectBytes)
@@ -1635,16 +1835,39 @@ fn non_graphical_coff(
 ) -> Result<Vec<u8>, DirectNonGraphicalError> {
     let observation = direct_entry_observation(selected.observation)
         .ok_or(DirectNonGraphicalError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
     let text = match key.target().host_isa() {
-        HostIsa::AArch64 => {
-            aarch64::non_graphical_code(observation, selected.live_in.value)
-        },
-        HostIsa::X86_64 => {
-            x86_64::non_graphical_code(observation, selected.live_in.value)
-        },
+        HostIsa::AArch64 => aarch64::non_graphical_code(observation, guard),
+        HostIsa::X86_64 => x86_64::non_graphical_code(observation, guard),
     }
     .ok_or(DirectNonGraphicalError::ObjectBytes)?;
     build_minimal_coff(key, &text).ok_or(DirectNonGraphicalError::ObjectBytes)
+}
+
+fn jump_data_coff(
+    key: &NativeArtifactKey,
+    selected: DirectJumpDataProgram,
+) -> Result<Vec<u8>, DirectJumpDataError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectJumpDataError::ObjectBytes)?;
+    let guard = DirectJumpDataGuard {
+        code_live_in: selected.code_live_in.value,
+        data_live_in: selected.data_live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::jump_data_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::jump_data_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectJumpDataError::ObjectBytes)?;
+    build_minimal_coff(key, &text).ok_or(DirectJumpDataError::ObjectBytes)
 }
 
 fn no_operation_coff(
@@ -1653,25 +1876,22 @@ fn no_operation_coff(
 ) -> Result<Vec<u8>, DirectNoOperationError> {
     let observation = direct_entry_observation(selected.observation)
         .ok_or(DirectNoOperationError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let commit = DirectCodeWriteCommit {
+        encrypted_value: selected.encrypted_value,
+        next_code_pointer: selected.next_code_pointer,
+        next_data_pointer: selected.next_data_pointer,
+    };
     let text = match key.target().host_isa() {
-        HostIsa::AArch64 => aarch64::no_operation_code(
-            observation,
-            selected.live_in.value,
-            DirectCodeWriteCommit {
-                encrypted_value: selected.encrypted_value,
-                next_code_pointer: selected.next_code_pointer,
-                next_data_pointer: selected.next_data_pointer,
-            },
-        ),
-        HostIsa::X86_64 => x86_64::no_operation_code(
-            observation,
-            selected.live_in.value,
-            DirectCodeWriteCommit {
-                encrypted_value: selected.encrypted_value,
-                next_code_pointer: selected.next_code_pointer,
-                next_data_pointer: selected.next_data_pointer,
-            },
-        ),
+        HostIsa::AArch64 => {
+            aarch64::no_operation_code(observation, guard, commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::no_operation_code(observation, guard, commit)
+        },
     }
     .ok_or(DirectNoOperationError::ObjectBytes)?;
     build_minimal_coff(key, &text).ok_or(DirectNoOperationError::ObjectBytes)
@@ -1761,6 +1981,14 @@ fn select_direct_target(
         return SelectedDirectTarget::NonGraphical(direct_target(
             DIRECT_NON_GRAPHICAL_BACKEND_ID,
             DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ));
+    }
+    if validate_jump_data_program(program).is_ok() {
+        return SelectedDirectTarget::JumpData(direct_target(
+            DIRECT_JUMP_DATA_BACKEND_ID,
+            DIRECT_JUMP_DATA_BACKEND_REVISION,
             host_os,
             host_isa,
         ));
@@ -1900,6 +2128,122 @@ fn validate_non_graphical_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectNonGraphicalError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn validate_jump_data_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectJumpDataProgram, DirectJumpDataError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectJumpDataError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectJumpDataError::ProgramShape)?;
+    derive_jump_data_program(program, effect)
+        .ok_or(DirectJumpDataError::ProgramShape)
+}
+
+fn jump_data_live_ins(
+    program: &RegionEffectProgram,
+    before: ProfileMachineObservation,
+) -> Option<(MemoryLiveIn, MemoryLiveIn)> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if code_pointer == data_pointer || before.termination.is_some() {
+        return None;
+    }
+    let code_live_in = program
+        .memory_live_ins
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == code_pointer)?;
+    let data_live_in = program
+        .memory_live_ins
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == data_pointer)?;
+    Some((code_live_in, data_live_in))
+}
+
+fn derive_jump_data_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectJumpDataProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let (code_live_in, data_live_in) = jump_data_live_ins(program, before)?;
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'j')
+    {
+        return None;
+    }
+    let memory_words = program.profile_requirement.memory_words;
+    let encrypted_value = encrypt_profile_cell(code_live_in.value)?;
+    let next_code_pointer =
+        profile_pointer_successor(code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(data_live_in.value, memory_words)?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: before.registers.accumulator,
+            code_pointer: next_code_pointer,
+            data_pointer: next_data_pointer,
+        },
+        ..before
+    };
+    let expected_encryption = (code_live_in.value != encrypted_value)
+        .then_some(ProfileMemoryWrite {
+            address: code_pointer,
+            after: encrypted_value,
+            before: code_live_in.value,
+        });
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != (ProfileMemoryDelta {
+                data: None,
+                encryption: expected_encryption,
+            })
+    {
+        return None;
+    }
+    Some(DirectJumpDataProgram {
+        code_live_in,
+        commit: DirectCodeWriteCommit {
+            encrypted_value,
+            next_code_pointer,
+            next_data_pointer,
+        },
+        data_live_in,
+        observation: before,
+    })
+}
+
+fn validate_jump_data_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectJumpDataError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectJumpDataError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_JUMP_DATA_BACKEND_ID
+        || target.backend_revision() != DIRECT_JUMP_DATA_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectJumpDataError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectJumpDataError::TargetFeatures);
     }
     Ok(())
 }

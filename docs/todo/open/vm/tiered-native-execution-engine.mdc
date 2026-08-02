@@ -93,8 +93,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `execution/native/profile_metadata.rs` now solely owns the format-neutral MBPF
   encoding consumed by bootstrap/direct emitters and COFF admission. Direct
-  deopt/initial-halt revision-4, halt-observation revision-5, plus halt-fetch,
-  non-graphical, and no-operation revision-1 objects must carry exact read-only
+  deopt/initial-halt revision-4, halt-observation revision-5,
+  halt-fetch/non-graphical/no-operation revision-2, and jump-data revision-1
+  objects must carry exact read-only
   `MBPF` v3
   `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
@@ -119,24 +120,32 @@ baseline; native tiers are accelerators of identical observable behavior.
   observations while memory/I/O effects remain forbidden. Independently rendered
   495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX`; counter,
   opcode, and revision mismatch fail closed. The only commit remains termination.
-- `direct-halt-fetch` revision 1 binds one exact graphical code-cell live-in to
+- `direct-halt-fetch` revision 2 binds one exact graphical code-cell live-in to
   real halt termination. VM-owned positional decode must return `v`; full entry
-  observation, memory pointer, `memory_words > C`, exact `memory[C]`, and prior
+  observation, memory pointer, exact IR footprint, exact `memory[C]`, and prior
   termination are guarded before committing only tag `1`. Independently rendered
   535/628-byte objects, x86-64 atomic execution, and AArch64 instruction decoding
   bind the contract.
-- `direct-non-graphical` revision 1 is the first exact memory-live-in direct
+- `direct-non-graphical` revision 2 is the first exact memory-live-in direct
   template. One VM-classified non-graphical live-in must equal `memory[C]`; full
-  entry observation, memory pointer, and `memory_words > C` are guarded before
+  entry observation, memory pointer, and exact IR footprint are guarded before
   dereference, and only termination tag `2` is committed. Independently rendered
   538/631-byte objects, x86-64 hit/live-in/capacity/null execution, and AArch64
   instruction decoding bind the contract.
-- `direct-no-operation` revision 1 is the first non-terminal and guest-memory
+- `direct-no-operation` revision 2 is the first non-terminal and guest-memory
   writing direct template. VM-owned no-op classification, `XLAT2`, and modular
   pointer successor derive the exact IR exit. Full fetched-cell guards precede a
   single commit of encrypted `memory[C]` plus advanced `C/D`. Independent
   557/658-byte objects bind `77->65`, `5->6`, and `7->8`; x86-64 execution and
   AArch64 instruction decoding prove hit semantics and atomic misses.
+- `direct-jump-data` revision 1 adds the first instruction-specific semantic
+  data read. Two distinct entry live-ins at `C/D` are required; VM-owned decode,
+  encryption, and successors derive the exact no-I/O transition. Independent
+  564/699-byte objects bind `memory[5]:35->93`, `C:5->6`, and `D:7->124`;
+  x86-64 execution and AArch64 decoding prove both live-in guards, exact
+  125-word footprint, atomic commit, and misses. Aliasing remains rejected.
+- Every memory-backed direct template now compares ABI `memory_words` with the
+  exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
   classifies IR before backend construction: exact zero-register halt selects the
   smallest fast path, other no-live-in halt IR selects the observation-bound
@@ -156,7 +165,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all six templates, and reuses one pointer-identical immutable
+  keys/bytes for all seven templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first
@@ -168,8 +177,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- General instruction-specific data-memory/I/O direct selection, cache-aware
-  AOT/JIT
+- Remaining rotate/crazy/jump-code and I/O direct selection, cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

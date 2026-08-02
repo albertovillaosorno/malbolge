@@ -278,25 +278,32 @@ extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
 input/output counter observations, still with no memory/I/O effects. Independently
 rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
 nontrivial registers; counter, opcode, and historical-revision mismatches fail
-closed. `direct-halt-fetch` revision 1 binds real graphical halt termination to
+closed. `direct-halt-fetch` revision 2 binds real graphical halt termination to
 one exact code-cell live-in at `C`; VM-owned positional decode must produce `v`.
-Full entry observation, non-null memory, and `memory_words > C` precede the exact
+Full entry observation, non-null memory, and the exact IR footprint precede the
 `memory[C]` guard and sole termination-tag `1` commit. Independent 535/628-byte
 objects, x86-64 hit/live-in/capacity/null execution, and AArch64 instruction
-decoding bind the contract. `direct-non-graphical` revision 1 applies the same
+decoding bind the contract. `direct-non-graphical` revision 2 applies the same
 memory guards to a VM-classified non-graphical live-in and commits only tag `2`.
-Independent 538/631-byte objects bind that path. `direct-no-operation` revision 1
+Independent 538/631-byte objects bind that path. `direct-no-operation` revision 2
 is the first non-terminal and memory-writing direct effect: VM-owned decode,
 `XLAT2`, and modular-successor helpers derive one exact `memory[C]` encryption plus
 `C/D` advance. Independent 557/658-byte objects bind `memory[5]:77->65`,
 `C:5->6`, and `D:7->8`; x86-64 execution and AArch64 instruction decoding confirm
-atomic hit/miss behavior. Direct-template selection requires an explicit runtime
+atomic hit/miss behavior. `direct-jump-data` revision 1 adds the first
+instruction-specific data read for distinct `C/D` live-ins. VM-owned decode,
+`XLAT2`, and successor helpers derive `memory[5]:35->93`, `C:5->6`, and
+`D:7->124`; independent 564/699-byte objects and cross-ISA evidence bind the
+contract while aliasing remains rejected. Every memory-backed direct template now
+guards ABI `memory_words` against the exact key-bound IR footprint before any
+read or write. Direct-template selection requires an explicit runtime
 capability, derives exact `u64` region memory from C/D pointers, live-ins, and
 writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or backend selection.
 After admission, zero-register halt chooses the smallest specialization, other
 no-live-in halts choose observation-bound code, graphical halt fetch and
-non-graphical termination choose their terminal live-in templates, exact no-op IR
-chooses the memory-writing template, and remaining IR chooses verified deopt;
+non-graphical termination choose their terminal live-in templates, exact
+non-aliasing jump-data and no-op IR choose reviewed memory-writing templates, and
+remaining IR chooses verified deopt;
 unsupported direct host formats remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
 that format absence to the normative interpreter after `002`/`001` checks; real
@@ -305,8 +312,8 @@ canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
-plus halt-fetch/non-graphical/no-operation revision-1 objects bind that exact
-footprint in `MBPF` v3, and
+plus halt-fetch/non-graphical/no-operation revision-2 and jump-data revision-1
+objects bind that exact footprint in `MBPF` v3, and
 same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
@@ -318,7 +325,7 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact k
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-six templates, and shares the same immutable `Arc` allocation on hits. Exact
+seven templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
@@ -328,7 +335,8 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, instruction-specific data-memory/I/O selection,
+eviction, synchronization policy, remaining rotate/crazy/jump-code and I/O
+selection,
 executable invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,

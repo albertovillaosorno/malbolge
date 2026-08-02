@@ -8,7 +8,7 @@ published version, eight stable semantic features, word trits, and directly
 addressed profile capacity. Verified budget, outcome, live-ins, and ordered
 effects follow.
 
-The twelve `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
+The fourteen `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
 objects for x86-64 and AArch64. Every direct object contains:
 
 1. one executable, non-writable `.text` section;
@@ -28,18 +28,23 @@ The envelope carries every input required to preflight direct objects for both
 `MALBOLGE-PROFILE-001` and `MALBOLGE-PROFILE-002`. A same-profile object paired
 with a key for a different region footprint fails structural admission.
 
-Direct deopt and initial-halt revision 4, halt-observation revision 5, plus
-halt-fetch, non-graphical, and no-operation revision 1 use metadata v3. Exact
-x86-64/AArch64 object sizes are 413/415 bytes for deopt, 495/564 for
-register/counter halt, 466/490 for initial halt, 535/628 for graphical halt fetch,
-538/631 for non-graphical termination, and 557/658 for no-operation respectively.
+Direct deopt and initial-halt revision 4, halt-observation revision 5,
+halt-fetch/non-graphical/no-operation revision 2, and jump-data revision 1 use
+metadata v3. Exact x86-64/AArch64 object sizes are 413/415 bytes for deopt,
+495/564 for register/counter halt, 466/490 for initial halt, 535/628 for graphical
+halt fetch, 538/631 for non-graphical termination, 557/658 for no-operation, and
+564/699 for jump-data respectively.
 The wider fixtures bind `input_consumed=0x0000000123456789` and
 `output_len=0x000000023456789a`, proving full-width counter materialization. The
 fetched-terminal pairs bind `C=5` and an 8-word memory requirement: halt-fetch
 requires `memory[5]=76`, which the VM-owned profile decoder maps to `v`, while
 non-graphical requires `memory[5]=0`. The no-operation pair requires 9 words,
 binds `memory[5]=77`, VM-classifies it as no-op, encrypts it to 65, and advances
-`C=5`/`D=7` to 6/8 without changing accumulator, counters, or termination.
+`C=5`/`D=7` to 6/8 without changing accumulator, counters, or termination. The
+jump-data pair requires the exact 125-word exit footprint, binds code/data live-ins
+`memory[5]=35` and `memory[7]=123`, encrypts the code word to 93, and advances
+`C=5`/`D=7` to 6/124. Every memory-backed fixture guards its exact metadata-bound
+IR footprint before dereferencing guest memory.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters; fixture

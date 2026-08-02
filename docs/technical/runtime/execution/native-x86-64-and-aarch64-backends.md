@@ -71,40 +71,51 @@ and atomic counter miss; independent fixture decoding confirms AArch64 full-widt
 immediates and one common miss target. This widens admitted entry state, not the
 guest-effect surface.
 
-`direct-halt-fetch` revision 1 binds a VM-decoded graphical `v` live-in to halt
+`direct-halt-fetch` revision 2 binds a VM-decoded graphical `v` live-in to halt
 termination. Both ISA owners reuse the fetched-terminal template: full entry
-observation, memory pointer, `memory_words > C`, exact `memory[C]`, and prior
+observation, memory pointer, exact IR footprint, exact `memory[C]`, and prior
 termination are guarded before writing only tag `1`. Independent complete objects
 are 535/628 bytes. x86-64 development execution proves hit and atomic
 live-in/capacity/null misses; independent AArch64 decoding confirms the expected
 guards, halt tag, and common miss target.
 
-`direct-non-graphical` revision 1 is the first reviewed direct template with an
+`direct-non-graphical` revision 2 is the first reviewed direct template with an
 exact memory live-in. The VM-owned graphical-cell predicate admits one
 non-graphical live-in at `C`; each ISA guards the full entry observation, memory
-pointer, `memory_words > C`, exact `memory[C]`, and prior termination before
+pointer, exact IR footprint, exact `memory[C]`, and prior termination before
 committing only termination tag `2`. Independent complete objects are 538/631
 bytes. x86-64 development execution proves hit and atomic live-in/capacity/null
 misses; independent AArch64 decoding confirms the expected guards and common miss
 target. This reads verified memory evidence but still performs no guest-memory or
 I/O write.
 
-`direct-no-operation` revision 1 is the first reviewed non-terminal template and
+`direct-no-operation` revision 2 is the first reviewed non-terminal template and
 first guest-memory-writing fast path. VM-owned no-op classification, `XLAT2`, and
 profile successor functions independently derive the required IR. Each ISA reuses
 the fetched-cell guards, then atomically writes the encrypted code cell and exact
 next `C/D`. Independent complete objects are 557/658 bytes. x86-64 development
 execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8` plus atomic
 live-in/capacity/null misses; independent AArch64 decoding confirms the same
-commit and one common miss target. Instruction-specific data-memory and I/O
-effects remain outside this reviewed subset.
+commit and one common miss target.
+
+`direct-jump-data` revision 1 adds the first instruction-specific semantic data
+read. Two distinct live-ins bind code and data cells; VM-owned decode, encryption,
+and successor helpers derive the transition while `C == D` remains rejected.
+Each ISA guards the complete entry, exact 125-word IR footprint, code live-in 35,
+and data live-in 123 before atomically writing code 93 and `C/D` 6/124.
+Independent complete objects are 564/699 bytes. x86-64 development execution
+proves exact hit behavior plus atomic live-in/footprint/null misses; independent
+AArch64 decoding confirms both reads, the commit, and one common miss target.
+
+All memory-backed templates consume the exact key-bound IR footprint as their ABI
+capacity guard before any dereference. Rotate/crazy/jump-code and I/O effects
+remain outside this reviewed subset.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
-remains semantically untrusted. Reviewed direct terminal and no-op
-emitters/verifiers are implemented for both ISAs; general instruction-specific
-data-memory/I/O
+remains semantically untrusted. Reviewed direct terminal, no-op, and jump-data
+emitters/verifiers are implemented for both ISAs; rotate/crazy/jump-code and I/O
 selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.

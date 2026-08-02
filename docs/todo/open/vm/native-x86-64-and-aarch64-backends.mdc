@@ -67,14 +67,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   arbitrary 32-bit registers and full 64-bit counter observations. Independent
   495/564-byte fixtures bind counters above `u32::MAX` on both ISAs; historical
   revision, counter, and opcode mismatch fail closed. `direct-halt-fetch`
-  revision 1 adds a VM-decoded graphical `v` live-in with independent 535/628-byte
+  revision 2 adds a VM-decoded graphical `v` live-in with independent 535/628-byte
   objects, x86-64 atomic execution evidence, and AArch64 instruction decoding.
-  `direct-non-graphical` revision 1 applies the same fetched-terminal guards to a
+  `direct-non-graphical` revision 2 applies the same fetched-terminal guards to a
   VM-classified non-graphical live-in with 538/631-byte objects.
-  `direct-no-operation` revision 1 adds the first non-terminal code-memory write
+  `direct-no-operation` revision 2 adds the first non-terminal code-memory write
   and pointer advance with independent 557/658-byte objects, x86-64 atomic
-  execution, and AArch64 instruction decoding. General instruction-specific
-  data-memory/I/O selection, executable-memory
+  execution, and AArch64 instruction decoding. `direct-jump-data` revision 1 adds
+  two distinct code/data live-in guards, an exact 125-word footprint, and the
+  first instruction-specific semantic data read with independent 564/699-byte
+  objects. All memory-backed templates guard the exact key-bound IR footprint.
+  Remaining rotate/crazy/jump-code and I/O selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
