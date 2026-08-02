@@ -171,9 +171,12 @@ and semantic admission. Results distinguish `Inserted` from full-key `Hit`; all
 three current templates match uncached selection byte-for-byte and reuse the same
 immutable `Arc` allocation rather than cloning verified object bytes. A populated
 cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and those
-outcomes leave cache cardinality unchanged. `Arc` provides shared immutable
-ownership only; durable storage, eviction, synchronization policy, linking,
-executable memory, invocation, and performance policy remain outside.
+outcomes leave cache cardinality unchanged. Exact invalidation removes the
+full-equality key from future lookup without revoking outstanding `Arc` plans; a
+later request reinserts the same key/bytes under a distinct allocation. `Arc`
+provides shared immutable ownership only. Durable storage, automatic eviction,
+synchronization policy, linking, executable memory, invocation, and performance
+policy remain outside.
 
 ### Remaining Implementation
 

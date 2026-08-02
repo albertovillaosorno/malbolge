@@ -475,6 +475,17 @@ impl VerifiedDirectNativeCache {
         self.entries.clear();
     }
 
+    /// Invalidates future reuse of one exact verified artifact key.
+    ///
+    /// Outstanding [`Arc`] owners remain valid; invalidation only removes the
+    /// cache entry used by later planning.
+    pub fn invalidate(
+        &mut self,
+        artifact: &VerifiedDirectNativeArtifact,
+    ) -> bool {
+        self.entries.remove(artifact.key()).is_some()
+    }
+
     /// Reports whether no verified direct artifacts are retained.
     #[must_use]
     pub const fn is_empty(&self) -> bool {

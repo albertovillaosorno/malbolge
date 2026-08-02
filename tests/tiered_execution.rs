@@ -1021,6 +1021,60 @@ fn assert_cached_capacity_preflight(
 }
 
 #[test]
+fn verified_direct_cache_invalidation_is_exact_and_nonrevoking()
+-> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    let first = select_cached_preflighted_execution_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: first_artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = first
+    else {
+        return Err(String::from("failed to seed invalidation fixture"));
+    };
+    if !cache.invalidate(&first_artifact)
+        || !cache.is_empty()
+        || cache.invalidate(&first_artifact)
+        || first_artifact.object().is_empty()
+    {
+        return Err(String::from(
+            "exact invalidation violated cache ownership",
+        ));
+    }
+    let second = select_cached_preflighted_execution_tier(
+        &program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: second_artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = second
+    else {
+        return Err(String::from("invalidated key did not reinsert"));
+    };
+    if Arc::ptr_eq(&first_artifact, &second_artifact)
+        || first_artifact.key() != second_artifact.key()
+        || first_artifact.object() != second_artifact.object()
+        || !cache.invalidate(&first_artifact)
+        || !cache.is_empty()
+    {
+        Err(String::from("invalidation changed exact-key semantics"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
 fn cached_tier_planner_preflights_before_lookup() -> Result<(), String> {
     let program = direct_initial_halt_program();
     let mut cache = VerifiedDirectNativeCache::default();

@@ -124,9 +124,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
   keys/bytes for all three templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
-  and interpreter selection leave cache cardinality unchanged. `Arc` owns
-  immutable sharing only; persistence, eviction, synchronization policy, linking,
-  executable memory, invocation, and performance remain outside.
+  and interpreter selection leave cache cardinality unchanged. Exact invalidation
+  removes future reuse by full key while outstanding `Arc` plans remain valid;
+  reinsertion restores the same key/bytes under a new allocation. `Arc` owns
+  immutable sharing only; persistence, automatic eviction, synchronization policy,
+  linking, executable memory, invocation, and performance remain outside.
 - Accelerated semantic machine-code admission/direct effect emitters, cache-aware
   AOT/JIT policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

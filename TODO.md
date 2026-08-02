@@ -293,11 +293,13 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact k
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-three templates, and shares the same immutable `Arc` allocation on hits. It
-performs `002`, `001`, and host-format selection before lookup, so
-rejected/interpreter outcomes do not mutate the cache. Persistence, eviction,
-synchronization policy, general region-effect fast paths, executable invocation,
-and broader AOT/JIT performance policy remain open.
+three templates, and shares the same immutable `Arc` allocation on hits. Exact
+invalidation removes one full-equality key from future reuse without revoking held
+plans; requesting it again reinserts identical key/bytes under a new allocation.
+Planning performs `002`, `001`, and host-format selection before lookup, so
+rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
+eviction, synchronization policy, general region-effect fast paths, executable
+invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,

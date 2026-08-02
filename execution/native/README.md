@@ -130,9 +130,13 @@ check. The result is either `DirectCacheDisposition::Hit` or a newly admitted
 `Inserted` artifact. Cache entries and returned plans share the same immutable
 `Arc<VerifiedDirectNativeArtifact>`, so a hit does not clone object bytes. Only
 verified direct artifacts can enter this wrapper; the generic cache remains
-non-authoritative. Interpreter selection and profile failures do not mutate the
-cache. Persistence, eviction, synchronization policy, linking, executable memory,
-and invocation remain outside; `Arc` supplies ownership only, not concurrent
+non-authoritative. `VerifiedDirectNativeCache::invalidate()` removes future reuse
+for one exact verified key. It returns whether an entry existed, and outstanding
+`Arc` plans remain valid; reinsertion of the same IR/host produces the same
+key/bytes under a new allocation. Interpreter selection and profile failures do
+not mutate the cache. There is no automatic eviction or revocation. Persistence,
+eviction policy, synchronization policy, linking, executable memory, and
+invocation remain outside; `Arc` supplies ownership only, not concurrent
 execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
