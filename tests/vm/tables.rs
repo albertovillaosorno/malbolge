@@ -36,8 +36,8 @@
 use malbolge::{
     MAX_WORD_VALUE, Word, current_profile, decode_instruction,
     decode_profile_instruction, encrypt_profile_cell, historical_profile,
-    profile_cell_decodes_to_no_operation, profile_crazy, profile_low_byte,
-    profile_pointer_successor, profile_rotate,
+    profile_cell_decodes_to_no_operation, profile_crazy, profile_eof_word,
+    profile_low_byte, profile_pointer_successor, profile_rotate,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -231,6 +231,29 @@ fn profile_noop_classification_matches_every_decode_phase() -> TestResult {
         &profile_cell_decodes_to_no_operation(32, u32::MAX),
         &false,
         "non-graphical cell is not no-op",
+    )
+}
+
+#[test]
+fn public_profile_eof_word_matches_canonical_profiles() -> TestResult {
+    for profile in [historical_profile(), current_profile()] {
+        let expected = profile.word_modulus().saturating_sub(1);
+        check_equal(
+            &profile_eof_word(profile.word_trits()),
+            &Some(expected),
+            "profile EOF equals independent all-two-trit word",
+        )?;
+        check_equal(
+            &profile_eof_word(profile.word_trits()),
+            &Some(profile.eof_word()),
+            "profile EOF helper equals descriptor authority",
+        )?;
+    }
+    check_equal(&profile_eof_word(0), &None, "zero-width EOF is rejected")?;
+    check_equal(
+        &profile_eof_word(21),
+        &None,
+        "overflowing profile EOF is rejected",
     )
 }
 

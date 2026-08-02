@@ -37,6 +37,26 @@ use crate::{CRAZY_CHUNK_TRITS, crazy_chunk_lookup};
 const OUTPUT_MODULUS: u32 = 256;
 pub(crate) const TERNARY_RADIX: u32 = 3;
 
+/// Returns the all-two-trit EOF word for one profile width.
+///
+/// Returns `None` for a zero-width profile or when `3^trits` exceeds `u32`.
+#[must_use]
+pub const fn profile_eof_word(trits: u8) -> Option<u32> {
+    if trits == 0 {
+        return None;
+    }
+    let mut modulus = 1u32;
+    let mut index = 0u8;
+    while index < trits {
+        modulus = match modulus.checked_mul(TERNARY_RADIX) {
+            Some(value) => value,
+            None => return None,
+        };
+        index = index.saturating_add(1);
+    }
+    modulus.checked_sub(1)
+}
+
 /// Returns the normative output byte for one profile-width word.
 ///
 /// This is the exact unsigned value modulo 256 used by profile execution.
