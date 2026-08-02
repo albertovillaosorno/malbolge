@@ -37,6 +37,8 @@ use super::*;
 /// Direct native template selected for one portable IR program.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectNativeKind {
+    /// Exact non-aliasing one-step crazy transition.
+    Crazy,
     /// Safe fallback artifact that always requests interpreter deoptimization.
     Deopt,
     /// Exact graphical halt fetch with one code-cell live-in.
@@ -235,6 +237,33 @@ impl VerifiedJumpDataNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement exact non-aliasing crazy.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedCrazyNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedCrazyNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement exact non-aliasing rotate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedRotateNativeObjectArtifact {
@@ -319,6 +348,8 @@ impl VerifiedInitialHaltNativeObjectArtifact {
 /// Semantically admitted direct native artifact selected for one exact IR.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VerifiedDirectNativeArtifact {
+    /// Exact non-aliasing one-step crazy transition.
+    Crazy(VerifiedCrazyNativeObjectArtifact),
     /// Safe no-state-change guard-miss fallback.
     Deopt(VerifiedDeoptNativeObjectArtifact),
     /// Exact graphical halt fetch with one code-cell live-in.
@@ -381,6 +412,7 @@ impl VerifiedDirectNativeArtifact {
     #[must_use]
     pub const fn key(&self) -> &NativeArtifactKey {
         match self {
+            Self::Crazy(artifact) => artifact.key(),
             Self::Deopt(artifact) => artifact.key(),
             Self::HaltFetch(artifact) => artifact.key(),
             Self::HaltRegisters(artifact) => artifact.key(),
@@ -397,6 +429,7 @@ impl VerifiedDirectNativeArtifact {
     #[must_use]
     pub const fn kind(&self) -> DirectNativeKind {
         match self {
+            Self::Crazy(_artifact) => DirectNativeKind::Crazy,
             Self::Deopt(_artifact) => DirectNativeKind::Deopt,
             Self::HaltFetch(_artifact) => DirectNativeKind::HaltFetch,
             Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
@@ -413,6 +446,7 @@ impl VerifiedDirectNativeArtifact {
     #[must_use]
     pub fn object(&self) -> &[u8] {
         match self {
+            Self::Crazy(artifact) => artifact.object(),
             Self::Deopt(artifact) => artifact.object(),
             Self::HaltFetch(artifact) => artifact.object(),
             Self::HaltRegisters(artifact) => artifact.object(),
@@ -429,6 +463,7 @@ impl VerifiedDirectNativeArtifact {
     #[must_use]
     pub const fn target_triple(&self) -> &'static str {
         match self {
+            Self::Crazy(artifact) => artifact.target_triple(),
             Self::Deopt(artifact) => artifact.target_triple(),
             Self::HaltFetch(artifact) => artifact.target_triple(),
             Self::HaltRegisters(artifact) => artifact.target_triple(),

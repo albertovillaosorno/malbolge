@@ -381,6 +381,59 @@ impl From<NativeIdentityError> for DirectJumpDataError {
     }
 }
 
+/// Failure while emitting or verifying exact non-aliasing crazy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectCrazyError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical crazy object.
+    ObjectBytes,
+    /// Portable IR is outside the exact crazy subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Crazy v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct crazy currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectCrazyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "direct crazy COFF structure was rejected",
+            Self::Identity(_error) => {
+                "direct crazy identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct crazy object differs from canonical bytes"
+            },
+            Self::ProgramShape => "portable IR is outside direct crazy subset",
+            Self::TargetBackend => {
+                "target does not select direct crazy backend"
+            },
+            Self::TargetFeatures => {
+                "direct crazy backend requires no CPU features"
+            },
+            Self::TargetFormat => "direct crazy backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectCrazyError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectCrazyError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact non-aliasing rotate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectRotateError {
@@ -554,6 +607,8 @@ impl From<NativeIdentityError> for DirectInitialHaltError {
 /// Failure while selecting/emitting/verifying one direct native template.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectSelectionError<'requirement> {
+    /// Crazy artifact emission or admission failed.
+    Crazy(Box<DirectCrazyError>),
     /// Deoptimization artifact emission or admission failed.
     Deopt(Box<DirectDeoptError>),
     /// Graphical halt-fetch artifact emission or admission failed.
@@ -581,6 +636,7 @@ pub enum DirectSelectionError<'requirement> {
 impl Display for DirectSelectionError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
+            Self::Crazy(error) => Display::fmt(error, f),
             Self::Deopt(error) => Display::fmt(error, f),
             Self::HaltRegisters(error) => Display::fmt(error, f),
             Self::HaltFetch(error) => Display::fmt(error, f),

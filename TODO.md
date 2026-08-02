@@ -318,18 +318,25 @@ the first reviewed direct effect with two guest-memory writes. VM-owned decode,
 `memory[7]:10->1594326`, `memory[5]:34->122`, `A:0xdeadbeef->1594326`,
 `C:5->6`, and `D:7->8`. Independent 578/732-byte objects, x86-64 execution, and
 AArch64 decoding bind exact hit behavior plus code/data/capacity/null misses;
-`C == D` remains rejected. Every memory-backed direct template now
-guards ABI `memory_words` against the exact key-bound IR footprint before any
-read or write. Direct-template selection requires an explicit runtime
-capability, derives exact `u64` region memory from C/D pointers, live-ins, and
-writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or backend
-selection.
+`C == D` remains rejected.
+
+`direct-crazy` revision 1 adds the second reviewed two-write arithmetic
+transition. VM-owned decode, `profile_crazy()`, encryption, and successor
+helpers derive `memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`,
+`C:5->6`, and `D:7->8`. Independent 577/731-byte objects bind the exact 9-word
+footprint, two live-in guards, two writes, and three register commits. Aliasing
+and out-of-domain data or accumulator operands remain rejected. Every
+memory-backed direct template now guards ABI `memory_words` against the exact
+key-bound IR footprint before any read or write. Direct-template selection
+requires an explicit runtime capability, derives exact `u64` region memory
+from C/D pointers, live-ins, and writes, and applies
+`MALBOLGE-PROFILE-002` before `001`, host, or backend selection.
 After admission, zero-register halt chooses the smallest specialization, other
 no-live-in halts choose observation-bound code, graphical halt fetch and
 non-graphical termination choose their terminal live-in templates, exact
-non-aliasing jump-code, jump-data, rotate, and no-op IR choose reviewed
-memory-writing templates, and remaining IR chooses verified deopt; unsupported
-direct host formats remain
+non-aliasing jump-code, jump-data, rotate, crazy, and no-op IR choose
+reviewed memory-writing templates, and remaining IR chooses verified deopt;
+unsupported direct host formats remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps
 only
 that format absence to the normative interpreter after `002`/`001` checks; real
@@ -339,8 +346,9 @@ but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
 plus halt-fetch/non-graphical/no-operation revision-2 and
-jump-code/jump-data/rotate revision-1 objects bind that exact footprint in
-`MBPF` v3, and same-profile footprint mismatch fails structural admission.
+jump-code/jump-data/rotate/crazy revision-1 objects bind that exact
+footprint in `MBPF` v3, and same-profile footprint mismatch fails structural
+admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -352,10 +360,10 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact
 key
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
-reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-nine templates, and shares the same immutable `Arc` allocation on hits. Exact
-invalidation removes one full-equality key from future reuse without revoking
-held
+reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for
+all ten templates, and shares the same immutable `Arc` allocation on hits.
+Exact invalidation removes one full-equality key from future reuse without
+revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
 regions; profile-invalid IR fails without changing the cache. Exact-target
@@ -364,7 +372,7 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, remaining crazy and I/O selection,
+eviction, synchronization policy, remaining I/O selection,
 executable invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,

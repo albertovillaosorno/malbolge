@@ -49,18 +49,18 @@ use std::sync::Arc;
 pub use artifact::*;
 use coff::*;
 pub use emit::{
-    emit_direct_deopt_coff, emit_direct_halt_fetch_coff,
-    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
-    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
-    emit_direct_rotate_coff,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
+    emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
+    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
+    emit_direct_non_graphical_coff, emit_direct_rotate_coff,
 };
 use emit::{
-    emit_direct_deopt_with_key, emit_direct_halt_fetch_with_key,
-    emit_direct_halt_registers_with_key, emit_direct_initial_halt_with_key,
-    emit_direct_jump_code_with_key, emit_direct_jump_data_with_key,
-    emit_direct_no_operation_with_key, emit_direct_non_graphical_with_key,
-    emit_direct_rotate_with_key,
+    emit_direct_crazy_with_key, emit_direct_deopt_with_key,
+    emit_direct_halt_fetch_with_key, emit_direct_halt_registers_with_key,
+    emit_direct_initial_halt_with_key, emit_direct_jump_code_with_key,
+    emit_direct_jump_data_with_key, emit_direct_no_operation_with_key,
+    emit_direct_non_graphical_with_key, emit_direct_rotate_with_key,
 };
 pub use error::*;
 use malbolge::{
@@ -69,7 +69,7 @@ use malbolge::{
     RuntimeCapability, Termination, decode_profile_instruction,
     encrypt_profile_cell, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
-    profile_pointer_successor, profile_rotate,
+    profile_crazy, profile_pointer_successor, profile_rotate,
 };
 use plan::target_triple;
 pub use plan::{
@@ -78,7 +78,7 @@ pub use plan::{
 };
 use shape::*;
 pub use verify::{
-    verify_direct_deopt_stub, verify_direct_halt_fetch,
+    verify_direct_crazy, verify_direct_deopt_stub, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
@@ -150,6 +150,11 @@ pub const DIRECT_JUMP_CODE_BACKEND_ID: &str = "direct-jump-code";
 /// Direct jump-code code-generation revision.
 pub const DIRECT_JUMP_CODE_BACKEND_REVISION: u32 = 1;
 
+/// Backend identity for exact non-aliasing one-step crazy execution.
+pub const DIRECT_CRAZY_BACKEND_ID: &str = "direct-crazy";
+/// Direct crazy code-generation revision.
+pub const DIRECT_CRAZY_BACKEND_REVISION: u32 = 1;
+
 /// Backend identity for exact non-aliasing one-step rotate execution.
 pub const DIRECT_ROTATE_BACKEND_ID: &str = "direct-rotate";
 /// Direct rotate code-generation revision.
@@ -192,6 +197,9 @@ pub(super) struct DirectJumpCodeGuard {
     pub(super) encryption_live_in: u32,
     pub(super) required_memory_words: u64,
 }
+
+pub(super) type DirectCrazyGuard = DirectRotateGuard;
+pub(super) type DirectCrazyCommit = DirectRotateCommit;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectRotateGuard {
@@ -248,6 +256,14 @@ struct DirectJumpCodeLiveIns {
     code: MemoryLiveIn,
     data: MemoryLiveIn,
     encryption: MemoryLiveIn,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectCrazyProgram {
+    code_live_in: MemoryLiveIn,
+    commit: DirectCrazyCommit,
+    data_live_in: MemoryLiveIn,
+    observation: ProfileMachineObservation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -388,6 +388,116 @@ pub(super) fn validate_jump_data_target(
     Ok(())
 }
 
+pub(super) fn validate_crazy_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectCrazyProgram, DirectCrazyError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectCrazyError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectCrazyError::ProgramShape)?;
+    derive_crazy_program(program, effect).ok_or(DirectCrazyError::ProgramShape)
+}
+
+pub(super) fn derive_crazy_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectCrazyProgram> {
+    let before = effect.before;
+    let (code_live_in, data_live_in) = rotate_live_ins(program, before)?;
+    let commit = crazy_commit(program, before, code_live_in, data_live_in)?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: commit.accumulator,
+            code_pointer: commit.next_code_pointer,
+            data_pointer: commit.next_data_pointer,
+        },
+        ..before
+    };
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != rotate_memory_delta(code_live_in, data_live_in, commit)
+    {
+        return None;
+    }
+    Some(DirectCrazyProgram {
+        code_live_in,
+        commit,
+        data_live_in,
+        observation: before,
+    })
+}
+
+pub(super) fn crazy_commit(
+    program: &RegionEffectProgram,
+    before: ProfileMachineObservation,
+    code_live_in: MemoryLiveIn,
+    data_live_in: MemoryLiveIn,
+) -> Option<DirectCrazyCommit> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'p')
+    {
+        return None;
+    }
+    let memory_words = program.profile_requirement.memory_words;
+    if data_live_in.value >= memory_words
+        || before.registers.accumulator >= memory_words
+    {
+        return None;
+    }
+    let value = profile_crazy(
+        data_live_in.value,
+        before.registers.accumulator,
+        program.profile_requirement.word_trits,
+    );
+    Some(DirectCrazyCommit {
+        accumulator: value,
+        data_address: data_pointer,
+        data_value: value,
+        encrypted_address: code_pointer,
+        encrypted_value: encrypt_profile_cell(code_live_in.value)?,
+        next_code_pointer: profile_pointer_successor(
+            code_pointer,
+            memory_words,
+        )?,
+        next_data_pointer: profile_pointer_successor(
+            data_pointer,
+            memory_words,
+        )?,
+    })
+}
+
+pub(super) fn validate_crazy_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectCrazyError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectCrazyError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_CRAZY_BACKEND_ID
+        || target.backend_revision() != DIRECT_CRAZY_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectCrazyError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectCrazyError::TargetFeatures);
+    }
+    Ok(())
+}
+
 pub(super) fn validate_rotate_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectRotateProgram, DirectRotateError> {

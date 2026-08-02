@@ -202,6 +202,30 @@ pub fn verify_direct_jump_data(
     Ok(VerifiedJumpDataNativeObjectArtifact { artifact: admitted })
 }
 
+/// Promotes only the canonical crazy object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectCrazyError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_crazy(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedCrazyNativeObjectArtifact, DirectCrazyError> {
+    let selected = validate_crazy_program(program)?;
+    validate_crazy_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectCrazyError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = crazy_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectCrazyError::ObjectBytes);
+    }
+    Ok(VerifiedCrazyNativeObjectArtifact { artifact: admitted })
+}
+
 /// Promotes only the canonical rotate object for its exact IR.
 ///
 /// # Errors

@@ -36,9 +36,9 @@
 //! Reviewed x86-64 instruction templates for direct native execution.
 
 use super::direct::{
-    DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard, DirectRotateCommit,
-    DirectRotateGuard,
+    DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
+    DirectEntryObservation, DirectFetchedCellGuard, DirectJumpCodeGuard,
+    DirectJumpDataGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -290,6 +290,16 @@ fn patch_near_guard_jumps(
             .copy_from_slice(&displacement.to_le_bytes());
     }
     Some(())
+}
+
+/// Encodes one exact non-aliasing crazy transition.
+#[must_use]
+pub(super) fn crazy_code(
+    observation: DirectEntryObservation,
+    guard: DirectCrazyGuard,
+    commit: DirectCrazyCommit,
+) -> Option<Vec<u8>> {
+    rotate_code(observation, guard, commit)
 }
 
 /// Encodes one exact non-aliasing rotate transition.

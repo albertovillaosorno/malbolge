@@ -36,6 +36,7 @@ use super::*;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SelectedDirectTarget {
+    Crazy(NativeTargetIdentity),
     Deopt(NativeTargetIdentity),
     HaltFetch(NativeTargetIdentity),
     HaltRegisters(NativeTargetIdentity),
@@ -49,6 +50,7 @@ enum SelectedDirectTarget {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PreparedDirectTarget {
+    Crazy(NativeArtifactKey),
     Deopt(NativeArtifactKey),
     HaltFetch(NativeArtifactKey),
     HaltRegisters(NativeArtifactKey),
@@ -127,6 +129,7 @@ impl PreparedDirectTarget {
         program: &RegionEffectProgram,
     ) -> VerifiedDirectSelectionResult<'_> {
         match self {
+            Self::Crazy(key) => emit_verified_crazy(key, program),
             Self::Deopt(key) => {
                 validate_target(key.target()).map_err(|error| {
                     DirectSelectionError::Deopt(Box::new(error))
@@ -176,7 +179,8 @@ impl PreparedDirectTarget {
 
     const fn key(&self) -> &NativeArtifactKey {
         match self {
-            Self::Deopt(key)
+            Self::Crazy(key)
+            | Self::Deopt(key)
             | Self::HaltFetch(key)
             | Self::HaltRegisters(key)
             | Self::InitialHalt(key)
@@ -195,6 +199,7 @@ impl SelectedDirectTarget {
         program: &RegionEffectProgram,
     ) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
         match self {
+            Self::Crazy(target) => prepare_crazy_target(program, target),
             Self::Deopt(target) => NativeArtifactKey::new(program, target)
                 .map(PreparedDirectTarget::Deopt)
                 .map_err(|error| {
@@ -251,6 +256,19 @@ impl SelectedDirectTarget {
         }
     }
 }
+fn prepare_crazy_target(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+    NativeArtifactKey::new(program, target)
+        .map(PreparedDirectTarget::Crazy)
+        .map_err(|error| {
+            DirectSelectionError::Crazy(Box::new(DirectCrazyError::Identity(
+                error,
+            )))
+        })
+}
+
 fn prepare_jump_code_target(
     program: &RegionEffectProgram,
     target: NativeTargetIdentity,
@@ -303,6 +321,21 @@ fn prepare_rotate_target(
                 error,
             )))
         })
+}
+
+fn emit_verified_crazy(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_crazy_program(program)
+        .map_err(|error| DirectSelectionError::Crazy(Box::new(error)))?;
+    validate_crazy_target(key.target())
+        .map_err(|error| DirectSelectionError::Crazy(Box::new(error)))?;
+    let artifact = emit_direct_crazy_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::Crazy(Box::new(error)))?;
+    let verified = verify_direct_crazy(&artifact, program)
+        .map_err(|error| DirectSelectionError::Crazy(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::Crazy(verified))
 }
 
 fn emit_verified_halt_fetch(
@@ -543,12 +576,10 @@ fn select_direct_target(
         return selected_jump_code_target(host_os, host_isa);
     }
     if validate_jump_data_program(program).is_ok() {
-        return SelectedDirectTarget::JumpData(direct_target(
-            DIRECT_JUMP_DATA_BACKEND_ID,
-            DIRECT_JUMP_DATA_BACKEND_REVISION,
-            host_os,
-            host_isa,
-        ));
+        return selected_jump_data_target(host_os, host_isa);
+    }
+    if validate_crazy_program(program).is_ok() {
+        return selected_crazy_target(host_os, host_isa);
     }
     if validate_rotate_program(program).is_ok() {
         return selected_rotate_target(host_os, host_isa);
@@ -569,6 +600,18 @@ fn select_direct_target(
     ))
 }
 
+fn selected_crazy_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::Crazy(direct_target(
+        DIRECT_CRAZY_BACKEND_ID,
+        DIRECT_CRAZY_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
 fn selected_rotate_target(
     host_os: HostOperatingSystem,
     host_isa: HostIsa,
@@ -576,6 +619,18 @@ fn selected_rotate_target(
     SelectedDirectTarget::Rotate(direct_target(
         DIRECT_ROTATE_BACKEND_ID,
         DIRECT_ROTATE_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
+fn selected_jump_data_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::JumpData(direct_target(
+        DIRECT_JUMP_DATA_BACKEND_ID,
+        DIRECT_JUMP_DATA_BACKEND_REVISION,
         host_os,
         host_isa,
     ))

@@ -155,18 +155,28 @@ confirms
 two reads, both writes, all register commits, and eleven branches to one miss.
 Address aliasing remains rejected.
 
+`direct-crazy` revision 1 adds the second reviewed two-write arithmetic
+transition. Admission requires distinct entry `C/D` live-ins, VM-decoded `p`,
+and data plus accumulator operands inside the declared word domain. The verifier
+uses VM-owned `profile_crazy(memory[D], A, word_trits)`, encryption, and
+successor helpers. Both ISAs guard the complete entry, exact 9-word footprint,
+`memory[5]=57`, and `memory[7]=10` before committing
+`memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`, `C:5->6`, and
+`D:7->8`. Independent objects are 577/731 bytes. Byte-exact fixtures and
+structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
+remains rejected.
+
 All memory-backed templates consume the exact key-bound IR footprint as their
 ABI
-capacity guard before any dereference. Crazy and I/O effects remain outside this
-reviewed subset.
+capacity guard before any dereference. I/O effects remain outside this reviewed
+subset.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
 remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
-jump-data, and rotate emitters/verifiers are implemented for both ISAs; crazy
-and
-I/O selection,
+jump-data, rotate, and crazy emitters/verifiers are implemented for both
+ISAs; I/O selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 

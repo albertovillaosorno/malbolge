@@ -58,6 +58,7 @@ use execution_ir::{
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
     CachedPreflightedExecutionTier, CoffAdmissionError,
+    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
@@ -67,20 +68,21 @@ use execution_native::{
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
-    DirectCacheDisposition, DirectDeoptError, DirectHaltFetchError,
-    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
-    DirectNoOperationError, DirectNonGraphicalError, DirectRotateError,
-    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    PreflightedExecutionTier, UntrustedNativeObjectArtifact,
-    VerifiedDirectNativeCache, emit_direct_deopt_coff,
+    DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
+    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
+    DirectInitialHaltError, DirectJumpCodeError, DirectJumpDataError,
+    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
+    DirectRotateError, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactError, PreflightedExecutionTier,
+    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
-    structurally_admit_coff, verify_direct_deopt_stub,
+    structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_halt_fetch, verify_direct_halt_registers,
     verify_direct_initial_halt, verify_direct_jump_code,
     verify_direct_jump_data, verify_direct_no_operation,
@@ -1225,6 +1227,70 @@ fn direct_jump_data_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_crazy_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: 2_391_494,
+            code_pointer: 6,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta {
+                data: Some(ProfileMemoryWrite {
+                    address: 7,
+                    after: 2_391_494,
+                    before: 10,
+                }),
+                encryption: Some(ProfileMemoryWrite {
+                    address: 5,
+                    after: 91,
+                    before: 57,
+                }),
+            },
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![
+            MemoryLiveIn { address: 5, value: 57 },
+            MemoryLiveIn { address: 7, value: 10 },
+        ],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-crazy-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_CRAZY_BACKEND_ID),
+        backend_revision: DIRECT_CRAZY_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_rotate_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0x0000_0001_2345_6789,
@@ -1468,6 +1534,7 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
         ),
         (direct_jump_code_program(), DirectNativeKind::JumpCode),
         (direct_jump_data_program(), DirectNativeKind::JumpData),
+        (direct_crazy_program(), DirectNativeKind::Crazy),
         (direct_rotate_program(), DirectNativeKind::Rotate),
         (direct_no_operation_program(), DirectNativeKind::NoOperation),
         (native_program(), DirectNativeKind::Deopt),
@@ -1910,7 +1977,7 @@ fn selected_direct_triple(
     }
 }
 
-fn direct_selection_cases() -> [DirectSelectionCase; 9] {
+fn direct_selection_cases() -> [DirectSelectionCase; 10] {
     [
         (
             direct_initial_halt_program(),
@@ -1941,6 +2008,11 @@ fn direct_selection_cases() -> [DirectSelectionCase; 9] {
             direct_jump_data_program(),
             DirectNativeKind::JumpData,
             DIRECT_JUMP_DATA_BACKEND_ID,
+        ),
+        (
+            direct_crazy_program(),
+            DirectNativeKind::Crazy,
+            DIRECT_CRAZY_BACKEND_ID,
         ),
         (
             direct_rotate_program(),
@@ -2693,6 +2765,191 @@ fn direct_jump_data_rejects_ir_opcode_and_revision_tampering()
 }
 
 #[test]
+fn direct_crazy_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-crazy-x86_64-coff.hex"),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!("execution/fixtures/native-crazy-aarch64-coff.hex"),
+        ),
+    ];
+    let program = direct_crazy_program();
+    for (isa, fixture) in cases {
+        let artifact =
+            emit_direct_crazy_coff(&program, direct_crazy_target(isa))
+                .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!("direct crazy fixture mismatch for {isa:?}"));
+        }
+        let verified = verify_direct_crazy(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified crazy identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_crazy_decode_and_alias_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_decode = program.clone();
+    wrong_decode
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("crazy fixture lost code live-in"))?
+        .value = 34;
+    if emit_direct_crazy_coff(
+        &wrong_decode,
+        direct_crazy_target(HostIsa::X86_64),
+    ) != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("rotate decode was admitted as crazy"));
+    }
+    let mut aliased = program.clone();
+    aliased
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("crazy fixture lost effect"))?
+        .before
+        .registers
+        .data_pointer = 5;
+    if emit_direct_crazy_coff(&aliased, direct_crazy_target(HostIsa::X86_64))
+        != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("aliased crazy was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_crazy_value_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut out_of_domain = program.clone();
+    out_of_domain
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("crazy fixture lost effect"))?
+        .before
+        .registers
+        .accumulator = current_profile().memory_words();
+    if emit_direct_crazy_coff(
+        &out_of_domain,
+        direct_crazy_target(HostIsa::X86_64),
+    ) != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("out-of-domain crazy accumulator admitted"));
+    }
+    let mut wrong_exit = program.clone();
+    wrong_exit
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("crazy fixture lost effect"))?
+        .after
+        .registers
+        .accumulator = 2_391_495;
+    if emit_direct_crazy_coff(&wrong_exit, direct_crazy_target(HostIsa::X86_64))
+        != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("wrong crazy accumulator was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_crazy_delta_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_data = program.clone();
+    wrong_data
+        .effects
+        .first_mut()
+        .and_then(|effect| effect.memory_delta.data.as_mut())
+        .ok_or_else(|| String::from("crazy fixture lost data write"))?
+        .after = 2_391_495;
+    if emit_direct_crazy_coff(&wrong_data, direct_crazy_target(HostIsa::X86_64))
+        != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("wrong crazy data write was admitted"));
+    }
+    let mut wrong_encryption = program.clone();
+    wrong_encryption
+        .effects
+        .first_mut()
+        .and_then(|effect| effect.memory_delta.encryption.as_mut())
+        .ok_or_else(|| String::from("crazy fixture lost encryption write"))?
+        .after = 92;
+    if emit_direct_crazy_coff(
+        &wrong_encryption,
+        direct_crazy_target(HostIsa::X86_64),
+    ) != Err(DirectCrazyError::ProgramShape)
+    {
+        return Err(String::from("wrong crazy encryption was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_crazy_revision_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_CRAZY_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_crazy_coff(program, obsolete)
+        == Err(DirectCrazyError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete crazy revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_crazy_rejects_ir_and_opcode_tampering() -> Result<(), String> {
+    let program = direct_crazy_program();
+    let artifact =
+        emit_direct_crazy_coff(&program, direct_crazy_target(HostIsa::X86_64))
+            .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0xc7u8, 0x82, 0x1c, 0, 0, 0, 0xc6, 0x7d, 0x24, 0];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("crazy data commit opcode missing"))?;
+    let immediate = mutated_object
+        .get_mut(offset.saturating_add(6))
+        .ok_or_else(|| String::from("crazy data commit immediate missing"))?;
+    *immediate = 0xc7;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered crazy structure: {error}"))?;
+    if verify_direct_crazy(&tampered, &program)
+        != Err(DirectCrazyError::ObjectBytes)
+    {
+        return Err(String::from("tampered crazy object was admitted"));
+    }
+    assert_crazy_decode_and_alias_rejected(&program)?;
+    assert_crazy_value_rejections(&program)?;
+    assert_crazy_delta_rejections(&program)?;
+    assert_crazy_revision_rejected(&program)
+}
+
+#[test]
 fn direct_rotate_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [
@@ -3287,6 +3544,18 @@ fn assert_jump_data_capacity_rejected() -> Result<(), String> {
     }
 }
 
+fn assert_crazy_capacity_rejected() -> Result<(), String> {
+    let mut crazy = direct_crazy_program();
+    crazy.profile_requirement.memory_words = 7;
+    if emit_direct_crazy_coff(&crazy, direct_crazy_target(HostIsa::X86_64))
+        == Err(DirectCrazyError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("crazy profile-capacity mismatch was admitted"))
+    }
+}
+
 fn assert_rotate_capacity_rejected() -> Result<(), String> {
     let mut rotate = direct_rotate_program();
     rotate.profile_requirement.memory_words = 7;
@@ -3301,10 +3570,27 @@ fn assert_rotate_capacity_rejected() -> Result<(), String> {
     }
 }
 
+fn assert_initial_halt_capacity_rejected() -> Result<(), String> {
+    let mut initial_halt = direct_initial_halt_program();
+    initial_halt.profile_requirement.memory_words = 0;
+    if emit_direct_initial_halt_coff(
+        &initial_halt,
+        direct_initial_halt_target(HostIsa::X86_64),
+    ) == Err(DirectInitialHaltError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "initial-halt profile-capacity mismatch was admitted",
+        ))
+    }
+}
+
 #[test]
 fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
 {
     assert_jump_code_capacity_rejected()?;
+    assert_crazy_capacity_rejected()?;
     assert_rotate_capacity_rejected()?;
     assert_jump_data_capacity_rejected()?;
     let mut register_halt = direct_halt_registers_program();
@@ -3355,19 +3641,7 @@ fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
         ));
     }
 
-    let mut initial_halt = direct_initial_halt_program();
-    initial_halt.profile_requirement.memory_words = 0;
-    if emit_direct_initial_halt_coff(
-        &initial_halt,
-        direct_initial_halt_target(HostIsa::X86_64),
-    ) == Err(DirectInitialHaltError::ProgramShape)
-    {
-        Ok(())
-    } else {
-        Err(String::from(
-            "initial-halt profile-capacity mismatch was admitted",
-        ))
-    }
+    assert_initial_halt_capacity_rejected()
 }
 
 #[test]

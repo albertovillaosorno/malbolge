@@ -36,9 +36,9 @@
 //! Reviewed `AArch64` instruction templates for direct native execution.
 
 use super::direct::{
-    DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard, DirectRotateCommit,
-    DirectRotateGuard,
+    DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
+    DirectEntryObservation, DirectFetchedCellGuard, DirectJumpCodeGuard,
+    DirectJumpDataGuard, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -248,6 +248,16 @@ pub(super) fn jump_code_code(
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
     Some(encode_words(&words))
+}
+
+/// Encodes one exact non-aliasing crazy transition.
+#[must_use]
+pub(super) fn crazy_code(
+    observation: DirectEntryObservation,
+    guard: DirectCrazyGuard,
+    commit: DirectCrazyCommit,
+) -> Option<Vec<u8>> {
+    rotate_code(observation, guard, commit)
 }
 
 /// Encodes one exact non-aliasing rotate transition.

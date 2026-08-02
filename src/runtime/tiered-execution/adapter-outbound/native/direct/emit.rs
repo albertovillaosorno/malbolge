@@ -143,6 +143,21 @@ pub fn emit_direct_jump_data_coff(
     emit_direct_jump_data_with_key(key, selected)
 }
 
+/// Emits one exact non-aliasing crazy fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectCrazyError`] when IR/target is outside this subset.
+pub fn emit_direct_crazy_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectCrazyError> {
+    let selected = validate_crazy_program(program)?;
+    validate_crazy_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_crazy_with_key(key, selected)
+}
+
 /// Emits one exact non-aliasing rotate fast path.
 ///
 /// # Errors
@@ -243,6 +258,17 @@ pub(super) fn emit_direct_jump_data_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectJumpDataError> {
     let triple = target_triple(key.target().host_isa());
     let object = jump_data_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+pub(super) fn emit_direct_crazy_with_key(
+    key: NativeArtifactKey,
+    selected: DirectCrazyProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectCrazyError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = crazy_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))

@@ -9,7 +9,7 @@ published version, eight stable semantic features, word trits, and directly
 addressed profile capacity. Verified budget, outcome, live-ins, and ordered
 effects follow.
 
-The eighteen `native-*-coff.hex` fixtures freeze the complete direct Windows
+The twenty `native-*-coff.hex` fixtures freeze the complete direct Windows
 COFF
 objects for x86-64 and AArch64. Every direct object contains:
 
@@ -31,15 +31,15 @@ The envelope carries every input required to preflight direct objects for both
 with a key for a different region footprint fails structural admission.
 
 Direct deopt and initial-halt revision 4, halt-observation revision 5,
-halt-fetch/non-graphical/no-operation revision 2, and jump-code/jump-data/rotate
-revision 1 use metadata v3. Exact x86-64/AArch64 object sizes are 413/415 bytes
-for
+halt-fetch/non-graphical/no-operation revision 2, and
+jump-code/jump-data/rotate/crazy revision 1 use metadata v3. Exact
+x86-64/AArch64 object sizes are 413/415 bytes for
 deopt,
 495/564 for register/counter halt, 466/490 for initial halt, 535/628 for
 graphical
 halt fetch, 538/631 for non-graphical termination, 557/658 for no-operation,
-622/731 for jump-code, 564/699 for jump-data, and 578/732 for rotate
-respectively.
+622/731 for jump-code, 564/699 for jump-data, 578/732 for rotate, and
+577/731 for crazy, respectively.
 The wider fixtures bind `input_consumed=0x0000000123456789` and
 `output_len=0x000000023456789a`, proving full-width counter materialization. The
 fetched-terminal pairs bind `C=5` and an 8-word memory requirement: halt-fetch
@@ -55,9 +55,11 @@ live-ins
 target
 to 33 and advances `C/D` to 12/8. The rotate pair requires 9 words, binds
 `memory[5]=34` and `memory[7]=10`, writes the rotated data value 1594326 and
-encrypted code value 122, and advances `A/C/D` to 1594326/6/8. Every
-memory-backed fixture guards its exact metadata-bound IR footprint before
-dereferencing guest memory.
+encrypted code value 122, and advances `A/C/D` to 1594326/6/8. The crazy
+pair also requires 9 words, binds `A=20`, `memory[5]=57`, and
+`memory[7]=10`, writes Crazy result 2391494 and encrypted code value 91, and
+advances `A/C/D` to 2391494/6/8. Every memory-backed fixture guards its exact
+metadata-bound IR footprint before dereferencing guest memory.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters;

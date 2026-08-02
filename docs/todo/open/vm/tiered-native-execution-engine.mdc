@@ -179,6 +179,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   objects, x86-64 atomic execution, and AArch64 decoding prove the exact 9-word
   footprint, two live-in guards, two writes, three register commits, and eleven
   common-miss branches. Aliasing remains rejected.
+- `direct-crazy` revision 1 adds the second reviewed two-write arithmetic
+  transition. VM-owned decode and `profile_crazy()` derive
+  `memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`, `C:5->6`, and
+  `D:7->8`. Independent 577/731-byte objects prove the exact 9-word footprint,
+  two live-in guards, two writes, and three register commits. Aliasing and
+  out-of-domain operands remain rejected.
 - Every memory-backed direct template now compares ABI `memory_words` with the
   exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
@@ -186,8 +192,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   the
   smallest fast path, other no-live-in halt IR selects the observation-bound
   template, graphical halt fetch and non-graphical termination select terminal
-  live-in templates, exact no-op IR selects the memory-writing template, and
-  remaining IR selects verified deopt. Unsupported direct host
+  live-in templates, exact non-aliasing jump/rotate/crazy IR selects its
+  instruction-specific template, exact no-op IR selects the memory-writing
+  template, and remaining IR selects verified deopt. Unsupported direct host
   formats remain
   explicit at this narrow boundary and post-selection errors never degrade
   silently to fallback.
@@ -206,7 +213,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all nine templates, and reuses one pointer-identical immutable
+  keys/bytes for all ten templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`,
   `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
@@ -221,7 +228,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- Remaining crazy and I/O direct selection, cache-aware AOT/JIT
+- Remaining I/O direct selection, cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.
