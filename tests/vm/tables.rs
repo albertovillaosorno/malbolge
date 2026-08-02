@@ -36,8 +36,8 @@
 use malbolge::{
     MAX_WORD_VALUE, Word, current_profile, decode_instruction,
     decode_profile_instruction, encrypt_profile_cell, historical_profile,
-    profile_cell_decodes_to_no_operation, profile_pointer_successor,
-    profile_rotate,
+    profile_cell_decodes_to_no_operation, profile_crazy,
+    profile_pointer_successor, profile_rotate,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -86,6 +86,43 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
     } else {
         0
     }
+}
+
+fn profile_crazy_scalar(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
+    let mut place = 1u32;
+    let mut result = 0u32;
+    let mut trit = 0u8;
+    while trit < trits {
+        let data_digit = u16::try_from(data.rem_euclid(3)).ok().unwrap_or(0);
+        let accumulator_digit =
+            u16::try_from(accumulator.rem_euclid(3)).ok().unwrap_or(0);
+        let output =
+            u32::from(crazy_trit_scalar(data_digit, accumulator_digit));
+        result = result.saturating_add(output.saturating_mul(place));
+        place = place.saturating_mul(3);
+        data = data.div_euclid(3);
+        accumulator = accumulator.div_euclid(3);
+        trit = trit.saturating_add(1);
+    }
+    result
+}
+
+const fn structured_profile_words(modulus: u32) -> [u32; 12] {
+    let maximum = modulus.saturating_sub(1);
+    [
+        0,
+        1,
+        2,
+        3,
+        10,
+        123,
+        modulus.div_euclid(3),
+        modulus.div_euclid(2),
+        maximum.saturating_sub(2),
+        maximum.saturating_sub(1),
+        maximum,
+        maximum.div_euclid(2).saturating_mul(2),
+    ]
 }
 
 fn check_decode(cell: Word, code_pointer: Word) -> TestResult {
@@ -195,6 +232,33 @@ fn profile_noop_classification_matches_every_decode_phase() -> TestResult {
         &false,
         "non-graphical cell is not no-op",
     )
+}
+
+#[test]
+fn public_profile_crazy_matches_independent_formula() -> TestResult {
+    for data in 0..3u32 {
+        for accumulator in 0..3u32 {
+            check_equal(
+                &profile_crazy(data, accumulator, 1),
+                &profile_crazy_scalar(data, accumulator, 1),
+                "profile crazy exhausts the ternary digit table",
+            )?;
+        }
+    }
+    for profile in [historical_profile(), current_profile()] {
+        let trits = profile.word_trits();
+        let words = structured_profile_words(profile.word_modulus());
+        for data in words {
+            for accumulator in words {
+                check_equal(
+                    &profile_crazy(data, accumulator, trits),
+                    &profile_crazy_scalar(data, accumulator, trits),
+                    "profile crazy equals independent word formula",
+                )?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[test]

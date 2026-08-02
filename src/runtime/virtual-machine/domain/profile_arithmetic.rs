@@ -42,11 +42,12 @@ pub(crate) fn low_byte(value: u32) -> u8 {
     u8::try_from(reduced).ok().unwrap_or(0)
 }
 
-pub(crate) fn profile_crazy(
-    mut data: u32,
-    mut accumulator: u32,
-    trits: u8,
-) -> u32 {
+/// Applies the canonical Malbolge crazy operation to two profile words.
+///
+/// The caller supplies the canonical profile width in ternary digits. Values
+/// outside that profile domain are outside this helper's contract.
+#[must_use]
+pub fn profile_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
     let mut place = 1u32;
     let mut remaining_trits = trits;
     let mut result = 0u32;
