@@ -158,7 +158,7 @@ type NativeArtifactCacheBuckets<Value> =
 ///
 /// The bucket digest narrows lookup only. Every read, replacement, and removal
 /// confirms complete [`NativeArtifactKey`] equality before exposing a value.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct NativeArtifactCache<Value> {
     buckets: NativeArtifactCacheBuckets<Value>,
     entries: usize,
@@ -201,6 +201,27 @@ impl PartialEq for NativeArtifactKey {
     reason = "default trait methods preserve standard equality semantics"
 )]
 impl Eq for NativeArtifactKey {}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl<Value: PartialEq> PartialEq for NativeArtifactCache<Value> {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+            && self
+                .buckets
+                .values()
+                .flatten()
+                .all(|entry| other.get(&entry.key) == Some(&entry.value))
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl<Value: Eq> Eq for NativeArtifactCache<Value> {}
 
 impl<Value> Default for NativeArtifactCache<Value> {
     fn default() -> Self {

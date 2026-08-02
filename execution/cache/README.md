@@ -49,7 +49,9 @@ the derived bucket digest. The store checks the preferred bucket first, then
 searches remaining buckets by complete key equality when necessary. Therefore an
 accelerator-function change cannot duplicate, hide, or prevent removal of an
 otherwise identical key, while distinct keys in one forced-collision bucket remain
-independently readable and removable. `remove_region()` explicitly drops every
+independently readable and removable. Cache equality likewise compares only the
+retained exact key/value mapping; two stores with different bucket layouts are
+equal when their logical contents match. `remove_region()` explicitly drops every
 host/backend variant whose complete retained `RegionEffectIdentity` equals the
 caller-supplied identity; unrelated regions remain. Stored values gain no semantic
 authority merely by being cached; callers must insert only artifacts admitted by

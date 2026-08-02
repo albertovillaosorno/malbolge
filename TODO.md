@@ -293,7 +293,8 @@ and same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
 remain one entry even when their accelerator digests differ, while forced digest
-collisions remain independent across read, replacement, and removal.
+collisions remain independent across read, replacement, and removal. Cache
+equality compares exact retained key/value mappings rather than bucket layout.
 `VerifiedDirectNativeCache` narrows that store to semantically admitted
 direct artifacts. Cache-aware planning prepares one specialization-bound exact key
 for lookup and consumes it during miss emission, avoiding a second IR

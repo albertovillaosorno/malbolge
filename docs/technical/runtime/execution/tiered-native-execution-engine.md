@@ -68,8 +68,9 @@ derived digest from `Eq`. `NativeArtifactCache<Value>` uses FNV-1a only to choos
 the preferred bucket, then confirms full key equality and searches other buckets
 when an equal key carries a different accelerator digest. Equal identities remain
 one entry across digest changes; forced-collision distinct entries remain
-independent. The store performs no persistence, eviction, synchronization, or
-semantic admission.
+independent. Store equality compares the logical exact key/value mapping and omits
+bucket placement, so accelerator layout is never observable identity. The store
+performs no persistence, eviction, synchronization, or semantic admission.
 
 `execution/native/main.rs` now owns the first host-code artifact boundary. The
 bootstrap backend lowers one structurally consistent `RegionEffectProgram` into

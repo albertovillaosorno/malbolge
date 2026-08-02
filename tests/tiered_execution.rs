@@ -699,6 +699,38 @@ fn cache_digest_never_participates_in_exact_identity() -> Result<(), String> {
 }
 
 #[test]
+fn cache_equality_ignores_bucket_accelerator_layout() -> Result<(), String> {
+    let program = program();
+    let target =
+        target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new());
+    let left_key = NativeArtifactKey::with_digest(
+        &program,
+        target.clone(),
+        constant_bucket_digest,
+    )
+    .map_err(|error| format!("left cache key failed: {error:?}"))?;
+    let right_key = NativeArtifactKey::with_digest(
+        &program,
+        target,
+        alternate_bucket_digest,
+    )
+    .map_err(|error| format!("right cache key failed: {error:?}"))?;
+    let mut left = NativeArtifactCache::default();
+    let mut right = NativeArtifactCache::default();
+    let _left = left.insert(left_key, "value");
+    let _right = right.insert(right_key.clone(), "value");
+    if left != right {
+        return Err(String::from("cache equality retained bucket layout"));
+    }
+    let _changed = right.insert(right_key, "changed");
+    if left == right {
+        Err(String::from("cache equality ignored retained values"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
 fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
     let (left, right) = forced_collision_keys()?;
     if left.bucket_digest() != right.bucket_digest() {
