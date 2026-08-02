@@ -16,7 +16,8 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Collision-safe native artifact identity and cache-key assumptions.
+//   - Collision-safe native artifact identity, cache-key assumptions, and
+//   - process-local full-equality reuse storage.
 // - Must-Not:
 //   - Treat bucket hashes as identity, emit machine code, or trust unverified
 //   - IR.
@@ -46,8 +47,10 @@
 //   - false
 //
 
-//! Collision-safe native artifact identity over canonical execution IR.
+//! Collision-safe native artifact identity and process-local reuse storage.
 
+use std::collections::BTreeMap;
+use std::mem::replace;
 use std::sync::Arc;
 
 use crate::execution_ir::{
@@ -140,7 +143,89 @@ pub struct NativeArtifactKey {
     target: NativeTargetIdentity,
 }
 
+/// One caller-owned process-local cache entry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NativeArtifactCacheEntry<Value> {
+    key: NativeArtifactKey,
+    value: Value,
+}
+
+type NativeArtifactCacheBucket<Value> = Vec<NativeArtifactCacheEntry<Value>>;
+type NativeArtifactCacheBuckets<Value> =
+    BTreeMap<u64, NativeArtifactCacheBucket<Value>>;
+
+/// Collision-safe process-local native artifact reuse storage.
+///
+/// The bucket digest narrows lookup only. Every read, replacement, and removal
+/// confirms complete [`NativeArtifactKey`] equality before exposing a value.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct NativeArtifactCache<Value> {
+    buckets: NativeArtifactCacheBuckets<Value>,
+    entries: usize,
+}
+
 type BucketDigestFunction = fn(&[u8]) -> u64;
+
+impl<Value> NativeArtifactCache<Value> {
+    /// Removes every cached value while retaining no reuse authority.
+    pub fn clear(&mut self) {
+        self.buckets.clear();
+        self.entries = 0;
+    }
+
+    /// Returns a cached value only after complete key equality.
+    #[must_use]
+    pub fn get(&self, key: &NativeArtifactKey) -> Option<&Value> {
+        self.buckets
+            .get(&key.bucket_digest())?
+            .iter()
+            .find(|entry| entry.key == *key)
+            .map(|entry| &entry.value)
+    }
+
+    /// Inserts one value, replacing only an existing full-equality key.
+    ///
+    /// Returns the replaced value when this exact key already existed. A bucket
+    /// collision with a different key creates a distinct entry.
+    pub fn insert(
+        &mut self,
+        key: NativeArtifactKey,
+        value: Value,
+    ) -> Option<Value> {
+        let bucket = self.buckets.entry(key.bucket_digest()).or_default();
+        if let Some(entry) = bucket.iter_mut().find(|entry| entry.key == key) {
+            return Some(replace(&mut entry.value, value));
+        }
+        bucket.push(NativeArtifactCacheEntry { key, value });
+        self.entries = self.entries.saturating_add(1);
+        None
+    }
+
+    /// Reports whether no exact-key values are retained.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.entries == 0
+    }
+
+    /// Returns the number of exact-key entries across every digest bucket.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.entries
+    }
+
+    /// Removes and returns one value only after complete key equality.
+    pub fn remove(&mut self, key: &NativeArtifactKey) -> Option<Value> {
+        let digest = key.bucket_digest();
+        let bucket = self.buckets.get_mut(&digest)?;
+        let index = bucket.iter().position(|entry| entry.key == *key)?;
+        let entry = bucket.remove(index);
+        self.entries = self.entries.saturating_sub(1);
+        if bucket.is_empty() {
+            let _removed = self.buckets.remove(&digest);
+        }
+        Some(entry.value)
+    }
+}
 
 impl NativeArtifactKey {
     /// Returns the non-authoritative bucket digest used only for lookup.

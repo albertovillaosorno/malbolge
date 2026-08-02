@@ -54,17 +54,19 @@ fail closed and are named in `missing=`. This consumes artifact metadata without
 reloading `malbolge.json`, but does not replace profile identity/fingerprint or
 verifier admission.
 
-`execution/cache/main.rs` now owns collision-safe native artifact identity.
-`RegionEffectProgram` has a versioned layout-independent canonical byte
-encoding, frozen by an independently rendered fixture. Raw canonical transport
-may preserve a profile-capacity-inconsistent untrusted envelope for deterministic
-rejection, but `RegionEffectIdentity` and `NativeArtifactKey` return typed
-`NativeIdentityError::ProfileCapacity` before hashing or artifact construction.
-Native keys retain the exact profile ID/fingerprint plus the canonical requirement
-envelope and additionally bind host OS, x86-64/AArch64 ISA, backend
-identity/revision, native ABI revision, and sorted required features. FNV-1a is
-only a bucket accelerator; full canonical IR and target equality remain
-authoritative after collisions.
+`execution/cache/main.rs` now owns collision-safe native artifact identity and
+caller-owned process-local reuse storage. `RegionEffectProgram` has a versioned
+layout-independent canonical byte encoding, frozen by an independently rendered
+fixture. Raw canonical transport may preserve a profile-capacity-inconsistent
+untrusted envelope for deterministic rejection, but `RegionEffectIdentity` and
+`NativeArtifactKey` return typed `NativeIdentityError::ProfileCapacity` before
+hashing or artifact construction. Native keys retain the exact profile
+ID/fingerprint plus the canonical requirement envelope and additionally bind host
+OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and sorted
+required features. `NativeArtifactCache<Value>` uses FNV-1a only to choose a
+bucket, then confirms full key equality for lookup, replacement, and removal.
+Forced-collision entries remain independent. The store performs no persistence,
+eviction, synchronization, or semantic admission.
 
 `execution/native/main.rs` now owns the first host-code artifact boundary. The
 bootstrap backend lowers one structurally consistent `RegionEffectProgram` into
@@ -160,10 +162,10 @@ lookup, executable-memory policy, linking, or invocation.
 ### Remaining Implementation
 
 Semantic admission beyond the deopt and one-step halt template family, general
-direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
-policy/invocation, durable native cache
-serialization/storage/eviction, cache-aware AOT/JIT orchestration, executable
-invocation, and performance policy beyond this preflighted plan remain open. The
+direct accelerated x86-64/AArch64 region-effect instruction selection,
+executable-memory policy/invocation, durable native cache
+serialization/storage/eviction, cache-aware AOT/JIT orchestration, and performance
+policy beyond this preflighted plan remain open. The
 interpreter remains the only normative execution authority and the guaranteed
 fallback.
 
@@ -194,8 +196,8 @@ backend errors.
 - Current executable foundation is covered by `tests/state_graph_research.rs`
   and `tests/tiered_execution.rs`: artifact tampering fails closed, verified
   effects/deoptimization match their normative baselines, canonical IR matches a
-  byte-exact independent fixture, forced bucket collisions never authorize
-  native-cache reuse, profile-invalid IR cannot gain cache/bootstrap/direct
+  byte-exact independent fixture, forced bucket collisions keep process-local
+  cache entries independent, profile-invalid IR cannot gain cache/bootstrap/direct
   identity, direct `MBPF` v3 binds exact region memory, bootstrap source is
   deterministic/atomic/key-bound, direct selection
   preflights profile capability before host/backend selection, and

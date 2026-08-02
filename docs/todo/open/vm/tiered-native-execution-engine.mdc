@@ -77,8 +77,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   untrusted IR remains canonically transportable, but `RegionEffectIdentity` and
   `NativeArtifactKey` reject profile-capacity-inconsistent addressing through
   typed `NativeIdentityError::ProfileCapacity` before hashing or artifact
-  construction. Digest collisions never authorize reuse because full
-  canonical/key equality remains authoritative.
+  construction. `NativeArtifactCache<Value>` adds caller-owned process-local
+  lookup/insertion/replacement/removal. Digest collisions remain distinct because
+  every operation confirms full key equality. It owns no persistence, eviction,
+  synchronization, or semantic admission.
 - `execution/native/main.rs` now lowers structurally consistent effect IR to
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
   entry/memory/input/output guards precede a collapsed final commit. Pinned
@@ -116,5 +118,6 @@ baseline; native tiers are accelerators of identical observable behavior.
   errors. Cache lookup, executable memory, linking, invocation, and performance
   policy remain outside this planner.
 - Accelerated semantic machine-code admission/direct effect emitters, cache-aware
-  AOT/JIT orchestration, durable cache storage/eviction, executable-memory policy,
-  invocation, and end-to-end tier performance remain unimplemented.
+  AOT/JIT orchestration, durable cache serialization/storage/eviction,
+  executable-memory policy, invocation, and end-to-end tier performance remain
+  unimplemented.

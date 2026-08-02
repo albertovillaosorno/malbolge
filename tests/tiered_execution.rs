@@ -60,8 +60,9 @@ use std::process::Command;
 use std::str::from_utf8;
 
 use execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
-    NativeTargetConfig, NativeTargetIdentity, RegionEffectIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
+    NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
+    RegionEffectIdentity,
 };
 use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
@@ -95,6 +96,8 @@ struct CoffCompileCase {
     expected_machine: [u8; 2],
     isa: HostIsa,
 }
+
+type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
     decode_hex_fixture(include_str!("execution/fixtures/region-effect-v3.hex"))
@@ -520,12 +523,11 @@ fn required_feature_order_is_canonical() -> Result<(), String> {
     }
 }
 
-#[test]
-fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
-    fn constant_digest(_bytes: &[u8]) -> u64 {
-        0
-    }
+const fn constant_bucket_digest(_bytes: &[u8]) -> u64 {
+    0
+}
 
+fn forced_collision_keys() -> Result<CollisionKeys, String> {
     let left_program = program();
     let mut right_program = left_program.clone();
     let first_effect = right_program
@@ -536,15 +538,21 @@ fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
     let left = NativeArtifactKey::with_digest(
         &left_program,
         target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new()),
-        constant_digest,
+        constant_bucket_digest,
     )
     .map_err(|error| format!("left collision key failed: {error:?}"))?;
     let right = NativeArtifactKey::with_digest(
         &right_program,
         target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new()),
-        constant_digest,
+        constant_bucket_digest,
     )
     .map_err(|error| format!("right collision key failed: {error:?}"))?;
+    Ok((left, right))
+}
+
+#[test]
+fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
+    let (left, right) = forced_collision_keys()?;
     if left.bucket_digest() != right.bucket_digest() {
         return Err(String::from("forced cache digest did not collide"));
     }
@@ -554,6 +562,43 @@ fn forced_bucket_collision_never_authorizes_reuse() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[test]
+fn process_cache_confirms_full_keys_after_collision() -> Result<(), String> {
+    let (left, right) = forced_collision_keys()?;
+    let mut cache = NativeArtifactCache::default();
+    if !cache.is_empty() {
+        return Err(String::from("new native cache was not empty"));
+    }
+    if cache.insert(left.clone(), "left").is_some()
+        || cache.insert(right.clone(), "right").is_some()
+        || cache.len() != 2
+        || cache.get(&left) != Some(&"left")
+        || cache.get(&right) != Some(&"right")
+    {
+        return Err(String::from("collision bucket lost exact entries"));
+    }
+    if cache.insert(left.clone(), "left-replaced") != Some("left")
+        || cache.len() != 2
+        || cache.get(&left) != Some(&"left-replaced")
+        || cache.get(&right) != Some(&"right")
+    {
+        return Err(String::from("exact replacement crossed collision key"));
+    }
+    if cache.remove(&left) != Some("left-replaced")
+        || cache.get(&left).is_some()
+        || cache.get(&right) != Some(&"right")
+        || cache.len() != 1
+    {
+        return Err(String::from("exact removal crossed collision key"));
+    }
+    cache.clear();
+    if cache.is_empty() && cache.get(&right).is_none() {
+        Ok(())
+    } else {
+        Err(String::from("native cache clear retained an entry"))
+    }
 }
 
 const fn native_observation(

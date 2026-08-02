@@ -1,9 +1,9 @@
-# Native artifact cache identity
+# Native artifact cache
 
 ## Purpose
 
-Own collision-safe native artifact reuse keys before durable cache storage
-exists.
+Own collision-safe native artifact reuse keys and caller-owned process-local
+storage before durable cache persistence exists.
 
 ## Owns
 
@@ -12,12 +12,14 @@ exists.
 - host operating-system and ISA identity;
 - backend and native ABI revisions;
 - sorted required code-generation features;
-- non-authoritative lookup digests followed by full equality.
+- non-authoritative lookup digests followed by full equality;
+- process-local exact-key lookup, insertion, replacement, removal, and clearing.
 
 ## Does Not Own
 
 - native machine-code emission;
-- durable cache directories or eviction policy;
+- durable cache directories, serialization, or eviction policy;
+- synchronization or shared ownership between callers;
 - executable-memory allocation;
 - verifier acceptance of an untrusted `RegionEffectProgram`.
 
@@ -40,8 +42,15 @@ native ABI revision, and a sorted/deduplicated required-feature set. This means
 Windows/x86-64 and Linux/x86-64 never share a key merely because the instruction
 set matches, and changing a backend/ABI/feature assumption invalidates reuse.
 
-The current FNV-1a digest is intentionally only a lookup bucket. Tests force two
-different programs to the same digest and require the full keys to remain
-unequal. A later disk cache may add SHA-256/content-addressed filenames, but it
-must still confirm the complete key rather than promote a digest to semantic
-authority.
+`NativeArtifactCache<Value>` is a caller-owned process-local store over those
+keys. It groups entries by the non-authoritative digest, then confirms complete
+key equality for every read, replacement, and removal. Distinct keys in one
+forced-collision bucket remain independently readable and removable. Stored
+values gain no semantic authority merely by being cached; callers must insert
+only artifacts admitted by their owning boundary.
+
+The cache has no implicit limit, eviction, synchronization, persistence, retry,
+or discovery. `clear()` is explicit, and dropping the caller-owned value releases
+all retained entries. A later disk cache may add SHA-256/content-addressed
+filenames, but it must still confirm the complete key rather than promote a
+digest to semantic authority.
