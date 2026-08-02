@@ -235,8 +235,8 @@ pub(super) fn jump_data_code(
     words.push(0x3941_3009);
     push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
     words.extend_from_slice(&[
-        movz_w10(observation.code_pointer),
-        movk_w10_high(observation.code_pointer),
+        movz_w10(commit.encrypted_address),
+        movk_w10_high(commit.encrypted_address),
         0x8b0a_090a,
         movz_w9(commit.encrypted_value),
         movk_w9_high(commit.encrypted_value),

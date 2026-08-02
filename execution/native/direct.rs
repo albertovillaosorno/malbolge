@@ -132,6 +132,7 @@ pub(super) struct DirectEntryObservation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectCodeWriteCommit {
+    pub(super) encrypted_address: u32,
     pub(super) encrypted_value: u32,
     pub(super) next_code_pointer: u32,
     pub(super) next_data_pointer: u32,
@@ -1881,6 +1882,7 @@ fn no_operation_coff(
         required_memory_words: key.ir().required_memory_words(),
     };
     let commit = DirectCodeWriteCommit {
+        encrypted_address: selected.live_in.address,
         encrypted_value: selected.encrypted_value,
         next_code_pointer: selected.next_code_pointer,
         next_data_pointer: selected.next_data_pointer,
@@ -2221,6 +2223,7 @@ fn derive_jump_data_program(
     Some(DirectJumpDataProgram {
         code_live_in,
         commit: DirectCodeWriteCommit {
+            encrypted_address: code_pointer,
             encrypted_value,
             next_code_pointer,
             next_data_pointer,

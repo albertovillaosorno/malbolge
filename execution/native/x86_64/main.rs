@@ -182,7 +182,7 @@ pub(super) fn jump_data_code(
     guard: DirectJumpDataGuard,
     commit: DirectCodeWriteCommit,
 ) -> Option<Vec<u8>> {
-    let code_offset = memory_byte_offset(observation.code_pointer)?;
+    let code_offset = memory_byte_offset(commit.encrypted_address)?;
     let data_offset = memory_byte_offset(observation.data_pointer)?;
     let mut code = Vec::with_capacity(176);
     let mut guard_jumps = Vec::with_capacity(12);
