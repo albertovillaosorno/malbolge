@@ -54,15 +54,17 @@ parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine
 identity against the native target key, requires one executable/non-writable
 `.text`, requires the exact `malbolge_native_region_apply` entry, rejects other
 external functions and undefined external dependencies, and permits relocations
-only when they resolve to symbols defined inside the same object. A backend whose
-identity starts with `direct-` must also contain one initialized, read-only,
+only when they resolve to symbols defined inside the same object. Direct backends
+and `clang-c23-bootstrap` revision 2 must contain one initialized, read-only,
 non-relocated `.mbprof` section. Its `MBPF` v3 payload carries the exact profile
 ID/fingerprint plus published version, stable semantic features, word trits,
 profile capacity, and derived `u64` region memory requirement; the complete
-envelope must equal the native key. Missing,
-duplicated, executable, writable, relocated, malformed, or mismatched metadata
-fails structurally. Bootstrap Clang objects remain admissible without `.mbprof`
-until that compiler path emits the section. The resulting
+envelope must equal the native key. Missing, duplicated, executable, writable,
+relocated, malformed, or mismatched required metadata fails structurally.
+Bootstrap revision-2 source emits the payload as an external `const unsigned char`
+array allocated into a read-only custom section. Revision 1 remains structurally
+admissible without metadata as a historical identity. The pinned Clang test owns
+x86-64/AArch64 object confirmation. The resulting
 `StructurallyAdmittedNativeObjectArtifact` is still not semantic authority. An
 independent semantic validator must establish that boundary before executable
 promotion exists.

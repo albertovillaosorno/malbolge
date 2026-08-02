@@ -261,9 +261,11 @@ self-contained relocations, and absence of undefined host dependencies. Direct
 objects additionally require `MBPF` v3 read-only `.mbprof` metadata matching
 profile ID/fingerprint, published version, ordered semantic features, word trits,
 profile capacity, and exact derived `u64` region memory retained by their native
-key; absence, tampering, or
-object/key mismatch fails structurally. Bootstrap Clang objects do not yet emit
-that section. A separate direct deopt backend now
+key; absence, tampering, or object/key mismatch fails structurally. Bootstrap
+revision-2 C23 source now renders the same canonical payload into a read-only
+`.mbprof` declaration, and structural admission requires it for revision 2 while
+preserving historical revision-1 absence. The pinned cross-ISA compile test remains
+the object-level confirmation boundary. A separate direct deopt backend now
 emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
 verified: they return guard miss without touching state, providing the first
 semantically admitted native artifact and deterministic fallback floor. A second

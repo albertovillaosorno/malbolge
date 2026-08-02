@@ -123,6 +123,70 @@ fn decode_hex_fixture(text: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn expected_profile_metadata(
+    program: &RegionEffectProgram,
+) -> Result<Vec<u8>, String> {
+    fn push_bytes(output: &mut Vec<u8>, value: &[u8]) -> Result<(), String> {
+        let length = u32::try_from(value.len()).map_err(|_error| {
+            String::from("profile metadata length overflow")
+        })?;
+        output.extend_from_slice(&length.to_le_bytes());
+        output.extend_from_slice(value);
+        Ok(())
+    }
+
+    let feature_count =
+        u32::try_from(program.profile_requirement.features.len())
+            .map_err(|_error| String::from("profile feature count overflow"))?;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"MBPF");
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    push_bytes(&mut bytes, program.profile_id.as_bytes())?;
+    push_bytes(&mut bytes, program.profile_fingerprint.as_bytes())?;
+    push_bytes(&mut bytes, program.profile_requirement.version.as_bytes())?;
+    bytes.extend_from_slice(&feature_count.to_le_bytes());
+    for feature in &program.profile_requirement.features {
+        push_bytes(&mut bytes, feature.as_bytes())?;
+    }
+    bytes.push(program.profile_requirement.word_trits);
+    bytes.extend_from_slice(
+        &program.profile_requirement.memory_words.to_le_bytes(),
+    );
+    bytes.extend_from_slice(&program.required_memory_words().to_le_bytes());
+    Ok(bytes)
+}
+
+fn rendered_profile_metadata(source: &str) -> Result<Vec<u8>, String> {
+    let marker = "const unsigned char malbolge_profile_metadata[] = {\n";
+    let start = source
+        .find(marker)
+        .map(|offset| offset.saturating_add(marker.len()))
+        .ok_or_else(|| {
+            String::from("bootstrap metadata declaration missing")
+        })?;
+    let remainder = source
+        .get(start..)
+        .ok_or_else(|| String::from("bootstrap metadata start invalid"))?;
+    let end = remainder
+        .find("};\n\n")
+        .ok_or_else(|| String::from("bootstrap metadata terminator missing"))?;
+    remainder
+        .get(..end)
+        .ok_or_else(|| String::from("bootstrap metadata range invalid"))?
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            let digits = value.strip_prefix("0x").ok_or_else(|| {
+                format!("bootstrap metadata byte lacks hex prefix: {value}")
+            })?;
+            u8::from_str_radix(digits, 16)
+                .map_err(|error| format!("bootstrap metadata hex: {error}"))
+        })
+        .collect()
+}
+
 fn current_profile_requirement() -> TargetProfileRequirement {
     TargetProfileRequirement::from_descriptor(current_profile())
 }
@@ -1776,6 +1840,99 @@ fn direct_deopt_semantic_admission_rejects_byte_and_target_tampering()
 }
 
 #[test]
+fn bootstrap_profile_metadata_requirement_starts_at_revision_two()
+-> Result<(), String> {
+    let program = native_program();
+    let direct =
+        emit_direct_deopt_coff(&program, direct_deopt_target(HostIsa::X86_64))
+            .map_err(|error| error.to_string())?;
+    let revision_two_key =
+        NativeArtifactKey::new(&program, native_target(HostIsa::X86_64))
+            .map_err(|error| format!("bootstrap v2 key: {error:?}"))?;
+    let revision_two = UntrustedNativeObjectArtifact::from_emitter_output(
+        revision_two_key,
+        direct.object().to_vec(),
+        direct.target_triple(),
+    );
+    let _admitted_revision_two = structurally_admit_coff(&revision_two)
+        .map_err(|error| format!("bootstrap v2 metadata rejected: {error}"))?;
+
+    let mut missing = direct.object().to_vec();
+    let section = b".mbprof";
+    let offset = missing
+        .windows(section.len())
+        .position(|window| window == section)
+        .ok_or_else(|| {
+            String::from("bootstrap fixture lacks metadata section")
+        })?;
+    let marker =
+        missing.get_mut(offset.saturating_add(1)).ok_or_else(|| {
+            String::from("bootstrap metadata name offset invalid")
+        })?;
+    *marker = b'x';
+    let revision_two_missing =
+        UntrustedNativeObjectArtifact::from_emitter_output(
+            revision_two.key().clone(),
+            missing.clone(),
+            direct.target_triple(),
+        );
+    if structurally_admit_coff(&revision_two_missing)
+        != Err(CoffAdmissionError::ProfileMetadata)
+    {
+        return Err(String::from("bootstrap v2 admitted missing metadata"));
+    }
+
+    let revision_one_target = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(CLANG_C23_BOOTSTRAP_BACKEND_ID),
+        backend_revision: 1,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    let revision_one_key =
+        NativeArtifactKey::new(&program, revision_one_target)
+            .map_err(|error| format!("bootstrap v1 key: {error:?}"))?;
+    let revision_one_missing =
+        UntrustedNativeObjectArtifact::from_emitter_output(
+            revision_one_key,
+            missing,
+            direct.target_triple(),
+        );
+    let _admitted_revision_one = structurally_admit_coff(&revision_one_missing)
+        .map_err(|error| format!("historical bootstrap v1 changed: {error}"))?;
+    Ok(())
+}
+
+fn assert_bootstrap_source_profile_metadata(
+    program: &RegionEffectProgram,
+    source: &str,
+) -> Result<(), String> {
+    if !source.contains("/* Profile ID: malbolge-2026.2 */") {
+        return Err(String::from("native source lost profile identity"));
+    }
+    let fingerprint_comment =
+        format!("/* Profile fingerprint: {} */", program.profile_fingerprint);
+    if !source.contains(&fingerprint_comment) {
+        return Err(String::from("native source lost profile fingerprint"));
+    }
+    if !source.contains(r#"#pragma section(".mbprof", read)"#)
+        || !source.contains(r#"__declspec(allocate(".mbprof"))"#)
+        || !source.contains("/* Backend: clang-c23-bootstrap rev 2 / ABI 1 */")
+    {
+        return Err(String::from(
+            "native source lost bootstrap metadata policy",
+        ));
+    }
+    if rendered_profile_metadata(source)? == expected_profile_metadata(program)?
+    {
+        Ok(())
+    } else {
+        Err(String::from("native source profile metadata drifted"))
+    }
+}
+
+#[test]
 fn native_bootstrap_source_is_deterministic_atomic_and_key_bound()
 -> Result<(), String> {
     let program = native_program();
@@ -1797,14 +1954,7 @@ fn native_bootstrap_source_is_deterministic_atomic_and_key_bound()
         return Err(String::from("native source lost exact artifact key"));
     }
     let source = first.source();
-    if !source.contains("/* Profile ID: malbolge-2026.2 */") {
-        return Err(String::from("native source lost profile identity"));
-    }
-    let fingerprint_comment =
-        format!("/* Profile fingerprint: {} */", program.profile_fingerprint);
-    if !source.contains(&fingerprint_comment) {
-        return Err(String::from("native source lost profile fingerprint"));
-    }
+    assert_bootstrap_source_profile_metadata(&program, source)?;
     let guard = source
         .find("state->memory_words <= MB_U64(7)")
         .ok_or_else(|| String::from("native memory preflight missing"))?;

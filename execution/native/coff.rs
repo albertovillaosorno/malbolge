@@ -51,7 +51,10 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::str::from_utf8;
 
-use super::UntrustedNativeObjectArtifact;
+use super::{
+    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+    UntrustedNativeObjectArtifact,
+};
 use crate::execution_cache::{HostIsa, HostOperatingSystem, NativeArtifactKey};
 
 const COFF_HEADER_BYTES: usize = 20;
@@ -89,7 +92,7 @@ pub enum CoffAdmissionError {
     Machine,
     /// Object header includes an executable-image optional header.
     OptionalHeader,
-    /// Direct object profile metadata is absent, malformed, or mismatched.
+    /// Required profile metadata is absent, malformed, or mismatched.
     ProfileMetadata,
     /// This validator only admits Windows COFF target identities.
     TargetFormat,
@@ -393,6 +396,14 @@ fn push_metadata_bytes(output: &mut Vec<u8>, value: &[u8]) -> Option<()> {
     Some(())
 }
 
+fn requires_profile_metadata(key: &NativeArtifactKey) -> bool {
+    let target = key.target();
+    target.backend_id().starts_with("direct-")
+        || (target.backend_id() == CLANG_C23_BOOTSTRAP_BACKEND_ID
+            && target.backend_revision()
+                >= CLANG_C23_BOOTSTRAP_BACKEND_REVISION)
+}
+
 fn validate_profile_metadata(
     object: &[u8],
     sections: &[CoffSection],
@@ -406,7 +417,7 @@ fn validate_profile_metadata(
         return Err(CoffAdmissionError::ProfileMetadata);
     }
     let Some(metadata) = metadata_section else {
-        if key.target().backend_id().starts_with("direct-") {
+        if requires_profile_metadata(key) {
             return Err(CoffAdmissionError::ProfileMetadata);
         }
         return Ok(());

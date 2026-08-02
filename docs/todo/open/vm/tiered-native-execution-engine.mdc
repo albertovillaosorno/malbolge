@@ -90,8 +90,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   Direct revision-4 objects must also carry exact read-only `MBPF` v3 `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
   features, word trits, profile capacity, and derived `u64` region memory retained
-  by their native key; absence or mismatch fails structurally. Bootstrap Clang
-  objects do not yet emit it.
+  by their native key; absence or mismatch fails structurally. Bootstrap revision
+  2 renders the same canonical payload into its C23 source and structural
+  admission requires the section for that revision. Historical revision 1 remains
+  admissible without it; pinned Clang cross-ISA compilation is the object-level
+  confirmation boundary.
 - A direct deopt-only backend now emits canonical x86-64/AArch64 COFF without
   Clang. Complete byte fixtures plus structural validation admit only the exact
   `return guard-miss` programs; opcode mutation fails semantic admission. This is

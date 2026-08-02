@@ -90,14 +90,16 @@ key, requires exactly one executable/non-writable `.text` section and the exact
 functions or undefined external symbols, and admits relocations only when their
 targets are defined inside the same object. ARM64's compiler-generated `.rdata`
 constant relocations therefore remain valid while host-library dependencies fail
-closed. Direct backends additionally require one initialized, read-only,
-non-relocated `.mbprof` section. Its `MBPF` v3 payload must match the profile
-ID, fingerprint, published version, stable features, word trits, profile capacity,
-and exact derived `u64` region memory requirement retained by the native key.
-Missing or mismatched direct metadata, including a same-profile footprint mismatch,
-fails before semantic admission. Bootstrap Clang
-objects remain legal without this section until their compiler path emits it.
-The result is named `StructurallyAdmittedNativeObjectArtifact`; it still has no
+closed. Direct backends and `clang-c23-bootstrap` revision 2 additionally
+require one initialized, read-only, non-relocated `.mbprof` section. Its `MBPF` v3
+payload must match the profile ID, fingerprint, published version, stable features,
+word trits, profile capacity, and exact derived `u64` region memory requirement
+retained by the native key. Missing or mismatched required metadata, including a
+same-profile footprint mismatch, fails before semantic admission. Bootstrap
+revision-2 C23 source renders the canonical bytes through a read-only custom-section
+declaration; historical revision 1 remains legal without the section. The pinned
+Clang test remains responsible for cross-ISA compiled-object confirmation. The
+result is named `StructurallyAdmittedNativeObjectArtifact`; it still has no
 semantic execution authority.
 
 `execution/native/direct.rs` now crosses that semantic boundary for one minimal

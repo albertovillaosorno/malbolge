@@ -132,8 +132,8 @@ int malbolge_native_region_apply(struct mb_native_region_state *state)
 
 /// Stable bootstrap backend identity bound into native artifact keys.
 pub const CLANG_C23_BOOTSTRAP_BACKEND_ID: &str = "clang-c23-bootstrap";
-/// First bootstrap lowering revision.
-pub const CLANG_C23_BOOTSTRAP_BACKEND_REVISION: u32 = 1;
+/// Bootstrap revision that emits profile-bound `.mbprof` metadata.
+pub const CLANG_C23_BOOTSTRAP_BACKEND_REVISION: u32 = 2;
 /// First native call-frame ABI revision for generated bootstrap regions.
 pub const NATIVE_REGION_ABI_REVISION: u16 = 1;
 
@@ -367,8 +367,9 @@ impl<'program> LoweringPlan<'program> {
 
     fn render(
         &self,
-        target: &NativeTargetIdentity,
+        key: &NativeArtifactKey,
     ) -> Result<String, NativeArtifactError> {
+        let target = key.target();
         let mut output = String::new();
         writeln!(
             &mut output,
@@ -393,6 +394,7 @@ impl<'program> LoweringPlan<'program> {
             target.native_abi_revision()
         )
         .map_err(|_error| NativeArtifactError::Rendering)?;
+        render_profile_metadata(&mut output, key)?;
         output.push_str(C_ABI_PREFIX);
         self.render_preflight(&mut output)?;
         self.render_commit(&mut output)?;
@@ -570,12 +572,33 @@ pub fn lower_clang_c23(
     let plan = LoweringPlan::new(program)?;
     let key = NativeArtifactKey::new(program, target)?;
     let target_triple = clang_target_triple(key.target());
-    let source = plan.render(key.target())?;
+    let source = plan.render(&key)?;
     Ok(UntrustedNativeSourceArtifact {
         key,
         source,
         target_triple,
     })
+}
+
+fn render_profile_metadata(
+    output: &mut String,
+    key: &NativeArtifactKey,
+) -> Result<(), NativeArtifactError> {
+    let metadata = coff::canonical_profile_metadata(key)
+        .ok_or(NativeArtifactError::Rendering)?;
+    output.push_str("#pragma section(\".mbprof\", read)\n");
+    output.push_str("__declspec(allocate(\".mbprof\"))\n");
+    output.push_str("const unsigned char malbolge_profile_metadata[] = {\n");
+    for chunk in metadata.chunks(12) {
+        output.push_str("    ");
+        for byte in chunk {
+            write!(output, "0x{byte:02x}, ")
+                .map_err(|_error| NativeArtifactError::Rendering)?;
+        }
+        output.push('\n');
+    }
+    output.push_str("};\n\n");
+    Ok(())
 }
 
 fn validate_target(

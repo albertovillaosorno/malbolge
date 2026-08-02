@@ -187,8 +187,10 @@ is never silently substituted for the expected identity.
 
 Experiment manifests, `MALBCAP1` capsules, portable effect IR v3, native cache
 keys, and direct COFF objects now carry this fingerprint with the declared
-profile ID. Bootstrap compiler objects and product-level artifacts do not yet
-universally carry it, so this contract remains active.
+profile ID. Bootstrap revision-2 C23 candidates render the same canonical
+`.mbprof` envelope and structural admission requires it for that revision;
+historical revision 1 and product-level artifacts do not universally carry it, so
+this contract remains active.
 
 ## Verification
 
@@ -207,8 +209,9 @@ universally carry it, so this contract remains active.
 - `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
   the generated canonical fingerprint.
 - `tests/tiered_execution.rs` freezes IR v3 and all direct COFF bytes, verifies
-  key accessors retain ID/fingerprint/version/features/geometry, and rejects
-  missing, tampered, or key-mismatched `.mbprof` metadata before semantic
+  key accessors retain ID/fingerprint/version/features/geometry, independently
+  reconstructs bootstrap revision-2 source metadata, and rejects missing,
+  tampered, or key-mismatched required `.mbprof` metadata before semantic
   admission.
 - The CLI is smoke-tested with matching and mismatching expected fingerprints.
 - `jig validate --root .` remains the repository-wide closure gate.
