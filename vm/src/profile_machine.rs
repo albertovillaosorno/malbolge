@@ -1245,7 +1245,12 @@ const fn profile_instruction(decoded: u8) -> ProfileInstruction {
     }
 }
 
-const fn profile_rotate(value: u32, modulus: u32) -> u32 {
+/// Rotates one in-domain profile word right by one ternary digit.
+///
+/// The caller supplies the canonical profile modulus. Values outside that
+/// domain are not valid VM words and are outside this helper's contract.
+#[must_use]
+pub const fn profile_rotate(value: u32, modulus: u32) -> u32 {
     let quotient = value.div_euclid(TERNARY_RADIX);
     let low_trit = value.rem_euclid(TERNARY_RADIX);
     let high_weight = modulus.div_euclid(TERNARY_RADIX);

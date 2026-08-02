@@ -51,6 +51,7 @@ use malbolge::{
     MAX_WORD_VALUE, Word, current_profile, decode_instruction,
     decode_profile_instruction, encrypt_profile_cell, historical_profile,
     profile_cell_decodes_to_no_operation, profile_pointer_successor,
+    profile_rotate,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -235,6 +236,23 @@ fn profile_pointer_successor_wraps_exact_domains() -> TestResult {
         &None,
         "zero profile modulus is rejected",
     )
+}
+
+#[test]
+fn profile_rotate_matches_independent_formula() -> TestResult {
+    for modulus in [59_049u32, 4_782_969u32] {
+        let high_weight = modulus.div_euclid(3);
+        for value in [0, 1, 2, 10, 123, modulus.saturating_sub(1)] {
+            let expected =
+                value.div_euclid(3) + value.rem_euclid(3) * high_weight;
+            check_equal(
+                &profile_rotate(value, modulus),
+                &expected,
+                "profile rotate formula",
+            )?;
+        }
+    }
+    Ok(())
 }
 
 #[test]

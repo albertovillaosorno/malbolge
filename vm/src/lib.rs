@@ -110,7 +110,7 @@ pub use profile_machine::{
     ProfileMachineIoState, ProfileMachineState, ProfileRegisterName,
     ProfileRegisters, decode_profile_instruction, encrypt_profile_cell,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
-    profile_pointer_successor,
+    profile_pointer_successor, profile_rotate,
 };
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
