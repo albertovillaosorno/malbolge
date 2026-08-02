@@ -111,8 +111,9 @@ Clang test remains responsible for cross-ISA compiled-object confirmation. The
 result is named `StructurallyAdmittedNativeObjectArtifact`; it still has no
 semantic execution authority.
 
-`execution/native/direct.rs` now crosses that semantic boundary for one minimal
-native program only: a direct deoptimization stub. The x86-64 sequence is
+`execution/native/direct.rs` crosses that semantic boundary through a reviewed
+family whose deterministic fallback floor is a direct deoptimization stub. The
+x86-64 sequence is
 `mov eax, 1; ret`; the AArch64 sequence is `mov w0, #1; ret`. Both are wrapped in
 a deterministic minimal COFF object with timestamp zero, one executable `.text`,
 one read-only `.mbprof`, one external entry symbol, and no relocations.
@@ -152,6 +153,16 @@ objects are 495/564 bytes for x86-64/AArch64 and bind counters above `u32::MAX`.
 Counter/key mutation, opcode mutation, and historical revision-4 target identity
 all fail semantic admission.
 
+`direct-halt-fetch` revision 1 binds graphical halt termination to real code
+memory. Admission requires one effect ending in `HaltInstruction`, one live-in at
+`C`, unchanged observations except termination, and no memory/I/O effect. The
+VM-owned `decode_profile_instruction()` result for the live-in and code pointer
+must be `v`. Both ISAs guard the complete entry observation, non-null memory,
+`memory_words > C`, exact `memory[C]`, and prior termination before committing only
+tag `1`. Independent objects are 535/628 bytes. Development x86-64 execution
+proves hit plus atomic live-in, capacity, and null-memory misses; independent
+AArch64 decoding confirms the expected guards, halt tag, and common miss target.
+
 `direct-non-graphical` revision 1 adds the first direct template guarded by exact
 memory evidence. Admission requires one effect terminating with
 `NonGraphicalCell`, one live-in at the entry code pointer, unchanged observations
@@ -175,16 +186,18 @@ is constructed.
 
 After program/profile/runtime admission, it classifies IR from narrowest to
 broadest:
-zero-register halt uses `direct-initial-halt`, other eligible one-step halts use
-`direct-halt-registers`, exact non-graphical fetch termination uses
-`direct-non-graphical`, and otherwise the selector emits/verifies direct deopt.
+zero-register halt uses `direct-initial-halt`, other no-live-in one-step halts use
+`direct-halt-registers`, exact graphical halt fetch uses `direct-halt-fetch`, exact
+non-graphical termination uses `direct-non-graphical`, and otherwise the selector
+emits/verifies direct deopt.
 Only admitted program shape controls this fallback; profile, emission, or
 admission errors are propagated rather than silently retried. Non-Windows host
 formats fail explicitly because direct ELF/Mach-O templates do not exist yet.
 
 All state-applying emitter/verifier pairs independently repeat the
 profile-capacity shape check. A caller bypassing the selector cannot semantically
-promote an initial-halt, register-halt, or non-graphical object whose IR footprint
+promote an initial-halt, register-halt, halt-fetch, or non-graphical object whose
+IR footprint
 exceeds its embedded profile envelope.
 
 `select_preflighted_execution_tier()` is the first planning boundary above direct
@@ -203,7 +216,7 @@ boundary. State-applying semantic verifiers continue reconstructing their expect
 key independently from IR before promotion. `VerifiedDirectNativeCache` privately
 wraps the generic cache and accepts values only through successful direct emission
 and semantic admission. Results distinguish `Inserted` from full-key `Hit`; all
-four current templates match uncached selection byte-for-byte and reuse the same
+five current templates match uncached selection byte-for-byte and reuse the same
 immutable `Arc` allocation rather than cloning verified object bytes. A populated
 cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and those
 outcomes leave cache cardinality unchanged. Exact-key invalidation removes one

@@ -93,8 +93,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `execution/native/profile_metadata.rs` now solely owns the format-neutral MBPF
   encoding consumed by bootstrap/direct emitters and COFF admission. Direct
-  deopt/initial-halt revision-4, halt-observation revision-5, and non-graphical
-  revision-1 objects must also carry exact read-only `MBPF` v3 `.mbprof`
+  deopt/initial-halt revision-4, halt-observation revision-5, plus halt-fetch
+  and non-graphical revision-1 objects must carry exact read-only `MBPF` v3
+  `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
   features, word trits, profile capacity, and derived `u64` region memory retained
   by their native key; absence or mismatch fails structurally. Bootstrap revision
@@ -117,6 +118,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   observations while memory/I/O effects remain forbidden. Independently rendered
   495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX`; counter,
   opcode, and revision mismatch fail closed. The only commit remains termination.
+- `direct-halt-fetch` revision 1 binds one exact graphical code-cell live-in to
+  real halt termination. VM-owned positional decode must return `v`; full entry
+  observation, memory pointer, `memory_words > C`, exact `memory[C]`, and prior
+  termination are guarded before committing only tag `1`. Independently rendered
+  535/628-byte objects, x86-64 atomic execution, and AArch64 instruction decoding
+  bind the contract.
 - `direct-non-graphical` revision 1 is the first exact memory-live-in direct
   template. One VM-classified non-graphical live-in must equal `memory[C]`; full
   entry observation, memory pointer, and `memory_words > C` are guarded before
@@ -125,9 +132,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   instruction decoding bind the contract.
 - After program/profile/runtime admission, direct-template orchestration
   classifies IR before backend construction: exact zero-register halt selects the
-  smallest fast path, other eligible halt IR selects the observation-bound
-  template, exact non-graphical fetch termination selects the live-in-bound
-  template, and remaining IR selects verified deopt. Unsupported direct host
+  smallest fast path, other no-live-in halt IR selects the observation-bound
+  template, graphical halt fetch and non-graphical termination select their
+  live-in-bound templates, and remaining IR selects verified deopt. Unsupported
+  direct host
   formats remain
   explicit at this narrow boundary and post-selection errors never degrade
   silently to fallback.
@@ -141,7 +149,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all four templates, and reuses one pointer-identical immutable
+  keys/bytes for all five templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first

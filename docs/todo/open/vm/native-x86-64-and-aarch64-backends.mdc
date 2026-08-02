@@ -66,10 +66,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   `direct-halt-registers` revision 5 extends that halt-only surface across
   arbitrary 32-bit registers and full 64-bit counter observations. Independent
   495/564-byte fixtures bind counters above `u32::MAX` on both ISAs; historical
-  revision, counter, and opcode mismatch fail closed. `direct-non-graphical`
-  revision 1 adds the first exact code-cell live-in guard with independent
-  538/631-byte objects, x86-64 atomic execution evidence, and AArch64 instruction
-  decoding. General memory-writing/I/O instruction selection, executable-memory
+  revision, counter, and opcode mismatch fail closed. `direct-halt-fetch`
+  revision 1 adds a VM-decoded graphical `v` live-in with independent 535/628-byte
+  objects, x86-64 atomic execution evidence, and AArch64 instruction decoding.
+  `direct-non-graphical` revision 1 applies the same fetched-terminal guards to a
+  VM-classified non-graphical live-in with 538/631-byte objects. General
+  memory-writing/I/O instruction selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

@@ -278,18 +278,21 @@ extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
 input/output counter observations, still with no memory/I/O effects. Independently
 rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
 nontrivial registers; counter, opcode, and historical-revision mismatches fail
-closed. `direct-non-graphical` revision 1 adds the first exact memory-live-in guard:
-one non-graphical code-cell live-in at `C`, full entry observation, non-null memory,
-and `memory_words > C` are checked before reading `memory[C]`; only termination tag
-`2` is committed. The VM-owned graphical predicate defines eligibility. Independent
-538/631-byte objects, x86-64 hit/live-in/capacity/null execution, and AArch64
-instruction decoding bind the contract. Direct-template selection requires an
-explicit runtime capability, derives exact `u64` region memory from C/D pointers,
-live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
-backend selection. After admission, zero-register halt chooses the smallest
-specialization, other eligible one-step halts choose observation-bound code,
-non-graphical fetch termination chooses the live-in-bound template, and remaining
-IR chooses verified deopt; unsupported direct host formats remain
+closed. `direct-halt-fetch` revision 1 binds real graphical halt termination to
+one exact code-cell live-in at `C`; VM-owned positional decode must produce `v`.
+Full entry observation, non-null memory, and `memory_words > C` precede the exact
+`memory[C]` guard and sole termination-tag `1` commit. Independent 535/628-byte
+objects, x86-64 hit/live-in/capacity/null execution, and AArch64 instruction
+decoding bind the contract. `direct-non-graphical` revision 1 applies the same
+memory guards to a VM-classified non-graphical live-in and commits only tag `2`.
+Independent 538/631-byte objects bind that path. Direct-template selection requires
+an explicit runtime capability, derives exact `u64` region memory from C/D
+pointers, live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`,
+host, or backend selection. After admission, zero-register halt chooses the
+smallest specialization, other no-live-in halts choose observation-bound code,
+graphical halt fetch and non-graphical termination choose their live-in-bound
+templates, and remaining IR chooses verified deopt; unsupported direct host formats
+remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
 that format absence to the normative interpreter after `002`/`001` checks; real
 backend/emission/admission failures remain errors. Raw untrusted IR remains
@@ -297,7 +300,8 @@ canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
-and non-graphical revision-1 objects bind that exact footprint in `MBPF` v3, and
+plus halt-fetch/non-graphical revision-1 objects bind that exact footprint in
+`MBPF` v3, and
 same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
@@ -309,7 +313,7 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact k
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-four templates, and shares the same immutable `Arc` allocation on hits. Exact
+five templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated

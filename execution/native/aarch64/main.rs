@@ -21,7 +21,7 @@
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
-//   - Inputs: already selected exact register/counter values.
+//   - Inputs: selected exact observations, fetch live-ins, and tags.
 //   - Outputs: deterministic AArch64 `.text` byte sequences.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -158,11 +158,28 @@ fn push_u64_x9(words: &mut Vec<u32>, value: u64) -> Option<()> {
     Some(())
 }
 
+/// Encodes exact graphical halt-fetch preflight and termination commit.
+#[must_use]
+pub(super) fn halt_fetch_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<Vec<u8>> {
+    fetched_termination_code(observation, live_in_value, 1)
+}
+
 /// Encodes exact non-graphical fetch preflight and termination commit.
 #[must_use]
 pub(super) fn non_graphical_code(
     observation: DirectEntryObservation,
     live_in_value: u32,
+) -> Option<Vec<u8>> {
+    fetched_termination_code(observation, live_in_value, 2)
+}
+
+fn fetched_termination_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+    termination_tag: u32,
 ) -> Option<Vec<u8>> {
     let required_words = u64::from(observation.code_pointer).checked_add(1)?;
     let mut words = Vec::with_capacity(56);
@@ -187,7 +204,7 @@ pub(super) fn non_graphical_code(
     words.push(0x3941_3009);
     push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
     words.extend_from_slice(&[
-        0x5280_004a,
+        movz_w10(termination_tag),
         0x3901_300a,
         0x2a1f_03e0,
         0xd65f_03c0,

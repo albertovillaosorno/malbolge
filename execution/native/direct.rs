@@ -35,7 +35,7 @@
 // - Description:
 //   - Emits reviewed x86-64/AArch64 objects for exact verified IR subsets.
 // - Usage:
-//   - Provides a safe deopt floor plus exact reviewed one-step halt fast paths.
+//   - Provides a safe deopt floor plus reviewed fetched-terminal fast paths.
 // - Defaults:
 //   - Unsupported IR is rejected; no direct template is selected implicitly.
 //
@@ -55,8 +55,8 @@ use std::sync::Arc;
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
     ProfileMemoryDelta, ProfileRegisters, RunOutcome, RuntimeCapability,
-    Termination, preflight_portable_profile_requirement,
-    profile_cell_is_graphical,
+    Termination, decode_profile_instruction,
+    preflight_portable_profile_requirement, profile_cell_is_graphical,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -99,6 +99,11 @@ pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
 /// Direct exact-observation halt code-generation revision.
 pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 5;
 
+/// Backend identity for exact graphical halt fetch termination.
+pub const DIRECT_HALT_FETCH_BACKEND_ID: &str = "direct-halt-fetch";
+/// Direct graphical halt-fetch code-generation revision.
+pub const DIRECT_HALT_FETCH_BACKEND_REVISION: u32 = 1;
+
 /// Backend identity for exact non-graphical fetch termination.
 pub const DIRECT_NON_GRAPHICAL_BACKEND_ID: &str = "direct-non-graphical";
 /// Direct non-graphical termination code-generation revision.
@@ -114,7 +119,7 @@ pub(super) struct DirectEntryObservation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct DirectNonGraphicalProgram {
+struct DirectFetchedTerminalProgram {
     live_in: MemoryLiveIn,
     observation: ProfileMachineObservation,
 }
@@ -225,6 +230,65 @@ impl From<CoffAdmissionError> for DirectHaltRegistersError {
 }
 
 impl From<NativeIdentityError> for DirectHaltRegistersError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
+/// Failure while emitting or verifying exact graphical halt fetch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectHaltFetchError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical halt-fetch object.
+    ObjectBytes,
+    /// Portable IR is outside the exact halt-fetch subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Halt-fetch v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct halt-fetch currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectHaltFetchError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "direct halt-fetch COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "direct halt-fetch identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct halt-fetch object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "portable IR is outside direct halt-fetch subset"
+            },
+            Self::TargetBackend => {
+                "target does not select direct halt-fetch backend"
+            },
+            Self::TargetFeatures => {
+                "direct halt-fetch backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "direct halt-fetch backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectHaltFetchError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectHaltFetchError {
     fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
     }
@@ -353,6 +417,8 @@ impl From<NativeIdentityError> for DirectInitialHaltError {
 pub enum DirectNativeKind {
     /// Safe fallback artifact that always requests interpreter deoptimization.
     Deopt,
+    /// Exact graphical halt fetch with one code-cell live-in.
+    HaltFetch,
     /// One-step halt bound to one exact register/counter observation.
     HaltRegisters,
     /// Exact one-step zero-state halt fast path.
@@ -384,6 +450,8 @@ impl DirectHost {
 pub enum DirectSelectionError<'requirement> {
     /// Deoptimization artifact emission or admission failed.
     Deopt(Box<DirectDeoptError>),
+    /// Graphical halt-fetch artifact emission or admission failed.
+    HaltFetch(Box<DirectHaltFetchError>),
     /// Arbitrary-register halt artifact emission or admission failed.
     HaltRegisters(Box<DirectHaltRegistersError>),
     /// Initial-halt artifact emission or admission failed.
@@ -401,6 +469,7 @@ impl Display for DirectSelectionError<'_> {
         match self {
             Self::Deopt(error) => Display::fmt(error, f),
             Self::HaltRegisters(error) => Display::fmt(error, f),
+            Self::HaltFetch(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
@@ -419,6 +488,33 @@ pub struct VerifiedDeoptNativeObjectArtifact {
 
 impl VerifiedDeoptNativeObjectArtifact {
     /// Returns the exact native artifact identity associated with the stub.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+/// Native object proven to implement exact graphical halt fetch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedHaltFetchNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedHaltFetchNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
     #[must_use]
     pub const fn key(&self) -> &NativeArtifactKey {
         self.artifact.key()
@@ -523,6 +619,8 @@ impl VerifiedInitialHaltNativeObjectArtifact {
 pub enum VerifiedDirectNativeArtifact {
     /// Safe no-state-change guard-miss fallback.
     Deopt(VerifiedDeoptNativeObjectArtifact),
+    /// Exact graphical halt fetch with one code-cell live-in.
+    HaltFetch(VerifiedHaltFetchNativeObjectArtifact),
     /// One-step halt bound to one exact register/counter observation.
     HaltRegisters(VerifiedHaltRegistersNativeObjectArtifact),
     /// Exact zero-state one-step halt fast path.
@@ -572,6 +670,7 @@ pub struct VerifiedDirectNativeCache {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SelectedDirectTarget {
     Deopt(NativeTargetIdentity),
+    HaltFetch(NativeTargetIdentity),
     HaltRegisters(NativeTargetIdentity),
     InitialHalt(NativeTargetIdentity),
     NonGraphical(NativeTargetIdentity),
@@ -580,6 +679,7 @@ enum SelectedDirectTarget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PreparedDirectTarget {
     Deopt(NativeArtifactKey),
+    HaltFetch(NativeArtifactKey),
     HaltRegisters(NativeArtifactKey),
     InitialHalt(NativeArtifactKey),
     NonGraphical(NativeArtifactKey),
@@ -666,6 +766,7 @@ impl PreparedDirectTarget {
                     })?;
                 Ok(VerifiedDirectNativeArtifact::Deopt(verified))
             },
+            Self::HaltFetch(key) => emit_verified_halt_fetch(key, program),
             Self::HaltRegisters(key) => {
                 let registers = validate_halt_registers_program(program)
                     .map_err(|error| {
@@ -712,6 +813,7 @@ impl PreparedDirectTarget {
     const fn key(&self) -> &NativeArtifactKey {
         match self {
             Self::Deopt(key)
+            | Self::HaltFetch(key)
             | Self::HaltRegisters(key)
             | Self::InitialHalt(key)
             | Self::NonGraphical(key) => key,
@@ -730,6 +832,13 @@ impl SelectedDirectTarget {
                 .map_err(|error| {
                     DirectSelectionError::Deopt(Box::new(
                         DirectDeoptError::Identity(error),
+                    ))
+                }),
+            Self::HaltFetch(target) => NativeArtifactKey::new(program, target)
+                .map(PreparedDirectTarget::HaltFetch)
+                .map_err(|error| {
+                    DirectSelectionError::HaltFetch(Box::new(
+                        DirectHaltFetchError::Identity(error),
                     ))
                 }),
             Self::HaltRegisters(target) => {
@@ -769,6 +878,7 @@ impl VerifiedDirectNativeArtifact {
     pub const fn key(&self) -> &NativeArtifactKey {
         match self {
             Self::Deopt(artifact) => artifact.key(),
+            Self::HaltFetch(artifact) => artifact.key(),
             Self::HaltRegisters(artifact) => artifact.key(),
             Self::InitialHalt(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
@@ -780,6 +890,7 @@ impl VerifiedDirectNativeArtifact {
     pub const fn kind(&self) -> DirectNativeKind {
         match self {
             Self::Deopt(_artifact) => DirectNativeKind::Deopt,
+            Self::HaltFetch(_artifact) => DirectNativeKind::HaltFetch,
             Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
             Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
@@ -791,6 +902,7 @@ impl VerifiedDirectNativeArtifact {
     pub fn object(&self) -> &[u8] {
         match self {
             Self::Deopt(artifact) => artifact.object(),
+            Self::HaltFetch(artifact) => artifact.object(),
             Self::HaltRegisters(artifact) => artifact.object(),
             Self::InitialHalt(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
@@ -802,11 +914,27 @@ impl VerifiedDirectNativeArtifact {
     pub const fn target_triple(&self) -> &'static str {
         match self {
             Self::Deopt(artifact) => artifact.target_triple(),
+            Self::HaltFetch(artifact) => artifact.target_triple(),
             Self::HaltRegisters(artifact) => artifact.target_triple(),
             Self::InitialHalt(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),
         }
     }
+}
+
+fn emit_verified_halt_fetch(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_halt_fetch_program(program)
+        .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
+    validate_halt_fetch_target(key.target())
+        .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
+    let artifact = emit_direct_halt_fetch_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
+    let verified = verify_direct_halt_fetch(&artifact, program)
+        .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::HaltFetch(verified))
 }
 
 fn emit_verified_non_graphical(
@@ -827,7 +955,7 @@ fn emit_verified_non_graphical(
 /// Selects the narrowest semantically admitted direct native template.
 ///
 /// Program/profile capacity and runtime preflight occur before host/backend
-/// selection. Exact halt and non-graphical terminal subsets select reviewed
+/// selection. Exact halt and fetched-terminal subsets select reviewed
 /// state-applying fast paths; every remaining IR selects verified
 /// deoptimization. Selection never converts profile, emitter, or verifier
 /// errors into fallback; only admitted program shape controls which backend
@@ -951,6 +1079,21 @@ pub fn emit_direct_halt_registers_coff(
     emit_direct_halt_registers_with_key(key, observation)
 }
 
+/// Emits the exact graphical halt-fetch termination fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectHaltFetchError`] when IR/target is outside this subset.
+pub fn emit_direct_halt_fetch_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectHaltFetchError> {
+    let selected = validate_halt_fetch_program(program)?;
+    validate_halt_fetch_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_halt_fetch_with_key(key, selected)
+}
+
 /// Emits a direct native fast path for the exact initial-halt IR subset.
 ///
 /// # Errors
@@ -1003,6 +1146,17 @@ fn emit_direct_halt_registers_with_key(
     ))
 }
 
+fn emit_direct_halt_fetch_with_key(
+    key: NativeArtifactKey,
+    selected: DirectFetchedTerminalProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectHaltFetchError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = halt_fetch_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 fn emit_direct_initial_halt_with_key(
     key: NativeArtifactKey,
 ) -> Result<UntrustedNativeObjectArtifact, DirectInitialHaltError> {
@@ -1015,7 +1169,7 @@ fn emit_direct_initial_halt_with_key(
 
 fn emit_direct_non_graphical_with_key(
     key: NativeArtifactKey,
-    selected: DirectNonGraphicalProgram,
+    selected: DirectFetchedTerminalProgram,
 ) -> Result<UntrustedNativeObjectArtifact, DirectNonGraphicalError> {
     let triple = target_triple(key.target().host_isa());
     let object = non_graphical_coff(&key, selected)?;
@@ -1069,6 +1223,30 @@ pub fn verify_direct_halt_registers(
         return Err(DirectHaltRegistersError::ObjectBytes);
     }
     Ok(VerifiedHaltRegistersNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical graphical halt-fetch object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectHaltFetchError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_halt_fetch(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedHaltFetchNativeObjectArtifact, DirectHaltFetchError> {
+    let selected = validate_halt_fetch_program(program)?;
+    validate_halt_fetch_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectHaltFetchError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = halt_fetch_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectHaltFetchError::ObjectBytes);
+    }
+    Ok(VerifiedHaltFetchNativeObjectArtifact { artifact: admitted })
 }
 
 /// Promotes only the exact canonical initial-halt object for its exact IR.
@@ -1235,9 +1413,27 @@ fn halt_registers_coff(
     build_minimal_coff(key, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
 }
 
+fn halt_fetch_coff(
+    key: &NativeArtifactKey,
+    selected: DirectFetchedTerminalProgram,
+) -> Result<Vec<u8>, DirectHaltFetchError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectHaltFetchError::ObjectBytes)?;
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::halt_fetch_code(observation, selected.live_in.value)
+        },
+        HostIsa::X86_64 => {
+            x86_64::halt_fetch_code(observation, selected.live_in.value)
+        },
+    }
+    .ok_or(DirectHaltFetchError::ObjectBytes)?;
+    build_minimal_coff(key, &text).ok_or(DirectHaltFetchError::ObjectBytes)
+}
+
 fn non_graphical_coff(
     key: &NativeArtifactKey,
-    selected: DirectNonGraphicalProgram,
+    selected: DirectFetchedTerminalProgram,
 ) -> Result<Vec<u8>, DirectNonGraphicalError> {
     let observation = direct_entry_observation(selected.observation)
         .ok_or(DirectNonGraphicalError::ObjectBytes)?;
@@ -1325,6 +1521,14 @@ fn select_direct_target(
             host_isa,
         ));
     }
+    if validate_halt_fetch_program(program).is_ok() {
+        return SelectedDirectTarget::HaltFetch(direct_target(
+            DIRECT_HALT_FETCH_BACKEND_ID,
+            DIRECT_HALT_FETCH_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ));
+    }
     if validate_non_graphical_program(program).is_ok() {
         return SelectedDirectTarget::NonGraphical(direct_target(
             DIRECT_NON_GRAPHICAL_BACKEND_ID,
@@ -1364,33 +1568,23 @@ const fn target_triple(isa: HostIsa) -> &'static str {
     }
 }
 
-fn validate_non_graphical_program(
+fn fetched_terminal_program(
     program: &RegionEffectProgram,
-) -> Result<DirectNonGraphicalProgram, DirectNonGraphicalError> {
+    reason: Termination,
+) -> Option<DirectFetchedTerminalProgram> {
     if program.format_version != EFFECT_IR_VERSION
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 1
         || program.effects.len() != 1
-        || program.outcome
-            != (RunOutcome::Terminated {
-                reason: Termination::NonGraphicalCell,
-                steps: 1,
-            })
+        || program.outcome != (RunOutcome::Terminated { reason, steps: 1 })
     {
-        return Err(DirectNonGraphicalError::ProgramShape);
+        return None;
     }
-    let effect = program
-        .effects
-        .first()
-        .ok_or(DirectNonGraphicalError::ProgramShape)?;
-    let live_in = program
-        .memory_live_ins
-        .first()
-        .copied()
-        .ok_or(DirectNonGraphicalError::ProgramShape)?;
+    let effect = program.effects.first()?;
+    let live_in = program.memory_live_ins.first().copied()?;
     let expected_after = ProfileMachineObservation {
-        termination: Some(Termination::NonGraphicalCell),
+        termination: Some(reason),
         ..effect.before
     };
     if effect.before.termination.is_some()
@@ -1399,14 +1593,61 @@ fn validate_non_graphical_program(
         || effect.output.is_some()
         || effect.memory_delta != ProfileMemoryDelta::default()
         || live_in.address != effect.before.registers.code_pointer
-        || profile_cell_is_graphical(live_in.value)
     {
-        return Err(DirectNonGraphicalError::ProgramShape);
+        return None;
     }
-    Ok(DirectNonGraphicalProgram {
+    Some(DirectFetchedTerminalProgram {
         live_in,
         observation: effect.before,
     })
+}
+
+fn validate_halt_fetch_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectFetchedTerminalProgram, DirectHaltFetchError> {
+    let selected =
+        fetched_terminal_program(program, Termination::HaltInstruction)
+            .ok_or(DirectHaltFetchError::ProgramShape)?;
+    if decode_profile_instruction(
+        selected.live_in.value,
+        selected.observation.registers.code_pointer,
+    ) == Some(b'v')
+    {
+        Ok(selected)
+    } else {
+        Err(DirectHaltFetchError::ProgramShape)
+    }
+}
+
+fn validate_halt_fetch_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectHaltFetchError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectHaltFetchError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_HALT_FETCH_BACKEND_ID
+        || target.backend_revision() != DIRECT_HALT_FETCH_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectHaltFetchError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectHaltFetchError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn validate_non_graphical_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectFetchedTerminalProgram, DirectNonGraphicalError> {
+    let selected =
+        fetched_terminal_program(program, Termination::NonGraphicalCell)
+            .ok_or(DirectNonGraphicalError::ProgramShape)?;
+    if profile_cell_is_graphical(selected.live_in.value) {
+        Err(DirectNonGraphicalError::ProgramShape)
+    } else {
+        Ok(selected)
+    }
 }
 
 fn validate_non_graphical_target(

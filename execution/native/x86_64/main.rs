@@ -21,7 +21,7 @@
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
-//   - Inputs: already selected exact register/counter values.
+//   - Inputs: selected exact observations, fetch live-ins, and tags.
 //   - Outputs: deterministic x86-64 `.text` byte sequences.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -131,11 +131,28 @@ fn push_u64_guard(
     push_guard_jump(code, jumps, 0x75);
 }
 
+/// Encodes exact graphical halt-fetch preflight and termination commit.
+#[must_use]
+pub(super) fn halt_fetch_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<Vec<u8>> {
+    fetched_termination_code(observation, live_in_value, 1)
+}
+
 /// Encodes exact non-graphical fetch preflight and termination commit.
 #[must_use]
 pub(super) fn non_graphical_code(
     observation: DirectEntryObservation,
     live_in_value: u32,
+) -> Option<Vec<u8>> {
+    fetched_termination_code(observation, live_in_value, 2)
+}
+
+fn fetched_termination_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+    termination_tag: u8,
 ) -> Option<Vec<u8>> {
     let required_words = u64::from(observation.code_pointer).checked_add(1)?;
     let mut code = Vec::with_capacity(128);
@@ -154,7 +171,15 @@ pub(super) fn non_graphical_code(
     push_guard_jump(&mut code, &mut guard_jumps, 0x75);
     code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
     push_guard_jump(&mut code, &mut guard_jumps, 0x75);
-    code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x02, 0x31, 0xc0, 0xc3]);
+    code.extend_from_slice(&[
+        0xc6,
+        0x41,
+        0x4c,
+        termination_tag,
+        0x31,
+        0xc0,
+        0xc3,
+    ]);
     let guard_miss = code.len();
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;

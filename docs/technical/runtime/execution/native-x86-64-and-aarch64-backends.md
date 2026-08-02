@@ -71,6 +71,14 @@ and atomic counter miss; independent fixture decoding confirms AArch64 full-widt
 immediates and one common miss target. This widens admitted entry state, not the
 guest-effect surface.
 
+`direct-halt-fetch` revision 1 binds a VM-decoded graphical `v` live-in to halt
+termination. Both ISA owners reuse the fetched-terminal template: full entry
+observation, memory pointer, `memory_words > C`, exact `memory[C]`, and prior
+termination are guarded before writing only tag `1`. Independent complete objects
+are 535/628 bytes. x86-64 development execution proves hit and atomic
+live-in/capacity/null misses; independent AArch64 decoding confirms the expected
+guards, halt tag, and common miss target.
+
 `direct-non-graphical` revision 1 is the first reviewed direct template with an
 exact memory live-in. The VM-owned graphical-cell predicate admits one
 non-graphical live-in at `C`; each ISA guards the full entry observation, memory
@@ -83,11 +91,11 @@ I/O write.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
-`UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF remains semantically untrusted. A
-reviewed direct terminal emitters/verifiers are implemented for both ISAs;
-general memory-writing/I/O instruction selection, executable-memory handling,
-calling/runtime
-integration, and instruction-cache synchronization remain unimplemented.
+`UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
+remains semantically untrusted. Reviewed direct terminal emitters/verifiers are
+implemented for both ISAs; general memory-writing/I/O instruction selection,
+executable-memory handling, calling/runtime integration, and instruction-cache
+synchronization remain unimplemented.
 
 ## Invariants
 
