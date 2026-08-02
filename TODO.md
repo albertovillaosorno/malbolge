@@ -288,16 +288,20 @@ construction. Direct revision-4 objects bind that exact footprint in `MBPF` v3,
 and same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse; forced digest collisions remain independent across read, replacement, and
-removal. It performs no persistence, eviction, synchronization, or semantic
-admission. General region-effect fast paths, cache-aware orchestration, executable
-invocation, and AOT/JIT performance policy remain open.
+removal. `VerifiedDirectNativeCache` narrows that store to semantically admitted
+direct artifacts. Cache-aware planning reports exact-key `Inserted`/`Hit` for all
+three templates and performs `002`, `001`, and host-format selection before
+lookup, so rejected/interpreter outcomes do not mutate the cache. Persistence,
+eviction, synchronization, general region-effect fast paths, executable
+invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,
-process-local collision-safe reuse storage, and an untrusted cross-ISA bootstrap
-object boundary are implemented. Direct x86-64/AArch64 instruction selection,
-executable-memory integration, durable cache serialization/storage/eviction, and
-tier orchestration remain open.
+process-local collision-safe reuse storage, cache-aware verified direct planning,
+and an untrusted cross-ISA bootstrap object boundary are implemented. General
+direct x86-64/AArch64 instruction selection, executable-memory integration,
+durable cache serialization/storage/eviction, and wider tier orchestration remain
+open.
 
 ### TODO - Ahead-of-execution native translation
 
@@ -391,8 +395,8 @@ canonical diagnostics and fail-closed unknown features. Effect IR now derives
 exact region memory and direct selection applies byte-identical
 `MALBOLGE-PROFILE-002` before `001`; the preflighted tier plan maps only direct
 format absence to interpreter. Equivalent non-IR program requirements,
-bootstrap artifacts, broader AOT/JIT/runtime orchestration, and universal product
-invocation remain open.
+bootstrap artifacts, durable-cache/AOT/JIT/runtime orchestration, and universal
+product invocation remain open.
 
 ### TODO - Custom target profile identity
 
@@ -698,7 +702,8 @@ baseline. Product `execution/ir/` now owns effect IR v3, and
 `execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
 revisions, and required features with full equality after bucket collisions, and
 its process-local store preserves distinct colliding entries across mutation.
-`execution/native/` now lowers those effects into atomic C23 host-code candidates,
+The verified direct planner now reuses exact keys without bypassing profile or host
+preflight. `execution/native/` lowers those effects into atomic C23 candidates,
 pinned Clang emits untrusted x86-64/AArch64 COFF objects, and safe-Rust COFF
 parsing closes their object-format dependencies before semantic admission.
 Semantic admission now covers canonical direct deopt and one-step halt

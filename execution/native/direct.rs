@@ -64,8 +64,8 @@ use super::{
     aarch64, structurally_admit_coff, x86_64,
 };
 use crate::execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
-    NativeTargetConfig, NativeTargetIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
+    NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
 };
 use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
 
@@ -275,6 +275,24 @@ pub enum DirectNativeKind {
     InitialHalt,
 }
 
+/// Exact host surface considered by direct native planning.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DirectHost {
+    isa: HostIsa,
+    operating_system: HostOperatingSystem,
+}
+
+impl DirectHost {
+    /// Constructs one explicit direct native host identity.
+    #[must_use]
+    pub const fn new(
+        operating_system: HostOperatingSystem,
+        isa: HostIsa,
+    ) -> Self {
+        Self { isa, operating_system }
+    }
+}
+
 /// Failure while selecting/emitting/verifying one direct native template.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectSelectionError<'requirement> {
@@ -404,6 +422,144 @@ pub enum PreflightedExecutionTier {
     Interpreter,
 }
 
+/// Whether a cache-aware direct plan reused or inserted an artifact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectCacheDisposition {
+    /// The exact verified artifact already existed under the complete key.
+    Hit,
+    /// The planner emitted, verified, and inserted a new exact-key artifact.
+    Inserted,
+}
+
+/// Cache-aware profile-preflighted execution-tier plan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CachedPreflightedExecutionTier {
+    /// One verified direct artifact plus its cache disposition.
+    Direct {
+        /// Exact semantically admitted direct artifact.
+        artifact: Box<VerifiedDirectNativeArtifact>,
+        /// Whether this exact artifact was reused or newly inserted.
+        cache: DirectCacheDisposition,
+    },
+    /// No direct object format exists; use the normative interpreter.
+    Interpreter,
+}
+
+/// Caller-owned cache containing only semantically admitted direct artifacts.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerifiedDirectNativeCache {
+    entries: NativeArtifactCache<VerifiedDirectNativeArtifact>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SelectedDirectTarget {
+    Deopt(NativeTargetIdentity),
+    HaltRegisters(NativeTargetIdentity),
+    InitialHalt(NativeTargetIdentity),
+}
+
+type VerifiedDirectSelectionResult<'requirement> =
+    Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>>;
+
+impl VerifiedDirectNativeCache {
+    /// Removes every retained verified artifact.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Reports whether no verified direct artifacts are retained.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Returns the number of exact-key verified direct artifacts.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl SelectedDirectTarget {
+    fn emit_verified<'requirement>(
+        &self,
+        program: &'requirement RegionEffectProgram,
+    ) -> VerifiedDirectSelectionResult<'requirement> {
+        match self {
+            Self::Deopt(target) => {
+                let artifact = emit_direct_deopt_coff(program, target.clone())
+                    .map_err(|error| {
+                        DirectSelectionError::Deopt(Box::new(error))
+                    })?;
+                let verified =
+                    verify_direct_deopt_stub(&artifact).map_err(|error| {
+                        DirectSelectionError::Deopt(Box::new(error))
+                    })?;
+                Ok(VerifiedDirectNativeArtifact::Deopt(verified))
+            },
+            Self::HaltRegisters(target) => {
+                let artifact =
+                    emit_direct_halt_registers_coff(program, target.clone())
+                        .map_err(|error| {
+                            DirectSelectionError::HaltRegisters(Box::new(error))
+                        })?;
+                let verified = verify_direct_halt_registers(&artifact, program)
+                    .map_err(|error| {
+                        DirectSelectionError::HaltRegisters(Box::new(error))
+                    })?;
+                Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified))
+            },
+            Self::InitialHalt(target) => {
+                let artifact =
+                    emit_direct_initial_halt_coff(program, target.clone())
+                        .map_err(|error| {
+                            DirectSelectionError::InitialHalt(Box::new(error))
+                        })?;
+                let verified = verify_direct_initial_halt(&artifact, program)
+                    .map_err(|error| {
+                    DirectSelectionError::InitialHalt(Box::new(error))
+                })?;
+                Ok(VerifiedDirectNativeArtifact::InitialHalt(verified))
+            },
+        }
+    }
+
+    fn key<'requirement>(
+        &self,
+        program: &'requirement RegionEffectProgram,
+    ) -> Result<NativeArtifactKey, DirectSelectionError<'requirement>> {
+        match self {
+            Self::Deopt(target) => {
+                NativeArtifactKey::new(program, target.clone()).map_err(
+                    |error| {
+                        DirectSelectionError::Deopt(Box::new(
+                            DirectDeoptError::Identity(error),
+                        ))
+                    },
+                )
+            },
+            Self::HaltRegisters(target) => {
+                NativeArtifactKey::new(program, target.clone()).map_err(
+                    |error| {
+                        DirectSelectionError::HaltRegisters(Box::new(
+                            DirectHaltRegistersError::Identity(error),
+                        ))
+                    },
+                )
+            },
+            Self::InitialHalt(target) => {
+                NativeArtifactKey::new(program, target.clone()).map_err(
+                    |error| {
+                        DirectSelectionError::InitialHalt(Box::new(
+                            DirectInitialHaltError::Identity(error),
+                        ))
+                    },
+                )
+            },
+        }
+    }
+}
+
 impl VerifiedDirectNativeArtifact {
     /// Returns the exact selected native artifact identity.
     #[must_use]
@@ -449,11 +605,10 @@ impl VerifiedDirectNativeArtifact {
 /// Selects the narrowest semantically admitted direct native template.
 ///
 /// Program/profile capacity and runtime preflight occur before host/backend
-/// selection. Exact
-/// initial-halt IR then selects the state-applying fast path. Every other
-/// portable IR selects the byte-verified deoptimization stub. Selection never
-/// converts profile, emitter, or verifier errors into fallback; only admitted
-/// program shape controls which backend identity is constructed.
+/// selection. Exact initial-halt IR then selects the state-applying fast path.
+/// Every other portable IR selects the byte-verified deoptimization stub.
+/// Selection never converts profile, emitter, or verifier errors into fallback;
+/// only admitted program shape controls which backend identity is constructed.
 ///
 /// # Errors
 ///
@@ -465,60 +620,12 @@ pub fn select_verified_direct_native<'requirement>(
     runtime: &'static RuntimeCapability,
     host_os: HostOperatingSystem,
     host_isa: HostIsa,
-) -> Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>> {
-    preflight_portable_profile_requirement(
-        &program.profile_id,
-        &program.profile_requirement,
-        program.required_memory_words(),
-        runtime,
-    )
-    .map_err(|error| DirectSelectionError::Profile(Box::new(error)))?;
+) -> VerifiedDirectSelectionResult<'requirement> {
+    preflight_direct_selection(program, runtime)?;
     if host_os != HostOperatingSystem::Windows {
         return Err(DirectSelectionError::TargetFormat);
     }
-    if validate_initial_halt_program(program).is_ok() {
-        let target = direct_target(
-            DIRECT_INITIAL_HALT_BACKEND_ID,
-            DIRECT_INITIAL_HALT_BACKEND_REVISION,
-            host_os,
-            host_isa,
-        );
-        let artifact = emit_direct_initial_halt_coff(program, target).map_err(
-            |error| DirectSelectionError::InitialHalt(Box::new(error)),
-        )?;
-        let verified = verify_direct_initial_halt(&artifact, program).map_err(
-            |error| DirectSelectionError::InitialHalt(Box::new(error)),
-        )?;
-        return Ok(VerifiedDirectNativeArtifact::InitialHalt(verified));
-    }
-    if validate_halt_registers_program(program).is_ok() {
-        let target = direct_target(
-            DIRECT_HALT_REGISTERS_BACKEND_ID,
-            DIRECT_HALT_REGISTERS_BACKEND_REVISION,
-            host_os,
-            host_isa,
-        );
-        let artifact = emit_direct_halt_registers_coff(program, target)
-            .map_err(|error| {
-                DirectSelectionError::HaltRegisters(Box::new(error))
-            })?;
-        let verified = verify_direct_halt_registers(&artifact, program)
-            .map_err(|error| {
-                DirectSelectionError::HaltRegisters(Box::new(error))
-            })?;
-        return Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified));
-    }
-    let target = direct_target(
-        DIRECT_DEOPT_BACKEND_ID,
-        DIRECT_DEOPT_BACKEND_REVISION,
-        host_os,
-        host_isa,
-    );
-    let artifact = emit_direct_deopt_coff(program, target)
-        .map_err(|error| DirectSelectionError::Deopt(Box::new(error)))?;
-    let verified = verify_direct_deopt_stub(&artifact)
-        .map_err(|error| DirectSelectionError::Deopt(Box::new(error)))?;
-    Ok(VerifiedDirectNativeArtifact::Deopt(verified))
+    select_direct_target(program, host_os, host_isa).emit_verified(program)
 }
 
 /// Selects a profile-preflighted direct or interpreter execution plan.
@@ -546,6 +653,43 @@ pub fn select_preflighted_execution_tier<'requirement>(
         },
         Err(error) => Err(error),
     }
+}
+
+/// Selects a cache-aware profile-preflighted direct or interpreter plan.
+///
+/// Profile preflight and host-format selection happen before cache lookup. Only
+/// semantically admitted direct artifacts can enter the caller-owned cache.
+///
+/// # Errors
+///
+/// Returns [`DirectSelectionError`] for unsupported program/profile/runtime or
+/// any direct emission/admission failure other than host-format absence.
+pub fn select_cached_preflighted_execution_tier<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    host: DirectHost,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<CachedPreflightedExecutionTier, DirectSelectionError<'requirement>>
+{
+    preflight_direct_selection(program, runtime)?;
+    if host.operating_system != HostOperatingSystem::Windows {
+        return Ok(CachedPreflightedExecutionTier::Interpreter);
+    }
+    let selected =
+        select_direct_target(program, host.operating_system, host.isa);
+    let key = selected.key(program)?;
+    if let Some(artifact) = cache.entries.get(&key) {
+        return Ok(CachedPreflightedExecutionTier::Direct {
+            artifact: Box::new(artifact.clone()),
+            cache: DirectCacheDisposition::Hit,
+        });
+    }
+    let artifact = selected.emit_verified(program)?;
+    let _replaced = cache.entries.insert(key, artifact.clone());
+    Ok(CachedPreflightedExecutionTier::Direct {
+        artifact: Box::new(artifact),
+        cache: DirectCacheDisposition::Inserted,
+    })
 }
 
 /// Emits a deterministic direct native object that always requests deopt.
@@ -824,6 +968,48 @@ fn push_u16(output: &mut Vec<u8>, value: u16) {
 
 fn push_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn preflight_direct_selection<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+) -> Result<(), DirectSelectionError<'requirement>> {
+    preflight_portable_profile_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        program.required_memory_words(),
+        runtime,
+    )
+    .map_err(|error| DirectSelectionError::Profile(Box::new(error)))
+}
+
+fn select_direct_target(
+    program: &RegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    if validate_initial_halt_program(program).is_ok() {
+        return SelectedDirectTarget::InitialHalt(direct_target(
+            DIRECT_INITIAL_HALT_BACKEND_ID,
+            DIRECT_INITIAL_HALT_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ));
+    }
+    if validate_halt_registers_program(program).is_ok() {
+        return SelectedDirectTarget::HaltRegisters(direct_target(
+            DIRECT_HALT_REGISTERS_BACKEND_ID,
+            DIRECT_HALT_REGISTERS_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ));
+    }
+    SelectedDirectTarget::Deopt(direct_target(
+        DIRECT_DEOPT_BACKEND_ID,
+        DIRECT_DEOPT_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
 }
 
 fn direct_target(

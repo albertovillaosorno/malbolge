@@ -115,9 +115,15 @@ baseline; native tiers are accelerators of identical observable behavior.
 - `select_preflighted_execution_tier()` adds a product-neutral plan above that
   boundary. Only top-level direct format absence maps to the normative interpreter
   after preflight; `002`, `001`, and backend/emission/admission failures remain
-  errors. Cache lookup, executable memory, linking, invocation, and performance
-  policy remain outside this planner.
+  errors. It performs no cache lookup, executable memory, linking, or invocation.
+- `select_cached_preflighted_execution_tier()` adds caller-owned direct reuse under
+  explicit `DirectHost`. `VerifiedDirectNativeCache` can receive artifacts only
+  after semantic admission, reports exact-key `Inserted`/`Hit`, and reuses all
+  three current templates. Profile and host preflight occur before lookup;
+  `002`, `001`, and interpreter selection leave cache cardinality unchanged.
+  Persistence, eviction, synchronization, linking, executable memory, invocation,
+  and performance policy remain outside.
 - Accelerated semantic machine-code admission/direct effect emitters, cache-aware
-  AOT/JIT orchestration, durable cache serialization/storage/eviction,
-  executable-memory policy, invocation, and end-to-end tier performance remain
-  unimplemented.
+  AOT/JIT policy beyond verified direct process-local reuse, durable cache
+  serialization/storage/eviction, executable-memory policy, invocation, and
+  end-to-end tier performance remain unimplemented.

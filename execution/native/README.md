@@ -118,6 +118,15 @@ boundary above direct selection. A supported Windows direct object returns
 and all post-selection emission/admission errors remain errors. The planner does
 not perform cache lookup, executable-memory allocation, linking, or execution.
 
+`select_cached_preflighted_execution_tier()` composes the same boundary with a
+caller-owned `VerifiedDirectNativeCache`. Profile capacity/runtime and explicit
+`DirectHost` format selection happen before lookup. On Windows, the exact selected
+`NativeArtifactKey` returns either `DirectCacheDisposition::Hit` or a newly
+emitted, semantically admitted `Inserted` artifact. Only verified direct artifacts
+can enter this wrapper; the generic cache remains non-authoritative. Interpreter
+selection and profile failures do not mutate the cache. Persistence, eviction,
+synchronization, linking, executable memory, and invocation remain outside.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass
 the selector cannot promote `direct-initial-halt` or `direct-halt-registers` when

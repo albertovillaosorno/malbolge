@@ -198,11 +198,14 @@ Direct `MBPF` v3 objects additionally retain that exact footprint, so structural
 admission detects same-profile object/key disagreement before runtime preflight.
 The preflighted tier planner then maps unsupported direct host format to the
 interpreter only after combined profile preflight; `002` and `001` are never
-converted to fallback.
+converted to fallback. Its cache-aware form performs the same profile and explicit
+`DirectHost` checks before exact-key lookup. A populated verified-direct cache
+cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
+cache cardinality.
 Other artifact families do not yet universally expose an equivalent program
-requirement, and bootstrap compiler artifacts, cache-aware AOT/JIT/runtime
-execution, and product paths do not yet universally invoke combined portable
-preflight. This contract therefore remains active
+requirement, and bootstrap compiler artifacts, durable-cache/AOT/JIT execution,
+and product paths do not yet universally invoke combined portable preflight. This
+contract therefore remains active
 rather than claiming repository-wide profile diagnostic completion.
 
 ## Verification
@@ -220,8 +223,9 @@ rather than claiming repository-wide profile diagnostic completion.
   and no-fallback lookup.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
-  footprint mismatch rejection, emitter propagation, and direct-template
-  precedence `002` then `001` then host/backend.
+  footprint mismatch rejection, emitter propagation, direct-template precedence
+  `002` then `001` then host/backend, and the same precedence before verified
+  direct cache lookup without cache mutation on rejection/interpreter selection.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

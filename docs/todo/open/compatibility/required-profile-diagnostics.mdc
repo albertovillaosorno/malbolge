@@ -72,13 +72,16 @@ historical-profile constraint.
 - Direct-template selection invokes that combined preflight before host/backend
   selection; neither profile error is converted to deopt fallback. The
   preflighted tier planner maps only unsupported direct host format to interpreter.
+  Its verified-direct cache-aware form performs `002`, `001`, and explicit host
+  selection before lookup; rejected/interpreter outcomes leave cache size
+  unchanged.
 - Raw IR remains transportable for verifier rejection, while cache/native identity
   rejects profile-capacity-inconsistent addressing before bootstrap or direct
   artifact construction. Direct structural admission also rejects same-profile
   object/key footprint mismatch through `MBPF` v3.
 - Equivalent program-memory requirements for non-IR artifact families, bootstrap
-  compiler artifacts, broader AOT/JIT/runtime orchestration, and universal product
-  invocation remain open, so repository-wide completion is not claimed.
+  compiler artifacts, durable-cache/AOT/JIT/runtime orchestration, and universal
+  product invocation remain open, so repository-wide completion is not claimed.
 
 ## Acceptance
 

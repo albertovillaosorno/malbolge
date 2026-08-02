@@ -158,13 +158,22 @@ type NativeArtifactCacheBuckets<Value> =
 ///
 /// The bucket digest narrows lookup only. Every read, replacement, and removal
 /// confirms complete [`NativeArtifactKey`] equality before exposing a value.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeArtifactCache<Value> {
     buckets: NativeArtifactCacheBuckets<Value>,
     entries: usize,
 }
 
 type BucketDigestFunction = fn(&[u8]) -> u64;
+
+impl<Value> Default for NativeArtifactCache<Value> {
+    fn default() -> Self {
+        Self {
+            buckets: BTreeMap::new(),
+            entries: 0,
+        }
+    }
+}
 
 impl<Value> NativeArtifactCache<Value> {
     /// Removes every cached value while retaining no reuse authority.

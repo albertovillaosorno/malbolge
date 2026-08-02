@@ -70,18 +70,20 @@ use execution_ir::{
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    CoffAdmissionError, DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    CachedPreflightedExecutionTier, CoffAdmissionError,
+    DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
-    DirectDeoptError, DirectHaltRegistersError, DirectInitialHaltError,
-    DirectNativeKind, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, PreflightedExecutionTier,
-    UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
-    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    lower_clang_c23, select_preflighted_execution_tier,
-    select_verified_direct_native, structurally_admit_coff,
-    verify_direct_deopt_stub, verify_direct_halt_registers,
-    verify_direct_initial_halt,
+    DirectCacheDisposition, DirectDeoptError, DirectHaltRegistersError,
+    DirectHost, DirectInitialHaltError, DirectNativeKind, DirectSelectionError,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
+    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
+    emit_direct_deopt_coff, emit_direct_halt_registers_coff,
+    emit_direct_initial_halt_coff, lower_clang_c23,
+    select_cached_preflighted_execution_tier,
+    select_preflighted_execution_tier, select_verified_direct_native,
+    structurally_admit_coff, verify_direct_deopt_stub,
+    verify_direct_halt_registers, verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -834,6 +836,185 @@ fn direct_initial_halt_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+fn assert_cached_direct_cycle(
+    cache: &mut VerifiedDirectNativeCache,
+    program: &RegionEffectProgram,
+    expected_kind: DirectNativeKind,
+    expected_len: usize,
+) -> Result<(), String> {
+    let inserted = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: inserted_artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = inserted
+    else {
+        return Err(String::from("cache miss did not insert direct artifact"));
+    };
+    if inserted_artifact.kind() != expected_kind || cache.len() != expected_len
+    {
+        return Err(String::from("inserted direct artifact identity drifted"));
+    }
+
+    let hit = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: hit_artifact,
+        cache: DirectCacheDisposition::Hit,
+    } = hit
+    else {
+        return Err(String::from("exact direct cache key was not reused"));
+    };
+    if hit_artifact == inserted_artifact && cache.len() == expected_len {
+        Ok(())
+    } else {
+        Err(String::from("direct cache hit changed artifact or size"))
+    }
+}
+
+#[test]
+fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
+    let mut cache = VerifiedDirectNativeCache::default();
+    if !cache.is_empty() {
+        return Err(String::from("new verified direct cache was not empty"));
+    }
+    let cases = [
+        (direct_initial_halt_program(), DirectNativeKind::InitialHalt),
+        (
+            direct_halt_registers_program(),
+            DirectNativeKind::HaltRegisters,
+        ),
+        (native_program(), DirectNativeKind::Deopt),
+    ];
+    for (index, (program, kind)) in cases.iter().enumerate() {
+        assert_cached_direct_cycle(&mut cache, program, *kind, index + 1)?;
+    }
+    cache.clear();
+    if cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "verified direct cache clear retained artifacts",
+        ))
+    }
+}
+
+fn seed_verified_direct_cache(
+    program: &RegionEffectProgram,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<(), String> {
+    let seeded = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    if matches!(seeded, CachedPreflightedExecutionTier::Direct {
+        cache: DirectCacheDisposition::Inserted,
+        ..
+    }) && cache.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("failed to seed verified direct cache"))
+    }
+}
+
+fn assert_cached_runtime_preflight(
+    program: &RegionEffectProgram,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<(), String> {
+    let Err(error) = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_classic_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    ) else {
+        return Err(String::from("cache hit bypassed runtime preflight"));
+    };
+    let DirectSelectionError::Profile(profile) = error else {
+        return Err(String::from("cached runtime error changed category"));
+    };
+    if profile.kind() == ProfileRequirementErrorKind::RuntimeCapabilityMissing
+        && cache.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached path lost MALBOLGE-PROFILE-001"))
+    }
+}
+
+fn assert_cached_host_selection(
+    program: &RegionEffectProgram,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<(), String> {
+    let tier = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    if tier == CachedPreflightedExecutionTier::Interpreter && cache.len() == 1 {
+        Ok(())
+    } else {
+        Err(String::from("cache hit bypassed host-format selection"))
+    }
+}
+
+fn assert_cached_capacity_preflight(
+    program: &RegionEffectProgram,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<(), String> {
+    let mut overflow = program.clone();
+    let address = current_profile().memory_words();
+    let effect = overflow
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("initial-halt fixture has no effect"))?;
+    effect.before.registers.code_pointer = address;
+    effect.after.registers.code_pointer = address;
+    let Err(error) = select_cached_preflighted_execution_tier(
+        &overflow,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    ) else {
+        return Err(String::from("cache lookup bypassed capacity preflight"));
+    };
+    let DirectSelectionError::Profile(profile) = error else {
+        return Err(String::from("cached capacity error changed category"));
+    };
+    if profile.kind() == ProfileRequirementErrorKind::ProfileCapacityExceeded
+        && cache.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached path lost MALBOLGE-PROFILE-002"))
+    }
+}
+
+#[test]
+fn cached_tier_planner_preflights_before_lookup() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    seed_verified_direct_cache(&program, &mut cache)?;
+    assert_cached_runtime_preflight(&program, &mut cache)?;
+    assert_cached_host_selection(&program, &mut cache)?;
+    assert_cached_capacity_preflight(&program, &mut cache)
 }
 
 #[test]
