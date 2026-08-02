@@ -197,6 +197,19 @@ x86-64 execution proves the hit and atomic code-live-in, data-live-in, footprint
 and null-memory misses; independent AArch64 decoding confirms both reads, exact
 commit, and common miss target.
 
+`direct-jump-code` revision 1 captures the normative post-jump encryption order.
+Admission requires three distinct live-ins: entry `memory[C]`, entry `memory[D]`,
+and the graphical cell addressed by the value loaded from `D`. VM-owned decode
+must classify the first as `i`; encryption and pointer successors derive the
+entire no-I/O exit. Both ISAs guard the complete entry, exact 13-word footprint,
+`memory[5]=93`, `memory[7]=11`, and `memory[11]=68` before committing only
+`memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent objects are 622/731
+bytes. x86-64 development execution proves exact hit behavior plus atomic
+code/data/encryption/footprint/null misses, and all twelve `rel32` guards share one
+miss. Independent AArch64 decoding confirms three ordered reads, the exact commit,
+and twelve branches to one miss target. Aliasing among the three addresses remains
+rejected.
+
 All memory-backed direct templates compare ABI `memory_words` with the exact
 `NativeArtifactKey` IR footprint before any dereference or commit. The metadata
 and executable guards therefore bind the same output-reachable memory domain.
@@ -215,7 +228,8 @@ broadest:
 zero-register halt uses `direct-initial-halt`, other no-live-in one-step halts use
 `direct-halt-registers`, exact graphical halt fetch uses `direct-halt-fetch`, exact
 non-graphical termination uses `direct-non-graphical`, exact non-aliasing
-jump-data uses `direct-jump-data`, exact no-op execution uses
+jump-code uses `direct-jump-code`, jump-data uses `direct-jump-data`, exact no-op
+execution uses
 `direct-no-operation`, and otherwise the selector emits/verifies direct deopt.
 Only admitted program shape controls this fallback; profile, emission, or
 admission errors are propagated rather than silently retried. Non-Windows host
@@ -224,7 +238,7 @@ formats fail explicitly because direct ELF/Mach-O templates do not exist yet.
 All state-applying emitter/verifier pairs independently repeat the
 profile-capacity shape check. A caller bypassing the selector cannot semantically
 promote an initial-halt, register-halt, halt-fetch, non-graphical, no-operation,
-or jump-data object whose IR footprint
+jump-code, or jump-data object whose IR footprint
 exceeds its embedded profile envelope.
 
 `select_preflighted_execution_tier()` is the first planning boundary above direct
@@ -243,7 +257,7 @@ boundary. State-applying semantic verifiers continue reconstructing their expect
 key independently from IR before promotion. `VerifiedDirectNativeCache` privately
 wraps the generic cache and accepts values only through successful direct emission
 and semantic admission. Results distinguish `Inserted` from full-key `Hit`; all
-seven current templates match uncached selection byte-for-byte and reuse the same
+eight current templates match uncached selection byte-for-byte and reuse the same
 immutable `Arc` allocation rather than cloning verified object bytes. A populated
 cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and those
 outcomes leave cache cardinality unchanged. Exact-key invalidation removes one
@@ -260,8 +274,8 @@ outside.
 
 ### Remaining Implementation
 
-Semantic admission beyond the reviewed terminal/no-op/jump-data family,
-rotate/crazy/jump-code and I/O x86-64/AArch64 selection,
+Semantic admission beyond the reviewed terminal/no-op/jump family, rotate/crazy
+and I/O x86-64/AArch64 selection,
 executable-memory policy/invocation, durable native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The

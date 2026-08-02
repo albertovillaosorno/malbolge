@@ -76,8 +76,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   execution, and AArch64 instruction decoding. `direct-jump-data` revision 1 adds
   two distinct code/data live-in guards, an exact 125-word footprint, and the
   first instruction-specific semantic data read with independent 564/699-byte
+  objects. `direct-jump-code` revision 1 adds three distinct live-in guards,
+  exact post-jump encryption, a 13-word footprint, and independent 622/731-byte
   objects. All memory-backed templates guard the exact key-bound IR footprint.
-  Remaining rotate/crazy/jump-code and I/O selection, executable-memory
+  Remaining rotate/crazy and I/O selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

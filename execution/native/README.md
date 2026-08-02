@@ -89,7 +89,8 @@ The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
-`direct-jump-data` starts at revision 1. All seven use `MBPF` metadata version 3.
+`direct-jump-code` and `direct-jump-data` start at revision 1. All eight use
+`MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -118,7 +119,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-initial-halt`, any other no-live-in one-step halt selects
 `direct-halt-registers`, an exact graphical `v` fetch selects
 `direct-halt-fetch`, an exact non-graphical fetch selects
-`direct-non-graphical`, an exact non-aliasing `j` transition selects
+`direct-non-graphical`, an exact non-aliasing `i` transition selects
+`direct-jump-code`, an exact non-aliasing `j` transition selects
 `direct-jump-data`, an exact no-op fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
@@ -164,8 +166,9 @@ object additionally compares ABI `memory_words` against the exact
 `NativeArtifactKey` IR footprint before any dereference or commit; output pointers
 therefore cannot escape the supplied backing image. Direct calls that bypass the
 selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
-`direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`, or
-`direct-jump-data` when the declared profile envelope is too small; they fail as
+`direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`,
+`direct-jump-code`, or `direct-jump-data` when the declared profile envelope is
+too small; they fail as
 out-of-contract program shape before object promotion.
 
 `direct-halt-registers` revision 5 generalizes the halt template across the
@@ -204,6 +207,19 @@ live-in 123 before atomically committing `memory[5]:35->93`, `C:5->6`, and
 AArch64. Development execution proves exact hit behavior plus atomic code-live-in,
 data-live-in, footprint, and null-memory misses; independent AArch64 decoding
 confirms both reads, the exact commit, and one common miss target.
+
+`direct-jump-code` revision 1 adds the exact post-jump encryption order. It admits
+three distinct live-ins: the entry code cell, the entry data cell, and the cell
+addressed by `memory[D]`; VM-owned decode must classify the first as `i`. The
+verifier derives encryption of the loaded target plus successors for loaded `C`
+and entry `D`. Both ISAs guard the complete entry, exact 13-word footprint,
+`memory[5]=93`, `memory[7]=11`, and `memory[11]=68` before committing only
+`memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent complete objects are
+622 bytes on x86-64 and 731 bytes on AArch64. x86-64 uses twelve reviewed `rel32`
+guards sharing one miss; development execution proves exact hit and atomic
+code/data/encryption/footprint/null misses. Independent AArch64 decoding confirms
+three ordered reads, the commit, and twelve branches to one miss target. Aliasing
+among any of the three addresses remains rejected.
 
 `direct-no-operation` revision 2 is the first admitted non-terminal direct effect
 and the first direct guest-memory write. It accepts exactly one code-cell live-in

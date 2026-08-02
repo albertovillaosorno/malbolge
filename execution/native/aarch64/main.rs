@@ -50,7 +50,7 @@
 
 use super::direct::{
     DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
-    DirectJumpDataGuard,
+    DirectJumpCodeGuard, DirectJumpDataGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -195,6 +195,64 @@ fn fetched_termination_code(
     words.extend_from_slice(&[
         movz_w10(termination_tag),
         0x3901_300a,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+/// Encodes one exact non-aliasing jump-code transition.
+#[must_use]
+pub(super) fn jump_code_code(
+    observation: DirectEntryObservation,
+    guard: DirectJumpCodeGuard,
+    commit: DirectCodeWriteCommit,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(88);
+    let mut guard_branches = Vec::with_capacity(12);
+    push_observation_guards(&mut words, &mut guard_branches, observation)?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, guard.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        observation.code_pointer,
+        guard.code_live_in,
+    );
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        observation.data_pointer,
+        guard.data_live_in,
+    );
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        commit.encrypted_address,
+        guard.encryption_live_in,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.extend_from_slice(&[
+        movz_w10(commit.encrypted_address),
+        movk_w10_high(commit.encrypted_address),
+        0x8b0a_090a,
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
         0x2a1f_03e0,
         0xd65f_03c0,
     ]);

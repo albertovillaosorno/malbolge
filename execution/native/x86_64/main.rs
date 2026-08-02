@@ -50,7 +50,7 @@
 
 use super::direct::{
     DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
-    DirectJumpDataGuard,
+    DirectJumpCodeGuard, DirectJumpDataGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -173,6 +173,135 @@ fn fetched_termination_code(
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
+}
+
+/// Encodes one exact non-aliasing jump-code transition.
+#[must_use]
+pub(super) fn jump_code_code(
+    observation: DirectEntryObservation,
+    guard: DirectJumpCodeGuard,
+    commit: DirectCodeWriteCommit,
+) -> Option<Vec<u8>> {
+    let code_offset = memory_byte_offset(observation.code_pointer)?;
+    let data_offset = memory_byte_offset(observation.data_pointer)?;
+    let encryption_offset = memory_byte_offset(commit.encrypted_address)?;
+    let mut code = Vec::with_capacity(224);
+    let mut guard_jumps = Vec::with_capacity(12);
+    push_observation_guards_near(&mut code, &mut guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.code_live_in,
+    );
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        data_offset,
+        guard.data_live_in,
+    );
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        encryption_offset,
+        guard.encryption_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&encryption_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_observation_guards_near(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    observation: DirectEntryObservation,
+) {
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_near_guard_jump(code, guard_jumps, 0x84);
+    push_u64_guard_near(code, guard_jumps, 0x20, observation.input_consumed);
+    push_u64_guard_near(code, guard_jumps, 0x38, observation.output_len);
+    push_u32_guard_near(code, guard_jumps, 0x40, observation.accumulator);
+    push_u32_guard_near(code, guard_jumps, 0x44, observation.code_pointer);
+    push_u32_guard_near(code, guard_jumps, 0x48, observation.data_pointer);
+}
+
+fn push_u32_guard_near(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    displacement: u8,
+    value: u32,
+) {
+    code.extend_from_slice(&[0x81, 0x79, displacement]);
+    code.extend_from_slice(&value.to_le_bytes());
+    push_near_guard_jump(code, guard_jumps, 0x85);
+}
+
+fn push_u64_guard_near(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    displacement: u8,
+    value: u64,
+) {
+    code.extend_from_slice(&[0x48, 0xba]);
+    code.extend_from_slice(&value.to_le_bytes());
+    code.extend_from_slice(&[0x48, 0x39, 0x51, displacement]);
+    push_near_guard_jump(code, guard_jumps, 0x85);
+}
+
+fn push_direct_memory_guard_near(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    offset: u32,
+    value: u32,
+) {
+    code.extend_from_slice(&[0x81, 0xba]);
+    code.extend_from_slice(&offset.to_le_bytes());
+    code.extend_from_slice(&value.to_le_bytes());
+    push_near_guard_jump(code, guard_jumps, 0x85);
+}
+
+fn push_near_guard_jump(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    condition_opcode: u8,
+) {
+    code.extend_from_slice(&[0x0f, condition_opcode]);
+    guard_jumps.push(code.len());
+    code.extend_from_slice(&[0; 4]);
+}
+
+fn patch_near_guard_jumps(
+    code: &mut [u8],
+    guard_jumps: &[usize],
+    target: usize,
+) -> Option<()> {
+    for jump in guard_jumps {
+        let next = jump.checked_add(4)?;
+        let distance = target.checked_sub(next)?;
+        let displacement = i32::try_from(distance).ok()?;
+        let end = jump.checked_add(4)?;
+        code.get_mut(*jump..end)?
+            .copy_from_slice(&displacement.to_le_bytes());
+    }
+    Some(())
 }
 
 /// Encodes one exact non-aliasing jump-data transition.

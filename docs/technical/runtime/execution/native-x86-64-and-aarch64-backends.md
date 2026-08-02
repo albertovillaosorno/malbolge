@@ -107,15 +107,27 @@ Independent complete objects are 564/699 bytes. x86-64 development execution
 proves exact hit behavior plus atomic live-in/footprint/null misses; independent
 AArch64 decoding confirms both reads, the commit, and one common miss target.
 
+`direct-jump-code` revision 1 adds the exact post-jump encryption sequence. Three
+distinct live-ins bind entry code, entry data, and the graphical cell selected by
+`memory[D]`; VM-owned decode must classify the entry code cell as `i`. Each ISA
+guards the complete entry, exact 13-word footprint, values 93/11/68 at addresses
+5/7/11, and prior live termination before atomically writing `memory[11]=33` and
+`C/D=12/8`. Independent complete objects are 622/731 bytes. x86-64 development
+execution proves exact hit plus atomic code/data/encryption/footprint/null misses
+and twelve common-target `rel32` branches; independent AArch64 decoding confirms
+three reads, the commit, and twelve branches to one miss. Address aliasing remains
+rejected.
+
 All memory-backed templates consume the exact key-bound IR footprint as their ABI
-capacity guard before any dereference. Rotate/crazy/jump-code and I/O effects
+capacity guard before any dereference. Rotate/crazy and I/O effects
 remain outside this reviewed subset.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
-remains semantically untrusted. Reviewed direct terminal, no-op, and jump-data
-emitters/verifiers are implemented for both ISAs; rotate/crazy/jump-code and I/O
+remains semantically untrusted. Reviewed direct terminal, no-op, jump-code, and
+jump-data emitters/verifiers are
+implemented for both ISAs; rotate/crazy and I/O
 selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.

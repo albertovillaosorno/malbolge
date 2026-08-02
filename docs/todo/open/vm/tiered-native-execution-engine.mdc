@@ -144,6 +144,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   564/699-byte objects bind `memory[5]:35->93`, `C:5->6`, and `D:7->124`;
   x86-64 execution and AArch64 decoding prove both live-in guards, exact
   125-word footprint, atomic commit, and misses. Aliasing remains rejected.
+- `direct-jump-code` revision 1 adds the exact post-jump encryption order. Three
+  distinct code/data/encryption live-ins bind `memory[5]=93`, `memory[7]=11`, and
+  `memory[11]=68`; VM-owned decode, encryption, and successors derive
+  `memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent 622/731-byte objects,
+  x86-64 atomic execution, and AArch64 decoding prove the 13-word footprint,
+  three guards, exact commit, and twelve common-miss branches.
 - Every memory-backed direct template now compares ABI `memory_words` with the
   exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
@@ -165,7 +171,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all seven templates, and reuses one pointer-identical immutable
+  keys/bytes for all eight templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first
@@ -177,7 +183,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- Remaining rotate/crazy/jump-code and I/O direct selection, cache-aware AOT/JIT
+- Remaining rotate/crazy and I/O direct selection, cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

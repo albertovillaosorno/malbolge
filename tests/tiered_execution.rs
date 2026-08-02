@@ -76,25 +76,27 @@ use execution_native::{
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
+    DIRECT_JUMP_CODE_BACKEND_ID, DIRECT_JUMP_CODE_BACKEND_REVISION,
     DIRECT_JUMP_DATA_BACKEND_ID, DIRECT_JUMP_DATA_BACKEND_REVISION,
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DirectCacheDisposition, DirectDeoptError, DirectHaltFetchError,
     DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, PreflightedExecutionTier,
+    DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
+    DirectNoOperationError, DirectNonGraphicalError, DirectSelectionError,
+    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
     UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
     emit_direct_deopt_coff, emit_direct_halt_fetch_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
-    emit_direct_non_graphical_coff, lower_clang_c23,
-    select_cached_preflighted_execution_tier,
+    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
+    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
+    lower_clang_c23, select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     structurally_admit_coff, verify_direct_deopt_stub,
     verify_direct_halt_fetch, verify_direct_halt_registers,
-    verify_direct_initial_halt, verify_direct_jump_data,
-    verify_direct_no_operation, verify_direct_non_graphical,
+    verify_direct_initial_halt, verify_direct_jump_code,
+    verify_direct_jump_data, verify_direct_no_operation,
+    verify_direct_non_graphical,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -1111,6 +1113,67 @@ fn direct_non_graphical_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_jump_code_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 12,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta {
+                data: None,
+                encryption: Some(ProfileMemoryWrite {
+                    address: 11,
+                    after: 33,
+                    before: 68,
+                }),
+            },
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![
+            MemoryLiveIn { address: 5, value: 93 },
+            MemoryLiveIn { address: 7, value: 11 },
+            MemoryLiveIn { address: 11, value: 68 },
+        ],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-jump-code-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_jump_code_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_JUMP_CODE_BACKEND_ID),
+        backend_revision: DIRECT_JUMP_CODE_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_jump_data_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0x0000_0001_2345_6789,
@@ -1348,6 +1411,7 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
             direct_non_graphical_program(),
             DirectNativeKind::NonGraphical,
         ),
+        (direct_jump_code_program(), DirectNativeKind::JumpCode),
         (direct_jump_data_program(), DirectNativeKind::JumpData),
         (direct_no_operation_program(), DirectNativeKind::NoOperation),
         (native_program(), DirectNativeKind::Deopt),
@@ -1794,56 +1858,58 @@ fn selected_direct_triple(
 fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 -> Result<(), String> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let initial = selected_direct_triple(
-            &direct_initial_halt_program(),
-            isa,
-            DirectNativeKind::InitialHalt,
-            DIRECT_INITIAL_HALT_BACKEND_ID,
-        )?;
-        let register = selected_direct_triple(
-            &direct_halt_registers_program(),
-            isa,
-            DirectNativeKind::HaltRegisters,
-            DIRECT_HALT_REGISTERS_BACKEND_ID,
-        )?;
-        let halt_fetch = selected_direct_triple(
-            &direct_halt_fetch_program(),
-            isa,
-            DirectNativeKind::HaltFetch,
-            DIRECT_HALT_FETCH_BACKEND_ID,
-        )?;
-        let non_graphical = selected_direct_triple(
-            &direct_non_graphical_program(),
-            isa,
-            DirectNativeKind::NonGraphical,
-            DIRECT_NON_GRAPHICAL_BACKEND_ID,
-        )?;
-        let jump_data = selected_direct_triple(
-            &direct_jump_data_program(),
-            isa,
-            DirectNativeKind::JumpData,
-            DIRECT_JUMP_DATA_BACKEND_ID,
-        )?;
-        let no_operation = selected_direct_triple(
-            &direct_no_operation_program(),
-            isa,
-            DirectNativeKind::NoOperation,
-            DIRECT_NO_OPERATION_BACKEND_ID,
-        )?;
-        let fallback = selected_direct_triple(
-            &native_program(),
-            isa,
-            DirectNativeKind::Deopt,
-            DIRECT_DEOPT_BACKEND_ID,
-        )?;
-        if initial != register
-            || initial != halt_fetch
-            || initial != non_graphical
-            || initial != jump_data
-            || initial != no_operation
-            || initial != fallback
-        {
-            return Err(String::from("direct tier changed target triple"));
+        let cases = [
+            (
+                direct_initial_halt_program(),
+                DirectNativeKind::InitialHalt,
+                DIRECT_INITIAL_HALT_BACKEND_ID,
+            ),
+            (
+                direct_halt_registers_program(),
+                DirectNativeKind::HaltRegisters,
+                DIRECT_HALT_REGISTERS_BACKEND_ID,
+            ),
+            (
+                direct_halt_fetch_program(),
+                DirectNativeKind::HaltFetch,
+                DIRECT_HALT_FETCH_BACKEND_ID,
+            ),
+            (
+                direct_non_graphical_program(),
+                DirectNativeKind::NonGraphical,
+                DIRECT_NON_GRAPHICAL_BACKEND_ID,
+            ),
+            (
+                direct_jump_code_program(),
+                DirectNativeKind::JumpCode,
+                DIRECT_JUMP_CODE_BACKEND_ID,
+            ),
+            (
+                direct_jump_data_program(),
+                DirectNativeKind::JumpData,
+                DIRECT_JUMP_DATA_BACKEND_ID,
+            ),
+            (
+                direct_no_operation_program(),
+                DirectNativeKind::NoOperation,
+                DIRECT_NO_OPERATION_BACKEND_ID,
+            ),
+            (
+                native_program(),
+                DirectNativeKind::Deopt,
+                DIRECT_DEOPT_BACKEND_ID,
+            ),
+        ];
+        let mut expected = None;
+        for (program, kind, backend_id) in cases {
+            let triple =
+                selected_direct_triple(&program, isa, kind, backend_id)?;
+            if let Some(previous) = expected
+                && previous != triple
+            {
+                return Err(String::from("direct tier changed target triple"));
+            }
+            expected = Some(triple);
         }
     }
     Ok(())
@@ -2207,6 +2273,202 @@ fn direct_halt_fetch_rejects_ir_opcode_and_revision_tampering()
     }
     assert_halt_fetch_shape_rejections(&program)?;
     assert_halt_fetch_revision_rejected(&program)
+}
+
+#[test]
+fn direct_jump_code_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-jump-code-x86_64-coff.hex"),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-jump-code-aarch64-coff.hex"
+            ),
+        ),
+    ];
+    let program = direct_jump_code_program();
+    for (isa, fixture) in cases {
+        let artifact =
+            emit_direct_jump_code_coff(&program, direct_jump_code_target(isa))
+                .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!(
+                "direct jump-code fixture mismatch for {isa:?}"
+            ));
+        }
+        let verified = verify_direct_jump_code(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified jump-code identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_jump_code_live_in_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_decode = program.clone();
+    wrong_decode
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("jump-code fixture lost code live-in"))?
+        .value = 35;
+    if emit_direct_jump_code_coff(
+        &wrong_decode,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) != Err(DirectJumpCodeError::ProgramShape)
+    {
+        return Err(String::from("jump-data decode was admitted as jump-code"));
+    }
+
+    let mut wrong_target = program.clone();
+    wrong_target
+        .memory_live_ins
+        .get_mut(1)
+        .ok_or_else(|| String::from("jump-code fixture lost data live-in"))?
+        .value = 12;
+    if emit_direct_jump_code_coff(
+        &wrong_target,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) != Err(DirectJumpCodeError::ProgramShape)
+    {
+        return Err(String::from("wrong jump-code target was admitted"));
+    }
+
+    let mut wrong_encryption = program.clone();
+    wrong_encryption
+        .memory_live_ins
+        .get_mut(2)
+        .ok_or_else(|| {
+            String::from("jump-code fixture lost encryption live-in")
+        })?
+        .value = 69;
+    if emit_direct_jump_code_coff(
+        &wrong_encryption,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) == Err(DirectJumpCodeError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "wrong jump-code encryption live-in was admitted",
+        ))
+    }
+}
+
+fn assert_jump_code_transition_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut aliased = program.clone();
+    aliased
+        .memory_live_ins
+        .get_mut(1)
+        .ok_or_else(|| String::from("jump-code fixture lost data live-in"))?
+        .value = 5;
+    if emit_direct_jump_code_coff(
+        &aliased,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) != Err(DirectJumpCodeError::ProgramShape)
+    {
+        return Err(String::from("aliased jump-code was admitted"));
+    }
+
+    let mut wrong_exit = program.clone();
+    wrong_exit
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("jump-code fixture lost effect"))?
+        .after
+        .registers
+        .code_pointer = 13;
+    if emit_direct_jump_code_coff(
+        &wrong_exit,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) != Err(DirectJumpCodeError::ProgramShape)
+    {
+        return Err(String::from("wrong jump-code exit was admitted"));
+    }
+
+    let mut wrong_delta = program.clone();
+    wrong_delta
+        .effects
+        .first_mut()
+        .and_then(|operation| operation.memory_delta.encryption.as_mut())
+        .ok_or_else(|| String::from("jump-code fixture lost encryption"))?
+        .after = 34;
+    if emit_direct_jump_code_coff(
+        &wrong_delta,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) == Err(DirectJumpCodeError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("wrong jump-code encryption was admitted"))
+    }
+}
+
+fn assert_jump_code_revision_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_JUMP_CODE_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_jump_code_coff(program, obsolete)
+        == Err(DirectJumpCodeError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete jump-code revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_jump_code_rejects_ir_opcode_and_revision_tampering()
+-> Result<(), String> {
+    let program = direct_jump_code_program();
+    let artifact = emit_direct_jump_code_coff(
+        &program,
+        direct_jump_code_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0xc7u8, 0x82, 0x2c, 0x00, 0x00, 0x00, 0x21, 0x00, 0x00, 0x00];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("jump-code commit opcode missing"))?;
+    let immediate = mutated_object
+        .get_mut(offset.saturating_add(6))
+        .ok_or_else(|| String::from("jump-code commit immediate missing"))?;
+    *immediate = 34;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered jump-code structure: {error}"))?;
+    if verify_direct_jump_code(&tampered, &program)
+        != Err(DirectJumpCodeError::ObjectBytes)
+    {
+        return Err(String::from("tampered jump-code object was admitted"));
+    }
+    assert_jump_code_live_in_rejections(&program)?;
+    assert_jump_code_transition_rejections(&program)?;
+    assert_jump_code_revision_rejected(&program)
 }
 
 #[test]
@@ -2747,6 +3009,22 @@ fn direct_initial_halt_rejects_ir_and_opcode_tampering() -> Result<(), String> {
     Ok(())
 }
 
+fn assert_jump_code_capacity_rejected() -> Result<(), String> {
+    let mut jump_code = direct_jump_code_program();
+    jump_code.profile_requirement.memory_words = 12;
+    if emit_direct_jump_code_coff(
+        &jump_code,
+        direct_jump_code_target(HostIsa::X86_64),
+    ) == Err(DirectJumpCodeError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "jump-code profile-capacity mismatch was admitted",
+        ))
+    }
+}
+
 fn assert_jump_data_capacity_rejected() -> Result<(), String> {
     let mut jump_data = direct_jump_data_program();
     jump_data.profile_requirement.memory_words = 124;
@@ -2766,6 +3044,7 @@ fn assert_jump_data_capacity_rejected() -> Result<(), String> {
 #[test]
 fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
 {
+    assert_jump_code_capacity_rejected()?;
     assert_jump_data_capacity_rejected()?;
     let mut register_halt = direct_halt_registers_program();
     register_halt.profile_requirement.memory_words = 1;
