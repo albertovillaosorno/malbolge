@@ -120,15 +120,20 @@ not perform cache lookup, executable-memory allocation, linking, or execution.
 
 `select_cached_preflighted_execution_tier()` composes the same boundary with a
 caller-owned `VerifiedDirectNativeCache`. Profile capacity/runtime and explicit
-`DirectHost` format selection happen before lookup. On Windows, the exact selected
-`NativeArtifactKey` returns either `DirectCacheDisposition::Hit` or a newly
-emitted, semantically admitted `Inserted` artifact. Cache entries and returned
-plans share the same immutable `Arc<VerifiedDirectNativeArtifact>`, so a hit does
-not clone object bytes. Only verified direct artifacts can enter this wrapper; the
-generic cache remains non-authoritative. Interpreter
-selection and profile failures do not mutate the cache. Persistence, eviction,
-synchronization policy, linking, executable memory, and invocation remain
-outside; `Arc` supplies ownership only, not concurrent execution.
+`DirectHost` format selection happen before lookup. A private
+`PreparedDirectTarget` binds the selected specialization to one exact
+`NativeArtifactKey`; that same key drives lookup and, on a miss, is consumed by
+object emission before the admitted artifact key is inserted. Emission therefore
+does not canonicalize the IR a second time. State-applying semantic verifiers
+still reconstruct the expected key independently from IR, preserving their trust
+check. The result is either `DirectCacheDisposition::Hit` or a newly admitted
+`Inserted` artifact. Cache entries and returned plans share the same immutable
+`Arc<VerifiedDirectNativeArtifact>`, so a hit does not clone object bytes. Only
+verified direct artifacts can enter this wrapper; the generic cache remains
+non-authoritative. Interpreter selection and profile failures do not mutate the
+cache. Persistence, eviction, synchronization policy, linking, executable memory,
+and invocation remain outside; `Arc` supplies ownership only, not concurrent
+execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass

@@ -161,15 +161,19 @@ lookup, executable-memory policy, linking, or invocation.
 
 `select_cached_preflighted_execution_tier()` adds exact process-local reuse without
 weakening those gates. One explicit `DirectHost` plus runtime capability is
-preflighted before lookup. `VerifiedDirectNativeCache` privately wraps the generic
-cache and accepts values only through successful direct emission and semantic
-admission. Results distinguish `Inserted` from full-key `Hit`; all three current
-templates reuse the same immutable `Arc` allocation rather than cloning verified
-object bytes. A populated cache cannot bypass
-`002`, `001`, or non-Windows interpreter selection, and those outcomes leave cache
-cardinality unchanged. `Arc` provides shared immutable ownership only; durable
-storage, eviction, synchronization policy, linking, executable memory, invocation,
-and performance policy remain outside.
+preflighted before lookup. A private `PreparedDirectTarget` binds specialization
+and exact `NativeArtifactKey`. The same prepared key selects the bucket and is
+consumed by miss emission, eliminating a second IR canonicalization at that
+boundary. State-applying semantic verifiers continue reconstructing their expected
+key independently from IR before promotion. `VerifiedDirectNativeCache` privately
+wraps the generic cache and accepts values only through successful direct emission
+and semantic admission. Results distinguish `Inserted` from full-key `Hit`; all
+three current templates match uncached selection byte-for-byte and reuse the same
+immutable `Arc` allocation rather than cloning verified object bytes. A populated
+cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and those
+outcomes leave cache cardinality unchanged. `Arc` provides shared immutable
+ownership only; durable storage, eviction, synchronization policy, linking,
+executable memory, invocation, and performance policy remain outside.
 
 ### Remaining Implementation
 

@@ -459,6 +459,13 @@ enum SelectedDirectTarget {
     InitialHalt(NativeTargetIdentity),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PreparedDirectTarget {
+    Deopt(NativeArtifactKey),
+    HaltRegisters(NativeArtifactKey),
+    InitialHalt(NativeArtifactKey),
+}
+
 type VerifiedDirectSelectionResult<'requirement> =
     Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>>;
 
@@ -481,15 +488,18 @@ impl VerifiedDirectNativeCache {
     }
 }
 
-impl SelectedDirectTarget {
-    fn emit_verified<'requirement>(
-        &self,
-        program: &'requirement RegionEffectProgram,
-    ) -> VerifiedDirectSelectionResult<'requirement> {
+impl PreparedDirectTarget {
+    fn emit_verified(
+        self,
+        program: &RegionEffectProgram,
+    ) -> VerifiedDirectSelectionResult<'_> {
         match self {
-            Self::Deopt(target) => {
-                let artifact = emit_direct_deopt_coff(program, target.clone())
-                    .map_err(|error| {
+            Self::Deopt(key) => {
+                validate_target(key.target()).map_err(|error| {
+                    DirectSelectionError::Deopt(Box::new(error))
+                })?;
+                let artifact =
+                    emit_direct_deopt_with_key(key).map_err(|error| {
                         DirectSelectionError::Deopt(Box::new(error))
                     })?;
                 let verified =
@@ -498,9 +508,18 @@ impl SelectedDirectTarget {
                     })?;
                 Ok(VerifiedDirectNativeArtifact::Deopt(verified))
             },
-            Self::HaltRegisters(target) => {
+            Self::HaltRegisters(key) => {
+                let registers = validate_halt_registers_program(program)
+                    .map_err(|error| {
+                        DirectSelectionError::HaltRegisters(Box::new(error))
+                    })?;
+                validate_halt_registers_target(key.target()).map_err(
+                    |error| {
+                        DirectSelectionError::HaltRegisters(Box::new(error))
+                    },
+                )?;
                 let artifact =
-                    emit_direct_halt_registers_coff(program, target.clone())
+                    emit_direct_halt_registers_with_key(key, registers)
                         .map_err(|error| {
                             DirectSelectionError::HaltRegisters(Box::new(error))
                         })?;
@@ -510,12 +529,16 @@ impl SelectedDirectTarget {
                     })?;
                 Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified))
             },
-            Self::InitialHalt(target) => {
-                let artifact =
-                    emit_direct_initial_halt_coff(program, target.clone())
-                        .map_err(|error| {
-                            DirectSelectionError::InitialHalt(Box::new(error))
-                        })?;
+            Self::InitialHalt(key) => {
+                validate_initial_halt_program(program).map_err(|error| {
+                    DirectSelectionError::InitialHalt(Box::new(error))
+                })?;
+                validate_initial_halt_target(key.target()).map_err(
+                    |error| DirectSelectionError::InitialHalt(Box::new(error)),
+                )?;
+                let artifact = emit_direct_initial_halt_with_key(key).map_err(
+                    |error| DirectSelectionError::InitialHalt(Box::new(error)),
+                )?;
                 let verified = verify_direct_initial_halt(&artifact, program)
                     .map_err(|error| {
                     DirectSelectionError::InitialHalt(Box::new(error))
@@ -525,37 +548,45 @@ impl SelectedDirectTarget {
         }
     }
 
-    fn key<'requirement>(
-        &self,
-        program: &'requirement RegionEffectProgram,
-    ) -> Result<NativeArtifactKey, DirectSelectionError<'requirement>> {
+    const fn key(&self) -> &NativeArtifactKey {
         match self {
-            Self::Deopt(target) => {
-                NativeArtifactKey::new(program, target.clone()).map_err(
-                    |error| {
-                        DirectSelectionError::Deopt(Box::new(
-                            DirectDeoptError::Identity(error),
-                        ))
-                    },
-                )
-            },
+            Self::Deopt(key)
+            | Self::HaltRegisters(key)
+            | Self::InitialHalt(key) => key,
+        }
+    }
+}
+
+impl SelectedDirectTarget {
+    fn prepare(
+        self,
+        program: &RegionEffectProgram,
+    ) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+        match self {
+            Self::Deopt(target) => NativeArtifactKey::new(program, target)
+                .map(PreparedDirectTarget::Deopt)
+                .map_err(|error| {
+                    DirectSelectionError::Deopt(Box::new(
+                        DirectDeoptError::Identity(error),
+                    ))
+                }),
             Self::HaltRegisters(target) => {
-                NativeArtifactKey::new(program, target.clone()).map_err(
-                    |error| {
+                NativeArtifactKey::new(program, target)
+                    .map(PreparedDirectTarget::HaltRegisters)
+                    .map_err(|error| {
                         DirectSelectionError::HaltRegisters(Box::new(
                             DirectHaltRegistersError::Identity(error),
                         ))
-                    },
-                )
+                    })
             },
             Self::InitialHalt(target) => {
-                NativeArtifactKey::new(program, target.clone()).map_err(
-                    |error| {
+                NativeArtifactKey::new(program, target)
+                    .map(PreparedDirectTarget::InitialHalt)
+                    .map_err(|error| {
                         DirectSelectionError::InitialHalt(Box::new(
                             DirectInitialHaltError::Identity(error),
                         ))
-                    },
-                )
+                    })
             },
         }
     }
@@ -626,7 +657,9 @@ pub fn select_verified_direct_native<'requirement>(
     if host_os != HostOperatingSystem::Windows {
         return Err(DirectSelectionError::TargetFormat);
     }
-    select_direct_target(program, host_os, host_isa).emit_verified(program)
+    select_direct_target(program, host_os, host_isa)
+        .prepare(program)?
+        .emit_verified(program)
 }
 
 /// Selects a profile-preflighted direct or interpreter execution plan.
@@ -676,17 +709,18 @@ pub fn select_cached_preflighted_execution_tier<'requirement>(
     if host.operating_system != HostOperatingSystem::Windows {
         return Ok(CachedPreflightedExecutionTier::Interpreter);
     }
-    let selected =
-        select_direct_target(program, host.operating_system, host.isa);
-    let key = selected.key(program)?;
-    if let Some(artifact) = cache.entries.get(&key) {
+    let prepared =
+        select_direct_target(program, host.operating_system, host.isa)
+            .prepare(program)?;
+    if let Some(artifact) = cache.entries.get(prepared.key()) {
         return Ok(CachedPreflightedExecutionTier::Direct {
             artifact: Arc::clone(artifact),
             cache: DirectCacheDisposition::Hit,
         });
     }
-    let artifact = Arc::new(selected.emit_verified(program)?);
-    let _replaced = cache.entries.insert(key, Arc::clone(&artifact));
+    let artifact = Arc::new(prepared.emit_verified(program)?);
+    let inserted_key = artifact.key().clone();
+    let _replaced = cache.entries.insert(inserted_key, Arc::clone(&artifact));
     Ok(CachedPreflightedExecutionTier::Direct {
         artifact,
         cache: DirectCacheDisposition::Inserted,
@@ -707,12 +741,8 @@ pub fn emit_direct_deopt_coff(
     target: NativeTargetIdentity,
 ) -> Result<UntrustedNativeObjectArtifact, DirectDeoptError> {
     validate_target(&target)?;
-    let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
-    let object = canonical_coff(&key)?;
-    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
-        key, object, triple,
-    ))
+    emit_direct_deopt_with_key(key)
 }
 
 /// Emits a one-step halt fast path bound to exact entry registers.
@@ -726,12 +756,8 @@ pub fn emit_direct_halt_registers_coff(
 ) -> Result<UntrustedNativeObjectArtifact, DirectHaltRegistersError> {
     let registers = validate_halt_registers_program(program)?;
     validate_halt_registers_target(&target)?;
-    let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
-    let object = halt_registers_coff(&key, registers)?;
-    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
-        key, object, triple,
-    ))
+    emit_direct_halt_registers_with_key(key, registers)
 }
 
 /// Emits a direct native fast path for the exact initial-halt IR subset.
@@ -746,8 +772,35 @@ pub fn emit_direct_initial_halt_coff(
 ) -> Result<UntrustedNativeObjectArtifact, DirectInitialHaltError> {
     validate_initial_halt_program(program)?;
     validate_initial_halt_target(&target)?;
-    let triple = target_triple(target.host_isa());
     let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_initial_halt_with_key(key)
+}
+
+fn emit_direct_deopt_with_key(
+    key: NativeArtifactKey,
+) -> Result<UntrustedNativeObjectArtifact, DirectDeoptError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = canonical_coff(&key)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+fn emit_direct_halt_registers_with_key(
+    key: NativeArtifactKey,
+    registers: ProfileRegisters,
+) -> Result<UntrustedNativeObjectArtifact, DirectHaltRegistersError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = halt_registers_coff(&key, registers)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+fn emit_direct_initial_halt_with_key(
+    key: NativeArtifactKey,
+) -> Result<UntrustedNativeObjectArtifact, DirectInitialHaltError> {
+    let triple = target_triple(key.target().host_isa());
     let object = initial_halt_coff(&key)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,

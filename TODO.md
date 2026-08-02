@@ -289,12 +289,15 @@ and same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse; forced digest collisions remain independent across read, replacement, and
 removal. `VerifiedDirectNativeCache` narrows that store to semantically admitted
-direct artifacts. Cache-aware planning reports exact-key `Inserted`/`Hit` for all
-three templates and shares the same immutable `Arc` allocation on hits instead of
-cloning object bytes. It performs `002`, `001`, and host-format selection before
-lookup, so rejected/interpreter outcomes do not mutate the cache. Persistence,
-eviction, synchronization policy, general region-effect fast paths, executable
-invocation, and broader AOT/JIT performance policy remain open.
+direct artifacts. Cache-aware planning prepares one specialization-bound exact key
+for lookup and consumes it during miss emission, avoiding a second IR
+canonicalization while state-applying verifiers retain independent key
+reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
+three templates, and shares the same immutable `Arc` allocation on hits. It
+performs `002`, `001`, and host-format selection before lookup, so
+rejected/interpreter outcomes do not mutate the cache. Persistence, eviction,
+synchronization policy, general region-effect fast paths, executable invocation,
+and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,

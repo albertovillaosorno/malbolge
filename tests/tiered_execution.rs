@@ -859,7 +859,17 @@ fn assert_cached_direct_cycle(
     else {
         return Err(String::from("cache miss did not insert direct artifact"));
     };
-    if inserted_artifact.kind() != expected_kind || cache.len() != expected_len
+    let uncached = select_verified_direct_native(
+        program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    if inserted_artifact.kind() != expected_kind
+        || inserted_artifact.key() != uncached.key()
+        || inserted_artifact.object() != uncached.object()
+        || cache.len() != expected_len
     {
         return Err(String::from("inserted direct artifact identity drifted"));
     }
