@@ -285,14 +285,19 @@ Full entry observation, non-null memory, and `memory_words > C` precede the exac
 objects, x86-64 hit/live-in/capacity/null execution, and AArch64 instruction
 decoding bind the contract. `direct-non-graphical` revision 1 applies the same
 memory guards to a VM-classified non-graphical live-in and commits only tag `2`.
-Independent 538/631-byte objects bind that path. Direct-template selection requires
-an explicit runtime capability, derives exact `u64` region memory from C/D
-pointers, live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`,
-host, or backend selection. After admission, zero-register halt chooses the
-smallest specialization, other no-live-in halts choose observation-bound code,
-graphical halt fetch and non-graphical termination choose their live-in-bound
-templates, and remaining IR chooses verified deopt; unsupported direct host formats
-remain
+Independent 538/631-byte objects bind that path. `direct-no-operation` revision 1
+is the first non-terminal and memory-writing direct effect: VM-owned decode,
+`XLAT2`, and modular-successor helpers derive one exact `memory[C]` encryption plus
+`C/D` advance. Independent 557/658-byte objects bind `memory[5]:77->65`,
+`C:5->6`, and `D:7->8`; x86-64 execution and AArch64 instruction decoding confirm
+atomic hit/miss behavior. Direct-template selection requires an explicit runtime
+capability, derives exact `u64` region memory from C/D pointers, live-ins, and
+writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or backend selection.
+After admission, zero-register halt chooses the smallest specialization, other
+no-live-in halts choose observation-bound code, graphical halt fetch and
+non-graphical termination choose their terminal live-in templates, exact no-op IR
+chooses the memory-writing template, and remaining IR chooses verified deopt;
+unsupported direct host formats remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
 that format absence to the normative interpreter after `002`/`001` checks; real
 backend/emission/admission failures remain errors. Raw untrusted IR remains
@@ -300,8 +305,8 @@ canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
-plus halt-fetch/non-graphical revision-1 objects bind that exact footprint in
-`MBPF` v3, and
+plus halt-fetch/non-graphical/no-operation revision-1 objects bind that exact
+footprint in `MBPF` v3, and
 same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
@@ -313,7 +318,7 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact k
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-five templates, and shares the same immutable `Arc` allocation on hits. Exact
+six templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
@@ -323,9 +328,8 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, general memory-writing/I/O instruction
-selection, executable invocation, and broader AOT/JIT performance policy remain
-open.
+eviction, synchronization policy, instruction-specific data-memory/I/O selection,
+executable invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,

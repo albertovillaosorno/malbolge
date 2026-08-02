@@ -16,7 +16,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Canonical direct terminal objects and byte-exact semantic admission.
+//   - Canonical reviewed direct objects and byte-exact semantic admission.
 // - Must-Not:
 //   - Lower unsupported effects, bypass verifier guards, or trust compiler
 //   - output.
@@ -31,11 +31,11 @@
 // - Merge-When:
 //   - Merge when all direct emitters share one reviewed instruction template.
 // - Summary:
-//   - Owns byte-canonical deopt and reviewed terminal native templates.
+//   - Owns byte-canonical deopt and reviewed direct native templates.
 // - Description:
 //   - Emits reviewed x86-64/AArch64 objects for exact verified IR subsets.
 // - Usage:
-//   - Provides a safe deopt floor plus reviewed fetched-terminal fast paths.
+//   - Provides a safe deopt floor plus reviewed terminal/no-op fast paths.
 // - Defaults:
 //   - Unsupported IR is rejected; no direct template is selected implicitly.
 //
@@ -54,9 +54,11 @@ use std::sync::Arc;
 
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
-    ProfileMemoryDelta, ProfileRegisters, RunOutcome, RuntimeCapability,
-    Termination, decode_profile_instruction,
-    preflight_portable_profile_requirement, profile_cell_is_graphical,
+    ProfileMemoryDelta, ProfileMemoryWrite, ProfileRegisters, RunOutcome,
+    RuntimeCapability, Termination, decode_profile_instruction,
+    encrypt_profile_cell, preflight_portable_profile_requirement,
+    profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
+    profile_pointer_successor,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -71,7 +73,7 @@ use crate::execution_cache::{
     RegionEffectIdentity,
 };
 use crate::execution_ir::{
-    EFFECT_IR_VERSION, MemoryLiveIn, RegionEffectProgram,
+    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
 };
 
 const COFF_HEADER_BYTES: usize = 20;
@@ -109,6 +111,11 @@ pub const DIRECT_NON_GRAPHICAL_BACKEND_ID: &str = "direct-non-graphical";
 /// Direct non-graphical termination code-generation revision.
 pub const DIRECT_NON_GRAPHICAL_BACKEND_REVISION: u32 = 1;
 
+/// Backend identity for exact one-step no-operation execution.
+pub const DIRECT_NO_OPERATION_BACKEND_ID: &str = "direct-no-operation";
+/// Direct no-operation code-generation revision.
+pub const DIRECT_NO_OPERATION_BACKEND_REVISION: u32 = 1;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectEntryObservation {
     pub(super) accumulator: u32,
@@ -119,8 +126,24 @@ pub(super) struct DirectEntryObservation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectNoOperationCommit {
+    pub(super) encrypted_value: u32,
+    pub(super) next_code_pointer: u32,
+    pub(super) next_data_pointer: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DirectFetchedTerminalProgram {
     live_in: MemoryLiveIn,
+    observation: ProfileMachineObservation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectNoOperationProgram {
+    encrypted_value: u32,
+    live_in: MemoryLiveIn,
+    next_code_pointer: u32,
+    next_data_pointer: u32,
     observation: ProfileMachineObservation,
 }
 
@@ -353,6 +376,65 @@ impl From<NativeIdentityError> for DirectNonGraphicalError {
     }
 }
 
+/// Failure while emitting or verifying exact one-step no-operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectNoOperationError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical no-operation object.
+    ObjectBytes,
+    /// Portable IR is outside the exact no-operation subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// No-operation v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct no-operation currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectNoOperationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "direct no-operation COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "direct no-operation identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct no-operation object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "portable IR is outside direct no-operation subset"
+            },
+            Self::TargetBackend => {
+                "target does not select direct no-operation backend"
+            },
+            Self::TargetFeatures => {
+                "direct no-operation backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "direct no-operation backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectNoOperationError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectNoOperationError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying the direct initial-halt fast path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectInitialHaltError {
@@ -423,6 +505,8 @@ pub enum DirectNativeKind {
     HaltRegisters,
     /// Exact one-step zero-state halt fast path.
     InitialHalt,
+    /// Exact one-step no-operation with one code-cell write.
+    NoOperation,
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical,
 }
@@ -456,6 +540,8 @@ pub enum DirectSelectionError<'requirement> {
     HaltRegisters(Box<DirectHaltRegistersError>),
     /// Initial-halt artifact emission or admission failed.
     InitialHalt(Box<DirectInitialHaltError>),
+    /// No-operation artifact emission or admission failed.
+    NoOperation(Box<DirectNoOperationError>),
     /// Non-graphical artifact emission or admission failed.
     NonGraphical(Box<DirectNonGraphicalError>),
     /// Selected runtime cannot implement the admitted profile requirement.
@@ -472,6 +558,7 @@ impl Display for DirectSelectionError<'_> {
             Self::HaltFetch(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),
+            Self::NoOperation(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(
                 "direct native selection currently requires Windows",
@@ -587,6 +674,33 @@ impl VerifiedNonGraphicalNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement one exact no-operation transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedNoOperationNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedNoOperationNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement the exact initial-halt fast path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedInitialHaltNativeObjectArtifact {
@@ -625,6 +739,8 @@ pub enum VerifiedDirectNativeArtifact {
     HaltRegisters(VerifiedHaltRegistersNativeObjectArtifact),
     /// Exact zero-state one-step halt fast path.
     InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
+    /// Exact one-step no-operation with one code-cell write.
+    NoOperation(VerifiedNoOperationNativeObjectArtifact),
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical(VerifiedNonGraphicalNativeObjectArtifact),
 }
@@ -673,6 +789,7 @@ enum SelectedDirectTarget {
     HaltFetch(NativeTargetIdentity),
     HaltRegisters(NativeTargetIdentity),
     InitialHalt(NativeTargetIdentity),
+    NoOperation(NativeTargetIdentity),
     NonGraphical(NativeTargetIdentity),
 }
 
@@ -682,6 +799,7 @@ enum PreparedDirectTarget {
     HaltFetch(NativeArtifactKey),
     HaltRegisters(NativeArtifactKey),
     InitialHalt(NativeArtifactKey),
+    NoOperation(NativeArtifactKey),
     NonGraphical(NativeArtifactKey),
 }
 
@@ -807,6 +925,7 @@ impl PreparedDirectTarget {
             Self::NonGraphical(key) => {
                 emit_verified_non_graphical(key, program)
             },
+            Self::NoOperation(key) => emit_verified_no_operation(key, program),
         }
     }
 
@@ -816,7 +935,8 @@ impl PreparedDirectTarget {
             | Self::HaltFetch(key)
             | Self::HaltRegisters(key)
             | Self::InitialHalt(key)
-            | Self::NonGraphical(key) => key,
+            | Self::NonGraphical(key)
+            | Self::NoOperation(key) => key,
         }
     }
 }
@@ -868,6 +988,15 @@ impl SelectedDirectTarget {
                         ))
                     })
             },
+            Self::NoOperation(target) => {
+                NativeArtifactKey::new(program, target)
+                    .map(PreparedDirectTarget::NoOperation)
+                    .map_err(|error| {
+                        DirectSelectionError::NoOperation(Box::new(
+                            DirectNoOperationError::Identity(error),
+                        ))
+                    })
+            },
         }
     }
 }
@@ -882,6 +1011,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltRegisters(artifact) => artifact.key(),
             Self::InitialHalt(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
+            Self::NoOperation(artifact) => artifact.key(),
         }
     }
 
@@ -894,6 +1024,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
             Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
+            Self::NoOperation(_artifact) => DirectNativeKind::NoOperation,
         }
     }
 
@@ -906,6 +1037,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltRegisters(artifact) => artifact.object(),
             Self::InitialHalt(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
+            Self::NoOperation(artifact) => artifact.object(),
         }
     }
 
@@ -918,6 +1050,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltRegisters(artifact) => artifact.target_triple(),
             Self::InitialHalt(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),
+            Self::NoOperation(artifact) => artifact.target_triple(),
         }
     }
 }
@@ -952,10 +1085,25 @@ fn emit_verified_non_graphical(
     Ok(VerifiedDirectNativeArtifact::NonGraphical(verified))
 }
 
+fn emit_verified_no_operation(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_no_operation_program(program)
+        .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
+    validate_no_operation_target(key.target())
+        .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
+    let artifact = emit_direct_no_operation_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
+    let verified = verify_direct_no_operation(&artifact, program)
+        .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::NoOperation(verified))
+}
+
 /// Selects the narrowest semantically admitted direct native template.
 ///
 /// Program/profile capacity and runtime preflight occur before host/backend
-/// selection. Exact halt and fetched-terminal subsets select reviewed
+/// selection. Exact halt, fetched-terminal, and no-op subsets select reviewed
 /// state-applying fast paths; every remaining IR selects verified
 /// deoptimization. Selection never converts profile, emitter, or verifier
 /// errors into fallback; only admitted program shape controls which backend
@@ -1125,6 +1273,21 @@ pub fn emit_direct_non_graphical_coff(
     emit_direct_non_graphical_with_key(key, selected)
 }
 
+/// Emits one exact no-operation fetch/encryption/advance fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectNoOperationError`] when IR/target is outside this subset.
+pub fn emit_direct_no_operation_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectNoOperationError> {
+    let selected = validate_no_operation_program(program)?;
+    validate_no_operation_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_no_operation_with_key(key, selected)
+}
+
 fn emit_direct_deopt_with_key(
     key: NativeArtifactKey,
 ) -> Result<UntrustedNativeObjectArtifact, DirectDeoptError> {
@@ -1173,6 +1336,17 @@ fn emit_direct_non_graphical_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectNonGraphicalError> {
     let triple = target_triple(key.target().host_isa());
     let object = non_graphical_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+fn emit_direct_no_operation_with_key(
+    key: NativeArtifactKey,
+    selected: DirectNoOperationProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectNoOperationError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = no_operation_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -1296,6 +1470,30 @@ pub fn verify_direct_non_graphical(
         return Err(DirectNonGraphicalError::ObjectBytes);
     }
     Ok(VerifiedNonGraphicalNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical no-operation object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectNoOperationError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_no_operation(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedNoOperationNativeObjectArtifact, DirectNoOperationError> {
+    let selected = validate_no_operation_program(program)?;
+    validate_no_operation_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectNoOperationError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = no_operation_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectNoOperationError::ObjectBytes);
+    }
+    Ok(VerifiedNoOperationNativeObjectArtifact { artifact: admitted })
 }
 
 fn canonical_coff(
@@ -1449,6 +1647,36 @@ fn non_graphical_coff(
     build_minimal_coff(key, &text).ok_or(DirectNonGraphicalError::ObjectBytes)
 }
 
+fn no_operation_coff(
+    key: &NativeArtifactKey,
+    selected: DirectNoOperationProgram,
+) -> Result<Vec<u8>, DirectNoOperationError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectNoOperationError::ObjectBytes)?;
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => aarch64::no_operation_code(
+            observation,
+            selected.live_in.value,
+            DirectNoOperationCommit {
+                encrypted_value: selected.encrypted_value,
+                next_code_pointer: selected.next_code_pointer,
+                next_data_pointer: selected.next_data_pointer,
+            },
+        ),
+        HostIsa::X86_64 => x86_64::no_operation_code(
+            observation,
+            selected.live_in.value,
+            DirectNoOperationCommit {
+                encrypted_value: selected.encrypted_value,
+                next_code_pointer: selected.next_code_pointer,
+                next_data_pointer: selected.next_data_pointer,
+            },
+        ),
+    }
+    .ok_or(DirectNoOperationError::ObjectBytes)?;
+    build_minimal_coff(key, &text).ok_or(DirectNoOperationError::ObjectBytes)
+}
+
 fn initial_halt_coff(
     key: &NativeArtifactKey,
 ) -> Result<Vec<u8>, DirectInitialHaltError> {
@@ -1533,6 +1761,14 @@ fn select_direct_target(
         return SelectedDirectTarget::NonGraphical(direct_target(
             DIRECT_NON_GRAPHICAL_BACKEND_ID,
             DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ));
+    }
+    if validate_no_operation_program(program).is_ok() {
+        return SelectedDirectTarget::NoOperation(direct_target(
+            DIRECT_NO_OPERATION_BACKEND_ID,
+            DIRECT_NO_OPERATION_BACKEND_REVISION,
             host_os,
             host_isa,
         ));
@@ -1664,6 +1900,101 @@ fn validate_non_graphical_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectNonGraphicalError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn validate_no_operation_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectNoOperationProgram, DirectNoOperationError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 1
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectNoOperationError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .ok_or(DirectNoOperationError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or(DirectNoOperationError::ProgramShape)?;
+    derive_no_operation_program(program, *effect, live_in)
+        .ok_or(DirectNoOperationError::ProgramShape)
+}
+
+fn derive_no_operation_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+) -> Option<DirectNoOperationProgram> {
+    let before = effect.before;
+    let memory_words = program.profile_requirement.memory_words;
+    let next_code_pointer =
+        profile_pointer_successor(before.registers.code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(before.registers.data_pointer, memory_words)?;
+    let encrypted_value = encrypt_profile_cell(live_in.value)?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: before.registers.accumulator,
+            code_pointer: next_code_pointer,
+            data_pointer: next_data_pointer,
+        },
+        ..before
+    };
+    let expected_encryption =
+        (live_in.value != encrypted_value).then_some(ProfileMemoryWrite {
+            address: before.registers.code_pointer,
+            after: encrypted_value,
+            before: live_in.value,
+        });
+    let expected_delta = ProfileMemoryDelta {
+        data: None,
+        encryption: expected_encryption,
+    };
+    if before.termination.is_some()
+        || effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta != expected_delta
+        || live_in.address != before.registers.code_pointer
+        || !profile_cell_decodes_to_no_operation(
+            live_in.value,
+            before.registers.code_pointer,
+        )
+    {
+        return None;
+    }
+    Some(DirectNoOperationProgram {
+        encrypted_value,
+        live_in,
+        next_code_pointer,
+        next_data_pointer,
+        observation: before,
+    })
+}
+
+fn validate_no_operation_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectNoOperationError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectNoOperationError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_NO_OPERATION_BACKEND_ID
+        || target.backend_revision() != DIRECT_NO_OPERATION_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectNoOperationError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectNoOperationError::TargetFeatures);
     }
     Ok(())
 }

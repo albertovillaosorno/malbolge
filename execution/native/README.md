@@ -87,8 +87,8 @@ admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
-`direct-halt-fetch` and `direct-non-graphical` start at revision 1; all five use
-`MBPF` metadata version 3.
+`direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` start at
+revision 1; all six use `MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -117,7 +117,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-initial-halt`, any other no-live-in one-step halt selects
 `direct-halt-registers`, an exact graphical `v` fetch selects
 `direct-halt-fetch`, an exact non-graphical fetch selects
-`direct-non-graphical`, and every remaining IR selects byte-verified deopt.
+`direct-non-graphical`, an exact no-op fetch/encryption/advance selects
+`direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
 fallback, and an unsupported host format still fails explicitly when the profile
 is supported. This removes backend-ID choice from callers while keeping
@@ -158,9 +159,9 @@ outside; `Arc` supplies ownership only, not concurrent execution.
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass
 the selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
-`direct-halt-fetch`, or `direct-non-graphical` when the declared profile envelope
-is too small; they fail
-as out-of-contract program shape before object promotion.
+`direct-halt-fetch`, `direct-non-graphical`, or `direct-no-operation` when the
+declared profile envelope is too small; they fail as out-of-contract program
+shape before object promotion.
 
 `direct-halt-registers` revision 5 generalizes the halt template across the
 complete 32-bit `A`, `C`, and `D` domains plus full 64-bit `input_consumed` and
@@ -186,6 +187,20 @@ Independent complete objects are 535 bytes on x86-64 and 628 bytes on AArch64.
 Development execution proves x86-64 hit plus atomic live-in, capacity, and null
 memory misses; independent AArch64 decoding confirms the full guards, halt tag,
 and common miss target.
+
+`direct-no-operation` revision 1 is the first admitted non-terminal direct effect
+and the first direct guest-memory write. It accepts exactly one code-cell live-in
+at `C` that the VM-owned `profile_cell_decodes_to_no_operation()` classifies as
+no-op. The verifier independently derives `encrypt_profile_cell(memory[C])` and
+modular `profile_pointer_successor()` results for `C` and `D`, then requires the
+IR memory delta and exit observation to match exactly. Both ISAs reuse the fetched
+cell guards and commit only the encrypted code word plus the two advanced
+pointers. Independent complete objects are 557 bytes on x86-64 and 658 bytes on
+AArch64. Development execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8`,
+and atomic live-in/capacity/null-memory misses; independent AArch64 decoding
+confirms the same writes and one common miss target. Instruction-specific data
+writes, I/O effects, linking, executable-memory ownership, and invocation policy
+remain outside this subset.
 
 `direct-non-graphical` revision 1 is the first direct template whose eligibility
 and machine code depend on verifier-owned memory evidence. It accepts exactly one

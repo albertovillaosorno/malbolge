@@ -21,7 +21,7 @@
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
-//   - Inputs: selected exact observations, fetch live-ins, and tags.
+//   - Inputs: selected observations, fetch live-ins, and exact commits.
 //   - Outputs: deterministic AArch64 `.text` byte sequences.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -48,7 +48,7 @@
 
 //! Reviewed `AArch64` instruction templates for direct native execution.
 
-use super::direct::DirectEntryObservation;
+use super::direct::{DirectEntryObservation, DirectNoOperationCommit};
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -181,28 +181,14 @@ fn fetched_termination_code(
     live_in_value: u32,
     termination_tag: u32,
 ) -> Option<Vec<u8>> {
-    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
     let mut words = Vec::with_capacity(56);
     let mut guard_branches = Vec::with_capacity(11);
-    push_observation_guards(&mut words, &mut guard_branches, observation)?;
-    words.push(0xf940_0008);
-    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
-    words.push(0xf940_040a);
-    push_u64_x9(&mut words, required_words)?;
-    words.push(0xeb09_015f);
-    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
-    words.extend_from_slice(&[
-        movz_w10(observation.code_pointer),
-        movk_w10_high(observation.code_pointer),
-        0x8b0a_090a,
-        0xb940_014b,
-        movz_w9(live_in_value),
-        movk_w9_high(live_in_value),
-        0x6b09_017f,
-    ]);
-    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
-    words.push(0x3941_3009);
-    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    push_fetched_cell_guards(
+        &mut words,
+        &mut guard_branches,
+        observation,
+        live_in_value,
+    )?;
     words.extend_from_slice(&[
         movz_w10(termination_tag),
         0x3901_300a,
@@ -213,6 +199,69 @@ fn fetched_termination_code(
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
     Some(encode_words(&words))
+}
+
+/// Encodes one exact no-op fetch, encryption, and pointer advance.
+#[must_use]
+pub(super) fn no_operation_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+    commit: DirectNoOperationCommit,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(64);
+    let mut guard_branches = Vec::with_capacity(11);
+    push_fetched_cell_guards(
+        &mut words,
+        &mut guard_branches,
+        observation,
+        live_in_value,
+    )?;
+    words.extend_from_slice(&[
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn push_fetched_cell_guards(
+    words: &mut Vec<u32>,
+    guard_branches: &mut Vec<usize>,
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<()> {
+    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
+    push_observation_guards(words, guard_branches, observation)?;
+    words.push(0xf940_0008);
+    push_guard_branch(words, guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(words, required_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(words, guard_branches, 0x5400_0003);
+    words.extend_from_slice(&[
+        movz_w10(observation.code_pointer),
+        movk_w10_high(observation.code_pointer),
+        0x8b0a_090a,
+        0xb940_014b,
+        movz_w9(live_in_value),
+        movk_w9_high(live_in_value),
+        0x6b09_017f,
+    ]);
+    push_guard_branch(words, guard_branches, 0x5400_0001);
+    words.push(0x3941_3009);
+    push_guard_branch(words, guard_branches, 0x3500_0009);
+    Some(())
 }
 
 /// Returns the canonical zero-register specialization of halt preflight/commit.

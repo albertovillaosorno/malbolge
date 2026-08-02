@@ -70,8 +70,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   revision 1 adds a VM-decoded graphical `v` live-in with independent 535/628-byte
   objects, x86-64 atomic execution evidence, and AArch64 instruction decoding.
   `direct-non-graphical` revision 1 applies the same fetched-terminal guards to a
-  VM-classified non-graphical live-in with 538/631-byte objects. General
-  memory-writing/I/O instruction selection, executable-memory
+  VM-classified non-graphical live-in with 538/631-byte objects.
+  `direct-no-operation` revision 1 adds the first non-terminal code-memory write
+  and pointer advance with independent 557/658-byte objects, x86-64 atomic
+  execution, and AArch64 instruction decoding. General instruction-specific
+  data-memory/I/O selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

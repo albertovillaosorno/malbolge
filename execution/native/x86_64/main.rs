@@ -21,7 +21,7 @@
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
-//   - Inputs: selected exact observations, fetch live-ins, and tags.
+//   - Inputs: selected observations, fetch live-ins, and exact commits.
 //   - Outputs: deterministic x86-64 `.text` byte sequences.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -48,7 +48,7 @@
 
 //! Reviewed x86-64 instruction templates for direct native execution.
 
-use super::direct::DirectEntryObservation;
+use super::direct::{DirectEntryObservation, DirectNoOperationCommit};
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -154,23 +154,14 @@ fn fetched_termination_code(
     live_in_value: u32,
     termination_tag: u8,
 ) -> Option<Vec<u8>> {
-    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
     let mut code = Vec::with_capacity(128);
     let mut guard_jumps = Vec::with_capacity(11);
-    push_observation_guards(&mut code, &mut guard_jumps, observation);
-    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
-    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
-    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
-    code.extend_from_slice(&required_words.to_le_bytes());
-    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
-    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
-    code.extend_from_slice(&[0x48, 0x8b, 0x11, 0x41, 0xb9]);
-    code.extend_from_slice(&observation.code_pointer.to_le_bytes());
-    code.extend_from_slice(&[0x42, 0x81, 0x3c, 0x8a]);
-    code.extend_from_slice(&live_in_value.to_le_bytes());
-    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
-    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
-    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    push_fetched_cell_guards(
+        &mut code,
+        &mut guard_jumps,
+        observation,
+        live_in_value,
+    )?;
     code.extend_from_slice(&[
         0xc6,
         0x41,
@@ -184,6 +175,59 @@ fn fetched_termination_code(
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
+}
+
+/// Encodes one exact no-op fetch, encryption, and pointer advance.
+#[must_use]
+pub(super) fn no_operation_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+    commit: DirectNoOperationCommit,
+) -> Option<Vec<u8>> {
+    let mut code = Vec::with_capacity(160);
+    let mut guard_jumps = Vec::with_capacity(11);
+    push_fetched_cell_guards(
+        &mut code,
+        &mut guard_jumps,
+        observation,
+        live_in_value,
+    )?;
+    code.extend_from_slice(&[0xeb, 0x01]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    code.extend_from_slice(&[0x42, 0xc7, 0x04, 0x8a]);
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
+fn push_fetched_cell_guards(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<()> {
+    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
+    push_observation_guards(code, guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(code, guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&required_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(code, guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11, 0x41, 0xb9]);
+    code.extend_from_slice(&observation.code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x42, 0x81, 0x3c, 0x8a]);
+    code.extend_from_slice(&live_in_value.to_le_bytes());
+    push_guard_jump(code, guard_jumps, 0x75);
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(code, guard_jumps, 0x75);
+    Some(())
 }
 
 /// Returns the canonical zero-register specialization of halt preflight/commit.

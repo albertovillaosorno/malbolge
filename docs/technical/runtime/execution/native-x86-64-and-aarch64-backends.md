@@ -89,11 +89,23 @@ misses; independent AArch64 decoding confirms the expected guards and common mis
 target. This reads verified memory evidence but still performs no guest-memory or
 I/O write.
 
+`direct-no-operation` revision 1 is the first reviewed non-terminal template and
+first guest-memory-writing fast path. VM-owned no-op classification, `XLAT2`, and
+profile successor functions independently derive the required IR. Each ISA reuses
+the fetched-cell guards, then atomically writes the encrypted code cell and exact
+next `C/D`. Independent complete objects are 557/658 bytes. x86-64 development
+execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8` plus atomic
+live-in/capacity/null misses; independent AArch64 decoding confirms the same
+commit and one common miss target. Instruction-specific data-memory and I/O
+effects remain outside this reviewed subset.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
-remains semantically untrusted. Reviewed direct terminal emitters/verifiers are
-implemented for both ISAs; general memory-writing/I/O instruction selection,
+remains semantically untrusted. Reviewed direct terminal and no-op
+emitters/verifiers are implemented for both ISAs; general instruction-specific
+data-memory/I/O
+selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 

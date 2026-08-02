@@ -8,7 +8,7 @@ published version, eight stable semantic features, word trits, and directly
 addressed profile capacity. Verified budget, outcome, live-ins, and ordered
 effects follow.
 
-The ten `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
+The twelve `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
 objects for x86-64 and AArch64. Every direct object contains:
 
 1. one executable, non-writable `.text` section;
@@ -29,15 +29,17 @@ The envelope carries every input required to preflight direct objects for both
 with a key for a different region footprint fails structural admission.
 
 Direct deopt and initial-halt revision 4, halt-observation revision 5, plus
-halt-fetch and non-graphical revision 1 use metadata v3. Exact x86-64/AArch64
-object sizes are 413/415 bytes for deopt, 495/564 for register/counter halt,
-466/490 for initial halt, 535/628 for graphical halt fetch, and 538/631 for
-non-graphical termination respectively. The wider terminal fixtures bind
-`input_consumed=0x0000000123456789` and `output_len=0x000000023456789a`, proving
-full-width counter materialization. Both fetched-terminal pairs bind `C=5` and an
-8-word memory requirement: halt-fetch requires `memory[5]=76`, which the VM-owned
-profile decoder maps to `v`, while non-graphical requires `memory[5]=0`. Each
-commits only its exact termination tag.
+halt-fetch, non-graphical, and no-operation revision 1 use metadata v3. Exact
+x86-64/AArch64 object sizes are 413/415 bytes for deopt, 495/564 for
+register/counter halt, 466/490 for initial halt, 535/628 for graphical halt fetch,
+538/631 for non-graphical termination, and 557/658 for no-operation respectively.
+The wider fixtures bind `input_consumed=0x0000000123456789` and
+`output_len=0x000000023456789a`, proving full-width counter materialization. The
+fetched-terminal pairs bind `C=5` and an 8-word memory requirement: halt-fetch
+requires `memory[5]=76`, which the VM-owned profile decoder maps to `v`, while
+non-graphical requires `memory[5]=0`. The no-operation pair requires 9 words,
+binds `memory[5]=77`, VM-classifies it as no-op, encrypts it to 65, and advances
+`C=5`/`D=7` to 6/8 without changing accumulator, counters, or termination.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters; fixture

@@ -93,8 +93,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `execution/native/profile_metadata.rs` now solely owns the format-neutral MBPF
   encoding consumed by bootstrap/direct emitters and COFF admission. Direct
-  deopt/initial-halt revision-4, halt-observation revision-5, plus halt-fetch
-  and non-graphical revision-1 objects must carry exact read-only `MBPF` v3
+  deopt/initial-halt revision-4, halt-observation revision-5, plus halt-fetch,
+  non-graphical, and no-operation revision-1 objects must carry exact read-only
+  `MBPF` v3
   `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
   features, word trits, profile capacity, and derived `u64` region memory retained
@@ -130,12 +131,18 @@ baseline; native tiers are accelerators of identical observable behavior.
   dereference, and only termination tag `2` is committed. Independently rendered
   538/631-byte objects, x86-64 hit/live-in/capacity/null execution, and AArch64
   instruction decoding bind the contract.
+- `direct-no-operation` revision 1 is the first non-terminal and guest-memory
+  writing direct template. VM-owned no-op classification, `XLAT2`, and modular
+  pointer successor derive the exact IR exit. Full fetched-cell guards precede a
+  single commit of encrypted `memory[C]` plus advanced `C/D`. Independent
+  557/658-byte objects bind `77->65`, `5->6`, and `7->8`; x86-64 execution and
+  AArch64 instruction decoding prove hit semantics and atomic misses.
 - After program/profile/runtime admission, direct-template orchestration
   classifies IR before backend construction: exact zero-register halt selects the
   smallest fast path, other no-live-in halt IR selects the observation-bound
-  template, graphical halt fetch and non-graphical termination select their
-  live-in-bound templates, and remaining IR selects verified deopt. Unsupported
-  direct host
+  template, graphical halt fetch and non-graphical termination select terminal
+  live-in templates, exact no-op IR selects the memory-writing template, and
+  remaining IR selects verified deopt. Unsupported direct host
   formats remain
   explicit at this narrow boundary and post-selection errors never degrade
   silently to fallback.
@@ -149,7 +156,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all five templates, and reuses one pointer-identical immutable
+  keys/bytes for all six templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first
@@ -161,7 +168,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- General memory-writing/I/O direct instruction selection, cache-aware AOT/JIT
+- General instruction-specific data-memory/I/O direct selection, cache-aware
+  AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.
