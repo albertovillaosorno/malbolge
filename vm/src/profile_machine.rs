@@ -871,7 +871,8 @@ impl ProfileMachine {
                 StepOutcome::Terminated(Termination::NonGraphicalCell),
             );
         }
-        let Some(decoded) = profile_decode(cell, self.registers.code_pointer)
+        let Some(decoded) =
+            decode_profile_instruction(cell, self.registers.code_pointer)
         else {
             return ProfileStepExecution::error(
                 memory_reads,
@@ -922,7 +923,7 @@ impl ProfileMachine {
         let decoded = fetched_cell
             .filter(|cell| profile_cell_is_graphical(*cell))
             .and_then(|cell| {
-                profile_decode(cell, before.registers.code_pointer)
+                decode_profile_instruction(cell, before.registers.code_pointer)
             });
         let decoded_instruction = decoded.map(profile_instruction);
         let result = execution.result;
@@ -1119,7 +1120,7 @@ fn load_profile(
             .ok()
             .ok_or(ProfileLoadError::MemoryAllocation)?;
         let cell = u32::from(byte);
-        let decoded = profile_decode(cell, position)
+        let decoded = decode_profile_instruction(cell, position)
             .ok_or(ProfileLoadError::InvalidInstruction { position, byte })?;
         if !matches!(
             decoded,
@@ -1185,7 +1186,13 @@ fn profile_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
     result
 }
 
-fn profile_decode(cell: u32, code_pointer: u32) -> Option<u8> {
+/// Decodes one profile-width instruction cell at its exact code position.
+///
+/// Returns `None` when `cell` is outside graphical ASCII. Graphical cells use
+/// the same normative position-dependent translation table as the classic VM;
+/// wider profile code pointers are reduced by the 94-position decode phase.
+#[must_use]
+pub fn decode_profile_instruction(cell: u32, code_pointer: u32) -> Option<u8> {
     if !profile_cell_is_graphical(cell) {
         return None;
     }

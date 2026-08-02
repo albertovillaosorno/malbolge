@@ -47,7 +47,9 @@
 
 //! Independent scalar equivalence tests for optimized classic word operations.
 
-use malbolge::{MAX_WORD_VALUE, Word, decode_instruction};
+use malbolge::{
+    MAX_WORD_VALUE, Word, decode_instruction, decode_profile_instruction,
+};
 
 use super::{TestResult, check_equal, normalize_result};
 
@@ -169,6 +171,38 @@ fn decode_table_matches_scalar_definition_for_every_position() -> TestResult {
         pointer_raw = pointer_raw.saturating_add(1);
     }
     Ok(())
+}
+
+#[test]
+fn profile_decode_matches_classic_for_every_graphical_phase() -> TestResult {
+    let mut pointer = 0u16;
+    while pointer < u16::try_from(DECODE_TABLE_LEN).unwrap_or(0) {
+        let classic_pointer = normalize_result(Word::new(pointer))?;
+        let mut cell = GRAPHICAL_START;
+        while cell <= 126 {
+            let classic_cell = normalize_result(Word::new(cell))?;
+            check_equal(
+                &decode_profile_instruction(
+                    u32::from(cell),
+                    u32::from(pointer),
+                ),
+                &decode_instruction(classic_cell, classic_pointer),
+                "profile decode equals classic phase",
+            )?;
+            cell = cell.saturating_add(1);
+        }
+        pointer = pointer.saturating_add(1);
+    }
+    check_equal(
+        &decode_profile_instruction(32, u32::MAX),
+        &None,
+        "profile decode rejects below graphical range",
+    )?;
+    check_equal(
+        &decode_profile_instruction(127, u32::MAX),
+        &None,
+        "profile decode rejects above graphical range",
+    )
 }
 
 #[test]
