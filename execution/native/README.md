@@ -21,7 +21,7 @@ explicitly untrusted native compilation artifacts.
 
 - verification/admission of native machine code;
 - executable-memory allocation or invocation;
-- x86-64/AArch64 direct instruction selection;
+- general x86-64/AArch64 region-effect instruction selection;
 - deoptimization authorization or verifier lineage guards;
 - durable native-cache storage.
 
@@ -88,12 +88,18 @@ byte-identical before and after. General region-effect code generation remains
 outside this reviewed subset.
 
 `select_verified_direct_native()` now owns deterministic direct-template
-selection for the implemented Windows surface. It classifies IR before creating
-a backend identity: exact zero-register halt selects `direct-initial-halt`, any
-other zero-counter/no-I/O/no-memory one-step halt selects
-`direct-halt-registers`, and every other IR selects the byte-verified deopt
-stub. Backend/emission/verification errors are never reinterpreted as fallback,
-and unsupported host formats fail explicitly.
+selection for the implemented Windows surface. The caller supplies one explicit
+`RuntimeCapability`; portable profile preflight runs before host validation or
+backend construction. An unsupported profile returns the shared typed
+`MALBOLGE-PROFILE-001` error rather than constructing deopt or masking the failure
+as a host-format result.
+
+After profile admission, the selector classifies IR before creating a backend
+identity: exact zero-register halt selects `direct-initial-halt`, any other
+zero-counter/no-I/O/no-memory one-step halt selects `direct-halt-registers`, and
+every other IR selects the byte-verified deopt stub. Profile,
+backend/emission/verification errors are never reinterpreted as fallback, and an
+unsupported host format still fails explicitly when the profile is supported.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
 
 `direct-halt-registers` generalizes the halt template across the complete 32-bit

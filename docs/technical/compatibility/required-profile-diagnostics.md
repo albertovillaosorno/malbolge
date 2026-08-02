@@ -118,6 +118,11 @@ This boundary does not prove that an arbitrary envelope is canonical. Profile
 ID/fingerprint and requirement equality remain the responsibility of capsule,
 verifier, cache-key, and COFF admission before runtime preflight.
 
+The direct-template selector now invokes this preflight before host validation or
+backend construction. A current-profile request under `safe-rust-classic` keeps
+profile-error precedence even on a non-Windows host, and no deopt artifact is
+constructed as a substitute for unsupported semantics.
+
 ### Stable Diagnostic Categories
 
 `MALBOLGE-PROFILE-001` means that the selected runtime cannot implement the
@@ -178,7 +183,7 @@ runtime capability without reloading the profile document.
 
 The artifact still does not carry the program-specific requested-memory value
 needed to distinguish `MALBOLGE-PROFILE-002`. Bootstrap compiler artifacts,
-top-level runtime profile/tier selection, and product execution paths do not yet
+top-level AOT/JIT/runtime orchestration, and product execution paths do not yet
 universally invoke portable preflight. This contract therefore remains active
 rather than claiming repository-wide profile diagnostic completion.
 
@@ -195,8 +200,9 @@ rather than claiming repository-wide profile diagnostic completion.
   identity, exact historical-ceiling diagnostics, portable/canonical `001`
   parity, explicit profiled-runtime acceptance, unknown-feature rejection, and
   no-fallback lookup.
-- `tests/tiered_execution.rs` proves effect IR can use the shared portable
-  preflight without changing diagnostic text.
+- `tests/tiered_execution.rs` proves effect IR and direct-template selection use
+  the shared portable preflight without changing diagnostic text; profile failure
+  precedes unsupported host format and backend construction.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

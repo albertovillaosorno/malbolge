@@ -695,6 +695,7 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
         let fast = select_verified_direct_native(
             &direct_initial_halt_program(),
+            safe_rust_profiled_capability(),
             HostOperatingSystem::Windows,
             isa,
         )
@@ -711,6 +712,7 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 
         let register_halt = select_verified_direct_native(
             &direct_halt_registers_program(),
+            safe_rust_profiled_capability(),
             HostOperatingSystem::Windows,
             isa,
         )
@@ -727,6 +729,7 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 
         let fallback = select_verified_direct_native(
             &native_program(),
+            safe_rust_profiled_capability(),
             HostOperatingSystem::Windows,
             isa,
         )
@@ -749,11 +752,47 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 }
 
 #[test]
+fn direct_selector_prioritizes_profile_preflight() -> Result<(), String> {
+    let program = direct_initial_halt_program();
+    let Err(error) = select_verified_direct_native(
+        &program,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from(
+            "unsupported profile reached direct native construction",
+        ));
+    };
+    let DirectSelectionError::Profile(profile_error) = error else {
+        return Err(format!(
+            "profile preflight lost precedence to direct selection: {error}"
+        ));
+    };
+    let current = current_profile();
+    let Err(canonical) = preflight_profile(
+        current,
+        current.memory_words(),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("canonical current profile was admitted"));
+    };
+    if format!("{profile_error}") == format!("{canonical}") {
+        Ok(())
+    } else {
+        Err(String::from(
+            "direct selector changed shared profile diagnostic",
+        ))
+    }
+}
+
+#[test]
 fn direct_selector_rejects_unsupported_host_format_without_fallback()
 -> Result<(), String> {
     for host_os in [HostOperatingSystem::Linux, HostOperatingSystem::MacOs] {
         if select_verified_direct_native(
             &native_program(),
+            safe_rust_profiled_capability(),
             host_os,
             HostIsa::X86_64,
         ) != Err(DirectSelectionError::TargetFormat)

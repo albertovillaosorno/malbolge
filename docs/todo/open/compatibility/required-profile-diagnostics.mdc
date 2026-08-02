@@ -66,8 +66,10 @@ historical-profile constraint.
   envelope against explicit classic/profiled runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,
   profiled capability accepts it, and unknown feature IDs fail closed.
+- Direct-template selection invokes that preflight before host/backend selection;
+  profile failure has precedence and is never converted to deopt fallback.
 - Program-specific requested memory for `MALBOLGE-PROFILE-002`, bootstrap
-  compiler artifacts, top-level runtime/tier selection, and universal product
+  compiler artifacts, broader AOT/JIT/runtime orchestration, and universal product
   invocation remain open, so repository-wide completion is not claimed.
 
 ## Acceptance

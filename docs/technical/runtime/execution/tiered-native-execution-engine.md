@@ -125,12 +125,18 @@ state return guard miss without mutation. This is the first accelerated
 state-applying native subset; all other IR still requires deopt/bootstrap/VM.
 
 `select_verified_direct_native()` now removes direct-backend identity selection
-from callers. It classifies the IR from narrowest to broadest: zero-register halt
-uses `direct-initial-halt`, other eligible one-step halts use
-`direct-halt-registers`, and otherwise the selector emits/verifies direct deopt. Only
-program shape controls this fallback; an emission/admission error after selection
-is propagated rather than silently retried. Non-Windows host formats fail
-explicitly because direct ELF/Mach-O templates do not exist yet.
+from callers and requires one explicit `RuntimeCapability`. It runs portable
+profile preflight before host validation or backend construction. Current-profile
+IR under `safe-rust-classic` therefore returns the same typed, byte-identical
+`MALBOLGE-PROFILE-001` diagnostic even when the requested host format is also
+unsupported; no native object or deopt fallback is constructed.
+
+After profile admission, it classifies IR from narrowest to broadest:
+zero-register halt uses `direct-initial-halt`, other eligible one-step halts use
+`direct-halt-registers`, and otherwise the selector emits/verifies direct deopt.
+Only admitted program shape controls this fallback; profile, emission, or
+admission errors are propagated rather than silently retried. Non-Windows host
+formats fail explicitly because direct ELF/Mach-O templates do not exist yet.
 
 ### Remaining Implementation
 
@@ -138,7 +144,8 @@ Semantic admission beyond the deopt and one-step halt template family, general
 direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
 policy/invocation, durable native cache
 serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
-selector beyond this direct-template choice remain open. The interpreter remains
+selector beyond this runtime-aware direct-template choice remain open. The
+interpreter remains
 the only normative execution
 authority and the guaranteed fallback.
 
@@ -168,7 +175,8 @@ deterministically without changing guest-visible state silently.
   and `tests/tiered_execution.rs`: artifact tampering fails closed, verified
   effects/deoptimization match their normative baselines, canonical IR matches a
   byte-exact independent fixture, forced bucket collisions never authorize
-  native-cache reuse, bootstrap source is deterministic/atomic/key-bound, and
+  native-cache reuse, bootstrap source is deterministic/atomic/key-bound, direct
+  selection preflights profile capability before host/backend selection, and
   pinned Clang emits real x86-64 and AArch64 COFF object candidates.
 - Safe-Rust COFF tests admit both real objects, including ARM64 internal
   relocations, while rejecting truncated bytes, mismatched machine identity, and

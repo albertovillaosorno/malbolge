@@ -271,10 +271,11 @@ performs the first native guest-state commit: after zero-state preflight it sets
 only termination to halt; misses are atomic. `direct-halt-registers` now extends
 that exact template to every 32-bit `A/C/D` combination with zero I/O counters,
 still with no memory/I/O effects; independent x86-64/AArch64 object fixtures and
-x86 execution cover nontrivial values. Direct-template selection is deterministic:
-zero-register halt chooses the smallest specialization, other eligible one-step
-halts choose register-bound code, and all remaining IR chooses verified deopt;
-unsupported host formats fail explicitly.
+x86 execution cover nontrivial values. Direct-template selection now requires an
+explicit runtime capability and runs portable profile preflight before host or
+backend selection. After admission, zero-register halt chooses the smallest
+specialization, other eligible one-step halts choose register-bound code, and all
+remaining IR chooses verified deopt; unsupported host formats fail explicitly.
 General region-effect fast paths, cache/orchestration, executable invocation, and
 full AOT/JIT tier selection remain open.
 
@@ -372,8 +373,8 @@ COFF `MBPF` v2 metadata now carry every canonical profile-side input for
 `MALBOLGE-PROFILE-001`. VM-owned portable preflight consumes independently
 admitted IR against explicit classic/profiled capability with byte-identical
 canonical diagnostics and fail-closed unknown features. Program-specific memory
-for `MALBOLGE-PROFILE-002`, bootstrap artifacts, top-level tier selection, and
-universal product invocation remain open.
+for `MALBOLGE-PROFILE-002`, bootstrap artifacts, broader AOT/JIT/runtime
+orchestration, and universal product invocation remain open.
 
 ### TODO - Custom target profile identity
 

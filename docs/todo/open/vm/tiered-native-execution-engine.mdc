@@ -65,8 +65,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   admitted IR requirement against an explicit runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical descriptor
   preflight under `safe-rust-classic`, is admitted by `safe-rust-profiled`, and
-  rejects unknown feature IDs explicitly. Top-level tier selection still does not
-  invoke this boundary automatically.
+  rejects unknown feature IDs explicitly.
+- `select_verified_direct_native()` now requires that explicit runtime capability
+  and runs profile preflight before host validation or backend construction.
+  Profile failure therefore precedes unsupported host format and never degrades to
+  direct deopt.
 - `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
   OS, ISA, backend revision, native ABI revision, and required features. Digest
   collisions never authorize reuse because full canonical/key equality remains
@@ -95,9 +98,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   32-bit `A/C/D` values while counters stay zero and memory/I/O effects remain
   forbidden. Full x86-64/AArch64 fixtures cover nontrivial immediates; x86-64 hit
   preserves registers and commits halt, while one-register miss is atomic.
-- Direct-template orchestration now classifies IR before backend construction:
-  exact zero-register halt selects the smallest fast path, other eligible halt
-  IR selects the register-bound template, and remaining IR selects verified deopt. Unsupported host formats fail explicitly and
+- After runtime-profile admission, direct-template orchestration classifies IR
+  before backend construction: exact zero-register halt selects the smallest fast
+  path, other eligible halt IR selects the register-bound template, and remaining
+  IR selects verified deopt. Unsupported host formats fail explicitly and
   post-selection errors never degrade silently to fallback.
 - Accelerated semantic machine-code admission/direct effect emitters, AOT/JIT
   orchestration,

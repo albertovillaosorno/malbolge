@@ -21,7 +21,8 @@
 //   - Lower unsupported effects, bypass verifier guards, or trust compiler
 //   - output.
 // - Allows:
-//   - Inputs: portable region IR and exact Windows native target identity.
+//   - Inputs: portable region IR, explicit runtime capability, and exact
+//   - Windows native target identity.
 //   - Outputs: profile-bound COFF candidates and verified direct artifacts.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -52,7 +53,8 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileRegisters,
-    RunOutcome, Termination,
+    RunOutcome, RuntimeCapability, RuntimeProfileRequirementError, Termination,
+    preflight_runtime_requirement,
 };
 
 use super::coff::canonical_profile_metadata;
@@ -276,24 +278,27 @@ pub enum DirectNativeKind {
 }
 
 /// Failure while selecting/emitting/verifying one direct native template.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DirectSelectionError {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DirectSelectionError<'requirement> {
     /// Deoptimization artifact emission or admission failed.
-    Deopt(DirectDeoptError),
+    Deopt(Box<DirectDeoptError>),
     /// Arbitrary-register halt artifact emission or admission failed.
-    HaltRegisters(DirectHaltRegistersError),
+    HaltRegisters(Box<DirectHaltRegistersError>),
     /// Initial-halt artifact emission or admission failed.
-    InitialHalt(DirectInitialHaltError),
+    InitialHalt(Box<DirectInitialHaltError>),
+    /// Selected runtime cannot implement the admitted profile requirement.
+    Profile(Box<RuntimeProfileRequirementError<'requirement>>),
     /// Direct native templates currently emit Windows COFF only.
     TargetFormat,
 }
 
-impl Display for DirectSelectionError {
+impl Display for DirectSelectionError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::Deopt(error) => Display::fmt(error, f),
             Self::HaltRegisters(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
+            Self::Profile(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(
                 "direct native selection currently requires Windows",
             ),
@@ -436,20 +441,29 @@ impl VerifiedDirectNativeArtifact {
 
 /// Selects the narrowest semantically admitted direct native template.
 ///
-/// Exact initial-halt IR selects the state-applying fast path. Every other
+/// Runtime-profile preflight occurs before host/backend selection. Exact
+/// initial-halt IR then selects the state-applying fast path. Every other
 /// portable IR selects the byte-verified deoptimization stub. Selection never
-/// converts an emitter/verifier error into fallback; only program shape
-/// controls which backend identity is constructed.
+/// converts profile, emitter, or verifier errors into fallback; only admitted
+/// program shape controls which backend identity is constructed.
 ///
 /// # Errors
 ///
-/// Returns [`DirectSelectionError`] for unsupported host format or any
-/// emission/ verification failure after deterministic template selection.
-pub fn select_verified_direct_native(
-    program: &RegionEffectProgram,
+/// Returns [`DirectSelectionError`] for unsupported profile/runtime or host
+/// format, or any emission/verification failure after deterministic template
+/// selection.
+pub fn select_verified_direct_native<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
     host_os: HostOperatingSystem,
     host_isa: HostIsa,
-) -> Result<VerifiedDirectNativeArtifact, DirectSelectionError> {
+) -> Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>> {
+    preflight_runtime_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        runtime,
+    )
+    .map_err(|error| DirectSelectionError::Profile(Box::new(error)))?;
     if host_os != HostOperatingSystem::Windows {
         return Err(DirectSelectionError::TargetFormat);
     }
@@ -460,10 +474,12 @@ pub fn select_verified_direct_native(
             host_os,
             host_isa,
         );
-        let artifact = emit_direct_initial_halt_coff(program, target)
-            .map_err(DirectSelectionError::InitialHalt)?;
-        let verified = verify_direct_initial_halt(&artifact, program)
-            .map_err(DirectSelectionError::InitialHalt)?;
+        let artifact = emit_direct_initial_halt_coff(program, target).map_err(
+            |error| DirectSelectionError::InitialHalt(Box::new(error)),
+        )?;
+        let verified = verify_direct_initial_halt(&artifact, program).map_err(
+            |error| DirectSelectionError::InitialHalt(Box::new(error)),
+        )?;
         return Ok(VerifiedDirectNativeArtifact::InitialHalt(verified));
     }
     if validate_halt_registers_program(program).is_ok() {
@@ -474,9 +490,13 @@ pub fn select_verified_direct_native(
             host_isa,
         );
         let artifact = emit_direct_halt_registers_coff(program, target)
-            .map_err(DirectSelectionError::HaltRegisters)?;
+            .map_err(|error| {
+                DirectSelectionError::HaltRegisters(Box::new(error))
+            })?;
         let verified = verify_direct_halt_registers(&artifact, program)
-            .map_err(DirectSelectionError::HaltRegisters)?;
+            .map_err(|error| {
+                DirectSelectionError::HaltRegisters(Box::new(error))
+            })?;
         return Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified));
     }
     let target = direct_target(
@@ -486,9 +506,9 @@ pub fn select_verified_direct_native(
         host_isa,
     );
     let artifact = emit_direct_deopt_coff(program, target)
-        .map_err(DirectSelectionError::Deopt)?;
+        .map_err(|error| DirectSelectionError::Deopt(Box::new(error)))?;
     let verified = verify_direct_deopt_stub(&artifact)
-        .map_err(DirectSelectionError::Deopt)?;
+        .map_err(|error| DirectSelectionError::Deopt(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::Deopt(verified))
 }
 
