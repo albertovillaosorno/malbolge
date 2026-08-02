@@ -122,10 +122,13 @@ not perform cache lookup, executable-memory allocation, linking, or execution.
 caller-owned `VerifiedDirectNativeCache`. Profile capacity/runtime and explicit
 `DirectHost` format selection happen before lookup. On Windows, the exact selected
 `NativeArtifactKey` returns either `DirectCacheDisposition::Hit` or a newly
-emitted, semantically admitted `Inserted` artifact. Only verified direct artifacts
-can enter this wrapper; the generic cache remains non-authoritative. Interpreter
+emitted, semantically admitted `Inserted` artifact. Cache entries and returned
+plans share the same immutable `Arc<VerifiedDirectNativeArtifact>`, so a hit does
+not clone object bytes. Only verified direct artifacts can enter this wrapper; the
+generic cache remains non-authoritative. Interpreter
 selection and profile failures do not mutate the cache. Persistence, eviction,
-synchronization, linking, executable memory, and invocation remain outside.
+synchronization policy, linking, executable memory, and invocation remain
+outside; `Arc` supplies ownership only, not concurrent execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass

@@ -290,9 +290,10 @@ and same-profile footprint mismatch fails structural admission.
 reuse; forced digest collisions remain independent across read, replacement, and
 removal. `VerifiedDirectNativeCache` narrows that store to semantically admitted
 direct artifacts. Cache-aware planning reports exact-key `Inserted`/`Hit` for all
-three templates and performs `002`, `001`, and host-format selection before
+three templates and shares the same immutable `Arc` allocation on hits instead of
+cloning object bytes. It performs `002`, `001`, and host-format selection before
 lookup, so rejected/interpreter outcomes do not mutate the cache. Persistence,
-eviction, synchronization, general region-effect fast paths, executable
+eviction, synchronization policy, general region-effect fast paths, executable
 invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
@@ -702,8 +703,9 @@ baseline. Product `execution/ir/` now owns effect IR v3, and
 `execution/cache/` binds byte-exact IR to host OS/ISA, backend/native ABI
 revisions, and required features with full equality after bucket collisions, and
 its process-local store preserves distinct colliding entries across mutation.
-The verified direct planner now reuses exact keys without bypassing profile or host
-preflight. `execution/native/` lowers those effects into atomic C23 candidates,
+The verified direct planner now reuses pointer-identical immutable artifacts
+without bypassing profile or host preflight. `execution/native/` lowers those
+effects into atomic C23 candidates,
 pinned Clang emits untrusted x86-64/AArch64 COFF objects, and safe-Rust COFF
 parsing closes their object-format dependencies before semantic admission.
 Semantic admission now covers canonical direct deopt and one-step halt

@@ -164,10 +164,12 @@ weakening those gates. One explicit `DirectHost` plus runtime capability is
 preflighted before lookup. `VerifiedDirectNativeCache` privately wraps the generic
 cache and accepts values only through successful direct emission and semantic
 admission. Results distinguish `Inserted` from full-key `Hit`; all three current
-templates reuse byte-identical verified artifacts. A populated cache cannot bypass
+templates reuse the same immutable `Arc` allocation rather than cloning verified
+object bytes. A populated cache cannot bypass
 `002`, `001`, or non-Windows interpreter selection, and those outcomes leave cache
-cardinality unchanged. Durable storage, eviction, synchronization, linking,
-executable memory, invocation, and performance policy remain outside.
+cardinality unchanged. `Arc` provides shared immutable ownership only; durable
+storage, eviction, synchronization policy, linking, executable memory, invocation,
+and performance policy remain outside.
 
 ### Remaining Implementation
 
@@ -208,7 +210,8 @@ backend errors.
   effects/deoptimization match their normative baselines, canonical IR matches a
   byte-exact independent fixture, forced bucket collisions keep process-local
   cache entries independent, cache-aware direct planning reports insert/hit
-  while preserving profile/host preflight, profile-invalid IR cannot gain
+  with pointer-identical immutable artifacts while preserving profile/host
+  preflight, profile-invalid IR cannot gain
   cache/bootstrap/direct identity, direct `MBPF` v3 binds exact region memory,
   bootstrap source is
   deterministic/atomic/key-bound, direct selection

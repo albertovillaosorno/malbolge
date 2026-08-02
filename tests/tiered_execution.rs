@@ -58,6 +58,7 @@ use std::fs::{create_dir_all, read, remove_dir_all, write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::from_utf8;
+use std::sync::Arc;
 
 use execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
@@ -877,10 +878,12 @@ fn assert_cached_direct_cycle(
     else {
         return Err(String::from("exact direct cache key was not reused"));
     };
-    if hit_artifact == inserted_artifact && cache.len() == expected_len {
+    if Arc::ptr_eq(&hit_artifact, &inserted_artifact)
+        && cache.len() == expected_len
+    {
         Ok(())
     } else {
-        Err(String::from("direct cache hit changed artifact or size"))
+        Err(String::from("direct cache hit cloned or changed artifact"))
     }
 }
 

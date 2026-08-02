@@ -50,6 +50,7 @@
 //! Canonical direct native templates with byte-exact semantic verification.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::sync::Arc;
 
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
@@ -437,7 +438,7 @@ pub enum CachedPreflightedExecutionTier {
     /// One verified direct artifact plus its cache disposition.
     Direct {
         /// Exact semantically admitted direct artifact.
-        artifact: Box<VerifiedDirectNativeArtifact>,
+        artifact: Arc<VerifiedDirectNativeArtifact>,
         /// Whether this exact artifact was reused or newly inserted.
         cache: DirectCacheDisposition,
     },
@@ -448,7 +449,7 @@ pub enum CachedPreflightedExecutionTier {
 /// Caller-owned cache containing only semantically admitted direct artifacts.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VerifiedDirectNativeCache {
-    entries: NativeArtifactCache<VerifiedDirectNativeArtifact>,
+    entries: NativeArtifactCache<Arc<VerifiedDirectNativeArtifact>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -680,14 +681,14 @@ pub fn select_cached_preflighted_execution_tier<'requirement>(
     let key = selected.key(program)?;
     if let Some(artifact) = cache.entries.get(&key) {
         return Ok(CachedPreflightedExecutionTier::Direct {
-            artifact: Box::new(artifact.clone()),
+            artifact: Arc::clone(artifact),
             cache: DirectCacheDisposition::Hit,
         });
     }
-    let artifact = selected.emit_verified(program)?;
-    let _replaced = cache.entries.insert(key, artifact.clone());
+    let artifact = Arc::new(selected.emit_verified(program)?);
+    let _replaced = cache.entries.insert(key, Arc::clone(&artifact));
     Ok(CachedPreflightedExecutionTier::Direct {
-        artifact: Box::new(artifact),
+        artifact,
         cache: DirectCacheDisposition::Inserted,
     })
 }
