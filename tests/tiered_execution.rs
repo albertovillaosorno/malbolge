@@ -594,6 +594,10 @@ const fn constant_bucket_digest(_bytes: &[u8]) -> u64 {
     0
 }
 
+const fn alternate_bucket_digest(_bytes: &[u8]) -> u64 {
+    1
+}
+
 fn forced_collision_keys() -> Result<CollisionKeys, String> {
     let left_program = program();
     let mut right_program = left_program.clone();
@@ -615,6 +619,46 @@ fn forced_collision_keys() -> Result<CollisionKeys, String> {
     )
     .map_err(|error| format!("right collision key failed: {error:?}"))?;
     Ok((left, right))
+}
+
+#[test]
+fn cache_digest_never_participates_in_exact_identity() -> Result<(), String> {
+    let program = program();
+    let target =
+        target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new());
+    let left = NativeArtifactKey::with_digest(
+        &program,
+        target.clone(),
+        constant_bucket_digest,
+    )
+    .map_err(|error| format!("left digest key failed: {error:?}"))?;
+    let right = NativeArtifactKey::with_digest(
+        &program,
+        target,
+        alternate_bucket_digest,
+    )
+    .map_err(|error| format!("right digest key failed: {error:?}"))?;
+    if left.bucket_digest() == right.bucket_digest()
+        || left.ir().bucket_digest() == right.ir().bucket_digest()
+        || left != right
+        || left.ir() != right.ir()
+    {
+        return Err(String::from("lookup digest changed exact identity"));
+    }
+
+    let mut cache = NativeArtifactCache::default();
+    if cache.insert(left.clone(), "left").is_some()
+        || cache.get(&right) != Some(&"left")
+        || cache.insert(right.clone(), "right") != Some("left")
+        || cache.len() != 1
+        || cache.get(&left) != Some(&"right")
+        || cache.remove(&right) != Some("right")
+        || !cache.is_empty()
+    {
+        Err(String::from("cache promoted digest to reuse authority"))
+    } else {
+        Ok(())
+    }
 }
 
 #[test]

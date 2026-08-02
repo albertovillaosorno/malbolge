@@ -78,9 +78,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   `NativeArtifactKey` reject profile-capacity-inconsistent addressing through
   typed `NativeIdentityError::ProfileCapacity` before hashing or artifact
   construction. `NativeArtifactCache<Value>` adds caller-owned process-local
-  lookup/insertion/replacement/removal. Digest collisions remain distinct because
-  every operation confirms full key equality. It owns no persistence, eviction,
-  synchronization, or semantic admission.
+  lookup/insertion/replacement/removal. Derived digests are excluded from exact
+  identity equality; operations prefer the indicated bucket but search all buckets
+  when needed, so equal keys with different accelerator digests remain one entry.
+  Digest collisions remain distinct because every operation confirms full key
+  equality. It owns no persistence, eviction, synchronization, or semantic
+  admission.
 - `execution/native/main.rs` now lowers structurally consistent effect IR to
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
   entry/memory/input/output guards precede a collapsed final commit. Pinned

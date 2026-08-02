@@ -291,8 +291,10 @@ embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct revision-4 objects bind that exact footprint in `MBPF` v3,
 and same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
-reuse; forced digest collisions remain independent across read, replacement, and
-removal. `VerifiedDirectNativeCache` narrows that store to semantically admitted
+reuse. Derived bucket digests do not participate in identity equality; equal keys
+remain one entry even when their accelerator digests differ, while forced digest
+collisions remain independent across read, replacement, and removal.
+`VerifiedDirectNativeCache` narrows that store to semantically admitted
 direct artifacts. Cache-aware planning prepares one specialization-bound exact key
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key

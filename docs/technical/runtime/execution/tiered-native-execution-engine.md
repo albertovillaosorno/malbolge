@@ -63,10 +63,13 @@ untrusted envelope for deterministic rejection, but `RegionEffectIdentity` and
 hashing or artifact construction. Native keys retain the exact profile
 ID/fingerprint plus the canonical requirement envelope and additionally bind host
 OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and sorted
-required features. `NativeArtifactCache<Value>` uses FNV-1a only to choose a
-bucket, then confirms full key equality for lookup, replacement, and removal.
-Forced-collision entries remain independent. The store performs no persistence,
-eviction, synchronization, or semantic admission.
+required features. `RegionEffectIdentity` and `NativeArtifactKey` exclude the
+derived digest from `Eq`. `NativeArtifactCache<Value>` uses FNV-1a only to choose
+the preferred bucket, then confirms full key equality and searches other buckets
+when an equal key carries a different accelerator digest. Equal identities remain
+one entry across digest changes; forced-collision distinct entries remain
+independent. The store performs no persistence, eviction, synchronization, or
+semantic admission.
 
 `execution/native/main.rs` now owns the first host-code artifact boundary. The
 bootstrap backend lowers one structurally consistent `RegionEffectProgram` into

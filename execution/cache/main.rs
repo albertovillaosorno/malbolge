@@ -125,7 +125,7 @@ impl From<IrEncodingError> for NativeIdentityError {
 }
 
 /// Canonical portable-IR identity with a non-authoritative lookup digest.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct RegionEffectIdentity {
     bucket_digest: u64,
     canonical_bytes: Arc<[u8]>,
@@ -136,7 +136,7 @@ pub struct RegionEffectIdentity {
 }
 
 /// Full native artifact reuse key.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct NativeArtifactKey {
     bucket_digest: u64,
     ir: RegionEffectIdentity,
@@ -166,6 +166,42 @@ pub struct NativeArtifactCache<Value> {
 
 type BucketDigestFunction = fn(&[u8]) -> u64;
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl PartialEq for RegionEffectIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.canonical_bytes == other.canonical_bytes
+            && self.profile_fingerprint == other.profile_fingerprint
+            && self.profile_id == other.profile_id
+            && self.profile_requirement == other.profile_requirement
+            && self.required_memory_words == other.required_memory_words
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl Eq for RegionEffectIdentity {}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl PartialEq for NativeArtifactKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.ir == other.ir && self.target == other.target
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "default trait methods preserve standard equality semantics"
+)]
+impl Eq for NativeArtifactKey {}
+
 impl<Value> Default for NativeArtifactCache<Value> {
     fn default() -> Self {
         Self {
@@ -182,29 +218,50 @@ impl<Value> NativeArtifactCache<Value> {
         self.entries = 0;
     }
 
+    fn exact_location(&self, key: &NativeArtifactKey) -> Option<(u64, usize)> {
+        let preferred = key.bucket_digest();
+        if let Some(index) = self.buckets.get(&preferred).and_then(|bucket| {
+            bucket.iter().position(|entry| entry.key == *key)
+        }) {
+            return Some((preferred, index));
+        }
+        self.buckets.iter().find_map(|(digest, bucket)| {
+            if *digest == preferred {
+                None
+            } else {
+                bucket
+                    .iter()
+                    .position(|entry| entry.key == *key)
+                    .map(|index| (*digest, index))
+            }
+        })
+    }
+
     /// Returns a cached value only after complete key equality.
     #[must_use]
     pub fn get(&self, key: &NativeArtifactKey) -> Option<&Value> {
+        let (digest, index) = self.exact_location(key)?;
         self.buckets
-            .get(&key.bucket_digest())?
-            .iter()
-            .find(|entry| entry.key == *key)
+            .get(&digest)?
+            .get(index)
             .map(|entry| &entry.value)
     }
 
     /// Inserts one value, replacing only an existing full-equality key.
     ///
     /// Returns the replaced value when this exact key already existed. A bucket
-    /// collision with a different key creates a distinct entry.
+    /// collision with a different key creates a distinct entry. Equal keys
+    /// remain one entry even if their non-authoritative digests differ.
     pub fn insert(
         &mut self,
         key: NativeArtifactKey,
         value: Value,
     ) -> Option<Value> {
-        let bucket = self.buckets.entry(key.bucket_digest()).or_default();
-        if let Some(entry) = bucket.iter_mut().find(|entry| entry.key == key) {
+        if let Some((digest, index)) = self.exact_location(&key) {
+            let entry = self.buckets.get_mut(&digest)?.get_mut(index)?;
             return Some(replace(&mut entry.value, value));
         }
+        let bucket = self.buckets.entry(key.bucket_digest()).or_default();
         bucket.push(NativeArtifactCacheEntry { key, value });
         self.entries = self.entries.saturating_add(1);
         None
@@ -224,15 +281,17 @@ impl<Value> NativeArtifactCache<Value> {
 
     /// Removes and returns one value only after complete key equality.
     pub fn remove(&mut self, key: &NativeArtifactKey) -> Option<Value> {
-        let digest = key.bucket_digest();
-        let bucket = self.buckets.get_mut(&digest)?;
-        let index = bucket.iter().position(|entry| entry.key == *key)?;
-        let entry = bucket.remove(index);
+        let (digest, index) = self.exact_location(key)?;
+        let (value, empty) = {
+            let bucket = self.buckets.get_mut(&digest)?;
+            let entry = bucket.remove(index);
+            (entry.value, bucket.is_empty())
+        };
         self.entries = self.entries.saturating_sub(1);
-        if bucket.is_empty() {
+        if empty {
             let _removed = self.buckets.remove(&digest);
         }
-        Some(entry.value)
+        Some(value)
     }
 }
 

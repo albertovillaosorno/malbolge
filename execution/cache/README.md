@@ -12,7 +12,7 @@ storage before durable cache persistence exists.
 - host operating-system and ISA identity;
 - backend and native ABI revisions;
 - sorted required code-generation features;
-- non-authoritative lookup digests followed by full equality;
+- non-authoritative lookup digests excluded from exact identity equality;
 - process-local exact-key lookup, insertion, replacement, removal, and clearing.
 
 ## Does Not Own
@@ -43,11 +43,14 @@ Windows/x86-64 and Linux/x86-64 never share a key merely because the instruction
 set matches, and changing a backend/ABI/feature assumption invalidates reuse.
 
 `NativeArtifactCache<Value>` is a caller-owned process-local store over those
-keys. It groups entries by the non-authoritative digest, then confirms complete
-key equality for every read, replacement, and removal. Distinct keys in one
-forced-collision bucket remain independently readable and removable. Stored
-values gain no semantic authority merely by being cached; callers must insert
-only artifacts admitted by their owning boundary.
+keys. `RegionEffectIdentity` and `NativeArtifactKey` equality deliberately omit
+the derived bucket digest. The store checks the preferred bucket first, then
+searches remaining buckets by complete key equality when necessary. Therefore an
+accelerator-function change cannot duplicate, hide, or prevent removal of an
+otherwise identical key, while distinct keys in one forced-collision bucket remain
+independently readable and removable. Stored values gain no semantic authority
+merely by being cached; callers must insert only artifacts admitted by their
+owning boundary.
 
 The cache has no implicit limit, eviction, synchronization, persistence, retry,
 or discovery. `clear()` is explicit, and dropping the caller-owned value releases
