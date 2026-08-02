@@ -35,7 +35,8 @@ step budget. A differential failure repeatedly tests smaller candidates and
 reports the minimized replay identity rather than discarding the original case.
 
 `tests/differential/classic_profile.rs` currently replays 24 generated cases
-through the public classic `Machine` and `ProfileMachine` selected explicitly for
+through the public classic `Machine` and `ProfileMachine` selected explicitly
+for
 `malbolge-1998`. Each requested step compares normalized continuation,
 termination, or invalid-self-encryption rejection plus registers, input cursor,
 output, and termination state. Final comparison checks all 59,049 memory words.
@@ -43,7 +44,8 @@ The two runtime APIs do not share private transition helpers in this test.
 
 ### Exhaustive finite domains
 
-`tests/exhaustive/loader_boundaries.rs` exhausts every byte value that is neither
+`tests/exhaustive/loader_boundaries.rs` exhausts every byte value that is
+neither
 ASCII whitespace nor graphical source, checks all 94 position-dependent decode
 phases have both admitted and rejected graphical bytes, mutates one valid
 94-word source at every phase to require exact `InvalidInstruction` identity,
@@ -57,7 +59,8 @@ referenced rather than duplicated under a second test implementation.
 ### Remaining scope
 
 This slice establishes deterministic replay/shrink and finite VM/loader domains.
-Sanitizer campaigns and verifier-valid-versus-mutated-invalid testing remain open
+Sanitizer campaigns and verifier-valid-versus-mutated-invalid testing remain
+open
 because the general translation verifier is not yet implemented. Those future
 checks must preserve stable seeds/counterexamples rather than turning this task
 into nondeterministic CI fuzzing.
@@ -81,7 +84,8 @@ never implicit acceptance.
   `tests/exhaustive/`, `tests/fuzz/`.
 - `cargo test --test property_verification --all-features` executes generated
   replay/shrink, classic/profile differential, and loader exhaustive evidence.
-- `tests/vm/tables.rs` supplies the existing exhaustive rotate/crazy/decode table
+- `tests/vm/tables.rs` supplies the existing exhaustive rotate/crazy/decode
+  table
   equivalence evidence under the full VM integration target.
 - Required future evidence still includes sanitizer campaigns and deliberate
   valid/invalid verifier mutations once that verifier surface exists.

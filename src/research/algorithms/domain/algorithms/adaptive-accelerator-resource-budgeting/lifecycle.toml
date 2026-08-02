@@ -1,0 +1,9 @@
+schema_version = 1
+
+[algorithm]
+id = "adaptive-accelerator-resource-budgeting"
+state = "experimental"
+# jig-ignore-next-line: indivisible reviewed identifier
+research_record = "docs/research/algorithms/adaptive-accelerator-resource-budgeting/research.md"
+# jig-ignore-next-line: indivisible reviewed identifier
+experiment_manifest = "src/research/algorithms/domain/algorithms/adaptive-accelerator-resource-budgeting/experiment.toml"

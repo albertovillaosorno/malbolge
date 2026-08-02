@@ -4,6 +4,7 @@ status: "active"
 lane: "10"
 area: "vm"
 task: "TODO - Native x86-64 and AArch64 backends"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/native-x86-64-and-aarch64-backends.md"
 depends_on:
   - "tiered-native-execution-engine"
@@ -61,25 +62,30 @@ synchronization, and hardening remain adapters rather than VM semantics.
   host-code boundary and target split. Safe-Rust COFF admission now verifies
   machine/entry/section identity and rejects unresolved external dependencies;
   a minimal direct emitter/verifier owns deopt-only x86-64/AArch64 stubs with
-  byte-exact semantic admission, and `direct-initial-halt` now supplies the first
+  byte-exact semantic admission, and `direct-initial-halt` now supplies the
+  first
   state-applying fast path for an exact one-step zero-state halt subset.
   `direct-halt-registers` revision 5 extends that halt-only surface across
   arbitrary 32-bit registers and full 64-bit counter observations. Independent
   495/564-byte fixtures bind counters above `u32::MAX` on both ISAs; historical
   revision, counter, and opcode mismatch fail closed. `direct-halt-fetch`
-  revision 2 adds a VM-decoded graphical `v` live-in with independent 535/628-byte
+  revision 2 adds a VM-decoded graphical `v` live-in with independent
+  535/628-byte
   objects, x86-64 atomic execution evidence, and AArch64 instruction decoding.
-  `direct-non-graphical` revision 2 applies the same fetched-terminal guards to a
+  `direct-non-graphical` revision 2 applies the same fetched-terminal guards to
+  a
   VM-classified non-graphical live-in with 538/631-byte objects.
   `direct-no-operation` revision 2 adds the first non-terminal code-memory write
   and pointer advance with independent 557/658-byte objects, x86-64 atomic
-  execution, and AArch64 instruction decoding. `direct-jump-data` revision 1 adds
+  execution, and AArch64 instruction decoding. `direct-jump-data` revision 1
+  adds
   two distinct code/data live-in guards, an exact 125-word footprint, and the
   first instruction-specific semantic data read with independent 564/699-byte
   objects. `direct-jump-code` revision 1 adds three distinct live-in guards,
   exact post-jump encryption, a 13-word footprint, and independent 622/731-byte
   objects. `direct-rotate` revision 1 adds two guarded live-ins, two exact
-  guest-memory writes, three register commits, a 9-word footprint, and independent
+  guest-memory writes, three register commits, a 9-word footprint, and
+  independent
   578/732-byte objects. All memory-backed templates guard the exact key-bound IR
   footprint.
   Remaining crazy and I/O selection, executable-memory

@@ -4,6 +4,7 @@ status: "pending"
 lane: "11"
 area: "vm"
 task: "TODO - Cross-platform native capability runners"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/cross-platform-native-capability-runners.md"
 depends_on:
   - "versioned-host-capability-call-abi"
@@ -42,7 +43,8 @@ Malbolge artifact and resolving host modules without changing guest bytes.
 
 - Windows, macOS, and Linux runners on x86-64 and AArch64 implement the same
   versioned capability-frame semantics behind host-only adapters.
-- The same `.malbolge` payload/profile passes differential capability fixtures on
+- The same `.malbolge` payload/profile passes differential capability fixtures
+  on
   every supported runner without guest OS-selection code or host ABI leakage.
 - Capability discovery, invalid ranges/frames, unavailable services, host
   failures, blocking/partial progress, startup, and shutdown fail/complete with
@@ -70,8 +72,12 @@ Malbolge artifact and resolving host modules without changing guest bytes.
 
 **Generated Malbolge adapter modules.**
 
-Replace `cli/adapters/doom/abi.malbolge` and
-`cli/adapters/doom/windows.malbolge` scaffolds with compiler-generated, verified
-modules. A capsule that explicitly requires `doom.host.v1` must trigger automatic
-ABI and current-platform adapter resolution during `malbolge <artifact.malbolge>`;
+Replace `src/interface/command-line/adapter-outbound/adapters/doom/abi.malbolge`
+and
+`src/interface/command-line/adapter-outbound/adapters/doom/windows.malbolge`
+scaffolds with compiler-generated, verified
+modules. A capsule that explicitly requires `doom.host.v1` must trigger
+automatic
+ABI and current-platform adapter resolution during `malbolge
+<artifact.malbolge>`;
 filename heuristics and implicit capability grants are forbidden.

@@ -16,5 +16,6 @@ Product semantics, legal permission, source identity, or ordinary engineering.
 ## Contents
 
 - `research.md`
-- `math/algorithms/pytorch-search-orchestration.tex`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/specification/formal-model/math/algorithms/pytorch-search-orchestration.tex`
 - `algorithms/pytorch-search-orchestration/`

@@ -1,8 +1,3 @@
-// File:
-//   - profile_machine.rs
-// Path:
-//   - tests/vm/profile_machine.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,13 +31,6 @@
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Current profile uses one full 4,782,969-word execution fixture.
-//
-// Related documents:
-// - docs/technical/compatibility/scalable-malbolge-memory-model.md
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-//
-// Large file:
-//   - false
 //
 
 //! Profile-driven scalable VM execution and classic differential fixtures.

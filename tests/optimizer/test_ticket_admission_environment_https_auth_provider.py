@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_environment_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_environment_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -25,7 +18,8 @@
 #   - Outputs: lookup, rotation, bounds, secrecy, ordering, and failure checks.
 #   - Side effects: pytest-owned environment mutation only.
 # - Split-When:
-#   - Split when external stores, hosted APIs, certificates, PKI, or refresh gain
+#   - Split when external stores, hosted APIs, certificates, PKI, or refresh
+#     gain
 #     tests.
 # - Merge-When:
 #   - Merge when another suite owns this exact environment-auth behavior.
@@ -38,25 +32,10 @@
 # - Defaults:
 #   - Uses two explicit variables, 64 bindings, and a 4096-byte value limit.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Explicit bounded environment HTTPS Authorization provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -66,9 +45,8 @@ from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
 
-import pytest
-
 from accelerator import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     ticket_admission_telemetry_lineage_environment_https_auth_provider as environment,
 )
 from accelerator import (
@@ -83,6 +61,7 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
 EnvironmentAuthError = (
     environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthProviderError
@@ -106,6 +85,7 @@ _build = (
     environment.build_ticket_admission_environment_https_authorization_provider
 )
 _validate = (  # fmt: skip
+    # jig-ignore-next-line: indivisible reviewed identifier
     environment.validate_ticket_admission_environment_https_authorization_provider
 )
 _build_https = https.build_ticket_admission_https_public_key_bundle_fetcher
@@ -265,10 +245,12 @@ def test_identity_limits_and_repr_are_stable() -> None:
     entry_representation = repr(service.entries[0]).encode("utf-8")
 
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         environment.ticket_admission_environment_https_authorization_provider_id()
         == SERVICE_ID
     )
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         environment.DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATIONS
         == DEFAULT_MAX_ENTRIES
     )
@@ -277,6 +259,7 @@ def test_identity_limits_and_repr_are_stable() -> None:
         == MAX_ENTRIES
     )
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         environment.DEFAULT_MAX_TELEMETRY_LINEAGE_ENVIRONMENT_HTTPS_AUTHORIZATION_BYTES
         == DEFAULT_MAX_BYTES
     )

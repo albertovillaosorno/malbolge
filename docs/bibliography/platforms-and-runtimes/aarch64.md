@@ -40,7 +40,8 @@ does not redistribute the manuals as project-owned content.
 
 ### Unresolved
 
-The exact repository CPU-feature baseline, calling convention, and native-backend
+The exact repository CPU-feature baseline, calling convention, and
+native-backend
 ABI are Malbolge technical decisions. The cited Arm architecture material does
 not choose those repository policies.
 

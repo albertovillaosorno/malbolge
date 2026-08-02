@@ -14,7 +14,7 @@ scope:
   - "docs/research/"
   - "docs/legal/"
   - "docs/bibliography/"
-  - "integrations/cspell/"
+  - ".jig/cspell/"
 validation:
   - "jig validate --root ."
 ---
@@ -30,7 +30,7 @@ that family. A global `docs/adr/` is forbidden so unrelated decisions cannot
 collapse into an STM-style ADR monolith. ADRs contain bounded decisions and
 tradeoffs; technical specifications, research findings, legal analysis, and
 bibliography records remain ordinary documentation under their owning family.
-`integrations/cspell/` remains the editorial support surface used by CSpell and
+`.jig/cspell/` remains the editorial support surface used by CSpell and
 is not a fifth authority family. Jig will eventually validate this topology;
 Malbolge must not grow a parallel documentation linter to enforce it.
 
@@ -41,7 +41,7 @@ Malbolge must not grow a parallel documentation linter to enforce it.
 - No global `docs/adr/` exists, and ADRs are bounded decisions rather than a
   catch-all location for specifications, findings, legal analysis, source
   records, or chat history.
-- `integrations/cspell/` lives under `integrations/cspell/` as validation
+- `.jig/cspell/` lives under `.jig/cspell/` as validation
   integration data and is explicitly not treated as a fifth authority family.
 - The family ownership rules distinguish decisions, current technical behavior,
   research evidence, legal analysis, and external-source evidence without
@@ -60,5 +60,6 @@ Malbolge must not grow a parallel documentation linter to enforce it.
   topology evidence. Malbolge adopts the Jig-style authority split without
   copying unrelated product taxonomy or implementing a parallel linter.
 - Repository inspection confirms all current nested documentation directories
-  outside typed TODO state have `README.md`, no `index.md` competes with them, no
-  `.tex` lives under `docs/`, and `integrations/cspell/` remains external data.
+  outside typed TODO state have `README.md`, no `index.md` competes with them,
+  no
+  `.tex` lives under `docs/`, and `.jig/cspell/` remains external data.

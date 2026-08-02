@@ -1,0 +1,170 @@
+schema: jig-function/v3
+identity:
+  id: repository
+  node: function:repository
+  path: src/automation/repository
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-automation/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: automation
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: repository.jig
+parts:
+  - id: part-0001
+    path: composition/scripts/__init__.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0002
+    path: composition/scripts/bootstrap/__init__.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0003
+    path: composition/scripts/bootstrap/project.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0004
+    path: composition/scripts/bootstrap/python-validation-requirements.txt
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0005
+    path: composition/scripts/bootstrap/python_validation.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0006
+    path: composition/scripts/debug/__init__.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0007
+    path: composition/scripts/debug/doom.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0008
+    path: composition/scripts/repository_root.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0009
+    path: composition/scripts/research_layout.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0010
+    path: composition/scripts/validate/__init__.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0011
+    path: composition/scripts/validate/algorithm_lifecycle.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0012
+    path: composition/scripts/validate/benchmark_protocol.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0013
+    path: composition/scripts/validate/bibliography.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0014
+    path: composition/scripts/validate/experiment_manifest.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0015
+    path: composition/scripts/validate/main.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0016
+    path: composition/scripts/validate/math_correspondence.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0017
+    path: composition/scripts/validate/math_specifications.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0018
+    path: composition/scripts/validate/profile_identity.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0019
+    path: composition/scripts/validate/profile_requirements.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0020
+    path: composition/scripts/validate/research_mirror.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0021
+    path: composition/scripts/validate/target_profile.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+projects: []
+tests: []
+graph:
+  node: function:repository
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:automation
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:repository
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

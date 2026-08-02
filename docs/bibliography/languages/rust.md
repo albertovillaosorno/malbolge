@@ -46,7 +46,8 @@ terms into the repository MIT license.
 ### Unresolved
 
 Repository implementation must use the pinned toolchain from
-`rust-toolchain.toml`; this record does not authorize floating to a newer stable
+`.jig/version/.jig/version/rust-toolchain.toml`; this record does not authorize
+floating to a newer stable
 release without repository review.
 
 ## Sources

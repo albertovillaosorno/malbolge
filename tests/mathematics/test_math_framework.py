@@ -1,8 +1,3 @@
-# File:
-#   - test_math_framework.py
-# Path:
-#   - tests/mathematics/test_math_framework.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Regression tests for the shared LaTeX mathematics framework."""
 
@@ -55,15 +42,22 @@ CURRENT_TRITS = "N=14"
 CURRENT_WORDS = "W_{14}=4782969"
 
 EXPECTED_DOCUMENTS = (
-    "math/algorithms/adaptive-accelerator-resource-budgeting.tex",
-    "math/algorithms/compact-guest-bytecode-strategy.tex",
-    "math/algorithms/malbolge-specific-optimization-mathematics.tex",
-    "math/algorithms/pytorch-search-orchestration.tex",
-    "math/algorithms/search-pruning-and-state-canonicalization.tex",
-    "math/algorithms/self-modification-state-graph-optimizer.tex",
-    "math/algorithms/stochastic-and-guided-search.tex",
-    "math/specification/malbolge-1998.tex",
-    "math/specification/profile-model.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/adaptive-accelerator-resource-budgeting.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/compact-guest-bytecode-strategy.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/pytorch-search-orchestration.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/search-pruning-and-state-canonicalization.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex",
+    # jig-ignore-next-line: indivisible reviewed identifier
+    "src/specification/formal-model/math/algorithms/stochastic-and-guided-search.tex",
+    "src/specification/formal-model/math/specification/malbolge-1998.tex",
+    "src/specification/formal-model/math/specification/profile-model.tex",
 )
 
 

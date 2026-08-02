@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_ticket_admission_profile_manifest.py
-# Path:
-#   - tests/optimizer/test_cuda_ticket_admission_profile_manifest.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,13 +30,6 @@
 # - Defaults:
 #   - Any evidence or manifest drift fails the test suite.
 #
-# Related documents:
-# - accelerator/cuda/ticket_admission_profile.py
-# - benchmarks/accelerator/ticket_admission_profile_manifest.py
-#
-# Large file:
-#   - false
-#
 
 """CUDA ticket-admission profile generation and strict loading tests."""
 
@@ -53,8 +39,6 @@ from copy import deepcopy
 import json
 from pathlib import Path
 from typing import cast
-
-import pytest
 
 from accelerator.cuda import CudaHostRuntimeIdentity
 from accelerator.cuda import CudaRuntimeIdentity
@@ -68,8 +52,12 @@ from benchmarks.accelerator.ticket_admission_profile_manifest import (
 from benchmarks.accelerator.ticket_admission_profile_manifest import (
     profile_manifest_text,
 )
+import pytest
 
-MANIFEST = "accelerator/cuda/ticket_admission_profiles.json"
+MANIFEST = (
+    "src/optimization/accelerator/adapter-outbound/accelerator/cuda/"
+    "ticket_admission_profiles.json"
+)
 PROFILE_ID = "rtx4060-full-domain-crazy-ticket-admission-2026-07-29-v1"
 SOURCE_COMMIT = "431f542ab6321eeb12b7bcb9195318f25cf376a5"
 THROUGHPUT_SHA256 = (

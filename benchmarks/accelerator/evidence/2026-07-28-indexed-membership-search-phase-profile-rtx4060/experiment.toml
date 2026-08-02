@@ -20,7 +20,7 @@ required = true
 oracle = "exact proposal identity, CPU admission, 59049-member index, phase coverage, and resident counters"
 
 [provenance]
-implementation = "benchmarks/accelerator/search_prepared_phase_profile.py"
+implementation = "src/performance/benchmarking/composition/benchmarks/accelerator/search_prepared_phase_profile.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-indexed-membership-search-phase-profile-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-indexed-membership-search-phase-profile-rtx4060"
 

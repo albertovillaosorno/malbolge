@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_file_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_file_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,25 +30,10 @@
 # - Defaults:
 #   - Uses two explicit files, 64 bindings, and a 4096-byte value limit.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Explicit bounded file-backed HTTPS Authorization provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -67,9 +45,8 @@ from ssl import TLSVersion
 from typing import Self
 from typing import cast
 
-import pytest
-
 from accelerator import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     ticket_admission_telemetry_lineage_file_https_auth_provider as file_provider,
 )
 from accelerator import (
@@ -84,6 +61,7 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
 FileAuthError = (
     file_provider.TicketAdmissionTelemetryLineageFileHttpsAuthProviderError
@@ -322,6 +300,7 @@ def test_identity_limits_metadata_and_repr_are_stable(tmp_path: Path) -> None:
         == MAX_ENTRIES
     )
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         file_provider.DEFAULT_MAX_TELEMETRY_LINEAGE_FILE_HTTPS_AUTHORIZATION_BYTES
         == DEFAULT_MAX_BYTES
     )

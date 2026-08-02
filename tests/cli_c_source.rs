@@ -1,8 +1,3 @@
-// File:
-//   - cli_c_source.rs
-// Path:
-//   - tests/cli_c_source.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,16 +29,10 @@
 // - Defaults:
 //   - Non-code marker text selects no adapter.
 //
-// Related documents:
-// - cli/README.md
-//
-// Large file:
-//   - false
-//
 
 //! Regression tests for C native-debug adapter lexical selection.
 
-#[path = "../cli/c_source.rs"]
+#[path = "../src/interface/command-line/application/c_source.rs"]
 pub mod c_source;
 
 use c_source::inspect_c_source;

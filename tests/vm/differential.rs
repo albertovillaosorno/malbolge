@@ -1,8 +1,3 @@
-// File:
-//   - differential.rs
-// Path:
-//   - tests/vm/differential.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 //   - Run by the Cargo VM integration-test target.
 // - Defaults:
 //   - Uses the fixed classic-profile fingerprint protocol and no C FFI.
-//
-// Related documents:
-// - docs/technical/runtime/vm/independent-pure-c-malbolge-vm.md
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-//
-// Large file:
-//   - false
 //
 
 //! Differential semantic fingerprint shared with the independent pure-C VM.

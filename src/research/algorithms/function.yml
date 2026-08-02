@@ -1,0 +1,495 @@
+schema: jig-function/v3
+identity:
+  id: algorithms
+  node: function:algorithms
+  path: src/research/algorithms
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-research/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: research
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: algorithms.jig
+parts:
+  - id: part-0001
+    path: composition/algorithms/diff/README.md
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0002
+    path: composition/algorithms/diff/__init__.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0003
+    path: composition/algorithms/diff/admission.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0004
+    path: composition/algorithms/diff/behavior.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0005
+    path: composition/algorithms/diff/behavior_programs.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0006
+    path: composition/algorithms/diff/canonicalize.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0007
+    path: composition/algorithms/diff/compatible.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0008
+    path: composition/algorithms/diff/domain.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0009
+    path: composition/algorithms/diff/emit_rust.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0010
+    path: composition/algorithms/diff/exact.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0011
+    path: composition/algorithms/diff/fingerprints.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0012
+    path: composition/algorithms/diff/gate.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0013
+    path: composition/algorithms/diff/generate.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0014
+    path: composition/algorithms/diff/mapped.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0015
+    path: composition/algorithms/diff/model.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0016
+    path: composition/algorithms/diff/payload.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0017
+    path: composition/algorithms/diff/probe_exec.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0018
+    path: composition/algorithms/diff/protected.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0019
+    path: composition/algorithms/diff/provenance.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0020
+    path: composition/algorithms/diff/relocatable.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0021
+    path: composition/algorithms/diff/rust_runtime.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0022
+    path: composition/algorithms/diff/semantic.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0023
+    path: composition/algorithms/diff/source_binding.py
+    kind: composition
+    language: python
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0024
+    path: composition/algorithms/doom/amalgamate/main.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0025
+    path: composition/algorithms/doom/quality/main.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0026
+    path: composition/state-graph/README.md
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0027
+    path: composition/state-graph/artifact.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0028
+    path: composition/state-graph/bench.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0029
+    path: composition/state-graph/experiment.toml
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0030
+    path: composition/state-graph/index.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0031
+    path: composition/state-graph/lifecycle.toml
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0032
+    path: composition/state-graph/memory.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0033
+    path: composition/state-graph/output.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0034
+    path: composition/state-graph/profile.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0035
+    path: composition/state-graph/region.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0036
+    path: composition/state-graph/state.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0037
+    path: composition/state-graph/state_graph.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0038
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0039
+    path: domain/algorithms/adaptive-accelerator-resource-budgeting/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0040
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/adaptive-accelerator-resource-budgeting/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0041
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/adaptive-accelerator-resource-budgeting/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0042
+    path: domain/algorithms/compact-guest-bytecode-strategy/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0043
+    path: domain/algorithms/compact-guest-bytecode-strategy/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0044
+    path: domain/algorithms/compact-guest-bytecode-strategy/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0045
+    path: domain/algorithms/doom/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0046
+    path: domain/algorithms/doom/__init__.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0047
+    path: domain/algorithms/doom/adapters/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0048
+    path: domain/algorithms/doom/amalgamate/CHANGELOG.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0049
+    path: domain/algorithms/doom/amalgamate/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0050
+    path: domain/algorithms/doom/amalgamate/in/.gitignore
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0051
+    path: domain/algorithms/doom/generator/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0052
+    path: domain/algorithms/doom/generator/__init__.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0053
+    path: domain/algorithms/doom/generator/amalgamate.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0054
+    path: domain/algorithms/doom/generator/amalgamation_oracle.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0055
+    path: domain/algorithms/doom/generator/behavior_probes.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0056
+    path: domain/algorithms/doom/generator/doom.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0057
+    path: domain/algorithms/doom/generator/probe_assets/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0058
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/probe.c
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0059
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/limits.h
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0060
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdbool.h
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0061
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stddef.h
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0062
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdint.h
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0063
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdlib.h
+    kind: domain
+    language: c
+    responsibility: Own pure rules and domain models.
+  - id: part-0064
+    path: domain/algorithms/doom/generator/quality.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0065
+    path: domain/algorithms/doom/quality/CHANGELOG.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0066
+    path: domain/algorithms/doom/quality/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0067
+    path: domain/algorithms/doom/quality/__init__.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0068
+    path: domain/algorithms/doom/quality/comparison/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0069
+    path: domain/algorithms/doom/quality/comparison/__init__.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0070
+    path: domain/algorithms/doom/quality/comparison/generate.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0071
+    path: domain/algorithms/doom/quality/comparison/metrics.json
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0072
+    path: domain/algorithms/doom/quality/comparison/report.tex
+    kind: domain
+    language: latex
+    responsibility: Own pure rules and domain models.
+  - id: part-0073
+    path: domain/algorithms/doom/quality/in/.gitignore
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0074
+    path: domain/algorithms/doom/quality/languages/__init__.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0075
+    path: domain/algorithms/doom/quality/languages/generate.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
+  - id: part-0076
+    path: domain/algorithms/malbolge-specific-optimization-mathematics/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0077
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/malbolge-specific-optimization-mathematics/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0078
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/malbolge-specific-optimization-mathematics/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0079
+    path: domain/algorithms/pytorch-search-orchestration/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0080
+    path: domain/algorithms/pytorch-search-orchestration/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0081
+    path: domain/algorithms/pytorch-search-orchestration/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0082
+    path: domain/algorithms/search-pruning-and-state-canonicalization/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0083
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/search-pruning-and-state-canonicalization/exact_duplicate.rs
+    kind: domain
+    language: rust
+    responsibility: Own pure rules and domain models.
+  - id: part-0084
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/search-pruning-and-state-canonicalization/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0085
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/search-pruning-and-state-canonicalization/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0086
+    path: domain/algorithms/stochastic-and-guided-search/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0087
+    path: domain/algorithms/stochastic-and-guided-search/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0088
+    path: domain/algorithms/stochastic-and-guided-search/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0089
+    path: domain/algorithms/template/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0090
+    path: domain/algorithms/template/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0091
+    path: domain/algorithms/template/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+projects: []
+tests: []
+graph:
+  node: function:algorithms
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:research
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:algorithms
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

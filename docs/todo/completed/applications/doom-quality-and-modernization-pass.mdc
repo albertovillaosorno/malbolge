@@ -31,10 +31,12 @@ validation:
 
 ## Objective
 
-Generate `algorithms/doom/quality/main.rs` from the lawful ignored root `doom/`
+Generate `src/research/algorithms/composition/algorithms/doom/quality/main.rs`
+from the lawful ignored root `doom/`
 source and the ignored manually modernized oracle using the generic
 `algorithms/diff/` engine configured by
-`algorithms/doom/generator/quality.py`. The generated transform must then
+`src/research/algorithms/domain/algorithms/doom/generator/quality.py`. The
+generated transform must then
 materialize a deterministic normalized tree under
 `algorithms/doom/quality/out/doom_fixed/` without requiring the local oracle.
 
@@ -44,18 +46,26 @@ and transform emission remain application-agnostic.
 
 **Current implementation.**
 
-- The ignored manual oracle remains authoring evidence, but the accepted executable
-  result is now generated `algorithms/doom/quality/out/doom_fixed/`. The generated
+- The ignored manual oracle remains authoring evidence, but the accepted
+  executable
+  result is now generated `algorithms/doom/quality/out/doom_fixed/`. The
+  generated
   tree contains 151 files and is byte-identical to the clean oracle.
-- Generated output contains 65 C translation units, passes the real guest validator,
-  and passes 390/390 strict syntax checks across x86-64/AArch64 on Windows, macOS,
+- Generated output contains 65 C translation units, passes the real guest
+  validator,
+  and passes 390/390 strict syntax checks across x86-64/AArch64 on Windows,
+  macOS,
   and Linux. Runtime/manual-play evidence is recorded in the quality README and
   changelog against the same byte-identical normalized corpus.
-- `algorithms/doom/generator/quality.py` now records the source/oracle/output
+- `src/research/algorithms/domain/algorithms/doom/generator/quality.py` now
+  records the source/oracle/output
   recipe and exploratory 0.50/0.66/0.80 admission values.
-- `algorithms/diff/` now has exact authoring/source-span reconstruction, threshold
-  source binding, authenticated payload protection, dynamic passthrough roots, and
-  standalone Rust emission. Generic fuzzy identity/behavior/semantic-placement layers
+- `algorithms/diff/` now has exact authoring/source-span reconstruction,
+  threshold
+  source binding, authenticated payload protection, dynamic passthrough roots,
+  and
+  standalone Rust emission. Generic fuzzy identity/behavior/semantic-placement
+  layers
   also exist but are not required for the pinned DOOM quality profile.
 - The checked-in comparison evidence now measures root `doom/` versus generated
   `out/doom_fixed/`: 143,662 to 36,519 unique broad-repository findings (74.58%
@@ -65,24 +75,36 @@ and transform emission remain application-agnostic.
 - The DOOM product source boundary is now an exact pin to
   `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`. Generic fuzzy
   admission remains engine infrastructure, not a requirement for this profile.
-- `algorithms/doom/generator/quality.py` now requests the implemented exact emitter
-  with `passthrough_roots=("data",)`. The static engine source is exact-pinned while
+- `src/research/algorithms/domain/algorithms/doom/generator/quality.py` now
+  requests the implemented exact emitter
+  with `passthrough_roots=("data",)`. The static engine source is exact-pinned
+  while
   runtime game data remains external and is copied through dynamically.
-- The accidental PowerShell root was removed from the ignored oracle after its binary
-  metadata and unexpected root position were verified. The real recipe now generates
+- The accidental PowerShell root was removed from the ignored oracle after its
+  binary
+  metadata and unexpected root position were verified. The real recipe now
+  generates
   `quality/main.rs` successfully; its current SHA-256 is
   `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
-- Provenance review found two rewritten historical string files and two derived runtime
-  language files missing attribution. The ignored authoring corpus was corrected, then
-  the transform/output were regenerated. Final output preserves the source LICENSE,
-  all 124 historical C/header attributions, and explicit derived-language provenance.
-- Repeated generation and materialization are byte-identical; absent or mutated source
-  is rejected before publication; the fixed-point behavior transcript matches source,
+- Provenance review found two rewritten historical string files and two derived
+  runtime
+  language files missing attribution. The ignored authoring corpus was
+  corrected, then
+  the transform/output were regenerated. Final output preserves the source
+  LICENSE-MIT,
+  all 124 historical C/header attributions, and explicit derived-language
+  provenance.
+- Repeated generation and materialization are byte-identical; absent or mutated
+  source
+  is rejected before publication; the fixed-point behavior transcript matches
+  source,
   oracle, and generated output.
 
 **Functional quality generation is accepted and this application task is
-completed.** Generic compiler, lowerability, legal-corpus, and Jig-governance work
-remains tracked by their own records rather than keeping the finished DOOM source
+completed.** Generic compiler, lowerability, legal-corpus, and Jig-governance
+work
+remains tracked by their own records rather than keeping the finished DOOM
+source
 stage open. Historical commit-message repair now leaves zero
 `JIG-COMMIT-*` diagnostics. Remaining Jig findings concern current repository
 files and are not reported as a passing application validation.
@@ -90,11 +112,13 @@ files and are not reported as a passing application validation.
 ## Acceptance
 
 - The user-owned root `doom/` tree is never modified.
-- The manual oracle remains local/ignored and is not required to run the generated
+- The manual oracle remains local/ignored and is not required to run the
+  generated
   transformation.
 - For the exact baseline used to author the transform, generated
   `out/doom_fixed/` is byte-identical to the manual oracle.
-- The official engine source matches the exact pinned upstream revision; accepting a
+- The official engine source matches the exact pinned upstream revision;
+  accepting a
   different source revision requires an explicit new profile/pin.
 - Required legal/provenance comments survive output construction.
 - Identity probes, compatibility probes, and bug probes remain separate; an
@@ -121,7 +145,8 @@ files and are not reported as a passing application validation.
   `algorithms/doom/adapters/`, and `tools/tidy/`.
 - Local ignored evidence: root `doom/`, the manual quality oracle, generated
   `out/doom_fixed/`, and runtime fixtures.
-- Required evidence: deterministic source manifests, exact oracle reconstruction,
+- Required evidence: deterministic source manifests, exact oracle
+  reconstruction,
   source-binding rejection tests, linter/compiler reports, transformation
   provenance, behavior/native differential traces, adapter tests, and Jig.
 - Prerequisite completion evidence includes `source-bound-diff-generator`,

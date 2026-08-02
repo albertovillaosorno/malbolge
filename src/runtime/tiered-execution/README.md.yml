@@ -1,0 +1,47 @@
+schema: jig-graph-node/v2
+identity:
+  id: artifact:boundary:src:runtime:tiered-execution:README.md
+  kind: artifact
+  name: README.md
+  path: src/runtime/tiered-execution/README.md
+  role: boundary-document
+contracts:
+  universal: graph-node/v2
+  location: boundary-document/v1
+  domain: domain-runtime/v1
+  role: boundary-document/v1
+classification:
+  repository: malbolge
+  location: src/runtime/tiered-execution
+  domain: runtime
+  lifecycle: none
+  confidentiality: public
+ownership:
+  primary: function:tiered-execution
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: none
+content:
+  format: markdown
+  generated: false
+graph:
+  node: artifact:boundary:src:runtime:tiered-execution:README.md
+  labels:
+    - artifact
+    - boundary
+    - markdown
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src/runtime/tiered-execution
+    - hub:role:boundary-document
+    - hub:lifecycle:none
+    - hub:domain:runtime
+    - hub:function:tiered-execution
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  path_manifest_match: required
+  unknown_fields: fatal
+  line_length: 80

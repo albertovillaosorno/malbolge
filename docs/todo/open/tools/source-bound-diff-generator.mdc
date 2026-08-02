@@ -33,107 +33,162 @@ format.
 **Current implementation.**
 
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
-  mode. `write_algorithm()` generates exact standalone Rust today; compatible mode
+  mode. `write_algorithm()` generates exact standalone Rust today; compatible
+  mode
   remains fail-closed before output.
-- The exact authoring planner/materializer reconstructs deterministic byte trees,
-  reuses whole source files and source spans, and publishes only after full target
+- The exact authoring planner/materializer reconstructs deterministic byte
+  trees,
+  reuses whole source files and source spans, and publishes only after full
+  target
   verification.
-- Synthetic tests cover exact reconstruction, deterministic planning, binary data,
-  moves, modifications, creations, deletions, source mutation, and symlink failure.
+- Synthetic tests cover exact reconstruction, deterministic planning, binary
+  data,
+  moves, modifications, creations, deletions, source mutation, and symlink
+  failure.
 - Generic identity helpers normalize line endings/optional whitespace, while the
-  stable-anchor primitive uses rolling-content-selected sliding windows plus SHA-256
+  stable-anchor primitive uses rolling-content-selected sliding windows plus
+  SHA-256
   fingerprints that survive offset shifts from insertions.
 - Tree-level admission now separates symmetric structural similarity from
-  asymmetric anchor survival, weights reference files equally, requires distributed
+  asymmetric anchor survival, weights reference files equally, requires
+  distributed
   matching files, and ignores candidate-only opaque size.
 - Synthetic admission tests lock wrong-source rejection and the immediate
   representable thresholds above/below measured structural and anchor scores.
 - Generic behavior evaluation now separates identity, compatibility, and bug
   semantics. Already-fixed bugs route corrections to skip; unavailable/unknown
   mandatory evidence fails closed.
-- A conjunctive gate proves behavior-only clones cannot replace structural lineage
+- A conjunctive gate proves behavior-only clones cannot replace structural
+  lineage
   and source lineage cannot replace failed compatibility behavior.
-- Portable process probes now execute without shell interpolation, with structured
-  roots, bounded time/output, isolated source mirrors, and deterministic selected-
+- Portable process probes now execute without shell interpolation, with
+  structured
+  roots, bounded time/output, isolated source mirrors, and deterministic
+  selected-
   stdout transcripts.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.
 - The first DOOM executable identity probe compiles real candidate `m_fixed.c`
-  against an MIT freestanding harness on an isolated mirror and digests its no-CRT
-  PE exit code. Source and oracle matched in local calibration; synthetic fixtures
+  against an MIT freestanding harness on an isolated mirror and digests its
+  no-CRT
+  PE exit code. Source and oracle matched in local calibration; synthetic
+  fixtures
   provide repository-safe regression coverage.
-- Source-binding calibration over the read-only DOOM source selected 127 content-
-  ranked distributed anchors. The modernized oracle recovered 105 shares against an
-  84-share threshold at 0.66; the same experiment exposed and rejected an earlier
+- Source-binding calibration over the read-only DOOM source selected 127
+  content-
+  ranked distributed anchors. The modernized oracle recovered 105 shares against
+  an
+  84-share threshold at 0.66; the same experiment exposed and rejected an
+  earlier
   offset-ranked sampler that recovered only 59.
-- `algorithms/doom/generator/quality.py` records the first consumer recipe, and
-  `doom.py` now supplies its C-aware Linux source identity view while excluding WAD
+- `src/research/algorithms/domain/algorithms/doom/generator/quality.py` records
+  the first consumer recipe, and
+  `doom.py` now supplies its C-aware Linux source identity view while excluding
+  WAD
   and IPX surfaces from lineage scoring.
-- The admission model combines structural similarity, stable anchors, and normalized
+- The admission model combines structural similarity, stable anchors, and
+  normalized
   behavior evidence. Threshold key unlock and authenticated exact-plan payload
-  recovery are implemented; compatible in-memory placement now exists while protected
+  recovery are implemented; compatible in-memory placement now exists while
+  protected
   compatible serialization/runtime emission remains unfinished.
-- The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds. Synthetic
-  threshold tests exist, and a local source-to-normalized-descendant stress smoke
+- The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds.
+  Synthetic
+  threshold tests exist, and a local source-to-normalized-descendant stress
+  smoke
   measured 0.780928 structural similarity and 0.766396 anchor coverage; broader
-  source-variant and behavior calibration is still required before freezing them.
-- Generic process-probe execution and behavior authoring are implemented. DOOM now
-  has one executable fixed-point identity probe for Windows x86-64 / LLVM 22.1.8;
+  source-variant and behavior calibration is still required before freezing
+  them.
+- Generic process-probe execution and behavior authoring are implemented. DOOM
+  now
+  has one executable fixed-point identity probe for Windows x86-64 / LLVM
+  22.1.8;
   broader identity, compatibility, and bug coverage is still required.
-- T-of-N GF(256) key splitting plus HKDF-SHA-256 anchor masking is implemented and
-  covered by RFC/synthetic negative tests. Deterministic coefficient derivation is
+- T-of-N GF(256) key splitting plus HKDF-SHA-256 anchor masking is implemented
+  and
+  covered by RFC/synthetic negative tests. Deterministic coefficient derivation
+  is
   explicitly computational rather than information-theoretic and still requires
   independent cryptographic review.
-- RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD vector.
-  Protected exact plans move all oracle literals into one authenticated ciphertext
-  and bind its plan-specific key to distributed source anchors. The deterministic key
-  schedule includes canonical source identity bytes that are not serialized into the
-  transform, so transform metadata plus a guessed plaintext cannot derive the key by
+- RFC 8439 ChaCha20-Poly1305 is implemented and locked to the official AEAD
+  vector.
+  Protected exact plans move all oracle literals into one authenticated
+  ciphertext
+  and bind its plan-specific key to distributed source anchors. The
+  deterministic key
+  schedule includes canonical source identity bytes that are not serialized into
+  the
+  transform, so transform metadata plus a guessed plaintext cannot derive the
+  key by
   itself.
 - A historical read-only DOOM smoke protected 2,116,232 literal bytes across 152
   instructions and materialized the then-current 152-file oracle snapshot. That
   snapshot is now known to include one accidental PowerShell root entry. The
   source-dependent key schedule rerun again matched exactly, left source/oracle
-  snapshots unchanged, and its 4,655,420-byte generated Rust compiled to an object
+  snapshots unchanged, and its 4,655,420-byte generated Rust compiled to an
+  object
   with Rust 1.97.1 and `-D warnings`.
-- Exact protected plans emit as standalone std-only Rust. Authenticated passthrough
-  roots are now excluded from static snapshots and copied from runtime input. With
-  `data/` passthrough and the accidental oracle root excluded only in a temporary
-  mirror, DOOM emitted 4,646,568 bytes of Rust and reproduced the intended 151-file
+- Exact protected plans emit as standalone std-only Rust. Authenticated
+  passthrough
+  roots are now excluded from static snapshots and copied from runtime input.
+  With
+  `data/` passthrough and the accidental oracle root excluded only in a
+  temporary
+  mirror, DOOM emitted 4,646,568 bytes of Rust and reproduced the intended
+  151-file
   tree exactly under Rust GNU 1.97.1.
-- Compatible/fuzzy Rust emission remains unfinished: consumer canonical identity,
-  thresholds, behavior probes, and bug-routing still need runtime representation.
+- Compatible/fuzzy Rust emission remains unfinished: consumer canonical
+  identity,
+  thresholds, behavior probes, and bug-routing still need runtime
+  representation.
 
-- Hash-only relocatable byte-range placement now preserves insertions inside stable
-  source ranges and rejects missing/ambiguous boundaries before output. A synthetic
-  boundary-change test deliberately still fails, defining the next mapped-token C
-  placement milestone rather than pretending byte relocation solves reformatting.
+- Hash-only relocatable byte-range placement now preserves insertions inside
+  stable
+  source ranges and rejects missing/ambiguous boundaries before output. A
+  synthetic
+  boundary-change test deliberately still fails, defining the next mapped-token
+  C
+  placement milestone rather than pretending byte relocation solves
+  reformatting.
 
-- Generic mapped semantic placement now hashes canonical units, uniquely locates them
-  in candidate source, maps them back to raw spans, preserves unrelated raw bytes, and
+- Generic mapped semantic placement now hashes canonical units, uniquely locates
+  them
+  in candidate source, maps them back to raw spans, preserves unrelated raw
+  bytes, and
   re-tokenizes post-edit output to reject unsafe seams.
-- The DOOM C mapper is identity-equivalent to the established canonicalizer across a
-  read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches. Synthetic
+- The DOOM C mapper is identity-equivalent to the established canonicalizer
+  across a
+  read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches.
+  Synthetic
   placement preserves comments, formatting, and unrelated upstream functions.
 
 - Compatible tree authoring now composes lineage + behavior admission, semantic
-  placement, conservative opaque exact gates, target-only conflict checks, candidate-
+  placement, conservative opaque exact gates, target-only conflict checks,
+  candidate-
   only preservation, historical removals, and transactional postconditions. Bug
-  correction routes still fail closed until correction IDs are attached to edits.
-- Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors + LIS
-  reduced the full read-only DOOM compatible-plan smoke from runner timeout to 11.159
-  seconds. The plan contains 117 semantic-patch files / 6,257 edits / 251,933 raw
-  replacement bytes, 7 candidate copies, 2 exact-gated opaque files, and 26 creates.
+  correction routes still fail closed until correction IDs are attached to
+  edits.
+- Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors +
+  LIS
+  reduced the full read-only DOOM compatible-plan smoke from runner timeout to
+  11.159
+  seconds. The plan contains 117 semantic-patch files / 6,257 edits / 251,933
+  raw
+  replacement bytes, 7 candidate copies, 2 exact-gated opaque files, and 26
+  creates.
 
-- Exact external source revision pins are now generic infrastructure. The DOOM quality
+- Exact external source revision pins are now generic infrastructure. The DOOM
+  quality
   domain hard-pins `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`
   and verifies 165 official files against deterministic snapshot SHA-256
   `20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`; `data/`
   remains outside that code pin.
 
-- `passthrough_roots` are authenticated plan metadata. Source/oracle must match there
-  during authoring, but later runtime bytes and candidate-only files under those roots
+- `passthrough_roots` are authenticated plan metadata. Source/oracle must match
+  there
+  during authoring, but later runtime bytes and candidate-only files under those
+  roots
   are preserved without changing the exact static source identity.
 
 ## Acceptance
@@ -142,7 +197,8 @@ format.
   byte-for-byte.
 - Comments and formatting may be ignored for source identity without being
   silently discarded from preserved output/provenance.
-- Content/token anchors tolerate non-semantic insertions better than absolute byte
+- Content/token anchors tolerate non-semantic insertions better than absolute
+  byte
   offsets.
 - Identity, compatibility, and bug probes have separate semantics.
 - An upstream source that already satisfies a bug-fix postcondition can remain
@@ -162,8 +218,10 @@ format.
 
 - Expected durable artifact surface: `algorithms/diff/`,
   `docs/technical/tooling/source-bound-diff-generator.md`, and synthetic tests.
-- First integration consumer: `algorithms/doom/generator/quality.py`.
-- Second integration consumer: `algorithms/doom/generator/amalgamate.py`,
+- First integration consumer:
+  `src/research/algorithms/domain/algorithms/doom/generator/quality.py`.
+- Second integration consumer:
+  `src/research/algorithms/domain/algorithms/doom/generator/amalgamate.py`,
   which emits the canonical source-bound single-file C transformation.
 - Required evidence: exact reconstruction hashes, threshold-boundary fixtures,
   wrong/no-source rejection, behavior-probe fixtures, deterministic generation,

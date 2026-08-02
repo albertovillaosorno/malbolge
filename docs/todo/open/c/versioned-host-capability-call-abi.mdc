@@ -4,6 +4,7 @@ status: "pending"
 lane: "7"
 area: "c"
 task: "TODO - Versioned host-capability call ABI"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/versioned-host-capability-call-abi.md"
 depends_on:
   - "deterministic-c-to-malbolge-abi"
@@ -32,7 +33,8 @@ VM ABI. Keep capability identity separate from transport: define versioning,
 argument/result types, pointer/range validation, blocking rules, failure
 semantics, capability discovery, and a deterministic call-frame representation
 without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
-runners may lower the same call frame differently, but guest-visible behavior and
+runners may lower the same call frame differently, but guest-visible behavior
+and
 validation must agree. The DOOM source ABI currently exercises version-1
 external-effect categories spanning guest-memory provisioning, diagnostics/exit,
 video/input, PCM audio, raw file I/O, UDP transport, and monotonic time; those
@@ -48,7 +50,8 @@ application-local capabilities are design evidence, not yet the generic VM ABI.
 - Guest ranges are validated before host effects, and no host pointer, host libc
   calling convention, platform handle, or multimedia ABI leaks into guest state.
 - Interpreter, JIT, AOT, and other admitted execution tiers pass the same
-  capability vectors with equivalent guest-visible memory/results/diagnostics and
+  capability vectors with equivalent guest-visible memory/results/diagnostics
+  and
   effect ordering.
 - The lowering contract does not require a new Malbolge opcode; any eventual
   encoding mechanism remains separate from semantic capability identity.
@@ -69,8 +72,10 @@ application-local capabilities are design evidence, not yet the generic VM ABI.
 
 **DOOM execution telemetry extension.**
 
-Specify guest-directed relative-mouse capture and optional execution telemetry as
-versioned capabilities. Telemetry carries a language identifier, source identity,
+Specify guest-directed relative-mouse capture and optional execution telemetry
+as
+versioned capabilities. Telemetry carries a language identifier, source
+identity,
 execution location, and active instruction text; C line reporting and Malbolge
 cell/instruction reporting must use the same semantic record without influencing
 guest behavior.

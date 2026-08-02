@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_https_authorized_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_https_authorized_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -21,7 +14,8 @@
 #   - Use live sockets, resolve schemes, discover credentials, retry, redirect,
 #     cache, persist, log secrets, load trust roots, or change policy.
 # - Allows:
-#   - Inputs: exact HTTPS fetchers, resolved authorization, requests, and faults.
+#   - Inputs: exact HTTPS fetchers, resolved authorization, requests, and
+#     faults.
 #   - Outputs: binding, header, response, secrecy, and tampering assertions.
 #   - Side effects: monkeypatched in-memory HTTPS connections only.
 # - Split-When:
@@ -38,27 +32,10 @@
 # - Defaults:
 #   - Uses one canonical bundle and one caller-owned Bearer-shaped value.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Explicit Authorization-injecting HTTPS bundle fetcher tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long]
+
 # ruff: file-ignore[undocumented-public-function,too-many-positional-arguments]
 
 from __future__ import annotations
@@ -69,8 +46,6 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_https_auth_provider as auth,
@@ -90,6 +65,7 @@ from accelerator import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 AuthorizedError = (
     authorized.TicketAdmissionTelemetryLineageAuthorizedHttpsFetcherError
@@ -519,6 +495,7 @@ def test_repeated_calls_reuse_explicit_authorization_without_hidden_resolution(
         (
             _request(
                 bundle_fingerprint=(
+                    # jig-ignore-next-line: indivisible reviewed identifier
                     "ticket-admission-telemetry-lineage-public-key-bundle-v1:sha256:"
                     + ("1" * 64)
                 )

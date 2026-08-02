@@ -15,7 +15,9 @@ Verified; evidence verified.
 ## Repository Use
 
 These sources define the historical language specification and identify the
-untouched interpreter retained under `tools/malbolge/main.c`. The repository
+untouched interpreter retained under
+`src/interoperability/historical-malbolge/adapter-outbound/main.c`. The
+repository
 treats specification/interpreter disagreements as explicit implementation
 defects.
 

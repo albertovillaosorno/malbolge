@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_ordered_dtoh_stream.py
-# Path:
-#   - tests/optimizer/test_cuda_ordered_dtoh_stream.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,13 +29,6 @@
 # - Defaults:
 #   - Missing CUDA skips; invalid ownership and ordering fail closed.
 #
-# Related documents:
-# - docs/technical/integrations/accelerators/cuda-exact-vm-adapter.md
-# - docs/technical/integrations/accelerators/replaceable-accelerator-boundary.md
-#
-# Large file:
-#   - false
-#
 
 """Live ordered registered CUDA D-to-H transfer evidence."""
 
@@ -56,13 +42,12 @@ from typing import cast
 from typing import final
 from unittest import SkipTest
 
-import pytest
-
 from accelerator.cuda.runtime import CudaRuntime
 from accelerator.cuda.runtime import create_ordered_dtoh_stream
 from accelerator.cuda.runtime import cuda_ordered_dtoh_stream_id
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.cuda.runtime import CudaOrderedDtoHStream
@@ -92,9 +77,7 @@ def _words(*values: int) -> Words:
 
 
 def _values(words: Words) -> tuple[int, ...]:
-    return tuple(
-        cast("int", words[index]) for index in range(WORD_COUNT)
-    )
+    return tuple(cast("int", words[index]) for index in range(WORD_COUNT))
 
 
 @final

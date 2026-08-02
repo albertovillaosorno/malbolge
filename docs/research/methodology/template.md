@@ -13,7 +13,8 @@ record can realistically collect.
 
 - Status: Proposed
 - Research ID: `{stable-id}`
-- Research class: `{engineering|benchmarking|optimization|replication|mathematical|exploratory}`
+- Research class:
+  `{engineering|benchmarking|optimization|replication|mathematical|exploratory}`
 - Applicable overlays: `{zero or more additional classes}`
 - Target profile(s): `{exact canonical identity/fingerprint where applicable}`
 - Plan identity: `{commit/content hash/manifest identity}`
@@ -75,9 +76,10 @@ distributions, confidence/dispersion, Pareto metrics, figures, or tables.
 
 Keep observations distinct from explanations. A useful form is:
 
-| Evidence identity | Observed fact | Interpretation | Supports/weakens |
-| --- | --- | --- | --- |
-| `{artifact/sample}` | `{measurement/verifier fact}` | `{explanation}` | `{claim}` |
+- **Evidence identity:** `{artifact/sample}`
+  - **Observed fact:** `{measurement/verifier fact}`
+  - **Interpretation:** `{explanation}`
+  - **Supports/weakens:** `{claim}`
 
 ## Results
 

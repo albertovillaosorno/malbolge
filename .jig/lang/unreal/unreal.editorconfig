@@ -1,0 +1,49 @@
+# Opt-in Visual Studio Unreal C++ naming profile.
+# This is intentionally separate: generic clang-tidy naming cannot encode
+# the AActor/SWidget/UObject ancestry predicates without semantic loss.
+root = false
+
+[*-uproject/*.{cpp,h,hpp}]
+cpp_naming_rule.aactor_prefixed.symbols = aactor_class
+cpp_naming_rule.aactor_prefixed.style = aactor_style
+cpp_naming_rule.swidget_prefixed.symbols = swidget_class
+cpp_naming_rule.swidget_prefixed.style = swidget_style
+cpp_naming_rule.uobject_prefixed.symbols = uobject_class
+cpp_naming_rule.uobject_prefixed.style = uobject_style
+cpp_naming_rule.boolean_prefixed.symbols = boolean_symbols
+cpp_naming_rule.boolean_prefixed.style = boolean_style
+cpp_naming_rule.structs_prefixed.symbols = structs
+cpp_naming_rule.structs_prefixed.style = unreal_struct_style
+cpp_naming_rule.enums_prefixed.symbols = enums
+cpp_naming_rule.enums_prefixed.style = unreal_enum_style
+cpp_naming_rule.templates_prefixed.symbols = templates
+cpp_naming_rule.templates_prefixed.style = unreal_template_style
+cpp_naming_rule.general_names.symbols = all_symbols
+cpp_naming_rule.general_names.style = unreal_default_style
+cpp_naming_symbols.aactor_class.applicable_kinds = class
+cpp_naming_symbols.aactor_class.applicable_type = AActor
+cpp_naming_symbols.swidget_class.applicable_kinds = class
+cpp_naming_symbols.swidget_class.applicable_type = SWidget
+cpp_naming_symbols.uobject_class.applicable_kinds = class
+cpp_naming_symbols.uobject_class.applicable_type = UObject
+cpp_naming_symbols.boolean_symbols.applicable_kinds = local,parameter,field
+cpp_naming_symbols.boolean_symbols.applicable_type = bool
+cpp_naming_symbols.structs.applicable_kinds = struct
+cpp_naming_symbols.enums.applicable_kinds = enum
+cpp_naming_symbols.templates.applicable_kinds = template_class
+cpp_naming_symbols.all_symbols.applicable_kinds = *
+cpp_naming_style.unreal_default_style.capitalization = pascal_case
+cpp_naming_style.unreal_enum_style.capitalization = pascal_case
+cpp_naming_style.unreal_enum_style.required_prefix = E
+cpp_naming_style.unreal_template_style.capitalization = pascal_case
+cpp_naming_style.unreal_template_style.required_prefix = T
+cpp_naming_style.unreal_struct_style.capitalization = pascal_case
+cpp_naming_style.unreal_struct_style.required_prefix = F
+cpp_naming_style.uobject_style.capitalization = pascal_case
+cpp_naming_style.uobject_style.required_prefix = U
+cpp_naming_style.aactor_style.capitalization = pascal_case
+cpp_naming_style.aactor_style.required_prefix = A
+cpp_naming_style.swidget_style.capitalization = pascal_case
+cpp_naming_style.swidget_style.required_prefix = S
+cpp_naming_style.boolean_style.capitalization = pascal_case
+cpp_naming_style.boolean_style.required_prefix = b

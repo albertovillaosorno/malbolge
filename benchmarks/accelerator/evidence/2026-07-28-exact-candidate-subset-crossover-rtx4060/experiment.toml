@@ -20,7 +20,7 @@ required = true
 oracle = "request-order-position-subset-v1 identity; immutable strictly increasing zero, one, and multi-item positions; exact full-batch object binding; forged, mutable, duplicate, reordered, out-of-range, wrong-type, and cross-batch rejection; projected evaluator identity; full membership; CPU scalar packed equality; exact proposal and independent trusted admission; CPU/CUDA session and cardinality proofs"
 
 [provenance]
-implementation = "accelerator/evaluated_search.py"
+implementation = "src/optimization/accelerator/application/accelerator/evaluated_search.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060"
 

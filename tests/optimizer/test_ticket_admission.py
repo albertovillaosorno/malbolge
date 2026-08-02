@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission.py
-# Path:
-#   - tests/optimizer/test_ticket_admission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,13 +30,6 @@
 # - Defaults:
 #   - Missing or negative evidence leaves singleton synchronous execution.
 #
-# Related documents:
-# - accelerator/ticket_admission.py
-# - accelerator/cuda/ticket_admission.py
-#
-# Large file:
-#   - false
-#
 
 """Conservative evidence-bound ticket route and group admission tests."""
 
@@ -53,8 +39,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
-
-import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
@@ -96,6 +80,7 @@ from accelerator.ticket_admission_telemetry import (
     TicketAdmissionFailureTelemetry,
 )
 from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetry
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import PreparedPrimitiveBatch
@@ -138,7 +123,6 @@ MATCHING_RUNTIME = CudaRuntimeIdentity(
     toolchain_manifest_sha256=(
         "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
     ),
-
 )
 
 
@@ -225,8 +209,7 @@ def _packed_cpu_result(
     return PackedPrimitiveResult(
         capability=adapter.capability(),
         words_u32le=b"".join(
-            value.to_bytes(WORD_BYTES, "little")
-            for value in cpu_result.values
+            value.to_bytes(WORD_BYTES, "little") for value in cpu_result.values
         ),
     )
 

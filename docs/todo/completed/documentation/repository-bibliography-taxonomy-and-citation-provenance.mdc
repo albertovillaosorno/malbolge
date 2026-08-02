@@ -18,8 +18,10 @@ scope:
   - "scripts/validate/"
   - "tests/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_bibliography.py"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/bibliography.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/bibliography.py"
   - "jig validate --root ."
 ---
 # TODO - Repository bibliography taxonomy and citation provenance
@@ -69,7 +71,8 @@ repository policy merely because they are cited.
   verification, research methodology, standards/publication metadata, and
   validation tooling. All current source records retain dated provenance plus an
   explicit unresolved/uncertainty boundary.
-- `scripts/validate/bibliography.py` enforces the closed taxonomy, README and
+- `src/automation/repository/composition/scripts/validate/bibliography.py`
+  enforces the closed taxonomy, README and
   template topology, record heading order, dated provenance, unresolved
   evidence, nonempty source lists, and baseline coverage.
 - `tests/test_bibliography.py` covers successful repository validation and

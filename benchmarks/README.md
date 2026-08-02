@@ -9,4 +9,5 @@ accelerator behavior without becoming correctness authorities.
   for their subsystem.
 
 Raw or regenerable run output stays local and Git ignored. Correctness verdicts
-come from the applicable semantic oracle or verifier, not from benchmark success.
+come from the applicable semantic oracle or verifier, not from benchmark
+success.

@@ -1,0 +1,69 @@
+{
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "compilerOptions": {
+        // Language/runtime targets for root tooling scripts.
+        "target": "ES2023",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        // Modules resolve only inside the command-owned dependency runtime.
+        "paths": {
+            "*": [
+                "./.dependencies/pnpm/node_modules/*"
+            ]
+        },
+        // Validation-only surface at the root: never emit.
+        "noEmit": true,
+        // The full strict family, spelled out flag by flag.
+        "strict": true,
+        "alwaysStrict": true,
+        "noImplicitAny": true,
+        "noImplicitThis": true,
+        "strictBindCallApply": true,
+        "strictBuiltinIteratorReturn": true,
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "strictPropertyInitialization": true,
+        "useUnknownInCatchVariables": true,
+        // Beyond-strict escalations.
+        "exactOptionalPropertyTypes": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "noUncheckedIndexedAccess": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        // JavaScript rides the same gate: .js/.mjs/.cjs are type-checked.
+        "allowJs": true,
+        "checkJs": true,
+        // Module semantics are explicit and bundler-agnostic.
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        // Library declaration files are validated too; nothing is assumed
+        // correct just because it ships as a .d.ts.
+        "skipLibCheck": false
+    },
+    // Root tooling surfaces (relative to this file's location).
+    "include": [
+        "./eslint.config.mjs",
+        "scripts/**/*",
+        "tools/**/*"
+    ],
+    // Generated, vendored, or foreign trees — path scopes only.
+    "exclude": [
+        "/node_modules",
+        "/dist",
+        "/build",
+        ".coverage",
+        ".cache",
+        ".temp",
+        ".logs",
+        "**/bin",
+        "**/obj",
+        ".dependencies"
+    ]
+}

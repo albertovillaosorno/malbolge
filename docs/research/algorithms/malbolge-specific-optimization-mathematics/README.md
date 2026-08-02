@@ -16,5 +16,6 @@ Product semantics, legal permission, source identity, or ordinary engineering.
 ## Contents
 
 - `research.md`
-- `math/algorithms/malbolge-specific-optimization-mathematics.tex`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
 - `algorithms/malbolge-specific-optimization-mathematics/`

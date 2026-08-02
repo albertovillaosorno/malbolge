@@ -1,0 +1,95 @@
+schema: jig-function/v3
+identity:
+  id: decompiler
+  node: function:decompiler
+  path: src/tooling/decompiler
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-tooling/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: tooling
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: decompiler.jig
+parts:
+  - id: part-0001
+    path: application/render.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0002
+    path: composition/cli.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0003
+    path: composition/malbolge_decompile.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0004
+    path: composition/museum.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0005
+    path: composition/museum_convert.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0006
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+projects: []
+tests: []
+graph:
+  node: function:decompiler
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:tooling
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:decompiler
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

@@ -19,6 +19,7 @@ scope:
   - "tests/fuzz/"
   - "tests/vm/tables.rs"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --test property_verification --all-features"
   - "jig validate --root ."
 ---

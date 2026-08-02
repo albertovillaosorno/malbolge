@@ -8,7 +8,8 @@ source-bound generator and emitted transform remain incomplete.
 ## Purpose
 
 Normalize a lawful user-supplied DOOM source tree before optional amalgamation.
-The quality stage owns the target behavior, guest/runtime boundary, deterministic
+The quality stage owns the target behavior, guest/runtime boundary,
+deterministic
 C profile, and validation postconditions. Generic source-tree matching and
 source-bound reconstruction are delegated to `algorithms/diff/`.
 
@@ -48,9 +49,12 @@ local quality/in/doom oracle --------+  |
                          quality/out/doom_fixed/
 ```
 
-`quality.py` is a thin recipe. It declares paths, a profile identity, and the DOOM
-domain module. The domain hard-pins the official source revision; generic similarity
-thresholds remain engine research parameters rather than DOOM product admission. The
+`quality.py` is a thin recipe. It declares paths, a profile identity, and the
+DOOM
+domain module. The domain hard-pins the official source revision; generic
+similarity
+thresholds remain engine research parameters rather than DOOM product admission.
+The
 recipe must not grow a parallel diff implementation.
 
 `doom.py` is the allowed home for DOOM-specific source lineage, compatibility,
@@ -60,16 +64,19 @@ behavior, and bug probes that cannot remain declarative.
 `docs/technical/tooling/source-bound-diff-generator.md`.
 
 `quality/main.rs` is ultimately generated output from the authoring step. It is
-then versioned as the distributable transformation logic. The local oracle is not
+then versioned as the distributable transformation logic. The local oracle is
+not
 required to run it.
 
 ### Current Oracle State
 
-Repository-root `doom/` is the untouched local baseline. Its official engine source
+Repository-root `doom/` is the untouched local baseline. Its official engine
+source
 is pinned to `id-Software/DOOM@a77dfb96cb91780ca334d0d4cfd86957558007e0`; 165
 official files are verified against snapshot SHA-256
 `20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`. External
-`data/` is outside that code pin. The ignored `algorithms/doom/quality/in/doom/` tree
+`data/` is outside that code pin. The ignored `algorithms/doom/quality/in/doom/`
+tree
 is the manually modernized oracle.
 
 The current oracle contains 65 C translation units and passes:
@@ -84,7 +91,8 @@ mean the quality stage is complete: generated `out/doom_fixed/` must still
 reproduce and validate that oracle.
 
 The checked-in comparison report is an older progress snapshot that recorded
-143,662 unique findings in the baseline and 38,462 in an earlier oracle state. It
+143,662 unique findings in the baseline and 38,462 in an earlier oracle state.
+It
 must be regenerated only after accepted generated output exists.
 
 ### Source Admission
@@ -107,22 +115,31 @@ Comments and formatting may be ignored when measuring lineage identity, but
 required legal/provenance comments remain part of output correctness.
 
 A source revision that already fixes a known original bug may remain compatible
-when the generated postcondition is already true. Bug presence is not an identity
+when the generated postcondition is already true. Bug presence is not an
+identity
 requirement.
 
 ### Generated quality acceptance
 
-The quality recipe now emits the real deterministic `algorithms/doom/quality/main.rs`
-from the exact pinned source revision, with `data/` outside the static source snapshot
-and authenticated as runtime passthrough policy. The generated transform materializes
-151 files under `quality/out/doom_fixed/` and the full tree matches the clean local
+The quality recipe now emits the real deterministic
+`src/research/algorithms/composition/algorithms/doom/quality/main.rs`
+from the exact pinned source revision, with `data/` outside the static source
+snapshot
+and authenticated as runtime passthrough policy. The generated transform
+materializes
+151 files under `quality/out/doom_fixed/` and the full tree matches the clean
+local
 oracle byte-for-byte. Its current transform SHA-256 is
 `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
 
-Generated output passes the 65-unit guest validator and the 390/390 six-target strict
-syntax matrix. Repeated generation/materialization are deterministic, wrong or absent
-source fails before publication, fixed-point behavior matches the authoring source and
-oracle, and provenance checks preserve the source LICENSE plus historical attribution.
+Generated output passes the 65-unit guest validator and the 390/390 six-target
+strict
+syntax matrix. Repeated generation/materialization are deterministic, wrong or
+absent
+source fails before publication, fixed-point behavior matches the authoring
+source and
+oracle, and provenance checks preserve the source LICENSE-MIT plus historical
+attribution.
 The compact comparison evidence now uses the generated tree as the after corpus.
 The final regenerated quality transform SHA-256 is:
 

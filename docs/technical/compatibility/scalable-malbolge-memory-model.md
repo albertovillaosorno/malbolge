@@ -20,8 +20,8 @@ This document governs the following declared TODO scope:
 - `compatibility/`
 - `docs/technical/specification/`
 - `tests/compatibility/`
-- `vm/src/profile_machine.rs`
-- `vm/build.rs`
+- `src/runtime/virtual-machine/domain/profile_machine.rs`
+- `src/runtime/virtual-machine/composition/build.rs`
 - `tests/vm/profile_machine.rs`
 
 ## Current Behavior
@@ -94,7 +94,8 @@ prediction of compiled Malbolge words. The evidence artifact also retains the
 1,497,009-byte snapshot used when `malbolge-2026.2` was originally selected.
 
 Thirteen trits provide 1,594,323 words and are now 885,609 words below the
-current source proxy. Fourteen trits provide 4,782,969 words and remain the first
+current source proxy. Fourteen trits provide 4,782,969 words and remain the
+first
 native ternary width above that proxy, with 2,303,037 words of current headroom.
 The original profile choice is therefore still sufficient under the larger
 tracked snapshot, without changing the immutable `malbolge-2026.2` geometry.
@@ -105,7 +106,8 @@ and runtime measurements remain authoritative for deciding whether another
 trit is required.
 
 The exact source snapshot and candidate arithmetic are retained in
-`compatibility/scalable-memory-evidence.json`.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json`.
 
 ### Implementation Status
 
@@ -115,7 +117,8 @@ geometry, N-trit rotate, digitwise crazy, EOF, wraparound, and the link to the
 tracked DOOM evidence snapshot.
 
 Safe Rust now has an explicit profile-driven interpreter in
-`vm/src/profile_machine.rs`. `ProfileMachine` owns `u32` profile-width registers
+`src/runtime/virtual-machine/domain/profile_machine.rs`. `ProfileMachine` owns
+`u32` profile-width registers
 and an exact `profile.memory_words()` image, preflights against runtime identity
 `safe-rust-profiled`, and executes the same normative sequential decode, crazy,
 rotate, byte I/O, self-modification, post-instruction encryption, and pointer
@@ -126,10 +129,12 @@ math and shared by both classic and profile-driven engines. A 14-trit crazy
 operation composes 5+5+4 trit chunks; the final chunk is reduced to `3^4`, so no
 implicit fifteenth trit can enter the result.
 
-`Machine` and `ExecutionMachine` intentionally remain the frozen/classic surface.
+`Machine` and `ExecutionMachine` intentionally remain the frozen/classic
+surface.
 They still reject `malbolge-2026.2` through `safe-rust-classic` preflight rather
 than silently changing classic types or loader behavior. `ProfileMachine` is the
-explicit runtime surface for current scalable execution. Compiler, native tiers, and accelerators are not yet universally
+explicit runtime surface for current scalable execution. Compiler, native tiers,
+and accelerators are not yet universally
 profile-driven and remain downstream adoption work.
 
 ## Invariants
@@ -154,20 +159,28 @@ falls back to 59,049 words, or borrows host pointer behavior.
 
 ## Verification
 
-- `python scripts/validate/target_profile.py` validates the closed profile
+- `python
+  src/automation/repository/composition/scripts/validate/target_profile.py`
+  validates the closed profile
   schema and cross-profile invariants.
 - `tests/test_target_profile.py` covers schema/profile failure boundaries.
 - `tests/compatibility/test_scalable_memory.py` independently checks scalable
   ternary geometry and the workload-evidence link.
-- `compatibility/scalable-memory-evidence.json` retains the exact tracked source
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json`
+  retains the exact tracked source
   hash, source-byte proxy, candidate capacities, and selected profile.
-- `tests/vm/profile_machine.rs` executes the full 4,782,969-word current profile,
-  verifies addresses above 59,048, and checks 14-trit crazy/rotate effects against
+- `tests/vm/profile_machine.rs` executes the full 4,782,969-word current
+  profile,
+  verifies addresses above 59,048, and checks 14-trit crazy/rotate effects
+  against
   independent scalar formulas.
-- The same Rust suite executes `ProfileMachine` under `malbolge-1998` and compares
+- The same Rust suite executes `ProfileMachine` under `malbolge-1998` and
+  compares
   all 59,049 final memory words, registers, I/O, EOF behavior, and termination
   against the classic `Machine`.
-- `tests/vm/profile_tracing.rs` locks current-profile trace identity, current EOF,
+- `tests/vm/profile_tracing.rs` locks current-profile trace identity, current
+  EOF,
   trace inertness, and atomic rejection from a real 14-trit recurrence target.
 
 ## References

@@ -1,8 +1,3 @@
-# File:
-#   - test_correspondence_manifest.py
-# Path:
-#   - tests/mathematics/test_correspondence_manifest.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -35,12 +28,6 @@
 #   - Used through the owning package, executable, or document boundary.
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
-#
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
 #
 
 """Regression tests for equation-to-executable correspondence traceability."""

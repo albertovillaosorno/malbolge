@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_store.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_store.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,14 +31,6 @@
 # - Defaults:
 #   - Uses two deterministic documents and exact schema-v1 canonical bytes
 #     under explicit document, observation, and byte limits.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_store.py
-# - accelerator/ticket_admission_telemetry_persistence.py
-# - accelerator/ticket_admission_telemetry_migration.py
-#
-# Large file:
-#   - false
 #
 
 """Caller-owned bounded telemetry alternate-store tests."""
@@ -267,7 +252,7 @@ def test_snapshot_entries_are_fingerprint_ordered() -> None:
 def test_missing_get_is_explicit_and_nonmutating() -> None:
     """Absent exact fingerprints return ``None`` without changing the store."""
     store = TicketAdmissionTelemetryMemoryStore()
-    fingerprint = f"{FINGERPRINT_PREFIX}{'0' * 64}"
+    fingerprint = f"{FINGERPRINT_PREFIX}{"0" * 64}"
 
     result = store.get(fingerprint)
 
@@ -294,7 +279,7 @@ def test_remove_releases_exact_document_and_byte_budget() -> None:
 def test_remove_missing_is_stable_and_nonmutating() -> None:
     """Removing an absent exact fingerprint returns a typed not-found result."""
     store = TicketAdmissionTelemetryMemoryStore()
-    fingerprint = f"{FINGERPRINT_PREFIX}{'f' * 64}"
+    fingerprint = f"{FINGERPRINT_PREFIX}{"f" * 64}"
 
     result = store.remove(fingerprint)
 
@@ -466,8 +451,8 @@ def test_store_limits_are_read_only_after_construction() -> None:
     [
         "",
         "not-a-fingerprint",
-        f"{FINGERPRINT_PREFIX}{'A' * 64}",
-        f"{FINGERPRINT_PREFIX}{'0' * 63}",
+        f"{FINGERPRINT_PREFIX}{"A" * 64}",
+        f"{FINGERPRINT_PREFIX}{"0" * 63}",
         cast("str", object()),
     ],
 )
@@ -607,7 +592,7 @@ def test_fingerprint_collision_fails_closed_without_replacement(
     """Distinct canonical bytes cannot share one retained store identity."""
     first = _document(elapsed_ns=LOW_ELAPSED_NS)
     second = _document(elapsed_ns=HIGH_ELAPSED_NS)
-    constant = f"{FINGERPRINT_PREFIX}{'a' * 64}"
+    constant = f"{FINGERPRINT_PREFIX}{"a" * 64}"
 
     def constant_fingerprint(canonical_bytes: bytes) -> str:
         del canonical_bytes

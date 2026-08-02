@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_memory_public_key_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_memory_public_key_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,39 +31,15 @@
 # - Defaults:
 #   - Uses two synthetic public-key byte strings and a 256-key default.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-#
-# Large file:
-#   - false
-#
 
 """Bounded caller-owned in-memory public-key provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_memory_public_key_provider as memory,
@@ -90,6 +59,7 @@ from accelerator.ticket_admission_telemetry_lineage_signature import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 ServiceError = (
     memory.TicketAdmissionTelemetryLineageMemoryPublicKeyProviderError
@@ -238,6 +208,7 @@ def _manifest() -> (
 def _resolve_manifest(
     service: MemoryProvider,
 ) -> provider.TicketAdmissionTelemetryLineagePublicKeyProviderTrust:
+    # jig-ignore-next-line: indivisible reviewed identifier
     return resolve_ticket_admission_telemetry_lineage_signature_trust_with_provider(
         _manifest(),
         service,
@@ -251,6 +222,7 @@ def test_service_identity_and_empty_provider_are_stable() -> None:
     result = service(_request(public_key_reference_id=UNKNOWN_REFERENCE_ID))
 
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         memory.ticket_admission_telemetry_lineage_memory_public_key_provider_id()
         == SERVICE_ID
     )

@@ -27,7 +27,8 @@ This document governs the following declared TODO scope:
 
 Each catalogue entry is addressed by stable semantic identity rather than raw
 text bytes. The entry contains pre/postconditions, entry/exit machine state,
-target profile, layout assumptions, mutation footprint, cost metrics, provenance,
+target profile, layout assumptions, mutation footprint, cost metrics,
+provenance,
 and verifier identity. The linker may reuse an entry only when the complete
 composition contract matches its current obligations.
 
@@ -39,7 +40,8 @@ architecture merely because an experiment produced one.
 ## Invariants
 
 - Every admitted entry has independent verifier evidence.
-- Catalogue lookup cannot weaken address, encryption, mutation, or target-profile
+- Catalogue lookup cannot weaken address, encryption, mutation, or
+  target-profile
   constraints.
 - Equivalent semantics may have multiple cost-specialized implementations; the
   selected implementation and cost model remain explicit.

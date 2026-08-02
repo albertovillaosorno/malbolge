@@ -28,12 +28,14 @@ This document governs the following declared TODO scope:
 ### Proposed Model
 
 Latency reports classify each build by workload/difficulty, target profile,
-algorithm, hardware, cache/catalogue generation, and cold/warm state. Timings are
+algorithm, hardware, cache/catalogue generation, and cold/warm state. Timings
+are
 split into frontend work, lowering, invalidation, search, catalogue lookup,
 verification, link/stitch, serialization/IPC, and artifact emission.
 
 Interactive targets such as "seconds, not hours" are performance goals. They do
-not imply a particular asymptotic law and may be satisfied by verified reuse even
+not imply a particular asymptotic law and may be satisfied by verified reuse
+even
 when the underlying uncached search remains expensive.
 
 ### Implementation Status
@@ -53,7 +55,8 @@ Not implemented. No latency target or scaling law is currently claimed.
 
 Missing hardware, resource exhaustion, stale cache state, failed recovery, or
 accelerator disagreement falls back or fails explicitly without changing
-correctness rules. A missed latency target is recorded as evidence, not hidden by
+correctness rules. A missed latency target is recorded as evidence, not hidden
+by
 changing the workload or excluding failed searches.
 
 ## Verification

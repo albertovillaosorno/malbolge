@@ -68,7 +68,8 @@ deterministically without changing guest-visible state silently.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-- Performance evidence: `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
+- Performance evidence:
+  `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
   contains raw samples and exact commit/workload/toolchain/host provenance.
 ## References
 

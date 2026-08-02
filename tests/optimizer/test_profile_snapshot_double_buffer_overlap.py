@@ -1,8 +1,3 @@
-# File:
-#   - test_profile_snapshot_double_buffer_overlap.py
-# Path:
-#   - tests/optimizer/test_profile_snapshot_double_buffer_overlap.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,18 +29,10 @@
 # - Defaults:
 #   - Unknown route identities fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Pure protocol tests for current-profile snapshot overlap evidence."""
 
 from __future__ import annotations
-
-import pytest
 
 from benchmarks.accelerator.profile_snapshot_double_buffer_overlap import (
     BATCH_SIZE,
@@ -67,6 +52,7 @@ from benchmarks.accelerator.profile_snapshot_double_buffer_overlap import (
 from benchmarks.accelerator.profile_snapshot_double_buffer_overlap import (
     route_spec,
 )
+import pytest
 
 
 def test_overlap_route_order_rotates_all_routes() -> None:

@@ -1,0 +1,27 @@
+extends: default
+
+rules:
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+  document-start: disable
+  empty-lines:
+    max: 1
+    max-start: 0
+    max-end: 0
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: true
+  line-length:
+    max: 80
+    allow-non-breakable-words: false
+    allow-non-breakable-inline-mappings: false
+  truthy:
+    allowed-values:
+      - "true"
+      - "false"
+    check-keys: true

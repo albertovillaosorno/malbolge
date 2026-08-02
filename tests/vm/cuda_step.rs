@@ -1,8 +1,3 @@
-// File:
-//   - cuda_step.rs
-// Path:
-//   - tests/vm/cuda_step.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -37,13 +30,6 @@
 // - Defaults:
 //   - The safe-Rust specification machine is always the expected-result oracle.
 //
-// Related documents:
-// - docs/technical/integrations/accelerators/cuda-exact-vm-adapter.md
-// - docs/technical/runtime/vm/batch-vm-execution.md
-//
-// Large file:
-//   - false
-//
 
 //! CUDA compact-step proposals checked against normative classic Rust traces.
 
@@ -56,7 +42,9 @@ use malbolge::{
     StepTrace, Termination, TraceInput, Word,
 };
 
-use crate::{TestResult, check_equal, normalize_result};
+use crate::{
+    TestResult, accelerator_python_path, check_equal, normalize_result,
+};
 
 const PROTOCOL: &str = "MBSTEP1";
 const REQUEST_WORDS: usize = 20;
@@ -220,6 +208,7 @@ fn run_cuda_worker(request: &str) -> TestResult<WorkerBatch> {
     let mut child = Command::new(&python)
         .args(["-m", "accelerator.cuda.classic_step_worker"])
         .current_dir(root)
+        .env("PYTHONPATH", accelerator_python_path(root)?)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

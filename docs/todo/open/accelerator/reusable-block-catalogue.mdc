@@ -34,7 +34,8 @@ must expose the state and layout contract required for safe linking.
 
 ## Acceptance
 
-- Every catalog entry binds semantic pre/postconditions, entry/exit machine state,
+- Every catalog entry binds semantic pre/postconditions, entry/exit machine
+  state,
   target profile, layout assumptions, mutation footprint, cost metrics,
   provenance, and verifier identity.
 - Lookup never substitutes a block whose complete composition contract does not
@@ -48,7 +49,8 @@ must expose the state and layout contract required for safe linking.
 
 ## Evidence
 
-- Expected durable artifact surface: `accelerator/`, `algorithms/`, `optimizer/`,
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`,
   `benchmarks/accelerator/`, `tests/optimizer/`.
 - Required evidence: block manifests, verifier results, deterministic catalogue
   identity, link compatibility fixtures, and cross-backend differential tests.

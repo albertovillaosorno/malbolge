@@ -18,7 +18,7 @@ adr_paths:
 scope:
   - "algorithms/diff/"
   - "algorithms/doom/generator/"
-  - "algorithms/doom/amalgamate/main.rs"
+  - "src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs"
   - "algorithms/doom/quality/out/doom_fixed/"
   - "algorithms/doom/amalgamate/out/doom.c"
   - "tests/applications/doom/out/doom.c"
@@ -29,10 +29,12 @@ validation:
 
 ## Objective
 
-After quality output is accepted, use `algorithms/diff/` a second time to learn a
+After quality output is accepted, use `algorithms/diff/` a second time to learn
+a
 source-bound deterministic amalgamation transform from the normalized multi-file
 DOOM tree and a local accepted single-file oracle. The thin DOOM recipe emits
-`algorithms/doom/amalgamate/main.rs`; that transform materializes one
+`src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`; that
+transform materializes one
 canonical `algorithms/doom/amalgamate/out/doom.c`.
 
 The generic diff engine does not replace semantic amalgamation validation. DOOM
@@ -46,7 +48,8 @@ DOOM C artifact through the Malbolge pipeline.
 
 ## Acceptance
 
-- Amalgamation consumes only accepted generated quality output and never rewrites
+- Amalgamation consumes only accepted generated quality output and never
+  rewrites
   the user-owned root source directly.
 - The local single-file oracle is authoring evidence only and is not required by
   the emitted transform.
@@ -68,7 +71,9 @@ DOOM C artifact through the Malbolge pipeline.
 ## Evidence
 
 - Expected durable artifact surface: `algorithms/diff/`, the DOOM generator
-  recipe, `algorithms/doom/amalgamate/main.rs`, and relevant contracts/tests.
+  recipe,
+  `src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`, and
+  relevant contracts/tests.
 - Local ignored evidence: accepted `quality/out/doom_fixed/`, the single-file
   oracle, `amalgamate/out/doom.c`, and application runtime outputs.
 - Required evidence: exact reconstruction hashes, normalized/amalgamated

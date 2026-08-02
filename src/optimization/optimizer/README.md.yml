@@ -1,0 +1,47 @@
+schema: jig-graph-node/v2
+identity:
+  id: artifact:boundary:src:optimization:optimizer:README.md
+  kind: artifact
+  name: README.md
+  path: src/optimization/optimizer/README.md
+  role: boundary-document
+contracts:
+  universal: graph-node/v2
+  location: boundary-document/v1
+  domain: domain-optimization/v1
+  role: boundary-document/v1
+classification:
+  repository: malbolge
+  location: src/optimization/optimizer
+  domain: optimization
+  lifecycle: none
+  confidentiality: public
+ownership:
+  primary: function:optimizer
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: none
+content:
+  format: markdown
+  generated: false
+graph:
+  node: artifact:boundary:src:optimization:optimizer:README.md
+  labels:
+    - artifact
+    - boundary
+    - markdown
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src/optimization/optimizer
+    - hub:role:boundary-document
+    - hub:lifecycle:none
+    - hub:domain:optimization
+    - hub:function:optimizer
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  path_manifest_match: required
+  unknown_fields: fatal
+  line_length: 80

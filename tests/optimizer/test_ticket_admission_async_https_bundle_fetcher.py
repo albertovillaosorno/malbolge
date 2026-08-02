@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_async_https_bundle_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_async_https_bundle_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -34,29 +27,15 @@
 # - Description:
 #   - Proves the adapter owns no task, thread, executor, retry, or cache policy.
 # - Usage:
-#   - Runs without network access, pytest async plugins, or accelerator hardware.
+#   - Runs without network access, pytest async plugins, or accelerator
+#     hardware.
 # - Defaults:
 #   - Uses one synthetic key, caller-owned TLS state, and one awaited offloader.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
 #
 
 """Caller-offloaded async HTTPS detached public-key bundle fetch tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[undocumented-public-function]
 
 from __future__ import annotations
 
@@ -66,8 +45,6 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_async_bundle_fetcher as async_fetch,
@@ -93,6 +70,7 @@ from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 AdapterError = (
     adapter.TicketAdmissionTelemetryLineageAsyncHttpsBundleFetcherError
@@ -652,6 +630,7 @@ def test_outer_async_boundary_rejects_typed_failed_result() -> None:
     offloader = _ResultOffloader(FetchResult(kind=FetchKind.FAILED))
 
     with pytest.raises(
+        # jig-ignore-next-line: indivisible reviewed identifier
         async_fetch.TicketAdmissionTelemetryLineageAsyncPublicKeyBundleFetcherError,
         match="cannot process async fetched public-key bundle",
     ):

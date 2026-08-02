@@ -1,8 +1,3 @@
-// File:
-//   - tiered_execution.rs
-// Path:
-//   - tests/tiered_execution.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -37,21 +30,14 @@
 // - Defaults:
 //   - Full canonical equality, never a digest alone, decides reuse.
 //
-// Related documents:
-// - execution/ir/README.md
-// - execution/cache/README.md
-//
-// Large file:
-//   - false
-//
 
 //! Product tiered-execution identity and cache-key conformance.
 
-#[path = "../execution/cache/main.rs"]
+#[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
-#[path = "../execution/ir/main.rs"]
+#[path = "../src/runtime/tiered-execution/domain/ir/main.rs"]
 pub mod execution_ir;
-#[path = "../execution/native/main.rs"]
+#[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
 
 use std::fs::{create_dir_all, read, remove_dir_all, write};

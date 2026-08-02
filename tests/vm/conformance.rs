@@ -1,8 +1,3 @@
-// File:
-//   - conformance.rs
-// Path:
-//   - tests/vm/conformance.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -39,13 +32,6 @@
 // - Defaults:
 //   - Any mismatch with the active specification fixture is a hard test
 //   - failure.
-//
-// Related documents:
-// - docs/technical/specification/malbolge-1998.md
-// - tests/compatibility/specification/README.md
-//
-// Large file:
-//   - false
 //
 
 //! Conformance tests for the first safe-Rust classic VM implementation slice.

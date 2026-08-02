@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_environment_async_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_environment_async_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,24 +30,10 @@
 # - Defaults:
 #   - Uses two explicit variables, 64 bindings, and one caller offloader.
 #
-# Related documents:
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Caller-offloaded async environment Authorization adapter tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -65,8 +44,6 @@ from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
 
-import pytest
-
 from accelerator import (
     ticket_admission_environment_async_https_auth_provider as adapter,
 )
@@ -74,6 +51,7 @@ from accelerator import (
     ticket_admission_telemetry_lineage_async_https_auth_provider as async_auth,
 )
 from accelerator import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     ticket_admission_telemetry_lineage_environment_https_auth_provider as environment,
 )
 from accelerator import (
@@ -85,7 +63,9 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
+# jig-ignore-next-line: indivisible reviewed identifier
 AdapterError = adapter.TicketAdmissionTelemetryLineageEnvironmentAsyncHttpsAuthProviderError
 EnvironmentEntry = (
     environment.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthorization
@@ -108,7 +88,9 @@ FetchRequest = fetch.TicketAdmissionTelemetryLineagePublicKeyBundleFetchRequest
 _build_environment = (
     environment.build_ticket_admission_environment_https_authorization_provider
 )
+# jig-ignore-next-line: indivisible reviewed identifier
 _build_adapter = adapter.build_ticket_admission_environment_async_https_authorization_provider
+# jig-ignore-next-line: indivisible reviewed identifier
 _validate_adapter = adapter.validate_ticket_admission_environment_async_https_authorization_provider
 _resolve_async = async_auth.resolve_ticket_admission_https_authorization_async
 _build_https = https.build_ticket_admission_https_public_key_bundle_fetcher
@@ -256,6 +238,7 @@ def _environment_provider(
 
 
 def _adapter(
+    # jig-ignore-next-line: indivisible reviewed identifier
     offloader: adapter.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader
     | None = None,
     *,
@@ -353,6 +336,7 @@ def test_identity_metadata_validator_and_repr_are_stable() -> None:
     representation = repr(value).encode("utf-8")
 
     assert (
+        # jig-ignore-next-line: indivisible reviewed identifier
         adapter.ticket_admission_environment_async_https_authorization_provider_id()
         == ADAPTER_ID
     )
@@ -699,6 +683,7 @@ def test_builder_rejects_noncallable_offloader() -> None:
         _ = _build_adapter(
             _environment_provider(),
             cast(
+                # jig-ignore-next-line: indivisible reviewed identifier
                 "adapter.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader",
                 object(),
             ),
@@ -813,6 +798,7 @@ def test_tampered_noncallable_offloader_fails_before_await() -> None:
     value = replace(
         _adapter(),
         offloader=cast(
+            # jig-ignore-next-line: indivisible reviewed identifier
             "adapter.TicketAdmissionTelemetryLineageEnvironmentHttpsAuthOffloader",
             object(),
         ),

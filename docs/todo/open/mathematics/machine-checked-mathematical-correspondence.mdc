@@ -15,17 +15,21 @@ adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "math/specification/"
-  - "math/specification/correspondence.toml"
+  - "src/specification/formal-model/math/specification/correspondence.toml"
   - "docs/research/algorithms/"
   - "algorithms/"
-  - "scripts/validate/math_correspondence.py"
+  # jig-ignore-next-line: canonical front matter value is indivisible
+  - "src/automation/repository/composition/scripts/validate/math_correspondence.py"
   - "tests/mathematics/"
   - "tests/differential/"
   - "tests/exhaustive/"
   - "tests/vm/"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/mathematics/test_correspondence_manifest.py"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/math_correspondence.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/mathematics/test_correspondence_manifest.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/math_correspondence.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -41,10 +45,12 @@ Connect mathematical specifications to executable tests or proof tooling so the
 
 - Seventeen correctness-relevant equations across `malbolge-1998.tex` and
   `profile-model.tex` now have stable `eq:*` labels and exact entries in
-  `math/specification/correspondence.toml`.
+  `src/specification/formal-model/math/specification/correspondence.toml`.
 - The manifest records each equation's explicit admitted domain/coverage and the
   concrete Rust/Python test functions that supply semantic evidence.
-- `scripts/validate/math_correspondence.py` rejects duplicate IDs/labels,
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/math_correspondence.py`
+  rejects duplicate IDs/labels,
   non-repository paths, evidence outside repository or research-mirror test
   surfaces, missing test functions,
   missing/duplicated source labels, and any difference between the manifest and
@@ -81,7 +87,8 @@ Connect mathematical specifications to executable tests or proof tooling so the
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`, `safe-rust-malbolge-vm`,
   `property-fuzz-and-exhaustive-testing`.
-- Current correspondence graph contains seventeen promoted equations with explicit
+- Current correspondence graph contains seventeen promoted equations with
+  explicit
   coverage/domain metadata and executable evidence functions.
 - Closure still requires correspondence for future implementation-relevant
   compiler/research equations; this TODO therefore remains active.

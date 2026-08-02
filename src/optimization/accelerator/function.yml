@@ -1,0 +1,499 @@
+schema: jig-function/v3
+identity:
+  id: accelerator
+  node: function:accelerator
+  path: src/optimization/accelerator
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-optimization/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: optimization
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: accelerator.jig
+parts:
+  - id: part-0001
+    path: adapter-outbound/accelerator/cpu/README.md
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0002
+    path: adapter-outbound/accelerator/cpu/__init__.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0003
+    path: adapter-outbound/accelerator/cpu/exact_primitives.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0004
+    path: adapter-outbound/accelerator/cpu/work_ports.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0005
+    path: adapter-outbound/accelerator/cuda/README.md
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0006
+    path: adapter-outbound/accelerator/cuda/__init__.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0007
+    path: adapter-outbound/accelerator/cuda/classic_run.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0008
+    path: adapter-outbound/accelerator/cuda/classic_run_worker.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0009
+    path: adapter-outbound/accelerator/cuda/classic_step.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0010
+    path: adapter-outbound/accelerator/cuda/classic_step_worker.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0011
+    path: adapter-outbound/accelerator/cuda/exact_primitives.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0012
+    path: adapter-outbound/accelerator/cuda/profile_run.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0013
+    path: adapter-outbound/accelerator/cuda/profile_run_worker.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0014
+    path: adapter-outbound/accelerator/cuda/resident_kernel.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0015
+    path: adapter-outbound/accelerator/cuda/runtime.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0016
+    path: adapter-outbound/accelerator/cuda/submission.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0017
+    path: adapter-outbound/accelerator/cuda/ticket_admission.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0018
+    path: adapter-outbound/accelerator/cuda/ticket_admission_profile.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0019
+    path: adapter-outbound/accelerator/cuda/ticket_admission_profiles.json
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0020
+    path: adapter-outbound/accelerator/cuda/toolchain.json
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0021
+    path: application/accelerator/classic_run.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0022
+    path: application/accelerator/classic_step.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0023
+    path: application/accelerator/evaluated_search.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0024
+    path: application/accelerator/evidence_verification.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0025
+    path: application/accelerator/evidence_verification_submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0026
+    path: application/accelerator/exact_primitives.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0027
+    path: application/accelerator/primitive_candidates.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0028
+    path: application/accelerator/profile_run.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0029
+    path: application/accelerator/resource_budget.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0030
+    path: application/accelerator/search_config.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0031
+    path: application/accelerator/search_selection.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0032
+    path: application/accelerator/search_submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0033
+    path: application/accelerator/submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0034
+    path: application/accelerator/ticket_admission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0035
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_environment_async_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0036
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_file_async_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0037
+    path: application/accelerator/ticket_admission_file_async_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0038
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_memory_async_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0039
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_memory_async_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0040
+    path: application/accelerator/ticket_admission_telemetry.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0041
+    path: application/accelerator/ticket_admission_telemetry_collection.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0042
+    path: application/accelerator/ticket_admission_telemetry_lineage.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0043
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0044
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0045
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0046
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0047
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0048
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0049
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0050
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0051
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0052
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0053
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0054
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0055
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0056
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0057
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0058
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0059
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0060
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0061
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0062
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0063
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0064
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0065
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0066
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_secret_provider.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0067
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_signature.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0068
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_signature_trust.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0069
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0070
+    path: application/accelerator/ticket_admission_telemetry_lineage_trust.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0071
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0072
+    path: application/accelerator/ticket_admission_telemetry_migration.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0073
+    path: application/accelerator/ticket_admission_telemetry_overlap.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0074
+    # jig-ignore-next-line: canonical tracked part path
+    path: application/accelerator/ticket_admission_telemetry_overlap_components.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0075
+    path: application/accelerator/ticket_admission_telemetry_overlap_index.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0076
+    path: application/accelerator/ticket_admission_telemetry_persistence.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0077
+    path: application/accelerator/ticket_admission_telemetry_store.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0078
+    path: application/accelerator/ticket_admission_telemetry_summary.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0079
+    path: application/accelerator/verification_submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0080
+    path: application/accelerator/work_ports.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0081
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+projects: []
+tests: []
+graph:
+  node: function:accelerator
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:optimization
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:accelerator
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

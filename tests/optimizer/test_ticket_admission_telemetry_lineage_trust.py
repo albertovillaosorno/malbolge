@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage_trust.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage_trust.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,20 +29,6 @@
 #   - Runs without accelerator hardware, files, or external key services.
 # - Defaults:
 #   - Uses two deterministic caller-owned HMAC keys.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-#
-# Large file:
-#   - false
 #
 
 """Bounded caller-owned telemetry lineage trust tests."""
@@ -249,16 +228,14 @@ def _trust_key(
 
 
 def _rotation_trust() -> TicketAdmissionTelemetryLineageTrust:
-    return build_ticket_admission_telemetry_lineage_trust(
-        (
-            _trust_key(NEW_KEY_ID, NEW_SECRET, (ROTATION_SEQUENCE_ID, None)),
-            _trust_key(
-                OLD_KEY_ID,
-                OLD_SECRET,
-                (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
-            ),
-        )
-    )
+    return build_ticket_admission_telemetry_lineage_trust((
+        _trust_key(NEW_KEY_ID, NEW_SECRET, (ROTATION_SEQUENCE_ID, None)),
+        _trust_key(
+            OLD_KEY_ID,
+            OLD_SECRET,
+            (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
+        ),
+    ))
 
 
 def test_empty_trust_is_stable_and_trusts_nothing() -> None:
@@ -433,13 +410,13 @@ def test_capture_outside_trusted_window_fails_closed(
     message: str,
 ) -> None:
     """A valid MAC is insufficient outside the selected key window."""
-    trust = build_ticket_admission_telemetry_lineage_trust(
-        (_trust_key(
-        OLD_KEY_ID,
-        OLD_SECRET,
-        (WINDOW_FIRST_SEQUENCE_ID, WINDOW_LAST_SEQUENCE_ID),
-    ),)
-    )
+    trust = build_ticket_admission_telemetry_lineage_trust((
+        _trust_key(
+            OLD_KEY_ID,
+            OLD_SECRET,
+            (WINDOW_FIRST_SEQUENCE_ID, WINDOW_LAST_SEQUENCE_ID),
+        ),
+    ))
     document = _document()
     attestation = _attestation(
         document,
@@ -479,9 +456,9 @@ def test_unknown_attestation_key_fails_closed() -> None:
 
 def test_selected_trust_secret_must_authenticate_attestation() -> None:
     """The selected key identity cannot conceal incorrect secret material."""
-    trust = build_ticket_admission_telemetry_lineage_trust(
-        (_trust_key(OLD_KEY_ID, WRONG_SECRET, (0, None)),)
-    )
+    trust = build_ticket_admission_telemetry_lineage_trust((
+        _trust_key(OLD_KEY_ID, WRONG_SECRET, (0, None)),
+    ))
     document = _document()
     attestation = _attestation(
         document,
@@ -584,9 +561,9 @@ def test_rotated_ordered_gap_is_common_lineage_without_direct_link() -> None:
 
 def test_same_key_comparison_remains_supported_by_trust_set() -> None:
     """A trust set preserves ordinary same-key lineage comparison semantics."""
-    trust = build_ticket_admission_telemetry_lineage_trust(
-        (_trust_key(OLD_KEY_ID, OLD_SECRET, (0, None)),)
-    )
+    trust = build_ticket_admission_telemetry_lineage_trust((
+        _trust_key(OLD_KEY_ID, OLD_SECRET, (0, None)),
+    ))
     document = _document()
     attestation = _attestation(
         document,
@@ -653,12 +630,10 @@ def test_tampered_trust_metadata_fails_closed(
 
 def test_rotated_same_sequence_fork_still_fails_closed() -> None:
     """Key rotation cannot authorize two documents at one capture sequence."""
-    trust = build_ticket_admission_telemetry_lineage_trust(
-        (
-            _trust_key(OLD_KEY_ID, OLD_SECRET, (0, None)),
-            _trust_key(NEW_KEY_ID, NEW_SECRET, (0, None)),
-        )
-    )
+    trust = build_ticket_admission_telemetry_lineage_trust((
+        _trust_key(OLD_KEY_ID, OLD_SECRET, (0, None)),
+        _trust_key(NEW_KEY_ID, NEW_SECRET, (0, None)),
+    ))
     first_document = _document(LOW_ELAPSED_NS)
     second_document = _document(HIGH_ELAPSED_NS)
     first = _item(

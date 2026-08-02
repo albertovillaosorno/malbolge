@@ -1,0 +1,26 @@
+schema_version = 1
+
+[experiment]
+id = "template"
+record_kind = "plan"
+seed = 0
+method_class = "exploratory"
+
+[challenge]
+family = "template-challenge"
+difficulty = 1
+target_profile = "profile-independent"
+
+[budget]
+seconds = 1
+memory_mib = 128
+
+[verification]
+required = true
+oracle = "trusted-semantic-verifier"
+
+[provenance]
+# jig-ignore-next-line: indivisible reviewed identifier
+configuration = "src/research/algorithms/domain/algorithms/template/experiment.toml"
+implementation = "algorithms/template/"
+output = "algorithms/template/out/"

@@ -1,5 +1,7 @@
 cff-version: 1.2.0
+# jig-ignore-next-line: indivisible reviewed identifier
 message: "If you use or refer to this software or research platform, please cite it as below."
+# jig-ignore-next-line: indivisible reviewed identifier
 title: "Malbolge: C-to-Malbolge compiler and compiler-algorithm research platform"
 type: software
 authors:

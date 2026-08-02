@@ -4,6 +4,7 @@ status: "active"
 lane: "8"
 area: "mathematics"
 task: "TODO - Self-modification state-graph optimizer"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/self-modification-state-graph-optimizer/README.md"
 depends_on:
   - "machine-checked-mathematical-correspondence"
@@ -64,7 +65,8 @@ VM evidence.
   exact `(address,before,after)` equality between trace deltas and independently
   reconstructed memory differences for all classic/current instruction families.
 - `memory.rs` now represents current memory as one shared complete root plus
-  exact trace patches. Every patch validates `before`, empty deltas add no depth,
+  exact trace patches. Every patch validates `before`, empty deltas add no
+  depth,
   and stepwise materialization matches the runtime's complete 4,782,969-word
   checkpoint after every traced step. Performance/compaction remains open.
 - Post-commit depth evidence keeps latest-hit reads near 18 ns through depth
@@ -84,7 +86,8 @@ VM evidence.
   exhausts all 256 first-byte values and confirms convergence before/after the
   common future halt.
 - Already-terminated states have a second admitted key containing only profile,
-  committed output, and termination reason; varied memory/register/input fixtures
+  committed output, and termination reason; varied memory/register/input
+  fixtures
   converge and live machines fail closed outside this domain.
 - Wider-profile radix geometry, broader mutation-history collapse,
   code-generation integration, and end-to-end performance claims remain active
@@ -95,7 +98,8 @@ VM evidence.
   20.70 ns versus
   24118.75 ns for the linked chain. One new
   indexed override remains near 1.16
-  microseconds at depth 4096. The radix is promoted as the current-profile memory
+  microseconds at depth 4096. The radix is promoted as the current-profile
+  memory
   candidate; exact incremental identity/dedup is now the blocker.
 - `state.rs` now binds incremental state identity to one immutable
   profile/input/root lineage, evolves state exclusively from public traces, and
@@ -136,7 +140,8 @@ VM evidence.
   role/address/value fixtures, enabling read-before-write region live-in guards
   without duplicating opcode semantics in research code.
 - Verified regions now derive read-before-write memory live-ins exclusively from
-  `ProfileStepTrace::memory_reads` and `memory_delta`. Exact non-memory state plus
+  `ProfileStepTrace::memory_reads` and `memory_delta`. Exact non-memory state
+  plus
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
   execution exactly. Changing a live-in fails closed.

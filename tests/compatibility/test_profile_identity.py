@@ -1,8 +1,3 @@
-# File:
-#   - test_profile_identity.py
-# Path:
-#   - tests/compatibility/test_profile_identity.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Canonical and custom Malbolge target-profile identity tests."""
 
@@ -53,7 +40,11 @@ from pathlib import Path
 from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[2]
-EXAMPLE_PATH = ROOT / "compatibility" / "custom-profile.example.json"
+EXAMPLE_PATH = (
+    ROOT
+    / "src/interoperability/profile-compatibility/contract"
+    / "custom-profile.example.json"
+)
 PROFILE_PATH = ROOT / "malbolge.json"
 CURRENT_PROFILE = "malbolge-2026.2"
 CUSTOM_PROFILE = "custom-14-example"

@@ -16,15 +16,18 @@ scope:
   - "compatibility/"
   - "docs/technical/specification/"
   - "tests/compatibility/"
-  - "vm/src/profile_machine.rs"
-  - "vm/build.rs"
+  - "src/runtime/virtual-machine/domain/profile_machine.rs"
+  - "src/runtime/virtual-machine/composition/build.rs"
   - "tests/vm/profile_machine.rs"
-  - "vm/src/profile_trace.rs"
+  - "src/runtime/virtual-machine/domain/profile_trace.rs"
   - "tests/vm/profile_tracing.rs"
 validation:
-  - "python scripts/validate/target_profile.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - "python src/automation/repository/composition/scripts/validate/target_profile.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features profile_machine"
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
   - "jig validate --root ."
 ---
 # TODO - Scalable Malbolge memory model
@@ -32,7 +35,8 @@ validation:
 ## Objective
 
 Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as an exact historical conformance profile. Define a deterministic
+`malbolge-1998` as an exact historical conformance profile. Define a
+deterministic
 ternary scaling model for words, addressing, and memory that can support useful
 workloads without inheriting accidental limits from Ben's interpreter or the
 host architecture.
@@ -52,16 +56,21 @@ host architecture.
 - The source-size measurement is explicitly a lower-bound capacity proxy, not a
   promise that compiled DOOM fits. Future compiler measurements may require a
   new larger profile.
-- `ProfileMachine` now executes canonical schema-v2 profiles through 14 trits and
-  4,782,969 words under explicit `safe-rust-profiled` capability. Current-profile
+- `ProfileMachine` now executes canonical schema-v2 profiles through 14 trits
+  and
+  4,782,969 words under explicit `safe-rust-profiled` capability.
+  Current-profile
   fixtures exercise 14-trit crazy/rotate, byte I/O, halt, self-modification, and
   addresses above the historical ceiling.
 - The classic `Machine`/`ExecutionMachine` remain intentionally ten-trit and
   continue to reject current artifacts rather than changing historical types.
-- Full 1998 differential fixtures compare every final memory word plus registers,
+- Full 1998 differential fixtures compare every final memory word plus
+  registers,
   I/O, EOF, and termination between classic and profile-driven interpreters.
-- Current profile tracing is now profile-driven and records exact profile/EOF plus
-  atomic rejection evidence. Compiler, native tiers, and accelerators remain downstream profile-consumer work rather than
+- Current profile tracing is now profile-driven and records exact profile/EOF
+  plus
+  atomic rejection evidence. Compiler, native tiers, and accelerators remain
+  downstream profile-consumer work rather than
   memory-model ambiguity.
 
 ## Acceptance
@@ -85,7 +94,10 @@ host architecture.
 
 - Expected durable artifact surface: `malbolge.json`, `compatibility/`,
   `docs/technical/specification/`, `tests/compatibility/`.
-- Current evidence includes `compatibility/scalable-memory-evidence.json` and
+- Current evidence includes
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+  `src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json`
+  and
   `tests/compatibility/test_scalable_memory.py`.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile capacity boundary fixtures and exact diagnostics.

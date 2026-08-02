@@ -20,7 +20,7 @@ required = true
 oracle = "both validator identities, 59,049 reference words, CPU table, CUDA session, membership, selector, exact result, named phase, and verifier admission proofs"
 
 [provenance]
-implementation = "benchmarks/accelerator/search_prepared_phase_profile.py"
+implementation = "src/performance/benchmarking/composition/benchmarks/accelerator/search_prepared_phase_profile.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-prepared-reference-search-phase-profile-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-prepared-reference-search-phase-profile-rtx4060"
 

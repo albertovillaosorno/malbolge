@@ -4,6 +4,7 @@ status: "active"
 lane: "12"
 area: "accelerator"
 task: "TODO - Deterministic CPU optimizer"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/deterministic-cpu-optimizer.md"
 depends_on:
   - "safe-rust-malbolge-vm"
@@ -51,16 +52,21 @@ baseline for accelerator implementations.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - `tests/optimizer/test_deterministic_enumeration.py` covers canonical problem
   roundtrip, seeded order, budget bounds, duplicate rejection, malformed
-  encodings, trusted-verifier admission, and generic search-registry integration.
-- Active foundation: `deterministic-corpus-enumeration-v1` canonically encodes an
+  encodings, trusted-verifier admission, and generic search-registry
+  integration.
+- Active foundation: `deterministic-corpus-enumeration-v1` canonically encodes
+  an
   explicit finite candidate corpus, preserves duplicate input bytes for replay,
-  prunes only exact byte-identical payloads before logical identity, uses seed and
+  prunes only exact byte-identical payloads before logical identity, uses seed
+  and
   evaluation budget over stable first representatives, and never duplicates
   candidates by wraparound. It executes through the mandatory CPU search adapter
   and only an independent `TrustedCandidateVerifier` may accept a proposal. A
-  second bounded reference, `classic-rotate-target-search-v1`, composes exact CPU
+  second bounded reference, `classic-rotate-target-search-v1`, composes exact
+  CPU
   primitive evaluation with stable duplicate pruning, deterministic seed/budget
-  ordering, and an independent CPU verifier; the identical strategy shape is also
+  ordering, and an independent CPU verifier; the identical strategy shape is
+  also
   exercised by optional CUDA evaluation. `python -m optimizer.cli` can execute
   these registered CPU references from versioned configuration and canonical
   problem bytes while emitting reproducible untrusted-proposal evidence. These
@@ -71,11 +77,13 @@ baseline for accelerator implementations.
   median total time to named phases; batch construction, backend evaluation, and
   proposal selection dominate. Reusable prepared search state is now active for
   the CPU baseline: request/batch validation happens once, repeated execution
-  preserves exact untrusted proposals, and matching CUDA capacity may consume the
+  preserves exact untrusted proposals, and matching CUDA capacity may consume
+  the
   same strategy-bound proof. Retained CPU ordinary/prepared medians are
   293.564/148.590 ms (1.976x), with preparation outside timed intervals. The
   prepared phase profile places 79.9% of CPU median total time in backend
-  evaluation and 19.6% in proposal selection. Fixed-width packed primitive evidence
+  evaluation and 19.6% in proposal selection. Fixed-width packed primitive
+  evidence
   now removes per-candidate evidence object/materialization from the CPU search
   path while preserving generic item compatibility and request-order identity.
   Retained CPU ordinary/prepared medians are now 211.693/77.309 ms,
@@ -86,20 +94,29 @@ baseline for accelerator implementations.
   evaluation improves 2.801x. Ordinary CPU regresses 6.6%. Exact primitive
   preparation now seals validation once, and the CPU prepared port consumes that
   proof directly. The resident-session run records 46.232 ms CPU prepared, 7.2%
-  slower amid broader control regressions; no new CPU speedup is claimed. Prepared
-  CPU state now reuses an immutable exact 59,049-member proposal index instead of
-  rebuilding a dictionary; ordinary execution and fail-closed payload checks remain.
-  Retained CPU prepared median is 26.797 ms (1.725x better), and selection improves
+  slower amid broader control regressions; no new CPU speedup is claimed.
+  Prepared
+  CPU state now reuses an immutable exact 59,049-member proposal index instead
+  of
+  rebuilding a dictionary; ordinary execution and fail-closed payload checks
+  remain.
+  Retained CPU prepared median is 26.797 ms (1.725x better), and selection
+  improves
   3.519x to 11.801 ms. Prepared rotate state now stores exact preimage positions
-  after pruning/seed/budget and validates only their evidence; ordinary CPU search
+  after pruning/seed/budget and validates only their evidence; ordinary CPU
+  search
   retains the packed scan. Retained CPU prepared median is 15.266 ms (1.755x
-  better), and selection improves 894.008x to 13.2 us. Exact min/max validation now
+  better), and selection improves 894.008x to 13.2 us. Exact min/max validation
+  now
   replaces the Python value loop while preserving domain failure. Retained CPU
   prepared median is 14.058 ms (1.086x better), and backend evaluation improves
   1.091x to 13.190 ms. Prepared rotate now reuses a scalar-derived 59,049-entry
-  table while ordinary CPU stays scalar. Exhaustive equality and benchmark counters
-  require 16 evaluations/full cardinality. Retained CPU prepared median is 3.313 ms
-  (4.243x better), and backend evaluation improves 4.540x to 2.906 ms. CPU prepared
+  table while ordinary CPU stays scalar. Exhaustive equality and benchmark
+  counters
+  require 16 evaluations/full cardinality. Retained CPU prepared median is 3.313
+  ms
+  (4.243x better), and backend evaluation improves 4.540x to 2.906 ms. CPU
+  prepared
   is 1.440x faster than same-run CUDA. Result validation/packing is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance

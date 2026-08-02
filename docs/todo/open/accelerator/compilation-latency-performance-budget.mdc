@@ -4,6 +4,7 @@ status: "pending"
 lane: "15"
 area: "accelerator"
 task: "TODO - Compilation latency performance budget"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/compilation-latency-performance-budget.md"
 depends_on:
   - "benchmark-and-statistical-evidence-protocol"
@@ -52,12 +53,15 @@ target rather than a promised property of Malbolge synthesis.
 
 ## Evidence
 
-- Expected durable artifact surface: `accelerator/`, `algorithms/`, `optimizer/`,
+- Expected durable artifact surface: `accelerator/`, `algorithms/`,
+  `optimizer/`,
   `compiler/server/`, `benchmarks/accelerator/`, `benchmarks/compiler/`,
   `tests/optimizer/`.
-- Required evidence: raw samples, cache-state identity, device/resource metadata,
+- Required evidence: raw samples, cache-state identity, device/resource
+  metadata,
   cold/warm differential results, fallback tests, and latency decomposition.
-- Prerequisite completion evidence: `benchmark-and-statistical-evidence-protocol`,
+- Prerequisite completion evidence:
+  `benchmark-and-statistical-evidence-protocol`,
   `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`,
   `resident-incremental-compiler-and-wal`,
   `empirical-malbolge-synthesis-scaling-law`.

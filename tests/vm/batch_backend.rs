@@ -1,8 +1,3 @@
-// File:
-//   - batch_backend.rs
-// Path:
-//   - tests/vm/batch_backend.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -37,13 +30,6 @@
 //   - Composed by `tests/vm.rs` under the normal VM integration target.
 // - Defaults:
 //   - Safe-Rust sequential results are the expected semantic baseline.
-//
-// Related documents:
-// - docs/technical/runtime/execution/batch-vm-execution.md
-// - docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md
-//
-// Large file:
-//   - false
 //
 
 //! Hardware-neutral batch backend routing and deterministic CPU fallback tests.

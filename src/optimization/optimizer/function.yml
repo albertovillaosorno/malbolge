@@ -1,0 +1,106 @@
+schema: jig-function/v3
+identity:
+  id: optimizer
+  node: function:optimizer
+  path: src/optimization/optimizer
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-optimization/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: optimization
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: optimizer.jig
+parts:
+  - id: part-0001
+    path: application/optimizer/__init__.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0002
+    path: application/optimizer/cli.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0003
+    path: application/optimizer/crazy_target.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0004
+    path: application/optimizer/crazy_target_submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0005
+    path: application/optimizer/enumerative.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0006
+    path: application/optimizer/pruning.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0007
+    path: application/optimizer/rotate_target.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0008
+    path: application/optimizer/rotate_target_submission.py
+    kind: application
+    language: python
+    responsibility: Coordinate use cases without owning external policy.
+projects: []
+tests: []
+graph:
+  node: function:optimizer
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:optimization
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:optimizer
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

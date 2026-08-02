@@ -41,8 +41,10 @@ does not yet claim complete C-to-Malbolge lowerability.
 - The out-of-tree plugin loads against the pinned LLVM version, registers only
   documented `malbolge-*` checks, and emits deterministic source-located
   diagnostics without weakening ordinary clang-tidy checks.
-- Guest-C validation is opt-in for explicitly selected translation units; arbitrary
-  repository C is never enrolled by extension, inherited `.clang-tidy`, or magic
+- Guest-C validation is opt-in for explicitly selected translation units;
+  arbitrary
+  repository C is never enrolled by extension, inherited
+  `.jig/lang/cpp/.jig/lang/c/.clang-tidy`, or magic
   source comments. An explicitly passed directory named `doom` is the sole
   recursive convenience and remains an explicit caller action.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
@@ -57,7 +59,8 @@ lowered through host-dependent behavior.
 
 ## Verification
 
-- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`, `libc/`,
+- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`,
+  `libc/`,
   `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located

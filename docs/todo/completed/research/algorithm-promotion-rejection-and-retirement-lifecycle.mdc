@@ -17,9 +17,12 @@ scope:
   - "scripts/validate/"
   - "tests/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_algorithm_lifecycle.py tests/test_research_mirror.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.algorithm_lifecycle"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/research_mirror.py"
   - "jig validate --root ."
 ---
 # TODO - Algorithm promotion rejection and retirement lifecycle
@@ -63,7 +66,8 @@ reproducibility, complexity, portability, and measured benefit gate promotion.
   reproducibility, maintainability, portability, and measured-benefit evidence.
   `promoted` additionally requires a dated decision; `rejected` retains negative
   evidence; `retired` retains promotion evidence and successor identity.
-- The research-mirror validator now requires `lifecycle.toml`, and lifecycle tests
+- The research-mirror validator now requires `lifecycle.toml`, and lifecycle
+  tests
   exercise promotion, rejection, retirement, and fail-closed experimental cases.
 - No current algorithm is promoted by policy fiat; observed lifecycle state and
   interpretation remain separate.

@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_independent_ticket_transfers.py
-# Path:
-#   - tests/optimizer/test_cuda_independent_ticket_transfers.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Every acquired host lease is released before stream destruction returns.
 #
-# Related documents:
-# - accelerator/cuda/runtime.py
-#
-# Large file:
-#   - false
-#
 
 """Independent registered CUDA ticket transfers without hardware dependency."""
 
@@ -49,8 +36,6 @@ from __future__ import annotations
 
 import ctypes
 from typing import final
-
-import pytest
 
 from accelerator.cuda import cuda_independent_ticket_transfer_id
 from accelerator.cuda.runtime import CUDA_STREAM_NON_BLOCKING
@@ -61,6 +46,7 @@ from accelerator.cuda.runtime import CudaIndependentKernelLaunchFactory
 from accelerator.cuda.runtime import CudaIndependentKernelLaunchFunctions
 from accelerator.cuda.runtime import CudaIndependentTransferSubmission
 from accelerator.exact_primitives import AcceleratorExecutionError
+import pytest
 
 CUDA_SUCCESS = 0
 COPY_FAILURE = 17

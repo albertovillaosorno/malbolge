@@ -36,7 +36,8 @@ by the selected profile loader.
   and `#` has no implicit comment meaning in the canonical format.
 - Annotated v1 recognizes `#` as a full-line comment marker only when it is the
   first non-whitespace byte and is followed by horizontal space or tab. Bare
-  hash, hash before line ending/end of file, `#X`, and inline hashes remain code.
+  hash, hash before line ending/end of file, `#X`, and inline hashes remain
+  code.
 - Canonicalization strips ASCII whitespace/comments and then invokes the exact
   selected-profile loader, so presentation cannot bypass source validation.
 - A deterministic formatter inserts automatic line breaks without changing any
@@ -49,11 +50,13 @@ by the selected profile loader.
   explicit constructors on `Machine`, `ExecutionMachine`, and `ProfileMachine`.
   Existing canonical constructors remain unchanged.
 - Round-trip tests prove `canonicalize(format(canonical)) == canonical`
-  byte-for-byte across slash-heavy, whitespace-heavy, classic, and current-profile
+  byte-for-byte across slash-heavy, whitespace-heavy, classic, and
+  current-profile
   fixtures.
 - LF, CRLF, and CR presentations canonicalize identically, and parsing is
   locale-independent.
-- Evidence is durable enough to retire this TODO without losing the raw/canonical
+- Evidence is durable enough to retire this TODO without losing the
+  raw/canonical
   compatibility boundary.
 
 ## Evidence
@@ -64,7 +67,8 @@ by the selected profile loader.
   hash/comment ambiguity, LF/CRLF/CR, source-map positions, invalid bytes,
   automatic-wrap round trips, loader fail-closed behavior, and classic/facade/
   current-profile execution equivalence.
-- Remaining evidence: compiler/decompiler C/IR-aligned structural annotations and
+- Remaining evidence: compiler/decompiler C/IR-aligned structural annotations
+  and
   source-map composition against real emitted layout.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`, `malbolge-layout-and-encoding-backend`.

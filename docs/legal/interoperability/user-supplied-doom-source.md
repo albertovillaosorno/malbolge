@@ -17,12 +17,15 @@ third-party material?
 ## Verified Baseline
 
 The official `id-Software/DOOM` repository identifies the released source under
-GNU GPL 2.0 and states that real DOOM game data is still required. The engineering
+GNU GPL 2.0 and states that real DOOM game data is still required. The
+engineering
 profile in this repository pins commit
 `a77dfb96cb91780ca334d0d4cfd86957558007e0`; a fresh checkout of that commit with
-Git line-ending conversion disabled matched the 165 official files in the ignored
+Git line-ending conversion disabled matched the 165 official files in the
+ignored
 local source tree byte-for-byte. Its historical README also explains that a
-copyrighted sound library prevented release of the DOS source path reviewed by the
+copyrighted sound library prevented release of the DOS source path reviewed by
+the
 authors.
 
 The source evidence is cataloged in [DOOM bibliography record][doom-bib].
@@ -48,13 +51,18 @@ applicable license obligations.
 ## Analysis
 
 The public repository does not vendor DOOM source or game data. The current DOOM
-quality profile accepts engine source matching the pinned upstream commit above; a
-different revision requires a different explicit profile. A user may place that source
-checkout in the Git-ignored root `doom/` directory for local interoperability testing.
-External `data/` remains outside the source-code pin and requires its own provenance.
+quality profile accepts engine source matching the pinned upstream commit above;
+a
+different revision requires a different explicit profile. A user may place that
+source
+checkout in the Git-ignored root `doom/` directory for local interoperability
+testing.
+External `data/` remains outside the source-code pin and requires its own
+provenance.
 
 Repository-authored generator infrastructure and generated transforms such as
-`algorithms/doom/quality/main.rs` and `algorithms/doom/amalgamate/main.rs` may
+`src/research/algorithms/composition/algorithms/doom/quality/main.rs` and
+`src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs` may
 inspect or transform that local input. Generated intermediate files remain under
 Git-ignored `out/` directories unless a later source-specific legal review
 approves another publication boundary.

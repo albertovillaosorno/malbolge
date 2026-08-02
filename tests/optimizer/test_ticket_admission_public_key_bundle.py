@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_public_key_bundle.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_public_key_bundle.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,25 +30,6 @@
 #   - Runs without accelerator hardware or external network services.
 # - Defaults:
 #   - Uses two synthetic public-key byte strings and bounded temporary files.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-#
-# Large file:
-#   - false
 #
 
 """Canonical explicit detached public-key bundle tests."""
@@ -215,6 +189,7 @@ def _manifest(
     replacement_key: bool = False,
 ) -> manifest.TicketAdmissionTelemetryLineageSignatureTrustManifest:
     old_key = REPLACEMENT_PUBLIC_KEY if replacement_key else OLD_PUBLIC_KEY
+    # jig-ignore-next-line: indivisible reviewed identifier
     return manifest.build_ticket_admission_telemetry_lineage_signature_trust_manifest((
         ManifestEntry(
             algorithm_id=NEW_ALGORITHM_ID,

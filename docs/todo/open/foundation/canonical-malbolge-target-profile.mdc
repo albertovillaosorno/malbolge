@@ -14,11 +14,13 @@ scope:
   - "malbolge.json"
   - "docs/technical/specification/"
   - "compatibility/"
-  - "scripts/validate/target_profile.py"
+  - "src/automation/repository/composition/scripts/validate/target_profile.py"
   - "tests/test_target_profile.py"
 validation:
-  - "python scripts/validate/target_profile.py"
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - "python src/automation/repository/composition/scripts/validate/target_profile.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
   - "jig validate --root ."
 ---
 # TODO - Canonical Malbolge target profile
@@ -41,7 +43,8 @@ current Malbolge language.
 - Schema-v2 profiles use one ternary word domain for values and direct
   addresses. `malbolge-2026.2` therefore has modulus/memory 4,782,969 and EOF
   4,782,968 while preserving the defining semantic core.
-- `scripts/validate/target_profile.py` rejects duplicate JSON keys, unknown
+- `src/automation/repository/composition/scripts/validate/target_profile.py`
+  rejects duplicate JSON keys, unknown
   keys, unsupported schemas, inconsistent word/memory domains, invalid EOF,
   historical drift, multiple current identities, implicit selection, and
   schema-v2 semantic-core drift.
@@ -73,8 +76,10 @@ current Malbolge language.
 
 - Expected durable artifact surface: `malbolge.json`,
   `docs/technical/specification/`, `compatibility/`,
-  `scripts/validate/target_profile.py`, `tests/test_target_profile.py`.
-- Current executable schema evidence: `python scripts/validate/target_profile.py`
+  `src/automation/repository/composition/scripts/validate/target_profile.py`,
+  `tests/test_target_profile.py`.
+- Current executable schema evidence: `python
+  src/automation/repository/composition/scripts/validate/target_profile.py`
   plus the pytest target-profile and scalable-memory suites.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

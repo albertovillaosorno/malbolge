@@ -1,8 +1,3 @@
-// File:
-//   - c_conformance.c
-// Path:
-//   - tests/vm/c_conformance.c
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -24,7 +17,8 @@
 //   - Outputs: zero for success or a deterministic failure count.
 //   - Side effects: mutation of test-local machine and output storage only.
 // - Split-When:
-//   - Split when one conformance family requires independent executable evidence.
+//   - Split when one conformance family requires independent executable
+//     evidence.
 // - Merge-When:
 //   - Merge when another C harness owns the same specification evidence.
 // - Summary:
@@ -35,13 +29,6 @@
 //   - Compile as a standalone test or export its conformance entry points.
 // - Defaults:
 //   - Uses deterministic classic fixtures and a fixed semantic fingerprint.
-//
-// Related documents:
-// - docs/technical/specification/malbolge-1998.md
-// - tests/compatibility/specification/cases.toml
-//
-// Large file:
-//   - false
 //
 
 //! Independent C conformance harness for classic Malbolge semantics.

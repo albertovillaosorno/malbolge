@@ -54,44 +54,55 @@ baseline; native tiers are accelerators of identical observable behavior.
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
-- Active foundation: `execution/ir/main.rs` owns portable effect IR v3
+- Active foundation: `src/runtime/tiered-execution/domain/ir/main.rs` owns
+  portable effect IR v3
   (`EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`) and re-exports the
   VM-owned `TargetProfileRequirement` without creating a Rust crate boundary.
   State-graph research reprojects verifier traces into this IR,
   rejects tampered profile-ID/fingerprint/version/features/geometry,
   live-in/budget/outcome/effect fields, and preserves
   deterministic interpreter deoptimization on guard miss.
-- `vm/src/profile.rs::preflight_runtime_requirement()` consumes an independently
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/runtime/virtual-machine/domain/profile.rs::preflight_runtime_requirement()`
+  consumes an independently
   admitted IR requirement against an explicit runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical descriptor
   preflight under `safe-rust-classic`, is admitted by `safe-rust-profiled`, and
   rejects unknown feature IDs explicitly.
-- `select_verified_direct_native()` now requires that explicit runtime capability,
+- `select_verified_direct_native()` now requires that explicit runtime
+  capability,
   derives exact region memory from the IR, and applies program/profile capacity
-  before runtime capability, host validation, or backend construction. `002` then
+  before runtime capability, host validation, or backend construction. `002`
+  then
   `001` precedence is explicit and neither degrades to direct deopt.
 - State-applying emitters/verifiers repeat the declared-profile capacity check,
-  so bypassing selection cannot promote profile-invalid initial/register halt IR.
-- `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
+  so bypassing selection cannot promote profile-invalid initial/register halt
+  IR.
+- `src/runtime/tiered-execution/adapter-outbound/cache/main.rs` now binds
+  canonical byte-exact IR identity to host
   OS, ISA, backend revision, native ABI revision, and required features. Raw
   untrusted IR remains canonically transportable, but `RegionEffectIdentity` and
   `NativeArtifactKey` reject profile-capacity-inconsistent addressing through
   typed `NativeIdentityError::ProfileCapacity` before hashing or artifact
   construction. `NativeArtifactCache<Value>` adds caller-owned process-local
   lookup/insertion/replacement/removal. Derived digests are excluded from exact
-  identity equality; operations prefer the indicated bucket but search all buckets
-  when needed, so equal keys with different accelerator digests remain one entry.
+  identity equality; operations prefer the indicated bucket but search all
+  buckets
+  when needed, so equal keys with different accelerator digests remain one
+  entry.
   Digest collisions remain distinct because every operation confirms full key
   equality. Cache equality compares exact retained mappings rather than bucket
   layout, so the accelerator is absent from logical store identity. It owns no
   persistence, eviction, synchronization, or semantic admission.
-- `execution/native/main.rs` now lowers structurally consistent effect IR to
+- `src/runtime/tiered-execution/adapter-outbound/native/main.rs` now lowers
+  structurally consistent effect IR to
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
   entry/memory/input/output guards precede a collapsed final commit. Pinned
   Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
   x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
   identity, and relocation/symbol closure without trusting LLVM inspection.
-  `execution/native/profile_metadata.rs` now solely owns the format-neutral MBPF
+  `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` now
+  solely owns the format-neutral MBPF
   encoding consumed by bootstrap/direct emitters and COFF admission. Direct
   deopt/initial-halt revision-4, halt-observation revision-5,
   halt-fetch/non-graphical/no-operation revision-2, and jump-data revision-1
@@ -99,32 +110,41 @@ baseline; native tiers are accelerators of identical observable behavior.
   `MBPF` v3
   `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
-  features, word trits, profile capacity, and derived `u64` region memory retained
-  by their native key; absence or mismatch fails structurally. Bootstrap revision
+  features, word trits, profile capacity, and derived `u64` region memory
+  retained
+  by their native key; absence or mismatch fails structurally. Bootstrap
+  revision
   2 renders the same canonical payload into its C23 source and structural
-  admission requires the section for that revision. Historical revision 1 remains
+  admission requires the section for that revision. Historical revision 1
+  remains
   admissible without it; pinned Clang cross-ISA compilation is the object-level
   confirmation boundary.
 - A direct deopt-only backend now emits canonical x86-64/AArch64 COFF without
   Clang. Complete byte fixtures plus structural validation admit only the exact
-  `return guard-miss` programs; opcode mutation fails semantic admission. This is
-  the first semantically admitted native artifact and intentionally never applies
+  `return guard-miss` programs; opcode mutation fails semantic admission. This
+  is
+  the first semantically admitted native artifact and intentionally never
+  applies
   effects.
-- `direct-initial-halt` is the first admitted state-applying template. It accepts
+- `direct-initial-halt` is the first admitted state-applying template. It
+  accepts
   only zero-state/no-I/O/no-memory one-step halt IR, preflights before commit,
   changes only termination on hit, and returns guard miss atomically otherwise.
   Complete object fixtures and x86-64 hit/miss/null execution evidence cover the
   boundary; ARM64 object linkage is also verified.
-- `direct-halt-registers` revision 5 extends the same one-step halt contract across
+- `direct-halt-registers` revision 5 extends the same one-step halt contract
+  across
   arbitrary 32-bit `A/C/D` values and full 64-bit input/output counter
   observations while memory/I/O effects remain forbidden. Independently rendered
   495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX`; counter,
-  opcode, and revision mismatch fail closed. The only commit remains termination.
+  opcode, and revision mismatch fail closed. The only commit remains
+  termination.
 - `direct-halt-fetch` revision 2 binds one exact graphical code-cell live-in to
   real halt termination. VM-owned positional decode must return `v`; full entry
   observation, memory pointer, exact IR footprint, exact `memory[C]`, and prior
   termination are guarded before committing only tag `1`. Independently rendered
-  535/628-byte objects, x86-64 atomic execution, and AArch64 instruction decoding
+  535/628-byte objects, x86-64 atomic execution, and AArch64 instruction
+  decoding
   bind the contract.
 - `direct-non-graphical` revision 2 is the first exact memory-live-in direct
   template. One VM-classified non-graphical live-in must equal `memory[C]`; full
@@ -145,9 +165,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   x86-64 execution and AArch64 decoding prove both live-in guards, exact
   125-word footprint, atomic commit, and misses. Aliasing remains rejected.
 - `direct-jump-code` revision 1 adds the exact post-jump encryption order. Three
-  distinct code/data/encryption live-ins bind `memory[5]=93`, `memory[7]=11`, and
+  distinct code/data/encryption live-ins bind `memory[5]=93`, `memory[7]=11`,
+  and
   `memory[11]=68`; VM-owned decode, encryption, and successors derive
-  `memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent 622/731-byte objects,
+  `memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent 622/731-byte
+  objects,
   x86-64 atomic execution, and AArch64 decoding prove the 13-word footprint,
   three guards, exact commit, and twelve common-miss branches.
 - `direct-rotate` revision 1 adds the first reviewed transition with two
@@ -160,7 +182,8 @@ baseline; native tiers are accelerators of identical observable behavior.
 - Every memory-backed direct template now compares ABI `memory_words` with the
   exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
-  classifies IR before backend construction: exact zero-register halt selects the
+  classifies IR before backend construction: exact zero-register halt selects
+  the
   smallest fast path, other no-live-in halt IR selects the observation-bound
   template, graphical halt fetch and non-graphical termination select terminal
   live-in templates, exact no-op IR selects the memory-writing template, and
@@ -169,25 +192,33 @@ baseline; native tiers are accelerators of identical observable behavior.
   explicit at this narrow boundary and post-selection errors never degrade
   silently to fallback.
 - `select_preflighted_execution_tier()` adds a product-neutral plan above that
-  boundary. Only top-level direct format absence maps to the normative interpreter
+  boundary. Only top-level direct format absence maps to the normative
+  interpreter
   after preflight; `002`, `001`, and backend/emission/admission failures remain
-  errors. It performs no cache lookup, executable memory, linking, or invocation.
-- `select_cached_preflighted_execution_tier()` adds caller-owned direct reuse under
-  explicit `DirectHost`. A private `PreparedDirectTarget` binds specialization to
-  one exact key used by lookup and consumed by miss emission, avoiding a second IR
+  errors. It performs no cache lookup, executable memory, linking, or
+  invocation.
+- `select_cached_preflighted_execution_tier()` adds caller-owned direct reuse
+  under
+  explicit `DirectHost`. A private `PreparedDirectTarget` binds specialization
+  to
+  one exact key used by lookup and consumed by miss emission, avoiding a second
+  IR
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
   keys/bytes for all nine templates, and reuses one pointer-identical immutable
-  `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
+  `Arc` allocation. Profile and host preflight occur before lookup; `002`,
+  `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first
   constructs canonical region identity, removes every host/backend variant, and
   leaves unrelated regions unchanged; profile-invalid IR fails before mutation.
   Exact-target invalidation removes all regions sharing one complete
   OS/ISA/backend revision/native-ABI/features identity while preserving other
-  targets. Outstanding `Arc` plans remain valid and reinsertion restores the same
-  key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
+  targets. Outstanding `Arc` plans remain valid and reinsertion restores the
+  same
+  key/bytes under new allocations. `Arc` owns immutable sharing only;
+  persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
 - Remaining crazy and I/O direct selection, cache-aware AOT/JIT

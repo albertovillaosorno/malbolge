@@ -1,8 +1,3 @@
-// File:
-//   - profile_batch.rs
-// Path:
-//   - tests/vm/profile_batch.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -39,13 +32,6 @@
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Sequential profile batches are the baseline for host-parallel execution.
-//
-// Related documents:
-// - docs/technical/runtime/execution/batch-vm-execution.md
-// - docs/technical/compatibility/scalable-malbolge-memory-model.md
-//
-// Large file:
-//   - false
 //
 
 //! Current-profile batch scheduling and per-request isolation fixtures.

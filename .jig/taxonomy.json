@@ -1,0 +1,272 @@
+{
+  "$schema": "jig-taxonomy/v2",
+  "version": 22,
+  "architecture": {
+    "kinds": {
+      "domain": "business-rules-and-domain-models",
+      "application": "use-case-and-domain-coordination",
+      "port-inbound": "typed-entry-contracts",
+      "port-outbound": "core-required-dependency-contracts",
+      "adapter-inbound": "external-callers-to-inbound-ports",
+      "adapter-outbound": "outbound-ports-to-external-systems",
+      "contract": "serialized-or-cross-process-representations",
+      "composition": "runtime-wiring-and-policy",
+      "math": "equations-proofs-models-and-formal-notation"
+    },
+    "unknown_kind": "fatal",
+    "kind_directory_required_when_used": true,
+    "undeclared_dependency": "fatal",
+    "cycle": "fatal-unless-profile-proves-admissible"
+  },
+  "source": {
+    "route": "src/<domain>/<function>/<kind>/<part>",
+    "manifest": "function.yml",
+    "parts_at_function_root": "forbidden",
+    "boundary_documents": [
+      "README.md"
+    ],
+    "boundary_sidecars": "required"
+  },
+  "function_capabilities": {
+    "manifest": "<function>.jig",
+    "order": [
+      "math",
+      "assembly",
+      "c",
+      "cpp",
+      "csharp",
+      "java",
+      "latex",
+      "python",
+      "r",
+      "rust",
+      "typescript",
+      "malbolge"
+    ],
+    "required": [
+      "math"
+    ],
+    "surface_sidecars": "required",
+    "surfaces": {
+      "math": [],
+      "assembly": [],
+      "c": [],
+      "cpp": [],
+      "csharp": [],
+      "java": [],
+      "latex": [],
+      "python": [],
+      "r": [],
+      "rust": [],
+      "typescript": [],
+      "malbolge": []
+    },
+    "kind_surfaces": {
+      "math": [],
+      "assembly": [],
+      "c": [],
+      "cpp": [],
+      "csharp": [],
+      "java": [],
+      "latex": [],
+      "python": [],
+      "r": [],
+      "rust": [],
+      "typescript": [],
+      "malbolge": []
+    }
+  },
+  "function_projects": {
+    "math": [],
+    "assembly": [],
+    "c": [],
+    "cpp": [],
+    "csharp": [],
+    "java": [],
+    "latex": [],
+    "python": [],
+    "r": [],
+    "rust": [],
+    "typescript": [],
+    "malbolge": []
+  },
+  "tools": {
+    "route": "tools/<function>/<kind>/<part>"
+  },
+  "graph": {
+    "schema": "jig-graph-node/v2",
+    "authority": "adjacent-yaml-and-self-describing-authorities",
+    "database_authority": false,
+    "purpose": "computable-index-of-institutional-memory",
+    "compiled_sources": [
+      "authored-yaml",
+      "observed-source-ast",
+      "observed-markdown-structure"
+    ],
+    "knowledge_domains": [
+      "intent",
+      "research",
+      "bibliography",
+      "decisions",
+      "implementation",
+      "tests",
+      "evidence",
+      "architecture",
+      "languages",
+      "ownership",
+      "security",
+      "licenses",
+      "toolchains",
+      "distribution",
+      "benchmarks",
+      "dependencies",
+      "lifecycle-state"
+    ],
+    "semantic_scale_limit": "none",
+    "resource_exhaustion": "incomplete-compilation-not-invalid-graph",
+    "inverse_semantics": "counterpart-view-not-reverse-causation",
+    "boilerplate_target_placeholder": "VALUE-only-before-materialization",
+    "field_order": [
+      "schema",
+      "identity",
+      "contracts",
+      "classification",
+      "ownership",
+      "lifecycle",
+      "content",
+      "architecture",
+      "ast",
+      "legal",
+      "evidence",
+      "graph",
+      "provenance",
+      "assurance",
+      "validation"
+    ],
+    "required_groups": [
+      "schema",
+      "identity",
+      "contracts",
+      "classification",
+      "ownership",
+      "lifecycle",
+      "graph",
+      "provenance",
+      "validation"
+    ],
+    "role_groups": [
+      "content",
+      "architecture",
+      "ast",
+      "legal",
+      "evidence",
+      "assurance"
+    ],
+    "node_kinds": [
+      "artifact",
+      "authority",
+      "claim",
+      "control",
+      "evidence",
+      "hub",
+      "obligation",
+      "risk"
+    ],
+    "hub_kinds": [
+      "repository",
+      "location",
+      "domain",
+      "role",
+      "lifecycle",
+      "function",
+      "kind",
+      "profile",
+      "source-family",
+      "license"
+    ],
+    "required_hubs": [
+      "repository",
+      "location",
+      "role",
+      "lifecycle"
+    ],
+    "edge_field_order": [
+      "id",
+      "relation",
+      "target",
+      "inverse",
+      "purpose",
+      "lifecycle",
+      "cardinality"
+    ],
+    "edge_lifecycle": [
+      "primary",
+      "secondary",
+      "none"
+    ],
+    "inverse_policy": "required-when-registered",
+    "unknown_edges": "fatal",
+    "dangling_edges": "fatal",
+    "duplicate_edges": "fatal",
+    "stale_edges": "fatal",
+    "edge_types": {
+      "belongs-to-repository": "contains",
+      "contains": "belongs-to-repository",
+      "member-of-location": "contains-location-member",
+      "contains-location-member": "member-of-location",
+      "member-of-domain": "contains-domain-member",
+      "contains-domain-member": "member-of-domain",
+      "has-role": "role-of",
+      "role-of": "has-role",
+      "belongs-to-function": "owns-part",
+      "owns-part": "belongs-to-function",
+      "has-kind": "kind-of",
+      "kind-of": "has-kind",
+      "has-language": "language-of",
+      "language-of": "has-language",
+      "originates-from": "initiates",
+      "initiates": "originates-from",
+      "admits-source": "admitted-by",
+      "admitted-by": "admits-source",
+      "cites": "cited-by",
+      "cited-by": "cites",
+      "supported-by": "supports",
+      "supports": "supported-by",
+      "implements": "implemented-by",
+      "implemented-by": "implements",
+      "verifies": "verified-by",
+      "verified-by": "verifies",
+      "closes": "closed-by",
+      "closed-by": "closes",
+      "mirrors": "mirrored-by",
+      "mirrored-by": "mirrors",
+      "depends-on": "required-by",
+      "required-by": "depends-on",
+      "governed-by": "governs",
+      "governs": "governed-by",
+      "licensed-under": "license-for",
+      "license-for": "licensed-under",
+      "projects-to": "projected-from",
+      "projected-from": "projects-to",
+      "evidences": "evidenced-by",
+      "evidenced-by": "evidences",
+      "governs-skill-for": "has-governed-skill",
+      "has-governed-skill": "governs-skill-for",
+      "belongs-to-skill": "contains-skill-document",
+      "contains-skill-document": "belongs-to-skill",
+      "projects-bibliography-for": "has-bibliography-projection",
+      "has-bibliography-projection": "projects-bibliography-for"
+    }
+  },
+  "lifecycle": {
+    "mandatory_causal_route": [
+      "todo-open",
+      "research",
+      "bibliography",
+      "documentation",
+      "implementation",
+      "tests",
+      "todo-completed"
+    ]
+  }
+}

@@ -48,7 +48,8 @@ versioned capability registry is claimed yet.
 - Capability identity, semantic version, and guest-visible argument/result types
   are independent from the host transport or native backend that services them.
 - Every call frame has one deterministic encoding with explicit integer widths,
-  byte order, pointer/range representation, result status, and failure semantics.
+  byte order, pointer/range representation, result status, and failure
+  semantics.
 - Guest pointers and byte ranges are validated against the selected guest memory
   domain before a host-side effect observes or mutates them.
 - Unknown capability families, unsupported versions, invalid frames, invalid
@@ -84,7 +85,8 @@ semantics to keep execution moving.
 - The same frame vectors are executed through interpreter and every admitted
   native tier and compared for guest memory, returned values, diagnostics, and
   externally observable ordering.
-- Cross-platform runner tests prove that capability identity does not change when
+- Cross-platform runner tests prove that capability identity does not change
+  when
   the host adapter changes.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi` and
   `canonical-malbolge-target-profile`.

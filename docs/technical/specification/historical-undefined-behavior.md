@@ -207,7 +207,7 @@ are factored into shared code for other instructions.
 
 - [Historical Malbolge semantics](malbolge-1998.md)
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
-- `tools/malbolge/main.c`
+- `src/interoperability/historical-malbolge/adapter-outbound/main.c`
 
 ### Governing ADR Paths
 

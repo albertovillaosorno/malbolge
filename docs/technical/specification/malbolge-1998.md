@@ -24,7 +24,8 @@ This document governs the following declared TODO scope:
 
 Ben Olmstead's 1998 prose specification is the normative authority for the
 classic machine in this repository. The original C interpreter at
-`tools/malbolge/main.c` is immutable historical evidence, not the semantic
+`src/interoperability/historical-malbolge/adapter-outbound/main.c` is immutable
+historical evidence, not the semantic
 arbiter when it contradicts the written specification.
 
 The original interpreter remains valuable for differential testing over the
@@ -44,7 +45,8 @@ data pointer `D`, memory `M`, an input byte stream, and an output byte stream.
 All three registers begin at zero.
 
 The normative ternary rotate and crazy operation are defined in The normative
-equation source is `math/specification/malbolge-1998.tex`.
+equation source is
+`src/specification/formal-model/math/specification/malbolge-1998.tex`.
 
 ### Loading
 
@@ -185,7 +187,8 @@ while execution and compiler algorithms may be optimized aggressively.
 
 ### Historical Interpreter Role
 
-`tools/malbolge/main.c` is retained unchanged for:
+`src/interoperability/historical-malbolge/adapter-outbound/main.c` is retained
+unchanged for:
 
 - historical provenance;
 - discovering implementation/specification discrepancies;
@@ -224,7 +227,7 @@ It does not override the specification.
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
-- `tools/malbolge/main.c`
+- `src/interoperability/historical-malbolge/adapter-outbound/main.c`
 
 ### Governing ADR Paths
 

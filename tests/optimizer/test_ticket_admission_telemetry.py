@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - No online learning or automatic recorder exists.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry.py
-#
-# Large file:
-#   - false
-#
 
 """Bounded opt-in ticket admission telemetry tests."""
 
@@ -49,8 +36,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
-
-import pytest
 
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
@@ -73,6 +58,7 @@ from accelerator.ticket_admission_telemetry import (
     ticket_admission_failure_telemetry_id,
 )
 from accelerator.ticket_admission_telemetry import ticket_admission_telemetry_id
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketAdmissionReport

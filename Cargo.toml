@@ -4,14 +4,42 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
 publish = false
-build = "vm/build.rs"
+build = "src/runtime/virtual-machine/composition/build.rs"
 license = "MIT"
 description = "Modern deterministic Malbolge toolchain and execution engine"
 repository = "https://github.com/albertovillaosorno/malbolge"
 
 [[bin]]
 name = "malbolge"
-path = "cli/main.rs"
+path = "src/interface/command-line/composition/main.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "interpreter_benchmark"
+path = "src/performance/benchmarking/composition/interpreter_benchmark.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "state_graph_benchmark"
+path = "src/performance/benchmarking/composition/state_graph_benchmark.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "malbolge_decompile"
+path = "src/tooling/decompiler/composition/malbolge_decompile.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "museum_convert"
+path = "src/tooling/decompiler/composition/museum_convert.rs"
 test = false
 bench = false
 doc = false
@@ -20,7 +48,7 @@ resolver = "3"
 members = ["."]
 
 [lib]
-path = "vm/src/lib.rs"
+path = "src/runtime/virtual-machine/composition/lib.rs"
 
 [features]
 default = []

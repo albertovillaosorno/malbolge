@@ -1,8 +1,3 @@
-# File:
-#   - test_project_bootstrap.py
-# Path:
-#   - tests/test_project_bootstrap.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,13 +29,6 @@
 # - Defaults:
 #   - Optional components report missing or unsupported instead of guessing.
 #
-# Related documents:
-# - scripts/bootstrap/project.py
-# - scripts/bootstrap/python_validation.py
-#
-# Large file:
-#   - false
-#
 
 """Project bootstrap and platform-layout regressions."""
 
@@ -54,7 +40,6 @@ import stat
 from typing import TYPE_CHECKING
 
 import pytest
-
 from scripts.bootstrap import project
 from scripts.bootstrap import python_validation
 
@@ -94,7 +79,8 @@ def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
 
 
 def _write_rust_manifest(root: Path, channel: str = WINDOWS_CHANNEL) -> Path:
-    manifest = root / "rust-toolchain.toml"
+    manifest = root / ".jig/version/rust-toolchain.toml"
+    manifest.parent.mkdir(parents=True)
     _ = manifest.write_text(
         f'[toolchain]\nchannel = "{channel}"\n',
         encoding="utf-8",

@@ -14,7 +14,8 @@ correctness, performance, and interpretation?
 
 Malbolge is both an implementation project and a compiler-research platform.
 Research therefore needs a stricter boundary than “the benchmark got faster.” A
-candidate may be fast and wrong, correct but slower, useful only for one profile,
+candidate may be fast and wrong, correct but slower, useful only for one
+profile,
 or statistically noisy. All four outcomes are scientifically meaningful.
 
 External prior art reinforces two design choices used here. ACM SIGSOFT's
@@ -34,15 +35,18 @@ rules around those ideas.
 ## Prior Work
 
 - [ACM SIGSOFT Empirical Standards for Software
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   Engineering](../../bibliography/provenance-and-methodology/research/acm-sigsoft-empirical-standards.md)
   provides method-specific prior art for engineering research, benchmarking,
   optimization studies, and replication.
 - [ACM-style artifact evaluation and
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   reproducibility](../../bibliography/provenance-and-methodology/research/acm-artifact-evaluation.md)
   provides prior art for documented, consistent, complete, exercisable research
   artifacts and reproducible computational results.
 - [Research Evidence And Algorithm
-  Mirror](../adr/research-evidence-and-algorithm-mirror.md) defines the repository
+  Mirror](../adr/research-evidence-and-algorithm-mirror.md) defines the
+  repository
   boundary between genuine algorithm research and ordinary product engineering.
 
 ## Hypothesis
@@ -73,14 +77,44 @@ Every research record declares one primary class and any applicable overlays.
 The class selects additional evidence requirements; it does not change the
 repository's correctness trust boundary.
 
-| Class | Use in Malbolge | Additional required evidence |
-| --- | --- | --- |
-| `engineering` | New compiler/runtime artifact or technique | Need/relevance, artifact description, limitations, justified alternative/baseline comparison |
-| `benchmarking` | Performance, scalability, latency, memory, throughput | Exact workload/setup, raw samples, repetitions/stability, resource identity, uncertainty/dispersion |
-| `optimization` | Search, superoptimization, heuristics, ML-guided search | Search/solution space, fitness functions, baseline, parameters, stochasticity, seeds/trials, distribution/quality comparison |
-| `replication` | Deliberate repeat of an earlier result | Original study/result identity, replication motivation, exact preserved/changed factors, outcome comparison |
-| `mathematical` | Proof, exhaustive correspondence, algebraic reduction | Explicit domain, assumptions, theorem/property statement, proof or exhaustive/machine-checked correspondence |
-| `exploratory` | Question-forming work without a defensible directional hypothesis | Scope, observation protocol, stopping rule, retained observations, criteria for promoting a later hypothesis |
+- **Class:** `engineering`
+  - **Use in Malbolge:** New compiler/runtime artifact or technique
+  - **Additional required evidence:** Need/relevance, artifact description,
+                                      limitations, justified
+                                      alternative/baseline comparison
+
+- **Class:** `benchmarking`
+  - **Use in Malbolge:** Performance, scalability, latency, memory, throughput
+  - **Additional required evidence:** Exact workload/setup, raw samples,
+                                      repetitions/stability, resource identity,
+                                      uncertainty/dispersion
+
+- **Class:** `optimization`
+  - **Use in Malbolge:** Search, superoptimization, heuristics, ML-guided search
+  - **Additional required evidence:** Search/solution space, fitness functions,
+                                      baseline, parameters, stochasticity,
+                                      seeds/trials, distribution/quality
+                                      comparison
+
+- **Class:** `replication`
+  - **Use in Malbolge:** Deliberate repeat of an earlier result
+  - **Additional required evidence:** Original study/result identity,
+                                      replication motivation, exact
+                                      preserved/changed factors, outcome
+                                      comparison
+
+- **Class:** `mathematical`
+  - **Use in Malbolge:** Proof, exhaustive correspondence, algebraic reduction
+  - **Additional required evidence:** Explicit domain, assumptions,
+                                      theorem/property statement, proof or
+                                      exhaustive/machine-checked correspondence
+
+- **Class:** `exploratory`
+  - **Use in Malbolge:** Question-forming work without a defensible directional
+                         hypothesis
+  - **Additional required evidence:** Scope, observation protocol, stopping
+                                      rule, retained observations, criteria for
+                                      promoting a later hypothesis
 
 A record may combine classes, for example `engineering + benchmarking` or
 `optimization + benchmarking`. It must satisfy each applicable overlay. Do not
@@ -109,7 +143,8 @@ claim registration with an external registry.
 
 Exploratory work may omit a directional hypothesis, but it must label itself
 exploratory and cannot retrospectively present an observed pattern as a
-preregistered confirmatory hypothesis. A subsequent confirmatory study receives a
+preregistered confirmatory hypothesis. A subsequent confirmatory study receives
+a
 new experiment identity.
 
 ### Correctness Before Quality
@@ -117,7 +152,8 @@ new experiment identity.
 Correctness evidence and optimization quality are separate channels.
 
 For semantics-affecting compiler/runtime research, a candidate result is not
-eligible for performance interpretation until the trusted verifier/oracle accepts
+eligible for performance interpretation until the trusted verifier/oracle
+accepts
 it under the declared target profile. A faster invalid result is recorded as a
 correctness failure, not a performance win.
 
@@ -131,13 +167,29 @@ threat to validity.
 
 Research records use the following evidence discipline:
 
-| Layer | Contains | May be rewritten after results? |
-| --- | --- | --- |
-| `plan` | question, class, hypothesis, baseline, metrics, rejection rule | only by versioned deviation note |
-| `raw evidence` | samples, logs, verifier outcomes, failures, environment facts | no; append/re-run under new experiment identity |
-| `derived evidence` | summaries, confidence/dispersion, Pareto/quality metrics | reproducibly regenerated from raw evidence |
-| `interpretation` | explanation, implications, limitations | yes, with evidence references |
-| `conclusion` | supported/weakened/rejected/inconclusive/promotion recommendation | yes when new evidence is added, never by deleting contrary evidence |
+- **Layer:** `plan`
+  - **Contains:** question, class, hypothesis, baseline, metrics, rejection rule
+  - **May be rewritten after results?:** only by versioned deviation note
+
+- **Layer:** `raw evidence`
+  - **Contains:** samples, logs, verifier outcomes, failures, environment facts
+  - **May be rewritten after results?:** no; append/re-run under new experiment
+                                         identity
+
+- **Layer:** `derived evidence`
+  - **Contains:** summaries, confidence/dispersion, Pareto/quality metrics
+  - **May be rewritten after results?:** reproducibly regenerated from raw
+                                         evidence
+
+- **Layer:** `interpretation`
+  - **Contains:** explanation, implications, limitations
+  - **May be rewritten after results?:** yes, with evidence references
+
+- **Layer:** `conclusion`
+  - **Contains:** supported/weakened/rejected/inconclusive/promotion
+                  recommendation
+  - **May be rewritten after results?:** yes when new evidence is added, never
+                                         by deleting contrary evidence
 
 A result table must make it possible to distinguish an observed value from the
 researcher's explanation of that value.
@@ -189,7 +241,8 @@ records additionally define:
 - algorithm/heuristic identities and parameter values;
 - all sources of stochasticity;
 - deterministic seed set or seed-generation rule;
-- multiple trials for stochastic approaches unless resource limits are justified;
+- multiple trials for stochastic approaches unless resource limits are
+  justified;
 - stopping rule independent of whether a favorable result has appeared;
 - distributions/variation and solution quality, not only the best candidate;
 - deterministic verifier acceptance before a candidate counts as valid.
@@ -264,7 +317,8 @@ silently bypassed.
   human-subjects research protocol.
 - A committed plan reduces hindsight bias but is not equivalent to external
   preregistration or independent peer review.
-- Exact reproducibility can still be limited by unavailable hardware, proprietary
+- Exact reproducibility can still be limited by unavailable hardware,
+  proprietary
   systems, nondeterministic platforms, or external datasets; deviations must be
   recorded rather than hidden.
 - Method classification is a judgment call. Records combining multiple methods
@@ -283,8 +337,10 @@ threats-to-validity review.
 ## References
 
 - [ACM SIGSOFT Empirical Standards for Software
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   Engineering](../../bibliography/provenance-and-methodology/research/acm-sigsoft-empirical-standards.md)
 - [ACM-style artifact evaluation and
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   reproducibility](../../bibliography/provenance-and-methodology/research/acm-artifact-evaluation.md)
 - [Research Evidence And Algorithm
   Mirror](../adr/research-evidence-and-algorithm-mirror.md)

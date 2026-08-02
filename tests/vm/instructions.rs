@@ -1,8 +1,3 @@
-// File:
-//   - instructions.rs
-// Path:
-//   - tests/vm/instructions.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,13 +28,6 @@
 //   - Composed by `tests/vm.rs` into the Cargo VM integration-test target.
 // - Defaults:
 //   - Every non-halt transition must encrypt and then advance `C` and `D`.
-//
-// Related documents:
-// - docs/technical/specification/malbolge-1998.md
-// - tests/compatibility/specification/cases.toml
-//
-// Large file:
-//   - false
 //
 
 //! Instruction-level conformance tests for the normative classic VM.

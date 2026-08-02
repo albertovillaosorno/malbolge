@@ -48,14 +48,16 @@ eligibility. `decode_profile_instruction()` owns the corresponding positional
 translation and reduces wider code pointers by the normative 94-position phase.
 `profile_cell_decodes_to_no_operation()` owns no-op classification,
 `encrypt_profile_cell()` owns the post-step `XLAT2` transformation, and
-`profile_pointer_successor()` owns exact profile-domain pointer wraparound. Native
+`profile_pointer_successor()` owns exact profile-domain pointer wraparound.
+Native
 backends consume these VM-owned functions rather than redefining Malbolge cell
 semantics, translation tables, or pointer arithmetic.
 
 Both traced and untraced APIs still invoke the same transition engine. The
 internal profile step result now carries both the already-validated memory delta
 and fixed-role semantic reads. `ProfileStepTrace::memory_reads` records the real
-code fetch, optional data-pointer read, and optional encryption-target read, for a
+code fetch, optional data-pointer read, and optional encryption-target read, for
+a
 maximum of three semantic reads per request. Rejected transitions retain reads
 completed before the error; diagnostic/delta bookkeeping reads are excluded.
 `step()` discards this evidence and `step_traced()` publishes it.
@@ -88,13 +90,17 @@ identity `safe-rust-profiled`. It deliberately does not replace classic `Word`,
 validated initial-state constructor: the supplied memory image must have exact
 profile length, every cell must be inside the profile word domain, and all three
 registers must be in-domain. Complete checkpoint/deoptimization state uses
-`ProfileMachineIoState` plus `ProfileMachineState`; it additionally preserves the
-full input stream, consumed-input cursor, committed output, and stable termination
+`ProfileMachineIoState` plus `ProfileMachineState`; it additionally preserves
+the
+full input stream, consumed-input cursor, committed output, and stable
+termination
 reason. `snapshot_state()` clones that complete state, and `from_snapshot()`
-restores it without semantic reset. Construction never truncates or wraps invalid
+restores it without semantic reset. Construction never truncates or wraps
+invalid
 host values, and an input cursor beyond its stream is rejected before checkpoint
 construction. Historical differential fixtures
-run the same 1998 program through both engines and compare all 59,049 final memory words,
+run the same 1998 program through both engines and compare all 59,049 final
+memory words,
 registers, byte I/O/EOF, and termination. Current-profile fixtures additionally
 exercise addresses above 59,048 and independent scalar expectations for 14-trit
 crazy and rotate.
@@ -118,12 +124,14 @@ command passes at retirement time.
 - Tracing is observational and cannot alter guest state or execution results.
 - The independent C implementation is evidence, not an implementation dependency
   of the Rust VM.
-- `ProfileMachine` generalizes only profile-width geometry and preserves the same
+- `ProfileMachine` generalizes only profile-width geometry and preserves the
+  same
   sequential/self-modifying semantic core; it never changes classic `Machine`.
 - Profile state reconstruction is fail-closed: exact memory shape, all word/
   register values, and checkpoint input cursor are validated before use.
 - Complete profile checkpoints preserve input position, committed output, and
-  termination as well as memory/register state; restoration does not restart I/O.
+  termination as well as memory/register state; restoration does not restart
+  I/O.
 - Classic and profiled trace hooks wrap their respective real step engines and
   therefore cannot become an alternate transition implementation. Their memory
   deltas are the validated transition result, not a second write planner.
@@ -148,15 +156,18 @@ memory, input consumption, or output.
 - `tests/vm/c_conformance.c` independently produces and asserts the same
   signature from the pure-C VM.
 - `tests/vm/profile_reads.rs` covers every current-profile instruction family
-  plus rejected jump encryption and requires exact fetch/data/encryption semantic
+  plus rejected jump encryption and requires exact fetch/data/encryption
+  semantic
   read roles, addresses, values, and operation counts from the real step engine.
 - `tests/vm/profile_tracing.rs` traces current-profile EOF/output/halt, proves
-  traced and plain current execution agree on outcome, I/O, registers and sampled
+  traced and plain current execution agree on outcome, I/O, registers and
+  sampled
   memory, verifies halt/rejection expose an empty memory delta, and exercises a
   real 14-trit recurrence jump whose rejected encryption target remains
   observationally atomic.
 - `tests/vm/profile_state.rs` validates exact initial-state/checkpoint errors,
-  round-trips consumed input, committed output, registers and termination through
+  round-trips consumed input, committed output, registers and termination
+  through
   snapshot restoration, and places both current pointers at 4,782,968 to prove
   the last cell is encrypted before `C` and `D` wrap to zero.
 - `tests/compatibility/specification/` contains versioned specification fixtures
@@ -164,7 +175,8 @@ memory, input consumption, or output.
 - Trace hooks are observational only: classic and profile-driven traced/untraced
   executions over the same state and input must produce identical observable
   outcomes, output, and final state. State-graph research additionally compares
-  trace memory deltas to complete before/after memory images for every instruction
+  trace memory deltas to complete before/after memory images for every
+  instruction
   family in both profiles.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.

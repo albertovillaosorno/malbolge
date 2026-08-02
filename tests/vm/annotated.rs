@@ -1,8 +1,3 @@
-// File:
-//   - annotated.rs
-// Path:
-//   - tests/vm/annotated.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -37,13 +30,6 @@
 //   - Composed by `tests/vm.rs`.
 // - Defaults:
 //   - Bare hash remains code; only line-start hash plus space/tab is a comment.
-//
-// Related documents:
-// - docs/technical/tooling/annotated-malbolge-source-format.md
-// - vm/src/annotated.rs
-//
-// Large file:
-//   - false
 //
 
 //! Annotated Malbolge source presentation and semantic-inertness evidence.

@@ -44,7 +44,8 @@ Prior-work claims must resolve through canonical records under
 ## Method
 
 Experiment manifest schema v1 is validated by
-`scripts/validate/experiment_manifest.py`. TOML is the checked-in serialization,
+`src/automation/repository/composition/scripts/validate/experiment_manifest.py`.
+TOML is the checked-in serialization,
 but the schema owns semantics independently of that format. Every research
 mirror carries `algorithms/<id>/experiment.toml` with:
 
@@ -68,7 +69,8 @@ negative evidence remains reconstructible instead of disappearing from analysis.
 
 Canonical target profiles are content-bound, not name-only. A manifest naming
 `malbolge-1998`, `malbolge-2026.1`, or `malbolge-2026.2` must carry
-`challenge.target_profile_fingerprint`, and the validator recomputes the expected
+`challenge.target_profile_fingerprint`, and the validator recomputes the
+expected
 fingerprint from validated `malbolge.json`. A mismatch emits stable
 `MALBOLGE-PROFILE-ID-001`; an unknown ID never falls back. Explicit aggregate
 research scopes (`profile-independent`, `multi-profile`, and the classic-word
@@ -82,7 +84,8 @@ format](../../bibliography/specifications-and-standards/toml.md).
 
 ## Evidence
 
-- All eight current research-mirror manifests validate under schema v1, including
+- All eight current research-mirror manifests validate under schema v1,
+  including
   the checked-in template.
 - `tests/test_experiment_manifest.py` proves repository identity, exact run
   commit/workload hashes, canonical profile fingerprint requirements and
@@ -90,7 +93,8 @@ format](../../bibliography/specifications-and-standards/toml.md).
   outcomes, fail-closed outcome vocabulary, positive stopping bounds,
   mandatory verification, and strict plan-versus-run separation.
 - `.dependencies/python/3.14.6/Scripts/python-jig.cmd
-  scripts/validate/experiment_manifest.py` validates the checked-in corpus and
+  src/automation/repository/composition/scripts/validate/experiment_manifest.py`
+  validates the checked-in corpus and
   reports the exact manifest count.
 - Individual studies still own their hypotheses, raw outputs, interpretation,
   and threats to validity; this schema records identity rather than fabricating
@@ -103,7 +107,8 @@ canonical-profile plan is bound to the generated profile fingerprint.
 Recorded-run fixtures demonstrate that source commit, workload hash,
 environment identity, outcome, and raw-output path are mandatory only when
 observed evidence is claimed.
-The schema therefore distinguishes preregistration/configuration from observation
+The schema therefore distinguishes preregistration/configuration from
+observation
 without requiring placeholder hardware or tool versions for work not yet run.
 
 ## Threats to Validity

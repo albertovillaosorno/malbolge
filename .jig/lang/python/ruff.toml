@@ -1,0 +1,152 @@
+# Ruff policy for Jig Python surfaces.
+# Authority: local reference/ruff checkout, package version 0.16.0.
+required-version = "==0.16.0"
+target-version = "py314"
+line-length = 80
+indent-width = 4
+cache-dir = ".cache/ruff"
+respect-gitignore = false
+force-exclude = true
+unsafe-fixes = false
+show-fixes = true
+preview = true
+include = [
+  "*.py",
+  "*.pyi",
+  "*.pyw",
+  "**/pyproject.toml",
+  "**/.jig/lang/python/ruff.toml",
+  "**/..jig/lang/python/ruff.toml",
+]
+src = ["."]
+
+# The validation surface is explicit. Generated, vendored, dependency, cache,
+# and build trees are never admitted merely because another tool ignores them.
+exclude = [
+  ".cache",
+  ".dependencies",
+  ".git",
+  ".temp",
+  ".venv",
+  "node_modules",
+  "target",
+  "**/__pycache__",
+]
+
+[lint]
+# Fail closed: every stable and preview rule is enabled. New Ruff rules become
+# review requirements instead of silently remaining disabled.
+select = ["ALL"]
+preview = true
+explicit-preview-rules = false
+future-annotations = false
+typing-extensions = false
+fixable = ["ALL"]
+unfixable = []
+external = []
+allowed-confusables = []
+# Only the exact conventional sink name may suppress unused-variable checks.
+dummy-variable-rgx = "^_$"
+# Task tags receive no special line-length or commented-code exemptions.
+task-tags = []
+
+# Only irreducible rule/formatter contradictions are disabled. The surviving
+# twin or Ruff formatter still enforces the underlying invariant.
+ignore = [
+  "missing-trailing-comma", # Formatter owns trailing-comma placement.
+  # jig-ignore-next-line: indivisible reviewed identifier
+  "incorrect-blank-line-before-class", # Contradicts D211; D211 is authoritative.
+  # jig-ignore-next-line: indivisible reviewed identifier
+  "multi-line-summary-first-line", # Jig schema 10 requires standalone opening triple quotes.
+  "multi-line-summary-second-line", # Contradicts D212; D212 is authoritative.
+  # jig-ignore-next-line: indivisible reviewed identifier
+  "single-line-implicit-string-concatenation", # Formatter owns single-line implicit-string normalization.
+]
+
+[lint.per-file-ignores]
+# Pytest assertions are executable test semantics, not production assertions.
+"tests/**/*.py" = ["assert"]
+# jig-ignore-next-line: indivisible reviewed identifier
+# Function-oriented test directories intentionally mirror hyphenated research IDs.
+"tests/function/**/*.py" = ["implicit-namespace-package"]
+"tests/function/algorithms/domain/doom-generator/**/*.py" = [
+  "invalid-module-name",
+]
+# The accelerator package spans application and adapter-outbound roots.
+"src/optimization/accelerator/application/accelerator/**/*.py" = [
+  "implicit-namespace-package",
+]
+"src/optimization/accelerator/adapter-outbound/accelerator/**/*.py" = [
+  "implicit-namespace-package",
+]
+
+[lint.flake8-annotations]
+mypy-init-return = false
+suppress-dummy-args = false
+suppress-none-returning = false
+allow-star-arg-any = false
+
+[lint.flake8-bandit]
+check-typed-exception = true
+
+[lint.flake8-builtins]
+strict-checking = true
+
+[lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+parametrize-names-type = "tuple"
+parametrize-values-type = "list"
+parametrize-values-row-type = "tuple"
+# Exception and warning assertions must prove the expected message, not merely
+# the broad exception class.
+raises-require-match-for = ["*Error", "*Exception"]
+warns-require-match-for = ["*Warning"]
+
+[lint.flake8-tidy-imports]
+# One canonical import form: fully-qualified absolute imports.
+ban-relative-imports = "all"
+
+[lint.flake8-type-checking]
+strict = true
+
+[lint.isort]
+# Canonical, mechanically predictable import layout.
+force-single-line = true
+force-sort-within-sections = true
+case-sensitive = true
+combine-as-imports = false
+split-on-trailing-comma = false
+order-by-type = false
+
+[lint.mccabe]
+# Keep control-flow graphs small enough for exhaustive review and synthesis.
+max-complexity = 5
+
+[lint.pycodestyle]
+max-doc-length = 80
+ignore-overlong-task-comments = false
+
+[lint.pylint]
+# Tight structural budgets favor small, explicit, composable units.
+allow-magic-value-types = []
+max-args = 4
+max-positional-args = 3
+max-bool-expr = 3
+max-branches = 6
+max-returns = 3
+max-locals = 10
+max-statements = 25
+max-statements-in-try = 5
+max-public-methods = 10
+max-nested-blocks = 3
+
+[format]
+preview = true
+indent-style = "space"
+quote-style = "double"
+nested-string-quote-style = "preferred"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+docstring-code-line-length = "dynamic"

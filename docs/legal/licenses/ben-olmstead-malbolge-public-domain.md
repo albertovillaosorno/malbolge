@@ -42,12 +42,13 @@ boundary.
 
 ## Analysis
 
-`tools/malbolge/main.c` is retained as historical primary implementation
+`src/interoperability/historical-malbolge/adapter-outbound/main.c` is retained
+as historical primary implementation
 evidence and is not relicensed under the repository MIT License. The repository
 may add project-authored wrappers, tests, documentation, and replacement
 implementations under MIT without rewriting the historical source notice.
 
-The root `LICENSE` applies to repository-authored material unless a file or
+The root `LICENSE-MIT` applies to repository-authored material unless a file or
 record states a different applicable boundary.
 
 Re-review if the historical file is replaced, modified, vendored from a
@@ -61,5 +62,5 @@ This record is bounded repository research and is not legal advice.
 ## Sources
 
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
-- `tools/malbolge/main.c`
-- `LICENSE`
+- `src/interoperability/historical-malbolge/adapter-outbound/main.c`
+- `LICENSE-MIT`

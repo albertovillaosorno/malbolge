@@ -1,0 +1,87 @@
+schema: jig-function/v3
+identity:
+  id: language-support
+  node: function:language-support
+  path: src/tooling/language-support
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-tooling/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: tooling
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: language-support.jig
+parts:
+  - id: part-0001
+    path: contract/grammar/LICENSE
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0002
+    path: contract/grammar/README.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0003
+    path: contract/grammar/syntaxes/malbolge.tmLanguage.json
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0004
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0005
+    path: contract/sample.c
+    kind: contract
+    language: c
+    responsibility: Define serialized and cross-boundary representations.
+projects: []
+tests: []
+graph:
+  node: function:language-support
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:tooling
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:language-support
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

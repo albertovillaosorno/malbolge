@@ -29,7 +29,8 @@ what the original language meant and remains the semantic oracle for historical
 conformance; it is not an eternal resource ceiling on current Malbolge.
 
 Current Malbolge is a versioned living language derived from that machine. Its
-defining ternary arithmetic, crazy operation, rotate behavior, self-modification,
+defining ternary arithmetic, crazy operation, rotate behavior,
+self-modification,
 post-instruction encryption, sequential guest execution, and deterministic
 semantics are preserved as the language core unless a later reviewed profile
 explicitly changes them. Historical implementation defects and accidental host-C

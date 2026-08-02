@@ -45,22 +45,61 @@ relicense any external source.
 
 ### Current High-Impact Claims
 
-| Claim | Evidence | Verification state |
-| --- | --- | --- |
-| Written 1998 spec is normative classic authority | Ben spec + commit `fc871a3` | verified |
-| Spec defines `<` as input and `/` as output | original specification | verified directly |
-| Ben C reverses `<` and `/` | original interpreter C | verified directly |
-| Spec terminates on a non-graphical executable cell | original specification | verified directly |
-| Ben C can fail to advance on that case | original interpreter C | verified directly |
-| Classic words are ten trits; memory is 59,049 words | original specification | verified directly |
-| Ben public-domain dedication | original notices | verified directly |
-| C is the human-authored application language | repository ADR/contract | accepted decision |
-| x86-64 and AArch64 are first-class host targets | repository ADR + vendor docs | accepted decision |
-| CUDA is optional, non-semantic capacity | repository ADR + NVIDIA docs | accepted decision |
-| ROCm is the AMD GPU runtime adapter identity | repository ADR + AMD docs | accepted decision |
-| STOKE is stochastic-superoptimization prior work | STOKE paper | verified prior work |
-| Alive2 is translation-validation prior work | Alive2 sources | verified prior work |
-| GitHub recognizes root `CITATION.cff` metadata | GitHub + CFF docs | verified |
+- **Claim:** Written 1998 spec is normative classic authority
+  - **Evidence:** Ben spec + commit `fc871a3`
+  - **Verification state:** verified
+
+- **Claim:** Spec defines `<` as input and `/` as output
+  - **Evidence:** original specification
+  - **Verification state:** verified directly
+
+- **Claim:** Ben C reverses `<` and `/`
+  - **Evidence:** original interpreter C
+  - **Verification state:** verified directly
+
+- **Claim:** Spec terminates on a non-graphical executable cell
+  - **Evidence:** original specification
+  - **Verification state:** verified directly
+
+- **Claim:** Ben C can fail to advance on that case
+  - **Evidence:** original interpreter C
+  - **Verification state:** verified directly
+
+- **Claim:** Classic words are ten trits; memory is 59,049 words
+  - **Evidence:** original specification
+  - **Verification state:** verified directly
+
+- **Claim:** Ben public-domain dedication
+  - **Evidence:** original notices
+  - **Verification state:** verified directly
+
+- **Claim:** C is the human-authored application language
+  - **Evidence:** repository ADR/contract
+  - **Verification state:** accepted decision
+
+- **Claim:** x86-64 and AArch64 are first-class host targets
+  - **Evidence:** repository ADR + vendor docs
+  - **Verification state:** accepted decision
+
+- **Claim:** CUDA is optional, non-semantic capacity
+  - **Evidence:** repository ADR + NVIDIA docs
+  - **Verification state:** accepted decision
+
+- **Claim:** ROCm is the AMD GPU runtime adapter identity
+  - **Evidence:** repository ADR + AMD docs
+  - **Verification state:** accepted decision
+
+- **Claim:** STOKE is stochastic-superoptimization prior work
+  - **Evidence:** STOKE paper
+  - **Verification state:** verified prior work
+
+- **Claim:** Alive2 is translation-validation prior work
+  - **Evidence:** Alive2 sources
+  - **Verification state:** verified prior work
+
+- **Claim:** GitHub recognizes root `CITATION.cff` metadata
+  - **Evidence:** GitHub + CFF docs
+  - **Verification state:** verified
 
 ### Specification Versus Interpreter Divergence
 
@@ -107,18 +146,47 @@ architecture automatically.
 
 ### Baseline Coverage
 
-| Required source class | Canonical records | State |
-| --- | --- | --- |
-| Historical Malbolge specification/interpreter | `specifications-and-standards/malbolge/malbolge-1998.md` | covered |
-| Programming languages | `languages/c.md`, `languages/rust.md` | covered |
-| Host architectures | `platforms-and-runtimes/x86-64.md`, `aarch64.md` | covered |
-| Compiler/toolchain | `platforms-and-runtimes/compiler/`, `tooling/clang-tidy.md` | covered |
-| Accelerator computing | CUDA, ROCm, and PyTorch records | covered |
-| Superoptimization/synthesis | STOKE, Souper, and egg records | covered |
-| Verification/formal methods | Alive2 record | covered |
-| Research methodology | ACM artifact/empirical-standard records | covered |
-| Standards/publication metadata | CommonMark, TOML, CFF, LaTeX records | covered |
-| Validation/provenance tooling | Git and clang-tidy records | covered |
+- **Required source class:** Historical Malbolge specification/interpreter
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+  - **Canonical records:** `specifications-and-standards/malbolge/malbolge-1998.md`
+  - **State:** covered
+
+- **Required source class:** Programming languages
+  - **Canonical records:** `languages/c.md`, `languages/rust.md`
+  - **State:** covered
+
+- **Required source class:** Host architectures
+  - **Canonical records:** `platforms-and-runtimes/x86-64.md`, `aarch64.md`
+  - **State:** covered
+
+- **Required source class:** Compiler/toolchain
+  - **Canonical records:** `platforms-and-runtimes/compiler/`,
+                           `tooling/clang-tidy.md`
+  - **State:** covered
+
+- **Required source class:** Accelerator computing
+  - **Canonical records:** CUDA, ROCm, and PyTorch records
+  - **State:** covered
+
+- **Required source class:** Superoptimization/synthesis
+  - **Canonical records:** STOKE, Souper, and egg records
+  - **State:** covered
+
+- **Required source class:** Verification/formal methods
+  - **Canonical records:** Alive2 record
+  - **State:** covered
+
+- **Required source class:** Research methodology
+  - **Canonical records:** ACM artifact/empirical-standard records
+  - **State:** covered
+
+- **Required source class:** Standards/publication metadata
+  - **Canonical records:** CommonMark, TOML, CFF, LaTeX records
+  - **State:** covered
+
+- **Required source class:** Validation/provenance tooling
+  - **Canonical records:** Git and clang-tidy records
+  - **State:** covered
 
 The closed bibliography taxonomy also reserves `legal-and-regulatory/` and
 `libraries/` for future source records. No baseline source is fabricated merely

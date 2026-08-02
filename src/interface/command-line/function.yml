@@ -1,0 +1,129 @@
+schema: jig-function/v3
+identity:
+  id: command-line
+  node: function:command-line
+  path: src/interface/command-line
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-interface/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: interface
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: command-line.jig
+parts:
+  - id: part-0001
+    path: adapter-outbound/adapters/doom/abi.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0002
+    path: adapter-outbound/adapters/doom/abi.malbolge
+    kind: adapter-outbound
+    language: malbolge
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0003
+    path: adapter-outbound/adapters/doom/windows.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0004
+    path: adapter-outbound/adapters/doom/windows.malbolge
+    kind: adapter-outbound
+    language: malbolge
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0005
+    path: adapter-outbound/adapters/guest/output.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0006
+    path: application/c_source.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate use cases without owning external policy.
+  - id: part-0007
+    path: composition/main.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0008
+    path: composition/scripts/build-unix.sh
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0009
+    path: composition/scripts/build-windows.cmd
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0010
+    path: composition/scripts/install-unix.sh
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0011
+    path: composition/scripts/install-windows.ps1
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0012
+    path: composition/scripts/malbolge
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0013
+    path: composition/scripts/malbolge.cmd
+    kind: composition
+    responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0014
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+projects: []
+tests: []
+graph:
+  node: function:command-line
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:interface
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:command-line
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

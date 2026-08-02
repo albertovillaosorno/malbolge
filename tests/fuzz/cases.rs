@@ -1,8 +1,3 @@
-// File:
-//   - cases.rs
-// Path:
-//   - tests/fuzz/cases.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,12 +29,6 @@
 //   - Consumed by deterministic differential property tests.
 // - Defaults:
 //   - No nondeterministic RNG; seed and ordinal fully identify each case.
-//
-// Related documents:
-// - docs/technical/verification/property-fuzz-and-exhaustive-testing.md
-//
-// Large file:
-//   - false
 //
 
 //! Deterministic VM fuzz cases with exact replay and shrink identity.

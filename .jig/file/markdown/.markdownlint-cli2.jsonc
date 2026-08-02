@@ -1,0 +1,146 @@
+{
+  // jig-ignore-next-line: indivisible reviewed identifier
+  "$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint-cli2/main/schema/markdownlint-cli2-config-schema.json",
+  // Respect the repository's curated Git exclusions instead of duplicating
+  // build/cache paths in this configuration.
+  "gitignore": true,
+  "globs": [
+    "**/*.{md,mdc}"
+  ],
+  "config": {
+    // Every rule is enabled. Entries below only select one deterministic form
+    // or tighten a configurable default; there are zero rule disables.
+    "default": true,
+
+    // Heading structure is explicit and strictly hierarchical.
+    "heading-increment": true,
+    "heading-style": {
+      "style": "atx"
+    },
+    "blanks-around-headings": {
+      "lines_above": 1,
+      "lines_below": 1
+    },
+    "heading-start-left": true,
+    "no-duplicate-heading": {
+      "siblings_only": false
+    },
+    "single-title": {
+      "level": 1
+    },
+    "first-line-heading": {
+      "level": 1
+    },
+    "no-trailing-punctuation": {
+      "punctuation": ".,;:!。，；：！"
+    },
+
+    // Authored prose targets 80 columns. Structural or intrinsically
+    // unbreakable Markdown surfaces retain their exact payload.
+    "line-length": {
+      "line_length": 80,
+      "code_blocks": false,
+      "tables": false,
+      "headings": false,
+      "strict": true
+    },
+
+    // Lists have one marker vocabulary, one indentation width, one spacing
+    // contract, and mandatory surrounding blank lines.
+    "ul-style": {
+      "style": "dash"
+    },
+    "ol-prefix": {
+      "style": "one"
+    },
+    "list-indent": true,
+    "ul-indent": {
+      "indent": 2
+    },
+    "blanks-around-lists": true,
+    "list-marker-space": {
+      "ul_single": 1,
+      "ol_single": 1,
+      "ul_multi": 1,
+      "ol_multi": 1
+    },
+
+    // Whitespace is byte-stable. Two-space Markdown hard breaks are forbidden;
+    // paragraph structure uses explicit blank lines instead.
+    "no-trailing-spaces": {
+      "br_spaces": 0,
+      "strict": true
+    },
+    "no-hard-tabs": {
+      "code_blocks": true
+    },
+    "no-multiple-blanks": {
+      "maximum": 1
+    },
+    "single-trailing-newline": true,
+
+    // Markdown stays structurally pure: no HTML escape hatch and no ambiguous
+    // link syntax.
+    "no-inline-html": {
+      "allowed_elements": []
+    },
+    "no-bare-urls": true,
+    "no-empty-links": true,
+    "no-alt-text": true,
+    "no-reversed-links": true,
+
+    // Code blocks have one fenced representation and always declare language.
+    "fenced-code-language": true,
+    "code-block-style": {
+      "style": "fenced"
+    },
+    "code-fence-style": {
+      "style": "backtick"
+    },
+    "blanks-around-fences": {
+      "list_items": true
+    },
+
+    // Inline styling has exactly one spelling and no interior padding.
+    "emphasis-style": {
+      "style": "asterisk"
+    },
+    "strong-style": {
+      "style": "asterisk"
+    },
+    "no-space-in-emphasis": true,
+    "no-space-in-code": true,
+    "no-space-in-links": true,
+
+    // Horizontal rules and tables have one byte representation.
+    "hr-style": {
+      "style": "---"
+    },
+    "table-pipe-style": {
+      "style": "leading_and_trailing"
+    },
+    "table-column-count": true,
+
+    // References must resolve and must not leave dead definitions behind.
+    "link-fragments": true,
+    "reference-links-images": true,
+    "link-image-reference-definitions": true,
+
+    // Canonical product/tool names are case-sensitive for token stability.
+    "proper-names": {
+      "names": [
+        "Rust",
+        "GitHub",
+        "Markdown",
+        "Cargo",
+        "JSON",
+        "CI/CD",
+        "Clippy",
+        "CSpell",
+        "MarkdownLint",
+        "Jig"
+      ],
+      "code_blocks": false
+    }
+  }
+}

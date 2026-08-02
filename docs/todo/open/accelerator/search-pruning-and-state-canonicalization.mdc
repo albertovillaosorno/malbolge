@@ -4,6 +4,7 @@ status: "active"
 lane: "13"
 area: "accelerator"
 task: "TODO - Search pruning and state canonicalization"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md"
 depends_on:
   - "deterministic-cpu-optimizer"
@@ -60,14 +61,17 @@ raw hardware scale.
   stable first representatives and rejects every stronger equality shortcut. The
   duplicate-rich fixture maps eight inputs to five representatives, while the
   all-unique null fixture remains four-to-four. One-byte and prefix/length
-  adversarial cases remain distinct. The deterministic CPU enumerator now applies
+  adversarial cases remain distinct. The deterministic CPU enumerator now
+  applies
   an independent Python implementation of the same exact relation before logical
   identity; duplicate corpus bytes roundtrip unchanged, while budget is consumed
-  only by stable first representatives. Python production tests and the five Rust
+  only by stable first representatives. Python production tests and the five
+  Rust
   research adversarials both pass. The hardware-neutral generic layer is also
   now bounded by a maximality argument: any two byte-distinct payloads can be
   separated by a legal trusted verifier, so no coarser universal equivalence is
   sound without profile-, semantics-, or verifier-specific proof obligations.
   This is correctness/evaluation-count evidence only; stronger canonicalization,
-  dominance, admissible heuristics, and preregistered performance evidence remain
+  dominance, admissible heuristics, and preregistered performance evidence
+  remain
   open.

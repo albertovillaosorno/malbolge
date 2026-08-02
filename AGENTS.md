@@ -7,8 +7,10 @@ is not semantic or architectural authority. When this file conflicts with
 `TODO.md`, a typed TODO record, an ADR, a technical specification, or a research
 record, the owning durable document wins.
 
-Do not copy chat history into the repository. Keep this file free of credentials,
-private machine details, personal paths, tokens, private URLs, or other sensitive
+Do not copy chat history into the repository. Keep this file free of
+credentials,
+private machine details, personal paths, tokens, private URLs, or other
+sensitive
 information.
 
 ## Read first
@@ -45,11 +47,14 @@ Repository-root `malbolge.json` is the target-profile identity authority. Schema
 v2 selects the 14-trit `malbolge-2026.2` profile as current, retains
 `malbolge-2026.1` as an immutable ten-trit transition identity, and preserves
 `malbolge-1998` as frozen historical conformance. Validate profile edits with
-`python scripts/validate/target_profile.py` and the Python compatibility tests.
+`python
+src/automation/repository/composition/scripts/validate/target_profile.py` and
+the Python compatibility tests.
 The safe Rust runtime has two explicit interpreters. `Machine` and
 `ExecutionMachine` remain classic-capability and preflight against
 `safe-rust-classic`; they must never silently execute `malbolge-2026.2` through
-the ten-trit loader. `ProfileMachine` is the normative profile-driven interpreter
+the ten-trit loader. `ProfileMachine` is the normative profile-driven
+interpreter
 and preflights against `safe-rust-profiled`, currently up to 14 trits and
 4,782,969 words. The checked-in Rust descriptors are generated from
 `malbolge.json` and must remain byte-exact with the validator renderer.
@@ -61,17 +66,22 @@ differential oracle only on its documented agreement subset. Do not edit it to
 make modern behavior easier to implement.
 Version-one extended `.malbolge` capsules use a fixed seven-byte historical
 fallback plus a space/tab-only `MALBCAP1` sideband. Modern code must parse and
-validate the sideband before payload loading; old tooling sees only the fallback.
+validate the sideband before payload loading; old tooling sees only the
+fallback.
 Do not treat the fallback or its isolated H-001 behavior as modern semantics.
 
 Classic self-modification and post-instruction encryption are fundamental guest
 semantics. Do not make generated code globally immutable, and do not invent a
-parallel or nonlinear classic target as a performance shortcut. Host parallelism,
-JITs, caches, and accelerators are allowed only behind contracts that preserve the
+parallel or nonlinear classic target as a performance shortcut. Host
+parallelism,
+JITs, caches, and accelerators are allowed only behind contracts that preserve
+the
 same observable guest behavior.
-Deterministic logical concurrency is host orchestration only: independent classic
+Deterministic logical concurrency is host orchestration only: independent
+classic
 or profile-driven VM requests own disjoint state, explicit `LogicalTaskId` order
-controls result/join order, and worker completion order is never semantic. Do not
+controls result/join order, and worker completion order is never semantic. Do
+not
 add a guest thread model or treat arbitrary shared-effect work as independent by
 assertion.
 
@@ -83,18 +93,25 @@ independent deterministic verification decides whether that code is accepted.
 
 The repository contains the first real safe-Rust VM baseline. Its owning TODO
 remains open until the complete acceptance evidence is durable. The root
-`Cargo.toml` points the library directly at `vm/src/lib.rs`.
+`Cargo.toml` points the library directly at
+`src/runtime/virtual-machine/composition/lib.rs`.
 
 Current VM modules include:
 
-- `vm/src/word.rs`: ten-trit word domain and primitive operations.
-- `vm/src/memory.rs`: classic 59,049-word memory abstraction.
-- `vm/src/loader.rs`: source validation and deterministic memory expansion.
-- `vm/src/machine.rs`: registers, I/O, termination, `step`, and bounded `run`.
-- `vm/src/lib.rs`: the intentionally small public VM surface.
+- `src/runtime/virtual-machine/contract/word.rs`: ten-trit word domain and
+  primitive operations.
+- `src/runtime/virtual-machine/domain/memory.rs`: classic 59,049-word memory
+  abstraction.
+- `src/runtime/virtual-machine/domain/loader.rs`: source validation and
+  deterministic memory expansion.
+- `src/runtime/virtual-machine/domain/machine.rs`: registers, I/O, termination,
+  `step`, and bounded `run`.
+- `src/runtime/virtual-machine/composition/lib.rs`: the intentionally small
+  public VM surface.
 
 Current VM tests live under `tests/vm/` and cover instruction behavior,
-conformance edges, loader behavior, byte I/O, self-encryption, jumps, and bounded
+conformance edges, loader behavior, byte I/O, self-encryption, jumps, and
+bounded
 execution. Treat the tests as evidence, not as authority over the specification.
 
 Important settled VM edges include:
@@ -102,7 +119,8 @@ Important settled VM edges include:
 - Output is the accumulator modulo 256.
 - The jump instruction updates `C` before post-instruction self-encryption, so
   encryption uses the new `C`.
-- When the post-jump `C` points at a non-graphical cell, the modern VM terminates
+- When the post-jump `C` points at a non-graphical cell, the modern VM
+  terminates
   explicitly before an invalid encryption-table lookup and without partially
   committing an otherwise invalid transition.
 
@@ -123,31 +141,37 @@ The roadmap intentionally records these decisions:
 - Do not enable repository-wide native clang-format/clang-tidy execution until
   Jig can select authored C independently from immutable historical C and from
   the guest-C compatibility surface. LLVM 22.1.8 remains pinned; use explicit
-  formatting where appropriate and `scripts/validate/main.py` for guest C.
+  formatting where appropriate and
+  `src/automation/repository/composition/scripts/validate/main.py` for guest C.
 - Reusable blocks must carry state, layout, mutation, target, provenance, cost,
   and verifier evidence before composition is trusted.
 - The state-aware linker must verify positional decode, encryption phase,
   entry/exit machine state, relocation, and self-modification footprints.
 - A resident compiler may keep source, IR, link plans, and verified artifacts in
-  RAM and use a WAL, but text position, equal character counts, regex matches, or
+  RAM and use a WAL, but text position, equal character counts, regex matches,
+  or
   hashes are only lookup accelerators. Semantic dependency analysis controls
   invalidation and reuse.
-- Learned or trained search guidance uses versioned verifier-labeled evidence and
+- Learned or trained search guidance uses versioned verifier-labeled evidence
+  and
   remains optional. Training success never replaces verification.
 - The DOOM interoperability order is quality/modernization first, then
   deterministic amalgamation. The user-supplied input tree is never modified.
 
 ## Language
 
-Use English for source code, identifiers, code comments, technical documentation,
-TODO records, ADRs, specifications, test names, diagnostics, and commit messages.
+Use English for source code, identifiers, code comments, technical
+documentation,
+TODO records, ADRs, specifications, test names, diagnostics, and commit
+messages.
 The language used to converse with a human operator does not change repository
 language or terminology.
 
 ## Working rules
 
 Keep changes inside the owning responsibility and avoid opportunistic cleanup.
-Never discard unrelated uncommitted work. Do not change `pytest.ini` or another
+Never discard unrelated uncommitted work. Do not change
+`.jig/lang/python/.jig/lang/python/pytest.ini` or another
 concurrently edited configuration merely to make a global gate green unless the
 current task explicitly owns that configuration.
 
@@ -158,7 +182,8 @@ product commit, but report unrelated pre-existing blockers honestly instead of
 weakening or bypassing them.
 
 A product commit must not claim more than the evidence demonstrates. Keep TODOs
-pending until their implementation, specification, tests, and validation evidence
+pending until their implementation, specification, tests, and validation
+evidence
 are durable enough for the exact TODO heading to disappear without losing
 unfinished intent.
 
@@ -169,6 +194,7 @@ For the safe VM, prefer correctness over optimization:
 `Word -> rotate/crazy -> loader -> memory/register state -> single-step ->
 self-modification -> byte I/O -> conformance fixtures -> tracing/evidence`.
 
-Do not introduce JIT, CUDA, ROCm, superoptimization, or native-code shortcuts into
+Do not introduce JIT, CUDA, ROCm, superoptimization, or native-code shortcuts
+into
 the semantic baseline. First build the small infernal machine correctly; then
 accelerate it behind independently verifiable boundaries.

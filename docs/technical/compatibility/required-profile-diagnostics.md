@@ -6,14 +6,17 @@ Active implementation
 
 ## Purpose
 
-Fail before unsafe or semantically incorrect execution when an artifact or caller
-requires a target profile that the selected runtime cannot implement. Diagnostics
+Fail before unsafe or semantically incorrect execution when an artifact or
+caller
+requires a target profile that the selected runtime cannot implement.
+Diagnostics
 must name the exact profile, version, semantic features, word width, memory
 capacity, runtime capability, and missing dimensions without silently falling
 back to the classic machine.
 
 When `malbolge-1998` itself is too small for a requested program, the diagnostic
-must identify 59,049 words as a historical-profile ceiling rather than presenting
+must identify 59,049 words as a historical-profile ceiling rather than
+presenting
 it as a permanent Malbolge language limit.
 
 ## Scope
@@ -21,12 +24,13 @@ it as a permanent Malbolge language limit.
 This document currently governs:
 
 - `malbolge.json`
-- `scripts/validate/target_profile.py`
-- `scripts/validate/profile_requirements.py`
-- `vm/src/profile.rs`
-- `vm/src/profile_generated.rs`
-- `vm/src/execution.rs`
-- `execution/ir/main.rs`
+- `src/automation/repository/composition/scripts/validate/target_profile.py`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/profile_requirements.py`
+- `src/runtime/virtual-machine/domain/profile.rs`
+- `src/runtime/virtual-machine/contract/profile_generated.rs`
+- `src/runtime/virtual-machine/domain/execution.rs`
+- `src/runtime/tiered-execution/domain/ir/main.rs`
 - `tests/test_target_profile.py`
 - `tests/vm/profile_requirements.rs`
 - `tests/tiered_execution.rs`
@@ -40,8 +44,10 @@ This document currently governs:
 `malbolge.json` remains the target-profile authority. Rust does not maintain a
 second handwritten copy of profile geometry.
 
-`scripts/validate/target_profile.py` renders
-`vm/src/profile_generated.rs` deterministically from the validated canonical JSON.
+`src/automation/repository/composition/scripts/validate/target_profile.py`
+renders
+`src/runtime/virtual-machine/contract/profile_generated.rs` deterministically
+from the validated canonical JSON.
 The checked-in projection contains immutable descriptors for `malbolge-1998`,
 `malbolge-2026.1`, and `malbolge-2026.2`. A Python regression test requires the
 checked-in Rust source to equal the canonical renderer byte for byte, including
@@ -64,10 +70,12 @@ new language semantic profile.
 
 ### Python Consumer Preflight
 
-`scripts/validate/profile_requirements.py` derives immutable requirements from a
+`src/automation/repository/composition/scripts/validate/profile_requirements.py`
+derives immutable requirements from a
 fully validated `malbolge.json` document and accepts only an explicit immutable
 runtime capability. It does not copy profile geometry into a second authority,
-inspect host capacity, select a profile, load an artifact, or execute guest code.
+inspect host capacity, select a profile, load an artifact, or execute guest
+code.
 
 The Python boundary uses the same normative feature order and the same explicit
 `safe-rust-classic` and `safe-rust-profiled` envelopes as Rust. It validates the
@@ -102,8 +110,10 @@ nearest-version, or implicit historical fallback.
 ### Portable Artifact Preflight
 
 `TargetProfileRequirement` is now VM-owned semantic data and is re-exported by
-`execution/ir/main.rs` for transport in effect IR. It carries the published
-version, stable feature IDs, word trits, and profile capacity without copying the
+`src/runtime/tiered-execution/domain/ir/main.rs` for transport in effect IR. It
+carries the published
+version, stable feature IDs, word trits, and profile capacity without copying
+the
 canonical profile registry into the execution layer.
 
 `preflight_runtime_requirement()` consumes an independently admitted profile ID
@@ -142,12 +152,14 @@ selected profile. Its deterministic text names:
 - the exact missing dimensions.
 
 For `safe-rust-classic` and `malbolge-2026.2`, the missing dimensions are
-`word-trits,memory-words`. `safe-rust-profiled` has no missing dimension for that
+`word-trits,memory-words`. `safe-rust-profiled` has no missing dimension for
+that
 profile.
 
 `MALBOLGE-PROFILE-002` means that a program requirement exceeds the capacity of
 the explicitly selected profile itself. For `malbolge-1998`, the diagnostic
-contains `constraint=historical-profile-ceiling` and reports the profile capacity
+contains `constraint=historical-profile-ceiling` and reports the profile
+capacity
 as 59,049 words.
 
 These categories are distinct: an artifact that exceeds its selected profile is
@@ -176,15 +188,19 @@ Profile requirement failures are deterministic typed errors and leave no machine
 state because construction has not yet reached the loader.
 
 A profile unsupported by the selected runtime reports `MALBOLGE-PROFILE-001`.
-For example, current Malbolge is unsupported by `safe-rust-classic` but supported
+For example, current Malbolge is unsupported by `safe-rust-classic` but
+supported
 by `safe-rust-profiled`. A request beyond the selected profile's own capacity
-reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead of
+reports `MALBOLGE-PROFILE-002`. Unknown profile identities fail lookup instead
+of
 selecting another profile.
 
 Python validation consumers can construct and preflight the immutable
-requirement object without invoking a VM. Portable effect IR v3, native keys, and
+requirement object without invoking a VM. Portable effect IR v3, native keys,
+and
 direct COFF `MBPF` v3 metadata carry the canonical published version, stable
-features, word trits, profile capacity, and exact derived region memory alongside
+features, word trits, profile capacity, and exact derived region memory
+alongside
 ID/fingerprint. Safe Rust
 can now consume an independently admitted envelope against either explicit
 runtime capability without reloading the profile document.
@@ -198,13 +214,15 @@ Direct `MBPF` v3 objects additionally retain that exact footprint, so structural
 admission detects same-profile object/key disagreement before runtime preflight.
 The preflighted tier planner then maps unsupported direct host format to the
 interpreter only after combined profile preflight; `002` and `001` are never
-converted to fallback. Its cache-aware form performs the same profile and explicit
+converted to fallback. Its cache-aware form performs the same profile and
+explicit
 `DirectHost` checks before exact-key lookup. A populated verified-direct cache
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality.
 Other artifact families do not yet universally expose an equivalent program
 requirement, and bootstrap compiler artifacts, durable-cache/AOT/JIT execution,
-and product paths do not yet universally invoke combined portable preflight. This
+and product paths do not yet universally invoke combined portable preflight.
+This
 contract therefore remains active
 rather than claiming repository-wide profile diagnostic completion.
 
@@ -213,7 +231,8 @@ rather than claiming repository-wide profile diagnostic completion.
 - `tests/test_target_profile.py` proves the checked-in Rust projection is
   byte-exactly generated from canonical `malbolge.json`.
 - `tests/compatibility/test_profile_requirements.py` verifies immutable Python
-  requirement/capability objects, profile-before-runtime precedence, no fallback,
+  requirement/capability objects, profile-before-runtime precedence, no
+  fallback,
   malformed-input rejection, stable missing-dimension order, and byte-exact Rust
   diagnostic parity for current/classic and historical-capacity failures.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
@@ -226,11 +245,14 @@ rather than claiming repository-wide profile diagnostic completion.
   footprint mismatch rejection, emitter propagation, direct-template precedence
   `002` then `001` then host/backend, and the same precedence before verified
   direct cache lookup without cache mutation on rejection/interpreter selection.
-- `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
-  the current profile while preserving full 1998 equivalence on historical input.
+- `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and
+  executes
+  the current profile while preserving full 1998 equivalence on historical
+  input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the
   scalable geometry used by the requirement descriptors.
-- Strict Clippy and the full Rust suite cover the profile-aware execution facade.
+- Strict Clippy and the full Rust suite cover the profile-aware execution
+  facade.
 - `jig validate --root .` remains the repository-wide closure gate.
 
 ## References

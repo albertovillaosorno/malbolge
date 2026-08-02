@@ -1,0 +1,499 @@
+% Copyright:
+%   - Copyright (c) 2026 Alberto Villa Osorno.
+% SPDX-License-Identifier:
+%   - MIT
+% Confidential:
+%   - false
+% License-File:
+%   - LICENSE-MIT
+%
+% Boundary-Contract:
+% - Owns:
+%   - The repository behavior implemented by this source file.
+% - Must-Not:
+%   - Bypass the contracts or authority boundaries of its owning package.
+% - Allows:
+%   - Inputs: values admitted by the file's public or internal interface.
+%   - Outputs: deterministic values or effects declared by that interface.
+%   - Side effects: only those explicitly owned by the implementation.
+% - Split-When:
+%   - Split when one responsibility gains an independent lifecycle.
+% - Merge-When:
+%   - Merge when another file owns the exact same responsibility.
+% - Summary:
+%   - Self modification state graph optimizer module.
+% - Description:
+%   - Implements the responsibility summarized by this module.
+% - Usage:
+%   - Used through the owning package, executable, or document boundary.
+% - Defaults:
+%   - Invalid inputs or broken invariants fail closed.
+%
+
+%! Self modification state graph optimizer module.
+
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\input{../malbolge-notation.tex}
+\title{Self-Modifying Malbolge State-Graph Reduction Model}
+\author{Malbolge Project}
+\date{2026-07-27}
+\begin{document}
+\maketitle
+
+\section{Scope}
+
+Let $S_{1998}$ be the exact classic specification-mode VM state space and
+$T:S_{1998}\to S_{1998}$ one requested normative step when the request returns a
+committed/terminated state. Rejected self-encryption is represented as an edge
+whose destination is the unchanged source state.
+
+This first research slice defines only the conservative exact-state baseline.
+It does not claim that any register, memory cell, I/O component, or profile fact
+can yet be removed from the graph key.
+
+\section{Exact state projection}
+
+For one execution with complete deterministic input byte string $I$, define
+\begin{equation}
+  E(s)=\left(
+    p,A,C,D,I,i,O,\tau,M[0],\ldots,M[W_{10}-1]
+  \right),
+  \label{eq:state-graph-exact-key}
+\end{equation}
+where $p=\texttt{malbolge-1998}$ is the profile identity, $i$ is the committed
+input cursor, $O$ is the complete committed output prefix, $\tau$ is termination
+state, and $M$ is the complete 59,049-word memory image. This projection is
+intentionally larger than a future-relevant minimal state: it is the baseline
+against which reductions must be falsified.
+
+Two observations have exact graph identity precisely when
+$E(s_1)=E(s_2)$. Replaying the same execution may therefore reuse an existing
+node without changing semantics.
+
+\section{Collision-safe indexing}
+
+Let $H$ be any deterministic bucket function, including a deliberately
+colliding function. Hash equality is never semantic evidence. The implementation
+may merge observations only under
+\begin{equation}
+  \operatorname{merge}(s_1,s_2)
+    \Longleftrightarrow
+    H(E(s_1))=H(E(s_2))\;\land\;E(s_1)=E(s_2).
+  \label{eq:state-graph-collision-safe-merge}
+\end{equation}
+Consequently, a collision can increase comparison cost but cannot change graph
+identity. The executable test forces $H(E(s))=0$ for every state and verifies
+that distinct input strings still create distinct nodes.
+
+\section{Per-step memory mutation bound}
+
+For one requested normative step from memory $M$ to returned memory $M'$, define
+\[
+  \Delta_M(M,M')=\{a\mid M[a]\neq M'[a]\}.
+\]
+Malbolge instruction-specific effects can write at most the current data cell
+(`crazy` or rotate), and every committed non-halting step can additionally write
+at most one self-encryption target. Halt, non-graphical termination, and
+rejected
+self-encryption commit no memory change. Therefore, for both classic and
+profile-width execution,
+\begin{equation}
+  \left|\Delta_M(M,M')\right|\leq2.
+  \label{eq:state-graph-two-cell-memory-delta}
+\end{equation}
+The two addresses may coincide, reducing the observed cardinality. This bound is
+independent of total profile memory size and is therefore the semantic basis for
+researching persistent/delta memory nodes instead of full per-step snapshots.
+
+The executable correspondence compares complete before/after memories for all
+eight instruction families in both classic and current 14-trit states. It
+includes real two-cell crazy/rotate witnesses and zero-cell
+halt/atomic-rejection
+witnesses; no private transition-plan metadata is used.
+
+The tracing surface now reports the same actual final changed-cell set without
+rescanning memory. Let $D_T(s,s')$ be the set of trace records
+$(a,M[a],M'[a])$ emitted for one requested step. The trace contract is
+\begin{equation}
+  D_T(s,s')
+    = \left\{(a,M[a],M'[a])\mid a\in\Delta_M(M,M')\right\}.
+  \label{eq:state-graph-trace-memory-delta}
+\end{equation}
+A data-cell write and self-encryption at the same address therefore produce one
+final changed-cell record, unchanged writes are omitted, and halt/rejection
+produce the empty set. The executable correspondence reconstructs
+$\Delta_M$ independently by complete before/after memory comparison and requires
+exact equality with the trace records for every classic/current instruction
+family fixture.
+
+\section{Persistent memory reconstruction}
+
+Let $M_0$ be one validated complete profile memory root and let $D_k$ be the
+exact trace memory delta for committed request $k$. Define a persistent view
+$P_0=M_0$ and
+\begin{equation}
+  P_k = \operatorname{patch}(P_{k-1},D_k),
+  \qquad
+  \operatorname{materialize}(P_k)=M_k.
+  \label{eq:state-graph-persistent-memory}
+\end{equation}
+A patch is admitted only when every record's `before` value equals the value
+read
+through $P_{k-1}$ at that address; otherwise construction rejects. Empty deltas
+reuse $P_{k-1}$ without increasing depth. By the two-cell bound, each admitted
+step contributes at most two changed address/value records independent of the
+size of $M_0$.
+
+The current-profile executable correspondence starts from one complete
+4,782,969-word checkpoint, applies only `ProfileMemoryDelta` values emitted by
+real traced execution, and after every step materializes the persistent view and
+requires exact equality with the runtime's complete checkpoint memory. A
+separate fixture corrupts a `before` value and requires fail-closed rejection.
+Materialization remains an oracle operation; the proposed fast path is shared
+root plus bounded patches and exact indexed reads.
+
+\section{Bounded persistent radix overlay}
+
+For the current 14-trit profile, every admitted address is below $2^{24}$.
+Partition a 24-bit address into four six-bit chunks and let $O_k$ be a
+persistent
+64-way radix overlay after semantic delta $k$, while $M_0$ remains the shared
+complete root memory. The indexed read is
+\begin{equation}
+  \operatorname{read}(I_k,a)=
+  \begin{cases}
+    O_k[a], & \text{when an override exists},\\
+    M_0[a], & \text{otherwise},
+  \end{cases}
+  \qquad \operatorname{depth}(I_k,a)\leq4.
+  \label{eq:state-graph-indexed-memory}
+\end{equation}
+Applying a trace delta validates every recorded `before` value through the same
+indexed read before path-copying only the affected radix nodes. The bound is on
+lookup structure depth, not on total historical patch count. This candidate is
+intentionally limited to the 24-bit research domain; wider future profiles must
+select a different geometry explicitly rather than silently truncate addresses.
+
+The executable correspondence reconstructs every checkpoint of current traced
+execution exactly, inserts 4096 distinct overrides while preserving both latest
+overrides and untouched-root reads, and rejects a forged `before` value.
+
+\section{Incremental exact state identity}
+
+Fix one execution lineage $L$ consisting of one canonical profile, one immutable
+input allocation, and one immutable complete memory root. Let $I(s)$ be the
+canonical indexed-memory overlay, $O(s)$ committed output, $R(s)$ registers,
+$t(s)$ termination, and $p(s)$ consumed-input cursor. The incremental state key
+is
+\begin{equation}
+  K_L(s)=\bigl(p(s),O(s),R(s),t(s),I(s)\bigr),
+  \qquad
+  s_1\equiv_L s_2 \Longleftrightarrow K_L(s_1)=K_L(s_2).
+  \label{eq:state-graph-incremental-identity}
+\end{equation}
+Profile, input bytes, and complete root memory are omitted from the changing key
+only because lineage membership requires exact shared immutable allocations for
+all three semantic authorities. A state from another lineage is rejected rather
+than compared by rescanning the root.
+
+A constant-size digest combines immutable profile/input digests, input cursor,
+incremental output digest, registers, termination, and the canonical radix
+overlay digest. It is only a bucket selector:
+\begin{equation}
+  \operatorname{merge}(s_1,s_2)
+  \Longrightarrow
+  h(s_1)=h(s_2)\land s_1\equiv_L s_2.
+  \label{eq:state-graph-incremental-collision-guard}
+\end{equation}
+Thus digest collision never authorizes a merge. Exact overlay equality uses
+canonical radix structure with shared-node pointer shortcuts, while output and
+scalar state are compared exactly. Returning an override to its immutable root
+value deletes that override and prunes empty radix nodes, so equivalent memory
+histories converge to the same canonical overlay semantics.
+
+The executable correspondence evolves the incremental state exclusively from
+public `ProfileStepTrace` records, materializes every state back to a complete
+runtime checkpoint, and requires exact equality. It also forces every state into
+one digest bucket and proves distinct states remain distinct, while an
+independently reconstructed checkpoint root is rejected as foreign lineage.
+
+\section{Persistent committed output}
+
+Let $O_0$ be the immutable committed-output prefix at lineage construction and
+let $b_1,\ldots,b_n$ be later committed output bytes. The persistent output
+history $P_n$ is an immutable parent chain with incremental digest, but its
+semantic authority remains the exact byte sequence:
+\begin{equation}
+  \operatorname{materialize}(P_n)=O_0\Vert b_1\Vert\cdots\Vert b_n.
+  \label{eq:state-graph-persistent-output}
+\end{equation}
+Appending one byte creates one new tail node and shares the entire prior
+history.
+Exact equality first checks shared immutable base, length, and digest, then uses
+a
+shared-tail pointer shortcut or compares tail bytes exactly. Digest equality
+alone never proves output equality. Destruction iteratively unwraps uniquely
+owned tail nodes so long output histories do not recurse through the host stack.
+
+The executable correspondence builds independent branches with equal and unequal
+suffixes, materializes exact bytes, and exercises a 65,536-byte appended
+history.
+Incremental state reconstruction continues to compare exactly with complete
+runtime checkpoints after replacing `Vec<u8>` copying with this persistent form.
+
+\section{Semantic memory-read surface}
+
+For one requested profile-machine step, let $R_T(s)$ be the ordered semantic
+memory-read operations performed by the normative transition engine. The current
+schema-v2 transition has exactly three possible roles: code-cell fetch, optional
+data-pointer read, and optional self-encryption-target read. Therefore
+\begin{equation}
+  R_T(s)=R_{\mathrm{fetch}}\Vert R_{\mathrm{data}}?
+         \Vert R_{\mathrm{encrypt}}?,
+  \qquad |R_T(s)|\leq3.
+  \label{eq:state-graph-profile-read-bound}
+\end{equation}
+The encryption read is absent when a same-address instruction data write
+supplies
+the post-instruction encryption target directly; no synthetic read is invented.
+Rejected transitions retain the semantic reads completed before rejection even
+though their memory delta is empty. Internal reads used only to build
+diagnostics
+or trace deltas are not members of $R_T$.
+
+`ProfileStepTrace::memory\_reads` is emitted from the same transition engine
+that
+performs these reads. The executable correspondence constructs every instruction
+family under the current profile plus an invalid jump-encryption case and
+requires
+exact role/address/value records for fetch, data, and encryption.
+
+\section{Read-before-write dependency guard}
+
+For a verified trace sequence $\tau=(t_1,\ldots,t_n)$, let $R(t_i)$ be the
+semantic memory reads published by the normative engine and $W(t_i)$ the actual
+committed memory-delta addresses. The live-in memory dependency set is
+\begin{equation}
+  L(\tau)=\left\{(a,v)\;\middle|\;
+    (a,v)\in R(t_i)\ \land\
+    a\notin\bigcup_{j<i}W(t_j)
+  \right\}.
+  \label{eq:state-graph-region-live-in}
+\end{equation}
+Repeated live-in reads of one address must agree on the same value or
+certificate
+verification fails. Reads dominated by an earlier verified region write do not
+constrain entry memory because the region supplies their value before they are
+observed.
+
+Let $N(s)$ be exact non-memory state within the same immutable
+profile/input/root
+lineage. A verified region with exact entry $e$ admits a reduced candidate $s$
+when
+\begin{equation}
+  G_{\tau}(s,e)
+  \Longleftrightarrow
+  N(s)=N(e)\ \land\
+  \forall(a,v)\in L(\tau),\ M_s[a]=v.
+  \label{eq:state-graph-region-dependency-guard}
+\end{equation}
+After this guard succeeds, the shortcut applies the already verified trace
+effects
+to $s$. Each verified memory write replaces the candidate's current value with
+the certified after-value; memory outside the verified write set is preserved.
+Consequently, for the admitted deterministic region,
+\[
+  \operatorname{verify}(C)\land G_{\tau}(s,e)
+  \Longrightarrow
+  \operatorname{shortcut}_C(s)=T^{\leq n}(s).
+\]
+This is a reuse reduction, not a weaker verifier: the certificate itself was
+still produced by exact normative re-execution, and the reduced guard is derived
+only from that verified trace's real read/write evidence.
+
+The executable correspondence changes one memory cell absent from both the
+verified live-in set and write set. Exact entry equality rejects that candidate,
+the dependency guard admits it, direct normative execution and shortcut
+execution
+produce identical complete exit checkpoints, and the irrelevant difference is
+preserved. A second fixture changes a live-in value and requires both guard and
+shortcut rejection.
+
+\section{Verified exact-state region shortcut}
+
+Let $T$ be the deterministic normative profile-machine transition relation and
+let an untrusted bounded-region claim be
+$C=(e,n,\tau,x,o)$, where $e$ is an exact incremental entry state, $n$ is the
+step budget, $\tau$ is the claimed trace sequence, $x$ is the claimed exact exit
+state, and $o$ is the claimed bounded-run outcome. The verifier admits $C$ only
+when normative re-execution from $e$ reproduces all three claims exactly:
+\begin{equation}
+  \operatorname{verify}(C)
+  \Longleftrightarrow
+  T^{\leq n}(e)=(x,o,\tau).
+  \label{eq:state-graph-exact-region-certificate}
+\end{equation}
+A verified shortcut may execute only under the exact entry guard
+$s\equiv_L e$. Therefore
+\[
+  \operatorname{verify}(C)\land s\equiv_L e
+  \Longrightarrow
+  \operatorname{shortcut}_C(s)=(x,o,\tau),
+\]
+with the same observable result as normative replay. State digests are never
+guards: they may select a certificate candidate, but exact incremental-state
+equality authorizes reuse. Any entry mismatch deoptimizes/rejects the shortcut.
+A normative transition error during certificate recording prevents promotion to
+a
+verified region entirely.
+
+The executable correspondence records and re-verifies a current 14-trit region,
+compares its exit with direct VM execution, mutates the entry by one real trace
+and requires guard failure, tampers with an otherwise valid certificate and
+requires verifier rejection, and confirms a rejected encryption transition never
+produces a verified region.
+
+For a verified region $V$ with dependency guard $G_V$, let $b_V$ be the exact
+recorded semantic-step budget. Tier selection is deterministic:
+\begin{equation}
+  \operatorname{tier}_V(s)=
+  \begin{cases}
+    \operatorname{shortcut}_V(s), & G_V(s),\\
+    T^{\leq b_V}(s), & \neg G_V(s).
+  \end{cases}
+  \label{eq:state-graph-tiered-region-deopt}
+\end{equation}
+A guard miss is therefore not a verifier failure. The interpreter fallback owns
+all normative outcomes from the candidate state, including a different valid
+exit or a typed transition rejection. The shortcut side remains available only
+after verifier admission and a passing guard.
+
+The executable correspondence exercises all three cases: an irrelevant-memory
+variant takes the verified shortcut, an already-advanced but valid state misses
+the guard and produces exactly the normative fallback state/outcome, and a
+live-in mutation that makes the next transition invalid propagates the same
+typed
+VM rejection rather than forcing the verified effects.
+
+Let $\pi(\tau_i)$ project a verified normative trace to only its state-changing
+fields: before/after observation, deterministic input effect, output byte, and
+final memory delta. A portable effect artifact claim
+$A=(v,f,D,b,o,[\pi(\tau_0),\ldots])$ is admitted for verified region $V$ only
+when every field equals the verifier-produced projection:
+\begin{equation}
+  \operatorname{verifyArtifact}(A,V)
+  \Longleftrightarrow
+  A=\left(v_1,f_V,D_V,b_V,o_V,
+    [\pi(\tau)\mid\tau\in\operatorname{traces}(V)]\right).
+  \label{eq:state-graph-verified-effect-artifact}
+\end{equation}
+Here $v_1$ is the first portable effect-IR schema version, $f_V$ is the
+canonical
+profile fingerprint, and $D_V$ is the verifier-derived live-in set. Decoded
+opcodes and semantic read records remain verifier evidence and are not
+duplicated
+into the state-changing artifact payload.
+
+Only the verified artifact type can apply these compact effects. Effect
+execution
+still validates exact before observations and deterministic input/output
+progression; memory writes use the already verified region authority. Guard miss
+uses the same normative deoptimization equation above. Executable fixtures
+mutate
+profile identity, version, dependency set, outcome, budget, and effect sequence
+and require admission failure for every changed field.
+
+\section{Versioned profile checkpoint baseline}
+
+For a validated profile checkpoint $q$, define the complete checkpoint
+projection
+\begin{equation}
+  E_p(q)=\left(
+    f_p,I,i,O,\tau,A,C,D,M[0],\ldots,M[W_p-1]
+  \right),
+  \label{eq:state-graph-profile-checkpoint}
+\end{equation}
+where $f_p$ is the canonical profile fingerprint and $W_p$ is the exact memory
+size declared by that profile. The runtime's `ProfileMachineState` validation is
+the authority for whether the checkpoint belongs to this domain; graph research
+does not reconstruct or weaken those invariants.
+
+For any deterministic checkpoint digest $H_p$, exact profile nodes may merge
+only
+when
+\begin{equation}
+  \operatorname{merge}_p(q_1,q_2)
+    \Longleftrightarrow
+    H_p(E_p(q_1))=H_p(E_p(q_2))\;\land\;q_1=q_2.
+  \label{eq:state-graph-profile-collision-safe-merge}
+\end{equation}
+The current-profile fixture exercises complete 14-trit checkpoints containing
+4,782,969 words. Exact replay deduplicates, while a deliberately constant digest
+still keeps checkpoints with different input distinct. This establishes a
+correctness baseline only; copying/hashing complete current checkpoints is not a
+claimed production-performance strategy.
+
+\section{Edges}
+
+Each observed request contributes a deterministic edge from its exact before
+node to its exact after node, labelled with decoded instruction (when available)
+and normalized result: continued, normative termination, or atomic invalid
+self-encryption rejection. Duplicate exact edges are retained only once.
+
+\section{Consumed input prefix reduction}
+
+The normative classic machine can observe an input byte only through the current
+committed input cursor. Bytes strictly before that cursor are not read again.
+Define the first reduced future key
+\begin{equation}
+  F_I(s)=\left(
+    p,A,C,D,i,I[i\ldots],O,\tau,M[0],\ldots,M[W_{10}-1]
+  \right).
+  \label{eq:state-graph-consumed-input-prefix}
+\end{equation}
+Compared with $E(s)$, $F_I$ removes only the \emph{contents} of the consumed
+input prefix; it keeps the exact cursor and exact remaining suffix. Therefore
+states identical under $F_I$ cannot distinguish prior input bytes through any
+future normative input operation.
+
+The executable fixture uses source \texttt{cbO}, which decodes to two input
+instructions followed by halt. It exhausts all 256 values of the first byte,
+uses one common second byte, and verifies equality of $F_I$ both after the
+second
+input and after the following halt. This correspondence establishes the
+reduction only for consumed-prefix content; it does not justify dropping the
+cursor or any remaining input byte.
+
+\section{Terminal-state reduction}
+
+Once $\tau\neq\varnothing$, the normative machine returns the same termination
+reason on later step/run requests without reading memory, registers, or input
+and
+without committing further output. For already terminated states define
+\begin{equation}
+  F_{\tau}(s)=\left(p,O,\tau\right).
+  \label{eq:state-graph-terminal-state}
+\end{equation}
+The committed output prefix remains in the key because it is externally
+observable history; memory, registers, input bytes/cursor, and other live-state
+components are dead for future execution after termination.
+
+The executable correspondence varies valid halt-source memory images, register
+values, and input while preserving profile/output/termination and verifies the
+same $F_{\tau}$ plus stable repeated termination. A live machine is rejected by
+the terminal projection rather than being coerced into this reduced domain.
+
+\section{Reduction research boundary}
+
+A proposed reduced key $R(s)$ is not trusted merely because it hashes or groups
+states efficiently. Any rule
+\[
+  R(s_1)=R(s_2)\Longrightarrow s_1\sim s_2
+\]
+must declare its domain and be rejected whenever the exact baseline finds a pair
+with different future observable behavior under that domain. Until such a rule
+has correspondence evidence, native execution may use only exact-state identity
+for graph merging.
+
+\end{document}

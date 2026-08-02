@@ -4,6 +4,7 @@ status: "pending"
 lane: "12"
 area: "self_hosting"
 task: "TODO - Portable c2malbolge implementation in C"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compiler/self-hosting/portable-c2malbolge-implementation-in-c.md"
 depends_on:
   - "malbolge-layout-and-encoding-backend"

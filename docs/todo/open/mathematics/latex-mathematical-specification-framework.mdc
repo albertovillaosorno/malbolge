@@ -12,16 +12,19 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
-  - "math/malbolge-notation.tex"
+  - "src/specification/formal-model/math/malbolge-notation.tex"
   - "math/specification/"
   - "math/algorithms/"
   - "docs/research/algorithms/"
   - "algorithms/"
-  - "scripts/validate/math_specifications.py"
+  # jig-ignore-next-line: canonical front matter value is indivisible
+  - "src/automation/repository/composition/scripts/validate/math_specifications.py"
   - "tests/mathematics/"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/mathematics/test_math_framework.py"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/math_specifications.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/mathematics/test_math_framework.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/math_specifications.py"
   - "jig validate --root ."
 ---
 # TODO - LaTeX mathematical specification framework
@@ -35,9 +38,11 @@ lowering, equivalence relations, and search cost functions.
 
 **Current implementation.**
 
-- `math/malbolge-notation.tex` defines one shared notation authority consumed by
+- `src/specification/formal-model/math/malbolge-notation.tex` defines one shared
+  notation authority consumed by
   every standalone mathematical document.
-- `math/specification/profile-model.tex` defines profile-width word/memory
+- `src/specification/formal-model/math/specification/profile-model.tex` defines
+  profile-width word/memory
   domains, rotate/crazy, decode/self-encryption order, byte I/O/EOF, loading,
   execution transitions, observable equivalence, lowering, verification, and
   cost-vector notation for arbitrary positive trit width.
@@ -45,7 +50,9 @@ lowering, equivalence relations, and search cost functions.
   current `N=14`/4,782,969 words; `malbolge-1998.tex` remains the classic
   specialization rather than becoming a mutable current-language document.
 - All seven research-algorithm math documents import the same notation include.
-- `scripts/validate/math_specifications.py` discovers and builds all nine
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/math_specifications.py`
+  discovers and builds all nine
   standalone documents with `pdflatex`, package auto-install disabled, TeX shell
   escape disabled, and all generated output beneath `.cache/latex/`.
 - `tests/mathematics/test_math_framework.py` locks the nine-document set, shared

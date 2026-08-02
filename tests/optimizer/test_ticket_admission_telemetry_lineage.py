@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -39,21 +32,6 @@
 #   - Runs without accelerator hardware, filesystem access, or external keys.
 # - Defaults:
 #   - Uses deterministic 32-byte test keys and schema-v1 canonical JSON.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage.py
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-#
-# Large file:
-#   - false
 #
 
 """Canonical caller-trusted telemetry lineage tests."""
@@ -286,9 +264,10 @@ def test_genesis_round_trip_and_verification_are_stable() -> None:
     assert verified.document_fingerprint.startswith(DOCUMENT_PREFIX)
     assert verified.attestation_fingerprint.startswith(LINEAGE_PREFIX)
     assert verified.canonical_byte_count == len(encoded)
-    assert ticket_admission_telemetry_lineage_attestation_fingerprint(
-        attestation
-    ) == verified.attestation_fingerprint
+    assert (
+        ticket_admission_telemetry_lineage_attestation_fingerprint(attestation)
+        == verified.attestation_fingerprint
+    )
 
 
 def test_creation_is_deterministic_and_never_persists_secret_key() -> None:
@@ -608,7 +587,7 @@ def test_nonadjacent_capture_cannot_name_direct_predecessor() -> None:
         (
             replace(
                 _claim(GENESIS_SEQUENCE_ID),
-                previous_attestation_fingerprint=f"{LINEAGE_PREFIX}{'0' * 64}",
+                previous_attestation_fingerprint=f"{LINEAGE_PREFIX}{"0" * 64}",
             ),
             SECRET_KEY,
             "genesis capture cannot name a predecessor",
@@ -717,7 +696,7 @@ def _constant_document_fingerprint(
     document: TicketAdmissionTelemetryDocument,
 ) -> str:
     _ = document
-    return f"{DOCUMENT_PREFIX}{'0' * 64}"
+    return f"{DOCUMENT_PREFIX}{"0" * 64}"
 
 
 def test_document_fingerprint_collision_fails_closed(

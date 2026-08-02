@@ -1,0 +1,10 @@
+schema = "jig-language-adapter/v1"
+language = "assembly"
+extensions = [".asm", ".s"]
+ast = "jig-ast-assembly/v1"
+comment-style = "dialect"
+dialect = "VALUE"
+target = "VALUE"
+lint-engine = "jig-assembly-lint"
+lint-mode = "declared-dialect-and-target"
+lint-failure = "fatal"

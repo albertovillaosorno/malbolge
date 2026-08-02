@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_overlap_components.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_overlap_components.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -39,22 +32,6 @@
 #   - Runs without accelerator hardware or filesystem access.
 # - Defaults:
 #   - Empty and duplicate-only inputs remain valid bounded graphs.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_overlap_components.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
 #
 
 """Deterministic non-authoritative telemetry overlap component tests."""
@@ -191,9 +168,11 @@ def test_exact_duplicates_form_one_isolated_unique_component() -> None:
     """Duplicate occurrences never create vertices or compatibility edges."""
     document = _completed_document(LOW_ELAPSED_NS)
 
-    graph = build_ticket_admission_telemetry_overlap_components(
-        (document, document, document)
-    )
+    graph = build_ticket_admission_telemetry_overlap_components((
+        document,
+        document,
+        document,
+    ))
 
     assert graph.index.collection.input_document_count == DUPLICATE_INPUT_COUNT
     assert graph.index.collection.duplicate_document_count == (
@@ -294,9 +273,11 @@ def test_successive_chain_is_connected_but_not_pairwise_equivalent() -> None:
     _ = attempts.record_completed(report, elapsed_ns=FINAL_ELAPSED_NS)
     third = _capture(attempts)
 
-    graph = build_ticket_admission_telemetry_overlap_components(
-        (first, second, third)
-    )
+    graph = build_ticket_admission_telemetry_overlap_components((
+        first,
+        second,
+        third,
+    ))
 
     assert graph.component_count == 1
     assert graph.connected_document_count == THREE_DOCUMENT_COUNT
@@ -354,9 +335,10 @@ def test_conflict_in_either_fifo_blocks_an_edge() -> None:
         error=AcceleratorUnavailableError(PRIVATE_DETAIL),
     )
 
-    graph = build_ticket_admission_telemetry_overlap_components(
-        (_capture(first_attempts), _capture(second_attempts))
-    )
+    graph = build_ticket_admission_telemetry_overlap_components((
+        _capture(first_attempts),
+        _capture(second_attempts),
+    ))
 
     assert graph.selected_edge_count == 0
     assert graph.ignored_pair_count == 1
@@ -436,9 +418,10 @@ def test_invalid_typed_document_fails_before_components() -> None:
         TicketAdmissionTelemetryOverlapComponentsError,
         match="document schema is unsupported",
     ):
-        _ = build_ticket_admission_telemetry_overlap_components(
-            (malformed, document)
-        )
+        _ = build_ticket_admission_telemetry_overlap_components((
+            malformed,
+            document,
+        ))
 
 
 class _ConstantDigest:

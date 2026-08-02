@@ -1,4 +1,3 @@
-/JIG_SHIT.md
 # Mandatory repository-local infrastructure state.
 /.cache/
 /.temp/
@@ -7,6 +6,7 @@
 
 # Non-authoritative study material embedded beside rule contracts.
 **/cheap-reference/
+JIG_SHIT.md
 
 # Local editor and operating-system state.
 /.cursor/
@@ -28,8 +28,9 @@ Thumbs.db
 *.tmp
 *.temp
 
-# DOOM
+# DOOM original codebase
 /doom/
+src/research/algorithms/domain/algorithms/doom/quality/in/doom
 
 # Reproducible algorithm outputs are local. User-owned interoperability input
 # corpora are local too; other algorithm inputs/configuration remain versioned.

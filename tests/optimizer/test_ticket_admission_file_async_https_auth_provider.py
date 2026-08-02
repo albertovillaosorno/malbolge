@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_file_async_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_file_async_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -21,7 +14,8 @@
 #   - Use hidden tasks, owned threads or executors, discovery, network, retries,
 #     external stores, credential logging, refresh, or policy changes.
 # - Allows:
-#   - Inputs: temporary files, exact providers, caller offloaders, and tampering.
+#   - Inputs: temporary files, exact providers, caller offloaders, and
+#     tampering.
 #   - Outputs: preflight, await, placement, cancellation, rotation, and secrecy.
 #   - Side effects: caller event loops and pytest-owned temporary file changes.
 # - Split-When:
@@ -31,30 +25,17 @@
 # - Summary:
 #   - Caller-scheduled async file Authorization regressions.
 # - Description:
-#   - Proves the adapter owns no task, thread, executor, retry, refresh, or cache.
+#   - Proves the adapter owns no task, thread, executor, retry, refresh, or
+#     cache.
 # - Usage:
 #   - Runs without network access, plugins, or accelerator hardware.
 # - Defaults:
 #   - Uses two explicit files, 64 bindings, and one caller offloader.
 #
-# Related documents:
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Caller-offloaded async file Authorization adapter tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -66,8 +47,6 @@ from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
 
-import pytest
-
 from accelerator import (
     ticket_admission_file_async_https_auth_provider as adapter,
 )
@@ -75,6 +54,7 @@ from accelerator import (
     ticket_admission_telemetry_lineage_async_https_auth_provider as async_auth,
 )
 from accelerator import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     ticket_admission_telemetry_lineage_file_https_auth_provider as file_provider,
 )
 from accelerator import (
@@ -86,6 +66,7 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
 AdapterError = (
     adapter.TicketAdmissionTelemetryLineageFileAsyncHttpsAuthProviderError
@@ -118,6 +99,7 @@ _validate_adapter = (
 _resolve_async = async_auth.resolve_ticket_admission_https_authorization_async
 _build_https = https.build_ticket_admission_https_public_key_bundle_fetcher
 
+# jig-ignore-next-line: indivisible reviewed identifier
 ADAPTER_ID = "offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1"
 AUTH_PROVIDER_ID = "credential-provider.test.file-async-authorization"
 OTHER_AUTH_PROVIDER_ID = "credential-provider.test.other"
@@ -313,7 +295,9 @@ def _https_fetcher() -> HttpsFetcher:
 def _fetch_request() -> FetchRequest:
     return FetchRequest(
         bundle_fingerprint=FINGERPRINT_A,
+        # jig-ignore-next-line: indivisible reviewed identifier
         max_bytes=fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_BYTES,
+        # jig-ignore-next-line: indivisible reviewed identifier
         max_entries=fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES,
         provider_id=FETCH_PROVIDER_A,
         resource_id=RESOURCE_A,

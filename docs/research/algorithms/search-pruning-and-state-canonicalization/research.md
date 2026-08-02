@@ -45,18 +45,21 @@ for baselines. Raw regenerable output stays in the mirror's Git-ignored `out/`.
 
 The first slice is exploratory correctness work rather than a preregistered
 performance comparison. Its baseline evaluates every pre-identity candidate byte
-sequence. The candidate rule partitions that same ordered corpus by complete byte
+sequence. The candidate rule partitions that same ordered corpus by complete
+byte
 equality and retains the first occurrence of each class. Hash equality, prefix
 relations, similar lengths, and heuristic state keys are explicitly excluded.
 The rule is rejected as unsound if any two byte-distinct inputs share a
 representative. A corpus with no duplicates is the required null case and must
 show zero reduction in candidate evaluations.
 
-This exact relation is also the strongest universally sound relation available to
+This exact relation is also the strongest universally sound relation available
+to
 the hardware-neutral pre-verifier layer. Because `TrustedCandidateVerifier` may
 inspect the complete payload, any two byte-distinct candidates can be separated
 by a valid verifier that accepts one and rejects the other. Consequently, any
-coarser generic canonicalization would change acceptance for some legal verifier.
+coarser generic canonicalization would change acceptance for some legal
+verifier.
 Stronger pruning must therefore carry profile-, semantics-, or verifier-specific
 proof obligations instead of being smuggled into generic candidate plumbing.
 
@@ -105,7 +108,8 @@ uses an independent Python implementation of that same stable-first relation:
 the original encoded corpus, including duplicates, remains replayable while only
 exact representatives consume evaluation budget and receive logical candidate
 identity. Production Python fixtures match the retained duplicate-rich, unique,
-and near-match research cases, while the independent Rust adversarial suite still
+and near-match research cases, while the independent Rust adversarial suite
+still
 passes all five checks. A production verifier-discrimination test additionally
 demonstrates the generic maximality boundary: byte-distinct payloads can receive
 different trusted acceptance decisions.

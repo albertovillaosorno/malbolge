@@ -37,7 +37,8 @@ concatenation.
   entry/exit state, layout assumptions, mutation footprint, and verifier
   provenance.
 - Relocation and stitching preserve normative guest self-modification and
-  encryption semantics; global code immutability is not introduced as a shortcut.
+  encryption semantics; global code immutability is not introduced as a
+  shortcut.
 - The verifier independently accepts each linked artifact against the composed
   source/IR semantics before it is admitted downstream.
 - Repeated linking from identical inputs yields deterministic normalized plans

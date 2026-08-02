@@ -50,9 +50,11 @@ verifier accepts the candidate under the declared target profile.
 - Search variants run under identical budgets/seeds/corpora where applicable and
   report time-to-first-verified candidate plus quality distributions, not only
   the best lucky run.
-- Trained heuristics use versioned verifier-labeled corpora and held-out challenge
+- Trained heuristics use versioned verifier-labeled corpora and held-out
+  challenge
   families so evaluation does not merely replay the training distribution.
-- Model output changes search priority only; the independent verifier remains the
+- Model output changes search priority only; the independent verifier remains
+  the
   sole authority for candidate correctness.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.

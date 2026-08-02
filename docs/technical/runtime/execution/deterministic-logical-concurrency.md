@@ -18,8 +18,8 @@ independent VM requests.
 
 This contract currently governs:
 
-- `vm/src/logical.rs`
-- `vm/src/batch.rs`
+- `src/runtime/virtual-machine/domain/logical.rs`
+- `src/runtime/virtual-machine/composition/batch.rs`
 - `tests/vm/logical.rs`
 - `tests/vm/profile_logical.rs`
 - `tests/vm/batch.rs`
@@ -42,7 +42,8 @@ therefore cannot make two guest machines race with one another.
 
 Callers must not use this API as a declaration that arbitrary external side
 effects are independent. The current task type contains VM execution requests
-only; future task kinds with filesystem, device, or shared-runtime effects need a
+only; future task kinds with filesystem, device, or shared-runtime effects need
+a
 separate reviewed independence contract before host parallelism is admitted.
 
 ### Logical Ordering
@@ -51,7 +52,8 @@ separate reviewed independence contract before host parallelism is admitted.
 order defines logical result and join order.
 
 Physical input order is not semantic. Before any batch execution begins, the
-logical layer sorts tasks by ID and rejects duplicate IDs. Therefore a caller may
+logical layer sorts tasks by ID and rejects duplicate IDs. Therefore a caller
+may
 supply tasks in any physical order without changing the logical result stream.
 
 Duplicate identity fails before worker-count validation or task execution. This
@@ -67,7 +69,8 @@ position.
 3. tags each batch result with the corresponding logical ID; and
 4. returns results in strict ascending logical order.
 
-The underlying guest machine remains sequential and unchanged. The profile-driven
+The underlying guest machine remains sequential and unchanged. The
+profile-driven
 counterpart `execute_profile_logical_tasks()` applies the same ID normalization
 before `execute_profile_batch()` and retains each task's canonical profile.
 
@@ -77,7 +80,8 @@ before `execute_profile_batch()` and retains each task's canonical profile.
 ordering, then delegates those owned requests to `execute_batch_parallel()` with
 an explicit positive worker count.
 
-The batch scheduler may complete chunks on different host threads, but it already
+The batch scheduler may complete chunks on different host threads, but it
+already
 returns results in input order. Because its input has first been normalized to
 logical-ID order, host completion order is never observable through the logical
 API.
@@ -89,7 +93,8 @@ diagnostic.
 
 ### Deterministic Join
 
-`join_logical_outputs()` is a host-side artifact join. It concatenates bytes that
+`join_logical_outputs()` is a host-side artifact join. It concatenates bytes
+that
 were already committed to each completed machine's output stream, in strict
 ascending logical-ID order.
 
@@ -188,13 +193,16 @@ instruction, state transition, or termination reason.
 - `tests/vm/logical.rs` compares sequential and host-parallel logical execution
   for worker counts 1, 2, and 8 using full classic-memory fingerprints,
   registers, input consumption, output, run outcome, and diagnostics.
-- The same tests prove physical task input order does not affect logical order or
+- The same tests prove physical task input order does not affect logical order
+  or
   joined output, duplicate IDs fail before worker validation, rejected tasks do
   not cancel neighbors, and reordered results cannot be joined.
-- `tests/vm/profile_logical.rs` proves mixed transition/current profile identity,
+- `tests/vm/profile_logical.rs` proves mixed transition/current profile
+  identity,
   sequential/parallel joined-byte equality, duplicate-ID precedence, profile
   rejection isolation, and reordered-result failure.
-- `tests/vm/batch.rs` and `tests/vm/profile_batch.rs` remain lower-level evidence
+- `tests/vm/batch.rs` and `tests/vm/profile_batch.rs` remain lower-level
+  evidence
   that independently owned classic/profile machines are isolated by the shared
   scheduler.
 - `cargo test --workspace --all-features` is the executable semantic gate.

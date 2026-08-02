@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_persistence.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_persistence.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,14 +29,6 @@
 # - Defaults:
 #   - Duplicate, unknown, noncanonical, oversized, or malformed data fails
 #     closed.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_persistence.py
-# - accelerator/ticket_admission_telemetry_migration.py
-# - accelerator/ticket_admission_telemetry_store.py
-#
-# Large file:
-#   - false
 #
 
 """Canonical bounded ticket admission telemetry persistence tests."""

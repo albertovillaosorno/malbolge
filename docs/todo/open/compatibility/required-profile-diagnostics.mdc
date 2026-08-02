@@ -15,16 +15,19 @@ scope:
   - "malbolge.json"
   - "compatibility/"
   - "docs/technical/specification/"
-  - "vm/src/profile.rs"
-  - "vm/src/profile_generated.rs"
-  - "vm/src/execution.rs"
-  - "scripts/validate/target_profile.py"
-  - "scripts/validate/profile_requirements.py"
+  - "src/runtime/virtual-machine/domain/profile.rs"
+  - "src/runtime/virtual-machine/contract/profile_generated.rs"
+  - "src/runtime/virtual-machine/domain/execution.rs"
+  - "src/automation/repository/composition/scripts/validate/target_profile.py"
+  # jig-ignore-next-line: canonical front matter value is indivisible
+  - "src/automation/repository/composition/scripts/validate/profile_requirements.py"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
   - "tests/vm/profile_requirements.rs"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -40,9 +43,11 @@ historical-profile constraint.
 
 **Current implementation.**
 
-- The target-profile validator renders `vm/src/profile_generated.rs` from
+- The target-profile validator renders
+  `src/runtime/virtual-machine/contract/profile_generated.rs` from
   canonical `malbolge.json`; pytest requires byte-exact projection equality.
-- `vm/src/profile.rs` exposes canonical descriptors plus the explicit
+- `src/runtime/virtual-machine/domain/profile.rs` exposes canonical descriptors
+  plus the explicit
   `safe-rust-classic` runtime envelope: ten trits, 59,049 words, and all
   normative schema-v2 semantic features.
 - `ExecutionMachine::from_source_for_profile()` runs profile/runtime preflight
@@ -54,7 +59,9 @@ historical-profile constraint.
   `constraint=historical-profile-ceiling` and its exact 59,049-word capacity.
 - The equivalent ten-trit `malbolge-2026.1` profile is admitted without losing
   its profile identity, and unknown profile IDs never fall back implicitly.
-- `scripts/validate/profile_requirements.py` now gives Python/non-VM consumers
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/profile_requirements.py`
+  now gives Python/non-VM consumers
   immutable profile requirements and explicit runtime envelopes derived from the
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
@@ -71,11 +78,13 @@ historical-profile constraint.
   preflight emits byte-identical `MALBOLGE-PROFILE-002` before checking `001`.
 - Direct-template selection invokes that combined preflight before host/backend
   selection; neither profile error is converted to deopt fallback. The
-  preflighted tier planner maps only unsupported direct host format to interpreter.
+  preflighted tier planner maps only unsupported direct host format to
+  interpreter.
   Its verified-direct cache-aware form performs `002`, `001`, and explicit host
   selection before lookup; rejected/interpreter outcomes leave cache size
   unchanged.
-- Raw IR remains transportable for verifier rejection, while cache/native identity
+- Raw IR remains transportable for verifier rejection, while cache/native
+  identity
   rejects profile-capacity-inconsistent addressing before bootstrap or direct
   artifact construction. Direct structural admission also rejects same-profile
   object/key footprint mismatch through `MBPF` v3.
@@ -97,9 +106,11 @@ historical-profile constraint.
 
 ## Evidence
 
-- Current durable evidence includes `vm/src/profile.rs`, the generated
-  `vm/src/profile_generated.rs` projection,
-  `scripts/validate/profile_requirements.py`,
+- Current durable evidence includes
+  `src/runtime/virtual-machine/domain/profile.rs`, the generated
+  `src/runtime/virtual-machine/contract/profile_generated.rs` projection,
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+  `src/automation/repository/composition/scripts/validate/profile_requirements.py`,
   `tests/compatibility/test_profile_requirements.py`,
   `tests/vm/profile_requirements.rs`, and the remaining compatibility/profile
   Python suites.

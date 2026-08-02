@@ -1,8 +1,3 @@
-// File:
-//   - state_graph_research.rs
-// Path:
-//   - tests/state_graph_research.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,49 +29,42 @@
 // - Defaults:
 //   - No production API is exported from this integration target.
 //
-// Related documents:
-// - docs/research/algorithms/self-modification-state-graph-optimizer/research.
-//   md
-//
-// Large file:
-//   - false
-//
 
 //! Cargo composition root for self-modification state-graph research.
 
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/a.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/a.rs"]
 mod artifact_safety;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/exact.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/exact.rs"]
 mod exact_state;
-#[path = "../execution/ir/main.rs"]
+#[path = "../src/runtime/tiered-execution/domain/ir/main.rs"]
 pub mod execution_ir;
-#[path = "../algorithms/self-modification-state-graph-optimizer/index.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/index.rs"]
 pub mod indexed;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/i.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/i.rs"]
 mod indexed_memory;
-#[path = "../algorithms/self-modification-state-graph-optimizer/state.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/state.rs"]
 pub mod indexed_state;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/o.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/o.rs"]
 mod output_history;
-#[path = "../algorithms/self-modification-state-graph-optimizer/memory.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/memory.rs"]
 pub mod persistent;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/p.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/p.rs"]
 mod persistent_memory;
-#[path = "../algorithms/self-modification-state-graph-optimizer/output.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/output.rs"]
 pub mod persistent_output;
-#[path = "../algorithms/self-modification-state-graph-optimizer/profile.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/profile.rs"]
 pub mod profile_graph;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/c.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/c.rs"]
 mod profile_state;
-#[path = "../algorithms/self-modification-state-graph-optimizer/artifact.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/artifact.rs"]
 pub mod region_artifact;
-#[path = "../algorithms/self-modification-state-graph-optimizer/region.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/region.rs"]
 pub mod region_certificate;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/r.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/r.rs"]
 mod region_safety;
-#[path = "../algorithms/self-modification-state-graph-optimizer/state_graph.rs"]
+#[path = "../src/research/algorithms/composition/state-graph/state_graph.rs"]
 pub mod state_graph;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/s.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/s.rs"]
 mod state_identity;
-#[path = "../algorithms/self-modification-state-graph-optimizer/tests/d.rs"]
+#[path = "../tests/function/algorithms/domain/state-graph/d.rs"]
 mod step_delta;

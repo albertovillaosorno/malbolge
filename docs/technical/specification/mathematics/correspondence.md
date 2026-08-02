@@ -19,11 +19,14 @@ described below.
 ### Equation identity and manifest
 
 Correctness-relevant equations promoted into executable correspondence use a
-stable `eq:*` LaTeX label. `math/specification/correspondence.toml` is the closed versioned
+stable `eq:*` LaTeX label.
+`src/specification/formal-model/math/specification/correspondence.toml` is the
+closed versioned
 manifest that maps each promoted equation to its exact mathematical source,
 claimed domain/coverage class, and one or more executable test functions.
 
-`scripts/validate/math_correspondence.py` validates the graph fail-closed. It
+`src/automation/repository/composition/scripts/validate/math_correspondence.py`
+validates the graph fail-closed. It
 requires unique manifest IDs/labels, repository-relative sources, evidence under
 repository `tests/` or an algorithm mirror's `algorithms/<id>/tests/`, exact
 existence of every referenced `fn`/`def`, and exact set
@@ -34,7 +37,8 @@ of silently leaving stale documentation.
 ### Current promoted equations
 
 The first slice promotes twelve equations from
-`math/specification/profile-model.tex`: word modulus/domain, modular memory,
+`src/specification/formal-model/math/specification/profile-model.tex`: word
+modulus/domain, modular memory,
 pointer successor, rotate, crazy, decode, self-encryption, EOF, loading,
 committed transition, and observable equivalence.
 
@@ -51,7 +55,8 @@ semantics in a new proof harness. Coverage currently includes:
 - current 14-trit scalar rotate/crazy/loading fixtures, current EOF tracing, and
   atomic post-jump encryption rejection.
 
-A manifest link does not upgrade fixture coverage into a proof outside its stated
+A manifest link does not upgrade fixture coverage into a proof outside its
+stated
 `domain` and `coverage`. Compiler/research notation without an implementation is
 not labeled as correspondence yet and remains outside this claimed slice.
 
@@ -79,7 +84,9 @@ extrapolate a proof by convention.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`, `safe-rust-malbolge-vm`,
   `property-fuzz-and-exhaustive-testing`.
-- `scripts/validate/math_correspondence.py` currently closes seventeen promoted
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/math_correspondence.py`
+  currently closes seventeen promoted
   equation labels against concrete test functions.
 - `tests/mathematics/test_correspondence_manifest.py` proves orphan labels,
   stale test functions, and duplicate TOML authority fail closed.

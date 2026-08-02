@@ -1,0 +1,51 @@
+% Copyright:
+%   - Copyright (c) 2026 Alberto Villa Osorno.
+% SPDX-License-Identifier:
+%   - MIT
+% Confidential:
+%   - false
+% License-File:
+%   - LICENSE-MIT
+%
+% Boundary-Contract:
+% - Owns:
+%   - The repository behavior implemented by this source file.
+% - Must-Not:
+%   - Bypass the contracts or authority boundaries of its owning package.
+% - Allows:
+%   - Inputs: values admitted by the file's public or internal interface.
+%   - Outputs: deterministic values or effects declared by that interface.
+%   - Side effects: only those explicitly owned by the implementation.
+% - Split-When:
+%   - Split when one responsibility gains an independent lifecycle.
+% - Merge-When:
+%   - Merge when another file owns the exact same responsibility.
+% - Summary:
+%   - Stochastic and guided search module.
+% - Description:
+%   - Implements the responsibility summarized by this module.
+% - Usage:
+%   - Used through the owning package, executable, or document boundary.
+% - Defaults:
+%   - Invalid inputs or broken invariants fail closed.
+%
+
+%! Stochastic and guided search module.
+
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\input{../malbolge-notation.tex}
+\title{Stochastic and guided search Research Model}
+\begin{document}
+\maketitle
+Let $C$ be the candidate space, $V(c,p)\in\{0,1\}$ the independent verifier
+for candidate $c$ under profile $p$, and $\mathbf{K}(c)$ the measured cost
+vector. Search may rank or generate candidates arbitrarily, but only
+\[
+  C_V = \{c\in C\mid V(c,p)=1\}
+\]
+is eligible for comparison. Optimization therefore selects verified candidates
+under explicit resource budgets rather than treating the search heuristic as a
+correctness authority. This file will be refined with algorithm-specific
+equations before the first claimed result.
+\end{document}

@@ -28,8 +28,11 @@ inherit Rust transition code, Rust value types, or Rust storage choices.
 
 ### Implementation Status
 
-The implementation lives in `vm/c/malbolge_vm.c` with public interface
-`vm/c/malbolge_vm.h`. It uses fixed 59049-word storage, caller-owned input and
+The implementation lives in
+`src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.c` with public
+interface
+`src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.h`. It uses fixed
+59049-word storage, caller-owned input and
 output buffers, no heap allocation, a table-driven ternary crazy operation,
 explicit byte semantics, and optional step traces.
 

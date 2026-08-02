@@ -18,7 +18,9 @@ scope:
   - "scripts/validate/"
   - "tests/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_benchmark_protocol.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.benchmark_protocol"
   - "jig validate --root ."
 ---
@@ -63,7 +65,8 @@ identify uncertainty and may never substitute for semantic verification.
   `reproducible-experiment-identity-and-manifest`.
 - Protocol v1 validator and deterministic/stochastic fixtures enforce equivalent
   workload identity, warmup/repetitions/stopping rules, retained raw samples,
-  declared center/dispersion/uncertainty, resource identity, objective tradeoffs,
+  declared center/dispersion/uncertainty, resource identity, objective
+  tradeoffs,
   outlier policy, unique stochastic seeds, and failed-trial retention.
 - Every benchmark record references an Experiment Manifest `run`; host,
   accelerator, and raw-output identity must agree across both records, while the

@@ -1,8 +1,3 @@
-# File:
-#   - test_capsule.py
-# Path:
-#   - tests/compatibility/test_capsule.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Independent compatibility evidence for version-one fallback capsules."""
 
@@ -53,7 +40,9 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = (
     ROOT / "tests" / "compatibility" / "capsule" / "current-profile-capsule.hex"
 )
-HISTORICAL_C = ROOT / "tools" / "malbolge" / "main.c"
+HISTORICAL_C = (
+    ROOT / "src/interoperability/historical-malbolge/adapter-outbound/main.c"
+)
 
 BITS_PER_BYTE = 8
 CHECKSUM_BYTES = 8

@@ -1,0 +1,8 @@
+schema_version = 1
+
+[algorithm]
+id = "template"
+state = "experimental"
+research_record = "docs/research/algorithms/template/research.md"
+# jig-ignore-next-line: indivisible reviewed identifier
+experiment_manifest = "src/research/algorithms/domain/algorithms/template/experiment.toml"

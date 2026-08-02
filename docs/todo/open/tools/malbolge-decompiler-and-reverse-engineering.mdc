@@ -14,12 +14,14 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
   - "tools/decompile/"
-  - "src/bin/malbolge_decompile.rs"
-  - "src/bin/museum_convert.rs"
+  - "src/tooling/decompiler/composition/malbolge_decompile.rs"
+  - "src/tooling/decompiler/composition/museum_convert.rs"
   - "tests/decompiler.rs"
   - "examples/museum/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe clippy --test decompiler --bin malbolge_decompile --bin museum_convert --all-features -- -D warnings"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --test decompiler --all-features"
   - "jig validate --root ."
 ---
@@ -40,7 +42,8 @@ Keep museum conversion as a separate local convenience over the general tool.
 - The C representation preserves normative decode, crazy/rotate, jumps,
   self-encryption, EOF, I/O, pointer sequencing, termination, and atomic
   rejection while keeping memory/I/O caller-owned.
-- Initial decode views use `XLAT1` translation and never confuse the raw modulo-94
+- Initial decode views use `XLAT1` translation and never confuse the raw
+  modulo-94
   residue with the decoded instruction.
 - The general CLI selects output representation explicitly so future readable
   forms do not redefine decompilation as C-only.
@@ -48,21 +51,25 @@ Keep museum conversion as a separate local convenience over the general tool.
   local caller-supplied historical file, selects `malbolge-1998`, and writes a
   rebuildable local view.
 - Tests regress deterministic/profile-specific rendering and a normative VM
-  baseline; generated C has executable Clang evidence on x86-64 and syntax/codegen
+  baseline; generated C has executable Clang evidence on x86-64 and
+  syntax/codegen
   evidence on AArch64.
-- A richer reverse-engineering IR/control-flow/state-annotation layer is designed
+- A richer reverse-engineering IR/control-flow/state-annotation layer is
+  designed
   and validated before this TODO is retired.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact root TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Implemented surface: `tools/decompile/render.rs`, `tools/decompile/cli.rs`,
-  `tools/decompile/museum.rs`, the two thin Cargo roots, and
+- Implemented surface: `src/tooling/decompiler/application/render.rs`,
+  `src/tooling/decompiler/application/cli.rs`,
+  `src/tooling/decompiler/application/museum.rs`, the two thin Cargo roots, and
   `tests/decompiler.rs`.
 - Current Rust evidence: six strict tests plus Clippy with warnings denied.
 - Development toolchain evidence: pinned Clang 22.1.8 emitted warning-clean
-  x86-64 and AArch64 COFF objects from generated `ctO` C; the x86-64 DLL executed
+  x86-64 and AArch64 COFF objects from generated `ctO` C; the x86-64 DLL
+  executed
   input `0x41` to output `A`, halt, `A=65`, `C=2`, `D=2`, one consumed byte, and
   three semantic steps.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,

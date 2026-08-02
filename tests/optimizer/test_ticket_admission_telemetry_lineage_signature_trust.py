@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage_signature_trust.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage_signature_trust.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -39,38 +32,9 @@
 # - Defaults:
 #   - Uses deterministic insecure digest ports only as protocol test evidence.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-#
-# Large file:
-#   - false
-#
 
 """Bounded caller-owned public-key lineage signature trust tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 

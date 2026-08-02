@@ -14,7 +14,8 @@ What material does the repository represent as MIT licensed?
 
 ## Verified Baseline
 
-The root `LICENSE` contains the MIT License with copyright notice for Alberto
+The root `LICENSE-MIT` contains the MIT License with copyright notice for
+Alberto
 Villa Osorno, 2026.
 
 ## Not Established
@@ -54,5 +55,5 @@ This record is bounded repository research and is not legal advice.
 
 ## Sources
 
-- `LICENSE`
+- `LICENSE-MIT`
 - [Ben Olmstead public-domain boundary](ben-olmstead-malbolge-public-domain.md)

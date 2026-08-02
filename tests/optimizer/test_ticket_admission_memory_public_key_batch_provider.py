@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_memory_public_key_batch_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_memory_public_key_batch_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,30 +31,10 @@
 # - Defaults:
 #   - Uses two synthetic public-key byte strings and 256-request defaults.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
-#
-# Large file:
-#   - false
-#
 
 """Inline async batch-adapter tests for bounded memory keys."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -69,9 +42,8 @@ import asyncio
 from dataclasses import replace
 from typing import cast
 
-import pytest
-
 from accelerator import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     ticket_admission_telemetry_lineage_memory_public_key_batch_provider as adapter,
 )
 from accelerator import (
@@ -89,6 +61,7 @@ from accelerator import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 AdapterError = (
     adapter.TicketAdmissionTelemetryLineageMemoryPublicKeyBatchProviderError
@@ -179,6 +152,7 @@ def _memory_provider(
     entries: tuple[MemoryEntry, ...] | None = None,
     provider_id: str = PROVIDER_ID,
 ) -> MemoryProvider:
+    # jig-ignore-next-line: indivisible reviewed identifier
     return memory.build_ticket_admission_telemetry_lineage_memory_public_key_provider(
         _entries() if entries is None else entries,
         provider_id=provider_id,
@@ -260,6 +234,7 @@ def _manifest(
     *,
     same_key_id: bool = False,
 ) -> manifest.TicketAdmissionTelemetryLineageSignatureTrustManifest:
+    # jig-ignore-next-line: indivisible reviewed identifier
     return manifest.build_ticket_admission_telemetry_lineage_signature_trust_manifest((
         ManifestEntry(
             algorithm_id=NEW_ALGORITHM_ID,

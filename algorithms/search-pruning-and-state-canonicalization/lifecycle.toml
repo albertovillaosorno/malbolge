@@ -1,7 +1,0 @@
-schema_version = 1
-
-[algorithm]
-id = "search-pruning-and-state-canonicalization"
-state = "experimental"
-research_record = "docs/research/algorithms/search-pruning-and-state-canonicalization/research.md"
-experiment_manifest = "algorithms/search-pruning-and-state-canonicalization/experiment.toml"

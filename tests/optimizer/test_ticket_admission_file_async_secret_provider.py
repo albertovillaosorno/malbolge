@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_file_async_secret_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_file_async_secret_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -41,21 +34,6 @@
 # - Defaults:
 #   - Uses two temporary 32-byte raw-secret files and one caller offloader.
 #
-# Related documents:
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
-#
 
 """Caller-offloaded async explicit file-secret adapter tests."""
 
@@ -68,8 +46,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
-
-import pytest
 
 from accelerator import ticket_admission_file_async_secret_provider as adapter
 from accelerator import (
@@ -96,6 +72,7 @@ from accelerator.ticket_admission_telemetry_lineage_trust_manifest import (
 from accelerator.ticket_admission_telemetry_lineage_trust_manifest import (
     ticket_admission_telemetry_lineage_trust_manifest_fingerprint,
 )
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.ticket_admission_telemetry_lineage_secret_provider import (

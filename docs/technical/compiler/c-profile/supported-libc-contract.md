@@ -38,7 +38,8 @@ Not implemented. This proposed contract does not claim executable support yet.
 - The supported libc and `libm` surfaces state exact C signatures and
   deterministic guest semantics and separate unsupported-today functionality
   from constructs forbidden by the language/ABI model.
-- Accepted routines lower to guest code or verified compiler intrinsics and never
+- Accepted routines lower to guest code or verified compiler intrinsics and
+  never
   resolve through a host libc or host math library in generated artifacts.
 - Native CLI adapters are debug-only scaffolding and are not lowerability or
   conformance evidence.

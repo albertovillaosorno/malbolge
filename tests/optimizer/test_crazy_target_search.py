@@ -1,8 +1,3 @@
-# File:
-#   - test_crazy_target_search.py
-# Path:
-#   - tests/optimizer/test_crazy_target_search.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Full membership and trusted CPU admission remain authoritative.
 #
-# Related documents:
-# - optimizer/crazy_target.py
-#
-# Large file:
-#   - false
-#
 
 """Correctness evidence for exact multiposition crazy-target search."""
 
@@ -51,8 +38,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import override
 from unittest import SkipTest
-
-import pytest
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import AcceleratorCapability
@@ -80,6 +65,7 @@ from optimizer.crazy_target import crazy_target_batch_builder_id
 from optimizer.crazy_target import crazy_target_projected_evaluation_id
 from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_selection_preparer_id
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable

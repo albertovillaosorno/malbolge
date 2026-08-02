@@ -1,8 +1,3 @@
-# File:
-#   - test_target_profile.py
-# Path:
-#   - tests/test_target_profile.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -35,14 +28,6 @@
 #   - Used through the owning package, executable, or document boundary.
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
-#
-# Related documents:
-# - scripts/validate/profile_requirements.py
-# - tests/compatibility/test_profile_requirements.py
-# - docs/technical/compatibility/required-profile-diagnostics.md
-#
-# Large file:
-#   - false
 #
 
 """Regression tests for the closed Malbolge target-profile schema."""

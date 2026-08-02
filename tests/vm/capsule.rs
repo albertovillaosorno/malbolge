@@ -1,8 +1,3 @@
-// File:
-//   - capsule.rs
-// Path:
-//   - tests/vm/capsule.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -40,13 +33,6 @@
 // - Defaults:
 //   - Current-profile payloads parse but remain non-executable on classic
 //   - runtime.
-//
-// Related documents:
-// - docs/technical/compatibility/historical-interpreter-fallback-capsule.md
-// - tests/compatibility/capsule/current-profile-capsule.hex
-//
-// Large file:
-//   - false
 //
 
 //! Historical-fallback capsule compatibility and runtime-boundary fixtures.

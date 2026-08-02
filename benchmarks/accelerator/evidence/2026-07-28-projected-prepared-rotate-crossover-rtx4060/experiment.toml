@@ -20,7 +20,7 @@ required = true
 oracle = "selection-aware projection identity; zero-or-one exact preimage proof; projected evaluator and exact full-batch membership; CPU scalar packed equality; ordinary broadword domain validation; exact proposal and trusted admission; cardinality, malformed, forged, fabricated, empty-projection, and CPU/CUDA session proofs"
 
 [provenance]
-implementation = "accelerator/evaluated_search.py"
+implementation = "src/optimization/accelerator/application/accelerator/evaluated_search.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060"
 

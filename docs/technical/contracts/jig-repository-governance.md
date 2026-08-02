@@ -21,7 +21,7 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Invariants
 
-- The repository-local Jig installation and `jig.toml` describe the actual
+- The repository-local Jig installation and `.jig/jig.toml` describe the actual
   polyglot repository without fake language/tool requirements or weakened
   reviewed lint policy.
 - The authoritative rule/specification is deterministic, versionable, and does
@@ -31,8 +31,10 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 - Repository-local Jig 26.3.1 is installed under `.dependencies/jig/bin/` and
   executes from the repository-local source-linked authority.
-- The active source-linked Jig requires configuration schema 8. Malbolge declares
-  its typed TODO document, lifecycle roots, record shape, acceptance requirements,
+- The active source-linked Jig requires configuration schema 8. Malbolge
+  declares
+  its typed TODO document, lifecycle roots, record shape, acceptance
+  requirements,
   validation-command requirement, strict dependency-lane policy, and all six
   closed change-class path policies explicitly.
 - Git governance declares `JIG_SHIT.md` as required local-only evidence and
@@ -65,7 +67,8 @@ selecting an implicit repository policy.
 
 ## Implementation
 
-The schema-8 `jig.toml` and installed commit-message hook accept the declared
+The schema-8 `.jig/jig.toml` and installed commit-message hook accept the
+declared
 TODO workflow. Jig repaired historical messages transactionally from
 `b7686ed1ba2e6369eac124046158fb65ac667747` to
 `b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at

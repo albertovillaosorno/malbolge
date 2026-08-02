@@ -4,6 +4,7 @@ status: "active"
 lane: "6"
 area: "vm"
 task: "TODO - Deterministic logical concurrency"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/deterministic-logical-concurrency.md"
 depends_on:
   - "safe-rust-malbolge-vm"
@@ -13,14 +14,15 @@ adr_paths:
   - "docs/technical/adr/tiered-native-execution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "vm/src/logical.rs"
-  - "vm/src/batch.rs"
+  - "src/runtime/virtual-machine/domain/logical.rs"
+  - "src/runtime/virtual-machine/composition/batch.rs"
   - "tests/vm/logical.rs"
   - "tests/vm/profile_logical.rs"
   - "tests/vm/batch.rs"
   - "tests/vm/profile_batch.rs"
   - "benchmarks/interpreter/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -48,8 +50,10 @@ observable results.
   after deliberately scrambling physical task order. Memory fingerprints,
   registers, input consumption, I/O, run outcomes, diagnostics, task order, and
   joined bytes are identical.
-- The falsifiable baseline is sequential logical execution. Current fixtures pass
-  for classic full-state comparisons and for mixed `malbolge-2026.1` plus current
+- The falsifiable baseline is sequential logical execution. Current fixtures
+  pass
+  for classic full-state comparisons and for mixed `malbolge-2026.1` plus
+  current
   `malbolge-2026.2` profile identity/join ordering. No logical-layer speedup is
   claimed yet.
 - This is execution-engine product work, not an algorithm experiment, so no
@@ -84,5 +88,6 @@ observable results.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `canonical-malbolge-target-profile`.
 - Performance evidence remains intentionally separate: existing batch scaling
-  does not by itself establish logical sort/tag/join speedup, so no logical-layer
+  does not by itself establish logical sort/tag/join speedup, so no
+  logical-layer
   performance claim is accepted yet.

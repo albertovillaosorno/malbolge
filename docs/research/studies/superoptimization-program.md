@@ -35,7 +35,8 @@ Prior-work claims must resolve through canonical records under
 - The program maintains a source-backed map from prior
   superoptimization/synthesis work to falsifiable Malbolge-specific hypotheses
   and records both adopted and rejected techniques.
-- Raw combinatorial search, decomposition, verified block reuse, canonicalization,
+- Raw combinatorial search, decomposition, verified block reuse,
+  canonicalization,
   pruning, heuristic search, and learned guidance are compared rather than
   collapsed into one claim about compiler complexity.
 - The research record separates observed evidence from interpretation and

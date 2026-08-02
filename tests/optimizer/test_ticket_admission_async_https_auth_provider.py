@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_async_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_async_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -32,33 +25,19 @@
 # - Summary:
 #   - One-await bounded HTTPS Authorization provider regressions.
 # - Description:
-#   - Proves async resolution reuses exact synchronous validation without policy.
+#   - Proves async resolution reuses exact synchronous validation without
+#     policy.
 # - Usage:
-#   - Runs without network access, files, async plugins, or accelerator hardware.
+#   - Runs without network access, files, async plugins, or accelerator
+#     hardware.
 # - Defaults:
 #   - Uses one canonical request and the shared 4096-byte default.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
 #
 
 """Explicit async HTTPS Authorization credential-provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
+
 # ruff: file-ignore[too-many-arguments]
 
 from __future__ import annotations
@@ -69,8 +48,6 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_async_https_auth_provider as async_auth,
@@ -84,6 +61,7 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
 AsyncAuthError = (
     async_auth.TicketAdmissionTelemetryLineageAsyncHttpsAuthProviderError
@@ -227,6 +205,7 @@ def _provider(
 
 
 def _run(
+    # jig-ignore-next-line: indivisible reviewed identifier
     provider: async_auth.TicketAdmissionTelemetryLineageAsyncHttpsAuthorizationProvider,
     *,
     fetcher: HttpsFetcher | None = None,

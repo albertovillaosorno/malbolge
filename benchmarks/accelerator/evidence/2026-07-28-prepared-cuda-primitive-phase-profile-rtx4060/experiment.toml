@@ -20,7 +20,7 @@ required = true
 oracle = "exact CPU packed equality, broadword validator identity, resident CUDA counters, and at least 95 percent samplewise named coverage"
 
 [provenance]
-implementation = "benchmarks/accelerator/prepared_cuda_primitive_phase_profile.py"
+implementation = "src/performance/benchmarking/composition/benchmarks/accelerator/prepared_cuda_primitive_phase_profile.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-prepared-cuda-primitive-phase-profile-rtx4060"
 

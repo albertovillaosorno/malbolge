@@ -53,7 +53,8 @@ lowered through host-dependent behavior.
 
 ## Verification
 
-- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`, `libc/`,
+- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`,
+  `libc/`,
   `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located

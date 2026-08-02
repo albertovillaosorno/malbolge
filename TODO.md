@@ -83,12 +83,14 @@ enough for the TODO heading to disappear without losing unfinished intent.
   equivalent to the normative logical order.
 - Self-modification and post-instruction encryption are fundamental guest
   semantics. Generated code must not become globally immutable merely to make
-  linking, JIT, hot reload, or host parallelism easier. Immutable host caches are
+  linking, JIT, hot reload, or host parallelism easier. Immutable host caches
+  are
   allowed only behind version guards that preserve guest-visible mutation.
 - Scaling claims are hypotheses until measured. Report raw search, compositional
   reuse, verification, stitching, cache, and invalidation costs separately so an
   amortized fast path is never presented as the complexity of the full problem.
-- Incremental compiler state, resident RAM images, and WAL records are rebuildable
+- Incremental compiler state, resident RAM images, and WAL records are
+  rebuildable
   acceleration evidence rather than semantic authority. Equal byte counts, line
   positions, or textual hashes may be fast paths only after semantic dependency
   and self-modification contracts prove reuse safe.
@@ -104,7 +106,8 @@ enough for the TODO heading to disappear without losing unfinished intent.
   remain with their owning responsibility and do not require artificial papers.
 - Generated experiment artifacts are local to the owning algorithm under
   `algorithms/<id>/out/`; engineering transformations use an analogous local
-  `out/`, such as `algorithms/doom/quality/out/doom_fixed/`. Every `out/` is reproducible
+  `out/`, such as `algorithms/doom/quality/out/doom_fixed/`. Every `out/` is
+  reproducible
   and Git ignored rather than becoming an opaque evidence dump.
 - Research claims distinguish hypotheses, correctness evidence, performance
   evidence, negative/null results, and threats to validity. Primary or
@@ -148,7 +151,8 @@ without weakening unrelated linter contracts.
 ### TODO - Canonical Malbolge target profile
 
 Define `malbolge.json` as the single target-profile authority consumed by the
-VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators. Schema
+VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
+Schema
 v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`, and selects
 the scalable 14-trit `malbolge-2026.2` profile as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
@@ -200,7 +204,7 @@ implementation history begins. The gate requires the four documentation families
 and their local ADR roots, a usable repository bibliography baseline, all
 existing TODO decisions routed to an owning durable document or an explicitly
 unresolved record, valid local links, and no accidental global `docs/adr/`.
-`integrations/cspell/` remains intact as editorial support. Scaffolding,
+`.jig/cspell/` remains intact as editorial support. Scaffolding,
 configuration, and concurrent Jig development may exist before this gate, but
 new product implementation work starts only after the documentation baseline is
 reviewable. Documentation and planning commits may precede this gate. Passing it
@@ -257,16 +261,19 @@ host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
 atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
 Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
 checks target ISA, executable/non-writable `.text`, exact entry identity,
-self-contained relocations, and absence of undefined host dependencies. A private
+self-contained relocations, and absence of undefined host dependencies. A
+private
 `profile_metadata.rs` owner now supplies one format-neutral `MBPF` encoding to
 bootstrap/direct emitters and structural admission. Direct objects additionally
 require read-only `.mbprof` metadata matching
-profile ID/fingerprint, published version, ordered semantic features, word trits,
+profile ID/fingerprint, published version, ordered semantic features, word
+trits,
 profile capacity, and exact derived `u64` region memory retained by their native
 key; absence, tampering, or object/key mismatch fails structurally. Bootstrap
 revision-2 C23 source now renders the same canonical payload into a read-only
 `.mbprof` declaration, and structural admission requires it for revision 2 while
-preserving historical revision-1 absence. The pinned cross-ISA compile test remains
+preserving historical revision-1 absence. The pinned cross-ISA compile test
+remains
 the object-level confirmation boundary. A separate direct deopt backend now
 emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
 verified: they return guard miss without touching state, providing the first
@@ -275,7 +282,8 @@ byte-canonical direct backend now admits the exact initial-halt IR subset and
 performs the first native guest-state commit: after zero-state preflight it sets
 only termination to halt; misses are atomic. `direct-halt-registers` revision 5
 extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
-input/output counter observations, still with no memory/I/O effects. Independently
+input/output counter observations, still with no memory/I/O effects.
+Independently
 rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
 nontrivial registers; counter, opcode, and historical-revision mismatches fail
 closed. `direct-halt-fetch` revision 2 binds real graphical halt termination to
@@ -285,19 +293,24 @@ Full entry observation, non-null memory, and the exact IR footprint precede the
 objects, x86-64 hit/live-in/capacity/null execution, and AArch64 instruction
 decoding bind the contract. `direct-non-graphical` revision 2 applies the same
 memory guards to a VM-classified non-graphical live-in and commits only tag `2`.
-Independent 538/631-byte objects bind that path. `direct-no-operation` revision 2
+Independent 538/631-byte objects bind that path. `direct-no-operation` revision
+2
 is the first non-terminal and memory-writing direct effect: VM-owned decode,
-`XLAT2`, and modular-successor helpers derive one exact `memory[C]` encryption plus
+`XLAT2`, and modular-successor helpers derive one exact `memory[C]` encryption
+plus
 `C/D` advance. Independent 557/658-byte objects bind `memory[5]:77->65`,
-`C:5->6`, and `D:7->8`; x86-64 execution and AArch64 instruction decoding confirm
+`C:5->6`, and `D:7->8`; x86-64 execution and AArch64 instruction decoding
+confirm
 atomic hit/miss behavior. `direct-jump-data` revision 1 adds the first
 instruction-specific data read for distinct `C/D` live-ins. VM-owned decode,
 `XLAT2`, and successor helpers derive `memory[5]:35->93`, `C:5->6`, and
 `D:7->124`; independent 564/699-byte objects and cross-ISA evidence bind the
 contract while aliasing remains rejected. `direct-jump-code` revision 1 adds the
 three-live-in post-jump encryption order: `memory[5]=93` decodes `i`,
-`memory[7]=11` selects the new code pointer, and `memory[11]:68->33` is encrypted
-before `C:5->12` and `D:7->8`. Independent 622/731-byte objects, x86-64 execution,
+`memory[7]=11` selects the new code pointer, and `memory[11]:68->33` is
+encrypted
+before `C:5->12` and `D:7->8`. Independent 622/731-byte objects, x86-64
+execution,
 and AArch64 decoding bind exact hit behavior plus code/data/encryption/capacity/
 null misses; all three addresses must be distinct. `direct-rotate` revision 1 is
 the first reviewed direct effect with two guest-memory writes. VM-owned decode,
@@ -309,14 +322,16 @@ AArch64 decoding bind exact hit behavior plus code/data/capacity/null misses;
 guards ABI `memory_words` against the exact key-bound IR footprint before any
 read or write. Direct-template selection requires an explicit runtime
 capability, derives exact `u64` region memory from C/D pointers, live-ins, and
-writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or backend selection.
+writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or backend
+selection.
 After admission, zero-register halt chooses the smallest specialization, other
 no-live-in halts choose observation-bound code, graphical halt fetch and
 non-graphical termination choose their terminal live-in templates, exact
 non-aliasing jump-code, jump-data, rotate, and no-op IR choose reviewed
 memory-writing templates, and remaining IR chooses verified deopt; unsupported
 direct host formats remain
-explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
+explicit at that narrow boundary. A product-neutral preflighted tier plan maps
+only
 that format absence to the normative interpreter after `002`/`001` checks; real
 backend/emission/admission failures remain errors. Raw untrusted IR remains
 canonically transportable for deterministic rejection,
@@ -327,17 +342,20 @@ plus halt-fetch/non-graphical/no-operation revision-2 and
 jump-code/jump-data/rotate revision-1 objects bind that exact footprint in
 `MBPF` v3, and same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
-reuse. Derived bucket digests do not participate in identity equality; equal keys
+reuse. Derived bucket digests do not participate in identity equality; equal
+keys
 remain one entry even when their accelerator digests differ, while forced digest
 collisions remain independent across read, replacement, and removal. Cache
 equality compares exact retained key/value mappings rather than bucket layout.
 `VerifiedDirectNativeCache` narrows that store to semantically admitted
-direct artifacts. Cache-aware planning prepares one specialization-bound exact key
+direct artifacts. Cache-aware planning prepares one specialization-bound exact
+key
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
 nine templates, and shares the same immutable `Arc` allocation on hits. Exact
-invalidation removes one full-equality key from future reuse without revoking held
+invalidation removes one full-equality key from future reuse without revoking
+held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
 regions; profile-invalid IR fails without changing the cache. Exact-target
@@ -350,11 +368,14 @@ eviction, synchronization policy, remaining crazy and I/O selection,
 executable invocation, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
-deterministic deoptimization, capacity-consistent canonical native cache identity,
-process-local collision-safe reuse storage, cache-aware verified direct planning,
+deterministic deoptimization, capacity-consistent canonical native cache
+identity,
+process-local collision-safe reuse storage, cache-aware verified direct
+planning,
 and an untrusted cross-ISA bootstrap object boundary are implemented. General
 direct x86-64/AArch64 instruction selection, executable-memory integration,
-durable cache serialization/storage/eviction, and wider tier orchestration remain
+durable cache serialization/storage/eviction, and wider tier orchestration
+remain
 open.
 
 ### TODO - Ahead-of-execution native translation
@@ -386,7 +407,8 @@ Define deterministic logical tasks and joins while preserving sequential guest
 semantics. The safe Rust execution layer now orders structurally independent
 classic or profile-driven VM tasks by explicit logical ID and joins committed
 outputs only in that order. Classic 1/2/8-worker full-state fixtures and mixed
-2026.1/current profile joins match sequential baselines; logical-layer performance
+2026.1/current profile joins match sequential baselines; logical-layer
+performance
 evidence remains open.
 
 ### TODO - Batch VM execution
@@ -394,7 +416,8 @@ evidence remains open.
 Execute many independent programs or inputs efficiently on CPU and accelerator
 backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 The CPU baseline now has deterministic sequential and explicit host-parallel
-execution for classic and profile-driven machines through one scheduler. Retained
+execution for classic and profile-driven machines through one scheduler.
+Retained
 worker-scaling evidence applies to the classic CPU workload only. Retained
 current-profile CUDA evidence now covers complete snapshots and persistent
 resident segments. Product backend routes additionally expose input-ordered
@@ -432,7 +455,8 @@ Define a versioned `.malbolge` capsule recognized by modern runtimes while the
 `!`-emitting historical sentinel plus a space/tab `MALBCAP1` sideband carrying
 profile ID/fingerprint, payload, lengths, flags, and deterministic checksum.
 Current scalable payloads execute through `ProfileMachine`; the classic facade
-still rejects them before its ten-trit loader, so runtime choice remains explicit.
+still rejects them before its ten-trit loader, so runtime choice remains
+explicit.
 
 ### TODO - Required-profile diagnostics
 
@@ -440,7 +464,8 @@ Emit deterministic diagnostics naming required profile/features/capacity and
 runtime capability. Safe Rust and the Python non-VM preflight now reject
 `malbolge-2026.2` with byte-identical 14-trit/4,782,969-word diagnostics, report
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
-profile-before-runtime precedence. Portable effect IR v3, native keys, and direct
+profile-before-runtime precedence. Portable effect IR v3, native keys, and
+direct
 COFF `MBPF` v3 metadata now carry every canonical profile-side input for
 `MALBOLGE-PROFILE-001` plus exact region memory for
 `MALBOLGE-PROFILE-002`. VM-owned portable preflight consumes independently
@@ -499,12 +524,15 @@ VM ABI. Keep capability identity separate from transport: define versioning,
 argument/result types, pointer/range validation, blocking rules, failure
 semantics, capability discovery, and a deterministic call-frame representation
 without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
-runners may lower the same call frame differently, but guest-visible behavior and
+runners may lower the same call frame differently, but guest-visible behavior
+and
 validation must agree. The DOOM source ABI currently exercises version-1
 external capabilities spanning guest-memory provisioning, diagnostics/exit,
-video/input, PCM audio, raw file I/O, UDP transport, monotonic time, guest-directed
+video/input, PCM audio, raw file I/O, UDP transport, monotonic time,
+guest-directed
 mouse capture, and optional language-neutral execution telemetry. Telemetry may
-identify C source lines or Malbolge cells/instructions for host presentation, but
+identify C source lines or Malbolge cells/instructions for host presentation,
+but
 must never alter guest-visible behavior.
 
 ### TODO - Supported libc contract
@@ -512,11 +540,13 @@ must never alter guest-visible behavior.
 Define the guest C library surface: fixed-width integers, memory primitives,
 byte streams, strings, allocation, formatting, `libm`, and later higher-level
 routines. The contract is deliberately not the host libc ABI: accepted routines
-either compile into ordinary guest code or into verified compiler intrinsics with
+either compile into ordinary guest code or into verified compiler intrinsics
+with
 the same guest-visible semantics. No accepted C program may become dependent on
 `msvcrt`, glibc, musl, libSystem, a host math library, or another native runtime
 merely because the VM happens to run on that host. Native CLI adapters are
-debugging scaffolds only and never count as compiler, lowerability, or conformance
+debugging scaffolds only and never count as compiler, lowerability, or
+conformance
 evidence.
 
 ### TODO - Guest runtime and allocator
@@ -537,7 +567,8 @@ real guest-C validator without a libc shim. Generalize those primitives into the
 reusable guest runtime rather than treating the DOOM-local implementation as the
 final shared library. The DOOM corpus now also parses/sequences MIDI and MUS and
 synthesizes music into guest-owned PCM, so its host ABI no longer contains a
-music decoder/player service. Improve guest synthesis fidelity separately without
+music decoder/player service. Improve guest synthesis fidelity separately
+without
 weakening that boundary. Raw external effects remain behind a narrow
 host-capability boundary rather than growing into a shadow libc or hidden
 application runtime.
@@ -576,7 +607,8 @@ Define a non-canonical annotated source form for readable Malbolge without
 changing executable byte semantics. Canonical `.malbolge` remains the exact
 artifact. Annotated source may use arbitrary ASCII whitespace, deterministic
 automatic line wrapping, and full-line `#` comments whose marker is the first
-non-whitespace byte followed by horizontal space or tab. Bare hash, hash before a
+non-whitespace byte followed by horizontal space or tab. Bare hash, hash before
+a
 line ending/end of file, `#X`, and inline hashes remain ordinary code, so every
 graphical canonical sequence is representable without escapes. The active
 safe-Rust frontend now canonicalizes presentation to exact position-sensitive
@@ -589,7 +621,8 @@ remain follow-on layout work.
 
 Build a linker that composes independently compiled Malbolge blocks while
 resolving symbols, addresses, entry/exit machine-state contracts, positional
-decode phase, post-instruction encryption phase, and self-modification footprints.
+decode phase, post-instruction encryption phase, and self-modification
+footprints.
 Relocation is valid only when independent verification proves that stitching the
 blocks preserves the same guest-visible transition semantics.
 
@@ -615,7 +648,8 @@ readable executable representations without pretending arbitrary self-modifying
 programs preserve their original C source. The first active backend emits C23
 with caller-owned state/I/O and exact profile metadata; `ctO` currently compiles
 warning-clean with pinned Clang 22.1.8 for x86-64 and AArch64, and the x86-64
-artifact executes with the same input/output/register/step result as the normative
+artifact executes with the same input/output/register/step result as the
+normative
 VM. The general CLI requires an explicit representation, while `museum_convert`
 is a separate local-only helper pinned to `malbolge-1998`. A richer reverse-
 engineering IR and control-flow/state annotations remain open.
@@ -643,7 +677,8 @@ as historical differential evidence.
 Use deterministic property, fuzz/replay, sanitizer, regression, and exhaustive
 verification. The active Rust harness now has seed+ordinal replay/shrink, 24
 classic-versus-profiled-1998 generated differential cases with full final memory
-comparison, exhaustive loader byte/94-phase mutation boundaries, and the existing
+comparison, exhaustive loader byte/94-phase mutation boundaries, and the
+existing
 exhaustive arithmetic tables. Sanitizers and verifier valid/invalid mutation
 campaigns remain open.
 
@@ -683,7 +718,8 @@ into `.cache/latex/`. Machine-checked correspondence remains a separate task.
 ### TODO - Machine-checked mathematical correspondence
 
 Connect mathematical specifications to executable evidence. The active
-correspondence graph now maps seventeen stable `eq:*` labels from the profile model
+correspondence graph now maps seventeen stable `eq:*` labels from the profile
+model
 to explicit exhaustive, seeded-differential, current-profile, and rejection
 fixtures; graph validation fails on orphan equations or stale test functions.
 Future implementation-relevant compiler/research equations remain open.
@@ -790,7 +826,8 @@ execution, search, and verification. Compiler and verifier code must not depend
 directly on CUDA APIs. The active first slice now provides an immutable exact
 primitive request/result protocol with a mandatory scalar CPU implementation and
 optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
-fail before backend execution. Rust batch APIs now expose replaceable classic and
+fail before backend execution. Rust batch APIs now expose replaceable classic
+and
 profile execution ports with deterministic safe-Rust fallback. Reported routes
 now distinguish actual accepted backend completions from safe-Rust fallback and
 admission rejection, and live CUDA tests require real backend acceptance rather
@@ -804,8 +841,10 @@ hints remain untrusted and malformed optional evidence becomes no hint rather
 than admission. `classic-rotate-target-search-v1` runs the same bounded
 seed/budget strategy through CPU or live CUDA candidate evaluation. The new
 `classic-crazy-target-search-v1` is the first real non-invertible,
-multi-position strategy: shared neutral `CRAZY_TRIT_TABLE` semantics derive exact
-fixed-accumulator preimage positions before replaceable evaluation. Over the full
+multi-position strategy: shared neutral `CRAZY_TRIT_TABLE` semantics derive
+exact
+fixed-accumulator preimage positions before replaceable evaluation. Over the
+full
 59,049-word domain, accumulator zero and target 29,524 retain full membership
 while projecting exactly 1,024 candidates. Live CUDA matches CPU and independent
 CPU admission remains authoritative. Synthesis, guided/stochastic search, ROCm
@@ -821,15 +860,18 @@ algorithms and hardware through deterministic configuration with optional CLI
 overrides, record the exact combination in benchmark evidence, and permit
 side-by-side comparison without recompiling or modifying compiler semantics.
 The active foundation resolves explicit algorithm/backend bindings with a
-mandatory CPU reference, optional preferred backend, deterministic overrides, and
+mandatory CPU reference, optional preferred backend, deterministic overrides,
+and
 configured-versus-actual execution identity. Search configuration v1 now loads
 independent algorithm/backend identities from versioned TOML, rejects unknown or
 empty configuration, preserves source identity, and applies explicit overrides
 without mutating the base selection. The deterministic corpus enumerator is the
 first concrete CPU-only strategy. `classic-rotate-target-search-v1` binds one
 unique-inverse strategy to interchangeable CPU/CUDA evaluators, while
-`classic-crazy-target-search-v1` binds exact multiposition preimage preparation to
-the same replaceable capacity. Both record configured and actual backend identity
+`classic-crazy-target-search-v1` binds exact multiposition preimage preparation
+to
+the same replaceable capacity. Both record configured and actual backend
+identity
 and match CPU proposals before trusted CPU admission. `python -m optimizer.cli`
 now loads Search Configuration
 v1 plus canonical problem bytes, applies explicit algorithm/backend overrides,
@@ -839,9 +881,11 @@ proposals. CUDA setup failure falls back to the registered CPU reference without
 rewriting configured intent; unsupported algorithm/backend pairs still fail
 explicitly. The first protocol-compliant side-by-side run over the complete
 59,049-word classic domain retains 15 CPU and 15 CUDA samples with identical
-proposals and independent CPU admission. CPU median is 401.185 ms and CUDA median
+proposals and independent CPU admission. CPU median is 401.185 ms and CUDA
+median
 is 412.570 ms on the RTX 4060, so the observed CUDA/CPU ratio is 0.972x and the
-speedup hypothesis is rejected for this route. A separate 15-sample phase profile
+speedup hypothesis is rejected for this route. A separate 15-sample phase
+profile
 attributes 97.5% of CPU median total time and 99.5% of CUDA median total time to
 named phases. CUDA host-side phases account for about 57.0% of the median while
 backend evaluation accounts for about 42.5%; batch construction plus proposal
@@ -849,186 +893,275 @@ selection consume about 173.081 ms. `PreparedEvaluatedSearch` now builds and
 validates immutable request/batch state once, binds it to the exact algorithm,
 batch-builder, and selector identities, and permits the same proof to execute
 through CPU or CUDA without rebuilding the corpus. Rotate-target selection now
-validates only the target/header instead of materializing all candidates a second
-time. The retained four-route comparison records CPU ordinary/prepared medians of
+validates only the target/header instead of materializing all candidates a
+second
+time. The retained four-route comparison records CPU ordinary/prepared medians
+of
 293.564/148.590 ms (1.976x) and CUDA ordinary/prepared medians of
-306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than prepared
+306.872/162.693 ms (1.886x). Prepared CUDA remains about 9.5% slower than
+prepared
 CPU (0.913x CPU-prepared/CUDA-prepared). These are amortized repeated-search
-measurements with preparation outside the timed interval. A retained prepared-path
+measurements with preparation outside the timed interval. A retained
+prepared-path
 phase profile attributes 79.9% of CPU and 81.2% of CUDA median total time to
 backend evaluation, with proposal selection at 19.6% and 18.7%. Proof/result
-validation is negligible. `PackedCandidateEvidence` now carries fixed-width opaque
+validation is negligible. `PackedCandidateEvidence` now carries fixed-width
+opaque
 payloads in one byte buffer with logical IDs inherited from validated request
 order. Generic item-based adapters remain supported, malformed width/size/mixed
 forms fail closed, search consumes packed primitive u32 values without per-item
-bytes, and verification-assist materializes objects only when hints are requested.
+bytes, and verification-assist materializes objects only when hints are
+requested.
 Retained packed evidence lowers CPU ordinary/prepared medians to
 211.693/77.309 ms (1.387x/1.922x versus pre-packed) and CUDA medians to
 230.144/91.199 ms (1.333x/1.784x). Packed CUDA prepared remains about 18.0%
-slower than packed CPU prepared. The packed phase profile lowers CPU/CUDA backend
-evaluation to 53.907/67.202 ms (2.326x/2.058x versus pre-packed) and selection to
+slower than packed CPU prepared. The packed phase profile lowers CPU/CUDA
+backend
+evaluation to 53.907/67.202 ms (2.326x/2.058x versus pre-packed) and selection
+to
 22.502/22.288 ms. Prepared search state now optionally carries a validated,
 decoded candidate execution state bound to the strategy preparer. Rotate search
-stores one hardware-neutral `PrimitiveBatch` during preparation and matching CPU or
+stores one hardware-neutral `PrimitiveBatch` during preparation and matching CPU
+or
 CUDA adapters reuse it without revalidating candidate IDs or decoding 59,049
 payloads. Forged type/kind/evaluator state and different preparer identity fail
 closed. Retained evidence records CPU/CUDA prepared medians of 43.129/57.296 ms,
 1.792x/1.592x faster than the packed prepared baseline and 5.234x/4.167x faster
-than the same implementation's ordinary routes. Ordinary CPU/CUDA medians regress
+than the same implementation's ordinary routes. Ordinary CPU/CUDA medians
+regress
 6.6%/3.7% because they construct the explicit proof locally; this negative
-one-shot result is retained. Backend evaluation falls 2.801x CPU and 2.083x CUDA,
-while selection remains essentially unchanged. `PreparedPrimitiveBatch` now seals
-validated exact input at the primitive boundary. CPU consumes that proof directly;
-CUDA prepared execution retains one proof-bound input/output allocation and rebuilds
+one-shot result is retained. Backend evaluation falls 2.801x CPU and 2.083x
+CUDA,
+while selection remains essentially unchanged. `PreparedPrimitiveBatch` now
+seals
+validated exact input at the primitive boundary. CPU consumes that proof
+directly;
+CUDA prepared execution retains one proof-bound input/output allocation and
+rebuilds
 only for a different proof identity. Ordinary CUDA remains one-shot. Observable
 session counters and both prepared benchmarks require one build, 16 evaluations,
-15 reuses, and 59,049 resident rotate words. Retained resident evidence records a
+15 reuses, and 59,049 resident rotate words. Retained resident evidence records
+a
 46.232 ms CPU prepared median and 34.132 ms CUDA prepared median: CUDA is 1.355x
-faster in the same run and 1.679x faster than its 57.296 ms pre-resident baseline.
-Control routes are slower by 14.7% CPU ordinary, 7.2% CPU prepared, and 17.2% CUDA
+faster in the same run and 1.679x faster than its 57.296 ms pre-resident
+baseline.
+Control routes are slower by 14.7% CPU ordinary, 7.2% CPU prepared, and 17.2%
+CUDA
 ordinary, so those changes are retained as run-context noise. The CUDA backend
-phase falls from 32.264 to 9.922 ms (3.252x), but complete CUDA phase total changes
-from 55.300 to 55.910 ms because proposal selection rises from 22.913 to 46.331 ms.
-`PreparedEvaluatedSearch` now builds one immutable exact membership index from the
-validated `(logical_id, payload)` pairs. Prepared proposal validation reuses that
+phase falls from 32.264 to 9.922 ms (3.252x), but complete CUDA phase total
+changes
+from 55.300 to 55.910 ms because proposal selection rises from 22.913 to 46.331
+ms.
+`PreparedEvaluatedSearch` now builds one immutable exact membership index from
+the
+validated `(logical_id, payload)` pairs. Prepared proposal validation reuses
+that
 index without rebuilding a 59,049-entry dictionary; ordinary execution keeps the
-one-shot path. Fabricated payloads still fail closed, and both benchmarks require a
+one-shot path. Fabricated payloads still fail closed, and both benchmarks
+require a
 59,049-member index alongside exact CUDA session counters. Retained indexed
 evidence records CPU/CUDA prepared medians of 26.797/17.970 ms, improvements of
 1.725x/1.899x over the resident baseline; CUDA is 1.491x faster in the same run.
-Proposal selection falls from 41.529 to 11.801 ms CPU (3.519x) and from 46.331 to
+Proposal selection falls from 41.529 to 11.801 ms CPU (3.519x) and from 46.331
+to
 11.761 ms CUDA (3.939x). Ordinary controls and backend medians also improve, so
 cross-run total changes are not attributed solely to the index.
 `PreparedProposalSelection` now lets a strategy bind selector state to the same
 prepared proof. Rotate target preparation uses the exact inverse of the classic
-rotate bijection after pruning, seed rotation, and budget selection, retaining only
-evaluated preimage positions. Prepared selection reads and validates evidence only
+rotate bijection after pruning, seed rotation, and budget selection, retaining
+only
+evaluated preimage positions. Prepared selection reads and validates evidence
+only
 at those positions; ordinary search keeps the full packed scan. Missing/excluded
 preimages, forged state, and nonmatching evidence produce no proposal or fail
-closed. Both benchmarks require one prepared position for the canonical workload.
+closed. Both benchmarks require one prepared position for the canonical
+workload.
 Retained direct-selection evidence records CPU/CUDA prepared medians of
 15.266/6.182 ms, improvements of 1.755x/2.907x over indexed membership; CUDA is
 2.470x faster in the same run. Selection falls from 11.801 ms to 13.2 us CPU
-(894.008x) and from 11.761 ms to 12.4 us CUDA (948.452x). Ordinary controls improve
+(894.008x) and from 11.761 ms to 12.4 us CUDA (948.452x). Ordinary controls
+improve
 only 1.022x/1.015x and backend phases only 1.034x/1.035x, strongly bounding
 attribution to exact prepared selection. Primitive result validation now checks
-both tuple extrema instead of scanning every value in Python, preserving rejection
+both tuple extrema instead of scanning every value in Python, preserving
+rejection
 of negative and above-domain evidence before packing. Retained prepared medians
-improve 1.086x CPU and 1.254x CUDA; backend evaluation improves 1.091x/1.330x while
-ordinary controls remain nearly flat/slightly slower. Prepared CPU rotate now uses
-a full 59,049-entry lookup table generated exactly once from the scalar reference
+improve 1.086x CPU and 1.254x CUDA; backend evaluation improves 1.091x/1.330x
+while
+ordinary controls remain nearly flat/slightly slower. Prepared CPU rotate now
+uses
+a full 59,049-entry lookup table generated exactly once from the scalar
+reference
 formula. Ordinary CPU execution remains scalar; an exhaustive full-domain test
-matches every prepared result, and both benchmarks require 16 prepared evaluations
+matches every prepared result, and both benchmarks require 16 prepared
+evaluations
 plus all 59,049 table entries. Retained CPU prepared median falls from 14.058 to
 3.313 ms (4.243x), while CPU backend evaluation falls from 13.190 to 2.906 ms
 (4.540x). CPU ordinary remains effectively unchanged at 0.9996x. Same-run CPU
 prepared is 1.440x faster than CUDA prepared. `PackedPrimitiveResult` now adds a
-canonical u32le byte representation alongside tuple results. CUDA prepared returns
-the resident host buffer directly as packed bytes; the neutral bridge still checks
-capability, exact byte count, and every word's classic-domain bound before evidence
-acceptance. Ordinary CUDA and CPU tuple results remain unchanged. Benchmarks require
-16 packed CUDA evaluations plus all existing proofs. Retained CUDA prepared median
+canonical u32le byte representation alongside tuple results. CUDA prepared
+returns
+the resident host buffer directly as packed bytes; the neutral bridge still
+checks
+capability, exact byte count, and every word's classic-domain bound before
+evidence
+acceptance. Ordinary CUDA and CPU tuple results remain unchanged. Benchmarks
+require
+16 packed CUDA evaluations plus all existing proofs. Retained CUDA prepared
+median
 falls from 4.769 to 2.036 ms (2.343x), while CUDA backend evaluation falls from
 3.868 to 1.802 ms (2.147x). CPU prepared changes only 1.004x to 3.300 ms, and
-ordinary controls remain effectively flat/slightly slower. CUDA prepared is 1.621x
+ordinary controls remain effectively flat/slightly slower. CUDA prepared is
+1.621x
 faster than same-run CPU. Packed-domain validation now uses
-`u32le-broadword-domain-v1`: one repeated mask rejects high 16-bit content, and a
-per-lane `0xffff - 59048` addition sets bit 16 exactly for words above the classic
-maximum without cross-lane carry. Invalid threshold/high-bit words in first and last
+`u32le-broadword-domain-v1`: one repeated mask rejects high 16-bit content, and
+a
+per-lane `0xffff - 59048` addition sets bit 16 exactly for words above the
+classic
+maximum without cross-lane carry. Invalid threshold/high-bit words in first and
+last
 lanes fail closed; descriptive scalar fallback runs only on failure. Benchmarks
 require the validator identity alongside every existing proof. Retained CUDA
-prepared median falls from 2.036 to 1.175 ms (1.733x), while CUDA backend evaluation
-falls from 1.802 to 0.860 ms (2.095x) and CUDA total from 1.824 to 0.886 ms (2.057x).
-Same-run CUDA prepared is 2.706x faster than CPU. CPU phase regressions are retained
-as controls and are not attributed to this CUDA-targeted change. Public diagnostic
-profiles now split resident CUDA launch/synchronization, D-to-H transfer, immutable
+prepared median falls from 2.036 to 1.175 ms (1.733x), while CUDA backend
+evaluation
+falls from 1.802 to 0.860 ms (2.095x) and CUDA total from 1.824 to 0.886 ms
+(2.057x).
+Same-run CUDA prepared is 2.706x faster than CPU. CPU phase regressions are
+retained
+as controls and are not attributed to this CUDA-targeted change. Public
+diagnostic
+profiles now split resident CUDA launch/synchronization, D-to-H transfer,
+immutable
 byte materialization, and total time from neutral packed contract, mask lookup,
-integer decode, high-mask, threshold, diagnostic, result-build, and total phases.
+integer decode, high-mask, threshold, diagnostic, result-build, and total
+phases.
 The prepared route now replaces hot-path broadword domain scanning with exact
-`cpu-reference-packed-equality-v1`. Preparation computes and retains immutable CPU
+`cpu-reference-packed-equality-v1`. Preparation computes and retains immutable
+CPU
 truth for every candidate once; ordinary execution continues to use
-`u32le-broadword-domain-v1`. Prepared execution validates capability, representation,
-and exact count before byte-for-byte equality. First and final in-domain corruption
-fail closed with the first differing word reported. Generic prepared-search state
-counting exposes and requires all 59,049 reference words, while proposal admission
-remains independently trusted. The subphase, throughput, and phase benchmarks now
+`u32le-broadword-domain-v1`. Prepared execution validates capability,
+representation,
+and exact count before byte-for-byte equality. First and final in-domain
+corruption
+fail closed with the first differing word reported. Generic prepared-search
+state
+counting exposes and requires all 59,049 reference words, while proposal
+admission
+remains independently trusted. The subphase, throughput, and phase benchmarks
+now
 require both validator identities, reference count, resident/session counters,
-membership, selector, and CPU-table proofs. Retained full-domain evidence records
-CUDA prepared at 0.488 ms, 2.407x better than broadword validation and 6.786x faster
+membership, selector, and CPU-table proofs. Retained full-domain evidence
+records
+CUDA prepared at 0.488 ms, 2.407x better than broadword validation and 6.786x
+faster
 than same-run CPU prepared. CUDA backend evaluation falls from 0.860 to 0.215 ms
 (3.999x), and total falls from 0.886 to 0.238 ms (3.729x). Primitive validation
 falls from 0.6558 to 0.0278 ms (23.590x), with exact comparison at 0.0180 ms;
-primitive end-to-end falls from 0.8684 to 0.1935 ms (4.488x). Ordinary controls move
+primitive end-to-end falls from 0.8684 to 0.1935 ms (4.488x). Ordinary controls
+move
 about 1.5%, while CPU prepared regresses about 4%, so neither is attributed. The
 one-time reference generation and 236,196-byte reference image are excluded from
-retained intervals. `search_preparation_crossover.py` now preregisters scales 1, 64,
-1,024, and 59,049 with fresh-process cold preparation, warm preparation, incremental
-Python memory, ordinary CUDA, fresh resident build, and reused resident execution.
+retained intervals. `search_preparation_crossover.py` now preregisters scales 1,
+64,
+1,024, and 59,049 with fresh-process cold preparation, warm preparation,
+incremental
+Python memory, ordinary CUDA, fresh resident build, and reused resident
+execution.
 It computes the first strictly profitable run count while preserving validator,
 proposal, admission, reference/membership/selector, and CUDA-session proofs.
 Retained evidence records warm crossover counts 6/3/2/1 and cold counts
 106/38/5/2 across 1/64/1,024/59,049 candidates. At full domain, warm preparation
 plus first search is 212.140 ms versus 222.842 ms ordinary, a 10.703 ms one-shot
-advantage; cold preparation plus first search is 227.767 ms and crosses on run two.
-Incremental traced Python state retains 16.063 MiB and peaks at 19.040 MiB, versus
-0.901 MiB of exact reference/device/host buffers. Retained state is 285.249 bytes per
-candidate and 71.312x the reference bytes alone. `tracemalloc` excludes the prebuilt
-workload, global rotate table, CUDA/native storage, imports, and adapter setup. Component-level tracing identified the historical prepared membership frozenset as
+advantage; cold preparation plus first search is 227.767 ms and crosses on run
+two.
+Incremental traced Python state retains 16.063 MiB and peaks at 19.040 MiB,
+versus
+0.901 MiB of exact reference/device/host buffers. Retained state is 285.249
+bytes per
+candidate and 71.312x the reference bytes alone. `tracemalloc` excludes the
+prebuilt
+workload, global rotate table, CUDA/native storage, imports, and adapter setup.
+Component-level tracing identified the historical prepared membership frozenset
+as
 the leading avoidable duplicate: it copied one `(logical_id, payload)` tuple per
 candidate in addition to the validated batch. The active
 `identity-sorted-candidate-reference-binary-search-v1` index instead retains one
-identity-sorted tuple of references to the existing immutable `CandidateWorkItem`
-objects. It is proof-bound to the original batch, compares logical ID and payload
-exactly, and rejects forged or cross-batch indexes. Generic fabrication checks remain
+identity-sorted tuple of references to the existing immutable
+`CandidateWorkItem`
+objects. It is proof-bound to the original batch, compares logical ID and
+payload
+exactly, and rejects forged or cross-batch indexes. Generic fabrication checks
+remain
 active. Retained version-2 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
-compares both membership identities in the same process. At 59,049 candidates the
-compact component retains 473,352 bytes versus 5,876,552 bytes for the copied set,
+compares both membership identities in the same process. At 59,049 candidates
+the
+compact component retains 473,352 bytes versus 5,876,552 bytes for the copied
+set,
 a 91.945% reduction, and prepares in 15.851 ms versus 18.027 ms (1.137x faster).
-Complete prepared state falls from 16.063 to 10.910 MiB retained (32.083%) and from
-19.040 to 14.080 MiB peak (26.051%). Exact lookup is the retained cost: compact hit
-and miss are 2.625/2.785 microseconds versus 0.265/0.201 microseconds, regressions of
+Complete prepared state falls from 16.063 to 10.910 MiB retained (32.083%) and
+from
+19.040 to 14.080 MiB peak (26.051%). Exact lookup is the retained cost: compact
+hit
+and miss are 2.625/2.785 microseconds versus 0.265/0.201 microseconds,
+regressions of
 9.898x/13.856x. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1; the
-full-domain warm route saves 15.458 ms on its first execution. The compact index is
+full-domain warm route saves 15.458 ms on its first execution. The compact index
+is
 promoted for scale memory/preparation, not lookup speed. This is the retained
 version-2 baseline.
 Retained version-3 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/`
 promotes proof-carrying fixed-width candidate storage for large deterministic
-batches. At 59,049 candidates, complete prepared state falls from 10.910 to 2.923
+batches. At 59,049 candidates, complete prepared state falls from 10.910 to
+2.923
 MiB retained (73.211%) and from 14.080 to 8.395 MiB peak (40.378%). Warm/cold
 preparation improves from 194.917/207.761 ms to 117.753/132.553 ms
 (1.655x/1.567x), while ordinary CUDA search improves from 222.518 to 152.998 ms
-(1.454x). Warm/cold preparation plus first resident search is 129.508/144.308 ms,
+(1.454x). Warm/cold preparation plus first resident search is 129.508/144.308
+ms,
 so both retain one-run crossover with 23.490/8.691 ms observed margins. The
 rotation-backed membership component retains 528 bytes versus 473,352 bytes in
 version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
 0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
-17.755 microseconds versus 2.625 microseconds in version 2 and 0.266 microseconds
+17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
+microseconds
 copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
 from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
-miss lookup. The promotion is not universal: one-candidate memory grows slightly,
+miss lookup. The promotion is not universal: one-candidate memory grows
+slightly,
 and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
 out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
-cross-batch proofs, and payload substitution still fail closed. Retained version-4 evidence under
+cross-batch proofs, and payload substitution still fail closed. Retained
+version-4 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/`
 promotes `proof-bound-u32le-primitive-input-v1`. At 59,049 candidates,
 incremental retained prepared state falls from 3,064,623 to 713,791 bytes, a
-76.709% reduction and 12.088 bytes per candidate. Peak allocation remains exactly
+76.709% reduction and 12.088 bytes per candidate. Peak allocation remains
+exactly
 8,802,328 bytes (8.395 MiB): preparation still builds a temporary CPU
 reference/decode tuple, so the result removes retained ownership rather than the
-transient peak. Full-domain cold/warm crossover remains 1/1. Against the immediate
+transient peak. Full-domain cold/warm crossover remains 1/1. Against the
+immediate
 clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
 152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
-also proves 16 packed evaluations and CPU proves the full rotate table. The packed
-representation is promoted because no clean route regresses. Retained version-5 evidence under
+also proves 16 packed evaluations and CPU proves the full rotate table. The
+packed
+representation is promoted because no clean route regresses. Retained version-5
+evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-packed-rotate-batch-builder-crossover-rtx4060/`
 promotes `classic-u32le-bitset-first-representatives-v1` with independent
-`cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation falls
-from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state falls
+`cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation
+falls
+from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state
+falls
 slightly from 713,791 to 710,647 bytes, and peak Python allocation falls from
 8,802,328 to 1,183,023 bytes (86.560%). Full-domain crossover remains 1/1. CPU
 ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
@@ -1037,33 +1170,42 @@ ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
 0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
 only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
 attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
-to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is for
+to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
+for
 large deterministic batches, not universal small-batch memory. All builder,
 storage, validator, membership, proposal, admission, cardinality, and CPU/CUDA
 session proofs pass. Component attribution now places the remaining peak in the
 batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes as
-representative, selected-index, and payload arrays coexist. Retained version-6 evidence under
+representative, selected-index, and payload arrays coexist. Retained version-6
+evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/`
 promotes `classic-u32le-bitset-inplace-first-representatives-v2`. At 59,049
 candidates, cold/warm preparation falls from 76.130/76.584 to 64.606/65.101 ms
 (1.178x/1.176x), peak Python allocation falls from 1,183,023 to 962,052 bytes
-(18.679%), retained state remains 710,647 bytes, and full-domain crossover remains
+(18.679%), retained state remains 710,647 bytes, and full-domain crossover
+remains
 1/1. CPU/CUDA ordinary routes improve from 90.869/103.562 to 79.943/92.133 ms
-(1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput is
+(1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput
+is
 3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
 (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
 2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
 the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
-8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at 1,024
+8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
+1,024
 candidates peak falls 22,155 to 19,116 bytes and ordinary CUDA improves. All
 builder, storage, validator, membership, proposal, admission, cardinality, and
 CPU/CUDA session proofs pass. Component attribution now places the builder phase
 near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
 occurs when that retained batch coexists with candidate-state creation (~237 KiB
-incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
-coexistence without weakening exact reference, selection, membership, or admission
+incremental) or selector creation (~253 KiB incremental). Reducing this
+post-builder
+coexistence without weakening exact reference, selection, membership, or
+admission
 proofs is the next measured boundary.
 Retained version-7 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/`
 promotes `classic-u32le-native-view-preimage-v2`. The same-run component
 comparison preserves the one exact preimage at all four scales. At 59,049
@@ -1080,73 +1222,109 @@ incremental beside the retained batch, is the next measured preparation-memory
 boundary; exact reference, selection, membership, proposal, and admission proofs
 remain mandatory.
 Retained version-8 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/`
 promotes selection-aware exact projection under
 `classic-rotate-preimage-projection-v1`. Generic evaluated search prepares the
 selector proof first, requires the projected sub-batch to preserve evaluator
-identity and exact full-batch membership, binds projection callbacks into strategy
+identity and exact full-batch membership, binds projection callbacks into
+strategy
 identity, and validates backend evidence against only that sub-batch. Proposal
 membership and trusted admission still use all 59,049 evaluated candidates. The
-classic rotate inverse has zero or one exact preimage, so the canonical full-domain
-prepared state retains one reference word, one selected position, and one resident
-CPU/CUDA word while full membership remains 59,049. Empty projections skip backend
-execution; wrong evaluator, fabricated member, oversized projection, forged proof,
+classic rotate inverse has zero or one exact preimage, so the canonical
+full-domain
+prepared state retains one reference word, one selected position, and one
+resident
+CPU/CUDA word while full membership remains 59,049. Empty projections skip
+backend
+execution; wrong evaluator, fabricated member, oversized projection, forged
+proof,
 wrong evidence, and fabricated proposal still fail closed. Against the immediate
-clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms to
+clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms
+to
 46.2706/46.6161 ms (1.393x/1.390x), retained state falls from 710,647 to 475,010
 bytes (33.158%), peak allocation falls from 946,675 to 710,126 bytes (24.987%),
-and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to 0.0787
+and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to
+0.0787
 ms (41.172x), while CUDA prepared improves from 0.5116 to 0.2743 ms (1.865x).
-Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-phase
-speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
-are not attributed to projection. Projection is not universal tiny-batch policy: at
-one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
+prepared-phase
+speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls
+and
+are not attributed to projection. Projection is not universal tiny-batch policy:
+at
+one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
+crossover
+moves from 6/6 to 8/7. The required architectural boundary was an exact
+projected-subset contract for
 strategies without a unique algebraic inverse. The promoted proof retains subset
 identity, full membership, exact evidence, proposal validation, and independent
 trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
-`classic-rotate-preimage-position-subset-v2`. The proof binds immutable, strictly
-increasing request-order positions to the exact full-batch object; empty, one-item,
-and multi-item subsets are supported. Mutable, duplicate, reordered, out-of-range,
-forged, wrong-type, and cross-batch state fail closed. Generic preparation validates
-and unwraps the projection once, stores primitive state directly on the repeated hot
-path, and retains the exact projected batch beside full membership authority. Formal
-`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items compare
-legacy membership revalidation with the proof route: 2.3/4.3 microseconds for empty
+`classic-rotate-preimage-position-subset-v2`. The proof binds immutable,
+strictly
+increasing request-order positions to the exact full-batch object; empty,
+one-item,
+and multi-item subsets are supported. Mutable, duplicate, reordered,
+out-of-range,
+forged, wrong-type, and cross-batch state fail closed. Generic preparation
+validates
+and unwraps the projection once, stores primitive state directly on the repeated
+hot
+path, and retains the exact projected batch beside full membership authority.
+Formal
+`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items
+compare
+legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
+empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
-proof adds 144 retained and 64 peak bytes; from one item upward retained memory is
+proof adds 144 retained and 64 peak bytes; from one item upward retained memory
+is
 slightly lower and peak memory is equal. Against the immediate clean version-8
 baseline, full-domain cold/warm preparation improves from 46.2706/46.6161 ms to
-45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak stays
+45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak
+stays
 710,126 bytes, and crossover remains 1/1. One-candidate crossover improves from
-8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated throughput
-regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepared
+8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated
+throughput
+regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
+prepared
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
-improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
+improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
+proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. That production boundary is now implemented by
-`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics and
+`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics
+and
 a fixed accumulator derive every exact request-order preimage position before
-backend evaluation. For the complete 59,049-word domain with accumulator zero and
+backend evaluation. For the complete 59,049-word domain with accumulator zero
+and
 target 29,524, full membership remains authoritative while the prepared subset
 contains exactly 1,024 positions. Fourteen strategy tests cover format,
 deduplication, seed/budget order, empty and forged state, ordinary/prepared
-equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
-cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
-setup fallback. `classic-crazy-target-search-submission-v1` now retains the exact
+equality, independent admission, and a live RTX 4060 CPU/CUDA match with
+resident
+cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration,
+and
+setup fallback. `classic-crazy-target-search-submission-v1` now retains the
+exact
 full-batch selector/projection proof while submitting the 1,024-position subset
-through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
+through a candidate ticket. Seven tests cover identity, full-domain and empty
+CPU
 routes, malformed nested evidence/ticket handling, exact live CUDA publication,
-and teardown-driven CPU fallback. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+and teardown-driven CPU fallback. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
 records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
 paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
 15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
-than the ticket. Prepared construction is untimed; ticket preparation and cleanup
+than the ticket. Prepared construction is untimed; ticket preparation and
+cleanup
 are timed. No cross-device, compiler, synthesis, kernel-overlap, or independent-
 stream claim is made.
 Synthesis/guided
@@ -1163,14 +1341,18 @@ reference; CUDA 13.3 Update 1 is reproducibly pinned under `.dependencies/cuda/`
 from a tracked component/hash manifest. Compact one-step classic CUDA execution
 returns `StepTrace`-equivalent projections and is checked by Rust across all
 instruction families plus rejection/wrap/alias edges. Resident classic execution
-now keeps each complete 59,049-word state on GPU for a bounded multi-step run and
+now keeps each complete 59,049-word state on GPU for a bounded multi-step run
+and
 matches normative Rust across every final memory word, registers, I/O,
-termination, step count, resumption, and atomic rejection. The same geometry-bound
-resident kernel now executes `malbolge-2026.2`; Rust compares eight current cases
+termination, step count, resumption, and atomic rejection. The same
+geometry-bound
+resident kernel now executes `malbolge-2026.2`; Rust compares eight current
+cases
 across all 4,782,969 final words plus complete observable state. Rust product
 batches now route classic and current-profile states through hardware-neutral
 backend ports with safe-Rust fallback. Current-profile throughput is now
-retained through direct complete-snapshot materialization and persistent sessions.
+retained through direct complete-snapshot materialization and persistent
+sessions.
 A hardware-neutral exact-primitive candidate bridge now differentially matches
 CPU and live CUDA for classic crazy/rotate batches. Candidate evidence can also
 feed verification-assist hints through live CUDA while trusted admission remains
@@ -1178,21 +1360,28 @@ CPU-owned. `classic-rotate-target-search-v1` now supplies a concrete live CUDA
 search route over a deterministic 257-word corpus and matches the CPU reference
 before independent trusted admission. A retained full-domain comparison over
 59,049 candidates records identical accepted proposals but a 401.185 ms CPU
-median versus 412.570 ms CUDA median on the RTX 4060 (0.972x CUDA/CPU), rejecting
+median versus 412.570 ms CUDA median on the RTX 4060 (0.972x CUDA/CPU),
+rejecting
 the speedup hypothesis for this host-heavy search route. The retained phase
-profile shows that CUDA host-side phases consume about 57.0% of median total time
+profile shows that CUDA host-side phases consume about 57.0% of median total
+time
 and backend evaluation about 42.5%; batch construction plus proposal selection
 alone consume about 173.081 ms. Hardware-neutral prepared state is now active:
-one CPU-built immutable proof can execute through CPU or CUDA only when algorithm,
+one CPU-built immutable proof can execute through CPU or CUDA only when
+algorithm,
 batch-builder, and selector identities match exactly. Rotate-target selection no
-longer decodes the complete corpus a second time. Retained repeated-search evidence
-shows 1.976x CPU and 1.886x CUDA same-backend median improvements, while prepared
-CUDA remains about 9.5% slower than prepared CPU. Preparation is outside the timed
+longer decodes the complete corpus a second time. Retained repeated-search
+evidence
+shows 1.976x CPU and 1.886x CUDA same-backend median improvements, while
+prepared
+CUDA remains about 9.5% slower than prepared CPU. Preparation is outside the
+timed
 interval, so the result is not one-shot latency evidence. The retained prepared
 phase profile places 81.2% of CUDA median total time in backend evaluation and
 18.7% in proposal selection; proof/result validation is negligible. Fixed-width
 packed candidate evidence is now active across CPU/CUDA primitive evaluation and
-search, avoiding one `CandidateEvidence` plus bytes allocation per candidate while
+search, avoiding one `CandidateEvidence` plus bytes allocation per candidate
+while
 preserving request-order identity and verifier-only acceptance. Retained packed
 CUDA ordinary/prepared medians are 230.144/91.199 ms, improving 1.333x/1.784x
 over the pre-packed routes. Backend evaluation falls from 138.320 to 67.202 ms
@@ -1201,35 +1390,57 @@ remains about 18.0% slower than packed CPU prepared. Prepared rotate state now
 moves candidate batch validation and payload decode into one-time strategy
 preparation, and the same validated `PrimitiveBatch` crosses matching CPU/CUDA
 capacity. Forged or mismatched prepared primitive state fails before backend
-execution. Retained CUDA prepared median falls from 91.199 to 57.296 ms (1.592x),
-and backend evaluation from 67.202 to 32.264 ms (2.083x). Ordinary CUDA regresses
-3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Prepared CUDA now
-retains proof-bound input and output buffers across repeated calls; ordinary CUDA
-still allocates/transfers per call. Session counters prove build/reuse identity and
+execution. Retained CUDA prepared median falls from 91.199 to 57.296 ms
+(1.592x),
+and backend evaluation from 67.202 to 32.264 ms (2.083x). Ordinary CUDA
+regresses
+3.7%, and prepared CUDA remains 32.8% slower than CPU prepared. Prepared CUDA
+now
+retains proof-bound input and output buffers across repeated calls; ordinary
+CUDA
+still allocates/transfers per call. Session counters prove build/reuse identity
+and
 benchmarks fail unless one full-domain session is reused exactly. Retained CUDA
-prepared throughput is 34.132 ms, 1.679x faster than the pre-resident baseline and
-1.355x faster than same-run CPU prepared. CUDA backend evaluation improves 3.252x,
-while complete phase total does not improve because selection rises to 46.331 ms.
+prepared throughput is 34.132 ms, 1.679x faster than the pre-resident baseline
+and
+1.355x faster than same-run CPU prepared. CUDA backend evaluation improves
+3.252x,
+while complete phase total does not improve because selection rises to 46.331
+ms.
 Prepared search now reuses one exact immutable membership index across CPU/CUDA
-selection, eliminating per-call dictionary reconstruction while preserving payload
-membership checks. Benchmarks require 59,049 indexed members; fabricated proposals
-fail closed. Retained CUDA prepared throughput reaches 17.970 ms versus 26.797 ms
+selection, eliminating per-call dictionary reconstruction while preserving
+payload
+membership checks. Benchmarks require 59,049 indexed members; fabricated
+proposals
+fail closed. Retained CUDA prepared throughput reaches 17.970 ms versus 26.797
+ms
 CPU prepared (1.491x), and CUDA selection improves 3.939x to 11.761 ms. Improved
-ordinary/backend controls bound attribution to the direct selection phase. Prepared
+ordinary/backend controls bound attribution to the direct selection phase.
+Prepared
 rotate search now stores exact preimage positions and reads only their packed
 backend evidence, while ordinary search retains the full scan. The canonical
-benchmarks require exactly one prepared position plus the existing membership and
-resident-session proofs. Retained CUDA prepared throughput reaches 6.182 ms versus
-15.266 ms CPU prepared (2.470x), while CUDA selection falls to 12.4 us (948.452x).
-Backend evaluation remains 5.239 ms and changes only 1.035x versus the indexed run,
-so primitive backend execution now precedes resident or fused evaluation-selection.
-Primitive result validation now uses exact minimum/maximum bounds and still rejects
+benchmarks require exactly one prepared position plus the existing membership
+and
+resident-session proofs. Retained CUDA prepared throughput reaches 6.182 ms
+versus
+15.266 ms CPU prepared (2.470x), while CUDA selection falls to 12.4 us
+(948.452x).
+Backend evaluation remains 5.239 ms and changes only 1.035x versus the indexed
+run,
+so primitive backend execution now precedes resident or fused
+evaluation-selection.
+Primitive result validation now uses exact minimum/maximum bounds and still
+rejects
 negative or above-domain output before evidence packing. Retained CUDA prepared
-median falls from 6.182 to 4.929 ms (1.254x), and backend evaluation from 5.239 to
-3.940 ms (1.330x). Prepared CPU rotate now uses an exact full-domain lookup table
+median falls from 6.182 to 4.929 ms (1.254x), and backend evaluation from 5.239
+to
+3.940 ms (1.330x). Prepared CPU rotate now uses an exact full-domain lookup
+table
 while ordinary CPU remains scalar; benchmarks expose table/evaluation proof.
-Retained CPU/CUDA prepared medians are 3.313/4.769 ms, making CPU prepared 1.440x
-faster in the same run. CUDA backend evaluation changes only 1.018x to 3.868 ms and
+Retained CPU/CUDA prepared medians are 3.313/4.769 ms, making CPU prepared
+1.440x
+faster in the same run. CUDA backend evaluation changes only 1.018x to 3.868 ms
+and
 remains a contextual control. CUDA prepared now returns canonical packed u32le
 words directly after D-to-H transfer, eliminating tuple materialization and
 repacking while retaining full bridge validation. Benchmarks require 16 packed
@@ -1239,75 +1450,110 @@ evaluation improves 2.147x to 1.802 ms, while CPU phases change about 0.5%.
 Packed-domain validation now uses repeated broadword masks and lane-independent
 threshold addition under identity `u32le-broadword-domain-v1`; first/last-lane
 threshold and high-bit adversaries fail closed. Retained CUDA prepared median is
-1.175 ms (1.733x better), backend evaluation is 0.860 ms (2.095x better), and total
+1.175 ms (1.733x better), backend evaluation is 0.860 ms (2.095x better), and
+total
 is 0.886 ms (2.057x better). CUDA is 2.706x faster than same-run CPU. Public
-resident-CUDA and neutral packed-encoding phase profiles now preserve exact output
+resident-CUDA and neutral packed-encoding phase profiles now preserve exact
+output
 while decomposing kernel launch/synchronization, D-to-H transfer, immutable byte
-copy, contract, masks, integer decode, high-mask, threshold, diagnostics, and result
-construction. Prepared CUDA validation now uses immutable CPU-reference packed equality instead
-of repeating broadword domain validation. Preparation retains all 59,049 exact words
-outside timed execution; prepared CPU and CUDA results must match them byte for byte
+copy, contract, masks, integer decode, high-mask, threshold, diagnostics, and
+result
+construction. Prepared CUDA validation now uses immutable CPU-reference packed
+equality instead
+of repeating broadword domain validation. Preparation retains all 59,049 exact
+words
+outside timed execution; prepared CPU and CUDA results must match them byte for
+byte
 after capability/shape checks. Ordinary CUDA retains broadword validation. The
-profiler exposes exact-comparison, contract, result-build, public-layer residuals,
-and CUDA phases; throughput/phase profiles require both identities, reference count,
+profiler exposes exact-comparison, contract, result-build, public-layer
+residuals,
+and CUDA phases; throughput/phase profiles require both identities, reference
+count,
 1/16/16/15 session proof, CPU table, membership, and selector proofs. In-domain
 first/last corruption fails closed. Retained CUDA prepared search is 0.488 ms
 (2.407x better), backend evaluation is 0.215 ms (3.999x better), and total is
 0.238 ms (3.729x better). Exact prepared validation is 0.0278 ms, including a
-0.0180 ms byte comparison, versus 0.6558 ms broadword validation (23.590x). Primitive
-end-to-end improves 4.488x to 0.1935 ms. Reference construction remains untimed and
-requires 236,196 bytes here. The active preparation-crossover benchmark now measures
-cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
-strict amortization at four scales with all exact proofs. Retained warm crossover
-is 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm one-shot saves 10.703 ms;
+0.0180 ms byte comparison, versus 0.6558 ms broadword validation (23.590x).
+Primitive
+end-to-end improves 4.488x to 0.1935 ms. Reference construction remains untimed
+and
+requires 236,196 bytes here. The active preparation-crossover benchmark now
+measures
+cold/warm preparation, incremental Python memory, fresh resident build, reuse,
+and
+strict amortization at four scales with all exact proofs. Retained warm
+crossover
+is 6/3/2/1 and cold crossover 106/38/5/2. Full-domain warm one-shot saves 10.703
+ms;
 cold crosses on run two. Incremental Python state retains/peaks at
-16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers. Component tracing selected the duplicate prepared membership frozenset for the first
-compaction. The active proof-bound index stores sorted references to existing batch
-items and uses binary search plus exact payload equality; forged/cross-batch indexes
+16.063/19.040 MiB versus 0.901 MiB exact reference/device/host buffers.
+Component tracing selected the duplicate prepared membership frozenset for the
+first
+compaction. The active proof-bound index stores sorted references to existing
+batch
+items and uses binary search plus exact payload equality; forged/cross-batch
+indexes
 and fabricated proposals fail closed. Retained version-2 evidence records the
-compact component at 473,352 bytes versus 5,876,552 bytes copied (91.945% lower) and
+compact component at 473,352 bytes versus 5,876,552 bytes copied (91.945% lower)
+and
 15.851 ms versus 18.027 ms preparation (1.137x faster) at full domain. Complete
-prepared state falls 32.083% retained and 26.051% peak. Binary hit/miss lookup is
-9.898x/13.856x slower than the copied set, so this is explicitly a scale-memory and
+prepared state falls 32.083% retained and 26.051% peak. Binary hit/miss lookup
+is
+9.898x/13.856x slower than the copied set, so this is explicitly a scale-memory
+and
 preparation promotion rather than a lookup-speed claim. Warm/cold crossover is
 7/3/2/1 and 108/38/5/1. This is the retained version-2 baseline.
 Retained version-3 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/`
 promotes proof-carrying fixed-width candidate storage for large deterministic
-batches. At 59,049 candidates, complete prepared state falls from 10.910 to 2.923
+batches. At 59,049 candidates, complete prepared state falls from 10.910 to
+2.923
 MiB retained (73.211%) and from 14.080 to 8.395 MiB peak (40.378%). Warm/cold
 preparation improves from 194.917/207.761 ms to 117.753/132.553 ms
 (1.655x/1.567x), while ordinary CUDA search improves from 222.518 to 152.998 ms
-(1.454x). Warm/cold preparation plus first resident search is 129.508/144.308 ms,
+(1.454x). Warm/cold preparation plus first resident search is 129.508/144.308
+ms,
 so both retain one-run crossover with 23.490/8.691 ms observed margins. The
 rotation-backed membership component retains 528 bytes versus 473,352 bytes in
 version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
 0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
-17.755 microseconds versus 2.625 microseconds in version 2 and 0.266 microseconds
+17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
+microseconds
 copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
 from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
-miss lookup. The promotion is not universal: one-candidate memory grows slightly,
+miss lookup. The promotion is not universal: one-candidate memory grows
+slightly,
 and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
 out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
-cross-batch proofs, and payload substitution still fail closed. Retained version-4 evidence under
+cross-batch proofs, and payload substitution still fail closed. Retained
+version-4 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/`
 promotes `proof-bound-u32le-primitive-input-v1`. At 59,049 candidates,
 incremental retained prepared state falls from 3,064,623 to 713,791 bytes, a
-76.709% reduction and 12.088 bytes per candidate. Peak allocation remains exactly
+76.709% reduction and 12.088 bytes per candidate. Peak allocation remains
+exactly
 8,802,328 bytes (8.395 MiB): preparation still builds a temporary CPU
 reference/decode tuple, so the result removes retained ownership rather than the
-transient peak. Full-domain cold/warm crossover remains 1/1. Against the immediate
+transient peak. Full-domain cold/warm crossover remains 1/1. Against the
+immediate
 clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
 152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
-also proves 16 packed evaluations and CPU proves the full rotate table. The packed
-representation is promoted because no clean route regresses. Retained version-5 evidence under
+also proves 16 packed evaluations and CPU proves the full rotate table. The
+packed
+representation is promoted because no clean route regresses. Retained version-5
+evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-packed-rotate-batch-builder-crossover-rtx4060/`
 promotes `classic-u32le-bitset-first-representatives-v1` with independent
-`cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation falls
-from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state falls
+`cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation
+falls
+from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state
+falls
 slightly from 713,791 to 710,647 bytes, and peak Python allocation falls from
 8,802,328 to 1,183,023 bytes (86.560%). Full-domain crossover remains 1/1. CPU
 ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
@@ -1316,33 +1562,42 @@ ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
 0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
 only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
 attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
-to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is for
+to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
+for
 large deterministic batches, not universal small-batch memory. All builder,
 storage, validator, membership, proposal, admission, cardinality, and CPU/CUDA
 session proofs pass. Component attribution now places the remaining peak in the
 batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes as
-representative, selected-index, and payload arrays coexist. Retained version-6 evidence under
+representative, selected-index, and payload arrays coexist. Retained version-6
+evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/`
 promotes `classic-u32le-bitset-inplace-first-representatives-v2`. At 59,049
 candidates, cold/warm preparation falls from 76.130/76.584 to 64.606/65.101 ms
 (1.178x/1.176x), peak Python allocation falls from 1,183,023 to 962,052 bytes
-(18.679%), retained state remains 710,647 bytes, and full-domain crossover remains
+(18.679%), retained state remains 710,647 bytes, and full-domain crossover
+remains
 1/1. CPU/CUDA ordinary routes improve from 90.869/103.562 to 79.943/92.133 ms
-(1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput is
+(1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput
+is
 3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
 (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
 2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
 the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
-8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at 1,024
+8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
+1,024
 candidates peak falls 22,155 to 19,116 bytes and ordinary CUDA improves. All
 builder, storage, validator, membership, proposal, admission, cardinality, and
 CPU/CUDA session proofs pass. Component attribution now places the builder phase
 near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
 occurs when that retained batch coexists with candidate-state creation (~237 KiB
-incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
-coexistence without weakening exact reference, selection, membership, or admission
+incremental) or selector creation (~253 KiB incremental). Reducing this
+post-builder
+coexistence without weakening exact reference, selection, membership, or
+admission
 proofs is the next measured boundary.
 Retained version-7 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/`
 promotes `classic-u32le-native-view-preimage-v2`. The same-run component
 comparison preserves the one exact preimage at all four scales. At 59,049
@@ -1359,73 +1614,109 @@ incremental beside the retained batch, is the next measured preparation-memory
 boundary; exact reference, selection, membership, proposal, and admission proofs
 remain mandatory.
 Retained version-8 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/`
 promotes selection-aware exact projection under
 `classic-rotate-preimage-projection-v1`. Generic evaluated search prepares the
 selector proof first, requires the projected sub-batch to preserve evaluator
-identity and exact full-batch membership, binds projection callbacks into strategy
+identity and exact full-batch membership, binds projection callbacks into
+strategy
 identity, and validates backend evidence against only that sub-batch. Proposal
 membership and trusted admission still use all 59,049 evaluated candidates. The
-classic rotate inverse has zero or one exact preimage, so the canonical full-domain
-prepared state retains one reference word, one selected position, and one resident
-CPU/CUDA word while full membership remains 59,049. Empty projections skip backend
-execution; wrong evaluator, fabricated member, oversized projection, forged proof,
+classic rotate inverse has zero or one exact preimage, so the canonical
+full-domain
+prepared state retains one reference word, one selected position, and one
+resident
+CPU/CUDA word while full membership remains 59,049. Empty projections skip
+backend
+execution; wrong evaluator, fabricated member, oversized projection, forged
+proof,
 wrong evidence, and fabricated proposal still fail closed. Against the immediate
-clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms to
+clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms
+to
 46.2706/46.6161 ms (1.393x/1.390x), retained state falls from 710,647 to 475,010
 bytes (33.158%), peak allocation falls from 946,675 to 710,126 bytes (24.987%),
-and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to 0.0787
+and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to
+0.0787
 ms (41.172x), while CUDA prepared improves from 0.5116 to 0.2743 ms (1.865x).
-Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-phase
-speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
-are not attributed to projection. Projection is not universal tiny-batch policy: at
-one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-moves from 6/6 to 8/7. The required architectural boundary was an exact projected-subset contract for
+Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
+prepared-phase
+speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls
+and
+are not attributed to projection. Projection is not universal tiny-batch policy:
+at
+one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
+crossover
+moves from 6/6 to 8/7. The required architectural boundary was an exact
+projected-subset contract for
 strategies without a unique algebraic inverse. The promoted proof retains subset
 identity, full membership, exact evidence, proposal validation, and independent
 trusted admission rather than introducing heuristic filtering.
 Retained version-9 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
-`classic-rotate-preimage-position-subset-v2`. The proof binds immutable, strictly
-increasing request-order positions to the exact full-batch object; empty, one-item,
-and multi-item subsets are supported. Mutable, duplicate, reordered, out-of-range,
-forged, wrong-type, and cross-batch state fail closed. Generic preparation validates
-and unwraps the projection once, stores primitive state directly on the repeated hot
-path, and retains the exact projected batch beside full membership authority. Formal
-`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items compare
-legacy membership revalidation with the proof route: 2.3/4.3 microseconds for empty
+`classic-rotate-preimage-position-subset-v2`. The proof binds immutable,
+strictly
+increasing request-order positions to the exact full-batch object; empty,
+one-item,
+and multi-item subsets are supported. Mutable, duplicate, reordered,
+out-of-range,
+forged, wrong-type, and cross-batch state fail closed. Generic preparation
+validates
+and unwraps the projection once, stores primitive state directly on the repeated
+hot
+path, and retains the exact projected batch beside full membership authority.
+Formal
+`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items
+compare
+legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
+empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
-proof adds 144 retained and 64 peak bytes; from one item upward retained memory is
+proof adds 144 retained and 64 peak bytes; from one item upward retained memory
+is
 slightly lower and peak memory is equal. Against the immediate clean version-8
 baseline, full-domain cold/warm preparation improves from 46.2706/46.6161 ms to
-45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak stays
+45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak
+stays
 710,126 bytes, and crossover remains 1/1. One-candidate crossover improves from
-8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated throughput
-regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepared
+8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated
+throughput
+regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
+prepared
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
-improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
+improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
+proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. That production boundary is now implemented by
-`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics and
+`classic-crazy-target-search-v1`. Shared neutral `CRAZY_TRIT_TABLE` semantics
+and
 a fixed accumulator derive every exact request-order preimage position before
-backend evaluation. For the complete 59,049-word domain with accumulator zero and
+backend evaluation. For the complete 59,049-word domain with accumulator zero
+and
 target 29,524, full membership remains authoritative while the prepared subset
 contains exactly 1,024 positions. Fourteen strategy tests cover format,
 deduplication, seed/budget order, empty and forged state, ordinary/prepared
-equality, independent admission, and a live RTX 4060 CPU/CUDA match with resident
-cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration, and
-setup fallback. `classic-crazy-target-search-submission-v1` now retains the exact
+equality, independent admission, and a live RTX 4060 CPU/CUDA match with
+resident
+cardinality 1,024. Three CLI tests cover CPU registration, CUDA registration,
+and
+setup fallback. `classic-crazy-target-search-submission-v1` now retains the
+exact
 full-batch selector/projection proof while submitting the 1,024-position subset
-through a candidate ticket. Seven tests cover identity, full-domain and empty CPU
+through a candidate ticket. Seven tests cover identity, full-domain and empty
+CPU
 routes, malformed nested evidence/ticket handling, exact live CUDA publication,
-and teardown-driven CPU fallback. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+and teardown-driven CPU fallback. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
 records CPU ordinary/prepared medians of 368.3588/22.4264 ms (16.425x, 15/15
 paired wins), CUDA ordinary/prepared medians of 235.8490/20.3304 ms (11.601x,
 15/15 wins), and a 185.7629 ms one-shot CUDA ticket (1.270x over ordinary,
 15/15 wins). CUDA prepared is 1.103x faster than CPU prepared and 9.137x faster
-than the ticket. Prepared construction is untimed; ticket preparation and cleanup
+than the ticket. Prepared construction is untimed; ticket preparation and
+cleanup
 are timed. No cross-device, compiler, synthesis, kernel-overlap, or independent-
 stream claim is made.
 Broader
@@ -1442,9 +1733,11 @@ only declares `windows-x86_64`; Rust, Jig, LLVM, and Pyright configuration also
 retain Windows-specific paths or targets. Completion requires one reviewed
 platform loader (`WinDLL`/`.dll` on Windows, `CDLL`/versioned `.so` on Linux),
 manifest-selected CUDA release/library identity, native platform toolchains,
-fail-closed CPU fallback, Linux x86-64 differential tests, and retained live-device
+fail-closed CPU fallback, Linux x86-64 differential tests, and retained
+live-device
 evidence. The project initializer already creates Windows/POSIX Python launchers
-and reports mismatched manifests as unsupported; that diagnostic surface is not a
+and reports mismatched manifests as unsupported; that diagnostic surface is not
+a
 Linux CUDA support claim.
 
 ### TODO - CUDA superoptimizer
@@ -1466,7 +1759,8 @@ slice now measures CUDA free/total memory, SM count, and maximum threads/block,
 then partitions exact resident classic item bytes below a deterministic reserve
 without a fixed device-specific batch ceiling. Synthetic 128 MiB/80 GiB capacity
 models are example correctness probes only, not supported-range endpoints. No
-artificial VRAM maximum is declared; larger addressable devices increase resident
+artificial VRAM maximum is declared; larger addressable devices increase
+resident
 capacity and are automatically split only at backend representation boundaries.
 RTX 4060 classic and current-profile throughput evidence is now retained.
 Current-profile shared initialization replicates one host image into private
@@ -1474,65 +1768,105 @@ device states, and persistent scalable sessions avoid repeated full-state
 movement between bounded segments. `ProfileMemoryImage` now validates and owns
 reusable geometry-bound input once, reducing repeated current-profile validation
 to sub-millisecond planning in retained evidence. Direct complete snapshots now
-download into final result arrays without redundant packed host staging. Retained snapshot-phase evidence under
+download into final result arrays without redundant packed host staging.
+Retained snapshot-phase evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-current-profile-resident-snapshot-phase-profile-rtx4060/`
-uses `ProfileSnapshotPhaseProfile` while leaving ordinary `snapshot()` unchanged.
+uses `ProfileSnapshotPhaseProfile` while leaving ordinary `snapshot()`
+unchanged.
 Batches 1/8/32 retain 15 exact samples after one excluded warmup and measure
 3.1616/65.7829/271.1391 ms median total. Batch 1 is 96.489% full-memory D-to-H.
 Batches 8/32 are 62.419%/63.872% fresh independent Python array allocation and
 37.248%/35.962% memory transfer. Decode is at most 0.105%; named coverage is at
-least 99.817%. Pinned memory alone is rejected because it does not remove the dominant
-fresh-array ownership requirement. Retained caller-owned workspace evidence under
+least 99.817%. Pinned memory alone is rejected because it does not remove the
+dominant
+fresh-array ownership requirement. Retained caller-owned workspace evidence
+under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/`
-promotes `caller-owned-independent-u32-arrays-v1`. Ordinary resident `snapshot()`
+promotes `caller-owned-independent-u32-arrays-v1`. Ordinary resident
+`snapshot()`
 creates fresh independent mutable `array('I')` results at every batch size;
 `allocate_snapshot_workspace()` creates explicit arrays once, and workspace
-`snapshot()`/`profile_snapshot()` overwrite and return those same arrays by contract.
-Forged, resized, duplicate, wrong-type, wrong-count, and closed-session state fails
+`snapshot()`/`profile_snapshot()` overwrite and return those same arrays by
+contract.
+Forged, resized, duplicate, wrong-type, wrong-count, and closed-session state
+fails
 closed. Clean batches 1/8/32 improve from 8.1785/65.7327/272.1251 ms ordinary to
 3.1631/24.6510/100.3275 ms workspace (2.586x/2.667x/2.712x). One-time allocation
 is 4.9179/41.3042/173.7859 ms and median-derived strict crossover is 1/2/2
-snapshots. Batch-one crossover is marginal: allocation plus one workspace snapshot
+snapshots. Batch-one crossover is marginal: allocation plus one workspace
+snapshot
 is 8.0810 ms versus 8.1785 ms ordinary, so ordinary remains the simpler one-shot
 default. Workspace hot paths are 96.485%/99.389%/99.686% full-memory D-to-H and
 retain 18.246/145.965/583.859 MiB. Retained bounded host-registration evidence
-under `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/` promotes `bounded-all-or-pageable-u32-arrays-v1` only for the
-explicit workspace. A 256 MiB all-or-none budget registers batches 1/8 and rejects
-batch 32 before Driver registration with `budget-exceeded`. Paired pageable/bounded
+under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`
+promotes `bounded-all-or-pageable-u32-arrays-v1` only for the
+explicit workspace. A 256 MiB all-or-none budget registers batches 1/8 and
+rejects
+batch 32 before Driver registration with `budget-exceeded`. Paired
+pageable/bounded
 medians are 3.4229/3.1718 ms (1.079x, 15/15 faster, crossover 2) and
-29.5885/26.7148 ms (1.108x, 14/15 faster, crossover 3). Batch 32 remains pageable
-at 99.4115/99.9298 ms and receives no speedup claim. Invalid budgets fail closed;
+29.5885/26.7148 ms (1.108x, 14/15 faster, crossover 3). Batch 32 remains
+pageable
+at 99.4115/99.9298 ms and receives no speedup claim. Invalid budgets fail
+closed;
 Driver rejection rolls back prior registrations; workspace/session/runtime close
-releases every page lock. Ordinary snapshots and default workspaces remain pageable.
-Retained streaming evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/` promotes
-`caller-owned-windowed-u32-arrays-v1` as an explicit callback-scoped materialization
-contract. On exact batch 32, windows 1/8/32 retain 18.246/145.965/583.859 MiB and
+releases every page lock. Ordinary snapshots and default workspaces remain
+pageable.
+Retained streaming evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-stream-window-tradeoff-rtx4060/`
+promotes
+`caller-owned-windowed-u32-arrays-v1` as an explicit callback-scoped
+materialization
+contract. On exact batch 32, windows 1/8/32 retain 18.246/145.965/583.859 MiB
+and
 emit 32/4/1 ordered callbacks. Windows 1/8 fit the 256 MiB page-lock budget and
-measure 97.5194/96.2771 ms versus 99.7597 ms full pageable (1.023x/1.036x), winning
-14/15 and 13/15 paired samples while reducing retained host memory 96.875%/75.000%.
-Window 8 is 1.013x faster than window 1 but retains eight times more memory, so both
-remain explicit choices. Active streams block session mutation and nested streaming;
+measure 97.5194/96.2771 ms versus 99.7597 ms full pageable (1.023x/1.036x),
+winning
+14/15 and 13/15 paired samples while reducing retained host memory
+96.875%/75.000%.
+Window 8 is 1.013x faster than window 1 but retains eight times more memory, so
+both
+remain explicit choices. Active streams block session mutation and nested
+streaming;
 consumer failure releases locks for exact retry. The CUDA runtime now exposes
-`cuda-ordered-registered-dtoh-stream-v1`: an explicitly ordered Driver stream accepts only
-buffers registered by the same context, retains each host lifetime until explicit
-`wait()`/`close()`, preserves submission order, blocks unregistration while in flight,
+`cuda-ordered-registered-dtoh-stream-v1`: an explicitly ordered Driver stream
+accepts only
+buffers registered by the same context, retains each host lifetime until
+explicit
+`wait()`/`close()`, preserves submission order, blocks unregistration while in
+flight,
 and drains streams before host/context teardown. Seven live RTX 4060 tests cover
-exact copy, repeated visibility of prior default-stream uploads, same-host ordering,
+exact copy, repeated visibility of prior default-stream uploads, same-host
+ordering,
 ownership rejection, explicit close, runtime close, and stable identity.
-`caller-owned-double-window-overlap-u32-arrays-v1` now admits two equal registered
+`caller-owned-double-window-overlap-u32-arrays-v1` now admits two equal
+registered
 banks only when the total host budget and all-or-none registration succeed. It
-prefetches the next memory window before the current exact callback and otherwise
-uses the same synchronous callback route with an explicit fallback reason. Six live
-CUDA tests cover alternating/partial windows, registration-disabled, one-bank, and
-Driver-rejection fallback, prefetched consumer failure/retry, and full bank release.
-Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/` compares
+prefetches the next memory window before the current exact callback and
+otherwise
+uses the same synchronous callback route with an explicit fallback reason. Six
+live
+CUDA tests cover alternating/partial windows, registration-disabled, one-bank,
+and
+Driver-rejection fallback, prefetched consumer failure/retry, and full bank
+release.
+Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`
+compares
 matched registered windows 1/8. Synchronous/overlap medians are
 95.2102/94.9084 ms (1.003x, 14/15 paired wins, 0.2647 ms paired-median saving)
 and 94.7627/93.6493 ms (1.012x, 15/15 wins, 1.0636 ms saving). Overlap retains
 36.491/291.929 MiB versus 18.246/145.965 MiB and has higher one-time allocation,
 so it remains an explicit throughput/memory tradeoff rather than a default.
 Hardware-neutral candidate lifetime is now active as
-`validated-candidate-submission-v1`. One exact batch binds an optional ticket and
+`validated-candidate-submission-v1`. One exact batch binds an optional ticket
+and
 deferred CPU reference; `wait()` validates identity/order before publication,
 optional fallback occurs only after cleanup, and malformed tickets or cleanup
 failure fail closed. Ten neutral tests cover state, idempotence, deferred CPU,
@@ -1540,48 +1874,78 @@ optional success/fallback, malformed ticket/result, close, cached mandatory
 failure, and cleanup failure. The layer creates no hidden threads. CUDA now
 implements exact crazy/rotate tickets using
 `cuda-independent-stream-kernel-launch-v1`: every one-shot ticket creates one
-`CU_STREAM_NON_BLOCKING`, retains exact parameter owners and private buffers, waits
-only for that stream, and destroys it before publication or fallback. Launch failure
-destroys the new stream; synchronization failure still attempts destruction; runtime
-teardown drains every outstanding stream. Five deterministic contract tests cover
+`CU_STREAM_NON_BLOCKING`, retains exact parameter owners and private buffers,
+waits
+only for that stream, and destroys it before publication or fallback. Launch
+failure
+destroys the new stream; synchronization failure still attempts destruction;
+runtime
+teardown drains every outstanding stream. Five deterministic contract tests
+cover
 identity preservation, distinct stream handles, selected-stream synchronization,
-launch cleanup, and synchronization-failure cleanup. Seven live RTX 4060 tests cover
-rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback, and two
-tickets waited in reverse order; the reverse-wait route also passes 50/50 stress.
+launch cleanup, and synchronization-failure cleanup. Seven live RTX 4060 tests
+cover
+rotate, crazy, empty/idempotent, close-before-wait, adapter-close fallback, and
+two
+tickets waited in reverse order; the reverse-wait route also passes 50/50
+stress.
 Existing `evaluate`/`evaluate_prepared` calls remain synchronous under
-`cuda-default-stream-kernel-launch-v1`. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/` compares
-sequential submit/wait with submit-all/reverse-wait for identical groups 2/4/8 of
+`cuda-default-stream-kernel-launch-v1`. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-stream-throughput-rtx4060/`
+compares
+sequential submit/wait with submit-all/reverse-wait for identical groups 2/4/8
+of
 59,049-word CRAZY tickets. Sequential/grouped medians are 2.1745/1.5970 ms
-(1.362x), 3.6403/3.0304 ms (1.201x), and 7.5313/5.6971 ms (1.322x); every group wins
+(1.362x), 3.6403/3.0304 ms (1.201x), and 7.5313/5.6971 ms (1.322x); every group
+wins
 15/15 paired samples. Opt-in `cuda-independent-stream-kernel-timeline-v1`
 now records one synchronized origin plus start/end CUDA events around the exact
-kernel launch in each ticket stream, with no event cost on ordinary tickets. Three
+kernel launch in each ticket stream, with no event cost on ordinary tickets.
+Three
 deterministic tests cover origin/order/overlap, active-lifetime rejection, and
-launch-failure cleanup; one live RTX 4060 test preserves CPU-equal bytes and ordered
-interval publication. Retained evidence under `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/` reuses the exact workload
+launch-failure cleanup; one live RTX 4060 test preserves CPU-equal bytes and
+ordered
+interval publication. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-independent-ticket-event-timeline-rtx4060/`
+reuses the exact workload
 SHA and records 45 grouped observations plus 210 intervals. Groups 2/4/8 show
 significant overlap in 2/15, 8/15, and 15/15 samples; median overlap is
 0/0.006144/0.015360 ms, median interval concurrency is 1.000x/1.072x/1.091x, and
-maximum observed peak concurrency is 2/3/5. The preregistered group-eight hypothesis
-passes. This attributes origin-relative CUDA-event interval overlap, not pure kernel
+maximum observed peak concurrency is 2/3/5. The preregistered group-eight
+hypothesis
+passes. This attributes origin-relative CUDA-event interval overlap, not pure
+kernel
 duration, SM occupancy, or kernel-transfer overlap. Opt-in
-`cuda-independent-stream-ticket-transfer-v1` now registers exact input/output host
-buffers and enqueues H-to-D, kernel, and D-to-H work on the ticket's same nonblocking
-stream. Five deterministic runtime tests cover ordering, leases, and partial-failure
-cleanup; four live candidate routes cover no synchronous-copy use, crazy exactness,
+`cuda-independent-stream-ticket-transfer-v1` now registers exact input/output
+host
+buffers and enqueues H-to-D, kernel, and D-to-H work on the ticket's same
+nonblocking
+stream. Five deterministic runtime tests cover ordering, leases, and
+partial-failure
+cleanup; four live candidate routes cover no synchronous-copy use, crazy
+exactness,
 reverse waiting, and teardown fallback. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
-compares 14 routes over groups 1/2/4/8. The group-eight hypothesis fails: streamed
-grouped reaches 12.0138 ms versus 5.9408 ms synchronous grouped, a 0.494x ratio and
-0/15 paired wins, despite improving 1.118x over streamed sequential with 14/15 wins.
-Groups two/four similarly reach only 0.436x/0.478x versus synchronous grouped. The
-synchronous ticket therefore remains default; streaming remains an exact explicit
+compares 14 routes over groups 1/2/4/8. The group-eight hypothesis fails:
+streamed
+grouped reaches 12.0138 ms versus 5.9408 ms synchronous grouped, a 0.494x ratio
+and
+0/15 paired wins, despite improving 1.118x over streamed sequential with 14/15
+wins.
+Groups two/four similarly reach only 0.436x/0.478x versus synchronous grouped.
+The
+synchronous ticket therefore remains default; streaming remains an exact
+explicit
 experiment. Wall time alone does not attribute physical transfer/kernel overlap.
 Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
 contiguous CUDA events around upload, exact kernel, and download on each
 streamed ticket. Three deterministic tests cover phase order, active lifetime,
 and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output and
 monotonic phases. Retained evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-event-timeline-rtx4060/`
 contains 45 grouped observations and 210 ticket phase rows. Groups 2/4/8 record
 0.000000 ms median transfer/kernel overlap and 0/15 significant samples each, so
@@ -1591,34 +1955,47 @@ the instrumented wall interval is represented by those summed device phases.
 This closes phase attribution for the retained workload, not a universal claim
 that CUDA hardware can never overlap transfers and kernels.
 Hardware-neutral search lifetime is now active as
-`validated-search-submission-v1`. One exact algorithm/problem/seed/budget request
-binds an optional ticket and deferred CPU reference. `wait()` validates capability,
-algorithm, seed, and proposal budget before publication; optional cleanup precedes
+`validated-search-submission-v1`. One exact algorithm/problem/seed/budget
+request
+binds an optional ticket and deferred CPU reference. `wait()` validates
+capability,
+algorithm, seed, and proposal budget before publication; optional cleanup
+precedes
 fallback, malformed tickets fail closed, successful waits are idempotent, and
 mandatory failures are cached. Ten tests cover the full state/fallback lifetime.
 Proposals remain untrusted and only independent admission may accept them.
 `classic-rotate-target-search-submission-v1` is now the first concrete search
-ticket: full-batch selector/projection proofs survive while only the exact zero-or-
+ticket: full-batch selector/projection proofs survive while only the exact
+zero-or-
 one preimage sub-batch reaches the candidate ticket. Eight tests cover identity,
 projected/empty CPU routes, malformed nested evidence/ticket behavior, and three
 live RTX 4060 routes: exact one-position publication, empty projection, and CUDA
 teardown followed by CPU fallback. No ticket-specific speedup or independent-
 stream claim is made. Hardware-neutral optional hint lifetime is now active as
-`validated-verification-assist-submission-v1`. Missing or cleanly failed assistance
+`validated-verification-assist-submission-v1`. Missing or cleanly failed
+assistance
 completes with no hints only after known-ticket cleanup; malformed tickets and
-cleanup failure fail closed. Nine tests cover identity, deferred empty completion,
+cleanup failure fail closed. Nine tests cover identity, deferred empty
+completion,
 optional success/failures, malformed result/ticket, close, and cached cleanup
 failure. `candidate-evidence-verification-submission-v1` is the first concrete
 composition: exact evaluator/verifier identity survives across nested candidate
 tickets. Seven tests cover CPU evidence, nested protocol failures, verifier
-mismatch, and two live RTX 4060 routes for exact CUDA hints and teardown-driven no
+mismatch, and two live RTX 4060 routes for exact CUDA hints and teardown-driven
+no
 hints. Hints remain untrusted and never acquire acceptance authority. The
 multiposition crazy-target strategy now also traverses
-`classic-crazy-target-search-submission-v1`: the full selector proof survives while
-only the exact projected subset enters the nested CPU/CUDA candidate ticket. Seven
-tests include live exact publication and teardown fallback. The retained matrix at
-`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/` records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
-one-shot CUDA-ticket improvements over their same-run ordinary baselines, all with
+`classic-crazy-target-search-submission-v1`: the full selector proof survives
+while
+only the exact projected subset enters the nested CPU/CUDA candidate ticket.
+Seven
+tests include live exact publication and teardown fallback. The retained matrix
+at
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
+records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x
+one-shot CUDA-ticket improvements over their same-run ordinary baselines, all
+with
 15/15 paired wins. CUDA prepared remains 9.137x faster than the one-shot ticket.
 Hardware-neutral `evidence-bound-ticket-route-admission-v1` now gives ticket
 grouping an explicit evidence gate. It validates exact backend, device, and
@@ -1640,7 +2017,8 @@ failed accelerator attempts.
 Completion snapshots expose monotonic sequence IDs, eviction counts,
 measured/estimated duration delta, and exact selected-route usage. Failure
 snapshots retain only one stable category (`accelerator-unavailable`,
-`invalid-input`, `accelerator-execution`, or `accelerator-error`), never exception
+`invalid-input`, `accelerator-execution`, or `accelerator-error`), never
+exception
 text. Malformed input fails before mutation. The completion-only CUDA executor
 remains compatible; the explicit attempt executor records exactly one outcome
 after planning and re-raises accelerator failures. The ordinary executor remains
@@ -1653,20 +2031,27 @@ writes use same-directory temporary files and atomic replacement.
 alternate-store port and bounded memory adapter. It defaults to 4,096 unique
 schema-v1 documents, 4,096 observations per FIFO, and 16 MiB of canonical
 bytes, reuses the established document
-fingerprint, and exposes only put/get/remove/snapshot operations. Exact duplicate
-puts are idempotent, limits are immutable after construction, snapshots are sorted,
-and removal releases exact budgets. Invalid fingerprints/documents, budget overflow,
+fingerprint, and exposes only put/get/remove/snapshot operations. Exact
+duplicate
+puts are idempotent, limits are immutable after construction, snapshots are
+sorted,
+and removal releases exact budgets. Invalid fingerprints/documents, budget
+overflow,
 collisions, or retained decode failure fail closed without partial mutation. It
-performs no filesystem I/O, automatic loading, summaries, merges, recommendations,
+performs no filesystem I/O, automatic loading, summaries, merges,
+recommendations,
 or admission changes.
 `ticket-admission-telemetry-schema-migration-v1` publishes an explicit lossless
 1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
 sorted JSON wrapping the exact canonical schema-v1 bytes as standard Base64 plus
 the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
-defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096 observations
+defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
+observations
 per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
-unchanged. Schema-v2 adds no telemetry semantics. There is no automatic migration,
-file loading, snapshot reinterpretation, merge, recommendation, lineage inference,
+unchanged. Schema-v2 adds no telemetry semantics. There is no automatic
+migration,
+file loading, snapshot reinterpretation, merge, recommendation, lineage
+inference,
 or policy change.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups retained observations by exact backend, device, workload, and ticket
@@ -1674,9 +2059,11 @@ count. It publishes only integer outcome totals, estimate-comparison counts,
 retention ranges, stable failure categories, and sorted selected-evidence
 appearances.
 `offline-ticket-admission-telemetry-collection-v1` defaults to explicit
-4,096-document and 16 MiB canonical-input bounds. It fingerprints canonical bytes
+4,096-document and 16 MiB canonical-input bounds. It fingerprints canonical
+bytes
 as `ticket-admission-telemetry-document-v1:sha256:<hex>`, counts byte-identical
-occurrences once, publishes input/unique/duplicate byte counts, and orders unique
+occurrences once, publishes input/unique/duplicate byte counts, and orders
+unique
 entries by fingerprint. Distinct snapshots remain separate even when contexts or
 sequence ranges overlap, and digest collisions fail closed.
 `offline-ticket-admission-telemetry-overlap-v1` compares two validated documents
@@ -1690,100 +2077,143 @@ budget, fails before comparison when that budget is exceeded, orders reports by
 fingerprint, and publishes completed/failed counts for all four overlap classes.
 Exact duplicates remain collection occurrences and never create pairs.
 `offline-ticket-admission-telemetry-overlap-components-v1` selects an undirected
-edge only when the two FIFOs contain at least one exact retained match in total and
+edge only when the two FIFOs contain at least one exact retained match in total
+and
 neither FIFO reports a conflicting sequence ID. It retains isolated unique
 documents, fingerprints each component, and publishes member, direct, possible,
-and missing edge counts plus a clique flag. A bridged component may include member
+and missing edge counts plus a clique flag. A bridged component may include
+member
 pairs with no direct edge, so connectivity is neither pairwise equivalence nor
 recorder lineage. Component fingerprint collisions fail closed.
 `authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
-document fingerprint to caller-supplied recorder, completed/failed stream, capture
+document fingerprint to caller-supplied recorder, completed/failed stream,
+capture
 sequence, key, and optional immediate-predecessor identities. Canonical
 HMAC-SHA-256 uses at least 32 caller-owned secret bytes and never persists the
 secret. Verification requires the caller's explicit trusted key identity and
 secret. Same-sequence forks, adjacent predecessor mismatch, nonadjacent direct
-links, MAC mismatch, and fingerprint collisions fail closed. Different recorder or
+links, MAC mismatch, and fingerprint collisions fail closed. Different recorder
+or
 stream identities remain separate lineages; ordered gaps retain common lineage
 without claiming a direct link. The caller owns key legitimacy.
 `caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
 in-memory trust set of at most 256 unique HMAC keys sorted by `key_id`. Each key
 owns an inclusive first/optional-last capture sequence window; empty sets trust
-nothing. Verification selects the exact key identity and window, and independently
+nothing. Verification selects the exact key identity and window, and
+independently
 verified canonical materials may be compared across key rotation. Duplicate key
-identities, malformed windows, unknown keys, out-of-window captures, and incorrect
+identities, malformed windows, unknown keys, out-of-window captures, and
+incorrect
 secrets fail closed. Secret fields are hidden from representations.
-`ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key identities,
+`ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key
+identities,
 opaque key-reference identities, and inclusive capture windows as canonical
-secret-free JSON. It defaults to 256 entries and 64 KiB, orders entries by key ID,
-publishes a stable SHA-256 fingerprint, and supports only explicit bounded reads or
+secret-free JSON. It defaults to 256 entries and 64 KiB, orders entries by key
+ID,
+publishes a stable SHA-256 fingerprint, and supports only explicit bounded reads
+or
 atomic replacement. Resolution requires exact caller-supplied key/reference
 coverage and returns manifest-bound in-memory trust. A resolved secret remains
-unverified until an attestation authenticates. Duplicate identities, malformed or
+unverified until an attestation authenticates. Duplicate identities, malformed
+or
 noncanonical JSON, incomplete or excessive coverage, reference mismatch, and
 storage failures fail closed.
 `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
 caller-supplied synchronous provider. It validates the manifest and a default
-256-request budget before the first call, emits immutable requests in canonical key
-order, and accepts only typed `resolved`, `unavailable`, or `failed` results. Each
+256-request budget before the first call, emits immutable requests in canonical
+key
+order, and accepts only typed `resolved`, `unavailable`, or `failed` results.
+Each
 entry is called exactly once; non-success stops without retry, while repeated
-explicit resolution performs a fresh provider walk. Requests expose only manifest,
+explicit resolution performs a fresh provider walk. Requests expose only
+manifest,
 provider, key/reference, capture-window, and index metadata. Secret bytes remain
 hidden and unverified until an attestation authenticates.
 `bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
 implements one reusable bounded caller-owned synchronous provider over explicit
 immutable secret entries. Each hidden key is bound to one canonical manifest
-fingerprint, key reference, key identity, and inclusive capture window. The service
-permits 256 entries by default and 4096 at the supported maximum, sorts entries by
+fingerprint, key reference, key identity, and inclusive capture window. The
+service
+permits 256 entries by default and 4096 at the supported maximum, sorts entries
+by
 manifest fingerprint and reference, and rejects duplicate manifest/reference
 bindings. Construction and every call revalidate the exact service type and
-identity, provider identity, configured limit, secret count, entry tuple, canonical
-ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden key. A
-different provider identity returns typed `failed`; an unknown manifest/reference
-returns `unavailable`; a known binding with conflicting key/window metadata returns
+identity, provider identity, configured limit, secret count, entry tuple,
+canonical
+ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden
+key. A
+different provider identity returns typed `failed`; an unknown
+manifest/reference
+returns `unavailable`; a known binding with conflicting key/window metadata
+returns
 `failed`; and an exact binding returns `resolved` with unchanged hidden bytes.
-Request index remains ordering context rather than a secret binding. Repeated calls
-validate and resolve again without mutation or an external cache. The service reads
-no environment, file, network, process credential state, secret store, or hosted API
-and performs no discovery, refresh, retry, persistence, logging, worker creation,
-certificate rule, PKI operation, algorithm choice, or admission-policy operation.
+Request index remains ordering context rather than a secret binding. Repeated
+calls
+validate and resolve again without mutation or an external cache. The service
+reads
+no environment, file, network, process credential state, secret store, or hosted
+API
+and performs no discovery, refresh, retry, persistence, logging, worker
+creation,
+certificate rule, PKI operation, algorithm choice, or admission-policy
+operation.
 `explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
 defines one caller-driven sequential async port over the same manifest-bound
-requests and typed outcomes. The synchronous port exposes one immutable nonsecret
-preflight, exact request/result validators, one result materializer, and one final
+requests and typed outcomes. The synchronous port exposes one immutable
+nonsecret
+preflight, exact request/result validators, one result materializer, and one
+final
 trust materializer; both routes share those contracts. Manifest validation,
 provider identity, and the request budget complete before the first `await`. The
 provider is awaited once per entry in canonical order and never concurrently.
-Cancellation propagates directly; ordinary provider exceptions become stable errors
+Cancellation propagates directly; ordinary provider exceptions become stable
+errors
 without vendor text; typed non-success stops the walk without retry. Repeated
 explicit resolutions await again. The port creates no event loop, task, thread,
-executor, worker, cache, lifecycle, discovery, refresh, persistence, secret-store
+executor, worker, cache, lifecycle, discovery, refresh, persistence,
+secret-store
 access, certificate rule, PKI operation, algorithm choice, or policy operation.
 `bounded-in-memory-async-ticket-admission-telemetry-lineage-secret-provider-v1`
-adapts one exact bounded memory secret provider to that async port. Construction and
+adapts one exact bounded memory secret provider to that async port. Construction
+and
 every call revalidate the adapter identity, hidden wrapped service, provider
-identity, secret count, and entry limit. Each await delegates exactly once to the
+identity, secret count, and entry limit. Each await delegates exactly once to
+the
 synchronous memory lookup and completes inline without an internal suspension or
-hidden task. Repeated calls reuse only explicit immutable caller-owned memory and
+hidden task. Repeated calls reuse only explicit immutable caller-owned memory
+and
 validate it again. The adapter reads no environment, file, network, process
 credential state, external secret store, or hosted API and adds no retry, cache,
 refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
 `explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
-implements one bounded read-only provider over caller-supplied absolute raw-secret
-paths. Every hidden path is bound to an exact manifest fingerprint, key reference,
-key identity, and capture window. Construction and validation perform no file I/O.
-A provider mismatch returns typed `failed`; an unknown manifest/reference returns
-`unavailable`; conflicting key/window metadata returns `failed`; all three outcomes
-occur before any open. An exact match opens the selected path once and reads at most
+implements one bounded read-only provider over caller-supplied absolute
+raw-secret
+paths. Every hidden path is bound to an exact manifest fingerprint, key
+reference,
+key identity, and capture window. Construction and validation perform no file
+I/O.
+A provider mismatch returns typed `failed`; an unknown manifest/reference
+returns
+`unavailable`; conflicting key/window metadata returns `failed`; all three
+outcomes
+occur before any open. An exact match opens the selected path once and reads at
+most
 `max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
-errors, oversized files, and bytes outside the shared 32-to-4096-byte key contract
-return `failed` without operating-system text. Exact raw bytes, including trailing
-newlines, are preserved. Repeated calls reopen and reread the file, so rotation is
-caller-controlled and no secret cache exists. The provider does not discover paths,
-write files, scan directories, inspect ownership or permissions, validate symlinks,
+errors, oversized files, and bytes outside the shared 32-to-4096-byte key
+contract
+return `failed` without operating-system text. Exact raw bytes, including
+trailing
+newlines, are preserved. Repeated calls reopen and reread the file, so rotation
+is
+caller-controlled and no secret cache exists. The provider does not discover
+paths,
+write files, scan directories, inspect ownership or permissions, validate
+symlinks,
 decrypt values, create workers, retry, persist, log paths or secrets, choose
 algorithms, or change admission policy.
 `offloaded-async-file-ticket-admission-telemetry-lineage-secret-provider-v1`
-adapts one exact explicit file provider through a caller-supplied async offloader.
+adapts one exact explicit file provider through a caller-supplied async
+offloader.
 Construction and every call revalidate the adapter identity, hidden wrapped
 provider, copied provider identity, secret count, entry and byte limits, and
 callable offloader. Each request is fully validated before the first await; a
@@ -1802,54 +2232,75 @@ external-store integration, secret logging, algorithm choice, or policy action.
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
 completed/failed streams, capture sequence, public-key ID, SHA-256 of the exact
-caller-owned public-key bytes, and optional HMAC or signature predecessor. Signers
+caller-owned public-key bytes, and optional HMAC or signature predecessor.
+Signers
 return typed `signed`, `unavailable`, or `failed`; verifiers return `verified`,
-`invalid`, `unavailable`, or `failed`. Each explicit operation calls its port once
-without retry or cache. Verification checks the exact public-key fingerprint before
+`invalid`, `unavailable`, or `failed`. Each explicit operation calls its port
+once
+without retry or cache. Verification checks the exact public-key fingerprint
+before
 the port call, then reuses the common verified-lineage comparison for public-key
 rotation and an explicit HMAC-to-signature transition. No concrete signature
 algorithm, key generation, private-key storage, certificate chain, PKI, trust
 discovery, provider lifecycle, or security claim is supplied by this boundary.
 `caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
 an explicit in-memory set of at most 256 unique `(algorithm_id, public_key_id)`
-pairs sorted by that composite identity. Each entry binds exact public-key bytes,
+pairs sorted by that composite identity. Each entry binds exact public-key
+bytes,
 their required SHA-256 fingerprint, and an inclusive first/optional-last capture
 window. Empty sets trust nothing. Verification selects the exact algorithm, key
-identity, fingerprint, and capture window before calling the verifier; independently
-verified items preserve same-key, public-key rotation, algorithm rotation, ordered
-gap, and fork checks. Duplicate identities, malformed windows, invalid key bytes,
+identity, fingerprint, and capture window before calling the verifier;
+independently
+verified items preserve same-key, public-key rotation, algorithm rotation,
+ordered
+gap, and fork checks. Duplicate identities, malformed windows, invalid key
+bytes,
 fingerprint mismatch, unknown identities, out-of-window captures, and tampered
 trust metadata fail closed. Public-key bytes are hidden from representations. No
 manifest, provider, certificate, PKI, trust discovery, algorithm selection, or
 policy authority is supplied.
 `ticket-admission-telemetry-lineage-signature-trust-manifest-v1` persists
 algorithm identity, public-key identity, one opaque public-key reference, the
-required exact public-key fingerprint, and inclusive capture windows as canonical
-key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite identity,
+required exact public-key fingerprint, and inclusive capture windows as
+canonical
+key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
+identity,
 requires globally unique references, publishes a stable SHA-256 fingerprint, and
 supports only explicit bounded reads or atomic replacement. Resolution requires
-exact caller-supplied algorithm/key/reference coverage and exact public-key bytes
+exact caller-supplied algorithm/key/reference coverage and exact public-key
+bytes
 matching the persisted fingerprint before building manifest-bound in-memory
 signature trust. The same public-key ID may exist under distinct algorithms.
-Duplicate identities or references, malformed or noncanonical JSON, incomplete or
+Duplicate identities or references, malformed or noncanonical JSON, incomplete
+or
 excessive coverage, reference or fingerprint mismatch, and storage failures fail
-closed. No public-key bytes, provider, certificate, PKI, trust discovery, algorithm
+closed. No public-key bytes, provider, certificate, PKI, trust discovery,
+algorithm
 selection, or policy authority are supplied.
 `explicit-ticket-admission-telemetry-lineage-public-key-provider-v1` accepts one
-caller-supplied synchronous provider. It validates the signature trust manifest and
-a default 256-request budget before the first call, then emits immutable requests
-in canonical `(algorithm_id, public_key_id)` order. Each request carries only the
+caller-supplied synchronous provider. It validates the signature trust manifest
+and
+a default 256-request budget before the first call, then emits immutable
+requests
+in canonical `(algorithm_id, public_key_id)` order. Each request carries only
+the
 manifest/provider identities, algorithm/key/reference identities, required exact
-public-key fingerprint, capture window, and request index. Providers return typed
-`resolved`, `unavailable`, or `failed` results. Each entry is called exactly once;
+public-key fingerprint, capture window, and request index. Providers return
+typed
+`resolved`, `unavailable`, or `failed` results. Each entry is called exactly
+once;
 non-success stops without retry, while repeated explicit resolution performs a
-fresh provider walk. Resolved bytes are hidden from representations and must match
+fresh provider walk. Resolved bytes are hidden from representations and must
+match
 the manifest fingerprint before in-memory signature trust is constructed. No
-provider discovery, built-in key service, retry, cache, persistence, hidden worker,
-certificate validation, PKI, algorithm selection, or policy authority is supplied.
+provider discovery, built-in key service, retry, cache, persistence, hidden
+worker,
+certificate validation, PKI, algorithm selection, or policy authority is
+supplied.
 `explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
 accepts one caller-supplied async provider and reuses the synchronous request,
-result, and resolved-trust contracts. The caller owns and starts the coroutine and
+result, and resolved-trust contracts. The caller owns and starts the coroutine
+and
 event loop. Manifest, provider identity, and the default 256-request budget are
 validated before the first provider await. Requests are awaited sequentially in
 canonical `(algorithm_id, public_key_id)` order, with no task creation or hidden
@@ -1857,175 +2308,268 @@ parallelism; each entry is awaited exactly once and repeated explicit resolution
 performs a fresh walk. Typed non-success stops without retry. Ordinary provider
 exceptions become stable boundary errors without vendor text, while cancellation
 propagates to the caller. Exact public-key fingerprints are checked before trust
-construction. This sequential port creates no event loop, task, provider session,
-concurrency policy, discovery, retry, cache, persistence, certificate validation,
+construction. This sequential port creates no event loop, task, provider
+session,
+concurrency policy, discovery, retry, cache, persistence, certificate
+validation,
 PKI, algorithm selection, or admission authority.
 `explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
-accepts one caller-supplied async batch provider. Manifest, provider identity, and
-the default 256-request budget are validated before the first await. Empty manifests
-make no provider call; nonempty manifests produce one immutable batch containing the
-full canonical `(algorithm_id, public_key_id)` request tuple and exactly one provider
-await. The provider owns all scheduling and may resolve the batch sequentially or
-concurrently. The boundary requires one exact positional result tuple with matching
-cardinality, validates every shared typed item result, propagates cancellation, and
-converts ordinary provider exceptions to stable errors without vendor text. Reversed,
-missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched results
-fail closed before trust is returned. This batch port creates no event loop, task,
-concurrency implementation, provider session, discovery, retry, cache, persistence,
+accepts one caller-supplied async batch provider. Manifest, provider identity,
+and
+the default 256-request budget are validated before the first await. Empty
+manifests
+make no provider call; nonempty manifests produce one immutable batch containing
+the
+full canonical `(algorithm_id, public_key_id)` request tuple and exactly one
+provider
+await. The provider owns all scheduling and may resolve the batch sequentially
+or
+concurrently. The boundary requires one exact positional result tuple with
+matching
+cardinality, validates every shared typed item result, propagates cancellation,
+and
+converts ordinary provider exceptions to stable errors without vendor text.
+Reversed,
+missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched
+results
+fail closed before trust is returned. This batch port creates no event loop,
+task,
+concurrency implementation, provider session, discovery, retry, cache,
+persistence,
 certificate validation, PKI, algorithm selection, or admission authority.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `explicit-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
-accepts one caller-supplied async lifecycle port around the batch provider. Manifest,
-provider identity, and the default 256-request budget are validated before opening.
-Empty manifests perform no lifecycle calls. Nonempty manifests call `open` exactly
+accepts one caller-supplied async lifecycle port around the batch provider.
+Manifest,
+provider identity, and the default 256-request budget are validated before
+opening.
+Empty manifests perform no lifecycle calls. Nonempty manifests call `open`
+exactly
 once with immutable manifest fingerprint, provider identity, and request count;
-typed outcomes are `opened`, `unavailable`, or `failed`, and only `opened` may carry
-a hidden callable batch provider. The existing canonical batch boundary then runs
+typed outcomes are `opened`, `unavailable`, or `failed`, and only `opened` may
+carry
+a hidden callable batch provider. The existing canonical batch boundary then
+runs
 once. Every opened session receives exactly one `close` request with a stable
 `completed`, `failed`, or `cancelled` reason; close outcomes are `closed` or
-`failed`. Opening exceptions become stable errors without vendor text and opening
+`failed`. Opening exceptions become stable errors without vendor text and
+opening
 cancellation propagates without closing. After opening, failure or cancellation
 attempts one close. Cancellation propagates only after successful close; close
 failure replaces the preceding outcome and fails closed. No built-in service,
 event loop, task, discovery, retry, cache, persistence, certificate validation,
 PKI, algorithm selection, or admission authority is supplied.
 `bounded-in-memory-ticket-admission-telemetry-lineage-public-key-provider-v1`
-implements the synchronous provider port with one caller-owned immutable key tuple.
-Construction accepts at most 256 entries, validates canonical provider, algorithm,
-key, and reference identities, validates inclusive capture windows, recomputes every
+implements the synchronous provider port with one caller-owned immutable key
+tuple.
+Construction accepts at most 256 entries, validates canonical provider,
+algorithm,
+key, and reference identities, validates inclusive capture windows, recomputes
+every
 exact public-key SHA-256 fingerprint, rejects duplicate composite identities and
 references, and sorts entries by reference identity. Key bytes are hidden from
-representations. Every explicit lookup revalidates service identity, count, tuple,
+representations. Every explicit lookup revalidates service identity, count,
+tuple,
 ordering, metadata, and exact key bytes. An absent reference returns typed
 `unavailable`; a known reference with different algorithm, key, fingerprint, or
 window returns typed `failed`; only an exact request returns `resolved`. Empty
-services are valid and resolve nothing. The object is reusable caller-owned memory,
+services are valid and resolve nothing. The object is reusable caller-owned
+memory,
 not an automatic or hidden cache. It performs no file, environment, network,
-discovery, mutation, retry, persistence, async adaptation, certificate validation,
+discovery, mutation, retry, persistence, async adaptation, certificate
+validation,
 PKI, algorithm selection, or admission-policy operation.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `bounded-in-memory-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
 adapts one exact bounded memory service to the sequential async provider port.
-Construction validates the complete wrapped service and retains only its provider
-identity, key count, stable adapter identity, and a hidden service reference. Every
-await revalidates the adapter binding and the complete memory service before invoking
-the synchronous lookup inline. It returns the same typed `resolved`, `unavailable`,
-or `failed` outcome and introduces no internal suspension point; the caller-owned
+Construction validates the complete wrapped service and retains only its
+provider
+identity, key count, stable adapter identity, and a hidden service reference.
+Every
+await revalidates the adapter binding and the complete memory service before
+invoking
+the synchronous lookup inline. It returns the same typed `resolved`,
+`unavailable`,
+or `failed` outcome and introduces no internal suspension point; the
+caller-owned
 event loop cannot run another task merely because this adapter was awaited. The
 existing sequential async boundary still performs manifest preflight, canonical
 ordering, fingerprint checks, stable exception wrapping, and trust construction.
 Empty manifests perform no lookup, while explicit adapter construction already
-validates the service. The adapter creates no event loop, task, sleep, artificial
+validates the service. The adapter creates no event loop, task, sleep,
+artificial
 yield, batch/session lifecycle, file, environment, network, discovery, retry,
-persistence, certificate validation, PKI, algorithm selection, or policy operation.
+persistence, certificate validation, PKI, algorithm selection, or policy
+operation.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `bounded-memory-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
-adapts one exact bounded memory service to the caller-controlled async batch port.
-Construction validates the complete wrapped service and a positive request limit of
-at most the caller-selected boundary, defaulting to 256. Every await revalidates the
-adapter binding and complete memory service, then validates the exact batch request,
-nonempty manifest/provider identities, immutable request tuple, configured count,
-positional indices, and every item manifest/provider binding. Requests are resolved
+adapts one exact bounded memory service to the caller-controlled async batch
+port.
+Construction validates the complete wrapped service and a positive request limit
+of
+at most the caller-selected boundary, defaulting to 256. Every await revalidates
+the
+adapter binding and complete memory service, then validates the exact batch
+request,
+nonempty manifest/provider identities, immutable request tuple, configured
+count,
+positional indices, and every item manifest/provider binding. Requests are
+resolved
 inline in tuple order through the synchronous memory service and returned as one
 hidden positional result tuple, preserving typed `resolved`, `unavailable`, and
-`failed` outcomes. Direct empty batches are valid. The existing batch trust boundary
-still performs manifest preflight, one nonempty provider await, exact cardinality and
-fingerprint checks, and trust construction; empty manifests make no provider call.
+`failed` outcomes. Direct empty batches are valid. The existing batch trust
+boundary
+still performs manifest preflight, one nonempty provider await, exact
+cardinality and
+fingerprint checks, and trust construction; empty manifests make no provider
+call.
 The adapter creates no event loop, task, concurrency, sleep, artificial yield,
 session lifecycle, file, environment, network, discovery, retry, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
 `memory-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
-adapts one exact bounded memory service to the explicit async provider-session port.
-Construction validates the memory service, builds its bounded inline batch adapter,
+adapts one exact bounded memory service to the explicit async provider-session
+port.
+Construction validates the memory service, builds its bounded inline batch
+adapter,
 and stores only caller-owned serial lifecycle state. `open` and `close` complete
-inline without scheduling. One active lifecycle is allowed: an exact nonempty open
-request with matching provider identity and bounded request count returns `opened`
-with the hidden memory batch adapter; a second or mismatched open returns `failed`
-without replacing active state. Close requests require the exact persisted manifest
-fingerprint, provider identity, and request count. A mismatch returns `failed` and
-retains active state; an exact close returns `closed`, clears the active request,
-increments a nonnegative completed-lifecycle count, and permits serial reuse. The
+inline without scheduling. One active lifecycle is allowed: an exact nonempty
+open
+request with matching provider identity and bounded request count returns
+`opened`
+with the hidden memory batch adapter; a second or mismatched open returns
+`failed`
+without replacing active state. Close requests require the exact persisted
+manifest
+fingerprint, provider identity, and request count. A mismatch returns `failed`
+and
+retains active state; an exact close returns `closed`, clears the active
+request,
+increments a nonnegative completed-lifecycle count, and permits serial reuse.
+The
 existing session boundary still preflights manifests and budgets, performs no
-lifecycle calls for empty manifests, and closes after success or batch failure. The
+lifecycle calls for empty manifests, and closes after success or batch failure.
+The
 adapter creates no event loop, task, lock, concurrency, sleep, artificial yield,
-file, environment, network, discovery, retry, persistence, certificate validation,
+file, environment, network, discovery, retry, persistence, certificate
+validation,
 PKI, algorithm selection, or policy operation.
 `ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one explicit
 bounded public-key service as canonical compact UTF-8 JSON. Unlike the key-free
-trust manifest, this separate document intentionally contains public-key bytes as
+trust manifest, this separate document intentionally contains public-key bytes
+as
 lowercase hexadecimal. Construction reuses the memory provider to validate exact
 bytes, fingerprints, identities, windows, uniqueness, cardinality, and reference
-ordering. Encoding uses sorted keys and one trailing newline; decoding requires byte
-identity with that canonical encoding, rejects duplicate or unknown JSON keys, and
-is bounded by 256 entries and 1 MiB by default. Explicit writes atomically replace
-one caller-selected path. Explicit reads consume at most the configured byte limit.
-Each explicit load rereads the path, fingerprints canonical bytes, and builds a new
-caller-owned memory provider with hidden key material and stable non-key metadata.
-There is no path discovery, automatic loading, watch, retained cache, retry, network
-fetch, session creation, certificate validation, PKI, algorithm selection, or policy
+ordering. Encoding uses sorted keys and one trailing newline; decoding requires
+byte
+identity with that canonical encoding, rejects duplicate or unknown JSON keys,
+and
+is bounded by 256 entries and 1 MiB by default. Explicit writes atomically
+replace
+one caller-selected path. Explicit reads consume at most the configured byte
+limit.
+Each explicit load rereads the path, fingerprints canonical bytes, and builds a
+new
+caller-owned memory provider with hidden key material and stable non-key
+metadata.
+There is no path discovery, automatic loading, watch, retained cache, retry,
+network
+fetch, session creation, certificate validation, PKI, algorithm selection, or
+policy
 operation.
 `explicit-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
-defines one synchronous transport-neutral fetch boundary. The caller constructs an
+defines one synchronous transport-neutral fetch boundary. The caller constructs
+an
 exact immutable request binding source identity, resource identity, provider
 identity, expected bundle fingerprint, byte limit, and entry limit. All request
-metadata and limits are validated before the first transport call. Each invocation
+metadata and limits are validated before the first transport call. Each
+invocation
 makes exactly one caller-supplied fetcher call and accepts only the exact typed
-`fetched`, `unavailable`, or `failed` result enum. Nonfetched results cannot carry
-bytes. A fetched result requires exact nonempty bytes within the requested limit,
-canonical bundle decoding, a newly materialized caller-owned memory provider, and
-exact matches for the expected bundle fingerprint and provider identity. Repeated
+`fetched`, `unavailable`, or `failed` result enum. Nonfetched results cannot
+carry
+bytes. A fetched result requires exact nonempty bytes within the requested
+limit,
+canonical bundle decoding, a newly materialized caller-owned memory provider,
+and
+exact matches for the expected bundle fingerprint and provider identity.
+Repeated
 explicit invocations call the transport again and retain no cache. The boundary
-implements no HTTP, TLS, endpoint discovery, credential handling, redirect, retry,
+implements no HTTP, TLS, endpoint discovery, credential handling, redirect,
+retry,
 watch, persistence, certificate validation, PKI, algorithm selection, or policy
 operation.
 `explicit-async-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
 defines the caller-driven async form of the same transport-neutral boundary. The
 caller owns the coroutine and event loop. The exact shared request is completely
-validated before the first await, and each invocation awaits the supplied fetcher
+validated before the first await, and each invocation awaits the supplied
+fetcher
 exactly once. The shared typed result, bounded canonical decode, fingerprint and
 provider bindings, and caller-owned memory-provider materialization remain the
-single synchronous source of validation truth. Ordinary fetcher exceptions become
+single synchronous source of validation truth. Ordinary fetcher exceptions
+become
 stable async-boundary errors without vendor text, while cancellation propagates
 directly. Repeated explicit invocations await the transport again and retain no
 cache. The boundary creates no event loop, task, worker, concurrency policy,
 endpoint discovery, credential handling, redirect, retry, watch, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
 `explicit-https-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
-implements one concrete synchronous stdlib HTTPS GET transport. Its exact immutable
+implements one concrete synchronous stdlib HTTPS GET transport. Its exact
+immutable
 config binds a canonical lowercase ASCII host, TCP port, origin-form target,
-source/resource identities, a positive finite timeout capped at 300 seconds, and a
+source/resource identities, a positive finite timeout capped at 300 seconds, and
+a
 caller-owned `SSLContext`. Build and every use require hostname checking,
-`CERT_REQUIRED`, and TLS 1.2 or newer; the module never creates or loads trust roots.
+`CERT_REQUIRED`, and TLS 1.2 or newer; the module never creates or loads trust
+roots.
 Each invocation revalidates the config and shared fetch request, requires exact
 source/resource matches, opens one new `HTTPSConnection` with the same caller
-context, sends only `GET` with JSON/identity/close headers and no credentials, and
-closes once. Status 200 may return `fetched`; 404 and 410 return `unavailable`; all
-other statuses, including redirects, return `failed`. Successful responses require
-JSON content type with optional UTF-8 charset, absent or identity content encoding,
-an optional canonical positive content length within the request limit, and an exact
-nonempty bytes body read with a `max_bytes + 1` bound. Connection, request, response,
-body-read, or close failures return typed `failed` without vendor text. There is no
-plaintext HTTP, endpoint discovery, credential handling, redirect following, retry,
-watch, cache, persistence, hosted-service API, certificate/PKI ownership, algorithm
+context, sends only `GET` with JSON/identity/close headers and no credentials,
+and
+closes once. Status 200 may return `fetched`; 404 and 410 return `unavailable`;
+all
+other statuses, including redirects, return `failed`. Successful responses
+require
+JSON content type with optional UTF-8 charset, absent or identity content
+encoding,
+an optional canonical positive content length within the request limit, and an
+exact
+nonempty bytes body read with a `max_bytes + 1` bound. Connection, request,
+response,
+body-read, or close failures return typed `failed` without vendor text. There is
+no
+plaintext HTTP, endpoint discovery, credential handling, redirect following,
+retry,
+watch, cache, persistence, hosted-service API, certificate/PKI ownership,
+algorithm
 selection, or policy operation.
 `offloaded-async-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 adapts the exact synchronous HTTPS fetcher to the shared async port through one
-caller-supplied offloader. Construction and every call fully revalidate the wrapped
-HTTPS fetcher, stable adapter identity, copied fetcher/source/resource bindings, and
+caller-supplied offloader. Construction and every call fully revalidate the
+wrapped
+HTTPS fetcher, stable adapter identity, copied fetcher/source/resource bindings,
+and
 callable offloader. The shared request is validated before the first await; a
 source/resource mismatch returns typed `failed` without calling the offloader. A
-matched request awaits the offloader exactly once with the same exact fetcher and
+matched request awaits the offloader exactly once with the same exact fetcher
+and
 request. The caller alone decides whether that await runs inline, in a thread,
 through an executor, or through another scheduling mechanism. Cancellation
 propagates directly. Ordinary offloader exceptions become stable adapter errors
-without vendor text. Returned results are revalidated for exact type, enum, payload
-presence, exact bytes, nonempty content, and the request byte limit before they reach
+without vendor text. Returned results are revalidated for exact type, enum,
+payload
+presence, exact bytes, nonempty content, and the request byte limit before they
+reach
 the outer async materialization boundary. Repeated calls revalidate and offload
 again. The adapter creates no event loop, task, thread, executor, worker, retry,
-redirect, cache, trust root, credential, hosted-service policy, algorithm choice, or
+redirect, cache, trust root, credential, hosted-service policy, algorithm
+choice, or
 admission-policy operation.
 `explicit-ticket-admission-lineage-https-authorization-provider-v1`
 defines one synchronous caller-owned port for resolving an opaque HTTPS
-`Authorization` value. Preflight validates the exact HTTPS fetcher, exact canonical
+`Authorization` value. Preflight validates the exact HTTPS fetcher, exact
+canonical
 bundle-fetch request, source/resource binding, canonical authorization-provider
-identity, callable provider, and positive byte limit before the provider is called.
+identity, callable provider, and positive byte limit before the provider is
+called.
 The default limit is 4096 ASCII bytes and the supported maximum is 16384. One
 immutable request carries only the bundle fingerprint and nonsecret provider,
 resource, and source identities. Each successful preflight makes exactly one
@@ -2033,74 +2577,107 @@ provider call. Stable `resolved`, `unavailable`, and `failed` outcomes carry no
 vendor text; nonresolved outcomes cannot carry credential text. A resolved value
 must be exact nonempty ASCII field text containing only spaces and visible
 characters, with no edge spaces and no normalization. The value is hidden from
-representations and returned only in caller-owned state with its exact byte count
-and the fixed `Authorization` header name. Repeated explicit resolutions call the
-provider again. The port does not choose an authorization scheme, inject a header,
-open a connection, discover credentials, retry, cache, persist, log values, create
-workers, own a hosted-service API, validate certificates, distribute PKI, select a
+representations and returned only in caller-owned state with its exact byte
+count
+and the fixed `Authorization` header name. Repeated explicit resolutions call
+the
+provider again. The port does not choose an authorization scheme, inject a
+header,
+open a connection, discover credentials, retry, cache, persist, log values,
+create
+workers, own a hosted-service API, validate certificates, distribute PKI, select
+a
 signature algorithm, or change admission policy.
 `explicit-async-ticket-admission-lineage-https-authorization-provider-v1`
 defines one caller-driven async port for resolving the same bounded opaque HTTPS
 `Authorization` value. The synchronous port now exposes one immutable nonsecret
-preflight plus one exact result materializer, and both sync and async resolution use
-those same validators. Preflight validates the exact HTTPS fetcher, canonical bundle
-request, source/resource binding, authorization-provider identity, and positive byte
-limit before the first `await`; a noncallable provider also fails before awaiting.
-One successful preflight awaits the caller-supplied provider exactly once with the
+preflight plus one exact result materializer, and both sync and async resolution
+use
+those same validators. Preflight validates the exact HTTPS fetcher, canonical
+bundle
+request, source/resource binding, authorization-provider identity, and positive
+byte
+limit before the first `await`; a noncallable provider also fails before
+awaiting.
+One successful preflight awaits the caller-supplied provider exactly once with
+the
 same exact immutable request. The provider controls whether that await suspends.
-Cancellation propagates directly. Ordinary provider exceptions become stable async
-errors without vendor text. The shared materializer enforces exact result type and
+Cancellation propagates directly. Ordinary provider exceptions become stable
+async
+errors without vendor text. The shared materializer enforces exact result type
+and
 enum, forbids credential text in nonresolved outcomes, requires bounded nonempty
-ASCII field text for `resolved`, and returns the same hidden caller-owned metadata as
+ASCII field text for `resolved`, and returns the same hidden caller-owned
+metadata as
 the synchronous path. Repeated explicit resolutions await again with no cache or
 refresh. The port creates no event loop, task, thread, executor, worker, retry,
-discovery, refresh, header injection, hosted-service policy, certificate rule, PKI
+discovery, refresh, header injection, hosted-service policy, certificate rule,
+PKI
 operation, algorithm choice, or admission-policy operation.
 `memory-ticket-admission-lineage-https-authorization-provider-v1`
-implements one reusable bounded caller-owned synchronous Authorization provider over
+implements one reusable bounded caller-owned synchronous Authorization provider
+over
 explicit immutable in-memory entries. Each entry binds one hidden Authorization
 value and exact byte count to one canonical bundle fingerprint, fetch-provider
-identity, resource identity, and source identity. One service binds all entries to
-one authorization-provider identity, permits at most 64 entries by default and 4096
+identity, resource identity, and source identity. One service binds all entries
+to
+one authorization-provider identity, permits at most 64 entries by default and
+4096
 at the supported maximum, requires canonical deterministic ordering, and rejects
-duplicate request bindings. Construction and every call revalidate the exact service
-type and identity, provider identity, limits, entry tuple, shared request metadata,
-shared Authorization text rules, byte counts, ordering, and uniqueness. A request
+duplicate request bindings. Construction and every call revalidate the exact
+service
+type and identity, provider identity, limits, entry tuple, shared request
+metadata,
+shared Authorization text rules, byte counts, ordering, and uniqueness. A
+request
 with a different authorization-provider identity returns typed `failed`; a valid
-unmatched request returns `unavailable`; an exact match returns `resolved` with the
-unchanged hidden caller-owned value. Repeated calls perform the same validation and
+unmatched request returns `unavailable`; an exact match returns `resolved` with
+the
+unchanged hidden caller-owned value. Repeated calls perform the same validation
+and
 lookup without mutation or an external cache. The provider reads no environment,
-file, network, process credential state, secret store, or hosted API and performs no
-discovery, refresh, retry, persistence, logging, task creation, certificate rule,
+file, network, process credential state, secret store, or hosted API and
+performs no
+discovery, refresh, retry, persistence, logging, task creation, certificate
+rule,
 PKI operation, algorithm choice, or admission-policy operation.
 `offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1`
 adapts one exact explicit file Authorization provider to the shared async port
-through one caller-supplied offloader. Construction and every call revalidate the
+through one caller-supplied offloader. Construction and every call revalidate
+the
 adapter identity, hidden wrapped provider, copied authorization count, entry and
 byte limits, provider identity, and callable offloader. The shared request is
 validated before the first `await`; a provider-identity mismatch returns typed
 `failed` without invoking the offloader. A matched provider identity awaits the
 offloader exactly once with the same exact provider and immutable request. The
-caller alone chooses whether the file read completes inline, suspends, or runs in
+caller alone chooses whether the file read completes inline, suspends, or runs
+in
 a caller-owned thread or executor. Cancellation propagates directly. Ordinary
 offloader exceptions become stable adapter errors without path or vendor text.
-Returned results are revalidated after the await, including exact result type and
-enum, nonresolved payload absence, canonical ASCII text, and the wrapped provider
+Returned results are revalidated after the await, including exact result type
+and
+enum, nonresolved payload absence, canonical ASCII text, and the wrapped
+provider
 byte limit for resolved values. Repeated calls offload and reread the file so
-rotation and removal remain visible without a cache. The adapter creates no event
+rotation and removal remain visible without a cache. The adapter creates no
+event
 loop, task, thread, executor, worker, discovery, retry, refresh, persistence,
 logging, scheme selection, certificate rule, PKI operation, algorithm choice, or
 admission-policy operation.
 `explicit-file-ticket-admission-lineage-https-authorization-provider-v1`
 binds exact nonsecret Authorization requests to caller-selected absolute file
 paths. Paths and entries stay hidden from representations. Build and validation
-perform no file I/O; every call revalidates the exact service, provider identity,
+perform no file I/O; every call revalidates the exact service, provider
+identity,
 copied authorization count, entry and byte limits, canonical ordering, request
 metadata, and absolute paths before lookup. A provider-identity mismatch returns
 typed `failed` without I/O, while an unmatched request returns `unavailable`.
-One exact match opens one path once in binary mode and reads at most the configured
-byte limit plus one. Missing files return `unavailable`; operating-system errors,
-oversized content, non-ASCII bytes, empty or noncanonical text, whitespace, control
+One exact match opens one path once in binary mode and reads at most the
+configured
+byte limit plus one. Missing files return `unavailable`; operating-system
+errors,
+oversized content, non-ASCII bytes, empty or noncanonical text, whitespace,
+control
 bytes, and NUL return `failed` without path or system text. Valid ASCII text is
 revalidated through the shared Authorization materializer without trimming or
 normalization. Repeated calls reread the file so rotation and removal remain
@@ -2108,25 +2685,38 @@ visible without a cache. The provider performs no discovery, writes, permission
 inspection, retries, persistence, logging, worker creation, scheme selection,
 credential refresh, certificate validation, PKI, algorithm choice, or policy.
 `explicit-environment-ticket-admission-lineage-https-authorization-provider-v1`
-implements one bounded synchronous Authorization provider over explicit immutable
+implements one bounded synchronous Authorization provider over explicit
+immutable
 request-to-variable bindings. Each entry hides one canonical uppercase ASCII
 environment name and binds it to one exact bundle fingerprint, fetch-provider
-identity, resource identity, and source identity. One service binds all entries to
-one authorization-provider identity, permits at most 64 entries by default and 4096
-at the supported maximum, limits resolved values to 4096 bytes by default and 16384
+identity, resource identity, and source identity. One service binds all entries
+to
+one authorization-provider identity, permits at most 64 entries by default and
+4096
+at the supported maximum, limits resolved values to 4096 bytes by default and
+16384
 at the supported maximum, canonicalizes ordering, and rejects duplicate request
-bindings. Construction and validation read no environment state. A provider-identity
-mismatch returns typed `failed`; a valid unmatched request returns `unavailable`;
+bindings. Construction and validation read no environment state. A
+provider-identity
+mismatch returns typed `failed`; a valid unmatched request returns
+`unavailable`;
 only an exact match performs one lookup of the caller-named variable. A missing
-variable returns `unavailable`; an operating-system or Unicode lookup failure, an
-invalid nonempty-ASCII Authorization value, or an oversized value returns `failed`
+variable returns `unavailable`; an operating-system or Unicode lookup failure,
+an
+invalid nonempty-ASCII Authorization value, or an oversized value returns
+`failed`
 without variable names, values, or operating-system text. An exact valid value
-returns `resolved` unchanged. Repeated calls reread the environment, so caller-owned
-rotation and removal are visible without a cache. The provider never enumerates or
-mutates environment state, discovers names, reads files, network, external stores,
-or hosted APIs, retries, persists, logs names or values, creates workers, chooses an
+returns `resolved` unchanged. Repeated calls reread the environment, so
+caller-owned
+rotation and removal are visible without a cache. The provider never enumerates
+or
+mutates environment state, discovers names, reads files, network, external
+stores,
+or hosted APIs, retries, persists, logs names or values, creates workers,
+chooses an
 Authorization scheme, refreshes credentials, validates certificates, distributes
 PKI, selects algorithms, or changes admission policy.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `offloaded-async-environment-ticket-admission-lineage-https-authorization-provider-v1`
 adapts one exact explicit environment Authorization provider to the shared async
 port through one caller-supplied offloader. Construction and every call fully
@@ -2141,19 +2731,26 @@ directly. Ordinary offloader exceptions become stable adapter errors without
 vendor text. Returned typed results are revalidated after the await, including
 exact enum and type, nonresolved payload absence, and bounded canonical ASCII
 text for resolved values. Repeated calls offload and reread the environment, so
-rotation and removal remain visible without a cache. The adapter creates no event
+rotation and removal remain visible without a cache. The adapter creates no
+event
 loop, task, thread, executor, worker, discovery, refresh, retry, persistence,
 logging, hosted-service policy, certificate rule, PKI operation, algorithm
 choice, or admission-policy operation.
 `memory-async-ticket-admission-lineage-https-authorization-provider-v1`
-adapts one exact bounded memory Authorization provider to the shared async provider
-port without introducing a scheduling point. Construction and every call revalidate
+adapts one exact bounded memory Authorization provider to the shared async
+provider
+port without introducing a scheduling point. Construction and every call
+revalidate
 the exact adapter type and identity, wrapped memory service, copied entry count,
-entry limit, and authorization-provider identity. A direct await delegates once to
+entry limit, and authorization-provider identity. A direct await delegates once
+to
 the same synchronous memory lookup and returns the same typed `resolved`,
-`unavailable`, or `failed` result before any other caller task can run. The shared
-async Authorization boundary can therefore materialize the exact hidden value and
-metadata while preserving its own preflight and result validation. Repeated awaits
+`unavailable`, or `failed` result before any other caller task can run. The
+shared
+async Authorization boundary can therefore materialize the exact hidden value
+and
+metadata while preserving its own preflight and result validation. Repeated
+awaits
 reuse only the explicit immutable memory state and perform validation again. The
 adapter creates no event loop, task, thread, executor, worker, scheduling point,
 environment or file read, network access, secret-store call, discovery, refresh,
@@ -2162,31 +2759,48 @@ rule, PKI operation, algorithm choice, or admission-policy operation.
 `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
 Authorization value. Construction and every call revalidate the wrapped HTTPS
-fetcher, resolved Authorization value, stable adapter identity, copied byte count,
-authorization-provider identity, bundle fingerprint, fetch-provider identity, and
-source/resource bindings. A request must exactly match the bound bundle fingerprint,
-fetch provider, source, and resource; any mismatch returns typed `failed` before a
-connection is opened. A matched call opens one connection, sends one `GET` with the
-base JSON/identity/close headers plus exactly one unchanged `Authorization` header,
+fetcher, resolved Authorization value, stable adapter identity, copied byte
+count,
+authorization-provider identity, bundle fingerprint, fetch-provider identity,
+and
+source/resource bindings. A request must exactly match the bound bundle
+fingerprint,
+fetch provider, source, and resource; any mismatch returns typed `failed` before
+a
+connection is opened. A matched call opens one connection, sends one `GET` with
+the
+base JSON/identity/close headers plus exactly one unchanged `Authorization`
+header,
 reuses the base response/status/body validation, and closes once. The explicit
-adapter may be reused with the same caller-owned authorization object, but it never
+adapter may be reused with the same caller-owned authorization object, but it
+never
 calls a credential provider, refreshes credentials, retries, redirects, caches
 hidden state, normalizes or selects a scheme, logs credential text, discovers an
 endpoint, creates workers, owns a hosted-service API, validates certificates,
 distributes PKI, selects a signature algorithm, or changes admission policy.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `offloaded-async-authorized-https-ticket-admission-lineage-key-bundle-fetcher-v1`
-adapts one exact authorized synchronous HTTPS fetcher to the shared async fetch port
-through one caller-supplied offloader. Construction and every call fully revalidate
-the wrapped authorized fetcher, stable adapter identity, copied authorization byte
-count, authorization-provider identity, bundle fingerprint, fetch-provider identity,
+adapts one exact authorized synchronous HTTPS fetcher to the shared async fetch
+port
+through one caller-supplied offloader. Construction and every call fully
+revalidate
+the wrapped authorized fetcher, stable adapter identity, copied authorization
+byte
+count, authorization-provider identity, bundle fingerprint, fetch-provider
+identity,
 and source/resource bindings. The shared request is validated before the first
-`await`; any fingerprint/provider/source/resource mismatch returns typed `failed`
-without invoking the offloader. A matched request awaits the offloader exactly once
-with the same exact authorized fetcher and request, then revalidates the exact typed
-result and request byte limit. The caller alone decides whether blocking work runs
+`await`; any fingerprint/provider/source/resource mismatch returns typed
+`failed`
+without invoking the offloader. A matched request awaits the offloader exactly
+once
+with the same exact authorized fetcher and request, then revalidates the exact
+typed
+result and request byte limit. The caller alone decides whether blocking work
+runs
 inline, in a thread, through an executor, or by another scheduling mechanism.
 Cancellation propagates directly. Ordinary offloader exceptions become stable
-adapter errors without vendor text. Repeated calls offload again but never resolve or
+adapter errors without vendor text. Repeated calls offload again but never
+resolve or
 refresh credentials. The adapter creates no event loop, task, thread, executor,
 worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
@@ -2195,17 +2809,21 @@ The built-in HMAC-secret implementations are the bounded caller-owned memory
 service, its inline sequential async adapter, the explicit read-only file
 provider, and its caller-offloaded async adapter. The built-in public-key
 implementations are the bounded caller-owned
-memory service, its inline sequential and batch async adapters, its serial session
+memory service, its inline sequential and batch async adapters, its serial
+session
 adapter, explicit canonical file bundles, synchronous plus async
 transport-neutral fetch ports, a concrete synchronous HTTPS GET adapter,
 a caller-offloaded async HTTPS adapter, explicit synchronous and async
 Authorization-provider ports, a bounded caller-owned memory Authorization
-provider with an inline async adapter, an explicit file Authorization provider with a caller-offloaded async adapter,
-an explicit environment Authorization provider with a caller-offloaded async adapter,
+provider with an inline async adapter, an explicit file Authorization provider
+with a caller-offloaded async adapter,
+an explicit environment Authorization provider with a caller-offloaded async
+adapter,
 an explicit authorized HTTPS adapter,
 and a caller-offloaded async authorized HTTPS adapter.
 There is no built-in external secret-store integration,
-hosted credential provider, native async file-secret or file-Authorization I/O, native async
+hosted credential provider, native async file-secret or file-Authorization I/O,
+native async
 environment access, native nonblocking HTTPS
 client, automatic
 credential refresh, or hosted key service.
@@ -2244,29 +2862,41 @@ memory-batch-public-key-provider/
 memory-session-public-key-provider tests cover fallback,
 positive/negative
 evidence, duplicate/malformed records, exact profile matching, seven isolated
-runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity, and
+runtime drifts, multi-profile selection, invalid/unknown workloads, ambiguity,
+and
 three live CUDA routes. The seven route records and exact
 provenance now live in schema-v4
-`accelerator/cuda/ticket_admission_profiles.json`, not Python source.
-`benchmarks/accelerator/ticket_admission_profile_manifest.py` reconstructs those
-canonical bytes from retained JSON/TOML, source commit, exact raw/structured-output
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`src/optimization/accelerator/adapter-outbound/accelerator/cuda/ticket_admission_profiles.json`,
+not Python source.
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`src/performance/benchmarking/composition/benchmarks/accelerator/ticket_admission_profile_manifest.py`
+reconstructs those
+canonical bytes from retained JSON/TOML, source commit, exact
+raw/structured-output
 hashes, the tracked CUDA toolchain manifest, retained driver build, and retained
 host/Python context. Twelve manifest tests require byte equality and reject
-duplicate or unknown keys, unsupported schema, duplicate routes, malformed display
+duplicate or unknown keys, unsupported schema, duplicate routes, malformed
+display
 versions, invalid host fields, exact runtime-context duplicates, and direct
 capability/runtime mismatch; distinct runtime variants may coexist for one
 capability/workload. Runtime loading reads only the tracked product manifest and
-never opens benchmark evidence. `resolve_cuda_ticket_admission_profile` selects at
+never opens benchmark evidence. `resolve_cuda_ticket_admission_profile` selects
+at
 most one exact workload/capability/runtime record; invalid or ambiguous requests
-fail closed, while retained wrappers delegate through the stable workload identity. At adapter
-startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or newer,
-exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build `610.88`;
+fail closed, while retained wrappers delegate through the stable workload
+identity. At adapter
+startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or
+newer,
+exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build
+`610.88`;
 `cuda-host-runtime-identity-v1` measures Windows 11 Professional build
 `10.0.26200`, `x86_64`, and CPython `3.14.6`. Missing or failed optional NVML or
 host measurement leaves ordinary CUDA available but this evidence-bound profile
 unmatched. Fourteen runtime-identity tests cover required query/hash failures,
 NVML lifetimes, host validation, exact live host measurement, and one live CUDA
-route. Other hosts, Python versions, driver builds, devices, and workloads remain
+route. Other hosts, Python versions, driver builds, devices, and workloads
+remain
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, additional device/workload admission profiles, other
 callback or kernel workloads, event/timeline controls, concrete public-key
@@ -2280,7 +2910,8 @@ evidence remain open.
 ### TODO - Compilation latency performance budget
 
 Establish measured compile-time budgets for cold compilation, warm resident
-compilation, incremental invalidation, verified block reuse, relinking, and novel
+compilation, incremental invalidation, verified block reuse, relinking, and
+novel
 search. Treat "seconds, not hours" as an engineering target rather than a
 promise, and never report a cached or compositional fast path as the complexity
 of raw synthesis.
@@ -2310,7 +2941,8 @@ states, admissible heuristics, and profile-aware constraints before relying on
 raw hardware scale.
 The first active rule removes only byte-identical pre-identity candidates.
 Adversarial fixtures preserve one-byte, prefix, and length differences; a
-duplicate-rich fixture reduces eight evaluations to five while an all-unique null
+duplicate-rich fixture reduces eight evaluations to five while an all-unique
+null
 fixture remains four-to-four. The deterministic CPU enumerator now applies the
 same stable-first relation before logical candidate identity, preserving the
 encoded corpus while spending evaluation budget only on exact representatives.
@@ -2378,9 +3010,12 @@ threshold source binding admit compatible lineage without reducing identity to a
 fragile whole-tree hash. The emitted transformation alone must not be sufficient
 to materialize target-only source; wrong/no-source and behavior-only clones fail
 closed before target publication. Consumer thresholds are calibrated technical
-policy, not legal rules. Generic tests use only repository-owned synthetic trees.
-The first two exact consumers are `algorithms/doom/generator/quality.py` and
-`algorithms/doom/generator/amalgamate.py`. Compatible/fuzzy emission remains open
+policy, not legal rules. Generic tests use only repository-owned synthetic
+trees.
+The first two exact consumers are
+`src/research/algorithms/domain/algorithms/doom/generator/quality.py` and
+`src/research/algorithms/domain/algorithms/doom/generator/amalgamate.py`.
+Compatible/fuzzy emission remains open
 as generic research infrastructure.
 
 ### TODO - Cross-platform native capability runners
@@ -2391,12 +3026,16 @@ and require the same `.malbolge` payload and guest-visible behavior on every
 runner. The normalized DOOM C corpus already passes the strict freestanding
 compile gate on all six target/architecture pairs without OS-selection macros;
 the remaining platform work is capability implementation and runtime validation,
-not guest-source porting. Runners must not require LLVM or an externally installed
+not guest-source porting. Runners must not require LLVM or an externally
+installed
 multimedia library merely to execute an already generated program. Replace the
-non-executable `cli/adapters/doom/abi.malbolge` and
-`cli/adapters/doom/windows.malbolge` scaffolds with compiler-generated, verified
+non-executable
+`src/interface/command-line/adapter-outbound/adapters/doom/abi.malbolge` and
+`src/interface/command-line/adapter-outbound/adapters/doom/windows.malbolge`
+scaffolds with compiler-generated, verified
 modules. When a `.malbolge` capsule explicitly declares `doom.host.v1`,
-`malbolge <artifact.malbolge>` must resolve and load the ABI plus current-platform
+`malbolge <artifact.malbolge>` must resolve and load the ABI plus
+current-platform
 adapter automatically; ordinary programs receive no implicit DOOM capabilities.
 
 ### TODO - DOOM playable generated-code performance
@@ -2410,8 +3049,10 @@ LLVM or the host libc at execution time. A redistributable self-contained test
 mode may embed Freedoom asset bytes into the guest/data image, while user-owned
 commercial IWADs remain external host-provided data. Any compact bytecode or
 native translation used for acceleration is transient/rebuildable execution
-state rather than a second required DOOM artifact. Measure compile latency, frame
-pacing, input latency, VM instructions per game tick, memory footprint, generated
+state rather than a second required DOOM artifact. Measure compile latency,
+frame
+pacing, input latency, VM instructions per game tick, memory footprint,
+generated
 code/data size, and interpreter/AOT/JIT speedups rather than declaring success
 merely because the program eventually runs. Preserve the same game semantics
 while optimizing; performance-specific substitutions require explicit
@@ -2476,7 +3117,8 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
 Measure how verified synthesis cost grows with block difficulty, target-state
 entropy, self-modification footprint, layout coupling, and available reusable
-catalogue coverage. Compare blind search, structured search, compositional reuse,
+catalogue coverage. Compare blind search, structured search, compositional
+reuse,
 learned guidance, and accelerator-backed evaluation under identical budgets.
 Fit competing empirical models rather than assuming exponential, linear, or
 sublinear behavior, and report where each model ceases to explain observations.

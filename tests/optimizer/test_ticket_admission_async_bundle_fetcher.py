@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_async_bundle_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_async_bundle_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -32,33 +25,18 @@
 # - Summary:
 #   - One-await transport-neutral public-key bundle fetch regressions.
 # - Description:
-#   - Proves async fetching adds no tasks, retry, cache, or duplicate validation.
+#   - Proves async fetching adds no tasks, retry, cache, or duplicate
+#     validation.
 # - Usage:
-#   - Runs without pytest async plugins, files, sockets, or accelerator hardware.
+#   - Runs without pytest async plugins, files, sockets, or accelerator
+#     hardware.
 # - Defaults:
 #   - Uses two synthetic keys, 256 entries, and a 1 MiB byte limit.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-#
-# Large file:
-#   - false
 #
 
 """Caller-driven async detached public-key bundle fetch tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -66,8 +44,6 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_async_bundle_fetcher as async_fetch,
@@ -81,9 +57,13 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_signature_trust_manifest as manifest,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_async_bundle_fetcher import (
     fetch_ticket_admission_public_key_bundle_provider_async as _fetch_async,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_async_bundle_fetcher import (
     ticket_admission_async_public_key_bundle_fetcher_id as _async_fetcher_id,
 )
@@ -93,6 +73,7 @@ from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -260,6 +241,7 @@ def _request(  # ruff: ignore[too-many-arguments]
     provider_id: str = PROVIDER_ID,
     resource_id: str = RESOURCE_ID,
     source_id: str = SOURCE_ID,
+    # jig-ignore-next-line: indivisible reviewed identifier
     max_bytes: int = fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_BYTES,
     max_entries: int = (
         fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES
@@ -302,6 +284,7 @@ def _fetcher(
 
 
 def _run(
+    # jig-ignore-next-line: indivisible reviewed identifier
     fetcher: async_fetch.TicketAdmissionTelemetryLineageAsyncPublicKeyBundleFetcher,
     request: FetchRequest | None = None,
 ) -> FetchedBundle:

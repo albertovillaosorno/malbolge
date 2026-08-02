@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage_signature.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage_signature.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -39,38 +32,9 @@
 # - Defaults:
 #   - Uses a deterministic insecure digest port only as protocol test evidence.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
-#
 
 """Detached caller-supplied public-key lineage signature tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 
@@ -195,9 +159,7 @@ from accelerator.ticket_admission_telemetry_persistence import (
 
 SIGNATURE_ID = "caller-owned-ticket-admission-telemetry-lineage-signature-v1"
 SIGNATURE_PREFIX = "ticket-admission-telemetry-lineage-signature-v1:sha256:"
-PUBLIC_KEY_PREFIX = (
-    "ticket-admission-telemetry-lineage-public-key-v1:sha256:"
-)
+PUBLIC_KEY_PREFIX = "ticket-admission-telemetry-lineage-public-key-v1:sha256:"
 HMAC_PREFIX = "ticket-admission-telemetry-lineage-v1:sha256:"
 ALGORITHM_ID = "test-only-public-digest-v1"
 PUBLIC_KEY_ID = "public.test-key"
@@ -485,9 +447,10 @@ def test_attestation_is_canonical_and_roundtrips() -> None:
     )
 
     assert encoded == _encoded_mapping(_mapping(encoded))
-    assert decode_ticket_admission_telemetry_lineage_signature_attestation(
-        encoded
-    ) == attestation
+    assert (
+        decode_ticket_admission_telemetry_lineage_signature_attestation(encoded)
+        == attestation
+    )
     assert SPACE not in encoded
 
 
@@ -498,9 +461,12 @@ def test_attestation_fingerprint_hashes_exact_canonical_bytes() -> None:
         attestation
     )
 
-    assert ticket_admission_telemetry_lineage_signature_attestation_fingerprint(
-        attestation
-    ) == f"{SIGNATURE_PREFIX}{sha256(encoded).hexdigest()}"
+    assert (
+        ticket_admission_telemetry_lineage_signature_attestation_fingerprint(
+            attestation
+        )
+        == f"{SIGNATURE_PREFIX}{sha256(encoded).hexdigest()}"
+    )
 
 
 def test_verifier_receives_exact_bound_material_once() -> None:
@@ -867,10 +833,12 @@ def test_signed_result_requires_exact_nonempty_bounded_bytes() -> None:
         ),
     )
     for signature, pattern in cases:
-        signer = _StaticSigner(TicketAdmissionTelemetryLineageSignerResult(
-            kind=TicketAdmissionTelemetryLineageSignerResultKind.SIGNED,
-            signature=signature,
-        ))
+        signer = _StaticSigner(
+            TicketAdmissionTelemetryLineageSignerResult(
+                kind=TicketAdmissionTelemetryLineageSignerResultKind.SIGNED,
+                signature=signature,
+            )
+        )
         with pytest.raises(
             TicketAdmissionTelemetryLineageSignatureError,
             match=pattern,
@@ -1030,8 +998,8 @@ def test_invalid_claim_fields_fail_before_signer_call(
 
 def test_predecessor_rules_accept_hmac_or_signature() -> None:
     """Predecessors are absent at genesis and may name either lineage family."""
-    signature_predecessor = f"{SIGNATURE_PREFIX}{'0' * 64}"
-    hmac_predecessor = f"{HMAC_PREFIX}{'1' * 64}"
+    signature_predecessor = f"{SIGNATURE_PREFIX}{"0" * 64}"
+    hmac_predecessor = f"{HMAC_PREFIX}{"1" * 64}"
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSignatureError,
@@ -1099,9 +1067,7 @@ def test_public_key_fingerprint_rejects_invalid_key_bytes(
 
 def test_public_key_fingerprint_rejects_oversized_key() -> None:
     """An oversized key fails without a huge parametrized test ID."""
-    public_key = b"x" * (
-        DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BYTES + 1
-    )
+    public_key = b"x" * (DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BYTES + 1)
 
     with pytest.raises(
         TicketAdmissionTelemetryLineageSignatureError,

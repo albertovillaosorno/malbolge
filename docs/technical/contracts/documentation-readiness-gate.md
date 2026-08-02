@@ -11,7 +11,7 @@ implementation history begins. The gate requires the four documentation families
 and their local ADR roots, a usable repository bibliography baseline, all
 existing TODO decisions routed to an owning durable document or an explicitly
 unresolved record, valid local links, and no accidental global `docs/adr/`.
-`integrations/cspell/` remains intact as validation integration data.
+`.jig/cspell/` remains intact as validation integration data.
 Scaffolding, configuration, and concurrent Jig development may exist before this
 gate, but new product implementation work starts only after the documentation
 baseline is reviewable. Documentation and planning commits may precede this
@@ -41,7 +41,7 @@ behavior, trust boundary, or ownership rules stated by its governing decisions.
 - Every active TODO decision is routed to a real durable authority or an
   explicit unresolved/proposed record, with valid local links and no fake
   completion claims.
-- `integrations/cspell/` remains validation integration data and is not
+- `.jig/cspell/` remains validation integration data and is not
   reclassified as a documentation authority family.
 - Product implementation work has not been used to bypass missing documentation
   authority; scaffolding/configuration and concurrent Jig work are allowed

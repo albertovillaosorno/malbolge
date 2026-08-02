@@ -34,12 +34,14 @@ records define the starting evidence base.
 
 - Raw unconstrained search cost grows much faster than compositional compilation
   on challenge families with equivalent semantics.
-- Verified catalogue coverage reduces marginal search cost for recurring semantic
+- Verified catalogue coverage reduces marginal search cost for recurring
+  semantic
   blocks, but layout and self-modification coupling can reintroduce non-local
   costs.
 - No single asymptotic model is assumed to fit all difficulty ranges, target
   profiles, or search strategies.
-- Learned or stochastic guidance may improve time-to-first-verified candidate but
+- Learned or stochastic guidance may improve time-to-first-verified candidate
+  but
   does not change correctness authority.
 
 ## Method
@@ -62,7 +64,8 @@ choosing a preferred complexity class in advance.
   hardware/software identity, resource budget, catalogue version, and verifier
   identity.
 - Capacity curves distinguish solved difficulty from merely faster easy cases.
-- Cold search, warm catalogue reuse, verification, linking, and cache effects are
+- Cold search, warm catalogue reuse, verification, linking, and cache effects
+  are
   reported separately.
 - Null results and failed model fits remain versioned evidence.
 

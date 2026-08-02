@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_public_key_bundle_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_public_key_bundle_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,24 +30,6 @@
 #   - Runs without sockets, files, accelerator hardware, or external services.
 # - Defaults:
 #   - Uses two synthetic keys, 256 entries, and a 1 MiB byte limit.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-#
-# Large file:
-#   - false
 #
 
 """Explicit transport-neutral detached public-key bundle fetch tests."""
@@ -229,6 +204,7 @@ def _request(  # ruff: ignore[too-many-arguments]
     provider_id: str = PROVIDER_ID,
     resource_id: str = RESOURCE_ID,
     source_id: str = SOURCE_ID,
+    # jig-ignore-next-line: indivisible reviewed identifier
     max_bytes: int = fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_BYTES,
     max_entries: int = (
         fetch.DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_FETCH_ENTRIES

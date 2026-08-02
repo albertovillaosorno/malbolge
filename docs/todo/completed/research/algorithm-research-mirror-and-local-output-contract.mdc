@@ -13,11 +13,13 @@ scope:
   - "docs/research/"
   - "algorithms/"
   - "benchmarks/research/"
-  - "scripts/validate/research_mirror.py"
+  - "src/automation/repository/composition/scripts/validate/research_mirror.py"
   - "tests/test_research_mirror.py"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_research_mirror.py"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_research_mirror.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/research_mirror.py"
   - "jig validate --root ."
 ---
 # TODO - Algorithm research mirror and local output contract
@@ -38,11 +40,14 @@ require engineering evidence but not artificial academic capsules.
   engineering exception.
 - The repository currently contains eight exact mirrored IDs (seven research
   topics plus `template`) under `docs/research/algorithms/` and `algorithms/`.
-- `scripts/validate/research_mirror.py` fails closed on one-sided IDs, missing
+- `src/automation/repository/composition/scripts/validate/research_mirror.py`
+  fails closed on one-sided IDs, missing
   document `README.md`/`research.md`, missing executable
-  `README.md`/`experiment.toml`/`tests/`, an empty mirror, or an `out/` path that
+  `README.md`/`experiment.toml`/`tests/`, an empty mirror, or an `out/` path
+  that
   Git does not actually ignore.
-- The local-output check uses `git check-ignore --no-index` on a virtual probe, so
+- The local-output check uses `git check-ignore --no-index` on a virtual probe,
+  so
   an absent generated `out/` directory is still checked against real Git policy.
 - `tests/test_research_mirror.py` locks the current eight IDs and deliberately
   proves documentation-only/executable-only/empty failures plus the explicit
@@ -79,6 +84,7 @@ require engineering evidence but not artificial academic capsules.
 - Prerequisite completion evidence:
   `academic-research-methodology-and-evidence-model`.
 - The mirror contract and enforcement are implemented. Each individual research
-  ID still owns its bibliography, experiment identity, raw evidence, negative/null
+  ID still owns its bibliography, experiment identity, raw evidence,
+  negative/null
   results, threats to validity, and conclusion; the mirror validator does not
   fabricate those study-specific records.

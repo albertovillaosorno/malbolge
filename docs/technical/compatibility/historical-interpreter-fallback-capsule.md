@@ -17,7 +17,7 @@ semantic compatibility evidence for the modern payload.
 
 This contract currently governs:
 
-- `vm/src/capsule.rs`
+- `src/runtime/virtual-machine/domain/capsule.rs`
 - `tests/vm/capsule.rs`
 - `tests/compatibility/test_capsule.py`
 - `tests/compatibility/capsule/current-profile-capsule.hex`
@@ -80,7 +80,8 @@ Modern specification execution never uses this fallback as payload semantics.
 
 ### Sideband Bit Encoding
 
-Each decoded frame byte expands to eight whitespace symbols, most-significant bit
+Each decoded frame byte expands to eight whitespace symbols, most-significant
+bit
 first:
 
 - bit `0` -> ASCII space (`0x20`);
@@ -126,7 +127,8 @@ recognized, it validates framing, lengths, checksum, canonical profile lookup,
 and exact profile fingerprint before returning payload bytes and the selected
 canonical descriptor.
 
-The checked-in fixture selects `malbolge-2026.2` and carries `ctO` plus LF as its
+The checked-in fixture selects `malbolge-2026.2` and carries `ctO` plus LF as
+its
 small payload. Parsing succeeds. Passing that extracted payload/profile into the
 classic `ExecutionMachine::from_source_for_profile()` still fails
 `safe-rust-classic` capability preflight before the ten-trit loader. Passing the
@@ -159,7 +161,8 @@ Classic source remains ordinary `.malbolge`. In particular:
   cryptographic-security claim.
 - A runtime that does not support the selected profile still fails capability
   preflight; the historical fallback is never used as semantic recovery.
-- The profile-driven safe Rust runtime can execute the current capsule, while the
+- The profile-driven safe Rust runtime can execute the current capsule, while
+  the
   classic facade continues to reject the same profile explicitly.
 - Ordinary classic source remains ordinary source when capsule magic is absent.
 
@@ -186,7 +189,8 @@ through the modern capsule path.
 - `tests/vm/capsule.rs` locks the Rust builder against the checked-in fixture,
   validates recognition, checksum tampering, exact shared fingerprint mismatch,
   and unknown-profile rejection without fallback; proves ordinary-source
-  non-recognition, verifies the historical visible bytes, runs the fixed fallback
+  non-recognition, verifies the historical visible bytes, runs the fixed
+  fallback
   under explicit `legacy-ben`, and proves current-profile execution reaches
   capability preflight before payload loading.
 - `tests/compatibility/test_capsule.py` independently decodes the whitespace
@@ -203,7 +207,8 @@ through the modern capsule path.
 
 - [Custom target profile identity](custom-target-profile-identity.md)
 - [Required-profile diagnostics](required-profile-diagnostics.md)
-- [Historical undefined behavior](../specification/historical-undefined-behavior.md)
+- [Historical undefined
+  behavior](../specification/historical-undefined-behavior.md)
 - [Specification Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 

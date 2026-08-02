@@ -20,7 +20,7 @@ required = true
 oracle = "both primitive validator identities, compact and copied membership identities, exact proposal and trusted admission, proof-bound reference/membership/selector counts, exact component hit/miss behavior, fresh 1/1/1/0 CUDA sessions, and reused 1/17/17/16 CUDA sessions"
 
 [provenance]
-implementation = "benchmarks/accelerator/search_preparation_crossover.py"
+implementation = "src/performance/benchmarking/composition/benchmarks/accelerator/search_preparation_crossover.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060"
 

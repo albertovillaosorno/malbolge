@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_https_bundle_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_https_bundle_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -22,7 +15,8 @@
 #     certificates outside caller TLS state, PKI, or admission-policy changes.
 # - Allows:
 #   - Inputs: synthetic HTTPS configs, responses, bundles, and tampering.
-#   - Outputs: request, TLS, status, header, limit, close, and binding assertions.
+#   - Outputs: request, TLS, status, header, limit, close, and binding
+#     assertions.
 #   - Side effects: monkeypatched in-process connection recording only.
 # - Split-When:
 #   - Split when native async HTTPS, external credentials, hosted APIs,
@@ -38,27 +32,10 @@
 # - Defaults:
 #   - Uses one synthetic key, port 443, TLS 1.2, and bounded JSON responses.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-#
-# Large file:
-#   - false
-#
 
 """Concrete synchronous HTTPS detached public-key bundle fetch tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[undocumented-public-function]
 
 from __future__ import annotations
 
@@ -70,8 +47,6 @@ from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
 from typing import override
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_https_bundle_fetcher as https,
@@ -91,6 +66,7 @@ from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 HttpsError = (
     https.TicketAdmissionTelemetryLineageHttpsPublicKeyBundleFetcherError

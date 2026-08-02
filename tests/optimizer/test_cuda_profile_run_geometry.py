@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_profile_run_geometry.py
-# Path:
-#   - tests/optimizer/test_cuda_profile_run_geometry.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Live CUDA evidence that resident execution is not fixed to known profiles."""
 
@@ -55,8 +42,6 @@ from typing import Final
 from typing import TYPE_CHECKING
 from typing import cast
 from unittest import SkipTest
-
-import pytest
 
 from accelerator.classic_run import RunError
 from accelerator.classic_run import RunStatus
@@ -77,6 +62,7 @@ from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -94,12 +80,8 @@ SESSION_BATCH_SIZE: Final = 2
 STREAM_BATCH_SIZE: Final = 3
 SESSION_RUNS: Final = 3
 SNAPSHOT_WORKSPACE_ID: Final = "caller-owned-independent-u32-arrays-v1"
-SNAPSHOT_HOST_REGISTRATION_ID: Final = (
-    "bounded-all-or-pageable-u32-arrays-v1"
-)
-SNAPSHOT_STREAM_WORKSPACE_ID: Final = (
-    "caller-owned-windowed-u32-arrays-v1"
-)
+SNAPSHOT_HOST_REGISTRATION_ID: Final = "bounded-all-or-pageable-u32-arrays-v1"
+SNAPSHOT_STREAM_WORKSPACE_ID: Final = "caller-owned-windowed-u32-arrays-v1"
 SNAPSHOT_OVERLAP_WORKSPACE_ID: Final = (
     "caller-owned-double-window-overlap-u32-arrays-v1"
 )
@@ -313,10 +295,7 @@ def _assert_active_overlap(
     assert capacity.planned_windows == OVERLAP_WINDOWS
     assert capacity.retained_bytes == retained_bytes
     assert workspace.registration.active
-    assert (
-        workspace.registration.registered_arrays
-        == OVERLAP_REGISTERED_ARRAYS
-    )
+    assert workspace.registration.registered_arrays == OVERLAP_REGISTERED_ARRAYS
 
 
 def test_cuda_profile_session_matches_contiguous_execution() -> None:
@@ -469,9 +448,7 @@ def test_cuda_profile_snapshot_workspace_registers_within_budget() -> None:
 def test_cuda_profile_snapshot_workspace_falls_back_for_budget() -> None:
     """An insufficient explicit budget preserves the pageable contract."""
     request = _resident_session_request()
-    requested_bytes = (
-        SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
-    )
+    requested_bytes = SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
     with (
         _cuda() as adapter,
         adapter.open_session(
@@ -491,10 +468,7 @@ def test_cuda_profile_snapshot_workspace_falls_back_for_budget() -> None:
 
     assert observed == expected
     assert not registration.active
-    assert (
-        registration.fallback_reason
-        == _HOST_REGISTRATION_BUDGET_EXCEEDED
-    )
+    assert registration.fallback_reason == _HOST_REGISTRATION_BUDGET_EXCEEDED
     assert registration.registered_arrays == 0
     assert registration.registered_bytes == 0
     assert registration.requested_bytes == requested_bytes
@@ -545,9 +519,7 @@ def test_cuda_profile_snapshot_workspace_rolls_back_driver_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A later registration rejection releases earlier page locks."""
-    requested_bytes = (
-        SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
-    )
+    requested_bytes = SESSION_BATCH_SIZE * SYNTHETIC_WORDS * _DEVICE_WORD_BYTES
     measured = _measure_driver_rejection_fallback(
         monkeypatch,
         _resident_session_request(),
@@ -558,10 +530,7 @@ def test_cuda_profile_snapshot_workspace_rolls_back_driver_rejection(
     assert calls == SESSION_BATCH_SIZE
     assert observed == expected
     assert not registration.active
-    assert (
-        registration.fallback_reason
-        == _HOST_REGISTRATION_DRIVER_REJECTED
-    )
+    assert registration.fallback_reason == _HOST_REGISTRATION_DRIVER_REJECTED
     assert registration.registered_arrays == 0
     assert registration.registered_bytes == 0
 
@@ -630,8 +599,7 @@ def test_cuda_profile_snapshot_overlap_prefetches_exact_banks() -> None:
     _assert_active_overlap(workspace, summary, retained_bytes)
     assert isinstance(workspace, CudaProfileSnapshotOverlapWorkspace)
     assert (
-        profile_snapshot_overlap_workspace_id()
-        == SNAPSHOT_OVERLAP_WORKSPACE_ID
+        profile_snapshot_overlap_workspace_id() == SNAPSHOT_OVERLAP_WORKSPACE_ID
     )
 
 
@@ -651,9 +619,7 @@ def test_cuda_profile_snapshot_overlap_fallback_without_registration() -> None:
         )
 
         def consume(window: ProfileSnapshotWindow) -> None:
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(consume)
 
@@ -682,9 +648,7 @@ def test_cuda_profile_snapshot_overlap_falls_back_to_one_bank_budget() -> None:
         )
 
         def consume(window: ProfileSnapshotWindow) -> None:
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(consume)
 
@@ -692,8 +656,7 @@ def test_cuda_profile_snapshot_overlap_falls_back_to_one_bank_budget() -> None:
     assert workspace.capacity.buffer_count == 1
     assert workspace.capacity.bank_items == 1
     assert (
-        workspace.admission.fallback_reason
-        == _SNAPSHOT_OVERLAP_SINGLE_BUFFER
+        workspace.admission.fallback_reason == _SNAPSHOT_OVERLAP_SINGLE_BUFFER
     )
     assert workspace.registration.active
     assert summary.prefetched_windows == 0
@@ -728,9 +691,7 @@ def test_cuda_profile_snapshot_overlap_falls_back_after_driver_rejection(
         monkeypatch.setattr(CudaHostMemoryRegistry, "register", original)
 
         def consume(window: ProfileSnapshotWindow) -> None:
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(consume)
 
@@ -764,14 +725,10 @@ def test_cuda_profile_snapshot_overlap_recovers_after_failure() -> None:
             RuntimeError,
             match="synthetic prefetched consumer failure",
         ):
-            _ = workspace.stream_snapshot(
-                _PrefetchRejector(session, workspace)
-            )
+            _ = workspace.stream_snapshot(_PrefetchRejector(session, workspace))
 
         def consume(window: ProfileSnapshotWindow) -> None:
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(consume)
         observed = session.snapshot()
@@ -836,8 +793,7 @@ def test_cuda_profile_snapshot_stream_is_exact_ordered_and_windowed() -> None:
     assert registration.registered_arrays == 1
     assert isinstance(workspace, CudaProfileSnapshotStreamWorkspace)
     assert (
-        profile_snapshot_stream_workspace_id()
-        == SNAPSHOT_STREAM_WORKSPACE_ID
+        profile_snapshot_stream_workspace_id() == SNAPSHOT_STREAM_WORKSPACE_ID
     )
 
 
@@ -860,9 +816,7 @@ def test_cuda_profile_snapshot_stream_emits_partial_final_window() -> None:
 
         def consume(window: ProfileSnapshotWindow) -> None:
             ranges.append((window.start, window.stop))
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(consume)
 
@@ -953,9 +907,7 @@ def test_cuda_profile_snapshot_stream_recovers_after_consumer_failure() -> None:
         durable: list[ProfileRunResult] = []
 
         def capture(window: ProfileSnapshotWindow) -> None:
-            durable.extend(
-                _durable_result(result) for result in window.results
-            )
+            durable.extend(_durable_result(result) for result in window.results)
 
         summary = workspace.stream_snapshot(capture)
 
@@ -1081,8 +1033,7 @@ def test_cuda_profile_snapshot_workspace_type_is_public() -> None:
     assert isinstance(workspace, CudaProfileSnapshotWorkspace)
     assert profile_snapshot_workspace_id() == SNAPSHOT_WORKSPACE_ID
     assert (
-        profile_snapshot_host_registration_id()
-        == SNAPSHOT_HOST_REGISTRATION_ID
+        profile_snapshot_host_registration_id() == SNAPSHOT_HOST_REGISTRATION_ID
     )
 
 

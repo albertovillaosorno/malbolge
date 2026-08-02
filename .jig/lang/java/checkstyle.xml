@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<module name="Checker">
+  <property name="charset" value="UTF-8" />
+  <module name="LineLength">
+    <property name="max" value="80" />
+  </module>
+  <module name="TreeWalker">
+    <module name="AvoidStarImport" />
+    <module name="EmptyLineSeparator" />
+    <module name="NeedBraces" />
+  </module>
+</module>

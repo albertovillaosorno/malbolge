@@ -15,8 +15,10 @@ scope:
   - "algorithms/"
   - "benchmarks/research/"
 validation:
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_experiment_manifest.py"
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/experiment_manifest.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/experiment_manifest.py"
   - "jig validate --root ."
 ---
 # TODO - Reproducible experiment identity and manifest
@@ -59,7 +61,8 @@ source constants.
 - Active schema v1 validation covers all eight checked-in research manifests.
   Plans bind algorithm/configuration/profile/challenge/seed/budget/oracle/output
   identity without claiming execution; recorded runs additionally require exact
-  commit, workload SHA-256, host, accelerator, toolchain, outcome, and raw-output
+  commit, workload SHA-256, host, accelerator, toolchain, outcome, and
+  raw-output
   identity. Negative outcomes remain valid run records.
 - `tests/test_experiment_manifest.py` exercises repository identity, exact
   commit/hash shape, failure outcomes, stopping bounds, mandatory verification,

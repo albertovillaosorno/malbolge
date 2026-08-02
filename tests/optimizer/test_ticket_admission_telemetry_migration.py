@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_migration.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_migration.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,13 +29,6 @@
 #   - Runs without accelerator hardware or filesystem access.
 # - Defaults:
 #   - Uses exact schema-v1 bytes and bounded schema-v2 Base64 wrappers.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_migration.py
-# - accelerator/ticket_admission_telemetry_persistence.py
-#
-# Large file:
-#   - false
 #
 
 """Lossless schema-v1/schema-v2 ticket telemetry migration tests."""
@@ -445,7 +431,7 @@ def test_schema_v2_rejects_source_fingerprint_mismatch() -> None:
     """A valid-looking fingerprint cannot identify different canonical bytes."""
     malformed = replace(
         _v2(),
-        source_document_fingerprint=f"{V1_FINGERPRINT_PREFIX}{'0' * 64}",
+        source_document_fingerprint=f"{V1_FINGERPRINT_PREFIX}{"0" * 64}",
     )
 
     with pytest.raises(
@@ -636,10 +622,13 @@ def test_versioned_decoder_enforces_outer_byte_limit() -> None:
             max_bytes=len(encoded) - 1,
         )
 
-    assert decode_ticket_admission_telemetry_document_versioned(
-        encoded,
-        max_bytes=len(encoded),
-    ) == _v2()
+    assert (
+        decode_ticket_admission_telemetry_document_versioned(
+            encoded,
+            max_bytes=len(encoded),
+        )
+        == _v2()
+    )
 
 
 def test_versioned_decoder_enforces_schema_v1_source_byte_limit() -> None:

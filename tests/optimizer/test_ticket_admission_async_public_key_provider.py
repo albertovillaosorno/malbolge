@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_async_public_key_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_async_public_key_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -22,7 +15,8 @@
 #     admission-policy changes.
 # - Allows:
 #   - Inputs: synthetic manifests, async providers, keys, and failures.
-#   - Outputs: preflight, ordering, awaiting, resolution, and failure assertions.
+#   - Outputs: preflight, ordering, awaiting, resolution, and failure
+#     assertions.
 #   - Side effects: caller-owned standard-library event loops only.
 # - Split-When:
 #   - Split when native async HTTPS, external credentials, hosted APIs,
@@ -38,35 +32,10 @@
 # - Defaults:
 #   - Uses two synthetic public-key byte strings and 256-request defaults.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-#
-# Large file:
-#   - false
-#
 
 """Sequential caller-driven async public-key provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[line-too-long,undocumented-public-function]
 
 from __future__ import annotations
 
@@ -75,14 +44,18 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
 
-import pytest
-
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_async_public_key_provider import (
+    # jig-ignore-next-line: indivisible reviewed identifier
     TicketAdmissionTelemetryLineageAsyncPublicKeyProviderError as AsyncProviderError,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_async_public_key_provider import (
     resolve_ticket_admission_telemetry_lineage_signature_trust_async,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_async_public_key_provider import (
     ticket_admission_telemetry_lineage_async_public_key_provider_id,
 )
@@ -95,30 +68,42 @@ from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_signature_trust_manifest import (
     TicketAdmissionTelemetryLineageSignatureTrustManifestEntry as ManifestEntry,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_signature_trust_manifest import (
     build_ticket_admission_telemetry_lineage_signature_trust_manifest,
 )
+
+# jig-ignore-next-line: indivisible reviewed identifier
 from accelerator.ticket_admission_telemetry_lineage_signature_trust_manifest import (
     ticket_admission_telemetry_lineage_signature_trust_manifest_fingerprint,
 )
+import pytest
 
 if TYPE_CHECKING:
     from accelerator import (
+        # jig-ignore-next-line: indivisible reviewed identifier
         ticket_admission_telemetry_lineage_async_public_key_provider as async_types,
     )
     from accelerator import (
+        # jig-ignore-next-line: indivisible reviewed identifier
         ticket_admission_telemetry_lineage_signature_trust_manifest as manifest_types,
     )
 
     AsyncProvider = (
         async_types.TicketAdmissionTelemetryLineageAsyncPublicKeyProvider
     )
+    # jig-ignore-next-line: indivisible reviewed identifier
     from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
         TicketAdmissionTelemetryLineagePublicKeyProviderTrust as ProviderTrust,
     )
+
+    # jig-ignore-next-line: indivisible reviewed identifier
     from accelerator.ticket_admission_telemetry_lineage_public_key_provider import (
         TicketAdmissionTelemetryLineagePublicKeyRequest as PublicKeyRequest,
     )
@@ -299,6 +284,7 @@ def test_requests_follow_composite_order_sequentially() -> None:
     assert len(set(provider.tasks)) == 1
     assert all(
         request.manifest_fingerprint
+        # jig-ignore-next-line: indivisible reviewed identifier
         == ticket_admission_telemetry_lineage_signature_trust_manifest_fingerprint(
             manifest
         )

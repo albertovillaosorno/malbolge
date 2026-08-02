@@ -1,8 +1,3 @@
-// File:
-//   - property_verification.rs
-// Path:
-//   - tests/property_verification.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,12 +28,6 @@
 //   - Auto-discovered by Cargo during workspace tests.
 // - Defaults:
 //   - Contains no executable property logic of its own.
-//
-// Related documents:
-// - docs/technical/verification/property-fuzz-and-exhaustive-testing.md
-//
-// Large file:
-//   - false
 //
 
 //! Cargo composition root for deterministic property verification.

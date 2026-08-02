@@ -1,0 +1,132 @@
+schema: jig-function/v3
+identity:
+  id: formal-model
+  node: function:formal-model
+  path: src/specification/formal-model
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-specification/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: specification
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: formal-model.jig
+parts:
+  - id: part-0001
+    path: contract/reference.md
+    kind: contract
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0002
+    path: math/algorithms/README.md
+    kind: math
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0003
+    path: math/algorithms/adaptive-accelerator-resource-budgeting.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0004
+    path: math/algorithms/compact-guest-bytecode-strategy.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0005
+    path: math/algorithms/malbolge-specific-optimization-mathematics.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0006
+    path: math/algorithms/pytorch-search-orchestration.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0007
+    path: math/algorithms/search-pruning-and-state-canonicalization.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0008
+    path: math/algorithms/self-modification-state-graph-optimizer.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0009
+    path: math/algorithms/stochastic-and-guided-search.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0010
+    path: math/malbolge-notation.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0011
+    path: math/specification/README.md
+    kind: math
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0012
+    path: math/specification/correspondence.toml
+    kind: math
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0013
+    path: math/specification/malbolge-1998.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+  - id: part-0014
+    path: math/specification/profile-model.tex
+    kind: math
+    language: latex
+    responsibility: Define equations, notation, and formal models.
+projects: []
+tests: []
+graph:
+  node: function:formal-model
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:specification
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:formal-model
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

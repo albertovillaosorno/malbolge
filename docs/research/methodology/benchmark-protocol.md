@@ -46,7 +46,8 @@ Prior-work claims must resolve through canonical records under
 ## Method
 
 Benchmark evidence protocol v1 is validated by
-`scripts/validate/benchmark_protocol.py`. A performance record must reference an
+`src/automation/repository/composition/scripts/validate/benchmark_protocol.py`.
+A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
 toolchain, run outcome, and canonical target-profile fingerprint where
 applicable therefore come from the reproducible experiment identity rather
@@ -72,7 +73,8 @@ seed per trial, and the number of failed trials. Failed trials remain in the
 population and raw evidence; they cannot be deleted to improve a success or
 time-to-solution distribution.
 
-The checked-in examples under `benchmarks/research/protocol/examples/` are schema
+The checked-in examples under `benchmarks/research/protocol/examples/` are
+schema
 fixtures, not Malbolge performance claims. They demonstrate deterministic and
 stochastic records plus linked run manifests and retained raw CSV files.
 
@@ -106,7 +108,8 @@ that a chosen workload is scientifically representative or that a particular
 statistical method is optimal. It intentionally permits several center,
 dispersion, and uncertainty methods as long as they are declared before the
 claim. Hardware noise, benchmark implementation bias, correlated samples, and
-insufficient cross-machine replication remain study-specific threats that must be
+insufficient cross-machine replication remain study-specific threats that must
+be
 discussed in the owning research record.
 
 ## Conclusion

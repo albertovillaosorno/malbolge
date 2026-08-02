@@ -1,8 +1,3 @@
-// File:
-//   - modes.rs
-// Path:
-//   - tests/vm/modes.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,13 +28,6 @@
 //   - Composed by `tests/vm.rs`; legacy fixtures require `legacy-ben` feature.
 // - Defaults:
 //   - Normal builds reject legacy-ben construction explicitly.
-//
-// Related documents:
-// - docs/technical/runtime/vm/specification-and-legacy-interpreter-modes.md
-// - docs/technical/specification/historical-undefined-behavior.md
-//
-// Large file:
-//   - false
 //
 
 //! Execution-mode conformance and historical discrepancy fixtures.

@@ -4,6 +4,7 @@ status: "active"
 lane: "8"
 area: "accelerator"
 task: "TODO - Configurable accelerator algorithm adapters"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/configurable-accelerator-algorithm-adapters.md"
 depends_on:
   - "replaceable-accelerator-boundary"
@@ -58,153 +59,221 @@ by-side comparison without recompiling or modifying compiler semantics.
   backend failure or malformed shape falls back to it. Search proposals and
   verification hints remain untrusted, and only `TrustedCandidateVerifier` can
   admit a proposal. `SearchSelection` resolves independent algorithm/backend
-  bindings with explicit overrides, rejects unsupported combinations, and records
+  bindings with explicit overrides, rejects unsupported combinations, and
+  records
   configured versus actual backend identity after fallback. Versioned search
   configuration v1 now loads independent algorithm/backend identities from TOML,
   rejects unknown/empty configuration, preserves source identity, and applies
   explicit caller overrides without mutating the loaded base selection. The
   deterministic corpus enumerator is the first concrete CPU-only strategy.
-  `classic-rotate-target-search-v1` additionally composes one bounded strategy with
+  `classic-rotate-target-search-v1` additionally composes one bounded strategy
+  with
   interchangeable CPU/CUDA candidate evaluators. Live CUDA matches CPU proposals
-  over 257 candidates, records configured/actual backend identity, and still uses
-  independent CPU admission. `python -m optimizer.cli` now loads versioned search
+  over 257 candidates, records configured/actual backend identity, and still
+  uses
+  independent CPU admission. `python -m optimizer.cli` now loads versioned
+  search
   configuration and canonical problem bytes, applies explicit overrides, and
-  emits deterministic JSON with problem hash, configured/actual backend identity,
+  emits deterministic JSON with problem hash, configured/actual backend
+  identity,
   device metadata, seed/budget, and explicitly untrusted proposals. Supported
   CUDA setup failure preserves configured CUDA intent while falling back to CPU;
   unsupported algorithm/backend pairs fail explicitly. The first retained
   Benchmark Protocol v1 comparison covers the complete 59,049-word classic
-  domain with 15 samples per backend. CPU median is 401.185 ms and CUDA median is
+  domain with 15 samples per backend. CPU median is 401.185 ms and CUDA median
+  is
   412.570 ms on the RTX 4060, so the 0.972x CUDA/CPU result rejects the speedup
   hypothesis while preserving exact proposals and independent CPU admission. A
   separate 15-profile run explains 97.5% of CPU and 99.5% of CUDA median total
   time through named phases. CUDA host-side phases account for about 57.0%, and
   batch construction plus proposal selection consume about 173.081 ms. Reusable
   validated/prepared search state is now active. One immutable proof binds the
-  validated request/batch to exact algorithm, batch-builder, and selector identity;
+  validated request/batch to exact algorithm, batch-builder, and selector
+  identity;
   matching CPU/CUDA adapters can reuse it, while forged or mismatched strategy
   state fails closed. Prepared execution retains verifier-only acceptance and
   removes repeated batch build/validation from the amortized path. A four-route
   retained ordinary/prepared evidence records 293.564/148.590 ms CPU medians
   (1.976x) and 306.872/162.693 ms CUDA medians (1.886x). Prepared CUDA remains
-  about 9.5% slower than prepared CPU, and preparation is outside timed intervals.
-  The prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total
+  about 9.5% slower than prepared CPU, and preparation is outside timed
+  intervals.
+  The prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median
+  total
   time to backend evaluation, with proposal selection at 19.6% and 18.7%.
   Fixed-width packed candidate evidence now implements that boundary. One opaque
   byte buffer inherits logical IDs from validated request order; generic item
-  results remain compatible, malformed packed shape fails closed, and search avoids
-  per-candidate evidence objects. Verification-assist materializes only at the hint
+  results remain compatible, malformed packed shape fails closed, and search
+  avoids
+  per-candidate evidence objects. Verification-assist materializes only at the
+  hint
   boundary. Retained packed evidence lowers CPU ordinary/prepared medians to
   211.693/77.309 ms and CUDA medians to 230.144/91.199 ms. Packed backend
   evaluation falls 2.326x on CPU and 2.058x on CUDA, while packed CUDA prepared
-  remains about 18.0% slower than CPU. Prepared candidate execution now stores one
+  remains about 18.0% slower than CPU. Prepared candidate execution now stores
+  one
   validated decoded state under exact preparer identity. Rotate search reuses a
-  hardware-neutral `PrimitiveBatch` through matching CPU/CUDA evaluators; forged or
+  hardware-neutral `PrimitiveBatch` through matching CPU/CUDA evaluators; forged
+  or
   mismatched state fails closed, and generic strategies remain compatible.
   Retained prepared medians are 43.129 ms CPU and 57.296 ms CUDA,
   1.792x/1.592x faster than the packed baseline. Ordinary routes regress
   6.6%/3.7%, and CUDA remains 32.8% slower than CPU prepared. Exact primitive
-  preparation now carries sealed validation proof. CUDA prepared execution retains
-  one proof-bound input/output allocation, rebuilds on proof identity change, and
+  preparation now carries sealed validation proof. CUDA prepared execution
+  retains
+  one proof-bound input/output allocation, rebuilds on proof identity change,
+  and
   reports build/evaluation/reuse/resident counters. Ordinary execution remains
   one-shot. Retained CUDA prepared median is 34.132 ms versus 46.232 ms CPU
-  (1.355x), and CUDA improves 1.679x over its pre-resident baseline. CUDA backend
-  evaluation improves 3.252x, but total phase time does not because selection rises
+  (1.355x), and CUDA improves 1.679x over its pre-resident baseline. CUDA
+  backend
+  evaluation improves 3.252x, but total phase time does not because selection
+  rises
   to 46.331 ms. Prepared state now includes an immutable exact membership index;
-  CPU/CUDA proposal checks reuse 59,049 validated identity/payload pairs instead of
+  CPU/CUDA proposal checks reuse 59,049 validated identity/payload pairs instead
+  of
   rebuilding a dictionary. Ordinary execution stays one-shot and forged payloads
   fail closed. Retained prepared medians are 26.797 ms CPU and 17.970 ms CUDA,
   1.725x/1.899x faster than the resident baseline; selection improves
-  3.519x/3.939x. Improved controls bound attribution. Prepared strategy selection
-  now stores exact rotate-preimage positions after pruning/seed/budget and validates
-  only their packed evidence. Ordinary search retains the full scan; forged state,
+  3.519x/3.939x. Improved controls bound attribution. Prepared strategy
+  selection
+  now stores exact rotate-preimage positions after pruning/seed/budget and
+  validates
+  only their packed evidence. Ordinary search retains the full scan; forged
+  state,
   missing/excluded positions, and nonmatching evidence fail closed. Benchmarks
-  require one canonical position. Retained prepared medians are 15.266 ms CPU and
-  6.182 ms CUDA, 1.755x/2.907x faster than indexed membership; selection improves
+  require one canonical position. Retained prepared medians are 15.266 ms CPU
+  and
+  6.182 ms CUDA, 1.755x/2.907x faster than indexed membership; selection
+  improves
   894.008x/948.452x to 13.2/12.4 us. Controls/backend phases change far less, so
-  primitive backend execution selected the next boundary. Exact min/max validation
-  now replaces the Python value loop while retaining negative/overflow rejection.
+  primitive backend execution selected the next boundary. Exact min/max
+  validation
+  now replaces the Python value loop while retaining negative/overflow
+  rejection.
   Retained prepared medians improve 1.086x CPU and 1.254x CUDA; backend phases
   improve 1.091x/1.330x while ordinary controls stay nearly flat. Prepared CPU
-  rotate now reuses an exact 59,049-entry scalar-derived table; ordinary CPU stays
+  rotate now reuses an exact 59,049-entry scalar-derived table; ordinary CPU
+  stays
   scalar, exhaustive equality covers the full domain, and benchmarks require
   16 evaluations/full cardinality. Retained CPU prepared median is 3.313 ms
-  (4.243x better), and CPU backend evaluation improves 4.540x to 2.906 ms. CPU is
+  (4.243x better), and CPU backend evaluation improves 4.540x to 2.906 ms. CPU
+  is
   1.440x faster than same-run CUDA. The neutral result contract now accepts
-  canonical packed u32le bytes alongside tuples. Prepared CUDA returns resident host
+  canonical packed u32le bytes alongside tuples. Prepared CUDA returns resident
+  host
   output directly; the bridge still validates capability, exact count, and every
   word domain. Ordinary CUDA/CPU remain tuple-based, and benchmarks require
   16 packed evaluations. Retained CUDA prepared median is 2.036 ms (2.343x
-  better), and CUDA backend evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x
-  faster than same-run CPU, while CPU/ordinary controls stay effectively flat. CPU
+  better), and CUDA backend evaluation improves 2.147x to 1.802 ms. CUDA is
+  1.621x
+  faster than same-run CPU, while CPU/ordinary controls stay effectively flat.
+  CPU
   packed validation now uses `u32le-broadword-domain-v1`: repeated high-bit and
-  threshold/carry masks validate independent u32le lanes; scalar iteration is only
+  threshold/carry masks validate independent u32le lanes; scalar iteration is
+  only
   the failure diagnostic. First/last-lane adversaries fail closed and benchmarks
   require the identity. Retained CUDA prepared median is 1.175 ms (1.733x
   better), backend evaluation is 0.860 ms (2.095x better), and total is 0.886 ms
-  (2.057x better). CUDA is 2.706x faster than same-run CPU; CPU phase regressions
+  (2.057x better). CUDA is 2.706x faster than same-run CPU; CPU phase
+  regressions
   remain controls. Public resident-CUDA and neutral packed-encoding diagnostic
-  records now split launch/sync, transfer, immutable bytes, contract, masks, integer
-  decode, high-mask, threshold, diagnostics, result construction, and totals. The
-  prepared candidate state now retains immutable exact CPU bytes once and validates
-  prepared backend output under `cpu-reference-packed-equality-v1`; ordinary output
-  retains `u32le-broadword-domain-v1`. Capability/representation/count checks precede
+  records now split launch/sync, transfer, immutable bytes, contract, masks,
+  integer
+  decode, high-mask, threshold, diagnostics, result construction, and totals.
+  The
+  prepared candidate state now retains immutable exact CPU bytes once and
+  validates
+  prepared backend output under `cpu-reference-packed-equality-v1`; ordinary
+  output
+  retains `u32le-broadword-domain-v1`. Capability/representation/count checks
+  precede
   equality, and first/final in-domain corruption fails closed. Generic prepared
-  state counting exposes all 59,049 reference words. Benchmarks require both IDs and
-  all CPU-table/session/membership/selector proofs. Retained CUDA prepared search is
-  0.488 ms (2.407x better), backend/total are 0.215/0.238 ms (3.999x/3.729x), and
+  state counting exposes all 59,049 reference words. Benchmarks require both IDs
+  and
+  all CPU-table/session/membership/selector proofs. Retained CUDA prepared
+  search is
+  0.488 ms (2.407x better), backend/total are 0.215/0.238 ms (3.999x/3.729x),
+  and
   exact validation is 0.0278 ms (23.590x) with 0.0180 ms comparison. Primitive
-  end-to-end is 0.1935 ms (4.488x). The 236,196-byte reference and construction are
+  end-to-end is 0.1935 ms (4.488x). The 236,196-byte reference and construction
+  are
   untimed preparation costs. The active four-scale crossover benchmark measures
-  cold/warm preparation, incremental Python memory, fresh resident build, reuse, and
+  cold/warm preparation, incremental Python memory, fresh resident build, reuse,
+  and
   strict amortization with every exact proof. Retained warm/cold crossover is
-  6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves 10.703 ms; cold crosses on
+  6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves 10.703 ms; cold
+  crosses on
   run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
   0.901 MiB exact buffers. Component tracing selected the duplicate membership
-  frozenset. The active proof-bound sorted-reference index performs binary ID search
-  plus exact payload equality and rejects forged/cross-batch reuse. The crossover
+  frozenset. The active proof-bound sorted-reference index performs binary ID
+  search
+  plus exact payload equality and rejects forged/cross-batch reuse. The
+  crossover
   retained version-2 evidence records 91.945% lower full-domain component
-  retention, 1.137x faster component preparation, and 32.083%/26.051% lower complete
-  prepared retention/peak. Exact compact hit/miss lookup regresses 9.898x/13.856x,
-  so promotion is for scale memory/preparation. Warm/cold crossover is 7/3/2/1 and
+  retention, 1.137x faster component preparation, and 32.083%/26.051% lower
+  complete
+  prepared retention/peak. Exact compact hit/miss lookup regresses
+  9.898x/13.856x,
+  so promotion is for scale memory/preparation. Warm/cold crossover is 7/3/2/1
+  and
   108/38/5/1. This is the retained version-2 baseline.
   Retained version-3 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-indexed-candidate-batch-crossover-rtx4060/`
   promotes proof-carrying fixed-width candidate storage for large deterministic
-  batches. At 59,049 candidates, complete prepared state falls from 10.910 to 2.923
+  batches. At 59,049 candidates, complete prepared state falls from 10.910 to
+  2.923
   MiB retained (73.211%) and from 14.080 to 8.395 MiB peak (40.378%). Warm/cold
   preparation improves from 194.917/207.761 ms to 117.753/132.553 ms
-  (1.655x/1.567x), while ordinary CUDA search improves from 222.518 to 152.998 ms
-  (1.454x). Warm/cold preparation plus first resident search is 129.508/144.308 ms,
+  (1.655x/1.567x), while ordinary CUDA search improves from 222.518 to 152.998
+  ms
+  (1.454x). Warm/cold preparation plus first resident search is 129.508/144.308
+  ms,
   so both retain one-run crossover with 23.490/8.691 ms observed margins. The
   rotation-backed membership component retains 528 bytes versus 473,352 bytes in
   version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
   0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
-  17.755 microseconds versus 2.625 microseconds in version 2 and 0.266 microseconds
-  copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
-  from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
-  miss lookup. The promotion is not universal: one-candidate memory grows slightly,
+  17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
+  microseconds
+  copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636
+  microseconds
+  from 2.785 microseconds in version 2, but remains 3.094x slower than
+  copied-set
+  miss lookup. The promotion is not universal: one-candidate memory grows
+  slightly,
   and 64-candidate cold/warm crossover moves from 38/3 to 45/4. Duplicate or
   out-of-domain indexes, malformed widths/sizes, incorrect pivots, forged or
-  cross-batch proofs, and payload substitution still fail closed. Retained version-4 evidence under
+  cross-batch proofs, and payload substitution still fail closed. Retained
+  version-4 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-packed-prepared-primitive-crossover-rtx4060/`
   promotes `proof-bound-u32le-primitive-input-v1`. At 59,049 candidates,
   incremental retained prepared state falls from 3,064,623 to 713,791 bytes, a
-  76.709% reduction and 12.088 bytes per candidate. Peak allocation remains exactly
+  76.709% reduction and 12.088 bytes per candidate. Peak allocation remains
+  exactly
   8,802,328 bytes (8.395 MiB): preparation still builds a temporary CPU
-  reference/decode tuple, so the result removes retained ownership rather than the
-  transient peak. Full-domain cold/warm crossover remains 1/1. Against the immediate
-  clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
+  reference/decode tuple, so the result removes retained ownership rather than
+  the
+  transient peak. Full-domain cold/warm crossover remains 1/1. Against the
+  immediate
+  clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms
+  to
   132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
-  152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
+  152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664
+  ms
   CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
   build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
-  also proves 16 packed evaluations and CPU proves the full rotate table. The packed
-  representation is promoted because no clean route regresses. Retained version-5 evidence under
+  also proves 16 packed evaluations and CPU proves the full rotate table. The
+  packed
+  representation is promoted because no clean route regresses. Retained
+  version-5 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-packed-rotate-batch-builder-crossover-rtx4060/`
   promotes `classic-u32le-bitset-first-representatives-v1` with independent
-  `cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation falls
-  from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state falls
+  `cpu-scalar-packed-equality-v2`. At 59,049 candidates, cold/warm preparation
+  falls
+  from 122.990/109.027 ms to 76.130/76.584 ms (1.616x/1.424x), retained state
+  falls
   slightly from 713,791 to 710,647 bytes, and peak Python allocation falls from
   8,802,328 to 1,183,023 bytes (86.560%). Full-domain crossover remains 1/1. CPU
   ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
@@ -212,34 +281,50 @@ by-side comparison without recompiling or modifying compiler semantics.
   (1.395x). CUDA prepared throughput is the retained contextual negative at
   0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
   only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
-  attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
-  to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is for
+  attributed to the builder. The fixed bitset raises one-candidate peak from
+  2,664
+  to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
+  for
   large deterministic batches, not universal small-batch memory. All builder,
   storage, validator, membership, proposal, admission, cardinality, and CPU/CUDA
-  session proofs pass. Component attribution now places the remaining peak in the
-  batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes as
-  representative, selected-index, and payload arrays coexist. Retained version-6 evidence under
+  session proofs pass. Component attribution now places the remaining peak in
+  the
+  batch builder: it reaches about 1,183,087 bytes while retaining 473,546 bytes
+  as
+  representative, selected-index, and payload arrays coexist. Retained version-6
+  evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-inplace-packed-batch-builder-crossover-rtx4060/`
   promotes `classic-u32le-bitset-inplace-first-representatives-v2`. At 59,049
   candidates, cold/warm preparation falls from 76.130/76.584 to 64.606/65.101 ms
   (1.178x/1.176x), peak Python allocation falls from 1,183,023 to 962,052 bytes
-  (18.679%), retained state remains 710,647 bytes, and full-domain crossover remains
+  (18.679%), retained state remains 710,647 bytes, and full-domain crossover
+  remains
   1/1. CPU/CUDA ordinary routes improve from 90.869/103.562 to 79.943/92.133 ms
-  (1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput is
+  (1.137x/1.124x). Prepared controls move in opposite directions: CPU throughput
+  is
   3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
   (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
-  2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
+  2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed
+  to
   the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
-  8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at 1,024
+  8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
+  1,024
   candidates peak falls 22,155 to 19,116 bytes and ordinary CUDA improves. All
   builder, storage, validator, membership, proposal, admission, cardinality, and
-  CPU/CUDA session proofs pass. Component attribution now places the builder phase
-  near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
-  occurs when that retained batch coexists with candidate-state creation (~237 KiB
-  incremental) or selector creation (~253 KiB incremental). Reducing this post-builder
-  coexistence without weakening exact reference, selection, membership, or admission
+  CPU/CUDA session proofs pass. Component attribution now places the builder
+  phase
+  near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB
+  peak
+  occurs when that retained batch coexists with candidate-state creation (~237
+  KiB
+  incremental) or selector creation (~253 KiB incremental). Reducing this
+  post-builder
+  coexistence without weakening exact reference, selection, membership, or
+  admission
   proofs is the next measured boundary.
   Retained version-7 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-native-view-selector-crossover-rtx4060/`
   promotes `classic-u32le-native-view-preimage-v2`. The same-run component
   comparison preserves the one exact preimage at all four scales. At 59,049
@@ -248,69 +333,111 @@ by-side comparison without recompiling or modifying compiler semantics.
   regression. Complete preparation peak falls from 962,052 to 946,675 bytes
   (1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
   from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
-  At one candidate, the native selector retains 56 bytes more and peaks 240 bytes
+  At one candidate, the native selector retains 56 bytes more and peaks 240
+  bytes
   higher; total one- and 64-candidate peaks are unchanged. CUDA ordinary, fresh
-  build, and reuse timings remain contextual controls because selector preparation
-  is outside execution intervals. Candidate-state creation, approximately 237 KiB
+  build, and reuse timings remain contextual controls because selector
+  preparation
+  is outside execution intervals. Candidate-state creation, approximately 237
+  KiB
   incremental beside the retained batch, is the next measured preparation-memory
-  boundary; exact reference, selection, membership, proposal, and admission proofs
+  boundary; exact reference, selection, membership, proposal, and admission
+  proofs
   remain mandatory.
   Retained version-8 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-projected-prepared-rotate-crossover-rtx4060/`
   promotes selection-aware exact projection under
   `classic-rotate-preimage-projection-v1`. Generic evaluated search prepares the
   selector proof first, requires the projected sub-batch to preserve evaluator
-  identity and exact full-batch membership, binds projection callbacks into strategy
+  identity and exact full-batch membership, binds projection callbacks into
+  strategy
   identity, and validates backend evidence against only that sub-batch. Proposal
-  membership and trusted admission still use all 59,049 evaluated candidates. The
-  classic rotate inverse has zero or one exact preimage, so the canonical full-domain
-  prepared state retains one reference word, one selected position, and one resident
-  CPU/CUDA word while full membership remains 59,049. Empty projections skip backend
-  execution; wrong evaluator, fabricated member, oversized projection, forged proof,
-  wrong evidence, and fabricated proposal still fail closed. Against the immediate
-  clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms to
-  46.2706/46.6161 ms (1.393x/1.390x), retained state falls from 710,647 to 475,010
-  bytes (33.158%), peak allocation falls from 946,675 to 710,126 bytes (24.987%),
-  and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to 0.0787
+  membership and trusted admission still use all 59,049 evaluated candidates.
+  The
+  classic rotate inverse has zero or one exact preimage, so the canonical
+  full-domain
+  prepared state retains one reference word, one selected position, and one
+  resident
+  CPU/CUDA word while full membership remains 59,049. Empty projections skip
+  backend
+  execution; wrong evaluator, fabricated member, oversized projection, forged
+  proof,
+  wrong evidence, and fabricated proposal still fail closed. Against the
+  immediate
+  clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804
+  ms to
+  46.2706/46.6161 ms (1.393x/1.390x), retained state falls from 710,647 to
+  475,010
+  bytes (33.158%), peak allocation falls from 946,675 to 710,126 bytes
+  (24.987%),
+  and crossover remains 1/1. CPU prepared throughput improves from 3.2402 to
+  0.0787
   ms (41.172x), while CUDA prepared improves from 0.5116 to 0.2743 ms (1.865x).
-  Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total prepared-phase
-  speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls and
-  are not attributed to projection. Projection is not universal tiny-batch policy: at
-  one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm crossover
-  moves from 6/6 to 8/7. The next architectural boundary is an exact projected-subset
-  contract for strategies without a unique algebraic inverse; any generalization must
-  retain subset identity, full membership, exact evidence, proposal validation, and
+  Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
+  prepared-phase
+  speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual
+  controls and
+  are not attributed to projection. Projection is not universal tiny-batch
+  policy: at
+  one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
+  crossover
+  moves from 6/6 to 8/7. The next architectural boundary is an exact
+  projected-subset
+  contract for strategies without a unique algebraic inverse; any generalization
+  must
+  retain subset identity, full membership, exact evidence, proposal validation,
+  and
   independent trusted admission rather than introduce heuristic filtering.
 Retained version-9 evidence under
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-exact-candidate-subset-crossover-rtx4060/`
 promotes neutral `request-order-position-subset-v1` and rotate projection
-`classic-rotate-preimage-position-subset-v2`. The proof binds immutable, strictly
-increasing request-order positions to the exact full-batch object; empty, one-item,
-and multi-item subsets are supported. Mutable, duplicate, reordered, out-of-range,
-forged, wrong-type, and cross-batch state fail closed. Generic preparation validates
-and unwraps the projection once, stores primitive state directly on the repeated hot
-path, and retains the exact projected batch beside full membership authority. Formal
-`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items compare
-legacy membership revalidation with the proof route: 2.3/4.3 microseconds for empty
+`classic-rotate-preimage-position-subset-v2`. The proof binds immutable,
+strictly
+increasing request-order positions to the exact full-batch object; empty,
+one-item,
+and multi-item subsets are supported. Mutable, duplicate, reordered,
+out-of-range,
+forged, wrong-type, and cross-batch state fail closed. Generic preparation
+validates
+and unwraps the projection once, stores primitive state directly on the repeated
+hot
+path, and retains the exact projected batch beside full membership authority.
+Formal
+`candidate-subset-proof-tradeoff-v1` medians over 59,049 full-batch items
+compare
+legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
+empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
-proof adds 144 retained and 64 peak bytes; from one item upward retained memory is
+proof adds 144 retained and 64 peak bytes; from one item upward retained memory
+is
 slightly lower and peak memory is equal. Against the immediate clean version-8
 baseline, full-domain cold/warm preparation improves from 46.2706/46.6161 ms to
-45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak stays
+45.7698/46.2938 ms, retained state falls by 32 bytes to 474,978 bytes, peak
+stays
 710,126 bytes, and crossover remains 1/1. One-candidate crossover improves from
-8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated throughput
-regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU prepared
+8/7 to 7/6, while 1,024 improves from 2/1 to 1/1. CPU prepared isolated
+throughput
+regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
+prepared
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
-improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The proof
+improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
+proof
 is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. `classic-crazy-target-search-v1` now supplies the first exact
-non-invertible multiposition strategy without heuristic filtering. It retains full
-59,049-member authority while projecting exactly 1,024 positions, executes through
-CPU/CUDA bindings and its proof-bound search ticket, and preserves independent CPU
+non-invertible multiposition strategy without heuristic filtering. It retains
+full
+59,049-member authority while projecting exactly 1,024 positions, executes
+through
+CPU/CUDA bindings and its proof-bound search ticket, and preserves independent
+CPU
 admission. Retained same-run evidence records 16.425x CPU prepared, 11.601x CUDA
 prepared, and 1.270x one-shot CUDA-ticket improvements over ordinary routes.
-  Synthesis/guided strategies, ROCm search implementations, richer orchestration,
-  additional algorithm families, and broader representative benchmarks remain open.
+  Synthesis/guided strategies, ROCm search implementations, richer
+  orchestration,
+  additional algorithm families, and broader representative benchmarks remain
+  open.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.

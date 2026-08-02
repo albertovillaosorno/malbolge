@@ -21,7 +21,7 @@ required = true
 oracle = "complete current-profile no-op validation; ordinary snapshots use fresh independent arrays across and within calls; workspace snapshots return exact supplied arrays and explicitly overwrite them; caller-owned-independent-u32-arrays-v1 identity; forged, resized, duplicate, wrong-type, wrong-count, and closed-session state fails closed; every profiled workspace sample reports zero result-array allocation"
 
 [provenance]
-implementation = "accelerator/cuda/profile_run.py"
+implementation = "src/optimization/accelerator/adapter-outbound/accelerator/cuda/profile_run.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-workspace-tradeoff-rtx4060"
 

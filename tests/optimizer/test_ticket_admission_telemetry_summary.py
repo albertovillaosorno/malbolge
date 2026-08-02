@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_summary.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_summary.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -35,12 +28,6 @@
 #   - Runs without accelerator hardware.
 # - Defaults:
 #   - Invalid documents fail closed and empty documents remain valid.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_summary.py
-#
-# Large file:
-#   - false
 #
 
 """Deterministic offline ticket telemetry summary tests."""
@@ -263,9 +250,7 @@ def test_summary_preserves_bounded_retention_ranges() -> None:
     assert summary.completed_retention.dropped_observation_count == 1
     assert summary.completed_retention.first_sequence_id == 1
     assert summary.completed_retention.next_sequence_id == NEXT_SEQUENCE_ID
-    retained_count = (
-        summary.completed_retention.retained_observation_count
-    )
+    retained_count = summary.completed_retention.retained_observation_count
     assert retained_count == RETENTION_CAPACITY
     assert summary.failed_retention == summary.completed_retention
 
@@ -341,9 +326,11 @@ def test_evidence_appearances_are_sorted_and_outcome_specific() -> None:
     document = capture_ticket_admission_telemetry_document(attempts)
     selected = document.completed.observations[0].selected_evidence_ids
 
-    appearances = summarize_ticket_admission_telemetry(document).contexts[
-        0
-    ].evidence_appearances
+    appearances = (
+        summarize_ticket_admission_telemetry(document)
+        .contexts[0]
+        .evidence_appearances
+    )
 
     assert tuple(item.evidence_id for item in appearances) == tuple(
         sorted(selected)

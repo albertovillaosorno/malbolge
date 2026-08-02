@@ -16,8 +16,8 @@ This contract governs:
 
 - `accelerator/cuda/`
 - `scripts/bootstrap/`
-- `rust-toolchain.toml`
-- `pyrightconfig.json`
+- `.jig/version/.jig/version/rust-toolchain.toml`
+- `.jig/lang/python/.jig/lang/python/pyrightconfig.json`
 - CUDA and bootstrap tests under `tests/`
 
 It does not change guest semantics, candidate acceptance, or the independent CPU
@@ -27,17 +27,22 @@ reference path.
 
 The active CUDA runtime is Windows x86-64 specific. It loads the Driver API with
 `ctypes.WinDLL("nvcuda.dll")`, loads a versioned NVRTC `.dll`, and annotates the
-binding surface with `ctypes.WinDLL`. The runtime also constructs the toolkit root
+binding surface with `ctypes.WinDLL`. The runtime also constructs the toolkit
+root
 from `.dependencies/cuda/13.3.1/toolkit` instead of resolving it from a selected
 platform manifest.
 
-`accelerator/cuda/toolchain.json` correctly pins CUDA 13.3 Update 1 package paths,
+`src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json`
+correctly pins CUDA 13.3 Update 1 package paths,
 versions, sizes, and SHA-256 values, but its only platform is
-`windows-x86_64`. The repository Rust channel, Jig launcher, and Pyright platform
+`windows-x86_64`. The repository Rust channel, Jig launcher, and Pyright
+platform
 configuration also contain unconditional Windows identities.
 
-`scripts/bootstrap/project.py` is now a platform-aware checkout entrypoint. It
-creates ignored local state, provisions native Windows or POSIX Python launchers,
+`src/automation/repository/composition/scripts/bootstrap/project.py` is now a
+platform-aware checkout entrypoint. It
+creates ignored local state, provisions native Windows or POSIX Python
+launchers,
 and reports a mismatched CUDA or Rust manifest as unsupported. This diagnostic
 behavior is not Linux CUDA runtime support.
 
@@ -45,9 +50,11 @@ behavior is not Linux CUDA runtime support.
 
 - Windows uses the reviewed `WinDLL` calling convention and Windows library
   names; Linux uses `ctypes.CDLL` with reviewed ELF sonames.
-- Driver and NVRTC library names come from one typed platform selection, not from
+- Driver and NVRTC library names come from one typed platform selection, not
+  from
   scattered suffix checks or silent search-path guessing.
-- CUDA release, platform, package version, archive path, size, and SHA-256 remain
+- CUDA release, platform, package version, archive path, size, and SHA-256
+  remain
   exact tracked identity. No unversioned "latest" download is allowed.
 - The runtime resolves its toolkit root and NVRTC library from the selected
   manifest; it does not embed `13.3.1` or `.dll` in generic execution logic.
@@ -59,10 +66,13 @@ behavior is not Linux CUDA runtime support.
 
 ## Failure Behavior
 
-An absent `libcuda.so.1`, incompatible NVIDIA driver, missing manifest, wrong host
+An absent `libcuda.so.1`, incompatible NVIDIA driver, missing manifest, wrong
+host
 platform, unavailable versioned NVRTC `.so`, hash mismatch, or missing pinned
-native toolchain fails explicitly. The initializer reports optional components as
-missing or unsupported unless `--require-cuda` promotes that condition to failure.
+native toolchain fails explicitly. The initializer reports optional components
+as
+missing or unsupported unless `--require-cuda` promotes that condition to
+failure.
 It never falls back to an arbitrary system CUDA installation while hermetic CUDA
 is requested.
 
@@ -70,7 +80,8 @@ is requested.
 
 Completion requires all of the following:
 
-- deterministic loader tests for Windows `WinDLL` plus `nvcuda.dll`/NVRTC `.dll`;
+- deterministic loader tests for Windows `WinDLL` plus `nvcuda.dll`/NVRTC
+  `.dll`;
 - deterministic loader tests for Linux `CDLL` plus `libcuda.so.1` and a
   manifest-selected versioned NVRTC `.so`;
 - tracked Windows and Linux CUDA manifests with exact package hashes and toolkit
@@ -96,7 +107,8 @@ Completion requires all of the following:
 
 ### Active implementation
 
-- `accelerator/cuda/runtime.py`
-- `accelerator/cuda/toolchain.json`
-- `scripts/bootstrap/project.py`
-- `scripts/bootstrap/python_validation.py`
+- `src/optimization/accelerator/adapter-outbound/accelerator/cuda/runtime.py`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json`
+- `src/automation/repository/composition/scripts/bootstrap/project.py`
+- `src/automation/repository/composition/scripts/bootstrap/python_validation.py`

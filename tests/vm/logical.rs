@@ -1,8 +1,3 @@
-// File:
-//   - logical.rs
-// Path:
-//   - tests/vm/logical.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,13 +31,6 @@
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Sequential logical execution is the semantic and artifact baseline.
-//
-// Related documents:
-// - docs/technical/runtime/execution/deterministic-logical-concurrency.md
-// - docs/technical/runtime/execution/batch-vm-execution.md
-//
-// Large file:
-//   - false
 //
 
 //! Deterministic logical task ordering, joining, and independence fixtures.

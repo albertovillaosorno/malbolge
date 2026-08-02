@@ -20,12 +20,15 @@ runner policy.
 
 ## Current Behavior
 
-`algorithms/doom/generator/amalgamation_oracle.py` constructs a deterministic
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`src/research/algorithms/domain/algorithms/doom/generator/amalgamation_oracle.py`
+constructs a deterministic
 single-TU oracle from accepted generated quality output. It embeds project
 headers, preserves system includes and provenance, orders translation units, and
 isolates private collisions. `generator/amalgamate.py` feeds that source/oracle
 pair to generic `algorithms/diff/`, which emits the source-bound
-`algorithms/doom/amalgamate/main.rs` transform.
+`src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`
+transform.
 
 The transform consumes
 `quality/out/doom_fixed/linuxdoom-1.10/` and publishes exactly one ignored file,

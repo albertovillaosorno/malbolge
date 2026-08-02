@@ -1,0 +1,225 @@
+% Copyright:
+%   - Copyright (c) 2026 Alberto Villa Osorno.
+% SPDX-License-Identifier:
+%   - MIT
+% Confidential:
+%   - false
+% License-File:
+%   - LICENSE-MIT
+%
+% Boundary-Contract:
+% - Owns:
+%   - The repository behavior implemented by this source file.
+% - Must-Not:
+%   - Bypass the contracts or authority boundaries of its owning package.
+% - Allows:
+%   - Inputs: values admitted by the file's public or internal interface.
+%   - Outputs: deterministic values or effects declared by that interface.
+%   - Side effects: only those explicitly owned by the implementation.
+% - Split-When:
+%   - Split when one responsibility gains an independent lifecycle.
+% - Merge-When:
+%   - Merge when another file owns the exact same responsibility.
+% - Summary:
+%   - Profile model module.
+% - Description:
+%   - Implements the responsibility summarized by this module.
+% - Usage:
+%   - Used through the owning package, executable, or document boundary.
+% - Defaults:
+%   - Invalid inputs or broken invariants fail closed.
+%
+
+%! Profile model module.
+
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\input{../malbolge-notation.tex}
+
+\title{Versioned Malbolge Profile Mathematics}
+\author{Malbolge Project}
+\date{2026-07-26}
+
+\begin{document}
+\maketitle
+
+\section{Scope}
+
+This document fixes mathematical notation shared by versioned Malbolge target
+profiles. A profile chooses a positive ternary word width $N$ and therefore the
+word modulus
+\begin{equation}
+  W_N = \WordModulus{N}.
+  \label{eq:profile-word-modulus}
+\end{equation}
+The profile-specific implementation contract supplies finite translation tables
+and the remaining non-mathematical source-admission details.
+
+\section{Word and memory domains}
+
+Define
+\begin{equation}
+  \WordDomain{N} = \{0,1,\ldots,W_N-1\}.
+  \label{eq:profile-word-domain}
+\end{equation}
+Every word $x\in\WordDomain{N}$ has the unique expansion
+\[
+  x = \sum_{i=0}^{N-1} x_i3^i,
+  \qquad x_i\in\TritSet.
+\]
+For the single-word-modular memory model, memory is a total function
+\begin{equation}
+  M : \WordDomain{N}\to\WordDomain{N},
+  \label{eq:profile-memory-domain}
+\end{equation}
+and registers satisfy
+\[
+  A,C,D\in\WordDomain{N}.
+\]
+Pointer succession is
+\begin{equation}
+  \operatorname{succ}_N(x)=(x+1)\bmod W_N.
+  \label{eq:profile-successor}
+\end{equation}
+
+\section{Rotation}
+
+The profile-width ternary right rotation is
+\begin{equation}
+  \RotateN{N}{x}
+    = \left\lfloor\frac{x}{3}\right\rfloor
+      + (x\bmod 3)3^{N-1}.
+  \label{eq:profile-rotate}
+\end{equation}
+It maps $\WordDomain{N}$ to itself and moves the least-significant trit to the
+most-significant position.
+
+\section{Crazy operation}
+
+Define the digit operation
+\[
+  \CrazyDigit : \TritSet\times\TritSet\to\TritSet
+\]
+by
+\[
+\begin{array}{c|ccc}
+\CrazyDigit(d,a) & a=0 & a=1 & a=2 \\
+\hline
+ d=0 & 1 & 0 & 0 \\
+ d=1 & 1 & 0 & 2 \\
+ d=2 & 2 & 2 & 1
+\end{array}
+\]
+with data trit $d$ first and accumulator trit $a$ second. The word operation is
+\begin{equation}
+  \CrazyN{N}{d}{a}
+    = \sum_{i=0}^{N-1}\CrazyDigit(d_i,a_i)3^i.
+  \label{eq:profile-crazy}
+\end{equation}
+This orientation is repository-wide notation; optimized tables may not silently
+transpose the two operands.
+
+\section{Decode and self-modification}
+
+Let $X_1$ and $X_2$ denote the immutable 94-entry decode and encryption tables.
+For graphical cells $m\in\{33,\ldots,126\}$,
+\begin{equation}
+  \DecodeOp(m,c)
+    = X_1\!\left[(m-33+c)\bmod 94\right],
+  \label{eq:profile-decode}
+\end{equation}
+and
+\begin{equation}
+  \EncryptOp(m)=X_2[m-33].
+  \label{eq:profile-encrypt}
+\end{equation}
+A non-halting transition first applies its instruction-specific effect, then
+requires the resulting encryption target $M[C]$ to remain graphical, applies
+$M[C]\leftarrow\EncryptOp(M[C])$, and only then advances code and data pointers
+with $\operatorname{succ}_N$. A jump that changes $C$ therefore also changes the
+encryption target. Rejected encryption is atomic.
+
+\section{I/O and termination}
+
+Byte input maps an available byte $b\in\{0,\ldots,255\}$ to $A\leftarrow b$.
+End of input maps to the all-two-trit sentinel
+\begin{equation}
+  A\leftarrow W_N-1.
+  \label{eq:profile-eof}
+\end{equation}
+Byte output emits $A\bmod256$. The halt instruction terminates before encryption
+or pointer advancement. Fetching a non-graphical current code cell terminates
+immediately under the normative profile semantics.
+
+\section{Loading notation}
+
+For a profile $p$ with width $N$, write
+\begin{equation}
+  \LoadOp_p(s)=M_0
+  \label{eq:profile-load}
+\end{equation}
+when source bytes $s$ satisfy the profile source-admission rules and determine
+an
+exact initial memory image $M_0\in\MemoryState{N}$. If $L$ is the number of
+loaded source words, every remaining cell satisfies
+\begin{equation}
+  M_0[k]=\CrazyN{N}{M_0[k-2]}{M_0[k-1]},
+  \qquad L\leq k < W_N.
+  \label{eq:profile-load-recurrence}
+\end{equation}
+Loader rejection is outside the execution transition relation.
+
+\section{Execution and observable equivalence}
+
+Let one complete guest state be
+\[
+  S=(A,C,D,M,I,O),
+\]
+where $I$ is the remaining byte-input stream and $O$ is committed byte output.
+Write
+\begin{equation}
+  S \Transition{p} S'
+  \label{eq:profile-transition}
+\end{equation}
+for one committed normative step under profile $p$.
+
+For programs $P$ and $Q$, write
+\begin{equation}
+  P\ObservedEquivalent{p}Q
+  \label{eq:profile-observable-equivalence}
+\end{equation}
+when, for the declared input domain, both executions have identical observable
+byte I/O, termination, and all verifier-required state observations under the
+same profile. An optimization or native tier may use another representation but
+must discharge this equivalence obligation over its admitted domain.
+
+\section{Compiler and research notation}
+
+Compiler lowering under profile $p$ is written
+\[
+  C \Transition{\LowerOp_p} P,
+\]
+while independent acceptance of candidate $P$ is written
+\[
+  \VerifyOp(P,p)=1.
+\]
+Research cost vectors use
+\[
+  \CostVector{P}
+    = (K_{\mathrm{size}},K_{\mathrm{time}},K_{\mathrm{memory}},\ldots).
+\]
+Cost ordering never implies semantic correctness; candidates enter comparative
+optimization only after the declared verifier/equivalence obligation succeeds.
+
+\section{Canonical specializations}
+
+The written historical profile uses $N=10$, giving $W_{10}=59049$. The current
+`malbolge-2026.2` profile uses $N=14$, giving
+\begin{equation}
+  W_{14}=4782969.
+  \label{eq:profile-current-width}
+\end{equation}
+These are specializations of one mathematical profile model, not permission to
+reinterpret historical resource limits as current-language constants.
+
+\end{document}

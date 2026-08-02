@@ -1,8 +1,3 @@
-// File:
-//   - profile_reads.rs
-// Path:
-//   - tests/vm/profile_reads.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -40,13 +33,6 @@
 //   - Composed by `tests/vm.rs` under the ordinary VM integration-test target.
 // - Defaults:
 //   - Fetch always occurs for live state; data/encryption exist only when read.
-//
-// Related documents:
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-// - vm/src/profile_trace.rs
-//
-// Large file:
-//   - false
 //
 
 //! Exact semantic memory-read role fixtures for current-profile execution.

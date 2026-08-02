@@ -1,8 +1,3 @@
-// File:
-//   - cuda_run.rs
-// Path:
-//   - tests/vm/cuda_run.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,13 +31,6 @@
 // - Defaults:
 //   - Normative safe Rust execution is always the expected-result oracle.
 //
-// Related documents:
-// - docs/technical/integrations/accelerators/cuda-exact-vm-adapter.md
-// - docs/technical/runtime/execution/batch-vm-execution.md
-//
-// Large file:
-//   - false
-//
 
 //! Exact full-state checks for resident classic CUDA bounded execution.
 
@@ -61,7 +47,9 @@ use malbolge::{
     execute_batch_with_backend_report, historical_profile,
 };
 
-use crate::{TestResult, check_equal, normalize_result};
+use crate::{
+    TestResult, accelerator_python_path, check_equal, normalize_result,
+};
 
 const MAGIC: &[u8; 8] = b"MBRUN1\0\0";
 const RESPONSE_RESULTS: u32 = 0;
@@ -655,6 +643,7 @@ fn run_cuda_worker(request: &[u8]) -> TestResult<WorkerBatch> {
     let mut child = Command::new(&python)
         .args(["-m", "accelerator.cuda.classic_run_worker"])
         .current_dir(root)
+        .env("PYTHONPATH", accelerator_python_path(root)?)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

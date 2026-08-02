@@ -1,0 +1,9 @@
+schema_version = 1
+
+[algorithm]
+id = "compact-guest-bytecode-strategy"
+state = "experimental"
+# jig-ignore-next-line: indivisible reviewed identifier
+research_record = "docs/research/algorithms/compact-guest-bytecode-strategy/research.md"
+# jig-ignore-next-line: indivisible reviewed identifier
+experiment_manifest = "src/research/algorithms/domain/algorithms/compact-guest-bytecode-strategy/experiment.toml"

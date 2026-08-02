@@ -1,8 +1,3 @@
-// File:
-//   - profile_tracing.rs
-// Path:
-//   - tests/vm/profile_tracing.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,13 +31,6 @@
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - Traced and plain current execution must produce identical guest state.
-//
-// Related documents:
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-// - docs/technical/compatibility/scalable-malbolge-memory-model.md
-//
-// Large file:
-//   - false
 //
 
 //! Profile-driven trace conformance for current scalable Malbolge.

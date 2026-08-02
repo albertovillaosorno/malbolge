@@ -1,0 +1,33 @@
+schema_version = 1
+
+[experiment]
+id = "malbolge-specific-optimization-mathematics"
+record_kind = "plan"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-vm-table-factorization"
+difficulty = 59049
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:f292eae8bc88cd084e9fbc5cacf65ccde53b02d33b597ae76cc07f4a4b0ebd26"
+
+[budget]
+samples_per_implementation = 15
+crazy_full_domain_repetitions = 16
+rotate_full_domain_repetitions = 128
+
+[verification]
+required = true
+oracle = "exhaustive-math-correspondence"
+# jig-ignore-next-line: indivisible reviewed identifier
+correspondence = "src/specification/formal-model/math/specification/correspondence.toml"
+# jig-ignore-next-line: indivisible reviewed identifier
+raw_evidence = "benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/raw.csv"
+
+[provenance]
+# jig-ignore-next-line: indivisible reviewed identifier
+configuration = "src/research/algorithms/domain/algorithms/malbolge-specific-optimization-mathematics/experiment.toml"
+implementation = "algorithms/malbolge-specific-optimization-mathematics/"
+output = "algorithms/malbolge-specific-optimization-mathematics/out/"

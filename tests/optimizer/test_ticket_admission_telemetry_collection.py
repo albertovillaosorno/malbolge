@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_collection.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_collection.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,16 +29,6 @@
 #   - Runs without accelerator hardware or filesystem access.
 # - Defaults:
 #   - Empty collections are valid and malformed or ambiguous input fails closed.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_collection.py
-# - accelerator/ticket_admission_telemetry_overlap.py
-# - accelerator/ticket_admission_telemetry_overlap_index.py
-# - accelerator/ticket_admission_telemetry_overlap_components.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
 #
 
 """Byte-exact telemetry document collection tests."""
@@ -195,9 +178,11 @@ def test_exact_duplicates_are_counted_once() -> None:
     """Byte-identical documents retain one summary and occurrence count."""
     document = _document()
 
-    collection = collect_ticket_admission_telemetry(
-        (document, document, document)
-    )
+    collection = collect_ticket_admission_telemetry((
+        document,
+        document,
+        document,
+    ))
 
     canonical_byte_count = len(
         encode_ticket_admission_telemetry_document(document)

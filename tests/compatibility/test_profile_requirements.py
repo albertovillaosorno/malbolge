@@ -1,8 +1,3 @@
-# File:
-#   - test_profile_requirements.py
-# Path:
-#   - tests/compatibility/test_profile_requirements.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -25,7 +18,8 @@
 #   - Outputs: exact immutable objects and stable diagnostic assertions.
 #   - Side effects: repository profile reads only.
 # - Split-When:
-#   - Split when another Python runtime family gains independent capability data.
+#   - Split when another Python runtime family gains independent capability
+#     data.
 # - Merge-When:
 #   - Merge when another suite owns exact Python/Rust diagnostic parity.
 # - Summary:
@@ -37,21 +31,11 @@
 # - Defaults:
 #   - Uses canonical `malbolge.json` and explicit safe-Rust envelopes.
 #
-# Related documents:
-# - malbolge.json
-# - scripts/validate/profile_requirements.py
-# - scripts/validate/target_profile.py
-# - vm/src/profile.rs
-# - tests/vm/profile_requirements.rs
-# - docs/technical/compatibility/required-profile-diagnostics.md
-#
-# Large file:
-#   - false
-#
 
 """Python target-profile requirement and capability-preflight regressions."""
 
-# ruff: file-ignore[doc-line-too-long,line-too-long,magic-value-comparison,pytest-raises-too-broad,set-attr-with-constant,undocumented-public-function]
+# jig-ignore-next-line: indivisible reviewed identifier
+# ruff: file-ignore[magic-value-comparison, pytest-raises-too-broad, set-attr-with-constant, undocumented-public-function]
 
 from __future__ import annotations
 
@@ -62,7 +46,6 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-
 from scripts.validate import profile_requirements as requirements
 from scripts.validate import target_profile
 

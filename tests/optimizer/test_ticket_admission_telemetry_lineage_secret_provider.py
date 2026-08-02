@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage_secret_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage_secret_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,25 +31,6 @@
 # - Defaults:
 #   - Uses two deterministic references and typed provider outcomes.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-#
-# Large file:
-#   - false
-#
 
 """Explicit telemetry lineage secret-provider port tests."""
 
@@ -66,11 +40,10 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
 
-import pytest
-
 from accelerator import (
     ticket_admission_telemetry_lineage_secret_provider as provider_port,
 )
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketAdmissionReport
@@ -819,6 +792,7 @@ def test_foreign_preflight_type_fails_closed() -> None:
     ):
         _ = _validate_prepared(
             cast(
+                # jig-ignore-next-line: indivisible reviewed identifier
                 "provider_port.TicketAdmissionTelemetryLineagePreparedSecretProvider",
                 object(),
             )

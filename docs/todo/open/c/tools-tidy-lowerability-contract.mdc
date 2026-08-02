@@ -4,6 +4,7 @@ status: "pending"
 lane: "11"
 area: "c"
 task: "TODO - tools/tidy lowerability contract"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compiler/c-profile/tools-tidy-lowerability-contract.md"
 depends_on:
   - "tools-tidy-clang-tidy-plugin"
@@ -49,7 +50,8 @@ compiler for its declared target profile.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`, `libc/`,
+- Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`,
+  `libc/`,
   `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located

@@ -10,7 +10,7 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
-  - "jig.toml"
+  - ".jig/jig.toml"
   - ".dependencies/jig/"
   - "docs/todo/"
   - "TODO.md"
@@ -27,7 +27,7 @@ without weakening unrelated linter contracts.
 
 ## Acceptance
 
-- The repository-local Jig installation and `jig.toml` describe the actual
+- The repository-local Jig installation and `.jig/jig.toml` describe the actual
   polyglot repository without fake language/tool requirements or weakened
   reviewed lint policy.
 - The authoritative rule/specification is deterministic, versionable, and does
@@ -42,7 +42,8 @@ without weakening unrelated linter contracts.
 - Repository-local Jig 26.3.1 remains installed through the source-linked
   launcher under `.dependencies/jig/bin/`; the active development authority now
   requires configuration schema 8.
-- `jig.toml` schema 8 declares the repository-owned typed TODO workflow: task
+- `.jig/jig.toml` schema 8 declares the repository-owned typed TODO workflow:
+  task
   document, open/completed roots, record extension, exact sections, acceptance
   evidence, validation commands, and strict dependency-lane ordering. It also
   declares closed change-class path policy for architecture, implementation,

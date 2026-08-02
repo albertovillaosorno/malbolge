@@ -4,6 +4,7 @@ status: "pending"
 lane: "9"
 area: "accelerator"
 task: "TODO - CUDA Linux runtime and hermetic toolchain"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md"
 depends_on:
   - "cuda-exact-vm-adapter"
@@ -15,8 +16,8 @@ adr_paths:
 scope:
   - "accelerator/cuda/"
   - "scripts/bootstrap/"
-  - "rust-toolchain.toml"
-  - "pyrightconfig.json"
+  - ".jig/version/.jig/version/rust-toolchain.toml"
+  - ".jig/lang/python/.jig/lang/python/pyrightconfig.json"
   - "tests/"
 validation:
   - "jig validate --root ."
@@ -35,32 +36,46 @@ fallback, and verifier authority.
   Linux selects `ctypes.CDLL`, `libcuda.so.1`, and a manifest-selected versioned
   NVRTC `.so` through one reviewed platform loader contract.
 - Generic CUDA execution logic contains no hardcoded `13.3.1` toolkit path or
-  Windows library suffix; the selected platform manifest owns release and library
+  Windows library suffix; the selected platform manifest owns release and
+  library
   identity.
 - Windows and Linux manifests pin platform, release, package versions, archive
   paths, sizes, toolkit roots, and SHA-256 values without a "latest" fallback.
-- Shared Rust, Jig, LLVM, Python, and validation configuration no longer assumes a
+- Shared Rust, Jig, LLVM, Python, and validation configuration no longer assumes
+  a
   Windows target or `Scripts/*.exe/*.cmd` path on Linux.
 - Linux missing-driver, missing-library, platform-mismatch, cleanup, and CPU
   fallback routes fail explicitly without changing semantic acceptance.
-- Linux x86-64 exact CPU/CUDA differential tests and retained live-device evidence
-  exist for every support or performance claim, while existing Windows gates pass.
-- The declared scope contains no unresolved placeholder or undocumented workaround
+- Linux x86-64 exact CPU/CUDA differential tests and retained live-device
+  evidence
+  exist for every support or performance claim, while existing Windows gates
+  pass.
+- The declared scope contains no unresolved placeholder or undocumented
+  workaround
   required for the objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and remove
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove
   the exact TODO heading without losing unfinished intent.
 
 ## Evidence
 
-- Current limitation: `accelerator/cuda/runtime.py` uses `ctypes.WinDLL`,
+- Current limitation:
+  `src/optimization/accelerator/adapter-outbound/accelerator/cuda/runtime.py`
+  uses `ctypes.WinDLL`,
   `nvcuda.dll`, a versioned NVRTC `.dll`, and a literal
   `.dependencies/cuda/13.3.1/toolkit` root.
-- Current manifest: `accelerator/cuda/toolchain.json` is exact and reproducible but
+- Current manifest:
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+  `src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json`
+  is exact and reproducible but
   only declares `windows-x86_64`.
-- Active preparation: `scripts/bootstrap/project.py` normalizes host identity,
+- Active preparation:
+  `src/automation/repository/composition/scripts/bootstrap/project.py`
+  normalizes host identity,
   provisions Windows or POSIX Python launchers, and reports platform-mismatched
   CUDA/Rust toolchains as unsupported rather than guessing.
-- Required durable artifacts: platform loader tests, Linux CUDA package manifest,
+- Required durable artifacts: platform loader tests, Linux CUDA package
+  manifest,
   native toolchain resolution, exact fallback tests, and retained Linux device
   evidence.
 - Prerequisite completion evidence: `cuda-exact-vm-adapter` and

@@ -143,7 +143,7 @@ by itself prove that an implementation satisfies the mathematics.
 - Readers navigate by authority family and then by responsibility.
 - Every nested documentation directory has one `README.md` catalog.
 - `index.md` is not used as a competing catalog convention.
-- `integrations/cspell/` is validation integration data outside `docs/`.
+- `.jig/cspell/` is validation integration data outside `docs/`.
 - `.tex` artifacts are kept under `math/`, outside Markdown-only documentation
   families.
 - Jig may validate this topology directly instead of Malbolge owning a duplicate
@@ -179,7 +179,7 @@ can drift while appearing equally authoritative.
   `docs/bibliography/README.md`; every current nested documentation directory
   outside typed TODO state has a `README.md`, with no competing `index.md`.
 - Each authoritative family has a local `adr/`; no global `docs/adr/` exists.
-  CSpell data remains under `integrations/cspell/`, and no `.tex` source lives
+  CSpell data remains under `.jig/cspell/`, and no `.tex` source lives
   under the Markdown-only documentation families.
 - A local topology comparison on 2026-07-27 shows Jig using the selected
   family-local model: `bibliography`, `legal`, `research`, and `technical` each
@@ -191,5 +191,6 @@ can drift while appearing equally authoritative.
   current positive topology evidence. The earlier STM-style global-ADR pattern
   remains only a design antecedent for the rejected monolithic alternative; this
   record does not infer historical files that are absent from the checkout.
-- `docs/todo/open/`, `integrations/cspell/`, and `math/README.md` demonstrate the
+- `docs/todo/open/`, `.jig/cspell/`, and
+  `src/specification/formal-model/README.md` demonstrate the
   explicit non-family governance, editorial-data, and mathematical boundaries.

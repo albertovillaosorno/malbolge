@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_overlap_index.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_overlap_index.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,14 +29,6 @@
 #   - Runs without accelerator hardware or filesystem access.
 # - Defaults:
 #   - Empty and singleton collections are valid; invalid bounds fail closed.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_overlap_index.py
-# - accelerator/ticket_admission_telemetry_overlap_components.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
 #
 
 """Bounded collection-wide telemetry overlap index tests."""
@@ -197,9 +182,11 @@ def test_exact_duplicates_do_not_create_pairs() -> None:
     """Byte-identical inputs remain occurrences, not pair vertices."""
     document = _completed_document(LOW_ELAPSED_NS)
 
-    index = index_ticket_admission_telemetry_overlap(
-        (document, document, document)
-    )
+    index = index_ticket_admission_telemetry_overlap((
+        document,
+        document,
+        document,
+    ))
 
     assert index.collection.input_document_count == DUPLICATE_INPUT_COUNT
     assert index.collection.duplicate_document_count == (

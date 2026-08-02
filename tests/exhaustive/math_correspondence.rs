@@ -1,8 +1,3 @@
-// File:
-//   - math_correspondence.rs
-// Path:
-//   - tests/exhaustive/math_correspondence.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,14 +28,6 @@
 //   - Composed by `tests/property_verification.rs`.
 // - Defaults:
 //   - Any equation/implementation mismatch is a deterministic test failure.
-//
-// Related documents:
-// - math/specification/correspondence.toml
-// - math/specification/malbolge-1998.tex
-// - math/specification/profile-model.tex
-//
-// Large file:
-//   - false
 //
 
 //! Exhaustive bounded correspondence for promoted Malbolge equations.

@@ -1,7 +1,0 @@
-schema_version = 1
-
-[algorithm]
-id = "compact-guest-bytecode-strategy"
-state = "experimental"
-research_record = "docs/research/algorithms/compact-guest-bytecode-strategy/research.md"
-experiment_manifest = "algorithms/compact-guest-bytecode-strategy/experiment.toml"

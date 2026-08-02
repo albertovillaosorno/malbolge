@@ -18,7 +18,7 @@ This document governs the following declared TODO scope:
 - `malbolge.json`
 - `docs/technical/specification/`
 - `compatibility/`
-- `scripts/validate/target_profile.py`
+- `src/automation/repository/composition/scripts/validate/target_profile.py`
 - `tests/test_target_profile.py`
 
 ## Current Behavior
@@ -39,7 +39,8 @@ the current language profile. The current profile uses the scalable 14-trit
 single-word ternary geometry defined by the scalable-memory contract:
 4,782,969 word values and the same number of directly addressed memory words.
 
-`scripts/validate/target_profile.py` provides a dependency-free closed-schema
+`src/automation/repository/composition/scripts/validate/target_profile.py`
+provides a dependency-free closed-schema
 validator using duplicate-key-rejecting JSON parsing. It enforces exact schema
 keys, ternary word consistency, single-word memory consistency, EOF at the
 maximum profile word, the frozen 1998 machine envelope, exactly one selected
@@ -47,11 +48,13 @@ current identity, and preservation of the sequential deterministic
 self-modifying semantic core across schema-v2 profiles.
 
 Cross-component consumption is not complete. The classic safe Rust `Machine`
-still implements `malbolge-1998` constants directly and must not silently execute
+still implements `malbolge-1998` constants directly and must not silently
+execute
 a `malbolge-2026.2` artifact. The separate `ProfileMachine` now consumes the
 canonical descriptor and executes schema-v2 profiles through 14 trits under
 explicit `safe-rust-profiled` capability. Profile-driven trace evidence now
-carries the same canonical identity. Compiler, tidy, verifier, native, and accelerator consumers are not yet universally
+carries the same canonical identity. Compiler, tidy, verifier, native, and
+accelerator consumers are not yet universally
 profile-driven, so this contract remains active.
 
 Published profile identity is additionally bound by `malbolge-profile-v1`
@@ -59,7 +62,8 @@ fingerprints. The fingerprint includes profile ID/version, target schema,
 word/memory geometry, and semantics, but excludes the registry-only `kind` role
 so current-to-versioned lifecycle changes cannot mutate old artifact identity.
 Canonical fingerprints are generated into
-`compatibility/profile-fingerprints.json` and the Rust profile projection.
+`src/interoperability/profile-compatibility/contract/profile-fingerprints.json`
+and the Rust profile projection.
 
 ## Invariants
 
@@ -84,9 +88,12 @@ selecting an implicit repository policy.
 
 - Expected durable artifact surface: `malbolge.json`,
   `docs/technical/specification/`, `compatibility/`,
-  `scripts/validate/target_profile.py`, `tests/test_target_profile.py`.
-- Executable schema checks: `python scripts/validate/target_profile.py` and
-  `.dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini
+  `src/automation/repository/composition/scripts/validate/target_profile.py`,
+  `tests/test_target_profile.py`.
+- Executable schema checks: `python
+  src/automation/repository/composition/scripts/validate/target_profile.py` and
+  `.dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c
+  .jig/lang/python/.jig/lang/python/pytest.ini
   tests/test_target_profile.py tests/compatibility/test_scalable_memory.py`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

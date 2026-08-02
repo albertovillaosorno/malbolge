@@ -1,8 +1,3 @@
-// File:
-//   - classic_profile.rs
-// Path:
-//   - tests/differential/classic_profile.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 //   - Runs under the deterministic property-verification Cargo target.
 // - Defaults:
 //   - Fixed seed and ordinal are sufficient to reproduce any generated case.
-//
-// Related documents:
-// - docs/technical/verification/property-fuzz-and-exhaustive-testing.md
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-//
-// Large file:
-//   - false
 //
 
 //! Seeded differential property over independently exposed 1998 runtimes.

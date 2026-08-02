@@ -1,0 +1,153 @@
+schema: jig-function/v3
+identity:
+  id: tiered-execution
+  node: function:tiered-execution
+  path: src/runtime/tiered-execution
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-runtime/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: runtime
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: tiered-execution.jig
+parts:
+  - id: part-0001
+    path: adapter-outbound/cache/README.md
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0002
+    path: adapter-outbound/cache/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0003
+    path: adapter-outbound/native/README.md
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0004
+    path: adapter-outbound/native/aarch64/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0005
+    path: adapter-outbound/native/coff.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0006
+    path: adapter-outbound/native/direct/artifact.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0007
+    path: adapter-outbound/native/direct/coff.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0008
+    path: adapter-outbound/native/direct/emit.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0009
+    path: adapter-outbound/native/direct/error.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0010
+    path: adapter-outbound/native/direct/mod.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0011
+    path: adapter-outbound/native/direct/plan.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0012
+    path: adapter-outbound/native/direct/shape.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0013
+    path: adapter-outbound/native/direct/verify.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0014
+    path: adapter-outbound/native/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0015
+    path: adapter-outbound/native/profile_metadata.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0016
+    path: adapter-outbound/native/x86_64/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0017
+    path: domain/ir/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0018
+    path: domain/ir/main.rs
+    kind: domain
+    language: rust
+    responsibility: Own pure rules and domain models.
+projects: []
+tests: []
+graph:
+  node: function:tiered-execution
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:runtime
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:tiered-execution
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

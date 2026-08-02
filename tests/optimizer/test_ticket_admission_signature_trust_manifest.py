@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_signature_trust_manifest.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_signature_trust_manifest.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -39,37 +32,9 @@
 # - Defaults:
 #   - Uses two deterministic insecure digest keys for protocol tests only.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust.py
-# - accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-#
-# Large file:
-#   - false
-#
 
 """Canonical key-free detached signature trust manifest tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long]
 
 from __future__ import annotations
 
@@ -79,8 +44,6 @@ from json import dumps
 from json import loads
 from typing import TYPE_CHECKING
 from typing import cast
-
-import pytest
 
 from accelerator import ticket_admission_telemetry_lineage_signature as sig
 from accelerator import (
@@ -106,6 +69,7 @@ from accelerator.ticket_admission_telemetry_lineage import (
 from accelerator.ticket_admission_telemetry_persistence import (
     capture_ticket_admission_telemetry_document,
 )
+import pytest
 
 ManifestEntry = (
     manifest.TicketAdmissionTelemetryLineageSignatureTrustManifestEntry

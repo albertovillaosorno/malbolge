@@ -4,6 +4,7 @@ status: "active"
 lane: "6"
 area: "mathematics"
 task: "TODO - Malbolge-specific optimization mathematics"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
 depends_on:
   - "latex-mathematical-specification-framework"
@@ -34,7 +35,8 @@ force or stochastic optimization begins.
   VM: classic five-trit crazy factorization, profile-width crazy chunking,
   decode phase reduction, and exact classic rotate lookup.
 - Four research equations are registered in
-  `math/specification/correspondence.toml`; exhaustive classic table tests and
+  `src/specification/formal-model/math/specification/correspondence.toml`;
+  exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
 - Existing benchmark evidence retains 15 raw samples per scalar/table path with
   matching checksums. On the recorded host, crazy is 10.43x and rotate 1.50x

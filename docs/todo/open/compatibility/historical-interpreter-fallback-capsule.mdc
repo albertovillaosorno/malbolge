@@ -4,6 +4,7 @@ status: "active"
 lane: "8"
 area: "compatibility"
 task: "TODO - Historical-interpreter fallback capsule"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compatibility/historical-interpreter-fallback-capsule.md"
 depends_on:
   - "scalable-malbolge-memory-model"
@@ -14,11 +15,13 @@ adr_paths:
 scope:
   - "compatibility/"
   - "docs/technical/specification/"
-  - "vm/src/capsule.rs"
+  - "src/runtime/virtual-machine/domain/capsule.rs"
   - "tests/vm/capsule.rs"
   - "tests/compatibility/"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/compatibility/test_capsule.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/compatibility/test_capsule.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features capsule"
   - "jig validate --root ."
 ---
@@ -49,7 +52,8 @@ metadata that the original loader ignores.
   rejects `malbolge-2026.2` before its loader, while explicit `ProfileMachine`
   executes the same payload under `safe-rust-profiled`. No semantic fallback or
   implicit runtime substitution occurs.
-- Rust and independent Python fixtures prove the fallback surface, legacy output,
+- Rust and independent Python fixtures prove the fallback surface, legacy
+  output,
   checksum, profile binding, corruption detection, and ordinary-source boundary.
 - A valid-checksum fingerprint mutation now emits shared
   `MALBOLGE-PROFILE-ID-001` with exact declared/canonical values, while a valid-

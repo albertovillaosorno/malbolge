@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_runtime_identity.py
-# Path:
-#   - tests/optimizer/test_cuda_runtime_identity.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -37,13 +30,6 @@
 # - Defaults:
 #   - Optional identity failure leaves CUDA available but profiles unmatched.
 #
-# Related documents:
-# - accelerator/cuda/runtime.py
-# - accelerator/cuda/toolchain.json
-#
-# Large file:
-#   - false
-#
 
 """CUDA, NVML, host OS, Python, and toolchain identity tests."""
 
@@ -53,8 +39,6 @@ import ctypes
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING
-
-import pytest
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.cuda import CudaHostRuntimeIdentity
@@ -66,6 +50,7 @@ from accelerator.cuda import measure_cuda_runtime_identity
 from accelerator.cuda import measure_nvml_display_driver_version
 from accelerator.cuda.runtime import CUDA_TOOLCHAIN_MANIFEST
 from accelerator.exact_primitives import AcceleratorUnavailableError
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_candidate_submission.py
-# Path:
-#   - tests/optimizer/test_cuda_candidate_submission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,13 +29,6 @@
 # - Defaults:
 #   - Every route compares against the mandatory CPU reference.
 #
-# Related documents:
-# - accelerator/cuda/submission.py
-# - accelerator/submission.py
-#
-# Large file:
-#   - false
-#
 
 """Live CUDA candidate submission through the neutral ticket lifetime."""
 
@@ -50,8 +36,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from unittest import SkipTest
-
-import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
@@ -72,6 +56,7 @@ from accelerator.submission import CandidateSubmissionState
 from accelerator.submission import submit_candidate_evaluation
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateWorkItem
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.work_ports import CandidateEvaluationResult

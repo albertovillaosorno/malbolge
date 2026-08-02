@@ -1,8 +1,3 @@
-// File:
-//   - batch.rs
-// Path:
-//   - tests/vm/batch.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,13 +31,6 @@
 //   - Runs under the Cargo VM integration-test composition target.
 // - Defaults:
 //   - Worker-count changes must never alter an input-ordered result snapshot.
-//
-// Related documents:
-// - docs/technical/runtime/execution/batch-vm-execution.md
-// - docs/technical/adr/verification-trust-boundary.md
-//
-// Large file:
-//   - false
 //
 
 //! Deterministic batch execution and per-instance isolation tests.

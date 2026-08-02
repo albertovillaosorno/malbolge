@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_async_https_auth_fetcher.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_async_https_auth_fetcher.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -34,31 +27,16 @@
 # - Description:
 #   - Proves async authorization injection adds no scheduling or refresh policy.
 # - Usage:
-#   - Runs without network access, pytest async plugins, or accelerator hardware.
+#   - Runs without network access, pytest async plugins, or accelerator
+#     hardware.
 # - Defaults:
-#   - Uses one synthetic key, one resolved Authorization value, and one offloader.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-#
-# Large file:
-#   - false
+#   - Uses one synthetic key, one resolved Authorization value, and one
+#     offloader.
 #
 
 """Caller-offloaded async authorized HTTPS bundle-fetcher tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[undocumented-public-function]
 
 from __future__ import annotations
 
@@ -68,8 +46,6 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_async_bundle_fetcher as async_fetch,
@@ -95,6 +71,7 @@ from accelerator import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 AdapterError = (
     adapter.TicketAdmissionTelemetryLineageAsyncAuthorizedHttpsFetcherError
@@ -573,6 +550,7 @@ def test_repeated_calls_have_no_adapter_cache_or_credential_refresh(
     [
         _request(
             bundle_fingerprint=(
+                # jig-ignore-next-line: indivisible reviewed identifier
                 "ticket-admission-telemetry-lineage-public-key-bundle-v1:sha256:"
                 + ("1" * 64)
             )
@@ -697,6 +675,7 @@ def test_outer_async_boundary_rejects_typed_failed_result() -> None:
     value, _ = _adapter(_ResultOffloader(FetchResult(kind=FetchKind.FAILED)))
 
     with pytest.raises(
+        # jig-ignore-next-line: indivisible reviewed identifier
         async_fetch.TicketAdmissionTelemetryLineageAsyncPublicKeyBundleFetcherError,
         match="cannot process async fetched public-key bundle",
     ):
@@ -730,6 +709,7 @@ def test_builder_rejects_noncallable_offloader() -> None:
         _ = _build_adapter(
             value,
             cast(
+                # jig-ignore-next-line: indivisible reviewed identifier
                 "adapter.TicketAdmissionTelemetryLineageAuthorizedHttpsOffloader",
                 object(),
             ),

@@ -1,8 +1,3 @@
-// File:
-//   - cli_native_debug.rs
-// Path:
-//   - tests/cli_native_debug.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 // - Defaults:
 //   - Any compiler, linker, process, or byte mismatch fails closed.
 //
-// Related documents:
-// - cli/README.md
-// - examples/self_host/hello-world/README.md
-//
-// Large file:
-//   - false
-//
 
 //! End-to-end native C debug-run evidence for exact guest byte output.
 
@@ -57,7 +43,8 @@ const EXPECTED_OUTPUT: &[u8] = b"Hello, World!\n";
 fn freestanding_hello_world_debug_run_preserves_exact_bytes()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let source = root.join("examples/self_host/hello-world/main.c");
+    let source = root
+        .join("src/examples/programs/contract/self_host/hello-world/main.c");
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .current_dir(root)
         .arg(source)

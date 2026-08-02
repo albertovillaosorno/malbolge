@@ -1,8 +1,3 @@
-// File:
-//   - loader_boundaries.rs
-// Path:
-//   - tests/exhaustive/loader_boundaries.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -37,13 +30,6 @@
 //   - Runs under the deterministic property-verification Cargo target.
 // - Defaults:
 //   - Failure reports exact byte offset or loaded position.
-//
-// Related documents:
-// - docs/technical/verification/property-fuzz-and-exhaustive-testing.md
-// - docs/technical/specification/malbolge-1998.md
-//
-// Large file:
-//   - false
 //
 
 //! Exhaustive classic loader byte and positional-decode admission checks.

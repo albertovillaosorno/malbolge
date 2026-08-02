@@ -1,8 +1,3 @@
-# File:
-#   - test_verification_submission.py
-# Path:
-#   - tests/optimizer/test_verification_submission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Clean optional failure yields no hints; unknown lifetime fails closed.
 #
-# Related documents:
-# - accelerator/verification_submission.py
-#
-# Large file:
-#   - false
-#
 
 """Hardware-neutral optional verification submission regressions."""
 
@@ -51,8 +38,6 @@ from dataclasses import dataclass
 from typing import cast
 from typing import final
 from typing import override
-
-import pytest
 
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
@@ -67,6 +52,7 @@ from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import VerificationAssistBatch
 from accelerator.work_ports import VerificationAssistResult
 from accelerator.work_ports import VerificationHint
+import pytest
 
 EXPECTED_SUBMISSION_ID = "validated-verification-assist-submission-v1"
 REPEATED_WAIT_COUNT = 2

@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_https_auth_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_https_auth_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -32,39 +25,18 @@
 # - Summary:
 #   - One-call bounded HTTPS Authorization credential-provider regressions.
 # - Description:
-#   - Proves opaque credential resolution adds no scheme, retry, or cache policy.
+#   - Proves opaque credential resolution adds no scheme, retry, or cache
+#     policy.
 # - Usage:
-#   - Runs without network access, files, async plugins, or accelerator hardware.
+#   - Runs without network access, files, async plugins, or accelerator
+#     hardware.
 # - Defaults:
 #   - Uses one canonical bundle request and a 4096-byte Authorization limit.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
-# - accelerator/ticket_admission_file_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
-# - accelerator/ticket_admission_environment_async_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-#
-# Large file:
-#   - false
 #
 
 """Explicit synchronous HTTPS Authorization credential-provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[undocumented-public-function]
 
 from __future__ import annotations
 
@@ -73,8 +45,6 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ssl import SSLContext
 from ssl import TLSVersion
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_https_auth_provider as auth,
@@ -85,6 +55,7 @@ from accelerator import (
 from accelerator import (
     ticket_admission_telemetry_lineage_public_key_bundle_fetcher as fetch,
 )
+import pytest
 
 AuthError = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProviderError
 AuthRequest = auth.TicketAdmissionTelemetryLineageHttpsAuthorizationRequest
@@ -431,6 +402,7 @@ def test_noncallable_provider_fails_before_resolution() -> None:
     ):
         _ = _resolve_value(
             cast(
+                # jig-ignore-next-line: indivisible reviewed identifier
                 "auth.TicketAdmissionTelemetryLineageHttpsAuthorizationProvider",
                 object(),
             )

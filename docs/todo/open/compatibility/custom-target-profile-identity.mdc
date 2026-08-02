@@ -14,17 +14,20 @@ scope:
   - "malbolge.json"
   - "compatibility/"
   - "docs/technical/specification/"
-  - "scripts/validate/target_profile.py"
-  - "scripts/validate/profile_identity.py"
-  - "scripts/validate/experiment_manifest.py"
-  - "vm/src/profile.rs"
-  - "vm/src/profile_generated.rs"
+  - "src/automation/repository/composition/scripts/validate/target_profile.py"
+  - "src/automation/repository/composition/scripts/validate/profile_identity.py"
+  # jig-ignore-next-line: canonical front matter value is indivisible
+  - "src/automation/repository/composition/scripts/validate/experiment_manifest.py"
+  - "src/runtime/virtual-machine/domain/profile.rs"
+  - "src/runtime/virtual-machine/contract/profile_generated.rs"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
   - "tests/test_experiment_manifest.py"
   - "tests/vm/profile_requirements.rs"
 validation:
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c pytest.ini tests/test_target_profile.py tests/test_experiment_manifest.py tests/compatibility/test_profile_identity.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/test_experiment_manifest.py tests/compatibility/test_profile_identity.py"
+  # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
 ---
@@ -44,13 +47,16 @@ that reverse engineering can be made cryptographically impossible.
   those bytes with a self-describing SHA-256 fingerprint.
 - Registry `kind` is deliberately excluded so a published profile keeps the
   same fingerprint when its lifecycle role changes from current to versioned.
-- `compatibility/profile-fingerprints.json` and `vm/src/profile_generated.rs`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/interoperability/profile-compatibility/contract/profile-fingerprints.json`
+  and `src/runtime/virtual-machine/contract/profile_generated.rs`
   are deterministic generated projections; tests require byte-exact renderer
   equality, and Rust exposes the fingerprint through `ProfileDescriptor`.
 - External schema-v1 custom profiles omit registry `kind`, preserve the defining
   Malbolge semantic core, and may not redefine an existing canonical profile ID
   with different content.
-- `.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity` prints or verifies fingerprints.
+- `.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m
+  scripts.validate.profile_identity` prints or verifies fingerprints.
   Mismatch uses stable code `MALBOLGE-PROFILE-ID-001` with expected/observed
   identities and never silently substitutes another configuration.
 - Experiment Manifest v1 now requires exact generated fingerprints for
@@ -59,7 +65,8 @@ that reverse engineering can be made cryptographically impossible.
   research scopes. Ten checked-in manifests carry the binding.
 - The `MALBCAP1` runtime capsule also carries the canonical ID/fingerprint pair,
   emits the shared expected/observed mismatch diagnostic after valid-checksum
-  tampering, and rejects unknown profile IDs without fallback before payload use.
+  tampering, and rejects unknown profile IDs without fallback before payload
+  use.
 - Portable effect IR v3 and native cache keys retain exact profile ID and
   fingerprint plus canonical version/features/geometry. Direct
   x86-64/AArch64 COFF objects embed the same envelope in versioned read-only
@@ -86,7 +93,8 @@ that reverse engineering can be made cryptographically impossible.
 - Current durable evidence includes the generated fingerprint manifest,
   external example, identity CLI, Rust projection, profile-identity tests,
   fingerprint-bound experiment plans, retained benchmark manifests,
-  checksum-valid capsule mismatch/unknown-profile tests, IR v3 requirement bytes,
+  checksum-valid capsule mismatch/unknown-profile tests, IR v3 requirement
+  bytes,
   and byte-exact direct COFF `.mbprof` fixtures/tamper rejection.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.

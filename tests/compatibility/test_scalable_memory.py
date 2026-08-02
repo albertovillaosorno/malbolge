@@ -1,8 +1,3 @@
-# File:
-#   - test_scalable_memory.py
-# Path:
-#   - tests/compatibility/test_scalable_memory.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
 #
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
-#
 
 """Scalable ternary-memory profile correspondence tests."""
 
@@ -53,9 +40,15 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "malbolge.json"
-EVIDENCE_PATH = ROOT / "compatibility" / "scalable-memory-evidence.json"
+EVIDENCE_PATH = (
+    ROOT
+    / "src/interoperability/profile-compatibility/contract"
+    / "scalable-memory-evidence.json"
+)
 METRICS_PATH = (
-    ROOT / "algorithms" / "doom" / "quality" / "comparison" / "metrics.json"
+    ROOT
+    / "src/research/algorithms/domain/algorithms/doom/quality/comparison"
+    / "metrics.json"
 )
 CURRENT_PROFILE = "malbolge-2026.2"
 CLASSIC_TRITS = 10

@@ -1,8 +1,3 @@
-# File:
-#   - test_algorithm_lifecycle.py
-# Path:
-#   - tests/test_algorithm_lifecycle.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -35,12 +28,6 @@
 #   - Used through the owning package, executable, or document boundary.
 # - Defaults:
 #   - Invalid inputs or broken invariants fail closed.
-#
-# Related documents:
-# - None.
-#
-# Large file:
-#   - false
 #
 
 """Regression tests for research algorithm lifecycle policy."""
@@ -65,7 +52,9 @@ EXPECTED_IDS = (
 EVIDENCE = "docs/research/methodology/scientific-method.md"
 BENEFIT = "benchmarks/research/protocol/examples/deterministic.benchmark.toml"
 RESEARCH = "docs/research/algorithms/template/research.md"
-EXPERIMENT = "algorithms/template/experiment.toml"
+EXPERIMENT = (
+    "src/research/algorithms/domain/algorithms/template/experiment.toml"
+)
 
 
 def _base(state: str) -> str:

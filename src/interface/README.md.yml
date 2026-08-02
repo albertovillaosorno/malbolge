@@ -1,0 +1,46 @@
+schema: jig-graph-node/v2
+identity:
+  id: artifact:boundary:src:interface:README.md
+  kind: artifact
+  name: README.md
+  path: src/interface/README.md
+  role: boundary-document
+contracts:
+  universal: graph-node/v2
+  location: boundary-document/v1
+  domain: domain-interface/v1
+  role: boundary-document/v1
+classification:
+  repository: malbolge
+  location: src/interface
+  domain: interface
+  lifecycle: none
+  confidentiality: public
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: none
+content:
+  format: markdown
+  generated: false
+graph:
+  node: artifact:boundary:src:interface:README.md
+  labels:
+    - artifact
+    - boundary
+    - markdown
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src/interface
+    - hub:role:boundary-document
+    - hub:lifecycle:none
+    - hub:domain:interface
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  path_manifest_match: required
+  unknown_fields: fatal
+  line_length: 80

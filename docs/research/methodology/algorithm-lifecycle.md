@@ -31,7 +31,8 @@ makes later comparisons unreconstructible.
 
 ## Hypothesis
 
-A lifecycle with evidence-linked promotion gates and durable rejection/retirement
+A lifecycle with evidence-linked promotion gates and durable
+rejection/retirement
 decisions prevents experimental work from silently acquiring production status
 while preserving enough history to reproduce negative and superseded results.
 
@@ -44,7 +45,8 @@ that explains the decision.
 
 Every executable research mirror with `experiment.toml` also carries
 `lifecycle.toml`. Schema v1 is validated by
-`scripts/validate/algorithm_lifecycle.py` and binds the stable algorithm ID to its
+`src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`
+and binds the stable algorithm ID to its
 research record and experiment manifest.
 
 ### States
@@ -67,7 +69,8 @@ research record and experiment manifest.
   path to the negative/null evidence that materially supports the decision.
 
 `retired`
-: A previously promotion-eligible algorithm keeps its promotion evidence, a dated
+: A previously promotion-eligible algorithm keeps its promotion evidence, a
+dated
   retirement decision, and the stable ID of the successor that supersedes it.
   Retirement preserves the old research identity rather than rewriting it into
   the successor.
@@ -106,14 +109,16 @@ lifecycle state.
 
 - All eight current research mirrors carry `lifecycle.toml` and validate as
   `experimental`; no current algorithm is falsely labeled promotion-ready.
-- `scripts/validate/research_mirror.py` now requires `lifecycle.toml` alongside
+- `src/automation/repository/composition/scripts/validate/research_mirror.py`
+  now requires `lifecycle.toml` alongside
   `experiment.toml`, so new mirrors cannot omit lifecycle state.
 - `tests/test_algorithm_lifecycle.py` verifies all five promotion gates,
   promoted-decision requirements, retained negative evidence for rejection,
   successor identity for retirement, and fail-closed experimental metadata.
 - The lifecycle validator requires repository-relative evidence references and,
   for checked-in records, verifies that linked evidence paths exist.
-- `tests/test_research_mirror.py` keeps the two-sided mirror identity and ignored
+- `tests/test_research_mirror.py` keeps the two-sided mirror identity and
+  ignored
   output contract intact while lifecycle metadata becomes mandatory.
 
 ## Results
@@ -125,7 +130,8 @@ policy does not fabricate promotion evidence for current research.
 
 ## Threats to Validity
 
-The validator proves static evidence linkage and state-specific metadata, not the
+The validator proves static evidence linkage and state-specific metadata, not
+the
 scientific quality of the linked evidence. A reviewer can still dispute whether
 a correctness proof, benchmark distribution, maintainability argument, or
 portability result is sufficient. Git history is needed to audit when a state

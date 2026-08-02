@@ -55,7 +55,8 @@ Relevant verified guidance includes:
 ## License Or Terms
 
 The standards site states that the Empirical Standards are licensed CC0 1.0.
-This bibliography record summarizes verified methodological guidance and does not
+This bibliography record summarizes verified methodological guidance and does
+not
 change the repository's MIT licensing or copy external text wholesale.
 
 ## Evidence
@@ -68,7 +69,8 @@ change the repository's MIT licensing or copy external text wholesale.
   stability assessment through adequate runs/duration, and persistence of raw
   measurements instead of aggregate-only collection.
 - Engineering Research covers technological artifacts including algorithms,
-  languages, tools, and systems and expects strengths/weaknesses/limitations plus
+  languages, tools, and systems and expects strengths/weaknesses/limitations
+  plus
   justified comparison or a rationale when comparison is impractical.
 - Optimization Study guidance requires explicit search/fitness formulation,
   justified baselines, stochasticity disclosure, repeated stochastic trials when

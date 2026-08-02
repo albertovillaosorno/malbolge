@@ -28,7 +28,8 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 
 **Current implementation.**
 
-- `vm/src/batch.rs` keeps classic `BatchRequest`/`BatchResult` and adds
+- `src/runtime/virtual-machine/composition/batch.rs` keeps classic
+  `BatchRequest`/`BatchResult` and adds
   `ProfileBatchRequest`/`ProfileBatchResult` around explicit `ProfileMachine`
   identity. Both families use the same internal host scheduler.
 - `execute_batch` and `execute_profile_batch` are deterministic sequential
@@ -46,14 +47,16 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   sequential were 0.99x, 1.87x, 3.35x, and 5.65x respectively, with identical
   deterministic checksums. That classic evidence makes no profile-driven speedup
   claim; current-profile CUDA performance is measured separately below.
-- Optional CUDA now has compact classic proving transitions plus resident classic
+- Optional CUDA now has compact classic proving transitions plus resident
+  classic
   and current-profile bounded execution. Current geometry comes from canonical
   Rust profile identity, and full-state differential evidence compares every
   4,782,969 current memory word. Hardware-neutral Rust product ports now route
   both resident workers with per-item/whole-batch safe-Rust fallback. Reported
   routing variants now retain one input-ordered execution origin per request:
   accepted backend completion, safe-Rust fallback, or pre-backend admission
-  rejection. Live classic/current CUDA product tests require at least one accepted
+  rejection. Live classic/current CUDA product tests require at least one
+  accepted
   backend completion, preventing configured CUDA from being mistaken for actual
   CUDA execution when every item falls back. The retained RTX 4060
   current-profile baseline reached about 40.08 VMs/s at complete-snapshot
@@ -89,7 +92,8 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   transition projection with normative Rust traces for all classic instruction
   families plus EOF, termination, rejection, pointer wrap, and write aliasing.
 - CUDA resident evidence: `tests/vm/cuda_run.rs` compares nine bounded classic
-  states across all 59,049 words, while `tests/vm/cuda_profile_run.rs` compares eight
+  states across all 59,049 words, while `tests/vm/cuda_profile_run.rs` compares
+  eight
   current states across all 4,782,969 words plus complete observable execution
   state. Normative Rust remains the oracle for both.
 - CPU performance evidence:

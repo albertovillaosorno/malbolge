@@ -88,9 +88,12 @@ record retains a dated review/access marker and an explicit unresolved or
 uncertainty boundary. Empty closed-taxonomy categories are cataloged rather than
 padded with fabricated source records.
 
-`scripts/validate/bibliography.py` enforces the closed first-level taxonomy,
+`src/automation/repository/composition/scripts/validate/bibliography.py`
+enforces the closed first-level taxonomy,
 README coverage, one canonical template, source-record heading order, dated
 provenance, explicit uncertainty, nonempty sources, and the required baseline.
-`tests/test_bibliography.py` exercises those fail-closed boundaries. The validator
-checks repository evidence shape and coverage; it does not independently re-fetch
+`tests/test_bibliography.py` exercises those fail-closed boundaries. The
+validator
+checks repository evidence shape and coverage; it does not independently
+re-fetch
 or re-prove external claims.

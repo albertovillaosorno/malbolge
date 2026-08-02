@@ -28,7 +28,8 @@ method, correctness boundary, measurements, results, threats to validity, and
 conclusion. The executable side owns implementations, experiment configuration,
 tests, verifier integration, and Git-ignored local `out/` artifacts.
 
-`scripts/validate/research_mirror.py` enforces the repository shape. Every direct
+`src/automation/repository/composition/scripts/validate/research_mirror.py`
+enforces the repository shape. Every direct
 research ID under either mirror root must exist on both sides. The documentation
 half requires `README.md` and `research.md`; the executable half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
@@ -84,7 +85,8 @@ Git unless deliberately promoted into a versioned documentation artifact.
 
 Executable evidence:
 
-- `.dependencies/python/3.14.6/Scripts/python-jig.cmd scripts/validate/research_mirror.py`
+- `.dependencies/python/3.14.6/Scripts/python-jig.cmd
+  src/automation/repository/composition/scripts/validate/research_mirror.py`
   currently validates eight mirrored IDs, including the repository template;
 - `tests/test_research_mirror.py` covers the current repository plus
   documentation-only, executable-only, empty-mirror, and product-algorithm

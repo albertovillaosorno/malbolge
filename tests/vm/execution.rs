@@ -1,8 +1,3 @@
-// File:
-//   - execution.rs
-// Path:
-//   - tests/vm/execution.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,13 +28,6 @@
 //   - Composed by `tests/vm.rs` into the Cargo VM integration-test target.
 // - Defaults:
 //   - Budgets count semantic step requests, including a terminating step.
-//
-// Related documents:
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-// - docs/technical/specification/malbolge-1998.md
-//
-// Large file:
-//   - false
 //
 
 //! Bounded execution conformance for the classic VM.

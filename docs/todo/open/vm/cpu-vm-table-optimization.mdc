@@ -29,7 +29,8 @@ and benchmarked micro-optimizations without semantic drift.
 
 **Current implementation.**
 
-- `vm/build.rs` deterministically generates finite classic-profile rotate,
+- `src/runtime/virtual-machine/composition/build.rs` deterministically generates
+  finite classic-profile rotate,
   five-trit crazy, positional-decode, and code-phase tables into Cargo-owned
   `OUT_DIR`; runtime initialization is not required.
 - `Word::crazy` decomposes each ten-trit word into two five-trit chunks and uses
@@ -40,7 +41,8 @@ and benchmarked micro-optimizations without semantic drift.
 - Exhaustive tests compare every rotate value, every five-trit crazy pair in
   both word positions, and every graphical-cell/code-pointer decode against
   independent scalar definitions.
-- `benchmarks/interpreter/main.rs` emits raw nanosecond samples and deterministic
+- `src/performance/benchmarking/application/interpreter/main.rs` emits raw
+  nanosecond samples and deterministic
   checksums for scalar/table rotate and crazy paths. Post-commit evidence on
   `888b492` records 15 samples per implementation with 10.43x median speedup for
   crazy and 1.50x for rotate on the identified benchmark host.
@@ -69,7 +71,8 @@ and benchmarked micro-optimizations without semantic drift.
   implementations; the historical interpreter is compared only on its documented
   agreement domain.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-- Performance evidence: `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
+- Performance evidence:
+  `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`
   retains raw samples, exact workload repetitions, checksums, commit identity,
   toolchain versions, host class, medians, dispersion summary, and scoped
   cleanliness at measurement time.

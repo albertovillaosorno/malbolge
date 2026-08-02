@@ -1,0 +1,588 @@
+[jig]
+schema_version = 18
+
+[documentation]
+path_style = "lower-kebab"
+# jig-ignore-next-line: indivisible reviewed identifier
+required_paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/legal/README.md", "docs/legal/adr/README.md", "docs/research/README.md", "docs/research/adr/README.md", "docs/technical/README.md", "docs/technical/adr/README.md"]
+# jig-ignore-next-line: indivisible reviewed identifier
+roots = ["docs/bibliography/", "docs/legal/", "docs/research/", "docs/technical/"]
+
+[documentation.profile.bibliography-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.bibliography"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/bibliography/adr/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[documentation.profile.bibliography-catalog]
+decision_id = "none"
+kind = "markdown"
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/bibliography/languages/README.md", "docs/bibliography/legal-and-regulatory/README.md", "docs/bibliography/libraries/README.md", "docs/bibliography/organizations-and-projects/README.md", "docs/bibliography/platforms-and-runtimes/README.md", "docs/bibliography/platforms-and-runtimes/accelerators/README.md", "docs/bibliography/platforms-and-runtimes/compiler/README.md", "docs/bibliography/provenance-and-methodology/README.md", "docs/bibliography/provenance-and-methodology/repository/README.md", "docs/bibliography/provenance-and-methodology/research/README.md", "docs/bibliography/publications/README.md", "docs/bibliography/publications/superoptimization/README.md", "docs/bibliography/publications/verification/README.md", "docs/bibliography/specifications-and-standards/README.md", "docs/bibliography/specifications-and-standards/malbolge/README.md", "docs/bibliography/tooling/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[documentation.profile.bibliography-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/bibliography/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Subject", "Repository Use", "Provenance", "Identity And Version", "License Or Terms", "Evidence", "Sources"]
+
+[documentation.profile.legal-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.legal"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/legal/adr/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[documentation.profile.legal-catalog]
+decision_id = "none"
+kind = "markdown"
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = ["docs/legal/README.md", "docs/legal/adr/README.md", "docs/legal/authorities/README.md", "docs/legal/interoperability/README.md", "docs/legal/licenses/README.md", "docs/legal/repository/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[documentation.profile.legal-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/legal/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "As-of Date", "Question Presented", "Verified Baseline", "Not Established", "Required Facts", "Authorities", "Analysis", "Conclusion Boundary", "Sources"]
+
+[documentation.profile.research-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.research"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/research/adr/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[documentation.profile.research-catalog]
+decision_id = "none"
+kind = "markdown"
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = ["docs/research/README.md", "docs/research/adr/README.md", "docs/research/algorithms/README.md", "docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md", "docs/research/algorithms/compact-guest-bytecode-strategy/README.md", "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md", "docs/research/algorithms/pytorch-search-orchestration/README.md", "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md", "docs/research/algorithms/self-modification-state-graph-optimizer/README.md", "docs/research/algorithms/stochastic-and-guided-search/README.md", "docs/research/algorithms/template/README.md", "docs/research/methodology/README.md", "docs/research/papers/README.md", "docs/research/studies/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[documentation.profile.research-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/research/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Research Question", "Background", "Prior Work", "Hypothesis", "Method", "Evidence", "Results", "Threats to Validity", "Conclusion", "References"]
+
+[documentation.profile.technical-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.technical"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/technical/adr/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[documentation.profile.technical-catalog]
+decision_id = "none"
+kind = "markdown"
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = ["docs/technical/README.md", "docs/technical/adr/README.md", "docs/technical/architecture/README.md", "docs/technical/compatibility/README.md", "docs/technical/compiler/README.md", "docs/technical/compiler/c-profile/README.md", "docs/technical/compiler/self-hosting/README.md", "docs/technical/contracts/README.md", "docs/technical/examples/README.md", "docs/technical/integrations/README.md", "docs/technical/integrations/accelerators/README.md", "docs/technical/interoperability/README.md", "docs/technical/runtime/README.md", "docs/technical/runtime/execution/README.md", "docs/technical/runtime/vm/README.md", "docs/technical/specification/README.md", "docs/technical/specification/mathematics/README.md", "docs/technical/tooling/README.md", "docs/technical/verification/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[documentation.profile.technical-contract]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/technical/contracts/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Intent", "Contract", "Evidence Boundary", "Diagnostics", "Examples", "Implementation", "References"]
+
+[documentation.profile.technical-general]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/technical/"]
+section_mode = "exact"
+# jig-ignore-next-line: indivisible reviewed identifier
+sections = ["Status", "Purpose", "Scope", "Current Behavior", "Invariants", "Failure Behavior", "Verification", "References"]
+
+[todo]
+acceptance_section = "Acceptance"
+completed_root = "docs/todo/completed/"
+lane_policy = "strict-dependency-order"
+open_root = "docs/todo/open/"
+record_extension = "mdc"
+record_root = "docs/todo/"
+require_acceptance_items = true
+require_validation_commands = true
+sections = ["Objective", "Acceptance", "Evidence"]
+task_document = "TODO.md"
+task_heading_level = 3
+
+[change_policy.architecture]
+mode = "all"
+selectors = []
+
+[change_policy.bugfix]
+mode = "all-except"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["basename:Cargo.toml", "exact:AGENTS.md", "exact:Cargo.lock", "exact:.jig/jig.toml", "exact:.jig/version/rust-toolchain.toml", "prefix:docs/technical/adr/"]
+
+[change_policy.dependency-admission]
+mode = "only"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["basename:Cargo.toml", "exact:Cargo.lock", "prefix:docs/bibliography/", "prefix:docs/technical/adr/"]
+
+[change_policy.documentation]
+mode = "only"
+selectors = ["extension:md", "extension:mdc"]
+
+[change_policy.implementation]
+mode = "all-except"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["basename:Cargo.toml", "exact:AGENTS.md", "exact:Cargo.lock", "exact:.jig/jig.toml", "exact:.jig/version/rust-toolchain.toml", "prefix:docs/technical/adr/"]
+
+[change_policy.test]
+mode = "only"
+selectors = ["directory:tests"]
+
+[header]
+# jig-ignore-next-line: indivisible reviewed identifier
+adapters = ["c:c:slash-line", "cpp:cpp:slash-line", "cu:cuda:slash-line", "py:python:python", "rs:rust:slash-line", "tex:latex:percent-line"]
+confidential = false
+copyright = "Copyright (c) 2026 Alberto Villa Osorno."
+# jig-ignore-next-line: indivisible reviewed identifier
+exempt_paths = ["src/interface/command-line/adapter-outbound/adapters/doom/windows.c", "src/interoperability/historical-malbolge/adapter-outbound/main.c", "src/research/algorithms/domain/algorithms/search-pruning-and-state-canonicalization/exact_duplicate.rs", "src/tooling/language-support/contract/sample.c", "tests/function/algorithms/domain/search-pruning-and-state-canonicalization/exact_duplicate.rs"]
+extensions = ["c", "cpp", "cu", "py", "rs", "tex"]
+max_lines = 96
+# jig-ignore-next-line: indivisible reviewed identifier
+required_boundary_fields = ["Owns", "Must-Not", "Allows", "Split-When", "Merge-When", "Summary", "Description", "Usage", "Defaults"]
+require_module_summary = true
+
+[license]
+files = ["LICENSE-MIT"]
+spdx_expression = "MIT"
+
+[language]
+analyzed = ["rust"]
+present = ["c", "cpp", "cuda", "latex", "malbolge", "python", "rust"]
+
+[linters.applicability.clang-format]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "Repository-wide execution cannot exclude immutable historical C with the current Jig selector model; authored C is formatted explicitly with pinned LLVM 22.1.8."
+
+[linters.applicability.clang-tidy]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "Repository-wide execution would conflate immutable historical, host/native, and guest C; Malbolge guest compatibility is explicit tools/tidy validation until Jig supports path-scoped native targets."
+
+[linters.applicability.clippy-config]
+enabled = true
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = ".jig/lang/rust/clippy.toml governs repository-authored Rust utilities."
+
+[linters.applicability.clippy-lints]
+enabled = true
+reason = "Workspace Clippy lint levels govern every Rust package."
+
+[linters.applicability.coverage-py]
+enabled = false
+reason = "Jig first-party coverage will be authoritative."
+
+[linters.applicability.csharp-global]
+enabled = false
+reason = "The repository contains no C# source."
+
+[linters.applicability.csharp-visualstudio]
+enabled = false
+reason = "The repository contains no C# source."
+
+[linters.applicability.directory-build]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "MSBuild policy is centralized at .jig/lang/csharp/Directory.Build.props; the legacy root projection is intentionally absent."
+
+[linters.applicability.editorconfig]
+enabled = true
+reason = "EditorConfig governs repository-authored text surfaces."
+
+[linters.applicability.msvc-cpp]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "MSVC C++ policy is centralized at .jig/lang/cpp/msvc-cpp.editorconfig; the legacy root projection is intentionally absent."
+
+[linters.applicability.pyright]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "BasedPyright is executed by validation.pyright with the schema-18 configuration under .jig/lang/python."
+
+[linters.applicability.pytest]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "Pytest is executed by validation.pytest with the schema-18 configuration under .jig/lang/python."
+
+[linters.applicability.ruff]
+enabled = false
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "Ruff is executed by validation.ruff with the schema-18 configuration under .jig/lang/python."
+
+[linters.applicability.rust-toolchain]
+enabled = true
+# jig-ignore-next-line: indivisible reviewed identifier
+reason = "The repository pins Rust for authored utilities and future product code."
+
+[linters.applicability.rustc-lints]
+enabled = true
+reason = "Workspace rustc lint levels govern every Rust package."
+
+[linters.applicability.rustfmt]
+enabled = true
+reason = "rustfmt governs repository-authored Rust utilities."
+
+[linters.applicability.typescript]
+enabled = false
+reason = "The repository contains no TypeScript source."
+
+[linters.applicability.unreal]
+enabled = false
+reason = "The repository is not an Unreal Engine project."
+
+[rules]
+all_registered = true
+allow_disable = false
+unknown_rule = "deny"
+
+[cspell]
+config_path = ".jig/cspell/cspell.json"
+dictionary_root = ".jig/cspell"
+# jig-ignore-next-line: indivisible reviewed identifier
+files = ["**/*.{md,mdc,rs,toml,json,jsonc,yml,yaml}", ".editorconfig", ".editorignore", ".gitattributes", ".gitignore"]
+# jig-ignore-next-line: indivisible reviewed identifier
+ignore_paths = [".cache/**", ".dependencies/**", ".git/**", ".logs/**", ".temp/**", "Cargo.lock", "engine/src/adapters/rust/generated/**", "pnpm-lock.yaml", "scraping/contracts/rust/generated/**", "target/**"]
+language = "en-US"
+min_word_length = 3
+# jig-ignore-next-line: indivisible reviewed identifier
+schema = "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json"
+version = "0.2"
+
+[cspell.dictionary.english]
+name = "jig-english"
+path = ".jig/cspell/english.txt"
+
+[cspell.dictionary.named-entities]
+name = "jig-named-entities"
+path = ".jig/cspell/named-entities.txt"
+
+[cspell.dictionary.technical]
+name = "jig-technical"
+path = ".jig/cspell/technical.txt"
+
+[tool.basedpyright]
+path = ".dependencies/python/3.14.6/Scripts/basedpyright.exe"
+version = "1.39.9"
+
+[tool.git]
+path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
+version = "2.54.0.windows.1"
+
+[tool.pytest]
+path = ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd"
+version = "9.1.1"
+
+[tool.ruff]
+path = ".dependencies/python/3.14.6/Scripts/ruff.exe"
+version = "0.16.0"
+
+[tool.rust_nightly_cargo_clippy]
+# jig-ignore-next-line: indivisible reviewed identifier
+path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe"
+version = "0.1.99"
+
+[tool.rust_nightly_cargo_fmt]
+# jig-ignore-next-line: indivisible reviewed identifier
+path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-fmt.exe"
+version = "1.9.0-nightly"
+
+[tool.rust_stable_cargo]
+# jig-ignore-next-line: indivisible reviewed identifier
+path = ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe"
+version = "1.97.1"
+
+[version.basedpyright]
+current = "1.39.9"
+stable = "1.39.9"
+
+[version.basedpyright.projection.tool]
+kind = "tool"
+target = "basedpyright"
+template = "{version}"
+
+[version.pytest]
+current = "9.1.1"
+stable = "9.1.1"
+
+[version.pytest.projection.tool]
+kind = "tool"
+target = "pytest"
+template = "{version}"
+
+[version.ruff]
+current = "0.16.0"
+stable = "0.16.0"
+
+[version.ruff.projection.tool]
+kind = "tool"
+target = "ruff"
+template = "{version}"
+
+[version.git]
+current = "2.54.0.windows.1"
+stable = "2.54.0.windows.1"
+
+[version.git.projection.tool]
+kind = "tool"
+target = "git"
+template = "{version}"
+
+[version.clippy-nightly]
+current = "0.1.99"
+stable = "0.1.99"
+
+[version.clippy-nightly.projection.cargo_clippy]
+kind = "tool"
+target = "rust_nightly_cargo_clippy"
+template = "{version}"
+
+[version.rust-stable]
+current = "1.97.1"
+stable = "1.97.1"
+
+[version.rust-stable.projection.cargo_rust_version]
+kind = "toml"
+path = "Cargo.toml"
+selector = "package.rust-version"
+template = "{version}"
+
+[version.rust-stable.projection.cargo_tool]
+kind = "tool"
+target = "rust_stable_cargo"
+template = "{version}"
+
+[version.rust-stable.projection.rust_toolchain]
+kind = "toml"
+path = ".jig/version/rust-toolchain.toml"
+selector = "toolchain.channel"
+template = "stable-{version}-x86_64-pc-windows-gnu"
+
+[version.rustfmt-nightly]
+current = "1.9.0-nightly"
+stable = "1.9.0-nightly"
+
+[version.rustfmt-nightly.projection.cargo_fmt]
+kind = "tool"
+target = "rust_nightly_cargo_fmt"
+template = "{version}"
+
+[validation.pyright]
+capability = "pyright"
+tool = "basedpyright"
+config_files = [".jig/lang/python/pyrightconfig.json"]
+args = ["--project", ".jig/lang/python/pyrightconfig.json"]
+
+[validation.pytest]
+capability = "pytest"
+tool = "pytest"
+config_files = [".jig/lang/python/pytest.ini"]
+args = ["-c", ".jig/lang/python/pytest.ini"]
+
+[validation.ruff]
+capability = "ruff"
+tool = "ruff"
+config_files = [".jig/lang/python/ruff.toml"]
+args = ["check", "--config", ".jig/lang/python/ruff.toml", "."]
+
+[validation.rust_nightly_clippy]
+capability = "rust-clippy"
+tool = "rust_nightly_cargo_clippy"
+config_files = [".jig/lang/rust/clippy.toml", "Cargo.toml"]
+# jig-ignore-next-line: indivisible reviewed identifier
+args = ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[validation.rust_nightly_format]
+capability = "rustfmt"
+tool = "rust_nightly_cargo_fmt"
+config_files = [".jig/lang/rust/.rustfmt.toml"]
+# jig-ignore-next-line: indivisible reviewed identifier
+args = ["--all", "--", "--check", "--config-path", ".jig/lang/rust/.rustfmt.toml"]
+
+[validation.rust_stable_check]
+capability = "rust-check"
+tool = "rust_stable_cargo"
+config_files = [".cargo/config.toml", "Cargo.toml"]
+args = ["check", "--workspace", "--all-features"]
+
+[portability]
+# jig-ignore-next-line: indivisible reviewed identifier
+forbidden_roots = [".jig-cache", ".turbo", "cache", "dependencies", "logs", "target", "temp", "tmp"]
+required_roots = [".cache", ".dependencies", ".logs", ".temp"]
+runtime_roots = [".cache", ".dependencies", ".temp"]
+
+[portability.rust]
+cargo_config = ".cargo/config.toml"
+target_dir = ".cache/rust/target"
+
+[layout]
+adjacent_component_repetition = "deny"
+
+[repository]
+fixture_roots = []
+
+[rigor]
+conflict = "fail"
+mode = "additive"
+
+[taxonomy]
+required = true
+unknown_paths = "deny"
+overlapping_roles = "deny"
+one_role_per_path = true
+spaces_in_paths = "deny"
+
+[taxonomy.role.benchmark_evidence]
+paths = ["benchmarks/", "data/"]
+
+[taxonomy.role.cargo_configuration]
+paths = [".cargo/"]
+
+[taxonomy.role.documentation]
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = ["docs/README.md", "docs/bibliography/", "docs/legal/", "docs/research/", "docs/technical/"]
+
+[taxonomy.role.jig_configuration]
+paths = [".jig/"]
+
+[taxonomy.role.product]
+paths = ["src/"]
+
+[taxonomy.role.root_governance]
+# jig-ignore-next-line: indivisible reviewed identifier
+paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "LICENSE-MIT", "README.md", "TODO.md", "malbolge.json"]
+
+[taxonomy.role.tests]
+paths = ["tests/"]
+
+[taxonomy.role.tool_boundaries]
+paths = ["tools/"]
+
+[taxonomy.role.todo]
+paths = ["docs/todo/"]
+
+[architecture.component.malbolge]
+depends_on = []
+
+[analysis]
+cache = "bounded"
+full_workspace = true
+incremental = true
+
+[code_ownership]
+default = "authored-production"
+exact_languages = []
+
+[code_ownership.override.benchmark_evidence]
+authority = "repository-benchmark-harness"
+kind = "generated"
+selectors = ["directory:evidence"]
+
+[code_ownership.override.benchmark_protocol_examples]
+authority = "repository-benchmark-protocol-fixtures"
+kind = "generated"
+selectors = ["prefix:benchmarks/research/protocol/examples/"]
+
+[code_ownership.override.migration_references]
+authority = "canonical-jig-layout-migration"
+kind = "generated"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["exact:src/interface/command-line/contract/reference.md", "exact:src/interoperability/historical-malbolge/contract/reference.md", "exact:src/interoperability/profile-compatibility/contract/reference.md", "exact:src/optimization/accelerator/contract/reference.md", "exact:src/research/algorithms/contract/reference.md", "exact:src/specification/formal-model/contract/reference.md", "exact:src/tooling/decompiler/contract/reference.md", "exact:src/tooling/language-support/contract/reference.md", "exact:src/tooling/native-analysis/contract/reference.md"]
+
+[code_ownership.override.native_fixtures]
+authority = "independent-native-fixture-renderers"
+kind = "generated"
+selectors = ["prefix:tests/execution/fixtures/"]
+
+[code_ownership.override.generated_contract_projections]
+authority = "repository-contract-renderers"
+kind = "generated"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["exact:src/interoperability/profile-compatibility/contract/profile-fingerprints.json", "exact:src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/ticket_admission_profiles.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json", "exact:src/research/algorithms/domain/algorithms/doom/quality/comparison/metrics.json", "exact:src/tooling/language-support/contract/grammar/syntaxes/malbolge.tmLanguage.json"]
+
+[code_ownership.override.generated_dictionary_projections]
+authority = "repository-cspell-dictionary-renderer"
+kind = "generated"
+# jig-ignore-next-line: indivisible reviewed identifier
+selectors = ["exact:.jig/cspell/cspell.json", "exact:.jig/cspell/named-entities.txt", "exact:.jig/cspell/technical.txt"]
+
+[commit]
+# jig-ignore-next-line: indivisible reviewed identifier
+allowed_scopes = ["adr", "ci", "compiler", "config", "docs", "foundation", "legal", "repo", "research", "runtime", "tests", "tooling"]
+allowed_trailers = ["BREAKING CHANGE"]
+# jig-ignore-next-line: indivisible reviewed identifier
+allowed_types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "release", "revert", "style", "test"]
+allow_merge_commits = false
+allow_revert_type = true
+body_line_max_length = 80
+body_min_length = 80
+history_baseline = "5544819492e1ec242183555f46ce07fd940724da"
+required_trailers = []
+require_scope = true
+subject_max_length = 72
+
+[contribution]
+exact_form = true
+private_authoritative_review = true
+
+[git]
+required_hooks = ["commit-msg"]
+required_ignored_paths = ["JIG_SHIT.md"]
+
+
+[graphify]
+authority_roots = ["."]
+cache_root = ".cache/jig/graph"
+excluded_roots = []
+taxonomy_path = ".jig/taxonomy.json"
+
+[git_attributes]
+# jig-ignore-next-line: indivisible reviewed identifier
+binary_extensions = ["7z", "a", "dll", "dylib", "exe", "gif", "gz", "ico", "jpeg", "jpg", "lib", "pdf", "png", "so", "webp", "zip"]
+
+[git_attributes.linguist.cu]
+detectable = true
+language = "Cuda"
+
+[git_attributes.linguist.cuh]
+detectable = true
+language = "Cuda"
+
+[git_attributes.linguist.malbolge]
+detectable = true
+language = "Malbolge"

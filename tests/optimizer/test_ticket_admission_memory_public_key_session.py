@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_memory_public_key_session.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_memory_public_key_session.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,25 +31,6 @@
 # - Defaults:
 #   - Uses two synthetic public-key byte strings and 256-request defaults.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_public_key_provider_s.py
-#
-# Large file:
-#   - false
-#
 
 """Serial memory-backed public-key provider-session tests."""
 
@@ -68,8 +42,6 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_memory_public_key_provider as memory,
@@ -89,9 +61,11 @@ from accelerator import (
 from accelerator.ticket_admission_telemetry_lineage_signature import (
     ticket_admission_telemetry_lineage_public_key_fingerprint,
 )
+import pytest
 
 if TYPE_CHECKING:
     from accelerator import (
+        # jig-ignore-next-line: indivisible reviewed identifier
         ticket_admission_telemetry_lineage_memory_public_key_batch_provider as mb_types,
     )
     from accelerator import (
@@ -200,6 +174,7 @@ def _memory_provider(
     entries: tuple[MemoryEntry, ...] | None = None,
     provider_id: str = PROVIDER_ID,
 ) -> MemoryProvider:
+    # jig-ignore-next-line: indivisible reviewed identifier
     return memory.build_ticket_admission_telemetry_lineage_memory_public_key_provider(
         _entries() if entries is None else entries,
         provider_id=provider_id,
@@ -251,6 +226,7 @@ def _close_request(
 def _build_manifest(
     entries: tuple[ManifestEntry, ...],
 ) -> manifest.TicketAdmissionTelemetryLineageSignatureTrustManifest:
+    # jig-ignore-next-line: indivisible reviewed identifier
     return manifest.build_ticket_admission_telemetry_lineage_signature_trust_manifest(
         entries
     )
@@ -578,6 +554,7 @@ def test_builder_rejects_foreign_memory_provider_type() -> None:
 @pytest.mark.parametrize("max_requests", [0, True])
 def test_builder_rejects_invalid_request_limit(max_requests: int) -> None:
     with pytest.raises(
+        # jig-ignore-next-line: indivisible reviewed identifier
         adapter.TicketAdmissionTelemetryLineageMemoryPublicKeyProviderSessionError,
         match="positive integer",
     ):
@@ -588,6 +565,7 @@ def test_builder_rejects_tampered_memory_provider() -> None:
     value = replace(_memory_provider(), service_id="unsupported")
 
     with pytest.raises(
+        # jig-ignore-next-line: indivisible reviewed identifier
         adapter.TicketAdmissionTelemetryLineageMemoryPublicKeyProviderSessionError,
         match="cannot build memory batch provider",
     ):
@@ -598,6 +576,7 @@ def test_builder_rejects_tampered_memory_provider() -> None:
 
 def test_validator_rejects_foreign_session_type() -> None:
     with pytest.raises(AdapterError, match="exact memory-session type"):
+        # jig-ignore-next-line: indivisible reviewed identifier
         _ = adapter.validate_ticket_admission_memory_public_key_provider_session(
             cast("MemorySession", object())
         )
@@ -668,6 +647,7 @@ def test_tampered_batch_provider_type_fails_before_open() -> None:
     value = replace(
         _session(),
         batch_provider=cast(
+            # jig-ignore-next-line: indivisible reviewed identifier
             "mb_types.TicketAdmissionTelemetryLineageMemoryPublicKeyBatchProvider",
             object(),
         ),
@@ -767,6 +747,7 @@ def test_tampered_active_binding_fails_closed(
     )
 
     with pytest.raises(AdapterError, match=match):
+        # jig-ignore-next-line: indivisible reviewed identifier
         _ = adapter.validate_ticket_admission_memory_public_key_provider_session(
             value
         )

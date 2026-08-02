@@ -1,8 +1,3 @@
-# File:
-#   - test_accelerator_submission.py
-# Path:
-#   - tests/optimizer/test_accelerator_submission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Optional failures fall back only after ticket cleanup succeeds.
 #
-# Related documents:
-# - accelerator/submission.py
-#
-# Large file:
-#   - false
-#
 
 """Hardware-neutral candidate submission lifetime regressions."""
 
@@ -51,8 +38,6 @@ from dataclasses import dataclass
 from typing import cast
 from typing import final
 from typing import override
-
-import pytest
 
 from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.cpu.work_ports import CPU_WORK_CAPABILITY
@@ -70,6 +55,7 @@ from accelerator.work_ports import CandidateEvaluationResult
 from accelerator.work_ports import CandidateEvidence
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
+import pytest
 
 EXPECTED_SUBMISSION_ID = "validated-candidate-submission-v1"
 BATCH_ITEM_COUNT = 2

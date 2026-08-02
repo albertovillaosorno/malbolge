@@ -21,7 +21,7 @@ required = true
 oracle = "complete current-profile no-op validation inside every callback; exact global start/stop order; fixed callback-scoped aliases; registered synchronous and admitted double-buffer routes for windows one/eight; 32/4 callbacks; 31/3 prefetched windows; deterministic drain and retry; identity and transfer cardinality checks"
 
 [provenance]
-implementation = "accelerator/cuda/profile_run.py"
+implementation = "src/optimization/accelerator/adapter-outbound/accelerator/cuda/profile_run.py"
 configuration = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/benchmark.toml"
 output = "benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060"
 

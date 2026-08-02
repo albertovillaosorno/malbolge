@@ -19,13 +19,16 @@ hard to reverse engineer.
 This document currently governs:
 
 - `malbolge.json`
-- `compatibility/profile-fingerprints.json`
-- `compatibility/custom-profile.example.json`
-- `scripts/validate/target_profile.py`
-- `scripts/validate/profile_identity.py`
-- `scripts/validate/experiment_manifest.py`
-- `vm/src/profile.rs`
-- `vm/src/profile_generated.rs`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/interoperability/profile-compatibility/contract/profile-fingerprints.json`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/interoperability/profile-compatibility/contract/custom-profile.example.json`
+- `src/automation/repository/composition/scripts/validate/target_profile.py`
+- `src/automation/repository/composition/scripts/validate/profile_identity.py`
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+- `src/automation/repository/composition/scripts/validate/experiment_manifest.py`
+- `src/runtime/virtual-machine/domain/profile.rs`
+- `src/runtime/virtual-machine/contract/profile_generated.rs`
 - `tests/test_target_profile.py`
 - `tests/compatibility/test_profile_identity.py`
 - `tests/test_experiment_manifest.py`
@@ -62,7 +65,8 @@ profile `malbolge-2026.1`, still have distinct fingerprints.
 
 ### Canonical Fingerprint Manifest
 
-`compatibility/profile-fingerprints.json` is a generated review artifact. It
+`src/interoperability/profile-compatibility/contract/profile-fingerprints.json`
+is a generated review artifact. It
 records one fingerprint for every canonical profile in `malbolge.json` together
 with the canonicalization and target-schema versions.
 
@@ -105,7 +109,9 @@ profile definition must exactly match that canonical profile after excluding
 `kind`. This prevents a supplied file from rebinding `malbolge-2026.2` or any
 other published ID to different semantics or geometry.
 
-`compatibility/custom-profile.example.json` is a non-authoritative example of a
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+`src/interoperability/profile-compatibility/contract/custom-profile.example.json`
+is a non-authoritative example of a
 new 14-trit custom identity using the current defining semantic core.
 
 ### Fingerprint CLI
@@ -113,7 +119,8 @@ new 14-trit custom identity using the current defining semantic core.
 Run:
 
 ```text
-.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity PROFILE.json
+.\.dependencies\python\3.14.6\Scripts\python-jig.cmd `
+  -m scripts.validate.profile_identity PROFILE.json
 ```
 
 to validate the external profile and print its canonical fingerprint.
@@ -121,7 +128,9 @@ to validate the external profile and print its canonical fingerprint.
 Run:
 
 ```text
-.\.dependencies\python\3.14.6\Scripts\python-jig.cmd -m scripts.validate.profile_identity PROFILE.json EXPECTED-FINGERPRINT
+.\.dependencies\python\3.14.6\Scripts\python-jig.cmd `
+  -m scripts.validate.profile_identity `
+  PROFILE.json EXPECTED-FINGERPRINT
 ```
 
 to verify an artifact/profile binding. A mismatch fails with exit status 1 and
@@ -130,6 +139,7 @@ expected and observed fingerprints.
 
 The example profile currently fingerprints to:
 
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `malbolge-profile-v1:sha256:221015e0ac4cbde88444ad6d55c703a2e2cc96904bd65b81cb44e256aa1f3177`.
 
 ### Artifact And Container Binding
@@ -143,7 +153,8 @@ fingerprint because they do not identify one canonical semantic profile.
 
 Ten checked-in canonical-profile manifests currently carry this binding: five
 algorithm plans and five retained current-profile accelerator evidence records.
-The `MALBCAP1` capsule carries the same ID/fingerprint pair, recomputes canonical
+The `MALBCAP1` capsule carries the same ID/fingerprint pair, recomputes
+canonical
 identity before exposing payload, emits shared `MALBOLGE-PROFILE-ID-001` on
 mismatch, and rejects unknown IDs without fallback. Portable effect IR v3 and
 its native cache key now retain the exact ID/fingerprint pair plus canonical
@@ -189,7 +200,8 @@ Experiment manifests, `MALBCAP1` capsules, portable effect IR v3, native cache
 keys, and direct COFF objects now carry this fingerprint with the declared
 profile ID. Bootstrap revision-2 C23 candidates render the same canonical
 `.mbprof` envelope and structural admission requires it for that revision;
-historical revision 1 and product-level artifacts do not universally carry it, so
+historical revision 1 and product-level artifacts do not universally carry it,
+so
 this contract remains active.
 
 ## Verification
@@ -206,7 +218,8 @@ this contract remains active.
 - `tests/vm/capsule.rs` covers exact capsule fingerprint mismatch fields/text,
   unknown-profile rejection without fallback, checksum-valid tampering, and
   canonical payload exposure only after identity verification.
-- `tests/vm/profile_requirements.rs` verifies the current Rust descriptor exposes
+- `tests/vm/profile_requirements.rs` verifies the current Rust descriptor
+  exposes
   the generated canonical fingerprint.
 - `tests/tiered_execution.rs` freezes IR v3 and all direct COFF bytes, verifies
   key accessors retain ID/fingerprint/version/features/geometry, independently

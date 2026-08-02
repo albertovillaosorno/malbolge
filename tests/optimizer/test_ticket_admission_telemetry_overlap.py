@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_overlap.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_overlap.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -35,15 +28,6 @@
 #   - Runs without accelerator hardware or filesystem access.
 # - Defaults:
 #   - Invalid or ambiguous documents fail closed.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_overlap.py
-# - accelerator/ticket_admission_telemetry_overlap_index.py
-# - accelerator/ticket_admission_telemetry_overlap_components.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-#
-# Large file:
-#   - false
 #
 
 """Exact pairwise retained telemetry overlap tests."""

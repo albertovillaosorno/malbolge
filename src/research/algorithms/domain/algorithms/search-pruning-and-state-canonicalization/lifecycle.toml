@@ -1,0 +1,9 @@
+schema_version = 1
+
+[algorithm]
+id = "search-pruning-and-state-canonicalization"
+state = "experimental"
+# jig-ignore-next-line: indivisible reviewed identifier
+research_record = "docs/research/algorithms/search-pruning-and-state-canonicalization/research.md"
+# jig-ignore-next-line: indivisible reviewed identifier
+experiment_manifest = "src/research/algorithms/domain/algorithms/search-pruning-and-state-canonicalization/experiment.toml"

@@ -37,7 +37,8 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 - The program maintains a source-backed map from prior
   superoptimization/synthesis work to falsifiable Malbolge-specific hypotheses
   and records both adopted and rejected techniques.
-- The program compares raw combinatorial search with decomposition, verified block
+- The program compares raw combinatorial search with decomposition, verified
+  block
   reuse, canonicalization, pruning, heuristic search, and learned guidance; it
   never assumes that practical compilation inherits one complexity class.
 - The research record separates observed evidence from interpretation and

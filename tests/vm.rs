@@ -1,8 +1,3 @@
-// File:
-//   - vm.rs
-// Path:
-//   - tests/vm.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -35,13 +28,6 @@
 //   - Auto-discovered by Cargo and delegates executable tests to `tests/vm/`.
 // - Defaults:
 //   - Contains no executable test logic of its own.
-//
-// Related documents:
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-// - tests/README.md
-//
-// Large file:
-//   - false
 //
 
 //! Cargo composition root for VM integration tests.
@@ -91,9 +77,20 @@ mod tables;
 #[path = "vm/tracing.rs"]
 mod tracing;
 
+use std::env::join_paths;
+use std::ffi::OsString;
 use std::fmt::{Debug, Display};
+use std::path::Path;
 
 type TestResult<Value = ()> = Result<Value, String>;
+
+fn accelerator_python_path(root: &Path) -> TestResult<OsString> {
+    join_paths([
+        root.join("src/optimization/accelerator/application"),
+        root.join("src/optimization/accelerator/adapter-outbound"),
+    ])
+    .map_err(|error| format!("accelerator PYTHONPATH construction: {error}"))
+}
 
 fn check_equal<Value>(
     actual: &Value,

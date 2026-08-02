@@ -39,7 +39,8 @@ that evidence supports or rejects a technique.
 - Raw, derived, interpretation, and conclusion layers are distinct. Negative,
   null, resource-exhausted, tool-failure, and candidate-invalid outcomes remain
   durable evidence under explicit exclusion/deviation rules.
-- Benchmarking and optimization overlays require reproducible setup, raw samples,
+- Benchmarking and optimization overlays require reproducible setup, raw
+  samples,
   stability/trial evidence, justified baselines, stochasticity/seeds, and
   distributions/variation where applicable.
 - Research conclusions may recommend promotion/rejection/inconclusive states but

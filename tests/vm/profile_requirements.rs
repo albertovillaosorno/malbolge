@@ -1,8 +1,3 @@
-// File:
-//   - profile_requirements.rs
-// Path:
-//   - tests/vm/profile_requirements.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
 //   - The safe Rust runtime advertises only the classic ten-trit capacity.
-//
-// Related documents:
-// - malbolge.json
-// - docs/technical/compatibility/required-profile-diagnostics.md
-//
-// Large file:
-//   - false
 //
 
 //! Runtime target-profile capability and deterministic diagnostic fixtures.

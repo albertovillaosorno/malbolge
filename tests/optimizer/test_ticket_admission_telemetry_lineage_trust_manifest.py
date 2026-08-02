@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_telemetry_lineage_trust_manifest.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_telemetry_lineage_trust_manifest.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,19 +29,6 @@
 #   - Runs without accelerator hardware or external key services.
 # - Defaults:
 #   - Uses two deterministic key references and caller-owned secrets.
-#
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_signature.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-#
-# Large file:
-#   - false
 #
 
 """Canonical secret-free telemetry lineage trust manifest tests."""
@@ -289,20 +269,18 @@ def _secret(
 
 
 def _rotation_manifest() -> TicketAdmissionTelemetryLineageTrustManifest:
-    return build_ticket_admission_telemetry_lineage_trust_manifest(
-        (
-            _entry(
-                NEW_KEY_ID,
-                NEW_REFERENCE_ID,
-                (SUCCESSOR_SEQUENCE_ID, None),
-            ),
-            _entry(
-                OLD_KEY_ID,
-                OLD_REFERENCE_ID,
-                (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
-            ),
-        )
-    )
+    return build_ticket_admission_telemetry_lineage_trust_manifest((
+        _entry(
+            NEW_KEY_ID,
+            NEW_REFERENCE_ID,
+            (SUCCESSOR_SEQUENCE_ID, None),
+        ),
+        _entry(
+            OLD_KEY_ID,
+            OLD_REFERENCE_ID,
+            (GENESIS_SEQUENCE_ID, GENESIS_SEQUENCE_ID),
+        ),
+    ))
 
 
 def _rotation_secrets(

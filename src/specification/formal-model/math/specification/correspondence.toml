@@ -1,0 +1,411 @@
+schema_version = 1
+
+[[correspondence]]
+id = "classic-crazy"
+tex = "src/specification/formal-model/math/specification/malbolge-1998.tex"
+label = "eq:classic-crazy"
+domain = "all 5-trit data/accumulator chunks in both classic word positions"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions"]
+
+[[correspondence]]
+id = "classic-rotate"
+tex = "src/specification/formal-model/math/specification/malbolge-1998.tex"
+label = "eq:classic-rotate"
+domain = "all 59049 classic words"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word"]
+
+[[correspondence]]
+id = "classic-word-domain"
+tex = "src/specification/formal-model/math/specification/malbolge-1998.tex"
+label = "eq:classic-word-domain"
+domain = "all values 0 through 59048 plus the first rejected value 59049"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::classic_word_domain_matches_ten_trit_modulus"]
+
+[[correspondence]]
+id = "profile-crazy"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-crazy"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "classic chunk domain exhaustively plus one current 14-trit execution fixture"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "profile-current-width"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-current-width"
+domain = "canonical schema-v2 current profile projection"
+mechanism = "projection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_requirements.rs::canonical_projection_exposes_current_geometry"]
+
+[[correspondence]]
+id = "profile-decode"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-decode"
+domain = "all 94 graphical cells across every classic code-pointer value"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position"]
+
+[[correspondence]]
+id = "profile-encrypt"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-encrypt"
+domain = "all 94 graphical encryption-table input cells"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::classic_encryption_matches_every_graphical_cell"]
+
+[[correspondence]]
+id = "profile-eof"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-eof"
+domain = "canonical current profile plus current traced EOF execution"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_requirements.rs::canonical_projection_exposes_current_geometry", "tests/vm/profile_tracing.rs::current_trace_records_profile_eof_and_is_inert"]
+
+
+[[correspondence]]
+id = "profile-load"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-load"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "classic loader boundary corpus plus current profile construction fixture"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/loader_boundaries.rs::every_decode_phase_has_valid_and_invalid_instruction_bytes", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "profile-load-recurrence"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-load-recurrence"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "all generated cells in one classic full memory image plus current scalar prefix"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::classic_loader_fill_matches_crazy_recurrence", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+
+[[correspondence]]
+id = "profile-memory-domain"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-memory-domain"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "all classic addresses in generated differential cases plus current boundary addresses"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/differential/classic_profile.rs::seeded_classic_and_profiled_1998_execution_agree", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "profile-observable-equivalence"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-observable-equivalence"
+domain = "24 generated valid classic programs and explicit roundtrip EOF cases"
+mechanism = "generated-differential"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/differential/classic_profile.rs::seeded_classic_and_profiled_1998_execution_agree", "tests/vm/profile_machine.rs::profiled_historical_matches_classic_roundtrip_and_eof"]
+
+[[correspondence]]
+id = "profile-rotate"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-rotate"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "all classic words exhaustively plus one current 14-trit execution fixture"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "profile-successor"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-successor"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "all classic words exhaustively; current fixture covers non-wrapping advancement"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::classic_successor_matches_modular_equation", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "profile-transition"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-transition"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "24 generated classic/profiled programs plus current atomic rejection fixture"
+mechanism = "generated-differential"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/differential/classic_profile.rs::seeded_classic_and_profiled_1998_execution_agree", "tests/vm/profile_tracing.rs::current_rejected_jump_trace_is_observationally_atomic"]
+
+[[correspondence]]
+id = "profile-word-domain"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-word-domain"
+domain = "canonical historical and current profile descriptors"
+mechanism = "projection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::canonical_profile_domains_match_power_of_three"]
+
+[[correspondence]]
+id = "profile-word-modulus"
+tex = "src/specification/formal-model/math/specification/profile-model.tex"
+label = "eq:profile-word-modulus"
+domain = "canonical historical and current profile descriptors"
+mechanism = "projection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::canonical_profile_domains_match_power_of_three"]
+
+[[correspondence]]
+id = "optimization-crazy-chunk"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-chunk"
+domain = "all 243x243 five-trit pairs in both classic ten-trit positions"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-chunks"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-chunks"
+domain = "current 14-trit 5+5+4 decomposition plus scalar profile fixtures"
+mechanism = "composite"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes_digitwise_without_new_truth_table", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
+
+[[correspondence]]
+id = "optimization-decode-phase"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-decode-phase"
+domain = "all classic code pointers and all 94 graphical cell values"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position"]
+
+[[correspondence]]
+id = "optimization-rotate-table"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-rotate-table"
+domain = "all 59049 classic words"
+mechanism = "exhaustive"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word"]
+
+[[correspondence]]
+id = "state-graph-collision-safe-merge"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-collision-safe-merge"
+domain = "classic exact-state snapshots under an adversarial constant digest"
+mechanism = "forced-collision"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::forced_digest_collision_keeps_distinct_inputs"]
+
+[[correspondence]]
+id = "state-graph-exact-key"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-exact-key"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "bounded classic specification-mode executions with full 59049-word snapshots"
+mechanism = "exact-replay"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::exact_replay_deduplicates_nodes_and_edges"]
+
+[[correspondence]]
+id = "state-graph-consumed-input-prefix"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-consumed-input-prefix"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "classic states identical except consumed input-prefix contents; exhaustive first-byte convergence fixture"
+mechanism = "structural-reduction-plus-exhaustive-byte-fixture"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::consumed_input_prefix_is_future_irrelevant"]
+
+[[correspondence]]
+id = "state-graph-terminal-state"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-terminal-state"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "already-terminated classic states with equal profile, output prefix, and termination reason"
+mechanism = "structural-reduction-with-diverse-terminal-fixtures"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::terminal_state_drops_dead_details", "tests/function/algorithms/domain/state-graph/exact.rs::terminal_projection_rejects_live_machine"]
+
+[[correspondence]]
+id = "state-graph-profile-checkpoint"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-checkpoint"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "validated canonical current checkpoints including all 4782969 memory words"
+mechanism = "exact-current-checkpoint-replay"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/c.rs::current_checkpoint_replay_deduplicates_exactly"]
+
+[[correspondence]]
+id = "state-graph-profile-collision-safe-merge"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-collision-safe-merge"
+domain = "validated current checkpoints under an adversarial constant digest"
+mechanism = "forced-current-checkpoint-collision"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/c.rs::current_forced_collision_keeps_distinct_checkpoints"]
+
+[[correspondence]]
+id = "state-graph-two-cell-memory-delta"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-two-cell-memory-delta"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "one normative classic or current-profile step across every instruction family, halt, and atomic rejection"
+mechanism = "structural-bound-with-complete-memory-family-witnesses"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/d.rs::classic_instruction_families_obey_two_cell_memory_delta", "tests/function/algorithms/domain/state-graph/d.rs::current_instruction_families_obey_two_cell_memory_delta"]
+
+[[correspondence]]
+id = "state-graph-trace-memory-delta"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-trace-memory-delta"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "one normative classic or current-profile step across every instruction family, halt, and atomic rejection"
+mechanism = "trace-versus-complete-memory-difference"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/d.rs::classic_instruction_families_obey_two_cell_memory_delta", "tests/function/algorithms/domain/state-graph/d.rs::current_instruction_families_obey_two_cell_memory_delta"]
+
+[[correspondence]]
+id = "state-graph-persistent-memory"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-persistent-memory"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "current-profile checkpoint root plus exact traced deltas for bounded execution"
+mechanism = "stepwise-full-materialization-and-fail-closed-before-validation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/p.rs::current_trace_patches_reconstruct_every_checkpoint", "tests/function/algorithms/domain/state-graph/p.rs::mismatched_before_value_fails_closed", "tests/function/algorithms/domain/state-graph/p.rs::empty_delta_reuses_patch_depth"]
+
+[[correspondence]]
+id = "state-graph-indexed-memory"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-indexed-memory"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "current 14-trit profile within the explicit 24-bit radix research capacity"
+mechanism = "stepwise-materialization-distinct-overrides-and-before-validation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/i.rs::current_trace_deltas_reconstruct_every_indexed_checkpoint", "tests/function/algorithms/domain/state-graph/i.rs::distinct_overrides_preserve_root_and_latest_reads", "tests/function/algorithms/domain/state-graph/i.rs::forged_before_value_is_rejected_by_index"]
+
+[[correspondence]]
+id = "state-graph-incremental-identity"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-incremental-identity"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "one canonical profile/input/root execution lineage using current-profile indexed memory"
+# jig-ignore-next-line: indivisible reviewed identifier
+mechanism = "trace-evolution-full-checkpoint-reconstruction-and-lineage-rejection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates", "tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_root_is_foreign_lineage"]
+
+[[correspondence]]
+id = "state-graph-incremental-collision-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-incremental-collision-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "incremental states inside one admitted lineage under arbitrary digest collisions"
+mechanism = "constant-digest-adversarial-collision-confirmation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/s.rs::forced_digest_collision_never_merges_distinct_states", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
+
+[[correspondence]]
+id = "state-graph-persistent-output"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-persistent-output"
+domain = "one lineage output prefix plus append-only committed byte histories"
+mechanism = "materialization-independent-branch-equality-and-long-history"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equal_branches_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::different_output_branches_remain_distinct", "tests/function/algorithms/domain/state-graph/o.rs::long_append_history_materializes_without_prefix_loss", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
+
+[[correspondence]]
+id = "state-graph-exact-region-certificate"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-exact-region-certificate"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "bounded current-profile normative execution under one exact incremental entry-state lineage"
+mechanism = "normative-reexecution-exact-exit-trace-outcome-and-entry-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::current_region_reexecutes_to_exact_verified_exit", "tests/function/algorithms/domain/state-graph/r.rs::exact_guard_rejects_mutated_entry_state", "tests/function/algorithms/domain/state-graph/r.rs::tampered_certificate_fails_normative_reverification", "tests/function/algorithms/domain/state-graph/r.rs::rejected_transition_never_records_verified_region"]
+
+[[correspondence]]
+id = "state-graph-profile-read-bound"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-read-bound"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "one current-profile normative step across every instruction family and rejected jump encryption"
+mechanism = "exact-transition-engine-read-role-address-value-fixtures"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads"]
+
+[[correspondence]]
+id = "state-graph-region-live-in"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-live-in"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified current-profile region traces with exact semantic memory reads and committed memory deltas"
+mechanism = "ordered-read-before-write-live-in-derivation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
+
+[[correspondence]]
+id = "state-graph-region-dependency-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-dependency-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified exact-state region reused inside the same immutable lineage with identical non-memory state"
+# jig-ignore-next-line: indivisible reviewed identifier
+mechanism = "irrelevant-memory-variation-direct-vm-equivalence-and-live-in-rejection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
+
+[[correspondence]]
+id = "state-graph-tiered-region-deopt"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-tiered-region-deopt"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verifier-produced current-profile bounded region under dependency-guard hit or miss"
+mechanism = "shortcut-on-guard-hit-otherwise-normative-traced-reexecution"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::tiered_region_uses_shortcut_for_irrelevant_memory_variant", "tests/function/algorithms/domain/state-graph/r.rs::tiered_region_deoptimizes_advanced_state_to_normative_vm", "tests/function/algorithms/domain/state-graph/r.rs::tiered_region_deopt_propagates_normative_rejection"]
+
+[[correspondence]]
+id = "state-graph-verified-effect-artifact"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-verified-effect-artifact"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "portable effect artifact projected from one verifier-produced current-profile region"
+mechanism = "exact-field-reprojection-and-tamper-rejection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/a.rs::artifact_shortcut_matches_verified_region_on_reduced_guard", "tests/function/algorithms/domain/state-graph/a.rs::artifact_deoptimizes_advanced_state_identically_to_region", "tests/function/algorithms/domain/state-graph/a.rs::artifact_verifier_rejects_effect_tampering", "tests/function/algorithms/domain/state-graph/a.rs::artifact_verifier_rejects_profile_tampering", "tests/function/algorithms/domain/state-graph/a.rs::artifact_verifier_rejects_metadata_tampering"]

@@ -1,8 +1,3 @@
-// File:
-//   - profile_logical.rs
-// Path:
-//   - tests/vm/profile_logical.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -41,13 +34,6 @@
 // - Defaults:
 //   - Sequential profile logical execution is the deterministic artifact
 //   - baseline.
-//
-// Related documents:
-// - docs/technical/runtime/execution/deterministic-logical-concurrency.md
-// - docs/technical/compatibility/scalable-malbolge-memory-model.md
-//
-// Large file:
-//   - false
 //
 
 //! Deterministic logical ordering for current and transition profile tasks.

@@ -4,6 +4,7 @@ status: "pending"
 lane: "14"
 area: "self_hosting"
 task: "TODO - Malbolge compiler compiles C to Malbolge"
+# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compiler/self-hosting/malbolge-compiler-compiles-c-to-malbolge.md"
 depends_on:
   - "compile-c2malbolge-c-to-malbolge"

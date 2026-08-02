@@ -56,7 +56,8 @@ normative 1998 specification.
   expose exact semantic fetch/data/encryption reads from the real step engine,
   with every instruction family and rejection covered by `profile_reads.rs`.
   Both trace surfaces now expose
-  allocation-free actual memory deltas of at most two changed cells from the same
+  allocation-free actual memory deltas of at most two changed cells from the
+  same
   transition engine; full-memory classic/current research fixtures verify those
   records exactly and halt/rejection remain empty. Current profile tracing also
   records exact profile identity/EOF and rejected-transition atomicity.
@@ -64,7 +65,8 @@ normative 1998 specification.
   memory/register state, while `ProfileMachineState` checkpoints additionally
   preserve input cursor, committed output, and termination through restoration;
   invalid cursor state fails closed. Current max-address execution proves
-  self-encryption precedes pointer wrap. Completion remains gated on the declared
+  self-encryption precedes pointer wrap. Completion remains gated on the
+  declared
   repository-wide `jig validate --root .` command passing at retirement time.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.

@@ -55,8 +55,10 @@ Not implemented. No six-target native capability-runner matrix is claimed yet.
 - Availability differences are explicit capability-discovery/failure results,
   never silent substitutions or platform-specific guest semantics.
 - Files, network packets, input events, audio/video buffers, and monotonic time
-  follow the versioned capability contract rather than undocumented host defaults.
-- x86-64 and AArch64 implementations remain adapters behind shared runtime/native
+  follow the versioned capability contract rather than undocumented host
+  defaults.
+- x86-64 and AArch64 implementations remain adapters behind shared
+  runtime/native
   execution contracts; architecture-specific calling conventions are not VM
   semantics.
 
@@ -71,7 +73,8 @@ apparent compatibility.
 ## Verification
 
 - Execute the same canonical capability-frame corpus on every supported
-  OS/architecture pair and compare guest memory, results, diagnostics, and effect
+  OS/architecture pair and compare guest memory, results, diagnostics, and
+  effect
   ordering.
 - Run malformed-frame, invalid-range, unavailable-capability, startup, and
   shutdown fixtures on every runner.

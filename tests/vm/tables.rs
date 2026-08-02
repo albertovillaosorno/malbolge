@@ -1,8 +1,3 @@
-// File:
-//   - tables.rs
-// Path:
-//   - tests/vm/tables.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 //   - Runs under the Cargo VM integration-test composition target.
 // - Defaults:
 //   - Any optimized/scalar mismatch is a hard deterministic test failure.
-//
-// Related documents:
-// - docs/technical/runtime/vm/cpu-vm-table-optimization.md
-// - docs/technical/specification/malbolge-1998.md
-//
-// Large file:
-//   - false
 //
 
 //! Independent scalar equivalence tests for optimized classic word operations.

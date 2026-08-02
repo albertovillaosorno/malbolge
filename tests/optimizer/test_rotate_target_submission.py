@@ -1,8 +1,3 @@
-# File:
-#   - test_rotate_target_submission.py
-# Path:
-#   - tests/optimizer/test_rotate_target_submission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Every published proposal is compared with the CPU reference search.
 #
-# Related documents:
-# - optimizer/rotate_target_submission.py
-#
-# Large file:
-#   - false
-#
 
 """Exact projected rotate-target search submission regressions."""
 
@@ -53,8 +40,6 @@ from typing import cast
 from typing import final
 from typing import override
 from unittest import SkipTest
-
-import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cpu.work_ports import CPU_WORK_CAPABILITY
@@ -78,6 +63,7 @@ from optimizer.rotate_target_submission import (
     RotateTargetSearchSubmissionAdapter,
 )
 from optimizer.rotate_target_submission import rotate_target_submission_id
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability

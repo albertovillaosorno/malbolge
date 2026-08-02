@@ -1,8 +1,3 @@
-# File:
-#   - test_search_submission.py
-# Path:
-#   - tests/optimizer/test_search_submission.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Optional failures fall back only after ticket cleanup succeeds.
 #
-# Related documents:
-# - accelerator/search_submission.py
-#
-# Large file:
-#   - false
-#
 
 """Hardware-neutral search submission lifetime regressions."""
 
@@ -51,8 +38,6 @@ from dataclasses import dataclass
 from typing import cast
 from typing import final
 from typing import override
-
-import pytest
 
 from accelerator.cpu import CpuSearchExecutionAdapter
 from accelerator.cpu.work_ports import CPU_WORK_CAPABILITY
@@ -69,6 +54,7 @@ from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import SearchResult
+import pytest
 
 ALGORITHM_ID = "deterministic-enumeration-v1"
 EXPECTED_SUBMISSION_ID = "validated-search-submission-v1"

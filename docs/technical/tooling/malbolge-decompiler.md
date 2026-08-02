@@ -6,23 +6,27 @@ Active implementation
 
 ## Purpose
 
-Provide a profile-explicit reverse-engineering tool for valid Malbolge artifacts.
-The tool makes hostile self-modifying programs easier to inspect without claiming
+Provide a profile-explicit reverse-engineering tool for valid Malbolge
+artifacts.
+The tool makes hostile self-modifying programs easier to inspect without
+claiming
 that compilation is mathematically reversible or that original C source can be
 recovered from arbitrary Malbolge.
 
 ## Scope
 
 - `tools/decompile/`
-- `src/bin/malbolge_decompile.rs`
-- `src/bin/museum_convert.rs`
+- `src/tooling/decompiler/composition/malbolge_decompile.rs`
+- `src/tooling/decompiler/composition/museum_convert.rs`
 - `tests/decompiler.rs`
 - local generated views of `examples/museum/` specimens
 
 ## Current Behavior
 
-`tools/decompile/render.rs` emits C23 as a source-specialized semantic machine.
-Before rendering, the source is admitted by `ProfileMachine::from_source` for the
+`src/tooling/decompiler/application/render.rs` emits C23 as a source-specialized
+semantic machine.
+Before rendering, the source is admitted by `ProfileMachine::from_source` for
+the
 explicit canonical profile. The generated artifact embeds exact profile ID,
 version, fingerprint, word modulus, memory size, EOF value, trit width, admitted
 source bytes, and the normative initial translation table.
@@ -34,11 +38,15 @@ self-modification, post-instruction encryption, and explicit status values. It
 deliberately calls no `malloc`, `getchar`, `putchar`, thread API, or platform
 service.
 
-The general Cargo entrypoint delegates policy to `tools/decompile/cli.rs` and
+The general Cargo entrypoint delegates policy to
+`src/tooling/decompiler/application/cli.rs` and
 requires both profile and output representation explicitly:
 
 ```text
-cargo run --bin malbolge_decompile --   --profile malbolge-1998 --representation c input.malbolge   --output output.c
+cargo run --bin malbolge_decompile -- \
+  --profile malbolge-1998 \
+  --representation c input.malbolge \
+  --output output.c
 ```
 
 `c` is the first representation, not the definition of decompilation. Future
@@ -81,7 +89,8 @@ conversion never downloads a missing specimen or substitutes another source.
 
 ## Verification
 
-`tests/decompiler.rs` provides six product tests covering deterministic rendering,
+`tests/decompiler.rs` provides six product tests covering deterministic
+rendering,
 profile geometry, source rejection, post-jump encryption ordering, normative
 initial translation, and the known `ctO` input/output/halt baseline against
 `ProfileMachine`.
@@ -89,7 +98,8 @@ initial translation, and the known `ctO` input/output/halt baseline against
 Pinned LLVM 22.1.8 development evidence compiled generated historical `ctO` C
 with `-std=c23 -ffreestanding -Wall -Wextra -Werror` for both
 `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. The x86-64 object linked
-without the CRT and executed through its exported API. Input byte `0x41` produced
+without the CRT and executed through its exported API. Input byte `0x41`
+produced
 exactly:
 
 ```text
@@ -106,5 +116,6 @@ oracle. The normative VM and specification remain the acceptance authority.
 ## References
 
 - [Canonical target profile](../specification/target-profile.md)
-- [Specification authority and Malbolge evolution](../adr/specification-authority-and-malbolge-evolution.md)
+- [Specification authority and Malbolge
+  evolution](../adr/specification-authority-and-malbolge-evolution.md)
 - [Verification trust boundary](../adr/verification-trust-boundary.md)

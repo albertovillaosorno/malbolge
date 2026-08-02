@@ -1,8 +1,3 @@
-// File:
-//   - search_pruning_research.rs
-// Path:
-//   - tests/search_pruning_research.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 // - Defaults:
 //   - No production optimizer API is exported from this target.
 //
-// Related documents:
-// - docs/research/algorithms/search-pruning-and-state-canonicalization/
-//   research.md
-//
-// Large file:
-//   - false
-//
 
 //! Cargo composition root for search-pruning research.
 
@@ -52,14 +38,14 @@ use malbolge as _;
 pub mod exact_duplicate {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/algorithms/search-pruning-and-state-",
+        "/src/research/algorithms/domain/algorithms/search-pruning-and-state-",
         "canonicalization/exact_duplicate.rs",
     ));
 }
 mod exact_duplicate_tests {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/algorithms/search-pruning-and-state-",
-        "canonicalization/tests/exact_duplicate.rs",
+        "/tests/function/algorithms/domain/search-pruning-and-state-",
+        "canonicalization/exact_duplicate.rs",
     ));
 }

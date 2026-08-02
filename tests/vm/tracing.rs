@@ -1,8 +1,3 @@
-// File:
-//   - tracing.rs
-// Path:
-//   - tests/vm/tracing.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,13 +29,6 @@
 //   - Composed by `tests/vm.rs` into the Cargo VM integration-test target.
 // - Defaults:
 //   - A traced run must produce the same guest result as an untraced run.
-//
-// Related documents:
-// - docs/technical/runtime/vm/safe-rust-malbolge-vm.md
-// - docs/technical/specification/malbolge-1998.md
-//
-// Large file:
-//   - false
 //
 
 //! Trace-hook conformance for the classic VM.

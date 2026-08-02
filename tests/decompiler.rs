@@ -1,8 +1,3 @@
-// File:
-//   - decompiler.rs
-// Path:
-//   - tests/decompiler.rs
-//
 // Copyright:
 //   - Copyright (c) 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 // Confidential:
 //   - false
 // License-File:
-//   - LICENSE
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
+//   - LICENSE-MIT
 //
 // Boundary-Contract:
 // - Owns:
@@ -38,16 +31,10 @@
 // - Defaults:
 //   - No museum specimen is embedded in tests.
 //
-// Related documents:
-// - tools/decompile/README.md
-//
-// Large file:
-//   - false
-//
 
 //! Product Malbolge decompiler conformance.
 
-#[path = "../tools/decompile/render.rs"]
+#[path = "../src/tooling/decompiler/application/render.rs"]
 pub mod decompiler;
 
 use malbolge::{

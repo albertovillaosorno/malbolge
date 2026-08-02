@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_independent_kernel_timeline.py
-# Path:
-#   - tests/optimizer/test_cuda_independent_kernel_timeline.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -38,13 +31,6 @@
 #   - Event intervals stay diagnostic; publication remains CPU-reference
 #     checked.
 #
-# Related documents:
-# - accelerator/cuda/runtime.py
-# - accelerator/cuda/exact_primitives.py
-#
-# Large file:
-#   - false
-#
 
 """CUDA-event interval attribution for independent primitive tickets."""
 
@@ -54,8 +40,6 @@ import ctypes
 from typing import TYPE_CHECKING
 from typing import final
 from unittest import SkipTest
-
-import pytest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
@@ -72,6 +56,7 @@ from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
 from accelerator.exact_primitives import prepare_primitive_batch
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.cuda.runtime import CudaIndependentKernelTimelineSample

@@ -1,8 +1,3 @@
-# File:
-#   - test_cuda_independent_kernel_launch.py
-# Path:
-#   - tests/optimizer/test_cuda_independent_kernel_launch.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -36,12 +29,6 @@
 # - Defaults:
 #   - Every created stream is destroyed on completion or submission failure.
 #
-# Related documents:
-# - accelerator/cuda/runtime.py
-#
-# Large file:
-#   - false
-#
 
 """Independent CUDA kernel stream lifetime without hardware dependency."""
 
@@ -51,8 +38,6 @@ import ctypes
 from typing import TYPE_CHECKING
 from typing import final
 
-import pytest
-
 from accelerator.cuda.runtime import CUDA_STREAM_NON_BLOCKING
 from accelerator.cuda.runtime import CudaHostMemoryRegistry
 from accelerator.cuda.runtime import CudaIndependentKernelLaunchFactory
@@ -60,6 +45,7 @@ from accelerator.cuda.runtime import CudaIndependentKernelLaunchFunctions
 from accelerator.cuda.runtime import cuda_independent_kernel_launch_id
 from accelerator.cuda.runtime import cuda_kernel_launch_id
 from accelerator.exact_primitives import AcceleratorExecutionError
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.cuda.runtime import CudaIndependentKernelLaunch

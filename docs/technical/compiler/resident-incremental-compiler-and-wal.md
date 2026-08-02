@@ -7,7 +7,8 @@ Proposed
 ## Purpose
 
 Define a native long-lived compiler service that keeps source, normalized IR,
-dependency state, verified blocks, link plans, and reusable artifacts resident in
+dependency state, verified blocks, link plans, and reusable artifacts resident
+in
 RAM while persisting a deterministic write-ahead log for crash recovery. The
 service exists to reduce rebuild latency without changing compiler semantics.
 
@@ -27,7 +28,8 @@ This document governs the following declared TODO scope:
 
 The service maintains versioned source and IR identities plus a semantic
 dependency graph. Edits invalidate the smallest sound closure of affected
-frontend facts, IR nodes, verified blocks, link contracts, and emitted artifacts.
+frontend facts, IR nodes, verified blocks, link contracts, and emitted
+artifacts.
 A write-ahead log records deterministic state transitions needed to recover a
 cache generation after interruption or reject it and rebuild from authoritative
 source.
@@ -52,7 +54,8 @@ hot reload, or zero-latency recompilation today.
   partially replayed state cannot be accepted silently.
 - Invalidation follows semantic dependencies through source, IR, layout, link,
   verifier, and self-modification contracts.
-- Hot reload cannot mutate a running guest image unless the runtime can prove the
+- Hot reload cannot mutate a running guest image unless the runtime can prove
+  the
   patch preserves the declared guest-state transition contract.
 
 ## Failure Behavior

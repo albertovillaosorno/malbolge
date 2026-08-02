@@ -40,7 +40,8 @@ recompile only the semantic invalidation closure of an edit.
   authority over source, IR, verifier, or target behavior.
 - Invalidation propagates through source, type, IR, layout, link,
   self-modification, and verifier dependencies.
-- Fixed-width regions, equal character counts, equal source positions, or textual
+- Fixed-width regions, equal character counts, equal source positions, or
+  textual
   hashes may accelerate lookup but never authorize reuse by themselves.
 - Server or IPC failure falls back to a cold compilation path without changing
   compiler acceptance semantics.

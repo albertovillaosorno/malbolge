@@ -1,8 +1,3 @@
-# File:
-#   - test_ticket_admission_memory_secret_provider.py
-# Path:
-#   - tests/optimizer/test_ticket_admission_memory_secret_provider.py
-#
 # Copyright:
 #   - Copyright (c) 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
@@ -10,9 +5,7 @@
 # Confidential:
 #   - false
 # License-File:
-#   - LICENSE
-# Path-Rule:
-#   - All paths in this header are repository-root relative.
+#   - LICENSE-MIT
 #
 # Boundary-Contract:
 # - Owns:
@@ -21,7 +14,8 @@
 #   - Read environment, files, network, secret stores, create hidden workers,
 #     refresh, retry, persist, log secrets, require hardware, or change policy.
 # - Allows:
-#   - Inputs: synthetic manifests, secrets, requests, integration, and tampering.
+#   - Inputs: synthetic manifests, secrets, requests, integration, and
+#     tampering.
 #   - Outputs: exact lookup, binding, limits, secrecy, and failure assertions.
 #   - Side effects: none beyond explicit in-process calls.
 # - Split-When:
@@ -38,34 +32,16 @@
 # - Defaults:
 #   - Uses two synthetic 32-byte secrets and the 256-entry default.
 #
-# Related documents:
-# - accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
-# - accelerator/ticket_admission_memory_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
-# - accelerator/ticket_admission_file_async_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_secret_provider.py
-# - accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
-# - accelerator/ticket_admission_telemetry_lineage_trust.py
-# - accelerator/ticket_admission_telemetry_lineage.py
-# - accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
-# - accelerator/ticket_admission_memory_async_https_auth_provider.py
-#
-# Large file:
-#   - false
-#
 
 """Bounded caller-owned memory lineage secret-provider tests."""
 
-# ruff: file-ignore[line-too-long,doc-line-too-long,undocumented-public-function]
+# ruff: file-ignore[undocumented-public-function]
 
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from typing import cast
-
-import pytest
 
 from accelerator import (
     ticket_admission_telemetry_lineage_memory_secret_provider as memory,
@@ -79,6 +55,7 @@ from accelerator.ticket_admission_telemetry_lineage import (
 from accelerator.ticket_admission_telemetry_lineage import (
     MIN_TELEMETRY_LINEAGE_KEY_BYTES,
 )
+import pytest
 
 if TYPE_CHECKING:
     from accelerator.ticket_admission_telemetry_lineage_trust_manifest import (

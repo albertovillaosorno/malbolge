@@ -41,7 +41,8 @@ Version one adds presentation syntax only before canonical loading:
 - Block comments are not admitted in v1.
 - The canonicalizer removes comments and ASCII whitespace, then submits the
   resulting graphical bytes to the exact selected-profile loader.
-- Raw `.malbolge` input never gains implicit comment semantics. Annotated parsing
+- Raw `.malbolge` input never gains implicit comment semantics. Annotated
+  parsing
   must be selected by an explicit source format/entry point.
 
 `format_annotated_source()` inserts deterministic LF line breaks at an explicit
@@ -51,7 +52,8 @@ bytes remain ordinary code.
 
 ### Implemented frontend
 
-`vm/src/annotated.rs` now owns the presentation frontend.
+`src/runtime/virtual-machine/domain/annotated.rs` now owns the presentation
+frontend.
 `canonicalize_annotated_source()` returns exact canonical bytes plus one
 annotated offset/line/column for every loaded position.
 `format_annotated_source()` provides deterministic automatic wrapping.
@@ -61,7 +63,8 @@ canonicalization, the ordinary classic/profile loader remains final admission
 authority.
 
 The current formatter is structure-neutral. C/IR-aligned comments and breaks
-remain follow-on compiler/decompiler work once layout/source-map metadata exists.
+remain follow-on compiler/decompiler work once layout/source-map metadata
+exists.
 
 ### Structure-aware formatting
 
@@ -85,7 +88,8 @@ is available.
 ### Source-map consequence
 
 Canonicalization records a mapping from annotated byte/line ranges to canonical
-loaded positions. Compiler C-level source maps and decompiler/reverse-engineering
+loaded positions. Compiler C-level source maps and
+decompiler/reverse-engineering
 annotations may layer on that mapping without turning comments into executable
 metadata.
 
@@ -95,15 +99,18 @@ metadata.
 - The selected profile loader remains the final source-admission authority.
 - Whitespace/comments consume zero canonical loaded positions.
 - `canonicalize(format(canonical)) == canonical` byte-for-byte.
-- Formatting, comment text, indentation, newline convention, and wrap width never
+- Formatting, comment text, indentation, newline convention, and wrap width
+  never
   change decode phase, memory layout, self-modification, or execution.
-- Canonical `.malbolge` files are never reinterpreted merely because they contain
+- Canonical `.malbolge` files are never reinterpreted merely because they
+  contain
   hash bytes.
 - Comment recognition is ASCII/byte-defined and locale-independent.
 
 ## Failure Behavior
 
-Unknown source-format versions, malformed annotated input, non-ASCII presentation
+Unknown source-format versions, malformed annotated input, non-ASCII
+presentation
 bytes outside an explicitly admitted future encoding, or canonicalized source
 rejected by the selected profile loader fail closed with deterministic
 diagnostics. No tool silently retries the same bytes as a different source
@@ -132,4 +139,5 @@ round-trips.
 - [Historical Malbolge semantics](../specification/malbolge-1998.md)
 - [Malbolge decompiler](malbolge-decompiler.md)
 - [C-Level Source Debugging](../adr/c-level-source-debugging.md)
-- [Specification Authority And Malbolge Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+- [Specification Authority And Malbolge
+  Evolution](../adr/specification-authority-and-malbolge-evolution.md)

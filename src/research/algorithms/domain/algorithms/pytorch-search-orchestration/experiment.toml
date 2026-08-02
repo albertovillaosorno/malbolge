@@ -1,0 +1,28 @@
+schema_version = 1
+
+[experiment]
+id = "pytorch-search-orchestration"
+record_kind = "plan"
+seed = 0
+method_class = "exploratory"
+
+[challenge]
+family = "search-orchestration-baseline"
+difficulty = 1
+target_profile = "malbolge-2026.2"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50"
+
+[budget]
+seconds = 1
+memory_mib = 128
+
+[verification]
+required = true
+oracle = "trusted-semantic-verifier"
+
+[provenance]
+# jig-ignore-next-line: indivisible reviewed identifier
+configuration = "src/research/algorithms/domain/algorithms/pytorch-search-orchestration/experiment.toml"
+implementation = "algorithms/pytorch-search-orchestration/"
+output = "algorithms/pytorch-search-orchestration/out/"

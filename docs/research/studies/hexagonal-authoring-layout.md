@@ -31,7 +31,8 @@ Prior-work claims must resolve through canonical records under
   compiler/research ergonomics without creating language-based repository
   boundaries or changing emitted semantics.
 - Classic programs inside the original defined domain remain observationally
-  identical while current profile-dependent behavior is gated by explicit target identity.
+  identical while current profile-dependent behavior is gated by explicit target
+  identity.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
