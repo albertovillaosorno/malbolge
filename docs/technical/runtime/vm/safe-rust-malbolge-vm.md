@@ -42,6 +42,10 @@ identity and profile-width `u32` addresses/words. Deltas contain actual final
 changed cells only: unchanged writes are omitted, a data/encryption collision at
 one address is represented once by its final encrypted value, and
 halt/non-graphical termination/rejected transitions report no memory change.
+The public `profile_cell_is_graphical()` predicate owns the profile-width
+33-through-126 decode boundary used by tracing, execution, and verified native
+eligibility. Native backends consume this VM-owned classification rather than
+redefining Malbolge cell semantics.
 
 Both traced and untraced APIs still invoke the same transition engine. The
 internal profile step result now carries both the already-validated memory delta

@@ -158,6 +158,46 @@ fn push_u64_x9(words: &mut Vec<u32>, value: u64) -> Option<()> {
     Some(())
 }
 
+/// Encodes exact non-graphical fetch preflight and termination commit.
+#[must_use]
+pub(super) fn non_graphical_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<Vec<u8>> {
+    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
+    let mut words = Vec::with_capacity(56);
+    let mut guard_branches = Vec::with_capacity(11);
+    push_observation_guards(&mut words, &mut guard_branches, observation)?;
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, required_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    words.extend_from_slice(&[
+        movz_w10(observation.code_pointer),
+        movk_w10_high(observation.code_pointer),
+        0x8b0a_090a,
+        0xb940_014b,
+        movz_w9(live_in_value),
+        movk_w9_high(live_in_value),
+        0x6b09_017f,
+    ]);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.extend_from_slice(&[
+        0x5280_004a,
+        0x3901_300a,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
 /// Returns the canonical zero-register specialization of halt preflight/commit.
 #[must_use]
 pub(super) const fn initial_halt_code() -> &'static [u8] {
@@ -190,6 +230,16 @@ fn movz_x9(value: u64, halfword: u32) -> Option<u32> {
     let shift = halfword.checked_mul(16u32)?;
     let immediate = u32::try_from((value >> shift) & 0xffff).ok()?;
     Some(0xd280_0009 | (halfword << 21) | (immediate << 5))
+}
+
+const fn movk_w10_high(value: u32) -> u32 {
+    let immediate = (value >> 16u32) & 0xffff;
+    0x72a0_000a | (immediate << 5)
+}
+
+const fn movz_w10(value: u32) -> u32 {
+    let immediate = value & 0xffff;
+    0x5280_000a | (immediate << 5)
 }
 
 const fn movk_w9_high(value: u32) -> u32 {

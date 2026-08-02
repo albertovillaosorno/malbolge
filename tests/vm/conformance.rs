@@ -52,7 +52,7 @@
 
 use malbolge::{
     LoadError, Machine, MachineError, Memory, Registers, StepOutcome,
-    Termination, Word, load,
+    Termination, Word, load, profile_cell_is_graphical,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -130,6 +130,30 @@ fn loader_enforces_recurrence_base_and_accepts_roundtrip_fixture() -> TestResult
         &normalize_result(memory.read(Word::from_byte(2)))?,
         &Word::from_byte(b'O'),
         "third loaded word",
+    )
+}
+
+#[test]
+fn profile_graphical_cell_boundary_is_public_and_exact() -> TestResult {
+    check_equal(
+        &profile_cell_is_graphical(32),
+        &false,
+        "cell below graphical ASCII is rejected",
+    )?;
+    check_equal(
+        &profile_cell_is_graphical(33),
+        &true,
+        "graphical ASCII lower bound is admitted",
+    )?;
+    check_equal(
+        &profile_cell_is_graphical(126),
+        &true,
+        "graphical ASCII upper bound is admitted",
+    )?;
+    check_equal(
+        &profile_cell_is_graphical(127),
+        &false,
+        "cell above graphical ASCII is rejected",
     )
 }
 

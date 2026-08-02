@@ -131,6 +131,36 @@ fn push_u64_guard(
     push_guard_jump(code, jumps, 0x75);
 }
 
+/// Encodes exact non-graphical fetch preflight and termination commit.
+#[must_use]
+pub(super) fn non_graphical_code(
+    observation: DirectEntryObservation,
+    live_in_value: u32,
+) -> Option<Vec<u8>> {
+    let required_words = u64::from(observation.code_pointer).checked_add(1)?;
+    let mut code = Vec::with_capacity(128);
+    let mut guard_jumps = Vec::with_capacity(11);
+    push_observation_guards(&mut code, &mut guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&required_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11, 0x41, 0xb9]);
+    code.extend_from_slice(&observation.code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x42, 0x81, 0x3c, 0x8a]);
+    code.extend_from_slice(&live_in_value.to_le_bytes());
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x02, 0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
+}
+
 /// Returns the canonical zero-register specialization of halt preflight/commit.
 #[must_use]
 pub(super) const fn initial_halt_code() -> &'static [u8] {

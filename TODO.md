@@ -278,21 +278,27 @@ extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
 input/output counter observations, still with no memory/I/O effects. Independently
 rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
 nontrivial registers; counter, opcode, and historical-revision mismatches fail
-closed. Direct-template selection now requires an
+closed. `direct-non-graphical` revision 1 adds the first exact memory-live-in guard:
+one non-graphical code-cell live-in at `C`, full entry observation, non-null memory,
+and `memory_words > C` are checked before reading `memory[C]`; only termination tag
+`2` is committed. The VM-owned graphical predicate defines eligibility. Independent
+538/631-byte objects, x86-64 hit/live-in/capacity/null execution, and AArch64
+instruction decoding bind the contract. Direct-template selection requires an
 explicit runtime capability, derives exact `u64` region memory from C/D pointers,
 live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
 backend selection. After admission, zero-register halt chooses the smallest
-specialization, other eligible one-step halts choose register-bound code, and all
-remaining IR chooses verified deopt; unsupported direct host formats remain
+specialization, other eligible one-step halts choose observation-bound code,
+non-graphical fetch termination chooses the live-in-bound template, and remaining
+IR chooses verified deopt; unsupported direct host formats remain
 explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
 that format absence to the normative interpreter after `002`/`001` checks; real
 backend/emission/admission failures remain errors. Raw untrusted IR remains
 canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
-construction. Direct deopt/initial-halt revision-4 and halt-observation revision-5
-objects bind that exact footprint in `MBPF` v3, and same-profile footprint
-mismatch fails structural admission.
+construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
+and non-graphical revision-1 objects bind that exact footprint in `MBPF` v3, and
+same-profile footprint mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
 remain one entry even when their accelerator digests differ, while forced digest
@@ -303,7 +309,7 @@ direct artifacts. Cache-aware planning prepares one specialization-bound exact k
 for lookup and consumes it during miss emission, avoiding a second IR
 canonicalization while state-applying verifiers retain independent key
 reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for all
-three templates, and shares the same immutable `Arc` allocation on hits. Exact
+four templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
@@ -313,8 +319,9 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, general region-effect fast paths, executable
-invocation, and broader AOT/JIT performance policy remain open.
+eviction, synchronization policy, general memory-writing/I/O instruction
+selection, executable invocation, and broader AOT/JIT performance policy remain
+open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,

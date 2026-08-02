@@ -75,16 +75,19 @@ use execution_native::{
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
+    DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DirectCacheDisposition, DirectDeoptError, DirectHaltRegistersError,
-    DirectHost, DirectInitialHaltError, DirectNativeKind, DirectSelectionError,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
+    DirectHost, DirectInitialHaltError, DirectNativeKind,
+    DirectNonGraphicalError, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactError, PreflightedExecutionTier,
     UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
     emit_direct_deopt_coff, emit_direct_halt_registers_coff,
-    emit_direct_initial_halt_coff, lower_clang_c23,
-    select_cached_preflighted_execution_tier,
+    emit_direct_initial_halt_coff, emit_direct_non_graphical_coff,
+    lower_clang_c23, select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     structurally_admit_coff, verify_direct_deopt_stub,
     verify_direct_halt_registers, verify_direct_initial_halt,
+    verify_direct_non_graphical,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -1003,6 +1006,55 @@ fn direct_halt_registers_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_non_graphical_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        termination: Some(Termination::NonGraphicalCell),
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta::default(),
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 0 }],
+        outcome: RunOutcome::Terminated {
+            reason: Termination::NonGraphicalCell,
+            steps: 1,
+        },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-non-graphical-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_non_graphical_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_NON_GRAPHICAL_BACKEND_ID),
+        backend_revision: DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_initial_halt_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0,
@@ -1117,6 +1169,10 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
         (
             direct_halt_registers_program(),
             DirectNativeKind::HaltRegisters,
+        ),
+        (
+            direct_non_graphical_program(),
+            DirectNativeKind::NonGraphical,
         ),
         (native_program(), DirectNativeKind::Deopt),
     ];
@@ -1535,63 +1591,62 @@ fn tier_planner_preserves_profile_errors_before_fallback() -> Result<(), String>
     }
 }
 
+fn selected_direct_triple(
+    program: &RegionEffectProgram,
+    isa: HostIsa,
+    kind: DirectNativeKind,
+    backend_id: &str,
+) -> Result<&'static str, String> {
+    let selected = select_verified_direct_native(
+        program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| error.to_string())?;
+    if selected.kind() != kind
+        || selected.key().target().backend_id() != backend_id
+        || selected.object().is_empty()
+    {
+        Err(format!("direct selector missed {backend_id}"))
+    } else {
+        Ok(selected.target_triple())
+    }
+}
+
 #[test]
 fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 -> Result<(), String> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let fast = select_verified_direct_native(
+        let initial = selected_direct_triple(
             &direct_initial_halt_program(),
-            safe_rust_profiled_capability(),
-            HostOperatingSystem::Windows,
             isa,
-        )
-        .map_err(|error| error.to_string())?;
-        if fast.kind() != DirectNativeKind::InitialHalt
-            || fast.key().target().backend_id()
-                != DIRECT_INITIAL_HALT_BACKEND_ID
-            || fast.object().is_empty()
-        {
-            return Err(String::from(
-                "direct selector missed initial-halt fast path",
-            ));
-        }
-
-        let register_halt = select_verified_direct_native(
+            DirectNativeKind::InitialHalt,
+            DIRECT_INITIAL_HALT_BACKEND_ID,
+        )?;
+        let register = selected_direct_triple(
             &direct_halt_registers_program(),
-            safe_rust_profiled_capability(),
-            HostOperatingSystem::Windows,
             isa,
-        )
-        .map_err(|error| error.to_string())?;
-        if register_halt.kind() != DirectNativeKind::HaltRegisters
-            || register_halt.key().target().backend_id()
-                != DIRECT_HALT_REGISTERS_BACKEND_ID
-            || register_halt.object().is_empty()
-        {
-            return Err(String::from(
-                "direct selector missed register-bound halt fast path",
-            ));
-        }
-
-        let fallback = select_verified_direct_native(
+            DirectNativeKind::HaltRegisters,
+            DIRECT_HALT_REGISTERS_BACKEND_ID,
+        )?;
+        let non_graphical = selected_direct_triple(
+            &direct_non_graphical_program(),
+            isa,
+            DirectNativeKind::NonGraphical,
+            DIRECT_NON_GRAPHICAL_BACKEND_ID,
+        )?;
+        let fallback = selected_direct_triple(
             &native_program(),
-            safe_rust_profiled_capability(),
-            HostOperatingSystem::Windows,
             isa,
-        )
-        .map_err(|error| error.to_string())?;
-        if fallback.kind() != DirectNativeKind::Deopt
-            || fallback.key().target().backend_id() != DIRECT_DEOPT_BACKEND_ID
-            || fallback.object().is_empty()
+            DirectNativeKind::Deopt,
+            DIRECT_DEOPT_BACKEND_ID,
+        )?;
+        if initial != register
+            || initial != non_graphical
+            || initial != fallback
         {
-            return Err(String::from(
-                "direct selector failed verified deopt fallback",
-            ));
-        }
-        if fast.target_triple() != fallback.target_triple() {
-            return Err(String::from(
-                "direct selector changed target triple by tier",
-            ));
+            return Err(String::from("direct tier changed target triple"));
         }
     }
     Ok(())
@@ -1829,6 +1884,140 @@ fn direct_halt_registers_rejects_ir_and_opcode_tampering() -> Result<(), String>
 }
 
 #[test]
+fn direct_non_graphical_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!(
+                "execution/fixtures/native-non-graphical-x86_64-coff.hex"
+            ),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-non-graphical-aarch64-coff.hex"
+            ),
+        ),
+    ];
+    let program = direct_non_graphical_program();
+    for (isa, fixture) in cases {
+        let artifact = emit_direct_non_graphical_coff(
+            &program,
+            direct_non_graphical_target(isa),
+        )
+        .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!(
+                "direct non-graphical fixture mismatch for {isa:?}"
+            ));
+        }
+        let verified = verify_direct_non_graphical(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from(
+                "verified non-graphical identity drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn assert_non_graphical_shape_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut graphical = program.clone();
+    let graphical_live_in = graphical
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("non-graphical fixture lost live-in"))?;
+    graphical_live_in.value = 33;
+    if emit_direct_non_graphical_coff(
+        &graphical,
+        direct_non_graphical_target(HostIsa::X86_64),
+    ) != Err(DirectNonGraphicalError::ProgramShape)
+    {
+        return Err(String::from("graphical live-in was admitted"));
+    }
+    let mut wrong_address = program.clone();
+    let address_live_in =
+        wrong_address.memory_live_ins.first_mut().ok_or_else(|| {
+            String::from("non-graphical fixture lost address live-in")
+        })?;
+    address_live_in.address = 6;
+    if emit_direct_non_graphical_coff(
+        &wrong_address,
+        direct_non_graphical_target(HostIsa::X86_64),
+    ) == Err(DirectNonGraphicalError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("wrong fetch live-in was admitted"))
+    }
+}
+
+fn assert_non_graphical_revision_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_NON_GRAPHICAL_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_non_graphical_coff(program, obsolete)
+        == Err(DirectNonGraphicalError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete non-graphical revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_non_graphical_rejects_ir_opcode_and_revision_tampering()
+-> Result<(), String> {
+    let program = direct_non_graphical_program();
+    let artifact = emit_direct_non_graphical_coff(
+        &program,
+        direct_non_graphical_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0xc6u8, 0x41, 0x4c, 0x02];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("non-graphical commit opcode missing"))?;
+    let immediate = mutated_object
+        .get_mut(offset.saturating_add(3))
+        .ok_or_else(|| {
+            String::from("non-graphical commit immediate missing")
+        })?;
+    *immediate = 1;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered).map_err(|error| {
+        format!("tampered non-graphical structure: {error}")
+    })?;
+    if verify_direct_non_graphical(&tampered, &program)
+        != Err(DirectNonGraphicalError::ObjectBytes)
+    {
+        return Err(String::from("tampered non-graphical object was admitted"));
+    }
+    assert_non_graphical_shape_rejections(&program)?;
+    assert_non_graphical_revision_rejected(&program)
+}
+
+#[test]
 fn direct_initial_halt_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [
@@ -1940,6 +2129,18 @@ fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
     {
         return Err(String::from(
             "register-halt profile-capacity mismatch was admitted",
+        ));
+    }
+
+    let mut non_graphical = direct_non_graphical_program();
+    non_graphical.profile_requirement.memory_words = 5;
+    if emit_direct_non_graphical_coff(
+        &non_graphical,
+        direct_non_graphical_target(HostIsa::X86_64),
+    ) != Err(DirectNonGraphicalError::ProgramShape)
+    {
+        return Err(String::from(
+            "non-graphical profile-capacity mismatch was admitted",
         ));
     }
 

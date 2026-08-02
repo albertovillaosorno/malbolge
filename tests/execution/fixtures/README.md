@@ -8,7 +8,7 @@ published version, eight stable semantic features, word trits, and directly
 addressed profile capacity. Verified budget, outcome, live-ins, and ordered
 effects follow.
 
-The six `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
+The eight `native-*-coff.hex` fixtures freeze the complete direct Windows COFF
 objects for x86-64 and AArch64. Every direct object contains:
 
 1. one executable, non-writable `.text` section;
@@ -28,11 +28,14 @@ The envelope carries every input required to preflight direct objects for both
 `MALBOLGE-PROFILE-001` and `MALBOLGE-PROFILE-002`. A same-profile object paired
 with a key for a different region footprint fails structural admission.
 
-Direct deopt and initial-halt revision 4 plus halt-observation revision 5 use
-metadata v3. Exact x86-64/AArch64 object sizes are 413/415 bytes for deopt,
-495/564 for register/counter halt, and 466/490 for initial halt respectively. The
-halt fixtures bind `input_consumed=0x0000000123456789` and
-`output_len=0x000000023456789a`, proving full-width counter materialization.
+Direct deopt and initial-halt revision 4, halt-observation revision 5, and
+non-graphical revision 1 use metadata v3. Exact x86-64/AArch64 object sizes are
+413/415 bytes for deopt, 495/564 for register/counter halt, 466/490 for initial
+halt, and 538/631 for non-graphical termination respectively. The wider terminal
+fixtures bind `input_consumed=0x0000000123456789` and
+`output_len=0x000000023456789a`, proving full-width counter materialization. The
+non-graphical pair additionally binds `C=5`, exact live-in `memory[5]=0`, and an
+8-word memory requirement before committing only termination.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters; fixture

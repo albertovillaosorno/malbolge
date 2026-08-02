@@ -864,7 +864,7 @@ impl ProfileMachine {
         cell: u32,
         memory_reads: ProfileMemoryReads,
     ) -> ProfileStepExecution {
-        if !is_graphical(cell) {
+        if !profile_cell_is_graphical(cell) {
             self.termination = Some(Termination::NonGraphicalCell);
             return ProfileStepExecution::outcome(
                 memory_reads,
@@ -919,12 +919,11 @@ impl ProfileMachine {
         let before = self.observation();
         let execution = self.step_execution();
         let fetched_cell = execution.memory_reads.fetch.map(|read| read.value);
-        let decoded =
-            fetched_cell
-                .filter(|cell| is_graphical(*cell))
-                .and_then(|cell| {
-                    profile_decode(cell, before.registers.code_pointer)
-                });
+        let decoded = fetched_cell
+            .filter(|cell| profile_cell_is_graphical(*cell))
+            .and_then(|cell| {
+                profile_decode(cell, before.registers.code_pointer)
+            });
         let decoded_instruction = decoded.map(profile_instruction);
         let result = execution.result;
         let memory_delta = execution.memory_delta;
@@ -986,7 +985,7 @@ impl ProfileMachine {
                 Some(ProfileMemoryRead { address: pointer, value });
             value
         };
-        if !is_graphical(target) {
+        if !profile_cell_is_graphical(target) {
             return Err(ProfileMachineError::InvalidEncryptionTarget {
                 pointer,
                 value: target,
@@ -1092,8 +1091,10 @@ fn validate_state_registers(
     )
 }
 
-fn is_graphical(value: u32) -> bool {
-    (GRAPHICAL_MIN..=GRAPHICAL_MAX).contains(&value)
+/// Reports whether one profile-width cell is graphical ASCII for decode.
+#[must_use]
+pub const fn profile_cell_is_graphical(value: u32) -> bool {
+    value >= GRAPHICAL_MIN && value <= GRAPHICAL_MAX
 }
 
 fn load_profile(
@@ -1185,7 +1186,7 @@ fn profile_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
 }
 
 fn profile_decode(cell: u32, code_pointer: u32) -> Option<u8> {
-    if !is_graphical(cell) {
+    if !profile_cell_is_graphical(cell) {
         return None;
     }
     let cell_offset =
@@ -1201,7 +1202,7 @@ fn profile_decode(cell: u32, code_pointer: u32) -> Option<u8> {
 }
 
 fn profile_encrypt(cell: u32) -> Option<u32> {
-    if !is_graphical(cell) {
+    if !profile_cell_is_graphical(cell) {
         return None;
     }
     let index = usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;

@@ -71,11 +71,22 @@ and atomic counter miss; independent fixture decoding confirms AArch64 full-widt
 immediates and one common miss target. This widens admitted entry state, not the
 guest-effect surface.
 
+`direct-non-graphical` revision 1 is the first reviewed direct template with an
+exact memory live-in. The VM-owned graphical-cell predicate admits one
+non-graphical live-in at `C`; each ISA guards the full entry observation, memory
+pointer, `memory_words > C`, exact `memory[C]`, and prior termination before
+committing only termination tag `2`. Independent complete objects are 538/631
+bytes. x86-64 development execution proves hit and atomic live-in/capacity/null
+misses; independent AArch64 decoding confirms the expected guards and common miss
+target. This reads verified memory evidence but still performs no guest-memory or
+I/O write.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF remains semantically untrusted. A
-direct deopt-only emitter/verifier is implemented for both ISAs; accelerated
-direct region-effect emitters, executable-memory handling, calling/runtime
+reviewed direct terminal emitters/verifiers are implemented for both ISAs;
+general memory-writing/I/O instruction selection, executable-memory handling,
+calling/runtime
 integration, and instruction-cache synchronization remain unimplemented.
 
 ## Invariants
