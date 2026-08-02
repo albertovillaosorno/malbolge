@@ -70,7 +70,8 @@ historical-profile constraint.
   footprint from C/D observations, live-ins, and writes. Combined portable
   preflight emits byte-identical `MALBOLGE-PROFILE-002` before checking `001`.
 - Direct-template selection invokes that combined preflight before host/backend
-  selection; neither profile error is converted to deopt fallback.
+  selection; neither profile error is converted to deopt fallback. The
+  preflighted tier planner maps only unsupported direct host format to interpreter.
 - Raw IR remains transportable for verifier rejection, while cache/native identity
   rejects profile-capacity-inconsistent addressing before bootstrap or direct
   artifact construction. Direct structural admission also rejects same-profile

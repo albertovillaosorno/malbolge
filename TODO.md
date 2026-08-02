@@ -277,14 +277,17 @@ explicit runtime capability, derives exact `u64` region memory from C/D pointers
 live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
 backend selection. After admission, zero-register halt chooses the smallest
 specialization, other eligible one-step halts choose register-bound code, and all
-remaining IR chooses verified deopt; unsupported host formats fail explicitly.
-Raw untrusted IR remains canonically transportable for deterministic rejection,
+remaining IR chooses verified deopt; unsupported direct host formats remain
+explicit at that narrow boundary. A product-neutral preflighted tier plan maps only
+that format absence to the normative interpreter after `002`/`001` checks; real
+backend/emission/admission failures remain errors. Raw untrusted IR remains
+canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
 construction. Direct revision-4 objects bind that exact footprint in `MBPF` v3,
 and same-profile footprint mismatch fails structural admission. General
-region-effect fast paths, cache/orchestration, executable invocation, and
-full AOT/JIT tier selection remain open.
+region-effect fast paths, cache-aware orchestration, executable invocation, and
+AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache identity,
@@ -383,7 +386,8 @@ COFF `MBPF` v3 metadata now carry every canonical profile-side input for
 admitted IR against explicit classic/profiled capability with byte-identical
 canonical diagnostics and fail-closed unknown features. Effect IR now derives
 exact region memory and direct selection applies byte-identical
-`MALBOLGE-PROFILE-002` before `001`. Equivalent non-IR program requirements,
+`MALBOLGE-PROFILE-002` before `001`; the preflighted tier plan maps only direct
+format absence to interpreter. Equivalent non-IR program requirements,
 bootstrap artifacts, broader AOT/JIT/runtime orchestration, and universal product
 invocation remain open.
 

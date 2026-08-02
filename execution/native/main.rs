@@ -69,12 +69,14 @@ pub use direct::{
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
     DirectDeoptError, DirectHaltRegistersError, DirectInitialHaltError,
-    DirectNativeKind, DirectSelectionError, VerifiedDeoptNativeObjectArtifact,
-    VerifiedDirectNativeArtifact, VerifiedHaltRegistersNativeObjectArtifact,
+    DirectNativeKind, DirectSelectionError, PreflightedExecutionTier,
+    VerifiedDeoptNativeObjectArtifact, VerifiedDirectNativeArtifact,
+    VerifiedHaltRegistersNativeObjectArtifact,
     VerifiedInitialHaltNativeObjectArtifact, emit_direct_deopt_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    select_verified_direct_native, verify_direct_deopt_stub,
-    verify_direct_halt_registers, verify_direct_initial_halt,
+    select_preflighted_execution_tier, select_verified_direct_native,
+    verify_direct_deopt_stub, verify_direct_halt_registers,
+    verify_direct_initial_halt,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,

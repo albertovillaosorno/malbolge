@@ -111,6 +111,13 @@ backend/emission/verification errors are never reinterpreted as fallback, and an
 unsupported host format still fails explicitly when the profile is supported.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
 
+`select_preflighted_execution_tier()` adds the first product-neutral planning
+boundary above direct selection. A supported Windows direct object returns
+`PreflightedExecutionTier::Direct`; Linux/macOS format absence returns
+`Interpreter` only after the same program/profile/runtime preflight. `002`, `001`,
+and all post-selection emission/admission errors remain errors. The planner does
+not perform cache lookup, executable-memory allocation, linking, or execution.
+
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass
 the selector cannot promote `direct-initial-halt` or `direct-halt-registers` when

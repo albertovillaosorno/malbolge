@@ -150,16 +150,22 @@ profile-capacity shape check. A caller bypassing the selector cannot semanticall
 promote an initial-halt or register-halt object whose IR footprint exceeds its
 embedded profile envelope.
 
+`select_preflighted_execution_tier()` is the first planning boundary above direct
+selection. It maps only top-level direct `TargetFormat` absence to the normative
+interpreter after profile preflight. Windows returns the exact verified direct
+artifact; `MALBOLGE-PROFILE-002`, `MALBOLGE-PROFILE-001`, and any backend,
+emission, or admission failure remain errors. This boundary performs no cache
+lookup, executable-memory policy, linking, or invocation.
+
 ### Remaining Implementation
 
 Semantic admission beyond the deopt and one-step halt template family, general
 direct accelerated x86-64/AArch64 region-effect instruction selection, executable-memory
 policy/invocation, durable native cache
-serialization/storage/eviction, AOT/JIT orchestration, and the end-to-end tier
-selector beyond this runtime-aware direct-template choice remain open. The
-interpreter remains
-the only normative execution
-authority and the guaranteed fallback.
+serialization/storage/eviction, cache-aware AOT/JIT orchestration, executable
+invocation, and performance policy beyond this preflighted plan remain open. The
+interpreter remains the only normative execution authority and the guaranteed
+fallback.
 
 ## Invariants
 

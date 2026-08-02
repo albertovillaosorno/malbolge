@@ -74,9 +74,11 @@ use execution_native::{
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
     DirectDeoptError, DirectHaltRegistersError, DirectInitialHaltError,
     DirectNativeKind, DirectSelectionError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
+    NativeArtifactError, PreflightedExecutionTier,
+    UntrustedNativeObjectArtifact, emit_direct_deopt_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    lower_clang_c23, select_verified_direct_native, structurally_admit_coff,
+    lower_clang_c23, select_preflighted_execution_tier,
+    select_verified_direct_native, structurally_admit_coff,
     verify_direct_deopt_stub, verify_direct_halt_registers,
     verify_direct_initial_halt,
 };
@@ -787,6 +789,90 @@ fn direct_initial_halt_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+#[test]
+fn tier_planner_uses_interpreter_only_for_missing_direct_format()
+-> Result<(), String> {
+    let direct = select_preflighted_execution_tier(
+        &direct_initial_halt_program(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let PreflightedExecutionTier::Direct(artifact) = direct else {
+        return Err(String::from("Windows direct tier selected interpreter"));
+    };
+    if artifact.kind() != DirectNativeKind::InitialHalt {
+        return Err(String::from("tier planner changed direct specialization"));
+    }
+    for host_os in [HostOperatingSystem::Linux, HostOperatingSystem::MacOs] {
+        let selected = select_preflighted_execution_tier(
+            &native_program(),
+            safe_rust_profiled_capability(),
+            host_os,
+            HostIsa::X86_64,
+        )
+        .map_err(|error| error.to_string())?;
+        if selected != PreflightedExecutionTier::Interpreter {
+            return Err(format!("{host_os:?} did not select interpreter"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn tier_planner_preserves_profile_errors_before_fallback() -> Result<(), String>
+{
+    let current = direct_initial_halt_program();
+    let Err(runtime_error) = select_preflighted_execution_tier(
+        &current,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from("runtime mismatch degraded to interpreter"));
+    };
+    let DirectSelectionError::Profile(runtime_profile) = runtime_error else {
+        return Err(format!(
+            "runtime mismatch changed category: {runtime_error}"
+        ));
+    };
+    if runtime_profile.kind()
+        != ProfileRequirementErrorKind::RuntimeCapabilityMissing
+    {
+        return Err(String::from("runtime mismatch lost MALBOLGE-PROFILE-001"));
+    }
+
+    let mut overflow = direct_initial_halt_program();
+    let address = current_profile().memory_words();
+    let effect = overflow
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("initial-halt fixture has no effect"))?;
+    effect.before.registers.data_pointer = address;
+    effect.after.registers.data_pointer = address;
+    let Err(capacity_error) = select_preflighted_execution_tier(
+        &overflow,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from("capacity mismatch degraded to interpreter"));
+    };
+    let DirectSelectionError::Profile(capacity_profile) = capacity_error else {
+        return Err(format!(
+            "capacity mismatch changed category: {capacity_error}"
+        ));
+    };
+    if capacity_profile.kind()
+        == ProfileRequirementErrorKind::ProfileCapacityExceeded
+    {
+        Ok(())
+    } else {
+        Err(String::from("capacity mismatch lost MALBOLGE-PROFILE-002"))
+    }
 }
 
 #[test]

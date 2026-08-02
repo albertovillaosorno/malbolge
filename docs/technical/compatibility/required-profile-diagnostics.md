@@ -196,10 +196,13 @@ Although raw IR remains serializable for deterministic rejection,
 embedded profile capacity before bootstrap or direct artifact construction.
 Direct `MBPF` v3 objects additionally retain that exact footprint, so structural
 admission detects same-profile object/key disagreement before runtime preflight.
+The preflighted tier planner then maps unsupported direct host format to the
+interpreter only after combined profile preflight; `002` and `001` are never
+converted to fallback.
 Other artifact families do not yet universally expose an equivalent program
-requirement, and bootstrap compiler artifacts, top-level AOT/JIT/runtime
-orchestration, and product execution paths do not yet universally invoke combined
-portable preflight. This contract therefore remains active
+requirement, and bootstrap compiler artifacts, cache-aware AOT/JIT/runtime
+execution, and product paths do not yet universally invoke combined portable
+preflight. This contract therefore remains active
 rather than claiming repository-wide profile diagnostic completion.
 
 ## Verification

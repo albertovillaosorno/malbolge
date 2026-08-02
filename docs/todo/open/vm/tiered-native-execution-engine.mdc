@@ -106,11 +106,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   preserves registers and commits halt, while one-register miss is atomic.
 - After program/profile/runtime admission, direct-template orchestration
   classifies IR before backend construction: exact zero-register halt selects the
-  smallest fast
-  path, other eligible halt IR selects the register-bound template, and remaining
-  IR selects verified deopt. Unsupported host formats fail explicitly and
-  post-selection errors never degrade silently to fallback.
-- Accelerated semantic machine-code admission/direct effect emitters, AOT/JIT
-  orchestration,
-  durable cache storage/eviction, executable-memory policy, and end-to-end tier
-  performance remain unimplemented.
+  smallest fast path, other eligible halt IR selects the register-bound template,
+  and remaining IR selects verified deopt. Unsupported direct host formats remain
+  explicit at this narrow boundary and post-selection errors never degrade
+  silently to fallback.
+- `select_preflighted_execution_tier()` adds a product-neutral plan above that
+  boundary. Only top-level direct format absence maps to the normative interpreter
+  after preflight; `002`, `001`, and backend/emission/admission failures remain
+  errors. Cache lookup, executable memory, linking, invocation, and performance
+  policy remain outside this planner.
+- Accelerated semantic machine-code admission/direct effect emitters, cache-aware
+  AOT/JIT orchestration, durable cache storage/eviction, executable-memory policy,
+  invocation, and end-to-end tier performance remain unimplemented.

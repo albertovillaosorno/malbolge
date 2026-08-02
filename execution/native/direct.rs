@@ -395,6 +395,15 @@ pub enum VerifiedDirectNativeArtifact {
     InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
 }
 
+/// Profile-preflighted execution-tier plan for one portable IR program.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PreflightedExecutionTier {
+    /// One semantically admitted direct object is available for this host.
+    Direct(Box<VerifiedDirectNativeArtifact>),
+    /// No direct object format exists; use the normative interpreter.
+    Interpreter,
+}
+
 impl VerifiedDirectNativeArtifact {
     /// Returns the exact selected native artifact identity.
     #[must_use]
@@ -510,6 +519,33 @@ pub fn select_verified_direct_native<'requirement>(
     let verified = verify_direct_deopt_stub(&artifact)
         .map_err(|error| DirectSelectionError::Deopt(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::Deopt(verified))
+}
+
+/// Selects a profile-preflighted direct or interpreter execution plan.
+///
+/// Unsupported direct host formats are an expected capability absence and map
+/// to the interpreter. Profile errors and any failure after backend selection
+/// remain errors; they are never converted to interpreter fallback.
+///
+/// # Errors
+///
+/// Returns [`DirectSelectionError`] for unsupported program/profile/runtime or
+/// any direct emission/admission failure other than host-format absence.
+pub fn select_preflighted_execution_tier<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<PreflightedExecutionTier, DirectSelectionError<'requirement>> {
+    match select_verified_direct_native(program, runtime, host_os, host_isa) {
+        Ok(artifact) => {
+            Ok(PreflightedExecutionTier::Direct(Box::new(artifact)))
+        },
+        Err(DirectSelectionError::TargetFormat) => {
+            Ok(PreflightedExecutionTier::Interpreter)
+        },
+        Err(error) => Err(error),
+    }
 }
 
 /// Emits a deterministic direct native object that always requests deopt.
