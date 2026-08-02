@@ -51,9 +51,9 @@ use malbolge::{
     ExecutionErrorKind, ExecutionMachine, ExecutionMode, ProfileKind,
     ProfileRequirementErrorKind, RuntimeProfileRequirementError,
     TargetProfileRequirement, current_profile, historical_profile,
-    preflight_profile, preflight_runtime_requirement,
-    safe_rust_classic_capability, safe_rust_profiled_capability,
-    target_profile,
+    preflight_portable_profile_requirement, preflight_profile,
+    preflight_runtime_requirement, safe_rust_classic_capability,
+    safe_rust_profiled_capability, target_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -199,6 +199,43 @@ fn portable_requirement_rejects_unknown_feature_fail_closed() -> TestResult {
     } else {
         Err(format!("unknown feature diagnostic mismatch: {diagnostic}"))
     }
+}
+
+#[test]
+fn portable_capacity_matches_historical_diagnostic() -> TestResult {
+    let historical = historical_profile();
+    let requirement = TargetProfileRequirement::from_descriptor(historical);
+    let required_memory_words = u64::from(HISTORICAL_WORDS).saturating_add(1);
+    let Err(canonical) = preflight_profile(
+        historical,
+        HISTORICAL_WORDS.saturating_add(1),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("canonical historical overflow was accepted"));
+    };
+    let Err(portable) = preflight_portable_profile_requirement(
+        historical.id(),
+        &requirement,
+        required_memory_words,
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("portable historical overflow was accepted"));
+    };
+    check_equal(
+        &portable.kind(),
+        &ProfileRequirementErrorKind::ProfileCapacityExceeded,
+        "portable historical capacity kind",
+    )?;
+    check_equal(
+        &portable.required_memory_words(),
+        &required_memory_words,
+        "portable requested memory",
+    )?;
+    check_equal(
+        &format!("{portable}"),
+        &format!("{canonical}"),
+        "portable/canonical capacity diagnostic parity",
+    )
 }
 
 #[test]

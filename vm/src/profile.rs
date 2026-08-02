@@ -352,6 +352,61 @@ pub struct ProfileRequirementError {
     runtime: &'static RuntimeCapability,
 }
 
+/// Portable program/profile or runtime-capability preflight rejection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PortableProfileRequirementError<'requirement> {
+    kind: ProfileRequirementErrorKind,
+    profile_id: &'requirement str,
+    required_memory_words: u64,
+    requirement: &'requirement TargetProfileRequirement,
+    runtime: &'static RuntimeCapability,
+}
+
+impl<'requirement> PortableProfileRequirementError<'requirement> {
+    /// Returns the stable machine-readable diagnostic code.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self.kind {
+            ProfileRequirementErrorKind::ProfileCapacityExceeded => {
+                "MALBOLGE-PROFILE-002"
+            },
+            ProfileRequirementErrorKind::RuntimeCapabilityMissing => {
+                "MALBOLGE-PROFILE-001"
+            },
+        }
+    }
+
+    /// Returns the stable rejection category.
+    #[must_use]
+    pub const fn kind(self) -> ProfileRequirementErrorKind {
+        self.kind
+    }
+
+    /// Returns the declared profile identity checked by this preflight.
+    #[must_use]
+    pub const fn profile_id(self) -> &'requirement str {
+        self.profile_id
+    }
+
+    /// Returns the exact minimum directly addressed words requested.
+    #[must_use]
+    pub const fn required_memory_words(self) -> u64 {
+        self.required_memory_words
+    }
+
+    /// Returns the admitted portable target-profile requirement envelope.
+    #[must_use]
+    pub const fn requirement(self) -> &'requirement TargetProfileRequirement {
+        self.requirement
+    }
+
+    /// Returns the runtime capability checked after profile capacity.
+    #[must_use]
+    pub const fn runtime(self) -> &'static RuntimeCapability {
+        self.runtime
+    }
+}
+
 /// Runtime-capability rejection for an admitted portable requirement envelope.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeProfileRequirementError<'requirement> {
@@ -422,6 +477,28 @@ impl ProfileRequirementError {
     }
 }
 
+impl Display for PortableProfileRequirementError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self.kind {
+            ProfileRequirementErrorKind::ProfileCapacityExceeded => {
+                write_portable_capacity_error(f, *self)
+            },
+            ProfileRequirementErrorKind::RuntimeCapabilityMissing => {
+                write_runtime_requirement(f, RuntimeRequirementView {
+                    features: RequirementFeatures::Portable(
+                        &self.requirement.features,
+                    ),
+                    memory_words: self.requirement.memory_words,
+                    profile_id: self.profile_id,
+                    runtime: *self.runtime,
+                    version: &self.requirement.version,
+                    word_trits: self.requirement.word_trits,
+                })
+            },
+        }
+    }
+}
+
 impl Display for RuntimeProfileRequirementError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write_runtime_requirement(f, RuntimeRequirementView {
@@ -446,6 +523,15 @@ impl Display for ProfileRequirementError {
             },
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct CapacityRequirementView<'requirement> {
+    constraint: &'static str,
+    profile_id: &'requirement str,
+    profile_memory_words: u32,
+    required_memory_words: u64,
+    version: &'requirement str,
 }
 
 #[derive(Clone, Copy)]
@@ -474,6 +560,51 @@ pub fn current_profile() -> &'static ProfileDescriptor {
 #[must_use]
 pub fn historical_profile() -> &'static ProfileDescriptor {
     generated::HISTORICAL_PROFILE
+}
+
+/// Checks one portable program/profile requirement against a runtime.
+///
+/// Profile capacity is checked before runtime capability. This accepts a `u64`
+/// memory requirement so the full `u32` address domain remains exact.
+///
+/// # Errors
+///
+/// Returns `MALBOLGE-PROFILE-002` when the program addresses beyond the
+/// selected profile, otherwise returns the shared `MALBOLGE-PROFILE-001`
+/// runtime error.
+pub fn preflight_portable_profile_requirement<'requirement>(
+    profile_id: &'requirement str,
+    requirement: &'requirement TargetProfileRequirement,
+    required_memory_words: u64,
+    runtime: &'static RuntimeCapability,
+) -> Result<(), PortableProfileRequirementError<'requirement>> {
+    if required_memory_words > u64::from(requirement.memory_words) {
+        return Err(PortableProfileRequirementError {
+            kind: ProfileRequirementErrorKind::ProfileCapacityExceeded,
+            profile_id,
+            required_memory_words,
+            requirement,
+            runtime,
+        });
+    }
+    let view = RuntimeRequirementView {
+        features: RequirementFeatures::Portable(&requirement.features),
+        memory_words: requirement.memory_words,
+        profile_id,
+        runtime: *runtime,
+        version: &requirement.version,
+        word_trits: requirement.word_trits,
+    };
+    if runtime_requirement_missing(view) {
+        return Err(PortableProfileRequirementError {
+            kind: ProfileRequirementErrorKind::RuntimeCapabilityMissing,
+            profile_id,
+            required_memory_words,
+            requirement,
+            runtime,
+        });
+    }
+    Ok(())
 }
 
 /// Checks one admitted portable profile envelope against a runtime capability.
@@ -598,21 +729,53 @@ fn write_capacity_error(
     formatter: &mut Formatter<'_>,
     error: ProfileRequirementError,
 ) -> FormatResult {
-    let code = error.code();
     let profile = error.profile;
-    let profile_id = profile.id;
-    let version = profile.version;
     let constraint = if profile.kind == ProfileKind::HistoricalConformance {
         "historical-profile-ceiling"
     } else {
         "profile-capacity-ceiling"
     };
-    let required_memory_words = error.required_memory_words;
-    let profile_memory_words = profile.memory_words;
-    write!(formatter, "{code} profile={profile_id} version={version} ")?;
-    write!(formatter, "constraint={constraint} ")?;
-    write!(formatter, "required_memory_words={required_memory_words} ")?;
+    write_capacity_requirement(formatter, CapacityRequirementView {
+        constraint,
+        profile_id: profile.id,
+        profile_memory_words: profile.memory_words,
+        required_memory_words: u64::from(error.required_memory_words),
+        version: profile.version,
+    })
+}
+
+fn write_capacity_requirement(
+    formatter: &mut Formatter<'_>,
+    view: CapacityRequirementView<'_>,
+) -> FormatResult {
+    formatter.write_str("MALBOLGE-PROFILE-002 profile=")?;
+    formatter.write_str(view.profile_id)?;
+    formatter.write_str(" version=")?;
+    formatter.write_str(view.version)?;
+    formatter.write_str(" constraint=")?;
+    formatter.write_str(view.constraint)?;
+    let required_memory_words = view.required_memory_words;
+    let profile_memory_words = view.profile_memory_words;
+    write!(formatter, " required_memory_words={required_memory_words} ")?;
     write!(formatter, "profile_memory_words={profile_memory_words}")
+}
+
+fn write_portable_capacity_error(
+    formatter: &mut Formatter<'_>,
+    error: PortableProfileRequirementError<'_>,
+) -> FormatResult {
+    let constraint = if error.profile_id == generated::HISTORICAL_PROFILE.id {
+        "historical-profile-ceiling"
+    } else {
+        "profile-capacity-ceiling"
+    };
+    write_capacity_requirement(formatter, CapacityRequirementView {
+        constraint,
+        profile_id: error.profile_id,
+        profile_memory_words: error.requirement.memory_words,
+        required_memory_words: error.required_memory_words,
+        version: &error.requirement.version,
+    })
 }
 
 fn write_feature_list(

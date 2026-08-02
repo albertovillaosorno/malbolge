@@ -157,6 +157,54 @@ impl RegionEffectProgram {
         }
         Ok(bytes)
     }
+
+    /// Returns the minimum directly addressed memory required by this region.
+    ///
+    /// The requirement includes code/data pointers in every observation,
+    /// verifier live-ins, and every data/encryption write address. The result
+    /// is `u64` so address `u32::MAX` is represented exactly as
+    /// 4,294,967,296 words.
+    #[must_use]
+    pub fn required_memory_words(&self) -> u64 {
+        let from_live_ins =
+            self.memory_live_ins.iter().fold(0u64, |required, item| {
+                required.max(words_through_address(item.address))
+            });
+        self.effects
+            .iter()
+            .copied()
+            .fold(from_live_ins, |required, effect| {
+                required.max(effect_required_memory_words(effect))
+            })
+    }
+}
+
+fn effect_required_memory_words(effect: EffectOp) -> u64 {
+    let observations = observation_required_memory_words(effect.before)
+        .max(observation_required_memory_words(effect.after));
+    observations.max(memory_delta_required_memory_words(effect.memory_delta))
+}
+
+fn memory_delta_required_memory_words(delta: ProfileMemoryDelta) -> u64 {
+    memory_write_required_memory_words(delta.data)
+        .max(memory_write_required_memory_words(delta.encryption))
+}
+
+fn memory_write_required_memory_words(
+    write: Option<ProfileMemoryWrite>,
+) -> u64 {
+    write.map_or(0, |change| words_through_address(change.address))
+}
+
+fn observation_required_memory_words(
+    observation: ProfileMachineObservation,
+) -> u64 {
+    words_through_address(observation.registers.code_pointer)
+        .max(words_through_address(observation.registers.data_pointer))
+}
+
+fn words_through_address(address: u32) -> u64 {
+    u64::from(address).saturating_add(1)
 }
 
 fn push_bytes(

@@ -89,12 +89,15 @@ outside this reviewed subset.
 
 `select_verified_direct_native()` now owns deterministic direct-template
 selection for the implemented Windows surface. The caller supplies one explicit
-`RuntimeCapability`; portable profile preflight runs before host validation or
-backend construction. An unsupported profile returns the shared typed
-`MALBOLGE-PROFILE-001` error rather than constructing deopt or masking the failure
-as a host-format result.
+`RuntimeCapability`; the selector derives exact region memory from the IR and
+checks profile capacity before runtime capability, host validation, or backend
+construction. An out-of-profile address returns typed
+`MALBOLGE-PROFILE-002`; an unsupported runtime returns the shared typed
+`MALBOLGE-PROFILE-001`. Neither is replaced by deopt or masked as a host-format
+result.
 
-After profile admission, the selector classifies IR before creating a backend
+After program/profile/runtime admission, the selector classifies IR before
+creating a backend
 identity: exact zero-register halt selects `direct-initial-halt`, any other
 zero-counter/no-I/O/no-memory one-step halt selects `direct-halt-registers`, and
 every other IR selects the byte-verified deopt stub. Profile,
@@ -106,7 +109,7 @@ This removes backend-ID choice from callers while keeping unsupported IR safe.
 `A`, `C`, and `D` domains while keeping input/output counters zero and admitting
 no memory/I/O effects. x86-64 encodes exact `cmp imm32` guards; AArch64 materializes
 each value with reviewed `movz`/`movk` pairs before comparison. Independent
-whole-object fixtures bind a nontrivial `0x12345678 / 0x9abcdef0 / 0x13579bdf`
+whole-object fixtures bind a nontrivial `0x12345678 / 0x00345678 / 0x0013579b`
 case for both ISAs. Development execution on x86-64 preserves all three matching
 registers and commits only halt; changing one register returns guard miss with
 the complete ABI state unchanged. The ARM64 object links successfully.

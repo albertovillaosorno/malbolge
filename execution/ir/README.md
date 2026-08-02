@@ -56,5 +56,8 @@ requirement envelope while preserving the version-2 rule that profile aliases do
 not share compiler or cache identity silently.
 
 Profile capacity is the complete runtime capability required to implement the
-selected profile. It is not the program-specific requested-memory value used by
-the separate profile-capacity diagnostic.
+selected profile. `RegionEffectProgram::required_memory_words()` separately
+derives the minimum region footprint from every C/D observation, memory live-in,
+and data/encryption write. The derived `u64` value is not another wire field, so
+IR v3 bytes remain unchanged; it can still represent address `u32::MAX` exactly
+as 4,294,967,296 required words for `MALBOLGE-PROFILE-002` preflight.

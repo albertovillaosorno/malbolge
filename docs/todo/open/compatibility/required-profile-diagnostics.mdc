@@ -66,9 +66,12 @@ historical-profile constraint.
   envelope against explicit classic/profiled runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,
   profiled capability accepts it, and unknown feature IDs fail closed.
-- Direct-template selection invokes that preflight before host/backend selection;
-  profile failure has precedence and is never converted to deopt fallback.
-- Program-specific requested memory for `MALBOLGE-PROFILE-002`, bootstrap
+- `RegionEffectProgram::required_memory_words()` derives exact `u64` region
+  footprint from C/D observations, live-ins, and writes. Combined portable
+  preflight emits byte-identical `MALBOLGE-PROFILE-002` before checking `001`.
+- Direct-template selection invokes that combined preflight before host/backend
+  selection; neither profile error is converted to deopt fallback.
+- Equivalent program-memory requirements for non-IR artifact families, bootstrap
   compiler artifacts, broader AOT/JIT/runtime orchestration, and universal product
   invocation remain open, so repository-wide completion is not claimed.
 

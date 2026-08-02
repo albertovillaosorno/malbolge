@@ -125,13 +125,16 @@ state return guard miss without mutation. This is the first accelerated
 state-applying native subset; all other IR still requires deopt/bootstrap/VM.
 
 `select_verified_direct_native()` now removes direct-backend identity selection
-from callers and requires one explicit `RuntimeCapability`. It runs portable
-profile preflight before host validation or backend construction. Current-profile
-IR under `safe-rust-classic` therefore returns the same typed, byte-identical
-`MALBOLGE-PROFILE-001` diagnostic even when the requested host format is also
-unsupported; no native object or deopt fallback is constructed.
+from callers and requires one explicit `RuntimeCapability`. It derives the exact
+region memory footprint from the IR and checks profile capacity before runtime
+capability, host validation, or backend construction. Out-of-profile addressing
+returns typed `MALBOLGE-PROFILE-002`; otherwise current-profile IR under
+`safe-rust-classic` returns the byte-identical `MALBOLGE-PROFILE-001` diagnostic.
+Even when the host format is also unsupported, no native object or deopt fallback
+is constructed.
 
-After profile admission, it classifies IR from narrowest to broadest:
+After program/profile/runtime admission, it classifies IR from narrowest to
+broadest:
 zero-register halt uses `direct-initial-halt`, other eligible one-step halts use
 `direct-halt-registers`, and otherwise the selector emits/verifies direct deopt.
 Only admitted program shape controls this fallback; profile, emission, or
@@ -158,8 +161,10 @@ authority and the guaranteed fallback.
 
 ## Failure Behavior
 
-Invalid programs, unsupported profiles, or broken native assumptions fail
-deterministically without changing guest-visible state silently.
+Invalid program memory requirements, unsupported profiles/runtimes, or broken
+native assumptions fail deterministically without changing guest-visible state
+silently. Direct selection preserves precedence `002`, then `001`, then host and
+backend errors.
 
 ## Verification
 

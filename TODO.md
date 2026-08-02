@@ -272,7 +272,8 @@ only termination to halt; misses are atomic. `direct-halt-registers` now extends
 that exact template to every 32-bit `A/C/D` combination with zero I/O counters,
 still with no memory/I/O effects; independent x86-64/AArch64 object fixtures and
 x86 execution cover nontrivial values. Direct-template selection now requires an
-explicit runtime capability and runs portable profile preflight before host or
+explicit runtime capability, derives exact `u64` region memory from C/D pointers,
+live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
 backend selection. After admission, zero-register halt chooses the smallest
 specialization, other eligible one-step halts choose register-bound code, and all
 remaining IR chooses verified deopt; unsupported host formats fail explicitly.
@@ -372,9 +373,11 @@ profile-before-runtime precedence. Portable effect IR v3, native keys, and direc
 COFF `MBPF` v2 metadata now carry every canonical profile-side input for
 `MALBOLGE-PROFILE-001`. VM-owned portable preflight consumes independently
 admitted IR against explicit classic/profiled capability with byte-identical
-canonical diagnostics and fail-closed unknown features. Program-specific memory
-for `MALBOLGE-PROFILE-002`, bootstrap artifacts, broader AOT/JIT/runtime
-orchestration, and universal product invocation remain open.
+canonical diagnostics and fail-closed unknown features. Effect IR now derives
+exact region memory and direct selection applies byte-identical
+`MALBOLGE-PROFILE-002` before `001`. Equivalent non-IR program requirements,
+bootstrap artifacts, broader AOT/JIT/runtime orchestration, and universal product
+invocation remain open.
 
 ### TODO - Custom target profile identity
 

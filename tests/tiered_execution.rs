@@ -82,9 +82,10 @@ use execution_native::{
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, RunOutcome, Termination, TraceInput, current_profile,
-    preflight_profile, preflight_runtime_requirement,
-    safe_rust_classic_capability, safe_rust_profiled_capability,
+    ProfileRegisters, ProfileRequirementErrorKind, RunOutcome, Termination,
+    TraceInput, current_profile, preflight_profile,
+    preflight_runtime_requirement, safe_rust_classic_capability,
+    safe_rust_profiled_capability,
 };
 
 #[derive(Clone, Copy)]
@@ -317,6 +318,51 @@ fn canonical_ir_changes_when_any_semantic_field_changes() -> Result<(), String>
         }
     }
     Ok(())
+}
+
+#[test]
+fn portable_ir_derives_exact_required_memory_words() -> Result<(), String> {
+    let baseline = program();
+    if baseline.required_memory_words() != 20 {
+        return Err(format!(
+            "baseline IR memory footprint: {}",
+            baseline.required_memory_words()
+        ));
+    }
+
+    let mut effect_only = baseline;
+    effect_only.memory_live_ins.clear();
+    if effect_only.required_memory_words() != 15 {
+        return Err(format!(
+            "observation IR memory footprint: {}",
+            effect_only.required_memory_words()
+        ));
+    }
+
+    let first_effect = effect_only
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("fixture has no effect"))?;
+    let data_write = first_effect
+        .memory_delta
+        .data
+        .as_mut()
+        .ok_or_else(|| String::from("fixture has no data write"))?;
+    data_write.address = 100;
+    if effect_only.required_memory_words() != 101 {
+        return Err(String::from("write address was omitted from footprint"));
+    }
+
+    let max_pointer_effect = effect_only
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("fixture lost effect"))?;
+    max_pointer_effect.after.registers.data_pointer = u32::MAX;
+    if effect_only.required_memory_words() == 4_294_967_296 {
+        Ok(())
+    } else {
+        Err(String::from("u32::MAX address footprint was truncated"))
+    }
 }
 
 #[test]
@@ -601,8 +647,8 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
         output_len: 0,
         registers: ProfileRegisters {
             accumulator: 0x1234_5678,
-            code_pointer: 0x9abc_def0,
-            data_pointer: 0x1357_9bdf,
+            code_pointer: 0x0034_5678,
+            data_pointer: 0x0013_579b,
         },
         termination: None,
     };
@@ -749,6 +795,45 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
         }
     }
     Ok(())
+}
+
+#[test]
+fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
+    let mut program = direct_initial_halt_program();
+    let overflow_address = current_profile().memory_words();
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("initial-halt fixture has no effect"))?;
+    effect.before.registers.code_pointer = overflow_address;
+    effect.after.registers.code_pointer = overflow_address;
+
+    let Err(error) = select_verified_direct_native(
+        &program,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from("profile-capacity overflow was selected"));
+    };
+    let DirectSelectionError::Profile(profile_error) = error else {
+        return Err(format!("program capacity lost precedence: {error}"));
+    };
+    if profile_error.kind()
+        != ProfileRequirementErrorKind::ProfileCapacityExceeded
+    {
+        return Err(format!("program capacity category: {profile_error}"));
+    }
+    let expected = concat!(
+        "MALBOLGE-PROFILE-002 profile=malbolge-2026.2 version=2026.2 ",
+        "constraint=profile-capacity-ceiling required_memory_words=4782970 ",
+        "profile_memory_words=4782969"
+    );
+    if profile_error.to_string() == expected {
+        Ok(())
+    } else {
+        Err(format!("program capacity diagnostic: {profile_error}"))
+    }
 }
 
 #[test]

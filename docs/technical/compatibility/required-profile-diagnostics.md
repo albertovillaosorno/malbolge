@@ -114,14 +114,21 @@ descriptor preflight. The current-profile envelope is therefore rejected by
 `safe-rust-profiled`. An unknown feature ID fails closed and is surfaced in the
 stable `missing=` list.
 
+`preflight_portable_profile_requirement()` additionally accepts an exact `u64`
+program-memory requirement. It checks that value against profile capacity before
+runtime capability and emits the same `MALBOLGE-PROFILE-002` text as canonical
+preflight, including `historical-profile-ceiling` for `malbolge-1998`.
+`RegionEffectProgram::required_memory_words()` derives this value from every C/D
+observation, live-in, and write without adding another IR wire field.
+
 This boundary does not prove that an arbitrary envelope is canonical. Profile
 ID/fingerprint and requirement equality remain the responsibility of capsule,
 verifier, cache-key, and COFF admission before runtime preflight.
 
-The direct-template selector now invokes this preflight before host validation or
-backend construction. A current-profile request under `safe-rust-classic` keeps
-profile-error precedence even on a non-Windows host, and no deopt artifact is
-constructed as a substitute for unsupported semantics.
+The direct-template selector now invokes the combined preflight before host
+validation or backend construction. Program capacity has precedence over runtime
+capability, which has precedence over host/backend selection. Neither `002` nor
+`001` is converted to a deopt artifact.
 
 ### Stable Diagnostic Categories
 
@@ -181,10 +188,12 @@ features, word trits, and profile capacity alongside ID/fingerprint. Safe Rust
 can now consume an independently admitted envelope against either explicit
 runtime capability without reloading the profile document.
 
-The artifact still does not carry the program-specific requested-memory value
-needed to distinguish `MALBOLGE-PROFILE-002`. Bootstrap compiler artifacts,
-top-level AOT/JIT/runtime orchestration, and product execution paths do not yet
-universally invoke portable preflight. This contract therefore remains active
+Effect IR now derives the exact region-specific memory requirement needed to
+distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.
+Other artifact families do not yet universally expose an equivalent program
+requirement, and bootstrap compiler artifacts, top-level AOT/JIT/runtime
+orchestration, and product execution paths do not yet universally invoke combined
+portable preflight. This contract therefore remains active
 rather than claiming repository-wide profile diagnostic completion.
 
 ## Verification
@@ -197,12 +206,11 @@ rather than claiming repository-wide profile diagnostic completion.
   diagnostic parity for current/classic and historical-capacity failures.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
   classic facade before loading, transition-profile acceptance, classic default
-  identity, exact historical-ceiling diagnostics, portable/canonical `001`
-  parity, explicit profiled-runtime acceptance, unknown-feature rejection, and
-  no-fallback lookup.
-- `tests/tiered_execution.rs` proves effect IR and direct-template selection use
-  the shared portable preflight without changing diagnostic text; profile failure
-  precedes unsupported host format and backend construction.
+  identity, exact historical-ceiling diagnostics, portable/canonical `001` and
+  `002` parity, explicit profiled-runtime acceptance, unknown-feature rejection,
+  and no-fallback lookup.
+- `tests/tiered_execution.rs` proves exact derived IR footprint, including
+  `u32::MAX`, and direct-template precedence `002` then `001` then host/backend.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

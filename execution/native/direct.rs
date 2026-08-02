@@ -52,9 +52,9 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileRegisters,
-    RunOutcome, RuntimeCapability, RuntimeProfileRequirementError, Termination,
-    preflight_runtime_requirement,
+    PortableProfileRequirementError, ProfileMachineObservation,
+    ProfileMemoryDelta, ProfileRegisters, RunOutcome, RuntimeCapability,
+    Termination, preflight_portable_profile_requirement,
 };
 
 use super::coff::canonical_profile_metadata;
@@ -287,7 +287,7 @@ pub enum DirectSelectionError<'requirement> {
     /// Initial-halt artifact emission or admission failed.
     InitialHalt(Box<DirectInitialHaltError>),
     /// Selected runtime cannot implement the admitted profile requirement.
-    Profile(Box<RuntimeProfileRequirementError<'requirement>>),
+    Profile(Box<PortableProfileRequirementError<'requirement>>),
     /// Direct native templates currently emit Windows COFF only.
     TargetFormat,
 }
@@ -441,7 +441,8 @@ impl VerifiedDirectNativeArtifact {
 
 /// Selects the narrowest semantically admitted direct native template.
 ///
-/// Runtime-profile preflight occurs before host/backend selection. Exact
+/// Program/profile capacity and runtime preflight occur before host/backend
+/// selection. Exact
 /// initial-halt IR then selects the state-applying fast path. Every other
 /// portable IR selects the byte-verified deoptimization stub. Selection never
 /// converts profile, emitter, or verifier errors into fallback; only admitted
@@ -449,18 +450,19 @@ impl VerifiedDirectNativeArtifact {
 ///
 /// # Errors
 ///
-/// Returns [`DirectSelectionError`] for unsupported profile/runtime or host
-/// format, or any emission/verification failure after deterministic template
-/// selection.
+/// Returns [`DirectSelectionError`] for unsupported program/profile/runtime,
+/// host format, or any emission/verification failure after deterministic
+/// template selection.
 pub fn select_verified_direct_native<'requirement>(
     program: &'requirement RegionEffectProgram,
     runtime: &'static RuntimeCapability,
     host_os: HostOperatingSystem,
     host_isa: HostIsa,
 ) -> Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>> {
-    preflight_runtime_requirement(
+    preflight_portable_profile_requirement(
         &program.profile_id,
         &program.profile_requirement,
+        program.required_memory_words(),
         runtime,
     )
     .map_err(|error| DirectSelectionError::Profile(Box::new(error)))?;
