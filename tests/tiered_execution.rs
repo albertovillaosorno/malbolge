@@ -956,8 +956,8 @@ fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
 
 fn direct_halt_registers_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
-        input_consumed: 0,
-        output_len: 0,
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 0x0000_0002_3456_789a,
         registers: ProfileRegisters {
             accumulator: 0x1234_5678,
             code_pointer: 0x0034_5678,
@@ -1734,6 +1734,48 @@ fn direct_halt_register_objects_are_byte_exact_and_semantically_admitted()
 }
 
 #[test]
+fn direct_halt_observation_revision_rejects_v4_identity() -> Result<(), String>
+{
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_HALT_REGISTERS_BACKEND_ID),
+        backend_revision: 4,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_halt_registers_coff(
+        &direct_halt_registers_program(),
+        obsolete,
+    ) == Err(DirectHaltRegistersError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("historical halt revision was admitted"))
+    }
+}
+
+fn assert_halt_counter_identity_rejected(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut mismatch = program.clone();
+    let effect = mismatch.effects.first_mut().ok_or_else(|| {
+        String::from("register-halt counter fixture lost effect")
+    })?;
+    effect.before.input_consumed =
+        effect.before.input_consumed.saturating_add(1);
+    effect.after.input_consumed = effect.after.input_consumed.saturating_add(1);
+    if verify_direct_halt_registers(artifact, &mismatch)
+        == Err(DirectHaltRegistersError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("counter-mismatched halt object was admitted"))
+    }
+}
+
+#[test]
 fn direct_halt_registers_rejects_ir_and_opcode_tampering() -> Result<(), String>
 {
     let program = direct_halt_registers_program();
@@ -1767,6 +1809,8 @@ fn direct_halt_registers_rejects_ir_and_opcode_tampering() -> Result<(), String>
     {
         return Err(String::from("tampered register-halt object was admitted"));
     }
+
+    assert_halt_counter_identity_rejected(&artifact, &program)?;
 
     let mut with_output = program;
     let first_effect = with_output

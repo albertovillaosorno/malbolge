@@ -28,9 +28,11 @@ The envelope carries every input required to preflight direct objects for both
 `MALBOLGE-PROFILE-001` and `MALBOLGE-PROFILE-002`. A same-profile object paired
 with a key for a different region footprint fails structural admission.
 
-Direct backend revision 4 and metadata v3 produce exact object sizes of 413/415
-bytes for deopt, 477/528 for register halt, and 466/490 for initial halt on
-x86-64/AArch64 respectively.
+Direct deopt and initial-halt revision 4 plus halt-observation revision 5 use
+metadata v3. Exact x86-64/AArch64 object sizes are 413/415 bytes for deopt,
+495/564 for register/counter halt, and 466/490 for initial halt respectively. The
+halt fixtures bind `input_consumed=0x0000000123456789` and
+`output_len=0x000000023456789a`, proving full-width counter materialization.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters; fixture

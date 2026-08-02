@@ -60,12 +60,16 @@ both ISA implementations; x86-64 execution evidence covers hit, miss, and null
 state, while ARM64 object linkage is verified on the development host. This
 remains a deliberately tiny subset rather than general instruction selection.
 
-`direct-halt-registers` now covers the same halt-only effect across arbitrary
-32-bit entry registers. The x86-64 owner emits immediate comparisons; the
-AArch64 owner emits reviewed `movz`/`movk` immediate materialization. Complete
-independent object fixtures cover nontrivial register values, and x86-64 native
-execution proves exact-register hit plus one-register atomic miss. This extends
-parameterization, not the admitted guest-effect surface.
+`direct-halt-registers` revision 5 now covers the same halt-only effect across
+arbitrary 32-bit entry registers and full 64-bit input/output counter observations.
+The x86-64 owner emits `mov rdx, imm64` plus exact counter comparisons; the AArch64
+owner emits all four reviewed `movz`/`movk` halfwords. Every guard branches to one
+non-mutating miss return and only termination is committed. Independent
+495/564-byte objects bind counters above `u32::MAX`; counter, opcode, and revision
+mismatch fail closed. Development execution proves x86-64 full-width counter hit
+and atomic counter miss; independent fixture decoding confirms AArch64 full-width
+immediates and one common miss target. This widens admitted entry state, not the
+guest-effect surface.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

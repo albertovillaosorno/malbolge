@@ -21,7 +21,7 @@
 // - Must-Not:
 //   - Decide IR eligibility, admit artifacts, or define guest semantics.
 // - Allows:
-//   - Inputs: already selected immediate register values.
+//   - Inputs: already selected exact register/counter values.
 //   - Outputs: deterministic AArch64 `.text` byte sequences.
 //   - Side effects: process-local allocation only.
 // - Split-When:
@@ -48,51 +48,110 @@
 
 //! Reviewed `AArch64` instruction templates for direct native execution.
 
+use super::direct::DirectHaltObservation;
+
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
 pub(super) const fn deopt_code() -> &'static [u8] {
     &[0x20, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6]
 }
 
-/// Encodes exact-register one-step halt preflight and commit.
+/// Encodes exact-observation one-step halt preflight and commit.
 #[must_use]
-pub(super) fn halt_registers_code(
-    accumulator: u32,
-    code_pointer: u32,
-    data_pointer: u32,
-) -> Vec<u8> {
-    let words = [
-        0xb400_0360,
-        0xf940_1008,
-        0xb500_0328,
-        0xf940_1c08,
-        0xb500_02e8,
+pub(super) fn halt_observation_code(
+    observation: DirectHaltObservation,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(48);
+    let mut guard_branches = Vec::with_capacity(7);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    words.push(0xf940_1008);
+    push_u64_x9(&mut words, observation.input_consumed)?;
+    words.push(0xeb09_011f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
+    words.push(0xf940_1c08);
+    push_u64_x9(&mut words, observation.output_len)?;
+    words.push(0xeb09_011f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
         0xb940_4008,
-        movz_w9(accumulator),
-        movk_w9_high(accumulator),
-        0x6b09_011f,
-        0x5400_0241,
+        observation.accumulator,
+    );
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
         0xb940_4408,
-        movz_w9(code_pointer),
-        movk_w9_high(code_pointer),
-        0x6b09_011f,
-        0x5400_01a1,
+        observation.code_pointer,
+    );
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
         0xb940_4808,
-        movz_w9(data_pointer),
-        movk_w9_high(data_pointer),
-        0x6b09_011f,
-        0x5400_0101,
-        0x3941_3009,
-        0xaa00_03e8,
-        0x5280_0020,
-        0x3500_0069,
-        0x3901_3100,
+        observation.data_pointer,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.extend_from_slice(&[
+        0x5280_002a,
+        0x3901_300a,
         0x2a1f_03e0,
         0xd65f_03c0,
-        0x5280_0020,
-        0xd65f_03c0,
-    ];
-    encode_words(&words)
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+fn patch_guard_branches(
+    words: &mut [u32],
+    branches: &[usize],
+    target: usize,
+) -> Option<()> {
+    for branch in branches {
+        let distance = target.checked_sub(*branch)?;
+        let immediate = u32::try_from(distance).ok()?;
+        if immediate >= (1u32 << 18u32) {
+            return None;
+        }
+        *words.get_mut(*branch)? |= immediate << 5u32;
+    }
+    Some(())
+}
+
+fn push_guard_branch(
+    words: &mut Vec<u32>,
+    branches: &mut Vec<usize>,
+    instruction: u32,
+) {
+    branches.push(words.len());
+    words.push(instruction);
+}
+
+fn push_u32_guard(
+    words: &mut Vec<u32>,
+    branches: &mut Vec<usize>,
+    load: u32,
+    value: u32,
+) {
+    words.extend_from_slice(&[
+        load,
+        movz_w9(value),
+        movk_w9_high(value),
+        0x6b09_011f,
+    ]);
+    push_guard_branch(words, branches, 0x5400_0001);
+}
+
+fn push_u64_x9(words: &mut Vec<u32>, value: u64) -> Option<()> {
+    words.extend_from_slice(&[
+        movz_x9(value, 0)?,
+        movk_x9(value, 1)?,
+        movk_x9(value, 2)?,
+        movk_x9(value, 3)?,
+    ]);
+    Some(())
 }
 
 /// Returns the canonical zero-register specialization of halt preflight/commit.
@@ -115,6 +174,18 @@ fn encode_words(words: &[u32]) -> Vec<u8> {
         bytes.extend_from_slice(&word.to_le_bytes());
     }
     bytes
+}
+
+fn movk_x9(value: u64, halfword: u32) -> Option<u32> {
+    let shift = halfword.checked_mul(16u32)?;
+    let immediate = u32::try_from((value >> shift) & 0xffff).ok()?;
+    Some(0xf280_0009 | (halfword << 21) | (immediate << 5))
+}
+
+fn movz_x9(value: u64, halfword: u32) -> Option<u32> {
+    let shift = halfword.checked_mul(16u32)?;
+    let immediate = u32::try_from((value >> shift) & 0xffff).ok()?;
+    Some(0xd280_0009 | (halfword << 21) | (immediate << 5))
 }
 
 const fn movk_w9_high(value: u32) -> u32 {

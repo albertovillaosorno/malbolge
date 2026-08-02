@@ -85,7 +85,9 @@ structural COFF admission plus byte-for-byte equality with the canonical object;
 a one-byte opcode mutation remains structurally valid but fails semantic
 admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
-All three direct backends use revision 4 for the `MBPF` v3 object contract.
+The deopt and initial-halt backends remain revision 4. The wider
+`direct-halt-registers` observation contract is revision 5; all three continue to
+use `MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -111,9 +113,9 @@ result.
 
 After program/profile/runtime admission, the selector classifies IR before
 creating a backend
-identity: exact zero-register halt selects `direct-initial-halt`, any other
-zero-counter/no-I/O/no-memory one-step halt selects `direct-halt-registers`, and
-every other IR selects the byte-verified deopt stub. Profile,
+identity: exact zero-observation halt selects `direct-initial-halt`, any other
+no-I/O/no-memory one-step halt selects `direct-halt-registers`, and every other IR
+selects the byte-verified deopt stub. Profile,
 backend/emission/verification errors are never reinterpreted as fallback, and an
 unsupported host format still fails explicitly when the profile is supported.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
@@ -156,11 +158,17 @@ the selector cannot promote `direct-initial-halt` or `direct-halt-registers` whe
 the declared profile envelope is too small; they fail as out-of-contract program
 shape before object promotion.
 
-`direct-halt-registers` generalizes the halt template across the complete 32-bit
-`A`, `C`, and `D` domains while keeping input/output counters zero and admitting
-no memory/I/O effects. x86-64 encodes exact `cmp imm32` guards; AArch64 materializes
-each value with reviewed `movz`/`movk` pairs before comparison. Independent
-whole-object fixtures bind a nontrivial `0x12345678 / 0x00345678 / 0x0013579b`
-case for both ISAs. Development execution on x86-64 preserves all three matching
-registers and commits only halt; changing one register returns guard miss with
-the complete ABI state unchanged. The ARM64 object links successfully.
+`direct-halt-registers` revision 5 generalizes the halt template across the
+complete 32-bit `A`, `C`, and `D` domains plus full 64-bit `input_consumed` and
+`output_len` observations, while still admitting no memory or I/O effects. x86-64
+loads each counter with `mov rdx, imm64` before exact comparison; AArch64
+materializes all four counter halfwords with reviewed `movz`/`movk` sequences.
+Both ISAs patch every guard branch to one non-mutating miss return and commit only
+the halt byte after all checks pass. Independent 495-byte x86-64 and 564-byte
+AArch64 fixtures bind counters above `u32::MAX` plus the nontrivial
+`0x12345678 / 0x00345678 / 0x0013579b` register case. Counter or opcode identity
+tampering fails semantic admission, and revision-4 target identity is rejected.
+Development execution now proves an x86-64 full-width counter hit plus atomic
+counter miss; ARM64 full-width immediates and the common miss target are decoded
+independently from the fixture. Executable invocation policy remains outside this
+module.

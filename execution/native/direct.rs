@@ -91,10 +91,19 @@ pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 4;
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.
 pub const DIRECT_INITIAL_HALT_BACKEND_REVISION: u32 = 4;
-/// Backend identity for arbitrary-register one-step direct halt.
+/// Backend identity for exact-observation one-step direct halt.
 pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
-/// Direct arbitrary-register halt code-generation revision.
-pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 4;
+/// Direct exact-observation halt code-generation revision.
+pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 5;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectHaltObservation {
+    pub(super) accumulator: u32,
+    pub(super) code_pointer: u32,
+    pub(super) data_pointer: u32,
+    pub(super) input_consumed: u64,
+    pub(super) output_len: u64,
+}
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -161,7 +170,7 @@ pub enum DirectHaltRegistersError {
     ProgramShape,
     /// Target backend/revision/native ABI is not the register-halt contract.
     TargetBackend,
-    /// Register-halt v4 has no target-specific feature specializations.
+    /// Register-halt v5 has no target-specific feature specializations.
     TargetFeatures,
     /// Register-halt v3 emits Windows COFF only.
     TargetFormat,
@@ -785,7 +794,7 @@ pub fn emit_direct_deopt_coff(
     emit_direct_deopt_with_key(key)
 }
 
-/// Emits a one-step halt fast path bound to exact entry registers.
+/// Emits a one-step halt fast path bound to one exact entry observation.
 ///
 /// # Errors
 ///
@@ -794,10 +803,10 @@ pub fn emit_direct_halt_registers_coff(
     program: &RegionEffectProgram,
     target: NativeTargetIdentity,
 ) -> Result<UntrustedNativeObjectArtifact, DirectHaltRegistersError> {
-    let registers = validate_halt_registers_program(program)?;
+    let observation = validate_halt_registers_program(program)?;
     validate_halt_registers_target(&target)?;
     let key = NativeArtifactKey::new(program, target)?;
-    emit_direct_halt_registers_with_key(key, registers)
+    emit_direct_halt_registers_with_key(key, observation)
 }
 
 /// Emits a direct native fast path for the exact initial-halt IR subset.
@@ -828,10 +837,10 @@ fn emit_direct_deopt_with_key(
 
 fn emit_direct_halt_registers_with_key(
     key: NativeArtifactKey,
-    registers: ProfileRegisters,
+    observation: ProfileMachineObservation,
 ) -> Result<UntrustedNativeObjectArtifact, DirectHaltRegistersError> {
     let triple = target_triple(key.target().host_isa());
-    let object = halt_registers_coff(&key, registers)?;
+    let object = halt_registers_coff(&key, observation)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -869,7 +878,7 @@ pub fn verify_direct_deopt_stub(
     Ok(VerifiedDeoptNativeObjectArtifact { artifact: admitted })
 }
 
-/// Promotes only the canonical exact-register halt object for its IR.
+/// Promotes only the canonical exact-observation halt object for its IR.
 ///
 /// # Errors
 ///
@@ -879,7 +888,7 @@ pub fn verify_direct_halt_registers(
     program: &RegionEffectProgram,
 ) -> Result<VerifiedHaltRegistersNativeObjectArtifact, DirectHaltRegistersError>
 {
-    let registers = validate_halt_registers_program(program)?;
+    let observation = validate_halt_registers_program(program)?;
     validate_halt_registers_target(artifact.key().target())?;
     let expected_key =
         NativeArtifactKey::new(program, artifact.key().target().clone())?;
@@ -887,7 +896,7 @@ pub fn verify_direct_halt_registers(
         return Err(DirectHaltRegistersError::ProgramShape);
     }
     let admitted = structurally_admit_coff(artifact)?;
-    let expected = halt_registers_coff(artifact.key(), registers)?;
+    let expected = halt_registers_coff(artifact.key(), observation)?;
     if admitted.object() != expected {
         return Err(DirectHaltRegistersError::ObjectBytes);
     }
@@ -1022,20 +1031,25 @@ fn push_entry_symbol(output: &mut Vec<u8>, string_length: u32) {
 
 fn halt_registers_coff(
     key: &NativeArtifactKey,
-    registers: ProfileRegisters,
+    observation: ProfileMachineObservation,
 ) -> Result<Vec<u8>, DirectHaltRegistersError> {
-    let text = match key.target().host_isa() {
-        HostIsa::AArch64 => aarch64::halt_registers_code(
-            registers.accumulator,
-            registers.code_pointer,
-            registers.data_pointer,
-        ),
-        HostIsa::X86_64 => x86_64::halt_registers_code(
-            registers.accumulator,
-            registers.code_pointer,
-            registers.data_pointer,
-        ),
+    let input_consumed = u64::try_from(observation.input_consumed)
+        .map_err(|_error| DirectHaltRegistersError::ObjectBytes)?;
+    let output_len = u64::try_from(observation.output_len)
+        .map_err(|_error| DirectHaltRegistersError::ObjectBytes)?;
+    let registers = observation.registers;
+    let direct = DirectHaltObservation {
+        accumulator: registers.accumulator,
+        code_pointer: registers.code_pointer,
+        data_pointer: registers.data_pointer,
+        input_consumed,
+        output_len,
     };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => aarch64::halt_observation_code(direct),
+        HostIsa::X86_64 => x86_64::halt_observation_code(direct),
+    }
+    .ok_or(DirectHaltRegistersError::ObjectBytes)?;
     build_minimal_coff(key, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
 }
 
@@ -1131,7 +1145,7 @@ const fn target_triple(isa: HostIsa) -> &'static str {
 
 fn validate_halt_registers_program(
     program: &RegionEffectProgram,
-) -> Result<ProfileRegisters, DirectHaltRegistersError> {
+) -> Result<ProfileMachineObservation, DirectHaltRegistersError> {
     if program.format_version != EFFECT_IR_VERSION
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
@@ -1153,9 +1167,7 @@ fn validate_halt_registers_program(
         termination: Some(Termination::HaltInstruction),
         ..effect.before
     };
-    if effect.before.input_consumed != 0
-        || effect.before.output_len != 0
-        || effect.before.termination.is_some()
+    if effect.before.termination.is_some()
         || effect.after != expected_after
         || effect.input.is_some()
         || effect.output.is_some()
@@ -1163,7 +1175,7 @@ fn validate_halt_registers_program(
     {
         return Err(DirectHaltRegistersError::ProgramShape);
     }
-    Ok(effect.before.registers)
+    Ok(effect.before)
 }
 
 fn validate_halt_registers_target(

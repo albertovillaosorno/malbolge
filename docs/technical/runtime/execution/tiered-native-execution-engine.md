@@ -141,6 +141,16 @@ evidence links both ISA objects; x86-64 execution proves valid state returns
 state return guard miss without mutation. This is the first accelerated
 state-applying native subset; all other IR still requires deopt/bootstrap/VM.
 
+`direct-halt-registers` revision 5 widens that halt-only subset to an exact
+entry observation: arbitrary 32-bit `A/C/D` plus full 64-bit `input_consumed` and
+`output_len`. It still admits no memory or I/O effect and commits only the
+termination byte after every guard. x86-64 uses full-width immediate loads before
+counter comparison; AArch64 materializes all four 16-bit counter pieces and
+patches each conditional branch to one guard-miss return. Independent complete
+objects are 495/564 bytes for x86-64/AArch64 and bind counters above `u32::MAX`.
+Counter/key mutation, opcode mutation, and historical revision-4 target identity
+all fail semantic admission.
+
 `select_verified_direct_native()` now removes direct-backend identity selection
 from callers and requires one explicit `RuntimeCapability`. It derives the exact
 region memory footprint from the IR and checks profile capacity before runtime

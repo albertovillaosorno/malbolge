@@ -273,10 +273,12 @@ verified: they return guard miss without touching state, providing the first
 semantically admitted native artifact and deterministic fallback floor. A second
 byte-canonical direct backend now admits the exact initial-halt IR subset and
 performs the first native guest-state commit: after zero-state preflight it sets
-only termination to halt; misses are atomic. `direct-halt-registers` now extends
-that exact template to every 32-bit `A/C/D` combination with zero I/O counters,
-still with no memory/I/O effects; independent x86-64/AArch64 object fixtures and
-x86 execution cover nontrivial values. Direct-template selection now requires an
+only termination to halt; misses are atomic. `direct-halt-registers` revision 5
+extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
+input/output counter observations, still with no memory/I/O effects. Independently
+rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
+nontrivial registers; counter, opcode, and historical-revision mismatches fail
+closed. Direct-template selection now requires an
 explicit runtime capability, derives exact `u64` region memory from C/D pointers,
 live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
 backend selection. After admission, zero-register halt chooses the smallest
@@ -288,8 +290,9 @@ backend/emission/admission failures remain errors. Raw untrusted IR remains
 canonically transportable for deterministic rejection,
 but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
 embedded profile capacity before hashing, bootstrap lowering, or direct object
-construction. Direct revision-4 objects bind that exact footprint in `MBPF` v3,
-and same-profile footprint mismatch fails structural admission.
+construction. Direct deopt/initial-halt revision-4 and halt-observation revision-5
+objects bind that exact footprint in `MBPF` v3, and same-profile footprint
+mismatch fails structural admission.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal keys
 remain one entry even when their accelerator digests differ, while forced digest

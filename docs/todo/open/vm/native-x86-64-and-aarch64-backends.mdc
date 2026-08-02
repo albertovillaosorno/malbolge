@@ -63,8 +63,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   a minimal direct emitter/verifier owns deopt-only x86-64/AArch64 stubs with
   byte-exact semantic admission, and `direct-initial-halt` now supplies the first
   state-applying fast path for an exact one-step zero-state halt subset.
-  `direct-halt-registers` extends that halt-only surface across arbitrary 32-bit
-  register values with independent full-object fixtures on both ISAs. General
+  `direct-halt-registers` revision 5 extends that halt-only surface across
+  arbitrary 32-bit registers and full 64-bit counter observations. Independent
+  495/564-byte fixtures bind counters above `u32::MAX` on both ISAs; historical
+  revision, counter, and opcode mismatch fail closed. General
   region-effect instruction selection, semantic machine-code admission,
   executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
