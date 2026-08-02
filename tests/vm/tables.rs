@@ -36,7 +36,7 @@
 use malbolge::{
     MAX_WORD_VALUE, Word, current_profile, decode_instruction,
     decode_profile_instruction, encrypt_profile_cell, historical_profile,
-    profile_cell_decodes_to_no_operation, profile_crazy,
+    profile_cell_decodes_to_no_operation, profile_crazy, profile_low_byte,
     profile_pointer_successor, profile_rotate,
 };
 
@@ -231,6 +231,23 @@ fn profile_noop_classification_matches_every_decode_phase() -> TestResult {
         &profile_cell_decodes_to_no_operation(32, u32::MAX),
         &false,
         "non-graphical cell is not no-op",
+    )
+}
+
+#[test]
+fn public_profile_low_byte_matches_every_current_word() -> TestResult {
+    for value in 0..current_profile().word_modulus() {
+        let expected = value.to_le_bytes().first().copied().unwrap_or(0);
+        check_equal(
+            &profile_low_byte(value),
+            &expected,
+            "profile output byte equals independent modulo-256 projection",
+        )?;
+    }
+    check_equal(
+        &profile_low_byte(u32::MAX),
+        &0xff,
+        "profile output byte covers the full public u32 input domain",
     )
 }
 

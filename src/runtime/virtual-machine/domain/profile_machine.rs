@@ -37,7 +37,9 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::profile_arithmetic::{TERNARY_RADIX, low_byte, profile_crazy};
+use crate::profile_arithmetic::{
+    TERNARY_RADIX, profile_crazy, profile_low_byte,
+};
 use crate::{
     AnnotatedLoadError, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
@@ -644,7 +646,8 @@ impl ProfileMachine {
                     self.semantic_data_read(memory_reads)?;
             },
             ProfileInstruction::Output => {
-                plan.output = Some(low_byte(self.registers.accumulator));
+                plan.output =
+                    Some(profile_low_byte(self.registers.accumulator));
             },
             ProfileInstruction::Rotate => {
                 self.plan_rotate(&mut plan, memory_reads)?;

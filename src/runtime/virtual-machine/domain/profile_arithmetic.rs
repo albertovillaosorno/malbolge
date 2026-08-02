@@ -37,7 +37,11 @@ use crate::{CRAZY_CHUNK_TRITS, crazy_chunk_lookup};
 const OUTPUT_MODULUS: u32 = 256;
 pub(crate) const TERNARY_RADIX: u32 = 3;
 
-pub(crate) fn low_byte(value: u32) -> u8 {
+/// Returns the normative output byte for one profile-width word.
+///
+/// This is the exact unsigned value modulo 256 used by profile execution.
+#[must_use]
+pub fn profile_low_byte(value: u32) -> u8 {
     let reduced = value.rem_euclid(OUTPUT_MODULUS);
     u8::try_from(reduced).ok().unwrap_or(0)
 }

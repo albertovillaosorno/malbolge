@@ -106,7 +106,7 @@ pub use profile::{
     preflight_runtime_requirement, safe_rust_classic_capability,
     safe_rust_profiled_capability, target_profile,
 };
-pub use profile_arithmetic::profile_crazy;
+pub use profile_arithmetic::{profile_crazy, profile_low_byte};
 pub use profile_machine::{
     ProfileLoadError, ProfileMachine, ProfileMachineError,
     ProfileMachineIoState, ProfileMachineState, ProfileRegisterName,
