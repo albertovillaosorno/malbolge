@@ -105,6 +105,12 @@ backend/emission/verification errors are never reinterpreted as fallback, and an
 unsupported host format still fails explicitly when the profile is supported.
 This removes backend-ID choice from callers while keeping unsupported IR safe.
 
+The state-applying emitters and semantic verifiers also check the derived region
+footprint against the profile capacity embedded in IR. Direct calls that bypass
+the selector cannot promote `direct-initial-halt` or `direct-halt-registers` when
+the declared profile envelope is too small; they fail as out-of-contract program
+shape before object promotion.
+
 `direct-halt-registers` generalizes the halt template across the complete 32-bit
 `A`, `C`, and `D` domains while keeping input/output counters zero and admitting
 no memory/I/O effects. x86-64 encodes exact `cmp imm32` guards; AArch64 materializes

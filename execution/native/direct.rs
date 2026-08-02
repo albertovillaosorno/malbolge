@@ -815,10 +815,16 @@ const fn target_triple(isa: HostIsa) -> &'static str {
     }
 }
 
+fn program_fits_declared_profile(program: &RegionEffectProgram) -> bool {
+    program.required_memory_words()
+        <= u64::from(program.profile_requirement.memory_words)
+}
+
 fn validate_halt_registers_program(
     program: &RegionEffectProgram,
 ) -> Result<ProfileRegisters, DirectHaltRegistersError> {
     if program.format_version != EFFECT_IR_VERSION
+        || !program_fits_declared_profile(program)
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()
         || program.effects.len() != 1
@@ -873,6 +879,7 @@ fn validate_initial_halt_program(
     program: &RegionEffectProgram,
 ) -> Result<(), DirectInitialHaltError> {
     if program.format_version != EFFECT_IR_VERSION
+        || !program_fits_declared_profile(program)
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()
         || program.effects.len() != 1

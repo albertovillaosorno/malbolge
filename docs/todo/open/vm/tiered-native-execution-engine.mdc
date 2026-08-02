@@ -70,6 +70,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   derives exact region memory from the IR, and applies program/profile capacity
   before runtime capability, host validation, or backend construction. `002` then
   `001` precedence is explicit and neither degrades to direct deopt.
+- State-applying emitters/verifiers repeat the declared-profile capacity check,
+  so bypassing selection cannot promote profile-invalid initial/register halt IR.
 - `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
   OS, ISA, backend revision, native ABI revision, and required features. Digest
   collisions never authorize reuse because full canonical/key equality remains

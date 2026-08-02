@@ -1085,6 +1085,36 @@ fn direct_initial_halt_rejects_ir_and_opcode_tampering() -> Result<(), String> {
 }
 
 #[test]
+fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
+{
+    let mut register_halt = direct_halt_registers_program();
+    register_halt.profile_requirement.memory_words = 1;
+    if emit_direct_halt_registers_coff(
+        &register_halt,
+        direct_halt_registers_target(HostIsa::X86_64),
+    ) != Err(DirectHaltRegistersError::ProgramShape)
+    {
+        return Err(String::from(
+            "register-halt profile-capacity mismatch was admitted",
+        ));
+    }
+
+    let mut initial_halt = direct_initial_halt_program();
+    initial_halt.profile_requirement.memory_words = 0;
+    if emit_direct_initial_halt_coff(
+        &initial_halt,
+        direct_initial_halt_target(HostIsa::X86_64),
+    ) == Err(DirectInitialHaltError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "initial-halt profile-capacity mismatch was admitted",
+        ))
+    }
+}
+
+#[test]
 fn direct_deopt_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [

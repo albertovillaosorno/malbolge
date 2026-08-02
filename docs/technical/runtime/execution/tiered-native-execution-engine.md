@@ -141,6 +141,11 @@ Only admitted program shape controls this fallback; profile, emission, or
 admission errors are propagated rather than silently retried. Non-Windows host
 formats fail explicitly because direct ELF/Mach-O templates do not exist yet.
 
+The two state-applying emitter/verifier pairs independently repeat the
+profile-capacity shape check. A caller bypassing the selector cannot semantically
+promote an initial-halt or register-halt object whose IR footprint exceeds its
+embedded profile envelope.
+
 ### Remaining Implementation
 
 Semantic admission beyond the deopt and one-step halt template family, general
