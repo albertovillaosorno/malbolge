@@ -331,6 +331,23 @@ impl<Value> NativeArtifactCache<Value> {
         self.entries = self.entries.saturating_sub(removed);
         removed
     }
+
+    /// Removes every region compiled for one exact target/backend identity.
+    ///
+    /// Returns the number of removed entries. Target equality includes host OS,
+    /// ISA, backend/revision, native ABI revision, and required features.
+    pub fn remove_target(&mut self, target: &NativeTargetIdentity) -> usize {
+        let mut removed = 0usize;
+        self.buckets.retain(|_digest, bucket| {
+            let before = bucket.len();
+            bucket.retain(|entry| entry.key.target() != target);
+            removed =
+                removed.saturating_add(before.saturating_sub(bucket.len()));
+            !bucket.is_empty()
+        });
+        self.entries = self.entries.saturating_sub(removed);
+        removed
+    }
 }
 
 impl NativeArtifactKey {

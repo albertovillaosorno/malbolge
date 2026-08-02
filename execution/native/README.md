@@ -141,12 +141,14 @@ non-authoritative. `VerifiedDirectNativeCache::invalidate()` removes future reus
 for one exact verified key. `invalidate_program()` constructs exact region
 identity before mutation and removes every host/backend variant of that program;
 profile-capacity-invalid IR returns `NativeIdentityError::ProfileCapacity` without
-changing the cache. Both operations leave outstanding `Arc` plans valid;
-reinsertion produces the same keys/bytes under new allocations. Unrelated regions,
-interpreter selection, and profile failures remain unchanged. There is no
-automatic eviction or revocation. Persistence, eviction policy, synchronization
-policy, linking, executable memory, and invocation remain outside; `Arc` supplies
-ownership only, not concurrent execution.
+changing the cache. `invalidate_target()` removes every region sharing one
+artifact's exact OS/ISA/backend revision/native-ABI/features identity while
+preserving other ISAs and backends. All invalidation operations leave outstanding
+`Arc` plans valid; reinsertion produces the same keys/bytes under new allocations.
+Unrelated regions/targets, interpreter selection, and profile failures remain
+unchanged. There is no automatic eviction or revocation. Persistence, eviction
+policy, synchronization policy, linking, executable memory, and invocation remain
+outside; `Arc` supplies ownership only, not concurrent execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Direct calls that bypass

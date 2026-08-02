@@ -185,11 +185,14 @@ cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and thos
 outcomes leave cache cardinality unchanged. Exact-key invalidation removes one
 future lookup, while exact-program invalidation first constructs
 `RegionEffectIdentity` and then removes all host/backend variants of that region.
-An out-of-profile program fails before mutation. Neither operation revokes
-outstanding `Arc` plans or crosses into unrelated regions; later requests reinsert
-the same keys/bytes under distinct allocations. `Arc` provides shared immutable
-ownership only. Durable storage, automatic eviction, synchronization policy,
-linking, executable memory, invocation, and performance policy remain outside.
+An out-of-profile program fails before mutation. Exact-target invalidation removes
+all regions sharing one OS/ISA/backend revision/native-ABI/features identity while
+preserving other ISAs and backend identities. No invalidation operation revokes
+outstanding `Arc` plans or crosses its stated identity boundary; later requests
+reinsert the same keys/bytes under distinct allocations. `Arc` provides shared
+immutable ownership only. Durable storage, automatic eviction, synchronization
+policy, linking, executable memory, invocation, and performance policy remain
+outside.
 
 ### Remaining Implementation
 

@@ -564,6 +564,38 @@ fn process_cache_removes_all_variants_for_exact_region() -> Result<(), String> {
 }
 
 #[test]
+fn process_cache_removes_all_regions_for_exact_target() -> Result<(), String> {
+    let program = program();
+    let mut other_program = program.clone();
+    other_program.profile_id.push_str("-other");
+    let x86_target =
+        target(HostOperatingSystem::Windows, HostIsa::X86_64, Vec::new());
+    let arm_target =
+        target(HostOperatingSystem::Windows, HostIsa::AArch64, Vec::new());
+    let x86 = NativeArtifactKey::new(&program, x86_target.clone())
+        .map_err(|error| format!("x86 target key failed: {error:?}"))?;
+    let other_x86 = NativeArtifactKey::new(&other_program, x86_target.clone())
+        .map_err(|error| format!("other x86 key failed: {error:?}"))?;
+    let arm = NativeArtifactKey::new(&program, arm_target)
+        .map_err(|error| format!("ARM target key failed: {error:?}"))?;
+    let mut cache = NativeArtifactCache::default();
+    let _x86 = cache.insert(x86, "x86");
+    let _other_x86 = cache.insert(other_x86, "other-x86");
+    let _arm = cache.insert(arm.clone(), "arm");
+    if cache.remove_target(&x86_target) != 2
+        || cache.remove_target(&x86_target) != 0
+        || cache.len() != 1
+        || cache.get(&arm) != Some(&"arm")
+    {
+        Err(String::from(
+            "target invalidation crossed exact assumptions",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
 fn portable_ir_uses_shared_runtime_diagnostic() -> Result<(), String> {
     let program = program();
     let current = current_profile();
@@ -1219,6 +1251,28 @@ fn insert_cached_direct_for_isa(
     Ok(artifact)
 }
 
+fn hit_cached_direct_for_isa(
+    cache: &mut VerifiedDirectNativeCache,
+    program: &RegionEffectProgram,
+    isa: HostIsa,
+) -> Result<Arc<execution_native::VerifiedDirectNativeArtifact>, String> {
+    let selected = select_cached_preflighted_execution_tier(
+        program,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, isa),
+        cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact,
+        cache: DirectCacheDisposition::Hit,
+    } = selected
+    else {
+        return Err(String::from("direct cache fixture was not reused"));
+    };
+    Ok(artifact)
+}
+
 #[test]
 fn verified_direct_cache_invalidation_is_exact_and_nonrevoking()
 -> Result<(), String> {
@@ -1332,6 +1386,56 @@ fn verified_cache_invalidates_program_variants() -> Result<(), String> {
         || cache.len() != 3
     {
         Err(String::from("program invalidation changed cache semantics"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn verified_cache_invalidates_exact_target_regions() -> Result<(), String> {
+    let program = native_program();
+    let mut variant = program.clone();
+    variant.profile_fingerprint.push('x');
+    let halt = direct_initial_halt_program();
+    let mut cache = VerifiedDirectNativeCache::default();
+    let x86 =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::X86_64)?;
+    let x86_variant =
+        insert_cached_direct_for_isa(&mut cache, &variant, HostIsa::X86_64)?;
+    let arm =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::AArch64)?;
+    let halt_x86 =
+        insert_cached_direct_for_isa(&mut cache, &halt, HostIsa::X86_64)?;
+    if x86.kind() != DirectNativeKind::Deopt
+        || x86_variant.kind() != DirectNativeKind::Deopt
+        || halt_x86.kind() != DirectNativeKind::InitialHalt
+        || cache.invalidate_target(&x86) != 2
+        || cache.invalidate_target(&x86_variant) != 0
+        || cache.len() != 2
+        || x86.object().is_empty()
+        || x86_variant.object().is_empty()
+    {
+        return Err(String::from(
+            "verified target invalidation crossed identity",
+        ));
+    }
+    let arm_hit =
+        hit_cached_direct_for_isa(&mut cache, &program, HostIsa::AArch64)?;
+    let halt_hit =
+        hit_cached_direct_for_isa(&mut cache, &halt, HostIsa::X86_64)?;
+    let new_x86 =
+        insert_cached_direct_for_isa(&mut cache, &program, HostIsa::X86_64)?;
+    let new_variant =
+        insert_cached_direct_for_isa(&mut cache, &variant, HostIsa::X86_64)?;
+    if !Arc::ptr_eq(&arm, &arm_hit)
+        || !Arc::ptr_eq(&halt_x86, &halt_hit)
+        || Arc::ptr_eq(&x86, &new_x86)
+        || Arc::ptr_eq(&x86_variant, &new_variant)
+        || x86.key() != new_x86.key()
+        || x86_variant.key() != new_variant.key()
+        || cache.len() != 4
+    {
+        Err(String::from("target invalidation changed reuse semantics"))
     } else {
         Ok(())
     }

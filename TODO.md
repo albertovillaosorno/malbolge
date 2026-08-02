@@ -304,9 +304,11 @@ three templates, and shares the same immutable `Arc` allocation on hits. Exact
 invalidation removes one full-equality key from future reuse without revoking held
 plans. Exact-program invalidation constructs canonical region identity before
 mutation and removes every host/backend variant while preserving unrelated
-regions; profile-invalid IR fails without changing the cache. Requesting removed
-variants again reinserts identical keys/bytes under new allocations. Planning
-performs `002`, `001`, and host-format selection before lookup, so
+regions; profile-invalid IR fails without changing the cache. Exact-target
+invalidation removes all regions sharing one complete OS/ISA/backend
+revision/native-ABI/features identity while preserving other targets. Requesting
+removed variants again reinserts identical keys/bytes under new allocations.
+Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
 eviction, synchronization policy, general region-effect fast paths, executable
 invocation, and broader AOT/JIT performance policy remain open.

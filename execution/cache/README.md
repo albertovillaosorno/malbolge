@@ -14,7 +14,7 @@ storage before durable cache persistence exists.
 - sorted required code-generation features;
 - non-authoritative lookup digests excluded from exact identity equality;
 - process-local exact-key lookup, insertion, replacement, exact removal,
-  region-wide variant removal, and clearing.
+  region-wide variant removal, target-wide region removal, and clearing.
 
 ## Does Not Own
 
@@ -53,9 +53,11 @@ independently readable and removable. Cache equality likewise compares only the
 retained exact key/value mapping; two stores with different bucket layouts are
 equal when their logical contents match. `remove_region()` explicitly drops every
 host/backend variant whose complete retained `RegionEffectIdentity` equals the
-caller-supplied identity; unrelated regions remain. Stored values gain no semantic
-authority merely by being cached; callers must insert only artifacts admitted by
-their owning boundary.
+caller-supplied identity; unrelated regions remain. `remove_target()` performs the
+orthogonal operation: it removes every region for one exact OS/ISA/backend
+revision/native-ABI/features identity while preserving other targets. Stored values
+gain no semantic authority merely by being cached; callers must insert only
+artifacts admitted by their owning boundary.
 
 The cache has no implicit limit, eviction, synchronization, persistence, retry,
 or discovery. `clear()` is explicit, and dropping the caller-owned value releases

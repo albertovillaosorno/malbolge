@@ -137,10 +137,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   invalidation removes one future reuse entry. Exact-program invalidation first
   constructs canonical region identity, removes every host/backend variant, and
   leaves unrelated regions unchanged; profile-invalid IR fails before mutation.
-  Outstanding `Arc` plans remain valid and reinsertion restores the same key/bytes
-  under new allocations. `Arc` owns immutable sharing only; persistence, automatic
-  eviction, synchronization policy, linking, executable memory, invocation, and
-  performance remain outside.
+  Exact-target invalidation removes all regions sharing one complete
+  OS/ISA/backend revision/native-ABI/features identity while preserving other
+  targets. Outstanding `Arc` plans remain valid and reinsertion restores the same
+  key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
+  automatic eviction, synchronization policy, linking, executable memory,
+  invocation, and performance remain outside.
 - Accelerated semantic machine-code admission/direct effect emitters, cache-aware
   AOT/JIT policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

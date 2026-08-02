@@ -504,6 +504,17 @@ impl VerifiedDirectNativeCache {
         Ok(self.entries.remove_region(&identity))
     }
 
+    /// Invalidates every cached region for one artifact's exact direct target.
+    ///
+    /// The target includes host ISA, backend/revision, native ABI revision, and
+    /// required features. Outstanding [`Arc`] owners remain valid.
+    pub fn invalidate_target(
+        &mut self,
+        artifact: &VerifiedDirectNativeArtifact,
+    ) -> usize {
+        self.entries.remove_target(artifact.key().target())
+    }
+
     /// Reports whether no verified direct artifacts are retained.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
