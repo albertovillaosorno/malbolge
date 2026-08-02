@@ -48,7 +48,7 @@
 
 //! Reviewed x86-64 instruction templates for direct native execution.
 
-use super::direct::DirectHaltObservation;
+use super::direct::DirectEntryObservation;
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -59,22 +59,11 @@ pub(super) const fn deopt_code() -> &'static [u8] {
 /// Encodes exact-observation one-step halt preflight and commit.
 #[must_use]
 pub(super) fn halt_observation_code(
-    observation: DirectHaltObservation,
+    observation: DirectEntryObservation,
 ) -> Option<Vec<u8>> {
     let mut code = Vec::with_capacity(96);
     let mut guard_jumps = Vec::with_capacity(7);
-    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
-    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
-    push_u64_guard(
-        &mut code,
-        &mut guard_jumps,
-        0x20,
-        observation.input_consumed,
-    );
-    push_u64_guard(&mut code, &mut guard_jumps, 0x38, observation.output_len);
-    push_u32_guard(&mut code, &mut guard_jumps, 0x40, observation.accumulator);
-    push_u32_guard(&mut code, &mut guard_jumps, 0x44, observation.code_pointer);
-    push_u32_guard(&mut code, &mut guard_jumps, 0x48, observation.data_pointer);
+    push_observation_guards(&mut code, &mut guard_jumps, observation);
     code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
     push_guard_jump(&mut code, &mut guard_jumps, 0x75);
     code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3]);
@@ -82,6 +71,20 @@ pub(super) fn halt_observation_code(
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
     Some(code)
+}
+
+fn push_observation_guards(
+    code: &mut Vec<u8>,
+    guard_jumps: &mut Vec<usize>,
+    observation: DirectEntryObservation,
+) {
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_guard_jump(code, guard_jumps, 0x74);
+    push_u64_guard(code, guard_jumps, 0x20, observation.input_consumed);
+    push_u64_guard(code, guard_jumps, 0x38, observation.output_len);
+    push_u32_guard(code, guard_jumps, 0x40, observation.accumulator);
+    push_u32_guard(code, guard_jumps, 0x44, observation.code_pointer);
+    push_u32_guard(code, guard_jumps, 0x48, observation.data_pointer);
 }
 
 fn patch_guard_jumps(

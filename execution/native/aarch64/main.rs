@@ -48,7 +48,7 @@
 
 //! Reviewed `AArch64` instruction templates for direct native execution.
 
-use super::direct::DirectHaltObservation;
+use super::direct::DirectEntryObservation;
 
 /// Returns the canonical no-state-change guard-miss stub.
 #[must_use]
@@ -59,37 +59,11 @@ pub(super) const fn deopt_code() -> &'static [u8] {
 /// Encodes exact-observation one-step halt preflight and commit.
 #[must_use]
 pub(super) fn halt_observation_code(
-    observation: DirectHaltObservation,
+    observation: DirectEntryObservation,
 ) -> Option<Vec<u8>> {
     let mut words = Vec::with_capacity(48);
     let mut guard_branches = Vec::with_capacity(7);
-    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
-    words.push(0xf940_1008);
-    push_u64_x9(&mut words, observation.input_consumed)?;
-    words.push(0xeb09_011f);
-    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
-    words.push(0xf940_1c08);
-    push_u64_x9(&mut words, observation.output_len)?;
-    words.push(0xeb09_011f);
-    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
-    push_u32_guard(
-        &mut words,
-        &mut guard_branches,
-        0xb940_4008,
-        observation.accumulator,
-    );
-    push_u32_guard(
-        &mut words,
-        &mut guard_branches,
-        0xb940_4408,
-        observation.code_pointer,
-    );
-    push_u32_guard(
-        &mut words,
-        &mut guard_branches,
-        0xb940_4808,
-        observation.data_pointer,
-    );
+    push_observation_guards(&mut words, &mut guard_branches, observation)?;
     words.push(0x3941_3009);
     push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
     words.extend_from_slice(&[
@@ -102,6 +76,36 @@ pub(super) fn halt_observation_code(
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
     Some(encode_words(&words))
+}
+
+fn push_observation_guards(
+    words: &mut Vec<u32>,
+    guard_branches: &mut Vec<usize>,
+    observation: DirectEntryObservation,
+) -> Option<()> {
+    push_guard_branch(words, guard_branches, 0xb400_0000);
+    words.push(0xf940_1008);
+    push_u64_x9(words, observation.input_consumed)?;
+    words.push(0xeb09_011f);
+    push_guard_branch(words, guard_branches, 0x5400_0001);
+    words.push(0xf940_1c08);
+    push_u64_x9(words, observation.output_len)?;
+    words.push(0xeb09_011f);
+    push_guard_branch(words, guard_branches, 0x5400_0001);
+    push_u32_guard(words, guard_branches, 0xb940_4008, observation.accumulator);
+    push_u32_guard(
+        words,
+        guard_branches,
+        0xb940_4408,
+        observation.code_pointer,
+    );
+    push_u32_guard(
+        words,
+        guard_branches,
+        0xb940_4808,
+        observation.data_pointer,
+    );
+    Some(())
 }
 
 fn patch_guard_branches(

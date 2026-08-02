@@ -97,7 +97,7 @@ pub const DIRECT_HALT_REGISTERS_BACKEND_ID: &str = "direct-halt-registers";
 pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct DirectHaltObservation {
+pub(super) struct DirectEntryObservation {
     pub(super) accumulator: u32,
     pub(super) code_pointer: u32,
     pub(super) data_pointer: u32,
@@ -1038,7 +1038,7 @@ fn halt_registers_coff(
     let output_len = u64::try_from(observation.output_len)
         .map_err(|_error| DirectHaltRegistersError::ObjectBytes)?;
     let registers = observation.registers;
-    let direct = DirectHaltObservation {
+    let direct = DirectEntryObservation {
         accumulator: registers.accumulator,
         code_pointer: registers.code_pointer,
         data_pointer: registers.data_pointer,
