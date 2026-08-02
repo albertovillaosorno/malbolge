@@ -60,8 +60,8 @@ use std::process::Command;
 use std::str::from_utf8;
 
 use execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetConfig,
-    NativeTargetIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
+    NativeTargetConfig, NativeTargetIdentity, RegionEffectIdentity,
 };
 use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
@@ -216,7 +216,7 @@ fn target_variant_configs() -> Vec<NativeTargetConfig> {
 
 fn assert_key_differs(
     base: &NativeArtifactKey,
-    candidate: Result<NativeArtifactKey, execution_ir::IrEncodingError>,
+    candidate: Result<NativeArtifactKey, NativeIdentityError>,
 ) -> Result<(), String> {
     let observed =
         candidate.map_err(|error| format!("variant key failed: {error:?}"))?;
@@ -362,6 +362,53 @@ fn portable_ir_derives_exact_required_memory_words() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("u32::MAX address footprint was truncated"))
+    }
+}
+
+#[test]
+fn native_identity_rejects_profile_capacity_inconsistent_ir()
+-> Result<(), String> {
+    let program = profile_invalid_native_program();
+    let canonical = program
+        .canonical_bytes()
+        .map_err(|error| format!("untrusted IR transport failed: {error:?}"))?;
+    if canonical.is_empty() || program.fits_declared_profile_capacity() {
+        return Err(String::from("profile-invalid IR classification drifted"));
+    }
+    if RegionEffectIdentity::new(&program)
+        != Err(NativeIdentityError::ProfileCapacity)
+    {
+        return Err(String::from("profile-invalid IR gained cache identity"));
+    }
+    let target = NativeTargetIdentity::new(base_target_config());
+    if NativeArtifactKey::new(&program, target)
+        == Err(NativeIdentityError::ProfileCapacity)
+    {
+        Ok(())
+    } else {
+        Err(String::from("profile-invalid IR gained native key"))
+    }
+}
+
+#[test]
+fn native_emitters_reject_profile_capacity_inconsistent_ir()
+-> Result<(), String> {
+    let program = profile_invalid_native_program();
+    if lower_clang_c23(&program, native_target(HostIsa::X86_64))
+        != Err(NativeArtifactError::Identity(
+            NativeIdentityError::ProfileCapacity,
+        ))
+    {
+        return Err(String::from("bootstrap admitted profile-invalid IR"));
+    }
+    if emit_direct_deopt_coff(&program, direct_deopt_target(HostIsa::X86_64))
+        == Err(DirectDeoptError::Identity(
+            NativeIdentityError::ProfileCapacity,
+        ))
+    {
+        Ok(())
+    } else {
+        Err(String::from("direct deopt admitted profile-invalid IR"))
     }
 }
 
@@ -617,6 +664,12 @@ fn native_program() -> RegionEffectProgram {
         profile_requirement: current_profile_requirement(),
         step_budget: 2,
     }
+}
+
+fn profile_invalid_native_program() -> RegionEffectProgram {
+    let mut program = native_program();
+    program.profile_requirement.memory_words = 1;
+    program
 }
 
 fn native_target(isa: HostIsa) -> NativeTargetIdentity {

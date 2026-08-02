@@ -190,6 +190,9 @@ runtime capability without reloading the profile document.
 
 Effect IR now derives the exact region-specific memory requirement needed to
 distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.
+Although raw IR remains serializable for deterministic rejection,
+`RegionEffectIdentity` and `NativeArtifactKey` reject a footprint beyond the
+embedded profile capacity before bootstrap or direct artifact construction.
 Other artifact families do not yet universally expose an equivalent program
 requirement, and bootstrap compiler artifacts, top-level AOT/JIT/runtime
 orchestration, and product execution paths do not yet universally invoke combined
@@ -210,7 +213,8 @@ rather than claiming repository-wide profile diagnostic completion.
   `002` parity, explicit profiled-runtime acceptance, unknown-feature rejection,
   and no-fallback lookup.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
-  `u32::MAX`, and direct-template precedence `002` then `001` then host/backend.
+  `u32::MAX`, native-identity rejection of inconsistent capacity, emitter
+  propagation, and direct-template precedence `002` then `001` then host/backend.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and executes
   the current profile while preserving full 1998 equivalence on historical input.
 - `tests/compatibility/test_scalable_memory.py` independently verifies the

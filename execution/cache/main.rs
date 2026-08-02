@@ -106,6 +106,21 @@ pub struct NativeTargetIdentity {
     required_features: Vec<String>,
 }
 
+/// Failure while constructing canonical native artifact identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeIdentityError {
+    /// Portable IR or target identity bytes cannot be represented canonically.
+    Encoding(IrEncodingError),
+    /// Region addressing exceeds the capacity declared by its profile envelope.
+    ProfileCapacity,
+}
+
+impl From<IrEncodingError> for NativeIdentityError {
+    fn from(error: IrEncodingError) -> Self {
+        Self::Encoding(error)
+    }
+}
+
 /// Canonical portable-IR identity with a non-authoritative lookup digest.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegionEffectIdentity {
@@ -144,12 +159,12 @@ impl NativeArtifactKey {
     ///
     /// # Errors
     ///
-    /// Returns [`IrEncodingError`] when portable IR or target lengths cannot be
-    /// represented by the architecture-neutral encoding.
+    /// Returns [`NativeIdentityError`] when region addressing exceeds its
+    /// declared profile capacity or identity lengths cannot be represented.
     pub fn new(
         program: &RegionEffectProgram,
         target: NativeTargetIdentity,
-    ) -> Result<Self, IrEncodingError> {
+    ) -> Result<Self, NativeIdentityError> {
         Self::with_digest(program, target, fnv_bytes)
     }
 
@@ -163,7 +178,7 @@ impl NativeArtifactKey {
         program: &RegionEffectProgram,
         target: NativeTargetIdentity,
         digest: BucketDigestFunction,
-    ) -> Result<Self, IrEncodingError> {
+    ) -> Result<Self, NativeIdentityError> {
         let ir = RegionEffectIdentity::with_digest(program, digest)?;
         let mut key_bytes = target.canonical_bytes()?;
         key_bytes.extend_from_slice(ir.canonical_bytes());
@@ -261,8 +276,11 @@ impl RegionEffectIdentity {
     ///
     /// # Errors
     ///
-    /// Returns [`IrEncodingError`] from portable IR canonicalization.
-    pub fn new(program: &RegionEffectProgram) -> Result<Self, IrEncodingError> {
+    /// Returns [`NativeIdentityError`] when profile capacity is inconsistent or
+    /// portable IR canonicalization fails.
+    pub fn new(
+        program: &RegionEffectProgram,
+    ) -> Result<Self, NativeIdentityError> {
         Self::with_digest(program, fnv_bytes)
     }
 
@@ -287,7 +305,10 @@ impl RegionEffectIdentity {
     fn with_digest(
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
-    ) -> Result<Self, IrEncodingError> {
+    ) -> Result<Self, NativeIdentityError> {
+        if !program.fits_declared_profile_capacity() {
+            return Err(NativeIdentityError::ProfileCapacity);
+        }
         let canonical = program.canonical_bytes()?;
         Ok(Self {
             bucket_digest: digest(&canonical),

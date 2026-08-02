@@ -64,12 +64,10 @@ use super::{
     aarch64, structurally_admit_coff, x86_64,
 };
 use crate::execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetConfig,
-    NativeTargetIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
+    NativeTargetConfig, NativeTargetIdentity,
 };
-use crate::execution_ir::{
-    EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
-};
+use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
 
 const COFF_HEADER_BYTES: usize = 20;
 const COFF_SECTION_BYTES: usize = 40;
@@ -101,8 +99,8 @@ pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 3;
 pub enum DirectDeoptError {
     /// Structural COFF admission rejected the candidate.
     Coff(CoffAdmissionError),
-    /// Native artifact identity could not encode the portable program.
-    Identity(IrEncodingError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
     /// Object bytes differ from the canonical direct deopt object.
     ObjectBytes,
     /// Target backend/revision/native ABI is not the direct deopt contract.
@@ -118,7 +116,7 @@ impl Display for DirectDeoptError {
         f.write_str(match self {
             Self::Coff(_error) => "direct deopt COFF structure was rejected",
             Self::Identity(_error) => {
-                "direct deopt native identity encoding failed"
+                "direct deopt native identity construction failed"
             },
             Self::ObjectBytes => {
                 "direct deopt object differs from canonical bytes"
@@ -142,8 +140,8 @@ impl From<CoffAdmissionError> for DirectDeoptError {
     }
 }
 
-impl From<IrEncodingError> for DirectDeoptError {
-    fn from(error: IrEncodingError) -> Self {
+impl From<NativeIdentityError> for DirectDeoptError {
+    fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
     }
 }
@@ -153,8 +151,8 @@ impl From<IrEncodingError> for DirectDeoptError {
 pub enum DirectHaltRegistersError {
     /// Structural COFF admission rejected the candidate.
     Coff(CoffAdmissionError),
-    /// Native artifact identity could not encode the portable program.
-    Identity(IrEncodingError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
     /// Object bytes differ from the canonical register-bound halt object.
     ObjectBytes,
     /// Portable IR is outside the exact register-bound halt subset.
@@ -174,7 +172,7 @@ impl Display for DirectHaltRegistersError {
                 "direct register-halt COFF structure was rejected"
             },
             Self::Identity(_error) => {
-                "direct register-halt identity encoding failed"
+                "direct register-halt identity construction failed"
             },
             Self::ObjectBytes => {
                 "direct register-halt object differs from canonical bytes"
@@ -201,8 +199,8 @@ impl From<CoffAdmissionError> for DirectHaltRegistersError {
     }
 }
 
-impl From<IrEncodingError> for DirectHaltRegistersError {
-    fn from(error: IrEncodingError) -> Self {
+impl From<NativeIdentityError> for DirectHaltRegistersError {
+    fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
     }
 }
@@ -212,8 +210,8 @@ impl From<IrEncodingError> for DirectHaltRegistersError {
 pub enum DirectInitialHaltError {
     /// Structural COFF admission rejected the candidate.
     Coff(CoffAdmissionError),
-    /// Native artifact identity could not encode the portable program.
-    Identity(IrEncodingError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
     /// Object bytes differ from the canonical direct initial-halt object.
     ObjectBytes,
     /// Portable IR is outside the exact initial-halt subset.
@@ -233,7 +231,7 @@ impl Display for DirectInitialHaltError {
                 "direct initial-halt COFF structure was rejected"
             },
             Self::Identity(_error) => {
-                "direct initial-halt identity encoding failed"
+                "direct initial-halt identity construction failed"
             },
             Self::ObjectBytes => {
                 "direct initial-halt object differs from canonical bytes"
@@ -260,8 +258,8 @@ impl From<CoffAdmissionError> for DirectInitialHaltError {
     }
 }
 
-impl From<IrEncodingError> for DirectInitialHaltError {
-    fn from(error: IrEncodingError) -> Self {
+impl From<NativeIdentityError> for DirectInitialHaltError {
+    fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
     }
 }
@@ -815,16 +813,11 @@ const fn target_triple(isa: HostIsa) -> &'static str {
     }
 }
 
-fn program_fits_declared_profile(program: &RegionEffectProgram) -> bool {
-    program.required_memory_words()
-        <= u64::from(program.profile_requirement.memory_words)
-}
-
 fn validate_halt_registers_program(
     program: &RegionEffectProgram,
 ) -> Result<ProfileRegisters, DirectHaltRegistersError> {
     if program.format_version != EFFECT_IR_VERSION
-        || !program_fits_declared_profile(program)
+        || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()
         || program.effects.len() != 1
@@ -879,7 +872,7 @@ fn validate_initial_halt_program(
     program: &RegionEffectProgram,
 ) -> Result<(), DirectInitialHaltError> {
     if program.format_version != EFFECT_IR_VERSION
-        || !program_fits_declared_profile(program)
+        || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()
         || program.effects.len() != 1

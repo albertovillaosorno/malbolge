@@ -158,6 +158,13 @@ impl RegionEffectProgram {
         Ok(bytes)
     }
 
+    /// Reports whether every addressed word fits the declared profile capacity.
+    #[must_use]
+    pub fn fits_declared_profile_capacity(&self) -> bool {
+        self.required_memory_words()
+            <= u64::from(self.profile_requirement.memory_words)
+    }
+
     /// Returns the minimum directly addressed memory required by this region.
     ///
     /// The requirement includes code/data pointers in every observation,

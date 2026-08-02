@@ -277,11 +277,16 @@ live-ins, and writes, and applies `MALBOLGE-PROFILE-002` before `001`, host, or
 backend selection. After admission, zero-register halt chooses the smallest
 specialization, other eligible one-step halts choose register-bound code, and all
 remaining IR chooses verified deopt; unsupported host formats fail explicitly.
-General region-effect fast paths, cache/orchestration, executable invocation, and
+Raw untrusted IR remains canonically transportable for deterministic rejection,
+but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
+embedded profile capacity before hashing, bootstrap lowering, or direct object
+construction. General region-effect fast paths, cache/orchestration, executable
+invocation, and
 full AOT/JIT tier selection remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
-deterministic deoptimization, canonical native cache identity, and an untrusted
+deterministic deoptimization, capacity-consistent canonical native cache identity,
+and an untrusted
 cross-ISA bootstrap object boundary are implemented. Direct x86-64/AArch64
 instruction selection, executable-memory integration, durable cache storage, and
 tier orchestration remain open.

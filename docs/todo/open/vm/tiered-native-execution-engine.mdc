@@ -73,9 +73,12 @@ baseline; native tiers are accelerators of identical observable behavior.
 - State-applying emitters/verifiers repeat the declared-profile capacity check,
   so bypassing selection cannot promote profile-invalid initial/register halt IR.
 - `execution/cache/main.rs` now binds canonical byte-exact IR identity to host
-  OS, ISA, backend revision, native ABI revision, and required features. Digest
-  collisions never authorize reuse because full canonical/key equality remains
-  authoritative; `tests/tiered_execution.rs` forces that boundary explicitly.
+  OS, ISA, backend revision, native ABI revision, and required features. Raw
+  untrusted IR remains canonically transportable, but `RegionEffectIdentity` and
+  `NativeArtifactKey` reject profile-capacity-inconsistent addressing through
+  typed `NativeIdentityError::ProfileCapacity` before hashing or artifact
+  construction. Digest collisions never authorize reuse because full
+  canonical/key equality remains authoritative.
 - `execution/native/main.rs` now lowers structurally consistent effect IR to
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
   entry/memory/input/output guards precede a collapsed final commit. Pinned
@@ -101,8 +104,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   forbidden. Full x86-64/AArch64 fixtures cover nontrivial immediates; x86-64 hit
   preserves registers and commits halt, while one-register miss is atomic.
 - After program/profile/runtime admission, direct-template orchestration
-  classifies IR
-  before backend construction: exact zero-register halt selects the smallest fast
+  classifies IR before backend construction: exact zero-register halt selects the
+  smallest fast
   path, other eligible halt IR selects the register-bound template, and remaining
   IR selects verified deopt. Unsupported host formats fail explicitly and
   post-selection errors never degrade silently to fallback.

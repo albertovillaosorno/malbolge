@@ -44,6 +44,10 @@ verifier-owned guard before any future native runner can invoke this artifact.
 
 Both source and compiler-output wrappers are named `Untrusted*`. Attaching bytes
 to the correct cache key does not prove that those bytes implement the IR.
+`NativeArtifactKey` construction nevertheless rejects profile-capacity-inconsistent
+IR before bootstrap source, direct deopt, or any state-applying object can be
+created. This closes an impossible artifact identity without granting semantic
+trust to otherwise unverified effects.
 
 `coff.rs` adds a narrower structural gate for Windows bootstrap objects. It
 parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine

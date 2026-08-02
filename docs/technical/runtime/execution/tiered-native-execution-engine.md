@@ -56,12 +56,15 @@ verifier admission.
 
 `execution/cache/main.rs` now owns collision-safe native artifact identity.
 `RegionEffectProgram` has a versioned layout-independent canonical byte
-encoding, frozen by an independently rendered fixture. Native keys retain the
-exact profile ID/fingerprint plus the canonical requirement envelope and
-additionally bind host OS,
-x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and sorted
-required features. FNV-1a is only a bucket accelerator; full canonical
-IR and target equality remain authoritative after collisions.
+encoding, frozen by an independently rendered fixture. Raw canonical transport
+may preserve a profile-capacity-inconsistent untrusted envelope for deterministic
+rejection, but `RegionEffectIdentity` and `NativeArtifactKey` return typed
+`NativeIdentityError::ProfileCapacity` before hashing or artifact construction.
+Native keys retain the exact profile ID/fingerprint plus the canonical requirement
+envelope and additionally bind host OS, x86-64/AArch64 ISA, backend
+identity/revision, native ABI revision, and sorted required features. FNV-1a is
+only a bucket accelerator; full canonical IR and target equality remain
+authoritative after collisions.
 
 `execution/native/main.rs` now owns the first host-code artifact boundary. The
 bootstrap backend lowers one structurally consistent `RegionEffectProgram` into
@@ -185,8 +188,9 @@ backend errors.
   and `tests/tiered_execution.rs`: artifact tampering fails closed, verified
   effects/deoptimization match their normative baselines, canonical IR matches a
   byte-exact independent fixture, forced bucket collisions never authorize
-  native-cache reuse, bootstrap source is deterministic/atomic/key-bound, direct
-  selection preflights profile capability before host/backend selection, and
+  native-cache reuse, profile-invalid IR cannot gain cache/bootstrap/direct
+  identity, bootstrap source is deterministic/atomic/key-bound, direct selection
+  preflights profile capability before host/backend selection, and
   pinned Clang emits real x86-64 and AArch64 COFF object candidates.
 - Safe-Rust COFF tests admit both real objects, including ARM64 internal
   relocations, while rejecting truncated bytes, mismatched machine identity, and

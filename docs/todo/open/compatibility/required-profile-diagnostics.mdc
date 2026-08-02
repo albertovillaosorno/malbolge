@@ -71,6 +71,9 @@ historical-profile constraint.
   preflight emits byte-identical `MALBOLGE-PROFILE-002` before checking `001`.
 - Direct-template selection invokes that combined preflight before host/backend
   selection; neither profile error is converted to deopt fallback.
+- Raw IR remains transportable for verifier rejection, while cache/native identity
+  rejects profile-capacity-inconsistent addressing before bootstrap or direct
+  artifact construction.
 - Equivalent program-memory requirements for non-IR artifact families, bootstrap
   compiler artifacts, broader AOT/JIT/runtime orchestration, and universal product
   invocation remain open, so repository-wide completion is not claimed.

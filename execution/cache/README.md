@@ -8,6 +8,7 @@ exists.
 ## Owns
 
 - canonical portable-IR identity bytes;
+- rejection of region addressing beyond the declared profile capacity;
 - host operating-system and ISA identity;
 - backend and native ABI revisions;
 - sorted required code-generation features;
@@ -26,6 +27,12 @@ exists.
 canonical IR bytes and every target assumption remain part of `Eq`, so a digest
 collision cannot authorize native reuse. A future serialized cache may add a
 cryptographic content address without changing this correctness rule.
+
+`RegionEffectIdentity` is stricter than raw IR transport. It first requires
+`RegionEffectProgram::fits_declared_profile_capacity()` and returns typed
+`NativeIdentityError::ProfileCapacity` before hashing or retaining canonical
+bytes. This is a structural identity invariant, not verifier acceptance of the
+region's claimed effects.
 
 `NativeArtifactKey` combines the complete canonical IR identity with
 `NativeTargetIdentity`: operating-system family, host ISA, backend ID/revision,

@@ -49,7 +49,13 @@ use fixed-width little-endian encoding; host-sized counts are first converted to
    tags, and data/encryption memory-write options.
 
 The encoding never depends on Rust struct layout, enum discriminants, pointer
-width, or host endianness. `tests/execution/fixtures/region-effect-v3.hex` is an
+width, or host endianness. Canonical transport intentionally remains available
+for an untrusted envelope whose addresses exceed its declared profile capacity;
+that permits deterministic verification and rejection. The separate
+`fits_declared_profile_capacity()` predicate classifies this structural mismatch,
+and native identity construction must reject it before cache or artifact creation.
+
+`tests/execution/fixtures/region-effect-v3.hex` is an
 independently rendered 415-byte v3 vector and is compared byte-for-byte in
 `tests/tiered_execution.rs`. Version 3 adds the immutable target-profile
 requirement envelope while preserving the version-2 rule that profile aliases do

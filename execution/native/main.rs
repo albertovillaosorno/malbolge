@@ -82,11 +82,10 @@ use malbolge::{
 };
 
 use crate::execution_cache::{
-    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeTargetIdentity,
+    HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
+    NativeTargetIdentity,
 };
-use crate::execution_ir::{
-    EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
-};
+use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
 
 const C_ABI_PREFIX: &str = r#"
 typedef unsigned char mb_u8;
@@ -140,8 +139,8 @@ pub enum NativeArtifactError {
     EmptyObject,
     /// Region has no effect boundary from which an entry/exit can be derived.
     EmptyRegion,
-    /// Portable IR canonical identity cannot be represented.
-    Identity(IrEncodingError),
+    /// Native artifact identity cannot be constructed from this IR/target.
+    Identity(NativeIdentityError),
     /// Input metadata disagrees with before/after observation counters.
     InputTransition,
     /// Portable IR schema is not the implemented version.
@@ -171,7 +170,7 @@ impl Display for NativeArtifactError {
             Self::EmptyObject => "native compiler returned an empty object",
             Self::EmptyRegion => "native bootstrap requires a non-empty region",
             Self::Identity(_error) => {
-                "native artifact identity encoding failed"
+                "native artifact identity construction failed"
             },
             Self::InputTransition => "region input transition is inconsistent",
             Self::IrVersion => "unsupported portable IR version",
@@ -195,8 +194,8 @@ impl Display for NativeArtifactError {
     }
 }
 
-impl From<IrEncodingError> for NativeArtifactError {
-    fn from(error: IrEncodingError) -> Self {
+impl From<NativeIdentityError> for NativeArtifactError {
+    fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
     }
 }
