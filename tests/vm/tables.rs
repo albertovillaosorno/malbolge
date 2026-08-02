@@ -49,6 +49,7 @@
 
 use malbolge::{
     MAX_WORD_VALUE, Word, decode_instruction, decode_profile_instruction,
+    encrypt_profile_cell,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -56,6 +57,9 @@ use super::{TestResult, check_equal, normalize_result};
 const CHUNK_VALUES: u16 = 243;
 const DECODE_TABLE_LEN: usize = 94;
 const GRAPHICAL_START: u16 = 33;
+const TEST_XLAT2: &[u8; DECODE_TABLE_LEN] =
+    b"5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1C\
+B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
 const TEST_XLAT1: &[u8; DECODE_TABLE_LEN] =
     b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
@@ -171,6 +175,33 @@ fn decode_table_matches_scalar_definition_for_every_position() -> TestResult {
         pointer_raw = pointer_raw.saturating_add(1);
     }
     Ok(())
+}
+
+#[test]
+fn profile_encryption_matches_independent_table() -> TestResult {
+    for cell in GRAPHICAL_START..=126 {
+        let index = usize::from(cell.saturating_sub(GRAPHICAL_START));
+        let expected = TEST_XLAT2
+            .get(index)
+            .copied()
+            .map(u32::from)
+            .ok_or_else(|| String::from("profile encryption index escaped"))?;
+        check_equal(
+            &encrypt_profile_cell(u32::from(cell)),
+            &Some(expected),
+            "profile encryption equals independent XLAT2",
+        )?;
+    }
+    check_equal(
+        &encrypt_profile_cell(32),
+        &None,
+        "profile encryption rejects below graphical range",
+    )?;
+    check_equal(
+        &encrypt_profile_cell(127),
+        &None,
+        "profile encryption rejects above graphical range",
+    )
 }
 
 #[test]

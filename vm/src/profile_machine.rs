@@ -992,7 +992,7 @@ impl ProfileMachine {
                 value: target,
             });
         }
-        profile_encrypt(target)
+        encrypt_profile_cell(target)
             .ok_or(ProfileMachineError::TranslationTableInvariant)
     }
 
@@ -1208,7 +1208,12 @@ pub fn decode_profile_instruction(cell: u32, code_pointer: u32) -> Option<u8> {
     DECODE_TABLE.get(index).copied()
 }
 
-fn profile_encrypt(cell: u32) -> Option<u32> {
+/// Encrypts one graphical profile-width code cell after a committed step.
+///
+/// Returns `None` outside graphical ASCII. The mapping is independent of the
+/// selected profile width and preserves the canonical Malbolge `XLAT2` table.
+#[must_use]
+pub fn encrypt_profile_cell(cell: u32) -> Option<u32> {
     if !profile_cell_is_graphical(cell) {
         return None;
     }

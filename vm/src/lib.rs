@@ -108,7 +108,8 @@ pub use profile::{
 pub use profile_machine::{
     ProfileLoadError, ProfileMachine, ProfileMachineError,
     ProfileMachineIoState, ProfileMachineState, ProfileRegisterName,
-    ProfileRegisters, decode_profile_instruction, profile_cell_is_graphical,
+    ProfileRegisters, decode_profile_instruction, encrypt_profile_cell,
+    profile_cell_is_graphical,
 };
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
