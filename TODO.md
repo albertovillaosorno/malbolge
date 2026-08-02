@@ -257,8 +257,10 @@ host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
 atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
 Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
 checks target ISA, executable/non-writable `.text`, exact entry identity,
-self-contained relocations, and absence of undefined host dependencies. Direct
-objects additionally require `MBPF` v3 read-only `.mbprof` metadata matching
+self-contained relocations, and absence of undefined host dependencies. A private
+`profile_metadata.rs` owner now supplies one format-neutral `MBPF` encoding to
+bootstrap/direct emitters and structural admission. Direct objects additionally
+require read-only `.mbprof` metadata matching
 profile ID/fingerprint, published version, ordered semantic features, word trits,
 profile capacity, and exact derived `u64` region memory retained by their native
 key; absence, tampering, or object/key mismatch fails structurally. Bootstrap

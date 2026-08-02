@@ -54,6 +54,7 @@
 mod aarch64;
 mod coff;
 mod direct;
+mod profile_metadata;
 #[path = "x86_64/main.rs"]
 mod x86_64;
 
@@ -584,7 +585,7 @@ fn render_profile_metadata(
     output: &mut String,
     key: &NativeArtifactKey,
 ) -> Result<(), NativeArtifactError> {
-    let metadata = coff::canonical_profile_metadata(key)
+    let metadata = profile_metadata::canonical_profile_metadata(key)
         .ok_or(NativeArtifactError::Rendering)?;
     output.push_str("#pragma section(\".mbprof\", read)\n");
     output.push_str("__declspec(allocate(\".mbprof\"))\n");

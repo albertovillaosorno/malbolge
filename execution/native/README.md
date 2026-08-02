@@ -12,7 +12,7 @@ explicitly untrusted native compilation artifacts.
 - exact binding to `NativeArtifactKey` target assumptions;
 - untrusted native source/object artifact containers;
 - fail-closed structural admission of self-contained Windows COFF objects;
-- versioned read-only direct-object profile metadata matched to native keys;
+- canonical versioned native profile metadata matched to exact native keys;
 - canonical direct x86-64/AArch64 deopt-only objects with byte-exact semantic
   verification;
 - target triples for the pinned Clang bootstrap backend.
@@ -48,6 +48,11 @@ to the correct cache key does not prove that those bytes implement the IR.
 IR before bootstrap source, direct deopt, or any state-applying object can be
 created. This closes an impossible artifact identity without granting semantic
 trust to otherwise unverified effects.
+
+`profile_metadata.rs` owns the target-neutral `MBPF` v3 payload encoding shared
+by bootstrap source, direct object construction, and structural validation. This
+keeps object parsing in `coff.rs` and code generation in their emitters; neither
+owns the schema it independently consumes.
 
 `coff.rs` adds a narrower structural gate for Windows bootstrap objects. It
 parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine

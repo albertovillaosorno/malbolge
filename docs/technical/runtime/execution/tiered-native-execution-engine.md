@@ -82,6 +82,11 @@ compilation. Source and object containers remain explicitly `Untrusted*`:
 matching IR/target identity proves provenance of the claim, not semantic
 correctness of compiler-produced machine code.
 
+`execution/native/profile_metadata.rs` is the single private owner of the
+format-neutral `MBPF` v3 payload. Bootstrap source rendering, direct object
+construction, and COFF admission consume that encoding without making the parser
+or either emitter authoritative over the schema.
+
 `execution/native/coff.rs` now provides a second, independent structural gate for
 those Windows objects. It parses COFF bytes directly in safe Rust rather than
 trusting Clang/LLVM diagnostics, requires machine identity to match the native

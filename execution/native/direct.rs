@@ -58,7 +58,7 @@ use malbolge::{
     Termination, preflight_portable_profile_requirement,
 };
 
-use super::coff::canonical_profile_metadata;
+use super::profile_metadata::canonical_profile_metadata;
 use super::{
     CoffAdmissionError, NATIVE_REGION_ABI_REVISION,
     StructurallyAdmittedNativeObjectArtifact, UntrustedNativeObjectArtifact,

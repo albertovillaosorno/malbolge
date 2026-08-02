@@ -87,7 +87,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
   x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
   identity, and relocation/symbol closure without trusting LLVM inspection.
-  Direct revision-4 objects must also carry exact read-only `MBPF` v3 `.mbprof`
+  `execution/native/profile_metadata.rs` now solely owns the format-neutral MBPF
+  encoding consumed by bootstrap/direct emitters and COFF admission. Direct
+  revision-4 objects must also carry exact read-only `MBPF` v3 `.mbprof`
   metadata matching the profile ID/fingerprint, published version, semantic
   features, word trits, profile capacity, and derived `u64` region memory retained
   by their native key; absence or mismatch fails structurally. Bootstrap revision
