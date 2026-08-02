@@ -58,7 +58,7 @@ use malbolge::{
     RuntimeCapability, Termination, decode_profile_instruction,
     encrypt_profile_cell, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
-    profile_pointer_successor,
+    profile_pointer_successor, profile_rotate,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -126,6 +126,11 @@ pub const DIRECT_JUMP_CODE_BACKEND_ID: &str = "direct-jump-code";
 /// Direct jump-code code-generation revision.
 pub const DIRECT_JUMP_CODE_BACKEND_REVISION: u32 = 1;
 
+/// Backend identity for exact non-aliasing one-step rotate execution.
+pub const DIRECT_ROTATE_BACKEND_ID: &str = "direct-rotate";
+/// Direct rotate code-generation revision.
+pub const DIRECT_ROTATE_BACKEND_REVISION: u32 = 1;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectEntryObservation {
     pub(super) accumulator: u32,
@@ -165,6 +170,24 @@ pub(super) struct DirectJumpCodeGuard {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRotateGuard {
+    pub(super) code_live_in: u32,
+    pub(super) data_live_in: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRotateCommit {
+    pub(super) accumulator: u32,
+    pub(super) data_address: u32,
+    pub(super) data_value: u32,
+    pub(super) encrypted_address: u32,
+    pub(super) encrypted_value: u32,
+    pub(super) next_code_pointer: u32,
+    pub(super) next_data_pointer: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DirectFetchedTerminalProgram {
     live_in: MemoryLiveIn,
     observation: ProfileMachineObservation,
@@ -201,6 +224,14 @@ struct DirectJumpCodeLiveIns {
     code: MemoryLiveIn,
     data: MemoryLiveIn,
     encryption: MemoryLiveIn,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectRotateProgram {
+    code_live_in: MemoryLiveIn,
+    commit: DirectRotateCommit,
+    data_live_in: MemoryLiveIn,
+    observation: ProfileMachineObservation,
 }
 
 /// Failure while emitting or verifying the direct deoptimization stub.
@@ -550,6 +581,59 @@ impl From<NativeIdentityError> for DirectJumpDataError {
     }
 }
 
+/// Failure while emitting or verifying exact non-aliasing rotate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRotateError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical rotate object.
+    ObjectBytes,
+    /// Portable IR is outside the exact rotate subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Rotate v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct rotate currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRotateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "direct rotate COFF structure was rejected",
+            Self::Identity(_error) => {
+                "direct rotate identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct rotate object differs from canonical bytes"
+            },
+            Self::ProgramShape => "portable IR is outside direct rotate subset",
+            Self::TargetBackend => {
+                "target does not select direct rotate backend"
+            },
+            Self::TargetFeatures => {
+                "direct rotate backend requires no CPU features"
+            },
+            Self::TargetFormat => "direct rotate backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRotateError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRotateError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact one-step no-operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectNoOperationError {
@@ -687,6 +771,8 @@ pub enum DirectNativeKind {
     NoOperation,
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical,
+    /// Exact non-aliasing one-step rotate transition.
+    Rotate,
 }
 
 /// Exact host surface considered by direct native planning.
@@ -728,6 +814,8 @@ pub enum DirectSelectionError<'requirement> {
     NonGraphical(Box<DirectNonGraphicalError>),
     /// Selected runtime cannot implement the admitted profile requirement.
     Profile(Box<PortableProfileRequirementError<'requirement>>),
+    /// Rotate artifact emission or admission failed.
+    Rotate(Box<DirectRotateError>),
     /// Direct native templates currently emit Windows COFF only.
     TargetFormat,
 }
@@ -744,6 +832,7 @@ impl Display for DirectSelectionError<'_> {
             Self::NonGraphical(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
+            Self::Rotate(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(
                 "direct native selection currently requires Windows",
             ),
@@ -912,6 +1001,33 @@ impl VerifiedJumpDataNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement exact non-aliasing rotate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRotateNativeObjectArtifact {
+    artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedRotateNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement one exact no-operation transition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedNoOperationNativeObjectArtifact {
@@ -985,6 +1101,8 @@ pub enum VerifiedDirectNativeArtifact {
     NoOperation(VerifiedNoOperationNativeObjectArtifact),
     /// Exact non-graphical code-cell termination fast path.
     NonGraphical(VerifiedNonGraphicalNativeObjectArtifact),
+    /// Exact non-aliasing one-step rotate transition.
+    Rotate(VerifiedRotateNativeObjectArtifact),
 }
 
 /// Profile-preflighted execution-tier plan for one portable IR program.
@@ -1035,6 +1153,7 @@ enum SelectedDirectTarget {
     JumpData(NativeTargetIdentity),
     NoOperation(NativeTargetIdentity),
     NonGraphical(NativeTargetIdentity),
+    Rotate(NativeTargetIdentity),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1047,6 +1166,7 @@ enum PreparedDirectTarget {
     JumpData(NativeArtifactKey),
     NoOperation(NativeArtifactKey),
     NonGraphical(NativeArtifactKey),
+    Rotate(NativeArtifactKey),
 }
 
 type VerifiedDirectSelectionResult<'requirement> =
@@ -1152,28 +1272,14 @@ impl PreparedDirectTarget {
                     })?;
                 Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified))
             },
-            Self::InitialHalt(key) => {
-                validate_initial_halt_program(program).map_err(|error| {
-                    DirectSelectionError::InitialHalt(Box::new(error))
-                })?;
-                validate_initial_halt_target(key.target()).map_err(
-                    |error| DirectSelectionError::InitialHalt(Box::new(error)),
-                )?;
-                let artifact = emit_direct_initial_halt_with_key(key).map_err(
-                    |error| DirectSelectionError::InitialHalt(Box::new(error)),
-                )?;
-                let verified = verify_direct_initial_halt(&artifact, program)
-                    .map_err(|error| {
-                    DirectSelectionError::InitialHalt(Box::new(error))
-                })?;
-                Ok(VerifiedDirectNativeArtifact::InitialHalt(verified))
-            },
+            Self::InitialHalt(key) => emit_verified_initial_halt(key, program),
             Self::JumpCode(key) => emit_verified_jump_code(key, program),
             Self::JumpData(key) => emit_verified_jump_data(key, program),
             Self::NonGraphical(key) => {
                 emit_verified_non_graphical(key, program)
             },
             Self::NoOperation(key) => emit_verified_no_operation(key, program),
+            Self::Rotate(key) => emit_verified_rotate(key, program),
         }
     }
 
@@ -1186,7 +1292,8 @@ impl PreparedDirectTarget {
             | Self::JumpCode(key)
             | Self::JumpData(key)
             | Self::NonGraphical(key)
-            | Self::NoOperation(key) => key,
+            | Self::NoOperation(key)
+            | Self::Rotate(key) => key,
         }
     }
 }
@@ -1247,14 +1354,9 @@ impl SelectedDirectTarget {
                     })
             },
             Self::NoOperation(target) => {
-                NativeArtifactKey::new(program, target)
-                    .map(PreparedDirectTarget::NoOperation)
-                    .map_err(|error| {
-                        DirectSelectionError::NoOperation(Box::new(
-                            DirectNoOperationError::Identity(error),
-                        ))
-                    })
+                prepare_no_operation_target(program, target)
             },
+            Self::Rotate(target) => prepare_rotate_target(program, target),
         }
     }
 }
@@ -1272,6 +1374,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
             Self::NoOperation(artifact) => artifact.key(),
+            Self::Rotate(artifact) => artifact.key(),
         }
     }
 
@@ -1287,6 +1390,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(_artifact) => DirectNativeKind::JumpData,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
             Self::NoOperation(_artifact) => DirectNativeKind::NoOperation,
+            Self::Rotate(_artifact) => DirectNativeKind::Rotate,
         }
     }
 
@@ -1302,6 +1406,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
             Self::NoOperation(artifact) => artifact.object(),
+            Self::Rotate(artifact) => artifact.object(),
         }
     }
 
@@ -1317,6 +1422,7 @@ impl VerifiedDirectNativeArtifact {
             Self::JumpData(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),
             Self::NoOperation(artifact) => artifact.target_triple(),
+            Self::Rotate(artifact) => artifact.target_triple(),
         }
     }
 }
@@ -1331,6 +1437,47 @@ fn prepare_jump_code_target(
             DirectSelectionError::JumpCode(Box::new(
                 DirectJumpCodeError::Identity(error),
             ))
+        })
+}
+
+fn emit_verified_initial_halt(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    validate_initial_halt_program(program)
+        .map_err(|error| DirectSelectionError::InitialHalt(Box::new(error)))?;
+    validate_initial_halt_target(key.target())
+        .map_err(|error| DirectSelectionError::InitialHalt(Box::new(error)))?;
+    let artifact = emit_direct_initial_halt_with_key(key)
+        .map_err(|error| DirectSelectionError::InitialHalt(Box::new(error)))?;
+    let verified = verify_direct_initial_halt(&artifact, program)
+        .map_err(|error| DirectSelectionError::InitialHalt(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::InitialHalt(verified))
+}
+
+fn prepare_no_operation_target(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+    NativeArtifactKey::new(program, target)
+        .map(PreparedDirectTarget::NoOperation)
+        .map_err(|error| {
+            DirectSelectionError::NoOperation(Box::new(
+                DirectNoOperationError::Identity(error),
+            ))
+        })
+}
+
+fn prepare_rotate_target(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+    NativeArtifactKey::new(program, target)
+        .map(PreparedDirectTarget::Rotate)
+        .map_err(|error| {
+            DirectSelectionError::Rotate(Box::new(DirectRotateError::Identity(
+                error,
+            )))
         })
 }
 
@@ -1392,6 +1539,21 @@ fn emit_verified_non_graphical(
     let verified = verify_direct_non_graphical(&artifact, program)
         .map_err(|error| DirectSelectionError::NonGraphical(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::NonGraphical(verified))
+}
+
+fn emit_verified_rotate(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_rotate_program(program)
+        .map_err(|error| DirectSelectionError::Rotate(Box::new(error)))?;
+    validate_rotate_target(key.target())
+        .map_err(|error| DirectSelectionError::Rotate(Box::new(error)))?;
+    let artifact = emit_direct_rotate_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::Rotate(Box::new(error)))?;
+    let verified = verify_direct_rotate(&artifact, program)
+        .map_err(|error| DirectSelectionError::Rotate(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::Rotate(verified))
 }
 
 fn emit_verified_no_operation(
@@ -1613,6 +1775,21 @@ pub fn emit_direct_jump_data_coff(
     emit_direct_jump_data_with_key(key, selected)
 }
 
+/// Emits one exact non-aliasing rotate fast path.
+///
+/// # Errors
+///
+/// Returns [`DirectRotateError`] when IR/target is outside this subset.
+pub fn emit_direct_rotate_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectRotateError> {
+    let selected = validate_rotate_program(program)?;
+    validate_rotate_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_rotate_with_key(key, selected)
+}
+
 /// Emits one exact no-operation fetch/encryption/advance fast path.
 ///
 /// # Errors
@@ -1698,6 +1875,17 @@ fn emit_direct_jump_data_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectJumpDataError> {
     let triple = target_triple(key.target().host_isa());
     let object = jump_data_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+fn emit_direct_rotate_with_key(
+    key: NativeArtifactKey,
+    selected: DirectRotateProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectRotateError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = rotate_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))
@@ -1880,6 +2068,30 @@ pub fn verify_direct_jump_data(
         return Err(DirectJumpDataError::ObjectBytes);
     }
     Ok(VerifiedJumpDataNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical rotate object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectRotateError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_rotate(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedRotateNativeObjectArtifact, DirectRotateError> {
+    let selected = validate_rotate_program(program)?;
+    validate_rotate_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRotateError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = rotate_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRotateError::ObjectBytes);
+    }
+    Ok(VerifiedRotateNativeObjectArtifact { artifact: admitted })
 }
 
 /// Promotes only the canonical no-operation object for its exact IR.
@@ -2104,6 +2316,29 @@ fn jump_data_coff(
     build_minimal_coff(key, &text).ok_or(DirectJumpDataError::ObjectBytes)
 }
 
+fn rotate_coff(
+    key: &NativeArtifactKey,
+    selected: DirectRotateProgram,
+) -> Result<Vec<u8>, DirectRotateError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectRotateError::ObjectBytes)?;
+    let guard = DirectRotateGuard {
+        code_live_in: selected.code_live_in.value,
+        data_live_in: selected.data_live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::rotate_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::rotate_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectRotateError::ObjectBytes)?;
+    build_minimal_coff(key, &text).ok_or(DirectRotateError::ObjectBytes)
+}
+
 fn no_operation_coff(
     key: &NativeArtifactKey,
     selected: DirectNoOperationProgram,
@@ -2231,6 +2466,9 @@ fn select_direct_target(
             host_isa,
         ));
     }
+    if validate_rotate_program(program).is_ok() {
+        return selected_rotate_target(host_os, host_isa);
+    }
     if validate_no_operation_program(program).is_ok() {
         return SelectedDirectTarget::NoOperation(direct_target(
             DIRECT_NO_OPERATION_BACKEND_ID,
@@ -2242,6 +2480,18 @@ fn select_direct_target(
     SelectedDirectTarget::Deopt(direct_target(
         DIRECT_DEOPT_BACKEND_ID,
         DIRECT_DEOPT_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
+fn selected_rotate_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::Rotate(direct_target(
+        DIRECT_ROTATE_BACKEND_ID,
+        DIRECT_ROTATE_BACKEND_REVISION,
         host_os,
         host_isa,
     ))
@@ -2632,6 +2882,155 @@ fn validate_jump_data_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectJumpDataError::TargetFeatures);
+    }
+    Ok(())
+}
+
+fn validate_rotate_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectRotateProgram, DirectRotateError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 2
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectRotateError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectRotateError::ProgramShape)?;
+    derive_rotate_program(program, effect)
+        .ok_or(DirectRotateError::ProgramShape)
+}
+
+fn derive_rotate_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectRotateProgram> {
+    let before = effect.before;
+    let (code_live_in, data_live_in) = rotate_live_ins(program, before)?;
+    let commit = rotate_commit(program, before, code_live_in, data_live_in)?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: commit.accumulator,
+            code_pointer: commit.next_code_pointer,
+            data_pointer: commit.next_data_pointer,
+        },
+        ..before
+    };
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != rotate_memory_delta(code_live_in, data_live_in, commit)
+    {
+        return None;
+    }
+    Some(DirectRotateProgram {
+        code_live_in,
+        commit,
+        data_live_in,
+        observation: before,
+    })
+}
+
+fn rotate_live_ins(
+    program: &RegionEffectProgram,
+    before: ProfileMachineObservation,
+) -> Option<(MemoryLiveIn, MemoryLiveIn)> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if code_pointer == data_pointer || before.termination.is_some() {
+        return None;
+    }
+    let code_live_in = program
+        .memory_live_ins
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == code_pointer)?;
+    let data_live_in = program
+        .memory_live_ins
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == data_pointer)?;
+    Some((code_live_in, data_live_in))
+}
+
+fn rotate_commit(
+    program: &RegionEffectProgram,
+    before: ProfileMachineObservation,
+    code_live_in: MemoryLiveIn,
+    data_live_in: MemoryLiveIn,
+) -> Option<DirectRotateCommit> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'*')
+    {
+        return None;
+    }
+    let memory_words = program.profile_requirement.memory_words;
+    if data_live_in.value >= memory_words {
+        return None;
+    }
+    let rotated_value = profile_rotate(data_live_in.value, memory_words);
+    Some(DirectRotateCommit {
+        accumulator: rotated_value,
+        data_address: data_pointer,
+        data_value: rotated_value,
+        encrypted_address: code_pointer,
+        encrypted_value: encrypt_profile_cell(code_live_in.value)?,
+        next_code_pointer: profile_pointer_successor(
+            code_pointer,
+            memory_words,
+        )?,
+        next_data_pointer: profile_pointer_successor(
+            data_pointer,
+            memory_words,
+        )?,
+    })
+}
+
+fn rotate_memory_delta(
+    code_live_in: MemoryLiveIn,
+    data_live_in: MemoryLiveIn,
+    commit: DirectRotateCommit,
+) -> ProfileMemoryDelta {
+    let data = (data_live_in.value != commit.data_value).then_some(
+        ProfileMemoryWrite {
+            address: commit.data_address,
+            after: commit.data_value,
+            before: data_live_in.value,
+        },
+    );
+    let encryption = (code_live_in.value != commit.encrypted_value).then_some(
+        ProfileMemoryWrite {
+            address: commit.encrypted_address,
+            after: commit.encrypted_value,
+            before: code_live_in.value,
+        },
+    );
+    ProfileMemoryDelta { data, encryption }
+}
+
+fn validate_rotate_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRotateError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRotateError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_ROTATE_BACKEND_ID
+        || target.backend_revision() != DIRECT_ROTATE_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRotateError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRotateError::TargetFeatures);
     }
     Ok(())
 }

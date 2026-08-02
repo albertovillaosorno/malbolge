@@ -80,23 +80,25 @@ use execution_native::{
     DIRECT_JUMP_DATA_BACKEND_ID, DIRECT_JUMP_DATA_BACKEND_REVISION,
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
+    DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectDeoptError, DirectHaltFetchError,
     DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
     DirectJumpCodeError, DirectJumpDataError, DirectNativeKind,
-    DirectNoOperationError, DirectNonGraphicalError, DirectSelectionError,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
-    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
-    emit_direct_deopt_coff, emit_direct_halt_fetch_coff,
-    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
-    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
-    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
-    lower_clang_c23, select_cached_preflighted_execution_tier,
+    DirectNoOperationError, DirectNonGraphicalError, DirectRotateError,
+    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    PreflightedExecutionTier, UntrustedNativeObjectArtifact,
+    VerifiedDirectNativeCache, emit_direct_deopt_coff,
+    emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
+    emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
+    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
+    emit_direct_non_graphical_coff, emit_direct_rotate_coff, lower_clang_c23,
+    select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     structurally_admit_coff, verify_direct_deopt_stub,
     verify_direct_halt_fetch, verify_direct_halt_registers,
     verify_direct_initial_halt, verify_direct_jump_code,
     verify_direct_jump_data, verify_direct_no_operation,
-    verify_direct_non_graphical,
+    verify_direct_non_graphical, verify_direct_rotate,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
@@ -113,6 +115,9 @@ struct CoffCompileCase {
 }
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
+
+type DirectSelectionCase =
+    (RegionEffectProgram, DirectNativeKind, &'static str);
 
 fn canonical_fixture_bytes() -> Result<Vec<u8>, String> {
     decode_hex_fixture(include_str!("execution/fixtures/region-effect-v3.hex"))
@@ -1234,6 +1239,70 @@ fn direct_jump_data_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_rotate_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0x0000_0001_2345_6789,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: 1_594_326,
+            code_pointer: 6,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta {
+                data: Some(ProfileMemoryWrite {
+                    address: 7,
+                    after: 1_594_326,
+                    before: 10,
+                }),
+                encryption: Some(ProfileMemoryWrite {
+                    address: 5,
+                    after: 122,
+                    before: 34,
+                }),
+            },
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![
+            MemoryLiveIn { address: 5, value: 34 },
+            MemoryLiveIn { address: 7, value: 10 },
+        ],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-rotate-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_rotate_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_ROTATE_BACKEND_ID),
+        backend_revision: DIRECT_ROTATE_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_no_operation_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0x0000_0001_2345_6789,
@@ -1413,6 +1482,7 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
         ),
         (direct_jump_code_program(), DirectNativeKind::JumpCode),
         (direct_jump_data_program(), DirectNativeKind::JumpData),
+        (direct_rotate_program(), DirectNativeKind::Rotate),
         (direct_no_operation_program(), DirectNativeKind::NoOperation),
         (native_program(), DirectNativeKind::Deopt),
     ];
@@ -1854,54 +1924,62 @@ fn selected_direct_triple(
     }
 }
 
+fn direct_selection_cases() -> [DirectSelectionCase; 9] {
+    [
+        (
+            direct_initial_halt_program(),
+            DirectNativeKind::InitialHalt,
+            DIRECT_INITIAL_HALT_BACKEND_ID,
+        ),
+        (
+            direct_halt_registers_program(),
+            DirectNativeKind::HaltRegisters,
+            DIRECT_HALT_REGISTERS_BACKEND_ID,
+        ),
+        (
+            direct_halt_fetch_program(),
+            DirectNativeKind::HaltFetch,
+            DIRECT_HALT_FETCH_BACKEND_ID,
+        ),
+        (
+            direct_non_graphical_program(),
+            DirectNativeKind::NonGraphical,
+            DIRECT_NON_GRAPHICAL_BACKEND_ID,
+        ),
+        (
+            direct_jump_code_program(),
+            DirectNativeKind::JumpCode,
+            DIRECT_JUMP_CODE_BACKEND_ID,
+        ),
+        (
+            direct_jump_data_program(),
+            DirectNativeKind::JumpData,
+            DIRECT_JUMP_DATA_BACKEND_ID,
+        ),
+        (
+            direct_rotate_program(),
+            DirectNativeKind::Rotate,
+            DIRECT_ROTATE_BACKEND_ID,
+        ),
+        (
+            direct_no_operation_program(),
+            DirectNativeKind::NoOperation,
+            DIRECT_NO_OPERATION_BACKEND_ID,
+        ),
+        (
+            native_program(),
+            DirectNativeKind::Deopt,
+            DIRECT_DEOPT_BACKEND_ID,
+        ),
+    ]
+}
+
 #[test]
 fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 -> Result<(), String> {
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
-        let cases = [
-            (
-                direct_initial_halt_program(),
-                DirectNativeKind::InitialHalt,
-                DIRECT_INITIAL_HALT_BACKEND_ID,
-            ),
-            (
-                direct_halt_registers_program(),
-                DirectNativeKind::HaltRegisters,
-                DIRECT_HALT_REGISTERS_BACKEND_ID,
-            ),
-            (
-                direct_halt_fetch_program(),
-                DirectNativeKind::HaltFetch,
-                DIRECT_HALT_FETCH_BACKEND_ID,
-            ),
-            (
-                direct_non_graphical_program(),
-                DirectNativeKind::NonGraphical,
-                DIRECT_NON_GRAPHICAL_BACKEND_ID,
-            ),
-            (
-                direct_jump_code_program(),
-                DirectNativeKind::JumpCode,
-                DIRECT_JUMP_CODE_BACKEND_ID,
-            ),
-            (
-                direct_jump_data_program(),
-                DirectNativeKind::JumpData,
-                DIRECT_JUMP_DATA_BACKEND_ID,
-            ),
-            (
-                direct_no_operation_program(),
-                DirectNativeKind::NoOperation,
-                DIRECT_NO_OPERATION_BACKEND_ID,
-            ),
-            (
-                native_program(),
-                DirectNativeKind::Deopt,
-                DIRECT_DEOPT_BACKEND_ID,
-            ),
-        ];
         let mut expected = None;
-        for (program, kind, backend_id) in cases {
+        for (program, kind, backend_id) in direct_selection_cases() {
             let triple =
                 selected_direct_triple(&program, isa, kind, backend_id)?;
             if let Some(previous) = expected
@@ -2629,6 +2707,188 @@ fn direct_jump_data_rejects_ir_opcode_and_revision_tampering()
 }
 
 #[test]
+fn direct_rotate_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-rotate-x86_64-coff.hex"),
+        ),
+        (
+            HostIsa::AArch64,
+            include_str!("execution/fixtures/native-rotate-aarch64-coff.hex"),
+        ),
+    ];
+    let program = direct_rotate_program();
+    for (isa, fixture) in cases {
+        let artifact =
+            emit_direct_rotate_coff(&program, direct_rotate_target(isa))
+                .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!("direct rotate fixture mismatch for {isa:?}"));
+        }
+        let verified = verify_direct_rotate(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified rotate identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_rotate_shape_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_decode = program.clone();
+    wrong_decode
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("rotate fixture lost code live-in"))?
+        .value = 35;
+    if emit_direct_rotate_coff(
+        &wrong_decode,
+        direct_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRotateError::ProgramShape)
+    {
+        return Err(String::from("jump-data decode was admitted as rotate"));
+    }
+    let mut aliased = program.clone();
+    aliased
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("rotate fixture lost effect"))?
+        .before
+        .registers
+        .data_pointer = 5;
+    if emit_direct_rotate_coff(&aliased, direct_rotate_target(HostIsa::X86_64))
+        != Err(DirectRotateError::ProgramShape)
+    {
+        return Err(String::from("aliased rotate was admitted"));
+    }
+    let mut out_of_domain = program.clone();
+    out_of_domain
+        .memory_live_ins
+        .get_mut(1)
+        .ok_or_else(|| String::from("rotate fixture lost data live-in"))?
+        .value = current_profile().memory_words();
+    if emit_direct_rotate_coff(
+        &out_of_domain,
+        direct_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRotateError::ProgramShape)
+    {
+        return Err(String::from("out-of-domain rotate data was admitted"));
+    }
+    let mut wrong_exit = program.clone();
+    wrong_exit
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("rotate fixture lost effect"))?
+        .after
+        .registers
+        .accumulator = 1_594_327;
+    if emit_direct_rotate_coff(
+        &wrong_exit,
+        direct_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRotateError::ProgramShape)
+    {
+        return Err(String::from("wrong rotate accumulator was admitted"));
+    }
+    assert_rotate_delta_rejections(program)
+}
+
+fn assert_rotate_delta_rejections(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut wrong_data = program.clone();
+    wrong_data
+        .effects
+        .first_mut()
+        .and_then(|effect| effect.memory_delta.data.as_mut())
+        .ok_or_else(|| String::from("rotate fixture lost data write"))?
+        .after = 1_594_327;
+    if emit_direct_rotate_coff(
+        &wrong_data,
+        direct_rotate_target(HostIsa::X86_64),
+    ) != Err(DirectRotateError::ProgramShape)
+    {
+        return Err(String::from("wrong rotate data write was admitted"));
+    }
+    let mut wrong_encryption = program.clone();
+    wrong_encryption
+        .effects
+        .first_mut()
+        .and_then(|effect| effect.memory_delta.encryption.as_mut())
+        .ok_or_else(|| String::from("rotate fixture lost encryption write"))?
+        .after = 123;
+    if emit_direct_rotate_coff(
+        &wrong_encryption,
+        direct_rotate_target(HostIsa::X86_64),
+    ) == Err(DirectRotateError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("wrong rotate encryption was admitted"))
+    }
+}
+
+fn assert_rotate_revision_rejected(
+    program: &RegionEffectProgram,
+) -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_ROTATE_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_rotate_coff(program, obsolete)
+        == Err(DirectRotateError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete rotate revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_rotate_rejects_ir_and_opcode_tampering() -> Result<(), String> {
+    let program = direct_rotate_program();
+    let artifact = emit_direct_rotate_coff(
+        &program,
+        direct_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let commit = [0xc7u8, 0x82, 0x1c, 0x00, 0x00, 0x00, 0xd6, 0x53, 0x18, 0x00];
+    let offset = mutated_object
+        .windows(commit.len())
+        .position(|window| window == commit)
+        .ok_or_else(|| String::from("rotate data commit opcode missing"))?;
+    let immediate = mutated_object
+        .get_mut(offset.saturating_add(6))
+        .ok_or_else(|| String::from("rotate data commit immediate missing"))?;
+    *immediate = 0xd7;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered rotate structure: {error}"))?;
+    if verify_direct_rotate(&tampered, &program)
+        != Err(DirectRotateError::ObjectBytes)
+    {
+        return Err(String::from("tampered rotate object was admitted"));
+    }
+    assert_rotate_shape_rejections(&program)?;
+    assert_rotate_revision_rejected(&program)
+}
+
+#[test]
 fn direct_no_operation_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [
@@ -3041,10 +3301,25 @@ fn assert_jump_data_capacity_rejected() -> Result<(), String> {
     }
 }
 
+fn assert_rotate_capacity_rejected() -> Result<(), String> {
+    let mut rotate = direct_rotate_program();
+    rotate.profile_requirement.memory_words = 7;
+    if emit_direct_rotate_coff(&rotate, direct_rotate_target(HostIsa::X86_64))
+        == Err(DirectRotateError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "rotate profile-capacity mismatch was admitted",
+        ))
+    }
+}
+
 #[test]
 fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
 {
     assert_jump_code_capacity_rejected()?;
+    assert_rotate_capacity_rejected()?;
     assert_jump_data_capacity_rejected()?;
     let mut register_halt = direct_halt_registers_program();
     register_halt.profile_requirement.memory_words = 1;

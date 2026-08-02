@@ -210,6 +210,20 @@ miss. Independent AArch64 decoding confirms three ordered reads, the exact commi
 and twelve branches to one miss target. Aliasing among the three addresses remains
 rejected.
 
+`direct-rotate` revision 1 adds the first reviewed direct transition with two
+separate guest-memory writes. Admission requires two distinct live-ins at entry
+`C` and `D`, VM-decoded `*`, one exact rotated data delta, one exact code
+encryption delta, updated accumulator, modular `C/D` successors, no I/O, and one
+exhausted step. The verifier uses VM-owned `profile_rotate()`, encryption, and
+successor helpers. Both ISAs guard the complete entry, exact 9-word footprint,
+`memory[5]=34`, and `memory[7]=10` before committing only
+`memory[7]:10->1594326`, `memory[5]:34->122`, `A:0xdeadbeef->1594326`,
+`C:5->6`, and `D:7->8`. Independent objects are 578/732 bytes. Development
+x86-64 execution proves exact hit behavior plus atomic code-live-in, data-live-in,
+footprint, and null-memory misses; independent AArch64 decoding confirms both
+reads, both writes, all register commits, and eleven branches to one miss target.
+Aliasing `C == D` remains rejected.
+
 All memory-backed direct templates compare ABI `memory_words` with the exact
 `NativeArtifactKey` IR footprint before any dereference or commit. The metadata
 and executable guards therefore bind the same output-reachable memory domain.
@@ -228,8 +242,8 @@ broadest:
 zero-register halt uses `direct-initial-halt`, other no-live-in one-step halts use
 `direct-halt-registers`, exact graphical halt fetch uses `direct-halt-fetch`, exact
 non-graphical termination uses `direct-non-graphical`, exact non-aliasing
-jump-code uses `direct-jump-code`, jump-data uses `direct-jump-data`, exact no-op
-execution uses
+jump-code uses `direct-jump-code`, jump-data uses `direct-jump-data`, rotate
+uses `direct-rotate`, and exact no-op execution uses
 `direct-no-operation`, and otherwise the selector emits/verifies direct deopt.
 Only admitted program shape controls this fallback; profile, emission, or
 admission errors are propagated rather than silently retried. Non-Windows host
@@ -238,7 +252,7 @@ formats fail explicitly because direct ELF/Mach-O templates do not exist yet.
 All state-applying emitter/verifier pairs independently repeat the
 profile-capacity shape check. A caller bypassing the selector cannot semantically
 promote an initial-halt, register-halt, halt-fetch, non-graphical, no-operation,
-jump-code, or jump-data object whose IR footprint
+jump-code, jump-data, or rotate object whose IR footprint
 exceeds its embedded profile envelope.
 
 `select_preflighted_execution_tier()` is the first planning boundary above direct
@@ -257,7 +271,7 @@ boundary. State-applying semantic verifiers continue reconstructing their expect
 key independently from IR before promotion. `VerifiedDirectNativeCache` privately
 wraps the generic cache and accepts values only through successful direct emission
 and semantic admission. Results distinguish `Inserted` from full-key `Hit`; all
-eight current templates match uncached selection byte-for-byte and reuse the same
+nine current templates match uncached selection byte-for-byte and reuse the same
 immutable `Arc` allocation rather than cloning verified object bytes. A populated
 cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and those
 outcomes leave cache cardinality unchanged. Exact-key invalidation removes one
@@ -274,9 +288,9 @@ outside.
 
 ### Remaining Implementation
 
-Semantic admission beyond the reviewed terminal/no-op/jump family, rotate/crazy
-and I/O x86-64/AArch64 selection,
-executable-memory policy/invocation, durable native cache
+Semantic admission beyond the reviewed terminal/no-op/jump/rotate family, crazy
+and I/O x86-64/AArch64 selection, executable-memory policy/invocation, durable
+native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The
 interpreter remains the only normative execution authority and the guaranteed

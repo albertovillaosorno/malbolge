@@ -118,17 +118,27 @@ and twelve common-target `rel32` branches; independent AArch64 decoding confirms
 three reads, the commit, and twelve branches to one miss. Address aliasing remains
 rejected.
 
+`direct-rotate` revision 1 adds the first reviewed template with two guest-memory
+writes. Two distinct live-ins bind entry code and data cells; VM-owned decode must
+classify the code cell as `*`, while `profile_rotate()` derives the exact data and
+accumulator result. Each ISA guards the complete entry, exact 9-word footprint,
+`memory[5]=34`, `memory[7]=10`, and prior live termination before atomically
+writing data 1594326, encrypted code 122, and `A/C/D=1594326/6/8`. Independent
+complete objects are 578/732 bytes. x86-64 development execution proves exact hit
+plus atomic code/data/footprint/null misses; independent AArch64 decoding confirms
+two reads, both writes, all register commits, and eleven branches to one miss.
+Address aliasing remains rejected.
+
 All memory-backed templates consume the exact key-bound IR footprint as their ABI
-capacity guard before any dereference. Rotate/crazy and I/O effects
-remain outside this reviewed subset.
+capacity guard before any dereference. Crazy and I/O effects remain outside this
+reviewed subset.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
-remains semantically untrusted. Reviewed direct terminal, no-op, jump-code, and
-jump-data emitters/verifiers are
-implemented for both ISAs; rotate/crazy and I/O
-selection,
+remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
+jump-data, and rotate emitters/verifiers are implemented for both ISAs; crazy and
+I/O selection,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 

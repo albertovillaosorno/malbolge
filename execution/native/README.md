@@ -89,7 +89,8 @@ The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
-`direct-jump-code` and `direct-jump-data` start at revision 1. All eight use
+`direct-jump-code`, `direct-jump-data`, and `direct-rotate` start at revision
+1. All nine use
 `MBPF` metadata version 3.
 
 The second direct template is the first state-applying fast path. The
@@ -121,7 +122,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-halt-fetch`, an exact non-graphical fetch selects
 `direct-non-graphical`, an exact non-aliasing `i` transition selects
 `direct-jump-code`, an exact non-aliasing `j` transition selects
-`direct-jump-data`, an exact no-op fetch/encryption/advance selects
+`direct-jump-data`, an exact non-aliasing `*` transition selects
+`direct-rotate`, an exact no-op fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
 fallback, and an unsupported host format still fails explicitly when the profile
@@ -167,9 +169,9 @@ object additionally compares ABI `memory_words` against the exact
 therefore cannot escape the supplied backing image. Direct calls that bypass the
 selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
 `direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`,
-`direct-jump-code`, or `direct-jump-data` when the declared profile envelope is
-too small; they fail as
-out-of-contract program shape before object promotion.
+`direct-jump-code`, `direct-jump-data`, or `direct-rotate` when the declared
+profile envelope is too small; they fail as out-of-contract program shape before
+object promotion.
 
 `direct-halt-registers` revision 5 generalizes the halt template across the
 complete 32-bit `A`, `C`, and `D` domains plus full 64-bit `input_consumed` and
@@ -220,6 +222,18 @@ guards sharing one miss; development execution proves exact hit and atomic
 code/data/encryption/footprint/null misses. Independent AArch64 decoding confirms
 three ordered reads, the commit, and twelve branches to one miss target. Aliasing
 among any of the three addresses remains rejected.
+
+`direct-rotate` revision 1 adds the first reviewed transition with two guest-memory
+writes. It admits two distinct live-ins at entry `C` and `D`; VM-owned decode must
+classify `memory[C]` as `*`, and `profile_rotate()` derives the exact data result
+within the declared word domain. Both ISAs guard the complete entry, exact 9-word
+footprint, `memory[5]=34`, and `memory[7]=10` before committing
+`memory[7]:10->1594326`, `memory[5]:34->122`, `A:0xdeadbeef->1594326`,
+`C:5->6`, and `D:7->8`. Independent complete objects are 578 bytes on x86-64 and
+732 bytes on AArch64. Development execution proves exact hit behavior plus atomic
+code-live-in, data-live-in, footprint, and null-memory misses; independent AArch64
+decoding confirms two ordered reads, both writes, the three register commits, and
+eleven branches to one miss target. Aliasing `C == D` remains rejected.
 
 `direct-no-operation` revision 2 is the first admitted non-terminal direct effect
 and the first direct guest-memory write. It accepts exactly one code-cell live-in

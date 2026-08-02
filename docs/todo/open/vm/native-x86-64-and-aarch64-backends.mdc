@@ -78,8 +78,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   first instruction-specific semantic data read with independent 564/699-byte
   objects. `direct-jump-code` revision 1 adds three distinct live-in guards,
   exact post-jump encryption, a 13-word footprint, and independent 622/731-byte
-  objects. All memory-backed templates guard the exact key-bound IR footprint.
-  Remaining rotate/crazy and I/O selection, executable-memory
+  objects. `direct-rotate` revision 1 adds two guarded live-ins, two exact
+  guest-memory writes, three register commits, a 9-word footprint, and independent
+  578/732-byte objects. All memory-backed templates guard the exact key-bound IR
+  footprint.
+  Remaining crazy and I/O selection, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

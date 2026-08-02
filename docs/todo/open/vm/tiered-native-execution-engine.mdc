@@ -150,6 +150,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   `memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent 622/731-byte objects,
   x86-64 atomic execution, and AArch64 decoding prove the 13-word footprint,
   three guards, exact commit, and twelve common-miss branches.
+- `direct-rotate` revision 1 adds the first reviewed transition with two
+  guest-memory writes. VM-owned decode, `profile_rotate()`, encryption, and
+  successors derive `memory[7]:10->1594326`, `memory[5]:34->122`,
+  `A:0xdeadbeef->1594326`, `C:5->6`, and `D:7->8`. Independent 578/732-byte
+  objects, x86-64 atomic execution, and AArch64 decoding prove the exact 9-word
+  footprint, two live-in guards, two writes, three register commits, and eleven
+  common-miss branches. Aliasing remains rejected.
 - Every memory-backed direct template now compares ABI `memory_words` with the
   exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
@@ -171,7 +178,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all eight templates, and reuses one pointer-identical immutable
+  keys/bytes for all nine templates, and reuses one pointer-identical immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`, `001`,
   and interpreter selection leave cache cardinality unchanged. Exact-key
   invalidation removes one future reuse entry. Exact-program invalidation first
@@ -183,7 +190,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   key/bytes under new allocations. `Arc` owns immutable sharing only; persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- Remaining rotate/crazy and I/O direct selection, cache-aware AOT/JIT
+- Remaining crazy and I/O direct selection, cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

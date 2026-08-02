@@ -50,7 +50,8 @@
 
 use super::direct::{
     DirectCodeWriteCommit, DirectEntryObservation, DirectFetchedCellGuard,
-    DirectJumpCodeGuard, DirectJumpDataGuard,
+    DirectJumpCodeGuard, DirectJumpDataGuard, DirectRotateCommit,
+    DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -302,6 +303,59 @@ fn patch_near_guard_jumps(
             .copy_from_slice(&displacement.to_le_bytes());
     }
     Some(())
+}
+
+/// Encodes one exact non-aliasing rotate transition.
+#[must_use]
+pub(super) fn rotate_code(
+    observation: DirectEntryObservation,
+    guard: DirectRotateGuard,
+    commit: DirectRotateCommit,
+) -> Option<Vec<u8>> {
+    let code_offset = memory_byte_offset(commit.encrypted_address)?;
+    let data_offset = memory_byte_offset(commit.data_address)?;
+    let mut code = Vec::with_capacity(192);
+    let mut guard_jumps = Vec::with_capacity(12);
+    push_observation_guards(&mut code, &mut guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.code_live_in,
+    );
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        data_offset,
+        guard.data_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0xeb, 0x01]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&data_offset.to_le_bytes());
+    code.extend_from_slice(&commit.data_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&code_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x40]);
+    code.extend_from_slice(&commit.accumulator.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x31, 0xc0, 0xc3]);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
 }
 
 /// Encodes one exact non-aliasing jump-data transition.
