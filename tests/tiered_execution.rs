@@ -82,12 +82,13 @@ use execution_native::{
     NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
     NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
     NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
-    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError, NativeRegionBuffers,
     NativeRegionCallFrame, NativeRegionCallFrameError,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, NativeRegionStatus, NativeTerminationTag,
     PreflightedExecutionTier, PreparedNativeRegionInvocation,
-    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
+    PreparedVerifiedDirectInvocation, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectNativeCache,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
@@ -5827,5 +5828,205 @@ fn native_region_invocation_rejects_short_memory() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("short native memory was admitted"))
+    }
+}
+
+fn native_verified_output_program() -> Result<RegionEffectProgram, String> {
+    let mut program = direct_output_program();
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?;
+    effect.before.input_consumed = 0;
+    effect.before.output_len = 1;
+    effect.after.input_consumed = 0;
+    effect.after.output_len = 2;
+    Ok(program)
+}
+
+const fn native_verified_output_memory() -> [u32; 9] {
+    let mut memory = [0u32; 9];
+    memory[5] = 112;
+    memory
+}
+
+#[test]
+fn verified_direct_invocation_binds_exact_artifact_and_call()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedVerifiedDirectInvocation::new(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if invocation.artifact() != &artifact
+        || invocation.object() != artifact.object()
+        || invocation.target() != artifact.key().target()
+        || invocation.target_triple() != artifact.target_triple()
+        || invocation.state_mut_ptr().is_null()
+    {
+        return Err(String::from("verified invocation binding drifted"));
+    }
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?
+        .after;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 68
+        && output == [0x10, 0xa8, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "verified invocation did not apply exact effect",
+        ))
+    }
+}
+
+#[test]
+fn verified_direct_invocation_rejects_artifact_identity_drift()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut mismatched = program;
+    mismatched.profile_fingerprint.push_str("-drift");
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedVerifiedDirectInvocation::new(
+            &artifact,
+            &mismatched,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedDirectInvocationError::ArtifactIdentity)
+    ) && memory == native_verified_output_memory()
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("artifact identity drift was admitted"))
+    }
+}
+
+#[test]
+fn verified_direct_invocation_rejects_deoptimization_artifact()
+-> Result<(), String> {
+    let program = native_program();
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    if artifact.kind() != DirectNativeKind::Deopt {
+        return Err(String::from(
+            "deoptimization fixture selected a fast path",
+        ));
+    }
+    let mut memory = [];
+    let input = [];
+    let mut output = [];
+    if matches!(
+        PreparedVerifiedDirectInvocation::new(
+            &artifact,
+            &program,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedDirectInvocationError::ArtifactDeoptimization)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "deoptimization artifact gained invocation authority",
+        ))
+    }
+}
+
+#[test]
+fn verified_direct_invocation_rejects_invalid_identity() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut invalid = program;
+    invalid.profile_requirement.memory_words = 1;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedVerifiedDirectInvocation::new(
+            &artifact,
+            &invalid,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedDirectInvocationError::Identity(
+            NativeIdentityError::ProfileCapacity,
+        ))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("invalid invocation identity was admitted"))
+    }
+}
+
+#[test]
+fn verified_direct_invocation_propagates_buffer_error() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut memory = native_verified_output_memory();
+    memory[5] = 111;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedVerifiedDirectInvocation::new(
+            &artifact,
+            &program,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedDirectInvocationError::Invocation(
+            NativeRegionInvocationError::EntryMemory {
+                address: 5,
+                expected: 112,
+                observed: 111,
+            },
+        ))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("verified invocation masked buffer rejection"))
     }
 }

@@ -198,9 +198,13 @@ future invocation. `PreparedNativeRegionInvocation` now derives the only valid
 one-effect exit from portable IR, snapshots complete state/memory/output, and
 admits only exact application or a mutation-free guard miss. Unknown status,
 unexpected invalid arguments, topology drift, and partial commits fail closed.
-Every rejected completion restores the complete entry snapshot. This remains
-call-contract evidence only; no linker, executable-memory owner,
-foreign call, or instruction-cache synchronization policy is introduced.
+Every rejected completion restores the complete entry snapshot.
+`PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
+verified artifact target, rejects program drift, and denies the deoptimization
+stub state-applying authority. `NativeRegionBuffers` keeps all caller loans in
+that same artifact/call binding. This remains call-contract evidence only; no
+linker, executable-memory owner, foreign call, or instruction-cache
+synchronization policy is introduced.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,

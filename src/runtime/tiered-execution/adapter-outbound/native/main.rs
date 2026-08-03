@@ -111,8 +111,10 @@ pub use direct::{
     verify_direct_output, verify_direct_rotate,
 };
 pub use invocation::{
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, PreparedNativeRegionInvocation,
+    NativeRegionBuffers, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
+    VerifiedDirectInvocationError,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,

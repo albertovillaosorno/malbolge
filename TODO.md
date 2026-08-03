@@ -373,7 +373,13 @@ caller-visible surface, and admits only an exact `Applied` transition or a
 byte-preserving `GuardMiss`. Unknown status, unexpected invalid arguments,
 foreign topology changes, and partial memory/output/state commits fail closed.
 Every rejected completion restores the complete entry snapshot before return.
-It still prepares no executable memory and invokes no code.
+`PreparedVerifiedDirectInvocation` now reconstructs the complete native key from
+one program plus the verified artifact's exact target, rejects any canonical
+identity mismatch, and denies the guard-miss deoptimization stub state-applying
+authority. `NativeRegionBuffers` groups the three caller-owned buffer loans, so
+verified COFF bytes, target assumptions, and the ABI pointer are exposed only by
+one inseparable binding. It still prepares no executable memory and invokes no
+code.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact

@@ -162,8 +162,12 @@ before-values while snapshotting complete state, memory, and output surfaces.
 Completion admits only the exact IR-derived `Applied` result or a fully atomic
 `GuardMiss`; unknown status, unexpected `InvalidArgument`, topology drift, and
 partial commits fail closed. Every rejected completion restores the complete
-entry snapshot. This still adds no linking, executable-memory
-allocation, or foreign invocation.
+entry snapshot. `PreparedVerifiedDirectInvocation` additionally reconstructs
+full artifact identity from the exact program and the verified artifact target,
+rejects canonical drift, and denies deopt-stub application authority.
+`NativeRegionBuffers` groups caller loans so verified bytes, target assumptions,
+and the ABI pointer remain one binding. This still adds no linking,
+executable-memory allocation, or foreign invocation.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

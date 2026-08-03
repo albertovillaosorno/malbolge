@@ -45,6 +45,10 @@ use super::abi::{
     NativeRegionObservationError, NativeRegionState, NativeRegionStatus,
     NativeRegionStatusError,
 };
+use super::direct::{DirectNativeKind, VerifiedDirectNativeArtifact};
+use crate::execution_cache::{
+    NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
+};
 use crate::execution_ir::{EFFECT_IR_VERSION, EffectOp, RegionEffectProgram};
 
 type U32Mismatch = (usize, u32, u32);
@@ -150,6 +154,34 @@ pub enum NativeRegionInvocationError {
     Status(NativeRegionStatusError),
 }
 
+/// Borrowed guest buffers used by one native region invocation.
+#[derive(Debug)]
+pub struct NativeRegionBuffers<'buffers> {
+    input: &'buffers [u8],
+    memory: &'buffers mut [u32],
+    output: &'buffers mut [u8],
+}
+
+/// Failure while binding one verified direct artifact to one exact call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VerifiedDirectInvocationError {
+    /// The safe guard-miss stub has no state-applying invocation authority.
+    ArtifactDeoptimization,
+    /// The verified artifact key differs from the exact requested program.
+    ArtifactIdentity,
+    /// Exact native identity could not be reconstructed.
+    Identity(NativeIdentityError),
+    /// Guest-buffer preparation or result admission failed.
+    Invocation(NativeRegionInvocationError),
+}
+
+/// One exact verified artifact inseparably bound to one ABI invocation.
+#[derive(Debug)]
+pub struct PreparedVerifiedDirectInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedDirectNativeArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
 /// Borrow-scoped exact contract surrounding one future native entry call.
 #[derive(Debug)]
 pub struct PreparedNativeRegionInvocation<'buffers> {
@@ -161,6 +193,41 @@ pub struct PreparedNativeRegionInvocation<'buffers> {
     expected_output: Vec<u8>,
     expected_state: NativeRegionState,
     frame: NativeRegionCallFrame<'buffers>,
+}
+
+impl<'buffers> NativeRegionBuffers<'buffers> {
+    /// Groups caller-owned memory, input, and output for one exact native call.
+    #[must_use]
+    pub const fn new(
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Self {
+        Self { input, memory, output }
+    }
+}
+
+impl VerifiedDirectInvocationError {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::ArtifactDeoptimization => {
+                "deoptimization artifact cannot apply guest state"
+            },
+            Self::ArtifactIdentity => {
+                "verified artifact identity differs from the requested program"
+            },
+            Self::Identity(_) => {
+                "verified invocation identity construction failed"
+            },
+            Self::Invocation(_) => "verified native invocation contract failed",
+        }
+    }
+}
+
+impl Display for VerifiedDirectInvocationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(self.message())
+    }
 }
 
 impl NativeRegionInvocationError {
@@ -195,6 +262,91 @@ impl NativeRegionInvocationError {
 impl Display for NativeRegionInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedVerifiedDirectInvocation<'artifact, 'buffers>
+{
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically admitted direct artifact.
+    #[must_use]
+    pub const fn artifact(&self) -> &VerifiedDirectNativeArtifact {
+        self.artifact
+    }
+
+    /// Admits one raw native status and restores state on every rejection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectInvocationError::Invocation`] when the foreign
+    /// result violates the exact call contract.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<NativeRegionInvocationOutcome, VerifiedDirectInvocationError>
+    {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedDirectInvocationError::Invocation)
+    }
+
+    /// Binds one verified state-applying artifact to one exact program call.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectInvocationError`] when the artifact is deopt,
+    /// its complete key differs from `program`, identity reconstruction fails,
+    /// or guest-buffer preparation fails.
+    pub fn new(
+        artifact: &'artifact VerifiedDirectNativeArtifact,
+        program: &RegionEffectProgram,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedDirectInvocationError> {
+        if artifact.kind() == DirectNativeKind::Deopt {
+            return Err(VerifiedDirectInvocationError::ArtifactDeoptimization);
+        }
+        let expected_key =
+            NativeArtifactKey::new(program, artifact.key().target().clone())
+                .map_err(VerifiedDirectInvocationError::Identity)?;
+        if artifact.key() != &expected_key {
+            return Err(VerifiedDirectInvocationError::ArtifactIdentity);
+        }
+        let NativeRegionBuffers { input, memory, output } = buffers;
+        let invocation =
+            PreparedNativeRegionInvocation::new(program, memory, input, output)
+                .map_err(VerifiedDirectInvocationError::Invocation)?;
+        Ok(Self { artifact, invocation })
+    }
+
+    /// Returns canonical verified COFF bytes for the bound artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for the future unsafe invoker.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns the exact target assumptions bound to this invocation.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
     }
 }
 

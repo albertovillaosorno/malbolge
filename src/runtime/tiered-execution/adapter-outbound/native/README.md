@@ -49,8 +49,14 @@ and output surfaces. Completion admits `Applied` only when the resulting state,
 memory, and output exactly equal the IR-derived transition. `GuardMiss` must
 preserve every snapshot byte-for-byte; unknown status, unexpected
 `InvalidArgument`, topology drift, and partial commits fail closed. Every
-rejected completion restores the complete entry snapshot. The module
-exposes a raw state pointer but owns no loader, executable memory, or call site.
+rejected completion restores the complete entry snapshot.
+`PreparedVerifiedDirectInvocation` then binds that call contract to one
+semantically admitted direct artifact. It reconstructs the full key with the
+artifact's exact target, rejects canonical program drift, and refuses to grant
+the deoptimization stub state-applying authority. `NativeRegionBuffers` groups
+the memory/input/output loans, while verified COFF bytes, target identity,
+target triple, and ABI pointer remain reachable only through the same binding.
+The module owns no loader, executable memory, or call site.
 
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first
