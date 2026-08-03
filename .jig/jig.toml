@@ -305,7 +305,7 @@ path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
 version = "2.54.0.windows.1"
 
 [tool.pytest]
-path = ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd"
+path = ".dependencies/python/3.14.6/Scripts/pytest.exe"
 version = "9.1.1"
 
 [tool.ruff]

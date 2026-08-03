@@ -65,6 +65,7 @@ class ValidationEnvironmentLayout:
 
     environment: Path
     expected_tools: tuple[tuple[str, str], ...]
+    pytest: Path
     pytest_launcher: Path
     python: Path
     python_launcher: Path
@@ -94,10 +95,11 @@ def validation_layout(
         environment=environment,
         expected_tools=(
             (f"basedpyright{executable_suffix}", "basedpyright 1.39.9"),
-            (f"pytest-jig{launcher_suffix}", "pytest 9.1.1"),
+            (f"pytest{executable_suffix}", "pytest 9.1.1"),
             (f"python-jig{launcher_suffix}", "Python 3.14.6"),
             (f"ruff{executable_suffix}", "ruff 0.16.0"),
         ),
+        pytest=scripts / f"pytest{executable_suffix}",
         pytest_launcher=scripts / f"pytest-jig{launcher_suffix}",
         python=scripts / ("python.exe" if windows else "python"),
         python_launcher=scripts / f"python-jig{launcher_suffix}",
@@ -109,6 +111,7 @@ LAYOUT: Final = validation_layout()
 ENVIRONMENT: Final = LAYOUT.environment
 SCRIPTS: Final = LAYOUT.scripts
 PYTHON: Final = LAYOUT.python
+PYTEST: Final = LAYOUT.pytest
 PYTEST_JIG: Final = LAYOUT.pytest_launcher
 PYTHON_JIG: Final = LAYOUT.python_launcher
 EXPECTED_TOOLS: Final = dict(LAYOUT.expected_tools)

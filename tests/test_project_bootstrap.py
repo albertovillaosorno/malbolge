@@ -52,9 +52,11 @@ LINUX_PLATFORM = "linux-x86_64"
 WINDOWS_CHANNEL = "stable-1.97.1-x86_64-pc-windows-gnu"
 WINDOWS_PYTHON = "python.exe"
 WINDOWS_PYTHON_LAUNCHER = "python-jig.cmd"
+WINDOWS_PYTEST = "pytest.exe"
 WINDOWS_PYTEST_LAUNCHER = "pytest-jig.cmd"
 POSIX_PYTHON = "python"
 POSIX_PYTHON_LAUNCHER = "python-jig"
+POSIX_PYTEST = "pytest"
 POSIX_PYTEST_LAUNCHER = "pytest-jig"
 POSIX_HEADER = "#!/bin/sh\nset -eu\n"
 CACHE_VARIABLE = "PYTHONPYCACHEPREFIX"
@@ -96,10 +98,11 @@ def test_validation_layout_uses_windows_native_names(tmp_path: Path) -> None:
     assert layout.scripts == layout.environment / "Scripts"
     assert layout.python.name == WINDOWS_PYTHON
     assert layout.python_launcher.name == WINDOWS_PYTHON_LAUNCHER
+    assert layout.pytest.name == WINDOWS_PYTEST
     assert layout.pytest_launcher.name == WINDOWS_PYTEST_LAUNCHER
     assert layout.expected_tools == (
         ("basedpyright.exe", "basedpyright 1.39.9"),
-        ("pytest-jig.cmd", "pytest 9.1.1"),
+        ("pytest.exe", "pytest 9.1.1"),
         ("python-jig.cmd", "Python 3.14.6"),
         ("ruff.exe", "ruff 0.16.0"),
     )
@@ -112,10 +115,11 @@ def test_validation_layout_uses_posix_native_names(tmp_path: Path) -> None:
     assert layout.scripts == layout.environment / "bin"
     assert layout.python.name == POSIX_PYTHON
     assert layout.python_launcher.name == POSIX_PYTHON_LAUNCHER
+    assert layout.pytest.name == POSIX_PYTEST
     assert layout.pytest_launcher.name == POSIX_PYTEST_LAUNCHER
     assert layout.expected_tools == (
         ("basedpyright", "basedpyright 1.39.9"),
-        ("pytest-jig", "pytest 9.1.1"),
+        ("pytest", "pytest 9.1.1"),
         ("python-jig", "Python 3.14.6"),
         ("ruff", "ruff 0.16.0"),
     )
