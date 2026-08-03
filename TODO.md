@@ -362,7 +362,11 @@ construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
 plus halt-fetch/non-graphical/no-operation revision-2 and
 jump-code/jump-data/rotate/crazy/input/output revision-1 objects bind that exact
 footprint in `MBPF` v3, and same-profile footprint mismatch fails structural
-admission.
+admission. Native ABI revision 1 now has one Rust `repr(C)` authority with an
+80-byte layout and exact offsets matching both reviewed ISA template families.
+Typed status and termination decoders reject unknown values, while a borrowed
+`NativeRegionCallFrame` validates capacities and cursor bounds before exposing
+a raw state pointer. It prepares no executable memory and invokes no code.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact

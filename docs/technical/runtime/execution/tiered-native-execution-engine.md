@@ -149,6 +149,15 @@ acceleration.
 Development evidence links both ISA objects and executes the x86-64 DLL with a
 null state pointer, returning `1`; direct region-effect fast paths remain open.
 
+Native ABI revision 1 now has one Rust owner in `native/abi.rs`. The
+`repr(C)` call frame is exactly 80 bytes on the supported 64-bit hosts, with
+tested offsets matching the x86-64 and AArch64 templates from byte 0 through
+the termination tag at byte 76. Typed applied, guard-miss, invalid-argument,
+and termination values fail closed on unknown foreign integers. A borrowed
+`NativeRegionCallFrame` validates buffer capacities and cursor bounds before
+exposing a raw state pointer. This establishes the call boundary only; no
+linking, executable-memory allocation, or foreign invocation is added.
+
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output
 effect, no memory live-ins or writes, no prior termination, unchanged exit

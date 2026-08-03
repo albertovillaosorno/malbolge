@@ -38,6 +38,7 @@
 
 #[path = "aarch64/main.rs"]
 mod aarch64;
+mod abi;
 mod coff;
 mod direct;
 mod profile_metadata;
@@ -47,6 +48,19 @@ mod x86_64;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
 
+use abi::C_ABI_PREFIX;
+pub use abi::{
+    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
+    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
+    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
+    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
+    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeRegionCallFrame,
+    NativeRegionCallFrameError, NativeRegionObservationError,
+    NativeRegionState, NativeRegionStatus, NativeRegionStatusError,
+    NativeTerminationTag, NativeTerminationTagError,
+};
 pub use coff::{
     CoffAdmissionError, StructurallyAdmittedNativeObjectArtifact,
     structurally_admit_coff,
@@ -96,8 +110,7 @@ pub use direct::{
     verify_direct_output, verify_direct_rotate,
 };
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, Termination,
-    TraceInput,
+    ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,
 };
 
 use crate::execution_cache::{
@@ -105,44 +118,6 @@ use crate::execution_cache::{
     NativeTargetIdentity,
 };
 use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
-
-const C_ABI_PREFIX: &str = r#"
-typedef unsigned char mb_u8;
-typedef unsigned int mb_u32;
-typedef unsigned long long mb_u64;
-
-#define MB_U8(value) ((mb_u8)(value))
-#define MB_U32(value) ((mb_u32)(value##U))
-#define MB_U64(value) ((mb_u64)(value##ULL))
-
-static_assert(sizeof(mb_u8) == 1, "8-bit byte required");
-static_assert(sizeof(mb_u32) == 4, "32-bit word required");
-static_assert(sizeof(mb_u64) == 8, "64-bit ABI integer required");
-
-enum mb_native_status {
-    MB_NATIVE_APPLIED = 0,
-    MB_NATIVE_GUARD_MISS = 1,
-    MB_NATIVE_INVALID_ARGUMENT = 2
-};
-
-struct mb_native_region_state {
-    mb_u32 *memory;
-    mb_u64 memory_words;
-    const mb_u8 *input;
-    mb_u64 input_len;
-    mb_u64 input_consumed;
-    mb_u8 *output;
-    mb_u64 output_capacity;
-    mb_u64 output_len;
-    mb_u32 accumulator;
-    mb_u32 code_pointer;
-    mb_u32 data_pointer;
-    mb_u8 termination;
-};
-
-int malbolge_native_region_apply(struct mb_native_region_state *state)
-{
-"#;
 
 /// Stable bootstrap backend identity bound into native artifact keys.
 pub const CLANG_C23_BOOTSTRAP_BACKEND_ID: &str = "clang-c23-bootstrap";
@@ -471,7 +446,8 @@ impl<'program> LoweringPlan<'program> {
         writeln!(
             output,
             "    state->termination = MB_U8({});",
-            termination_tag(final_state.termination)
+            NativeTerminationTag::from_termination(final_state.termination)
+                .code()
         )
         .map_err(|_error| NativeArtifactError::Rendering)?;
         Ok(())
@@ -764,7 +740,8 @@ fn render_observation_guard(
         accumulator = entry.registers.accumulator,
         code = entry.registers.code_pointer,
         data = entry.registers.data_pointer,
-        termination = termination_tag(entry.termination)
+        termination =
+            NativeTerminationTag::from_termination(entry.termination).code()
     )
     .map_err(|_error| NativeArtifactError::Rendering)
 }
@@ -795,14 +772,6 @@ fn render_input_guard(
         ),
     }
     .map_err(|_error| NativeArtifactError::Rendering)
-}
-
-const fn termination_tag(termination: Option<Termination>) -> u8 {
-    match termination {
-        None => 0,
-        Some(Termination::HaltInstruction) => 1,
-        Some(Termination::NonGraphicalCell) => 2,
-    }
 }
 
 const fn clang_target_triple(target: &NativeTargetIdentity) -> &'static str {

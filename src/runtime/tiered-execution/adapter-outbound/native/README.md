@@ -9,6 +9,7 @@ explicitly untrusted native compilation artifacts.
 
 - structural validation required before native lowering;
 - deterministic C23 bootstrap lowering from `RegionEffectProgram`;
+- stable Rust representation of native call-frame ABI revision 1;
 - exact binding to `NativeArtifactKey` target assumptions;
 - untrusted native source/object artifact containers;
 - fail-closed structural admission of self-contained Windows COFF objects;
@@ -30,6 +31,15 @@ explicitly untrusted native compilation artifacts.
 `main.rs` implements the bootstrap backend. It does not make C part of the VM
 semantics: Clang is only an initial code-generation adapter used to cross the
 first real host-object boundary while direct architecture backends remain open.
+
+`abi.rs` owns the revision-1 call-frame representation shared by Rust and
+the generated freestanding C. `NativeRegionState` is `repr(C)` and its
+80-byte layout plus every field offset is fixed by tests on the supported
+64-bit hosts. Typed status and termination values reject unknown foreign
+integers. `NativeRegionCallFrame` binds raw ABI pointers to borrowed memory,
+input, and output slices, rejects out-of-bounds cursors, and reconstructs an
+exact normative observation after a future call. It does not allocate
+executable memory, link objects, or invoke machine code.
 
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first

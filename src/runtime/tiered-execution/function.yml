@@ -57,75 +57,80 @@ parts:
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0005
-    path: adapter-outbound/native/coff.rs
+    path: adapter-outbound/native/abi.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0006
-    path: adapter-outbound/native/direct/artifact.rs
+    path: adapter-outbound/native/coff.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0007
-    path: adapter-outbound/native/direct/coff.rs
+    path: adapter-outbound/native/direct/artifact.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0008
-    path: adapter-outbound/native/direct/emit.rs
+    path: adapter-outbound/native/direct/coff.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0009
-    path: adapter-outbound/native/direct/error.rs
+    path: adapter-outbound/native/direct/emit.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0010
-    path: adapter-outbound/native/direct/mod.rs
+    path: adapter-outbound/native/direct/error.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0011
-    path: adapter-outbound/native/direct/plan.rs
+    path: adapter-outbound/native/direct/mod.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0012
-    path: adapter-outbound/native/direct/sequence.rs
+    path: adapter-outbound/native/direct/plan.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0013
-    path: adapter-outbound/native/direct/shape.rs
+    path: adapter-outbound/native/direct/sequence.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0014
-    path: adapter-outbound/native/direct/verify.rs
+    path: adapter-outbound/native/direct/shape.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0015
-    path: adapter-outbound/native/main.rs
+    path: adapter-outbound/native/direct/verify.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0016
-    path: adapter-outbound/native/profile_metadata.rs
+    path: adapter-outbound/native/main.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0017
-    path: adapter-outbound/native/x86_64/main.rs
+    path: adapter-outbound/native/profile_metadata.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0018
+    path: adapter-outbound/native/x86_64/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0019
     path: domain/ir/README.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0019
+  - id: part-0020
     path: domain/ir/main.rs
     kind: domain
     language: rust

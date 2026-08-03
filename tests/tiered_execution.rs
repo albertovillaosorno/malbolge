@@ -76,7 +76,15 @@ use execution_native::{
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError, DirectRotateError,
     DirectSelectionError, DirectSequenceError, NATIVE_REGION_ABI_REVISION,
-    NativeArtifactError, PreflightedExecutionTier,
+    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
+    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
+    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
+    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
+    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NativeRegionCallFrame, NativeRegionCallFrameError, NativeRegionStatus,
+    NativeTerminationTag, PreflightedExecutionTier,
     UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
@@ -5298,4 +5306,165 @@ fn direct_sequence_rejects_hidden_deopt_and_post_termination_steps()
         ));
     }
     Ok(())
+}
+
+#[test]
+fn native_region_abi_layout_matches_reviewed_64_bit_templates()
+-> Result<(), String> {
+    let observed = [
+        NATIVE_REGION_STATE_SIZE,
+        NATIVE_REGION_MEMORY_OFFSET,
+        NATIVE_REGION_MEMORY_WORDS_OFFSET,
+        NATIVE_REGION_INPUT_OFFSET,
+        NATIVE_REGION_INPUT_LEN_OFFSET,
+        NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+        NATIVE_REGION_OUTPUT_OFFSET,
+        NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
+        NATIVE_REGION_OUTPUT_LEN_OFFSET,
+        NATIVE_REGION_ACCUMULATOR_OFFSET,
+        NATIVE_REGION_CODE_POINTER_OFFSET,
+        NATIVE_REGION_DATA_POINTER_OFFSET,
+        NATIVE_REGION_TERMINATION_OFFSET,
+    ];
+    let expected = [80, 0, 8, 16, 24, 32, 40, 48, 56, 64, 68, 72, 76];
+    if observed == expected {
+        Ok(())
+    } else {
+        Err(format!("native region ABI layout changed: {observed:?}"))
+    }
+}
+
+#[test]
+fn native_region_status_and_termination_values_fail_closed()
+-> Result<(), String> {
+    for (code, expected) in [
+        (0i32, NativeRegionStatus::Applied),
+        (1i32, NativeRegionStatus::GuardMiss),
+        (2i32, NativeRegionStatus::InvalidArgument),
+    ] {
+        let observed = NativeRegionStatus::try_from(code)
+            .map_err(|error| error.to_string())?;
+        if observed != expected || observed.code() != code {
+            return Err(format!("native status roundtrip changed: {code}"));
+        }
+    }
+    let Err(status_error) = NativeRegionStatus::try_from(3i32) else {
+        return Err(String::from("unknown native status was admitted"));
+    };
+    if status_error.code() != 3i32 {
+        return Err(String::from("native status error lost foreign value"));
+    }
+
+    for (termination, expected) in [
+        (None, NativeTerminationTag::Running),
+        (
+            Some(Termination::HaltInstruction),
+            NativeTerminationTag::HaltInstruction,
+        ),
+        (
+            Some(Termination::NonGraphicalCell),
+            NativeTerminationTag::NonGraphicalCell,
+        ),
+    ] {
+        let tag = NativeTerminationTag::from_termination(termination);
+        let decoded = NativeTerminationTag::try_from(tag.code())
+            .map_err(|error| error.to_string())?;
+        if tag != expected || decoded.termination() != termination {
+            return Err(String::from("native termination roundtrip changed"));
+        }
+    }
+    let Err(tag_error) = NativeTerminationTag::try_from(3u8) else {
+        return Err(String::from("unknown termination tag was admitted"));
+    };
+    if tag_error.value() == 3u8 {
+        Ok(())
+    } else {
+        Err(String::from("termination error lost foreign value"))
+    }
+}
+
+#[test]
+fn native_region_call_frame_binds_exact_state() -> Result<(), String> {
+    let mut memory = [34u32, 10, 112];
+    let input = [0x10u8, 0x41, 0x20];
+    let mut output = [0xa0u8, 0xa1, 0, 0];
+    let observation = ProfileMachineObservation {
+        input_consumed: 1,
+        output_len: 2,
+        registers: ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let mut frame = NativeRegionCallFrame::new(
+        &mut memory,
+        &input,
+        &mut output,
+        observation,
+    )
+    .map_err(|error| error.to_string())?;
+    let state = frame.state();
+    if state.memory_words() != 3
+        || state.input_len() != 3
+        || state.input_consumed() != 1
+        || state.output_capacity() != 4
+        || state.output_len() != 2
+        || state.accumulator() != 20
+        || state.code_pointer() != 5
+        || state.data_pointer() != 7
+        || state.termination_tag() != 0
+        || state.observation().map_err(|error| error.to_string())?
+            != observation
+        || frame.memory() != [34, 10, 112]
+        || frame.input() != input
+        || frame.output_prefix().map_err(|error| error.to_string())?
+            != [0xa0, 0xa1]
+        || frame.state_mut_ptr().is_null()
+    {
+        Err(String::from("native call frame changed ABI state"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn native_region_call_frame_rejects_out_of_bounds_counters()
+-> Result<(), String> {
+    let mut memory = [0u32; 1];
+    let input = [0u8; 1];
+    let mut output = [0u8; 1];
+    let mut observation = ProfileMachineObservation {
+        input_consumed: 2,
+        output_len: 0,
+        registers: ProfileRegisters {
+            accumulator: 0,
+            code_pointer: 0,
+            data_pointer: 0,
+        },
+        termination: None,
+    };
+    let input_result = NativeRegionCallFrame::new(
+        &mut memory,
+        &input,
+        &mut output,
+        observation,
+    );
+    if !matches!(input_result, Err(NativeRegionCallFrameError::InputConsumed)) {
+        return Err(String::from("invalid native input cursor admitted"));
+    }
+    observation.input_consumed = 0;
+    observation.output_len = 2;
+    let output_result = NativeRegionCallFrame::new(
+        &mut memory,
+        &input,
+        &mut output,
+        observation,
+    );
+    if matches!(output_result, Err(NativeRegionCallFrameError::OutputLength)) {
+        Ok(())
+    } else {
+        Err(String::from("invalid native output length admitted"))
+    }
 }

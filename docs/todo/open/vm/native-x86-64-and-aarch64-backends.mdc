@@ -95,6 +95,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   634/715-byte objects. All eight instruction families now have reviewed direct
   x86-64/AArch64 templates, and every memory-backed template guards the exact
   key-bound IR footprint.
+  Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
+  Its tested 80-byte size and field offsets match both reviewed encoder
+  families; typed status/termination values and borrowed-buffer construction
+  fail closed. This does not link, allocate, invoke, or synchronize code.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden

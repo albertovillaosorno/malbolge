@@ -189,6 +189,14 @@ ABI
 capacity guard before any dereference. All eight instruction families now
 have reviewed one-step direct templates.
 
+The native call-frame ABI now has a format-neutral Rust authority in
+`native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
+by both encoders, including offsets 0, 8, 16, 24, 32, 40, 48, 56, 64, 68,
+72, and 76. Typed status and termination decoders reject unknown values, and
+a borrowed call frame validates capacities before yielding a raw pointer for
+future invocation. This is ABI evidence only; no linker, executable-memory
+owner, or instruction-cache synchronization policy is introduced.
+
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact

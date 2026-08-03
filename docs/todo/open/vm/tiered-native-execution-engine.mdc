@@ -241,6 +241,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
+- Native ABI revision 1 now has one Rust `repr(C)` authority. Its 80-byte
+  call frame and every 64-bit-host field offset match the reviewed x86-64
+  and AArch64 templates. Typed status/termination decoding rejects unknown
+  values, and `NativeRegionCallFrame` binds pointers to borrowed slices while
+  rejecting invalid capacities and cursors. No linking, executable memory,
+  or foreign invocation is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,
