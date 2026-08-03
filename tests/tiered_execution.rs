@@ -53,7 +53,7 @@ use execution_cache::{
 };
 use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
-    TargetProfileRequirement,
+    StepProgramProjectionError, TargetProfileRequirement,
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
@@ -75,9 +75,10 @@ use execution_native::{
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError, DirectRotateError,
-    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
-    PreflightedExecutionTier, UntrustedNativeObjectArtifact,
-    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
+    DirectSelectionError, DirectSequenceError, NATIVE_REGION_ABI_REVISION,
+    NativeArtifactError, PreflightedExecutionTier,
+    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -85,16 +86,19 @@ use execution_native::{
     emit_direct_output_coff, emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
-    structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
-    verify_direct_halt_fetch, verify_direct_halt_registers,
-    verify_direct_initial_halt, verify_direct_input, verify_direct_jump_code,
-    verify_direct_jump_data, verify_direct_no_operation,
-    verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
+    select_verified_direct_sequence, structurally_admit_coff,
+    verify_direct_crazy, verify_direct_deopt_stub, verify_direct_halt_fetch,
+    verify_direct_halt_registers, verify_direct_initial_halt,
+    verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
+    verify_direct_no_operation, verify_direct_non_graphical,
+    verify_direct_output, verify_direct_rotate,
 };
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, ProfileRequirementErrorKind, RunOutcome, Termination,
-    TraceInput, current_profile, preflight_profile,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
+    ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisters,
+    ProfileRequirementErrorKind, ProfileStepTrace, RunOutcome, Termination,
+    TraceInput, current_profile, decode_profile_instruction, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
     safe_rust_profiled_capability,
 };
@@ -4755,4 +4759,329 @@ fn compile_native_object(
         "native Clang failed: {}",
         String::from_utf8_lossy(&output.stderr)
     ))
+}
+
+fn direct_normative_sequence_traces() -> Result<Vec<ProfileStepTrace>, String> {
+    let base =
+        ProfileMachine::from_source(current_profile(), b"(=%`qL", Vec::new())
+            .map_err(|error| format!("direct sequence base load: {error}"))?;
+    let mut memory = base.snapshot_state().memory().to_vec();
+    *memory
+        .get_mut(5)
+        .ok_or_else(|| String::from("direct sequence code cell 5 missing"))? =
+        34;
+    let output_cell = (33u32..=126u32)
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'/'))
+        .ok_or_else(|| String::from("phase-six output cell missing"))?;
+    *memory
+        .get_mut(6)
+        .ok_or_else(|| String::from("direct sequence code cell 6 missing"))? =
+        output_cell;
+    *memory
+        .get_mut(7)
+        .ok_or_else(|| String::from("direct sequence data cell 7 missing"))? =
+        10;
+    let io = ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+        .map_err(|error| format!("direct sequence IO: {error}"))?;
+    let state = ProfileMachineState::new(
+        current_profile(),
+        memory,
+        ProfileRegisters {
+            accumulator: 20,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        io,
+    )
+    .map_err(|error| format!("direct sequence state: {error}"))?;
+    let mut machine = ProfileMachine::from_snapshot(state);
+    let mut traces = Vec::new();
+    let outcome = machine
+        .run_traced(2, &mut |trace: &ProfileStepTrace| traces.push(*trace))
+        .map_err(|error| format!("direct sequence trace: {error}"))?;
+    if outcome != (RunOutcome::BudgetExhausted { steps: 2 }) {
+        return Err(format!("direct sequence outcome mismatch: {outcome:?}"));
+    }
+    Ok(traces)
+}
+
+fn direct_normative_sequence_programs()
+-> Result<Vec<RegionEffectProgram>, String> {
+    direct_normative_sequence_traces()?
+        .iter()
+        .map(|trace| {
+            RegionEffectProgram::from_profile_step_trace(trace).map_err(
+                |error| format!("direct sequence projection: {error:?}"),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn normative_trace_sequence_selects_mixed_exact_direct_steps()
+-> Result<(), String> {
+    let traces = direct_normative_sequence_traces()?;
+    let programs = direct_normative_sequence_programs()?;
+    let [first_program, second_program] = programs.as_slice() else {
+        return Err(String::from("direct sequence program length mismatch"));
+    };
+    let [first_trace, second_trace] = traces.as_slice() else {
+        return Err(String::from("direct sequence trace length mismatch"));
+    };
+    let second_fetch = second_trace
+        .memory_reads
+        .fetch
+        .ok_or_else(|| String::from("direct sequence second fetch missing"))?;
+    if first_program.memory_live_ins
+        != [MemoryLiveIn { address: 5, value: 34 }, MemoryLiveIn {
+            address: 7,
+            value: 10,
+        }]
+        || second_program.memory_live_ins
+            != [MemoryLiveIn {
+                address: second_fetch.address,
+                value: second_fetch.value,
+            }]
+        || first_trace.decoded != Some(b'*')
+        || second_trace.decoded != Some(b'/')
+        || second_trace.output != Some(0xd6)
+    {
+        let detail = format!("traces={traces:?} programs={programs:?}");
+        return Err(format!("direct sequence VM evidence mismatch: {detail}"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("direct sequence select: {error}"))?;
+        let [rotate, output] = plan.artifacts() else {
+            return Err(format!("direct sequence plan length: {plan:?}"));
+        };
+        if plan.len() != 2
+            || plan.entry() != first_trace.before
+            || plan.exit() != second_trace.after
+            || plan.outcome() != (RunOutcome::BudgetExhausted { steps: 2 })
+            || rotate.kind() != DirectNativeKind::Rotate
+            || output.kind() != DirectNativeKind::Output
+        {
+            return Err(format!("direct sequence plan mismatch: {plan:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn trace_projection_rejects_conflicting_same_address_reads()
+-> Result<(), String> {
+    let mut trace = direct_normative_sequence_traces()?
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("direct sequence trace missing"))?;
+    trace.memory_reads.encryption =
+        Some(ProfileMemoryRead { address: 5, value: 35 });
+    let result = RegionEffectProgram::from_profile_step_trace(&trace);
+    if result != Err(StepProgramProjectionError::ConflictingMemoryRead) {
+        return Err(format!("conflicting trace read admitted: {result:?}"));
+    }
+    Ok(())
+}
+
+fn assert_projection_error(
+    trace: &ProfileStepTrace,
+    expected: StepProgramProjectionError,
+) -> Result<(), String> {
+    let observed = RegionEffectProgram::from_profile_step_trace(trace);
+    if observed == Err(expected) {
+        Ok(())
+    } else {
+        let detail = format!("observed={observed:?} expected={expected:?}");
+        Err(format!("trace projection error mismatch: {detail}"))
+    }
+}
+
+#[test]
+fn trace_projection_rejects_inconsistent_evidence() -> Result<(), String> {
+    let baseline = direct_normative_sequence_traces()?
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("direct sequence trace missing"))?;
+
+    let mut missing_fetch = baseline;
+    missing_fetch.memory_reads.fetch = None;
+    assert_projection_error(
+        &missing_fetch,
+        StepProgramProjectionError::MissingFetch,
+    )?;
+
+    let mut wrong_address = baseline;
+    let fetch = wrong_address
+        .memory_reads
+        .fetch
+        .as_mut()
+        .ok_or_else(|| String::from("direct sequence fetch missing"))?;
+    fetch.address = fetch.address.saturating_add(1);
+    assert_projection_error(
+        &wrong_address,
+        StepProgramProjectionError::FetchAddress,
+    )?;
+
+    let mut wrong_value = baseline;
+    wrong_value.fetched_cell = wrong_value.fetched_cell.map(|value| value ^ 1);
+    assert_projection_error(
+        &wrong_value,
+        StepProgramProjectionError::FetchValue,
+    )?;
+
+    let mut outcome = baseline;
+    outcome.after.termination = Some(Termination::HaltInstruction);
+    assert_projection_error(&outcome, StepProgramProjectionError::Outcome)?;
+
+    let mut rejected = baseline;
+    rejected.result = Err(ProfileMachineError::TranslationTableInvariant);
+    assert_projection_error(
+        &rejected,
+        StepProgramProjectionError::RejectedTrace,
+    )?;
+
+    let mut terminated = baseline;
+    terminated.before.termination = Some(Termination::HaltInstruction);
+    assert_projection_error(
+        &terminated,
+        StepProgramProjectionError::TerminatedEntry,
+    )
+}
+
+#[test]
+fn direct_sequence_rejects_non_unit_programs() -> Result<(), String> {
+    let mut programs = direct_normative_sequence_programs()?;
+    programs
+        .get_mut(0)
+        .ok_or_else(|| String::from("first shape program missing"))?
+        .step_budget = 2;
+    let result = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if result == Err(DirectSequenceError::ProgramShape { index: 0 }) {
+        Ok(())
+    } else {
+        Err(format!("non-unit direct sequence admitted: {result:?}"))
+    }
+}
+
+#[test]
+fn direct_sequence_rejects_empty_discontinuous_and_profile_mixed_shapes()
+-> Result<(), String> {
+    let empty = select_verified_direct_sequence(
+        &[],
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if empty != Err(DirectSequenceError::Empty) {
+        return Err(format!("empty direct sequence admitted: {empty:?}"));
+    }
+
+    let mut discontinuous = direct_normative_sequence_programs()?;
+    let second = discontinuous.get_mut(1).ok_or_else(|| {
+        String::from("second direct sequence program missing")
+    })?;
+    let effect = second
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("second direct sequence effect missing"))?;
+    effect.before.registers.accumulator ^= 1;
+    let chain_result = select_verified_direct_sequence(
+        &discontinuous,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if chain_result != Err(DirectSequenceError::ObservationChain { index: 1 }) {
+        return Err(format!(
+            "discontinuous direct sequence admitted: {chain_result:?}"
+        ));
+    }
+
+    let mut profile_mixed = direct_normative_sequence_programs()?;
+    profile_mixed
+        .get_mut(1)
+        .ok_or_else(|| String::from("second profile program missing"))?
+        .profile_id
+        .push_str("-other");
+    let profile_result = select_verified_direct_sequence(
+        &profile_mixed,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if profile_result != Err(DirectSequenceError::ProfileMismatch { index: 1 })
+    {
+        return Err(format!(
+            "profile-mixed direct sequence admitted: {profile_result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_sequence_preserves_step_selection_errors() -> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    let result = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    );
+    let Err(DirectSequenceError::Step { error, index: 0 }) = result else {
+        return Err(format!("direct sequence step error changed: {result:?}"));
+    };
+    if *error == DirectSelectionError::TargetFormat {
+        Ok(())
+    } else {
+        Err(format!("direct sequence target error changed: {error}"))
+    }
+}
+
+#[test]
+fn direct_sequence_rejects_hidden_deopt_and_post_termination_steps()
+-> Result<(), String> {
+    let mut hidden_deopt = direct_normative_sequence_programs()?;
+    hidden_deopt
+        .get_mut(1)
+        .ok_or_else(|| String::from("second deopt program missing"))?
+        .memory_live_ins
+        .clear();
+    let deopt_result = select_verified_direct_sequence(
+        &hidden_deopt,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if deopt_result != Err(DirectSequenceError::Deoptimization { index: 1 }) {
+        return Err(format!(
+            "hidden deopt direct sequence admitted: {deopt_result:?}"
+        ));
+    }
+
+    let terminal = [direct_halt_fetch_program(), direct_no_operation_program()];
+    let terminal_result = select_verified_direct_sequence(
+        &terminal,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if terminal_result
+        != Err(DirectSequenceError::TerminationBeforeEnd { index: 0 })
+    {
+        return Err(format!(
+            "post-termination direct step admitted: {terminal_result:?}"
+        ));
+    }
+    Ok(())
 }

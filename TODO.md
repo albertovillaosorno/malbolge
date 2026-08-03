@@ -363,6 +363,16 @@ plus halt-fetch/non-graphical/no-operation revision-2 and
 jump-code/jump-data/rotate/crazy/input/output revision-1 objects bind that exact
 footprint in `MBPF` v3, and same-profile footprint mismatch fails structural
 admission.
+Complete normative `ProfileStepTrace` evidence can now be projected into exact
+one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
+`select_verified_direct_sequence()` verifies one canonical profile, exact
+adjacent observations, final-only termination, and a real non-deopt direct
+artifact for every step before publishing the ordered plan. A retained
+rotate/output VM trace selects exact artifacts on both ISAs; empty,
+discontinuous, profile-mixed, hidden-deopt, and post-termination sequences fail
+closed. This first multistep slice does not yet fuse COFF, mutate the native
+cache, allocate executable memory, invoke the chain, or resume after a
+mid-sequence guard miss.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -386,16 +396,17 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, multi-step direct composition,
-executable invocation, and broader AOT/JIT performance policy remain open.
+eviction, synchronization policy, fused-region emission, executable
+chaining/invocation, mid-sequence deoptimization, and broader AOT/JIT
+performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
-planning,
-and an untrusted cross-ISA bootstrap object boundary are implemented. General
-direct x86-64/AArch64 instruction selection, executable-memory integration,
+planning, trace-derived multistep direct plans, and an untrusted cross-ISA
+bootstrap object boundary are implemented. Combined-region native emission,
+executable-memory integration,
 durable cache serialization/storage/eviction, and wider tier orchestration
 remain
 open.

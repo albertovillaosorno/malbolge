@@ -139,6 +139,23 @@ fallback, and an unsupported host format still fails explicitly when the profile
 is supported. This removes backend-ID choice from callers while keeping
 unsupported IR safe.
 
+`select_verified_direct_sequence()` adds the first multistep direct planning
+boundary without inventing a combined object. The caller supplies exact one-step
+programs projected from complete VM traces. Every step must preserve canonical
+profile identity, contain exactly one effect with budget one, and begin at the
+byte-exact prior exit observation. A non-final termination, any ordinary direct
+selection/admission failure, or a selected deoptimization stub rejects the whole
+sequence before a `VerifiedDirectSequencePlan` is returned.
+
+The retained two-step fixture is produced by the normative VM from a rotate
+followed by output. Trace projection deduplicates repeated fetch/encryption
+reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and
+`direct-output` artifacts with exact regional entry, exit, and two-step outcome.
+This boundary retains no state outside the returned plan. It does not mutate a
+cache, link objects, allocate executable memory, invoke code, or claim that a
+guard miss can resume halfway
+through a sequence.
+
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns
 `PreflightedExecutionTier::Direct`; Linux/macOS format absence returns

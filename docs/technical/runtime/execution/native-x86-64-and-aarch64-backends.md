@@ -189,12 +189,20 @@ ABI
 capacity guard before any dereference. All eight instruction families now
 have reviewed one-step direct templates.
 
+The first multistep planner composes already verified one-step artifacts without
+changing either ISA encoder. Complete VM traces are projected to one-step IR,
+then exact profile and observation continuity are checked before every artifact
+is selected. The retained rotate/output fixture yields two reviewed artifacts on
+both ISAs and rejects empty, discontinuous, profile-mixed, hidden-deopt, and
+post-termination sequences. This is planning evidence, not a fused COFF object
+or executable call chain.
+
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
 remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are implemented
-for both ISAs; multi-step composition,
+for both ISAs; fused-region emission, executable chaining,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 

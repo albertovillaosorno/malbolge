@@ -11,6 +11,8 @@ future AOT and JIT backends after deterministic verifier admission.
 - `MemoryLiveIn`: one verifier-derived entry-memory dependency.
 - `RegionEffectProgram`: profile-bound bounded-region metadata plus ordered
   effects.
+- `RegionEffectProgram::from_profile_step_trace()`: exact one-step
+  projection from complete normative trace evidence.
 - Transport of the VM-owned `TargetProfileRequirement`: canonical version,
   semantic features, word width, and directly addressed profile capacity
   required
@@ -34,6 +36,20 @@ trusted by construction: the state-graph verifier remains responsible for
 reprojecting and admitting a candidate program before any accelerated tier may
 execute it. The current research bridge composes this file by explicit Cargo
 paths rather than creating a language-shaped crate boundary.
+
+### Exact one-step trace projection
+
+`RegionEffectProgram::from_profile_step_trace()` converts one successful
+normative `ProfileStepTrace` into ordinary one-step IR. Fetch, data, and
+encryption reads become one sorted, deduplicated live-in set. Repeated reads of
+the same address must agree exactly; missing or inconsistent fetch evidence, a
+rejected trace, an already terminated entry, or an outcome/termination mismatch
+fails with `StepProgramProjectionError`.
+
+This projection preserves evidence needed by one-step direct admission. It does
+not make an arbitrary trace trusted, and it does not reconstruct intermediate
+reads from compact regional IR. Callers must obtain complete traces from a
+normative or independently admitted VM boundary.
 
 ### Canonical identity encoding v3
 

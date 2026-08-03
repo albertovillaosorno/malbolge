@@ -40,6 +40,7 @@ mod coff;
 mod emit;
 mod error;
 mod plan;
+mod sequence;
 mod shape;
 mod verify;
 
@@ -79,6 +80,7 @@ pub use plan::{
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
 };
+pub use sequence::*;
 use shape::*;
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub, verify_direct_halt_fetch,

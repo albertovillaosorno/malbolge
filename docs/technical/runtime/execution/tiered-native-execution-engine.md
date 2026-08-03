@@ -331,6 +331,22 @@ promote an initial-halt, register-halt, halt-fetch, non-graphical, no-operation,
 jump-code, jump-data, rotate, crazy, input, or output object whose IR footprint
 exceeds its embedded profile envelope.
 
+`RegionEffectProgram::from_profile_step_trace()` and
+`select_verified_direct_sequence()` now provide the first verified multistep
+planning slice. Complete normative trace reads are projected independently into
+one-step IR; compact regional IR is not split because it omits intermediate
+semantic reads. Sequence admission requires one-effect/budget-one programs, one
+canonical profile identity, exact adjacent observations, no non-final
+termination, and a real direct fast path for every step. Any hidden deopt or
+step failure rejects the whole plan before publication.
+
+A retained rotate/output normative trace selects byte-verified
+`direct-rotate` and `direct-output` artifacts for both x86-64 and AArch64. It
+derives the exact regional entry, exit, and `BudgetExhausted { steps: 2 }`
+outcome. The result is
+an ordered plan only: no object fusion, cache transaction, executable-memory
+allocation, invocation, or mid-sequence deoptimization protocol is implied.
+
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct
 selection. It maps only top-level direct `TargetFormat` absence to the normative
@@ -375,8 +391,8 @@ outside.
 
 ### Remaining Implementation
 
-Semantic admission beyond one-step reviewed templates, multi-step direct
-composition, executable-memory policy/invocation,
+Combined-region emission, executable chaining, cache-transaction policy,
+mid-sequence guard-miss recovery, executable-memory policy/invocation, and
 durable native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The

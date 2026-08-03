@@ -241,7 +241,17 @@ baseline; native tiers are accelerators of identical observable behavior.
   persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- Remaining multi-step direct composition, cache-aware AOT/JIT
+- `RegionEffectProgram::from_profile_step_trace()` now preserves complete
+  fetch/data/encryption evidence as sorted one-step live-ins, while
+  `select_verified_direct_sequence()` atomically publishes only a non-empty,
+  profile-consistent, observation-continuous sequence whose every step selects
+  a verified non-deopt direct artifact. A normative rotate/output trace
+  produces exact x86-64/AArch64 plans; empty, discontinuous,
+  profile-mixed, hidden-deopt, and post-termination shapes fail closed. No
+  cache mutation, object fusion, executable memory, invocation, or
+  partial-resume protocol is added.
+- Remaining fused-region emission, executable chaining, cache-transaction and
+  mid-sequence guard-miss policy, plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

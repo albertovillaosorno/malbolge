@@ -35,10 +35,13 @@
 
 //! Portable bounded-region effect IR for tiered execution.
 
+use std::collections::BTreeMap;
+
 pub use malbolge::TargetProfileRequirement;
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileStepTrace, RunOutcome, Termination, TraceInput,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
+    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
+    TraceInput,
 };
 
 /// Current portable bounded-region effect-IR schema version.
@@ -111,6 +114,25 @@ pub enum IrEncodingError {
     LengthOverflow,
 }
 
+/// Failure while projecting one complete normative step trace to portable IR.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StepProgramProjectionError {
+    /// Two semantic reads claim different values for the same address.
+    ConflictingMemoryRead,
+    /// The semantic fetch did not read the entry code pointer.
+    FetchAddress,
+    /// The fetched-cell claim disagrees with the semantic fetch read.
+    FetchValue,
+    /// A successful step trace omitted its mandatory code-cell fetch.
+    MissingFetch,
+    /// Public step outcome and after-termination observation disagree.
+    Outcome,
+    /// The trace records a rejected normative transition.
+    RejectedTrace,
+    /// Execution was already terminated before the requested step.
+    TerminatedEntry,
+}
+
 impl RegionEffectProgram {
     /// Renders the versioned architecture-neutral canonical byte
     /// representation.
@@ -151,6 +173,77 @@ impl RegionEffectProgram {
             <= u64::from(self.profile_requirement.memory_words)
     }
 
+    /// Projects one successful normative step trace to exact one-step IR.
+    ///
+    /// Semantic memory reads become sorted, deduplicated live-ins. The returned
+    /// program remains ordinary portable IR and must still pass the selected
+    /// backend's independent semantic admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StepProgramProjectionError`] when the trace was rejected or
+    /// its fetch, outcome, or repeated-read evidence is internally
+    /// inconsistent.
+    pub fn from_profile_step_trace(
+        trace: &ProfileStepTrace,
+    ) -> Result<Self, StepProgramProjectionError> {
+        if trace.before.termination.is_some() {
+            return Err(StepProgramProjectionError::TerminatedEntry);
+        }
+        let fetch = trace
+            .memory_reads
+            .fetch
+            .ok_or(StepProgramProjectionError::MissingFetch)?;
+        if fetch.address != trace.before.registers.code_pointer {
+            return Err(StepProgramProjectionError::FetchAddress);
+        }
+        if trace.fetched_cell != Some(fetch.value) {
+            return Err(StepProgramProjectionError::FetchValue);
+        }
+        let outcome = match trace.result {
+            Ok(StepOutcome::Continued) if trace.after.termination.is_none() => {
+                RunOutcome::BudgetExhausted { steps: 1 }
+            },
+            Ok(StepOutcome::Terminated(reason))
+                if trace.after.termination == Some(reason) =>
+            {
+                RunOutcome::Terminated { reason, steps: 1 }
+            },
+            Ok(StepOutcome::Continued | StepOutcome::Terminated(_)) => {
+                return Err(StepProgramProjectionError::Outcome);
+            },
+            Err(_error) => {
+                return Err(StepProgramProjectionError::RejectedTrace);
+            },
+        };
+        let mut live_ins = BTreeMap::new();
+        for read in [
+            Some(fetch),
+            trace.memory_reads.data,
+            trace.memory_reads.encryption,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            insert_trace_read(&mut live_ins, read)?;
+        }
+        Ok(Self {
+            effects: vec![EffectOp::from_trace(trace)],
+            format_version: EFFECT_IR_VERSION,
+            memory_live_ins: live_ins
+                .into_iter()
+                .map(|(address, value)| MemoryLiveIn { address, value })
+                .collect(),
+            outcome,
+            profile_fingerprint: String::from(trace.profile.fingerprint()),
+            profile_id: String::from(trace.profile.id()),
+            profile_requirement: TargetProfileRequirement::from_descriptor(
+                trace.profile,
+            ),
+            step_budget: 1,
+        })
+    }
+
     /// Returns the minimum directly addressed memory required by this region.
     ///
     /// The requirement includes code/data pointers in every observation,
@@ -169,6 +262,22 @@ impl RegionEffectProgram {
             .fold(from_live_ins, |required, effect| {
                 required.max(effect_required_memory_words(effect))
             })
+    }
+}
+
+fn insert_trace_read(
+    live_ins: &mut BTreeMap<u32, u32>,
+    read: ProfileMemoryRead,
+) -> Result<(), StepProgramProjectionError> {
+    match live_ins.get(&read.address) {
+        Some(value) if *value != read.value => {
+            Err(StepProgramProjectionError::ConflictingMemoryRead)
+        },
+        Some(_value) => Ok(()),
+        None => {
+            let _previous = live_ins.insert(read.address, read.value);
+            Ok(())
+        },
     }
 }
 
