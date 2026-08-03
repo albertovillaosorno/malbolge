@@ -194,8 +194,10 @@ changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact
 is selected. The retained rotate/output fixture yields two reviewed artifacts on
 both ISAs and rejects empty, discontinuous, profile-mixed, hidden-deopt, and
-post-termination sequences. This is planning evidence, not a fused COFF object
-or executable call chain.
+post-termination sequences. Its cache-aware form preserves pointer-identical
+hits, stages unique verified misses until complete success, and publishes no
+partial cache state after a late rejection. This is planning evidence, not a
+fused COFF object or executable call chain.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

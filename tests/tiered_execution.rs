@@ -85,13 +85,13 @@ use execution_native::{
     emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
     emit_direct_output_coff, emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
-    select_preflighted_execution_tier, select_verified_direct_native,
-    select_verified_direct_sequence, structurally_admit_coff,
-    verify_direct_crazy, verify_direct_deopt_stub, verify_direct_halt_fetch,
-    verify_direct_halt_registers, verify_direct_initial_halt,
-    verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
-    verify_direct_no_operation, verify_direct_non_graphical,
-    verify_direct_output, verify_direct_rotate,
+    select_cached_verified_direct_sequence, select_preflighted_execution_tier,
+    select_verified_direct_native, select_verified_direct_sequence,
+    structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
+    verify_direct_halt_fetch, verify_direct_halt_registers,
+    verify_direct_initial_halt, verify_direct_input, verify_direct_jump_code,
+    verify_direct_jump_data, verify_direct_no_operation,
+    verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
@@ -1652,7 +1652,7 @@ fn assert_cached_direct_cycle(
         HostOperatingSystem::Windows,
         HostIsa::X86_64,
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|selection_error| selection_error.to_string())?;
     if inserted_artifact.kind() != expected_kind
         || inserted_artifact.key() != uncached.key()
         || inserted_artifact.object() != uncached.object()
@@ -4871,6 +4871,220 @@ fn normative_trace_sequence_selects_mixed_exact_direct_steps()
         }
     }
     Ok(())
+}
+
+#[test]
+fn cached_direct_sequence_inserts_then_reuses_exact_arcs() -> Result<(), String>
+{
+    let programs = direct_normative_sequence_programs()?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut cache = VerifiedDirectNativeCache::default();
+    let inserted = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let [inserted_rotate, inserted_output] = inserted.artifacts() else {
+        return Err(format!("inserted sequence length: {inserted:?}"));
+    };
+    if inserted.cache_hits() != 0
+        || inserted.cache_insertions() != 2
+        || inserted.len() != 2
+        || inserted.is_empty()
+        || inserted_rotate.kind() != DirectNativeKind::Rotate
+        || inserted_output.kind() != DirectNativeKind::Output
+        || cache.len() != 2
+    {
+        return Err(format!("inserted sequence mismatch: {inserted:?}"));
+    }
+
+    let hit = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let [hit_rotate, hit_output] = hit.artifacts() else {
+        return Err(format!("hit sequence length: {hit:?}"));
+    };
+    if hit.cache_hits() != 2
+        || hit.cache_insertions() != 0
+        || cache.len() != 2
+        || !Arc::ptr_eq(inserted_rotate, hit_rotate)
+        || !Arc::ptr_eq(inserted_output, hit_output)
+        || hit.entry() != inserted.entry()
+        || hit.exit() != inserted.exit()
+        || hit.outcome() != inserted.outcome()
+    {
+        Err(String::from("cached sequence lost exact Arc reuse"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn cached_direct_sequence_combines_hit_and_verified_miss() -> Result<(), String>
+{
+    let programs = direct_normative_sequence_programs()?;
+    let first = programs
+        .first()
+        .ok_or_else(|| String::from("first sequence program missing"))?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut cache = VerifiedDirectNativeCache::default();
+    let seeded = select_cached_preflighted_execution_tier(
+        first,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: seeded_rotate,
+        cache: DirectCacheDisposition::Inserted,
+    } = seeded
+    else {
+        return Err(String::from("failed to seed sequence cache"));
+    };
+
+    let plan = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let [rotate, output] = plan.artifacts() else {
+        return Err(format!("mixed sequence length: {plan:?}"));
+    };
+    if plan.cache_hits() == 1
+        && plan.cache_insertions() == 1
+        && cache.len() == 2
+        && Arc::ptr_eq(&seeded_rotate, rotate)
+        && output.kind() == DirectNativeKind::Output
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed sequence cache transaction drifted"))
+    }
+}
+
+#[test]
+fn cached_direct_sequence_preflights_before_lookup() -> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut cache = VerifiedDirectNativeCache::default();
+    let inserted = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let snapshot = cache.clone();
+
+    let rejected = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_classic_capability(),
+        host,
+        &mut cache,
+    );
+    let Err(DirectSequenceError::Step { error, index: 0 }) = rejected else {
+        return Err(format!("cached sequence preflight changed: {rejected:?}"));
+    };
+    let DirectSelectionError::Profile(profile) = *error else {
+        return Err(String::from("cached sequence preflight category changed"));
+    };
+    if profile.kind() != ProfileRequirementErrorKind::RuntimeCapabilityMissing
+        || cache != snapshot
+    {
+        return Err(String::from("cached sequence lookup bypassed preflight"));
+    }
+
+    let retained = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|selection_error| selection_error.to_string())?;
+    if inserted
+        .artifacts()
+        .iter()
+        .zip(retained.artifacts())
+        .all(|(left, right)| Arc::ptr_eq(left, right))
+        && retained.cache_hits() == 2
+        && cache == snapshot
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "cached sequence preflight changed retained hits",
+        ))
+    }
+}
+
+#[test]
+fn cached_direct_sequence_rolls_back_late_rejection() -> Result<(), String> {
+    let seed_program = direct_initial_halt_program();
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut cache = VerifiedDirectNativeCache::default();
+    let seeded = select_cached_preflighted_execution_tier(
+        &seed_program,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: seeded_artifact,
+        cache: DirectCacheDisposition::Inserted,
+    } = seeded
+    else {
+        return Err(String::from("failed to seed rollback cache"));
+    };
+
+    let mut programs = direct_normative_sequence_programs()?;
+    programs
+        .get_mut(1)
+        .ok_or_else(|| String::from("second rollback program missing"))?
+        .memory_live_ins
+        .clear();
+    let snapshot = cache.clone();
+    let result = select_cached_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    );
+    if result != Err(DirectSequenceError::Deoptimization { index: 1 })
+        || cache != snapshot
+        || cache.len() != 1
+    {
+        return Err(format!("failed sequence mutated cache: {result:?}"));
+    }
+
+    let retained = select_cached_preflighted_execution_tier(
+        &seed_program,
+        safe_rust_profiled_capability(),
+        host,
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let CachedPreflightedExecutionTier::Direct {
+        artifact: retained_artifact,
+        cache: DirectCacheDisposition::Hit,
+    } = retained
+    else {
+        return Err(String::from("rollback cache lost seeded hit"));
+    };
+    if Arc::ptr_eq(&seeded_artifact, &retained_artifact) && cache.len() == 1 {
+        Ok(())
+    } else {
+        Err(String::from("rollback changed retained cache identity"))
+    }
 }
 
 #[test]

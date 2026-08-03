@@ -98,7 +98,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
-  deopt and partial sequences fail closed. This does not fuse or invoke objects.
+  deopt and partial sequences fail closed. Cache-aware sequence planning
+  preserves exact-hit `Arc` identity, stages verified misses, and inserts only
+  after full success. This does not fuse or invoke objects.
   Remaining fused-region emission, executable chaining, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible

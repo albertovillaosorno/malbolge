@@ -370,8 +370,14 @@ adjacent observations, final-only termination, and a real non-deopt direct
 artifact for every step before publishing the ordered plan. A retained
 rotate/output VM trace selects exact artifacts on both ISAs; empty,
 discontinuous, profile-mixed, hidden-deopt, and post-termination sequences fail
-closed. This first multistep slice does not yet fuse COFF, mutate the native
-cache, allocate executable memory, invoke the chain, or resume after a
+closed. `select_cached_verified_direct_sequence()` extends that boundary with
+transactional process-local reuse: exact entry-cache hits preserve `Arc`
+identity, unique misses remain staged until every step verifies, and only then
+enter the caller-owned cache. Insert/replay evidence records `0/2` then `2/0`
+hit/insertion counts; mixed reuse records `1/1`, cached runtime rejection
+leaves the exact map unchanged, and a late hidden deopt preserves an unrelated
+cached artifact pointer-identical. This multistep slice still does
+not fuse COFF, allocate executable memory, invoke the chain, or resume after a
 mid-sequence guard miss.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
@@ -404,8 +410,8 @@ Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
-planning, trace-derived multistep direct plans, and an untrusted cross-ISA
-bootstrap object boundary are implemented. Combined-region native emission,
+planning, transactional trace-derived multistep plans, and an untrusted
+cross-ISA bootstrap object boundary are implemented. Combined-region native
 executable-memory integration,
 durable cache serialization/storage/eviction, and wider tier orchestration
 remain

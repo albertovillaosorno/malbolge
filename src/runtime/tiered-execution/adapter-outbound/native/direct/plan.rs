@@ -51,7 +51,7 @@ enum SelectedDirectTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum PreparedDirectTarget {
+pub(super) enum PreparedDirectTarget {
     Crazy(NativeArtifactKey),
     Deopt(NativeArtifactKey),
     HaltFetch(NativeArtifactKey),
@@ -128,7 +128,7 @@ impl VerifiedDirectNativeCache {
 }
 
 impl PreparedDirectTarget {
-    fn emit_verified(
+    pub(super) fn emit_verified(
         self,
         program: &RegionEffectProgram,
     ) -> VerifiedDirectSelectionResult<'_> {
@@ -183,7 +183,11 @@ impl PreparedDirectTarget {
         }
     }
 
-    const fn key(&self) -> &NativeArtifactKey {
+    pub(super) const fn is_deoptimization(&self) -> bool {
+        matches!(self, Self::Deopt(_key))
+    }
+
+    pub(super) const fn key(&self) -> &NativeArtifactKey {
         match self {
             Self::Crazy(key)
             | Self::Deopt(key)
@@ -515,13 +519,21 @@ pub fn select_verified_direct_native<'requirement>(
     host_os: HostOperatingSystem,
     host_isa: HostIsa,
 ) -> VerifiedDirectSelectionResult<'requirement> {
+    prepare_verified_direct_target(program, runtime, host_os, host_isa)?
+        .emit_verified(program)
+}
+
+pub(super) fn prepare_verified_direct_target<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'requirement>> {
     preflight_direct_selection(program, runtime)?;
     if host_os != HostOperatingSystem::Windows {
         return Err(DirectSelectionError::TargetFormat);
     }
-    select_direct_target(program, host_os, host_isa)
-        .prepare(program)?
-        .emit_verified(program)
+    select_direct_target(program, host_os, host_isa).prepare(program)
 }
 
 /// Selects a profile-preflighted direct or interpreter execution plan.

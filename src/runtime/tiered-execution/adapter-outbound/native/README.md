@@ -151,10 +151,17 @@ The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
 reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and
 `direct-output` artifacts with exact regional entry, exit, and two-step outcome.
-This boundary retains no state outside the returned plan. It does not mutate a
-cache, link objects, allocate executable memory, invoke code, or claim that a
-guard miss can resume halfway
-through a sequence.
+`select_cached_verified_direct_sequence()` adds an explicit caller-owned cache
+transaction around the same admission. It prepares every exact target first,
+reuses full-key hits through their existing `Arc`, verifies all unique misses in
+local staging, and inserts those misses only after the complete sequence
+succeeds. A late failure therefore publishes no partial cache state. Retained
+tests cover two inserts followed by two pointer-identical hits, one hit plus one
+insert, preflight-before-lookup, and rollback that preserves an unrelated cached
+`Arc`.
+
+Neither sequence planner links objects, allocates executable memory, invokes
+code, or claims that a guard miss can resume halfway through a sequence.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

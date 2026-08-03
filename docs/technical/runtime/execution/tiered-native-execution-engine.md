@@ -343,8 +343,15 @@ step failure rejects the whole plan before publication.
 A retained rotate/output normative trace selects byte-verified
 `direct-rotate` and `direct-output` artifacts for both x86-64 and AArch64. It
 derives the exact regional entry, exit, and `BudgetExhausted { steps: 2 }`
-outcome. The result is
-an ordered plan only: no object fusion, cache transaction, executable-memory
+outcome. `select_cached_verified_direct_sequence()` adds atomic process-local
+reuse around that same plan: all targets are prepared first, exact cache hits
+retain their `Arc`, unique misses are verified in local staging, and insertion
+occurs only after every position succeeds. Retained tests prove two inserts then
+two pointer-identical hits, a one-hit/one-insert transaction, runtime preflight
+before lookup, and rollback that preserves an unrelated cached artifact after a
+late hidden deopt.
+
+The result remains an ordered plan only: no object fusion, executable-memory
 allocation, invocation, or mid-sequence deoptimization protocol is implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
@@ -391,9 +398,8 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, executable chaining, cache-transaction policy,
-mid-sequence guard-miss recovery, executable-memory policy/invocation, and
-durable native cache
+Combined-region emission, executable chaining, mid-sequence guard-miss
+recovery, executable-memory policy/invocation, and durable native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The
 interpreter remains the only normative execution authority and the guaranteed
@@ -428,8 +434,9 @@ backend errors.
   effects/deoptimization match their normative baselines, canonical IR matches a
   byte-exact independent fixture, forced bucket collisions keep process-local
   cache entries independent, cache-aware direct planning reports insert/hit
-  with pointer-identical immutable artifacts while preserving profile/host
-  preflight, profile-invalid IR cannot gain
+  with pointer-identical immutable artifacts, transactional sequence planning
+  stages misses and rolls back late rejection, profile/host preflight remains
+  authoritative, and profile-invalid IR cannot gain
   cache/bootstrap/direct identity, direct `MBPF` v3 binds exact region memory,
   bootstrap source is
   deterministic/atomic/key-bound, direct selection
