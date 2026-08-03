@@ -47,6 +47,8 @@ pub enum DirectNativeKind {
     HaltRegisters,
     /// Exact one-step zero-state halt fast path.
     InitialHalt,
+    /// Exact one-step input transition for byte or EOF.
+    Input,
     /// Exact non-aliasing one-step jump-code transition.
     JumpCode,
     /// Exact non-aliasing one-step jump-data transition.
@@ -165,6 +167,33 @@ pub struct VerifiedNonGraphicalNativeObjectArtifact {
 }
 
 impl VerifiedNonGraphicalNativeObjectArtifact {
+    /// Returns the exact native artifact identity associated with the fast
+    /// path.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
+/// Native object proven to implement exact one-step input.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedInputNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedInputNativeObjectArtifact {
     /// Returns the exact native artifact identity associated with the fast
     /// path.
     #[must_use]
@@ -387,6 +416,8 @@ pub enum VerifiedDirectNativeArtifact {
     HaltRegisters(VerifiedHaltRegistersNativeObjectArtifact),
     /// Exact zero-state one-step halt fast path.
     InitialHalt(VerifiedInitialHaltNativeObjectArtifact),
+    /// Exact one-step input transition for byte or EOF.
+    Input(VerifiedInputNativeObjectArtifact),
     /// Exact non-aliasing one-step jump-code transition.
     JumpCode(VerifiedJumpCodeNativeObjectArtifact),
     /// Exact non-aliasing one-step jump-data transition.
@@ -448,6 +479,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.key(),
             Self::HaltRegisters(artifact) => artifact.key(),
             Self::InitialHalt(artifact) => artifact.key(),
+            Self::Input(artifact) => artifact.key(),
             Self::JumpCode(artifact) => artifact.key(),
             Self::JumpData(artifact) => artifact.key(),
             Self::NonGraphical(artifact) => artifact.key(),
@@ -466,6 +498,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(_artifact) => DirectNativeKind::HaltFetch,
             Self::HaltRegisters(_artifact) => DirectNativeKind::HaltRegisters,
             Self::InitialHalt(_artifact) => DirectNativeKind::InitialHalt,
+            Self::Input(_artifact) => DirectNativeKind::Input,
             Self::JumpCode(_artifact) => DirectNativeKind::JumpCode,
             Self::JumpData(_artifact) => DirectNativeKind::JumpData,
             Self::NonGraphical(_artifact) => DirectNativeKind::NonGraphical,
@@ -484,6 +517,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.object(),
             Self::HaltRegisters(artifact) => artifact.object(),
             Self::InitialHalt(artifact) => artifact.object(),
+            Self::Input(artifact) => artifact.object(),
             Self::JumpCode(artifact) => artifact.object(),
             Self::JumpData(artifact) => artifact.object(),
             Self::NonGraphical(artifact) => artifact.object(),
@@ -502,6 +536,7 @@ impl VerifiedDirectNativeArtifact {
             Self::HaltFetch(artifact) => artifact.target_triple(),
             Self::HaltRegisters(artifact) => artifact.target_triple(),
             Self::InitialHalt(artifact) => artifact.target_triple(),
+            Self::Input(artifact) => artifact.target_triple(),
             Self::JumpCode(artifact) => artifact.target_triple(),
             Self::JumpData(artifact) => artifact.target_triple(),
             Self::NonGraphical(artifact) => artifact.target_triple(),

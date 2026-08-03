@@ -190,6 +190,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   `0xa8`, `C/D=6/8`, and `output_len=4`. Independent 642/724-byte objects prove
   the exact 9-word footprint, non-null output pointer, strict capacity guard,
   one append, and atomic misses.
+- `direct-input` revision 1 completes direct coverage of all eight instruction
+  families. Byte input guards a non-null pointer, strict length, and exact byte,
+  then commits `A=65` and cursor 3. EOF guards length equality, accepts a null
+  pointer, uses VM-owned `profile_eof_word()` for `A=4782968`, and keeps cursor
+  2. Independent complete objects are 659/744 and 634/715 bytes.
 - Every memory-backed direct template now compares ABI `memory_words` with the
   exact `NativeArtifactKey` IR footprint before dereference or commit.
 - After program/profile/runtime admission, direct-template orchestration
@@ -197,7 +202,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   the
   smallest fast path, other no-live-in halt IR selects the observation-bound
   template, graphical halt fetch and non-graphical termination select terminal
-  live-in templates, exact non-aliasing jump/rotate/crazy IR and exact output IR
+  live-in templates, exact non-aliasing jump/rotate/crazy IR plus exact
+  input/output IR
   select their instruction-specific templates, exact no-op IR selects the
   memory-writing
   template, and remaining IR selects verified deopt. Unsupported direct host
@@ -219,7 +225,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   canonicalization there; state-applying verifiers still reconstruct expected
   identity independently. `VerifiedDirectNativeCache` receives artifacts only
   after semantic admission, reports exact-key `Inserted`/`Hit`, matches uncached
-  keys/bytes for all eleven templates, and reuses one pointer-identical
+  keys/bytes for all twelve templates, and reuses one pointer-identical
   immutable
   `Arc` allocation. Profile and host preflight occur before lookup; `002`,
   `001`,
@@ -235,7 +241,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   persistence,
   automatic eviction, synchronization policy, linking, executable memory,
   invocation, and performance remain outside.
-- Remaining Input direct selection, cache-aware AOT/JIT
+- Remaining multi-step direct composition, cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

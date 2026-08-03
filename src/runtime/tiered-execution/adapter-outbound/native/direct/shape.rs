@@ -498,6 +498,130 @@ pub(super) fn validate_crazy_target(
     Ok(())
 }
 
+pub(super) fn validate_input_program(
+    program: &RegionEffectProgram,
+) -> Result<DirectInputProgram, DirectInputError> {
+    if program.format_version != EFFECT_IR_VERSION
+        || !program.fits_declared_profile_capacity()
+        || program.step_budget != 1
+        || program.memory_live_ins.len() != 1
+        || program.effects.len() != 1
+        || program.outcome != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectInputError::ProgramShape);
+    }
+    let effect = program
+        .effects
+        .first()
+        .copied()
+        .ok_or(DirectInputError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or(DirectInputError::ProgramShape)?;
+    derive_input_program(program, effect, live_in)
+        .ok_or(DirectInputError::ProgramShape)
+}
+
+pub(super) fn derive_input_program(
+    program: &RegionEffectProgram,
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+) -> Option<DirectInputProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let input = effect.input?;
+    if before.termination.is_some()
+        || live_in.address != code_pointer
+        || decode_profile_instruction(live_in.value, code_pointer) != Some(b'<')
+    {
+        return None;
+    }
+    let (accumulator, next_input_consumed) = input_result(
+        input,
+        before.input_consumed,
+        program.profile_requirement.word_trits,
+    )?;
+    let memory_words = program.profile_requirement.memory_words;
+    let encrypted_value = encrypt_profile_cell(live_in.value)?;
+    let next_code_pointer =
+        profile_pointer_successor(code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(before.registers.data_pointer, memory_words)?;
+    let expected_after = ProfileMachineObservation {
+        input_consumed: next_input_consumed,
+        registers: ProfileRegisters {
+            accumulator,
+            code_pointer: next_code_pointer,
+            data_pointer: next_data_pointer,
+        },
+        ..before
+    };
+    let expected_encryption =
+        (live_in.value != encrypted_value).then_some(ProfileMemoryWrite {
+            address: code_pointer,
+            after: encrypted_value,
+            before: live_in.value,
+        });
+    if effect.after != expected_after
+        || effect.output.is_some()
+        || effect.memory_delta
+            != (ProfileMemoryDelta {
+                data: None,
+                encryption: expected_encryption,
+            })
+    {
+        return None;
+    }
+    Some(DirectInputProgram {
+        commit: DirectInputCommit {
+            accumulator,
+            encrypted_address: code_pointer,
+            encrypted_value,
+            next_code_pointer,
+            next_data_pointer,
+            next_input_consumed: u64::try_from(next_input_consumed).ok()?,
+        },
+        input,
+        live_in,
+        observation: before,
+    })
+}
+
+fn input_result(
+    input: TraceInput,
+    input_consumed: usize,
+    word_trits: u8,
+) -> Option<(u32, usize)> {
+    match input {
+        TraceInput::Byte(byte) => {
+            Some((u32::from(byte), input_consumed.checked_add(1)?))
+        },
+        TraceInput::EndOfInput => {
+            Some((profile_eof_word(word_trits)?, input_consumed))
+        },
+    }
+}
+
+pub(super) fn validate_input_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectInputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectInputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_INPUT_BACKEND_ID
+        || target.backend_revision() != DIRECT_INPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectInputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectInputError::TargetFeatures);
+    }
+    Ok(())
+}
+
 pub(super) fn validate_output_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectOutputProgram, DirectOutputError> {

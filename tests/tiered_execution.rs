@@ -63,6 +63,7 @@ use execution_native::{
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
+    DIRECT_INPUT_BACKEND_ID, DIRECT_INPUT_BACKEND_REVISION,
     DIRECT_JUMP_CODE_BACKEND_ID, DIRECT_JUMP_CODE_BACKEND_REVISION,
     DIRECT_JUMP_DATA_BACKEND_ID, DIRECT_JUMP_DATA_BACKEND_REVISION,
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
@@ -71,22 +72,22 @@ use execution_native::{
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectJumpCodeError, DirectJumpDataError,
-    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRotateError, DirectSelectionError,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactError, PreflightedExecutionTier,
-    UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
+    DirectSelectionError, NATIVE_REGION_ABI_REVISION, NativeArtifactError,
+    PreflightedExecutionTier, UntrustedNativeObjectArtifact,
+    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
-    emit_direct_initial_halt_coff, emit_direct_jump_code_coff,
-    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
-    emit_direct_non_graphical_coff, emit_direct_output_coff,
-    emit_direct_rotate_coff, lower_clang_c23,
+    emit_direct_initial_halt_coff, emit_direct_input_coff,
+    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
+    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
+    emit_direct_output_coff, emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_halt_fetch, verify_direct_halt_registers,
-    verify_direct_initial_halt, verify_direct_jump_code,
+    verify_direct_initial_halt, verify_direct_input, verify_direct_jump_code,
     verify_direct_jump_data, verify_direct_no_operation,
     verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
@@ -1293,6 +1294,110 @@ fn direct_crazy_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn direct_input_byte_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 2,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        input_consumed: 3,
+        registers: ProfileRegisters {
+            accumulator: 0x41,
+            code_pointer: 6,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: Some(TraceInput::Byte(0x41)),
+            memory_delta: ProfileMemoryDelta {
+                data: None,
+                encryption: Some(ProfileMemoryWrite {
+                    address: 5,
+                    after: 57,
+                    before: 94,
+                }),
+            },
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 94 }],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-input-byte-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_input_eof_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 2,
+        output_len: 0x0000_0002_3456_789a,
+        registers: ProfileRegisters {
+            accumulator: 0xdead_beef,
+            code_pointer: 5,
+            data_pointer: 7,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: 4_782_968,
+            code_pointer: 6,
+            data_pointer: 8,
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: Some(TraceInput::EndOfInput),
+            memory_delta: ProfileMemoryDelta {
+                data: None,
+                encryption: Some(ProfileMemoryWrite {
+                    address: 5,
+                    after: 57,
+                    before: 94,
+                }),
+            },
+            output: None,
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 94 }],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:direct-input-eof-fixture",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+fn direct_input_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_INPUT_BACKEND_ID),
+        backend_revision: DIRECT_INPUT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn direct_output_program() -> RegionEffectProgram {
     let before = ProfileMachineObservation {
         input_consumed: 0x0000_0001_2345_6789,
@@ -1596,6 +1701,7 @@ fn cached_tier_planner_reuses_each_verified_template() -> Result<(), String> {
         (direct_jump_data_program(), DirectNativeKind::JumpData),
         (direct_crazy_program(), DirectNativeKind::Crazy),
         (direct_rotate_program(), DirectNativeKind::Rotate),
+        (direct_input_byte_program(), DirectNativeKind::Input),
         (direct_output_program(), DirectNativeKind::Output),
         (direct_no_operation_program(), DirectNativeKind::NoOperation),
         (native_program(), DirectNativeKind::Deopt),
@@ -2038,8 +2144,14 @@ fn selected_direct_triple(
     }
 }
 
-fn direct_selection_cases() -> [DirectSelectionCase; 11] {
-    [
+fn direct_selection_cases() -> Vec<DirectSelectionCase> {
+    let mut cases = direct_selection_terminal_cases();
+    cases.extend(direct_selection_effect_cases());
+    cases
+}
+
+fn direct_selection_terminal_cases() -> Vec<DirectSelectionCase> {
+    vec![
         (
             direct_initial_halt_program(),
             DirectNativeKind::InitialHalt,
@@ -2060,6 +2172,11 @@ fn direct_selection_cases() -> [DirectSelectionCase; 11] {
             DirectNativeKind::NonGraphical,
             DIRECT_NON_GRAPHICAL_BACKEND_ID,
         ),
+    ]
+}
+
+fn direct_selection_effect_cases() -> Vec<DirectSelectionCase> {
+    vec![
         (
             direct_jump_code_program(),
             DirectNativeKind::JumpCode,
@@ -2079,6 +2196,11 @@ fn direct_selection_cases() -> [DirectSelectionCase; 11] {
             direct_rotate_program(),
             DirectNativeKind::Rotate,
             DIRECT_ROTATE_BACKEND_ID,
+        ),
+        (
+            direct_input_byte_program(),
+            DirectNativeKind::Input,
+            DIRECT_INPUT_BACKEND_ID,
         ),
         (
             direct_output_program(),
@@ -3016,6 +3138,161 @@ fn direct_crazy_rejects_ir_and_opcode_tampering() -> Result<(), String> {
 }
 
 #[test]
+fn direct_input_objects_are_byte_exact_and_semantically_admitted()
+-> Result<(), String> {
+    let cases = [
+        (
+            direct_input_byte_program(),
+            HostIsa::X86_64,
+            include_str!(
+                "execution/fixtures/native-input-byte-x86_64-coff.hex"
+            ),
+        ),
+        (
+            direct_input_byte_program(),
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-input-byte-aarch64-coff.hex"
+            ),
+        ),
+        (
+            direct_input_eof_program(),
+            HostIsa::X86_64,
+            include_str!("execution/fixtures/native-input-eof-x86_64-coff.hex"),
+        ),
+        (
+            direct_input_eof_program(),
+            HostIsa::AArch64,
+            include_str!(
+                "execution/fixtures/native-input-eof-aarch64-coff.hex"
+            ),
+        ),
+    ];
+    for (program, isa, fixture) in cases {
+        let artifact =
+            emit_direct_input_coff(&program, direct_input_target(isa))
+                .map_err(|error| error.to_string())?;
+        if artifact.object() != decode_hex_fixture(fixture)? {
+            return Err(format!("direct input fixture mismatch for {isa:?}"));
+        }
+        let verified = verify_direct_input(&artifact, &program)
+            .map_err(|error| error.to_string())?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(String::from("verified input identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+fn assert_input_shape_rejections() -> Result<(), String> {
+    let mut wrong_decode = direct_input_byte_program();
+    wrong_decode
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("input fixture lost live-in"))?
+        .value = 112;
+    if emit_direct_input_coff(
+        &wrong_decode,
+        direct_input_target(HostIsa::X86_64),
+    ) != Err(DirectInputError::ProgramShape)
+    {
+        return Err(String::from("output decode was admitted as input"));
+    }
+    let mut wrong_byte = direct_input_byte_program();
+    wrong_byte
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("input fixture lost effect"))?
+        .input = Some(TraceInput::Byte(0x42));
+    if emit_direct_input_coff(&wrong_byte, direct_input_target(HostIsa::X86_64))
+        != Err(DirectInputError::ProgramShape)
+    {
+        return Err(String::from("wrong input byte was admitted"));
+    }
+    let mut wrong_cursor = direct_input_byte_program();
+    wrong_cursor
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("input fixture lost effect"))?
+        .after
+        .input_consumed = 4;
+    if emit_direct_input_coff(
+        &wrong_cursor,
+        direct_input_target(HostIsa::X86_64),
+    ) != Err(DirectInputError::ProgramShape)
+    {
+        return Err(String::from("wrong input cursor was admitted"));
+    }
+    let mut wrong_eof = direct_input_eof_program();
+    wrong_eof
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("EOF fixture lost effect"))?
+        .after
+        .registers
+        .accumulator = 4_782_967;
+    if emit_direct_input_coff(&wrong_eof, direct_input_target(HostIsa::X86_64))
+        != Err(DirectInputError::ProgramShape)
+    {
+        return Err(String::from("wrong EOF word was admitted"));
+    }
+    Ok(())
+}
+
+fn assert_input_revision_rejected() -> Result<(), String> {
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_INPUT_BACKEND_ID),
+        backend_revision: 0,
+        host_isa: HostIsa::X86_64,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    });
+    if emit_direct_input_coff(&direct_input_byte_program(), obsolete)
+        == Err(DirectInputError::TargetBackend)
+    {
+        Ok(())
+    } else {
+        Err(String::from("obsolete input revision was admitted"))
+    }
+}
+
+#[test]
+fn direct_input_rejects_ir_and_opcode_tampering() -> Result<(), String> {
+    let program = direct_input_byte_program();
+    let artifact =
+        emit_direct_input_coff(&program, direct_input_target(HostIsa::X86_64))
+            .map_err(|error| error.to_string())?;
+    let mut mutated_object = artifact.object().to_vec();
+    let guard = [0x43u8, 0x80, 0x3c, 0x13, 0x41];
+    let offset = mutated_object
+        .windows(guard.len())
+        .position(|window| window == guard)
+        .ok_or_else(|| String::from("input byte guard missing"))?;
+    let byte = mutated_object
+        .get_mut(offset.saturating_add(4))
+        .ok_or_else(|| String::from("input byte immediate missing"))?;
+    *byte = 0x42;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        mutated_object,
+        artifact.target_triple(),
+    );
+    let _structural = structurally_admit_coff(&tampered)
+        .map_err(|error| format!("tampered input structure: {error}"))?;
+    if verify_direct_input(&tampered, &program)
+        != Err(DirectInputError::ObjectBytes)
+    {
+        return Err(String::from("tampered input object was admitted"));
+    }
+    assert_input_shape_rejections()?;
+    assert_input_revision_rejected()
+}
+
+#[test]
 fn direct_output_objects_are_byte_exact_and_semantically_admitted()
 -> Result<(), String> {
     let cases = [
@@ -3755,6 +4032,18 @@ fn assert_crazy_capacity_rejected() -> Result<(), String> {
     }
 }
 
+fn assert_input_capacity_rejected() -> Result<(), String> {
+    let mut input = direct_input_byte_program();
+    input.profile_requirement.memory_words = 8;
+    if emit_direct_input_coff(&input, direct_input_target(HostIsa::X86_64))
+        == Err(DirectInputError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("input profile-capacity mismatch was admitted"))
+    }
+}
+
 fn assert_output_capacity_rejected() -> Result<(), String> {
     let mut output = direct_output_program();
     output.profile_requirement.memory_words = 8;
@@ -3804,6 +4093,7 @@ fn direct_fast_paths_reject_undersized_profile_capacity() -> Result<(), String>
 {
     assert_jump_code_capacity_rejected()?;
     assert_crazy_capacity_rejected()?;
+    assert_input_capacity_rejected()?;
     assert_output_capacity_rejected()?;
     assert_rotate_capacity_rejected()?;
     assert_jump_data_capacity_rejected()?;

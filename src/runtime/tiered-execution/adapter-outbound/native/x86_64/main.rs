@@ -37,9 +37,9 @@
 
 use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
-    DirectEntryObservation, DirectFetchedCellGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectOutputCommit, DirectRotateCommit,
-    DirectRotateGuard,
+    DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
+    DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
+    DirectOutputCommit, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -291,6 +291,68 @@ fn patch_near_guard_jumps(
             .copy_from_slice(&displacement.to_le_bytes());
     }
     Some(())
+}
+
+/// Encodes one exact input transition for a byte or end-of-input.
+#[must_use]
+pub(super) fn input_code(
+    observation: DirectEntryObservation,
+    guard: DirectInputGuard,
+    commit: DirectInputCommit,
+) -> Option<Vec<u8>> {
+    let code_offset = memory_byte_offset(commit.encrypted_address)?;
+    let mut code = Vec::with_capacity(256);
+    let mut guard_jumps = Vec::with_capacity(13);
+    push_observation_guards_near(&mut code, &mut guard_jumps, observation);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x82);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard_near(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.code_live_in,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+    match guard.input {
+        malbolge::TraceInput::Byte(byte) => {
+            code.extend_from_slice(&[0x4c, 0x8b, 0x59, 0x10, 0x4d, 0x85, 0xdb]);
+            push_near_guard_jump(&mut code, &mut guard_jumps, 0x84);
+            code.extend_from_slice(&[0x4c, 0x8b, 0x41, 0x18, 0x49, 0xba]);
+            code.extend_from_slice(&guard.input_index.to_le_bytes());
+            code.extend_from_slice(&[0x4d, 0x39, 0xd0]);
+            push_near_guard_jump(&mut code, &mut guard_jumps, 0x86);
+            code.extend_from_slice(&[0x43, 0x80, 0x3c, 0x13, byte]);
+            push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+        },
+        malbolge::TraceInput::EndOfInput => {
+            code.extend_from_slice(&[0x4c, 0x8b, 0x41, 0x18, 0x49, 0xba]);
+            code.extend_from_slice(&guard.input_index.to_le_bytes());
+            code.extend_from_slice(&[0x4d, 0x39, 0xd0]);
+            push_near_guard_jump(&mut code, &mut guard_jumps, 0x85);
+        },
+    }
+    code.extend_from_slice(&[0xc7, 0x82]);
+    code.extend_from_slice(&code_offset.to_le_bytes());
+    code.extend_from_slice(&commit.encrypted_value.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x40]);
+    code.extend_from_slice(&commit.accumulator.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x44]);
+    code.extend_from_slice(&commit.next_code_pointer.to_le_bytes());
+    code.extend_from_slice(&[0xc7, 0x41, 0x48]);
+    code.extend_from_slice(&commit.next_data_pointer.to_le_bytes());
+    code.extend_from_slice(&[0x49, 0xba]);
+    code.extend_from_slice(&commit.next_input_consumed.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x89, 0x51, 0x20, 0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_near_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
 }
 
 /// Encodes one exact output transition with an atomic byte append.

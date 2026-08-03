@@ -9,7 +9,7 @@ published version, eight stable semantic features, word trits, and directly
 addressed profile capacity. Verified budget, outcome, live-ins, and ordered
 effects follow.
 
-The twenty-two `native-*-coff.hex` fixtures freeze the complete direct Windows
+The twenty-six `native-*-coff.hex` fixtures freeze the complete direct Windows
 COFF
 objects for x86-64 and AArch64. Every direct object contains:
 
@@ -32,14 +32,16 @@ with a key for a different region footprint fails structural admission.
 
 Direct deopt and initial-halt revision 4, halt-observation revision 5,
 halt-fetch/non-graphical/no-operation revision 2, and
-jump-code/jump-data/rotate/crazy/output revision 1 use metadata v3. Exact
+jump-code/jump-data/rotate/crazy/input/output revision 1 use metadata
+v3. Exact
 x86-64/AArch64 object sizes are 413/415 bytes for
 deopt,
 495/564 for register/counter halt, 466/490 for initial halt, 535/628 for
 graphical
 halt fetch, 538/631 for non-graphical termination, 557/658 for no-operation,
 622/731 for jump-code, 564/699 for jump-data, 578/732 for rotate, and
-577/731 for crazy, and 642/724 for output, respectively.
+577/731 for crazy, 642/724 for output, 659/744 for byte input, and 634/715
+for EOF input, respectively.
 The wider fixtures bind `input_consumed=0x0000000123456789` and
 `output_len=0x000000023456789a`, proving full-width counter materialization. The
 fetched-terminal pairs bind `C=5` and an 8-word memory requirement: halt-fetch
@@ -60,9 +62,13 @@ pair also requires 9 words, binds `A=20`, `memory[5]=57`, and
 `memory[7]=10`, writes Crazy result 2391494 and encrypted code value 91, and
 advances `A/C/D` to 2391494/6/8. The output pair requires 9 words, binds
 `A=0xdeadbea8`, `memory[5]=112`, and output index 3, writes encrypted code 68
-plus byte `0xa8`, and advances `C/D/output_len` to 6/8/4. Every memory-backed
-fixture guards its exact metadata-bound IR footprint before dereferencing guest
-memory.
+plus byte `0xa8`, and advances `C/D/output_len` to 6/8/4. Both input forms
+require 9 words and bind `memory[5]=94`, encrypted code 57, and `C/D=6/8`.
+The byte form binds cursor 2 and byte `0x41`, commits `A=65`, and advances the
+cursor to 3. The EOF form binds `input_len=cursor=2`, commits `A=4782968`, and
+leaves the cursor unchanged without requiring a non-null input pointer. Every
+memory-backed fixture guards its exact metadata-bound IR footprint before
+dereferencing guest memory.
 
 All fixtures are textual hexadecimal so repository hygiene can inspect them.
 Tests reconstruct the exact bytes and compare them with the Rust emitters;

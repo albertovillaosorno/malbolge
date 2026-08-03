@@ -226,6 +226,30 @@ pub fn verify_direct_crazy(
     Ok(VerifiedCrazyNativeObjectArtifact { artifact: admitted })
 }
 
+/// Promotes only the canonical input object for its exact IR.
+///
+/// # Errors
+///
+/// Returns [`DirectInputError`] for IR/identity/COFF/byte mismatch.
+pub fn verify_direct_input(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegionEffectProgram,
+) -> Result<VerifiedInputNativeObjectArtifact, DirectInputError> {
+    let selected = validate_input_program(program)?;
+    validate_input_target(artifact.key().target())?;
+    let expected_key =
+        NativeArtifactKey::new(program, artifact.key().target().clone())?;
+    if artifact.key() != &expected_key {
+        return Err(DirectInputError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = input_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectInputError::ObjectBytes);
+    }
+    Ok(VerifiedInputNativeObjectArtifact { artifact: admitted })
+}
+
 /// Promotes only the canonical output object for its exact IR.
 ///
 /// # Errors

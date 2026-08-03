@@ -175,17 +175,26 @@ code 68, `C/D=6/8`, byte index 3, and `output_len=4`. Independent complete
 objects are 642/724 bytes. x86-64 execution proves exact hit and five atomic
 miss classes; independent AArch64 decoding confirms one common miss target.
 
+`direct-input` revision 1 completes direct instruction-family coverage. The byte
+form guards a non-null input pointer, strict `input_len > input_consumed`, and
+one exact byte before committing accumulator and cursor. The EOF form guards
+length equality, never dereferences the input pointer, and commits the VM-owned
+all-two-trit EOF word without cursor advance. Independent complete objects are
+659/744 bytes for byte input and 634/715 bytes for EOF on x86-64/AArch64.
+Development x86-64 execution proves both hits and atomic misses; independent
+AArch64 decoding confirms specialized pointer/length guards and common targets.
+
 All memory-backed templates consume the exact key-bound IR footprint as their
 ABI
-capacity guard before any dereference. Input effects remain outside this
-reviewed subset.
+capacity guard before any dereference. All eight instruction families now
+have reviewed one-step direct templates.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
 remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
-jump-data, rotate, crazy, and output emitters/verifiers are implemented for
-both ISAs; Input selection,
+jump-data, rotate, crazy, input, and output emitters/verifiers are implemented
+for both ISAs; multi-step composition,
 executable-memory handling, calling/runtime integration, and instruction-cache
 synchronization remain unimplemented.
 

@@ -158,6 +158,21 @@ pub fn emit_direct_crazy_coff(
     emit_direct_crazy_with_key(key, selected)
 }
 
+/// Emits one exact input fast path for a byte or end-of-input.
+///
+/// # Errors
+///
+/// Returns [`DirectInputError`] when IR/target is outside this subset.
+pub fn emit_direct_input_coff(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectInputError> {
+    let selected = validate_input_program(program)?;
+    validate_input_target(&target)?;
+    let key = NativeArtifactKey::new(program, target)?;
+    emit_direct_input_with_key(key, selected)
+}
+
 /// Emits one exact output fast path.
 ///
 /// # Errors
@@ -284,6 +299,17 @@ pub(super) fn emit_direct_crazy_with_key(
 ) -> Result<UntrustedNativeObjectArtifact, DirectCrazyError> {
     let triple = target_triple(key.target().host_isa());
     let object = crazy_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
+pub(super) fn emit_direct_input_with_key(
+    key: NativeArtifactKey,
+    selected: DirectInputProgram,
+) -> Result<UntrustedNativeObjectArtifact, DirectInputError> {
+    let triple = target_triple(key.target().host_isa());
+    let object = input_coff(&key, selected)?;
     Ok(UntrustedNativeObjectArtifact::from_emitter_output(
         key, object, triple,
     ))

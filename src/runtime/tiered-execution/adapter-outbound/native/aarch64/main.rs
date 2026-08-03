@@ -37,9 +37,9 @@
 
 use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
-    DirectEntryObservation, DirectFetchedCellGuard, DirectJumpCodeGuard,
-    DirectJumpDataGuard, DirectOutputCommit, DirectRotateCommit,
-    DirectRotateGuard,
+    DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
+    DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
+    DirectOutputCommit, DirectRotateCommit, DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -245,6 +245,69 @@ pub(super) fn jump_code_code(
         0x2a1f_03e0,
         0xd65f_03c0,
     ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
+}
+
+/// Encodes one exact input transition for a byte or end-of-input.
+#[must_use]
+pub(super) fn input_code(
+    observation: DirectEntryObservation,
+    guard: DirectInputGuard,
+    commit: DirectInputCommit,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(104);
+    let mut guard_branches = Vec::with_capacity(13);
+    push_fetched_cell_guards(
+        &mut words,
+        &mut guard_branches,
+        observation,
+        DirectFetchedCellGuard {
+            live_in_value: guard.code_live_in,
+            required_memory_words: guard.required_memory_words,
+        },
+    )?;
+    match guard.input {
+        malbolge::TraceInput::Byte(byte) => {
+            words.push(0xf940_080b);
+            push_guard_branch(&mut words, &mut guard_branches, 0xb400_000b);
+            words.push(0xf940_0c0c);
+            push_u64_x9(&mut words, guard.input_index)?;
+            words.push(0xeb09_019f);
+            push_guard_branch(&mut words, &mut guard_branches, 0x5400_0009);
+            words.extend_from_slice(&[
+                0x8b09_016b,
+                0x3940_016d,
+                movz_w9(u32::from(byte)),
+                0x6b09_01bf,
+            ]);
+            push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
+        },
+        malbolge::TraceInput::EndOfInput => {
+            words.push(0xf940_0c0c);
+            push_u64_x9(&mut words, guard.input_index)?;
+            words.push(0xeb09_019f);
+            push_guard_branch(&mut words, &mut guard_branches, 0x5400_0001);
+        },
+    }
+    words.extend_from_slice(&[
+        movz_w9(commit.encrypted_value),
+        movk_w9_high(commit.encrypted_value),
+        0xb900_0149,
+        movz_w9(commit.accumulator),
+        movk_w9_high(commit.accumulator),
+        0xb900_4009,
+        movz_w9(commit.next_code_pointer),
+        movk_w9_high(commit.next_code_pointer),
+        0xb900_4409,
+        movz_w9(commit.next_data_pointer),
+        movk_w9_high(commit.next_data_pointer),
+        0xb900_4809,
+    ]);
+    push_u64_x9(&mut words, commit.next_input_consumed)?;
+    words.extend_from_slice(&[0xf900_1009, 0x2a1f_03e0, 0xd65f_03c0]);
     let guard_miss = words.len();
     words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
     patch_guard_branches(&mut words, &guard_branches, guard_miss)?;

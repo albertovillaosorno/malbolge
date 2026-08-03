@@ -41,6 +41,7 @@ enum SelectedDirectTarget {
     HaltFetch(NativeTargetIdentity),
     HaltRegisters(NativeTargetIdentity),
     InitialHalt(NativeTargetIdentity),
+    Input(NativeTargetIdentity),
     JumpCode(NativeTargetIdentity),
     JumpData(NativeTargetIdentity),
     NoOperation(NativeTargetIdentity),
@@ -56,6 +57,7 @@ enum PreparedDirectTarget {
     HaltFetch(NativeArtifactKey),
     HaltRegisters(NativeArtifactKey),
     InitialHalt(NativeArtifactKey),
+    Input(NativeArtifactKey),
     JumpCode(NativeArtifactKey),
     JumpData(NativeArtifactKey),
     NoOperation(NativeArtifactKey),
@@ -169,6 +171,7 @@ impl PreparedDirectTarget {
                 Ok(VerifiedDirectNativeArtifact::HaltRegisters(verified))
             },
             Self::InitialHalt(key) => emit_verified_initial_halt(key, program),
+            Self::Input(key) => emit_verified_input(key, program),
             Self::JumpCode(key) => emit_verified_jump_code(key, program),
             Self::JumpData(key) => emit_verified_jump_data(key, program),
             Self::NonGraphical(key) => {
@@ -187,6 +190,7 @@ impl PreparedDirectTarget {
             | Self::HaltFetch(key)
             | Self::HaltRegisters(key)
             | Self::InitialHalt(key)
+            | Self::Input(key)
             | Self::JumpCode(key)
             | Self::JumpData(key)
             | Self::NonGraphical(key)
@@ -236,6 +240,7 @@ impl SelectedDirectTarget {
                         ))
                     })
             },
+            Self::Input(target) => prepare_input_target(program, target),
             Self::JumpCode(target) => prepare_jump_code_target(program, target),
             Self::JumpData(target) => NativeArtifactKey::new(program, target)
                 .map(PreparedDirectTarget::JumpData)
@@ -269,6 +274,19 @@ fn prepare_crazy_target(
         .map(PreparedDirectTarget::Crazy)
         .map_err(|error| {
             DirectSelectionError::Crazy(Box::new(DirectCrazyError::Identity(
+                error,
+            )))
+        })
+}
+
+fn prepare_input_target(
+    program: &RegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<PreparedDirectTarget, DirectSelectionError<'_>> {
+    NativeArtifactKey::new(program, target)
+        .map(PreparedDirectTarget::Input)
+        .map_err(|error| {
+            DirectSelectionError::Input(Box::new(DirectInputError::Identity(
                 error,
             )))
         })
@@ -369,6 +387,21 @@ fn emit_verified_halt_fetch(
     let verified = verify_direct_halt_fetch(&artifact, program)
         .map_err(|error| DirectSelectionError::HaltFetch(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::HaltFetch(verified))
+}
+
+fn emit_verified_input(
+    key: NativeArtifactKey,
+    program: &RegionEffectProgram,
+) -> VerifiedDirectSelectionResult<'_> {
+    let selected = validate_input_program(program)
+        .map_err(|error| DirectSelectionError::Input(Box::new(error)))?;
+    validate_input_target(key.target())
+        .map_err(|error| DirectSelectionError::Input(Box::new(error)))?;
+    let artifact = emit_direct_input_with_key(key, selected)
+        .map_err(|error| DirectSelectionError::Input(Box::new(error)))?;
+    let verified = verify_direct_input(&artifact, program)
+        .map_err(|error| DirectSelectionError::Input(Box::new(error)))?;
+    Ok(VerifiedDirectNativeArtifact::Input(verified))
 }
 
 fn emit_verified_jump_code(
@@ -617,6 +650,9 @@ fn select_direct_target(
     if validate_rotate_program(program).is_ok() {
         return selected_rotate_target(host_os, host_isa);
     }
+    if validate_input_program(program).is_ok() {
+        return selected_input_target(host_os, host_isa);
+    }
     if validate_output_program(program).is_ok() {
         return selected_output_target(host_os, host_isa);
     }
@@ -638,6 +674,18 @@ fn selected_crazy_target(
     SelectedDirectTarget::Crazy(direct_target(
         DIRECT_CRAZY_BACKEND_ID,
         DIRECT_CRAZY_BACKEND_REVISION,
+        host_os,
+        host_isa,
+    ))
+}
+
+fn selected_input_target(
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> SelectedDirectTarget {
+    SelectedDirectTarget::Input(direct_target(
+        DIRECT_INPUT_BACKEND_ID,
+        DIRECT_INPUT_BACKEND_REVISION,
         host_os,
         host_isa,
     ))

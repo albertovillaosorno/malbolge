@@ -90,9 +90,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   two-read/two-write machine shape with independent VM-owned `p`/Crazy
   admission, a 9-word footprint, and independent 577/731-byte objects.
   `direct-output` revision 1 adds output-pointer and strict capacity guards, an
-  exact byte append, and independent 642/724-byte objects. All memory-backed
-  templates guard the exact key-bound IR footprint.
-  Remaining Input selection, executable-memory
+  exact byte append, and independent 642/724-byte objects. `direct-input`
+  revision 1 adds exact byte and EOF forms with independent 659/744-byte and
+  634/715-byte objects. All eight instruction families now have reviewed direct
+  x86-64/AArch64 templates, and every memory-backed template guards the exact
+  key-bound IR footprint.
+  Remaining multi-step composition, executable-memory
   integration, and instruction-cache behavior remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

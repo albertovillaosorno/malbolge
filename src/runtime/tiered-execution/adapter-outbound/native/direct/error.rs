@@ -434,6 +434,59 @@ impl From<NativeIdentityError> for DirectCrazyError {
     }
 }
 
+/// Failure while emitting or verifying exact one-step input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectInputError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical input object.
+    ObjectBytes,
+    /// Portable IR is outside the exact input subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this contract.
+    TargetBackend,
+    /// Input v1 has no target-specific feature specializations.
+    TargetFeatures,
+    /// Direct input currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectInputError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "direct input COFF structure was rejected",
+            Self::Identity(_error) => {
+                "direct input identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "direct input object differs from canonical bytes"
+            },
+            Self::ProgramShape => "portable IR is outside direct input subset",
+            Self::TargetBackend => {
+                "target does not select direct input backend"
+            },
+            Self::TargetFeatures => {
+                "direct input backend requires no CPU features"
+            },
+            Self::TargetFormat => "direct input backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectInputError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectInputError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact one-step output.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectOutputError {
@@ -670,6 +723,8 @@ pub enum DirectSelectionError<'requirement> {
     HaltRegisters(Box<DirectHaltRegistersError>),
     /// Initial-halt artifact emission or admission failed.
     InitialHalt(Box<DirectInitialHaltError>),
+    /// Input artifact emission or admission failed.
+    Input(Box<DirectInputError>),
     /// Jump-code artifact emission or admission failed.
     JumpCode(Box<DirectJumpCodeError>),
     /// Jump-data artifact emission or admission failed.
@@ -696,6 +751,7 @@ impl Display for DirectSelectionError<'_> {
             Self::HaltRegisters(error) => Display::fmt(error, f),
             Self::HaltFetch(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
+            Self::Input(error) => Display::fmt(error, f),
             Self::JumpCode(error) => Display::fmt(error, f),
             Self::JumpData(error) => Display::fmt(error, f),
             Self::NonGraphical(error) => Display::fmt(error, f),

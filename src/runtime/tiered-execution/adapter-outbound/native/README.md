@@ -93,8 +93,9 @@ The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
-`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`, and
-`direct-output` start at revision 1. All eleven use `MBPF` metadata version 3.
+`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`,
+`direct-input`, and `direct-output` start at revision 1. All twelve use `MBPF`
+metadata version 3.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect
@@ -128,8 +129,9 @@ creating a backend identity: exact zero-observation halt selects
 `direct-non-graphical`, an exact non-aliasing `i` transition selects
 `direct-jump-code`, an exact non-aliasing `j` transition selects
 `direct-jump-data`, an exact non-aliasing `*` transition selects
-`direct-rotate`, an exact non-aliasing `p` transition selects `direct-crazy`, an
-exact `/` transition selects `direct-output`, and an exact no-op
+`direct-rotate`, an exact non-aliasing `p` transition selects `direct-crazy`,
+an exact `<` transition selects `direct-input`, an exact `/` transition selects
+`direct-output`, and an exact no-op
 fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
 Profile, backend, emission, and verification errors are never reinterpreted as
@@ -184,8 +186,8 @@ pointers
 therefore cannot escape the supplied backing image. Direct calls that bypass the
 selector cannot promote `direct-initial-halt`, `direct-halt-registers`,
 `direct-halt-fetch`, `direct-non-graphical`, `direct-no-operation`,
-`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`, or
-`direct-output` when the declared
+`direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`,
+`direct-input`, or `direct-output` when the declared
 profile envelope is too small; they fail as out-of-contract program shape before
 object promotion.
 
@@ -290,6 +292,17 @@ the appended byte. Both ISAs guard the complete entry, exact 9-word footprint,
 `output_len:3->4`. Independent complete objects are 642 bytes on x86-64 and 724
 bytes on AArch64. x86-64 execution proves exact hit plus atomic code, capacity,
 output-pointer, footprint, and memory-pointer misses.
+
+`direct-input` revision 1 completes direct coverage of all eight instruction
+families. One code-cell live-in must VM-decode as `<`. The byte form guards a
+non-null input pointer, `input_len > input_consumed`, and the exact byte before
+committing `A=65`, `input_consumed:2->3`, encrypted code 57, and `C/D=6/8`.
+The EOF form guards `input_len == input_consumed`, never dereferences the input
+pointer, and uses VM-owned `profile_eof_word()` to commit `A=4782968` while
+leaving the cursor at 2. Independent complete objects are 659/744 bytes for the
+byte form and 634/715 bytes for EOF on x86-64/AArch64. Development x86-64
+execution proves exact hits and atomic pointer, length, byte, footprint, code,
+and null-memory misses.
 
 `direct-no-operation` revision 2 is the first admitted non-terminal direct
 effect
