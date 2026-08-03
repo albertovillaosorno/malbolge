@@ -403,7 +403,17 @@ failure attempts the exact release request; primary and cleanup failures remain
 separate. Explicit release consumes the ready executable on success and retains
 it for exact retry on failure. A deterministic fake adapter proves all 24 direct
 images, four operation failures, ten evidence drifts, cleanup failure retention,
-and release retry. No concrete OS adapter or machine-code call exists yet.
+and release retry. `NativeExecutableRunner` now receives only an exact
+`PreparedNativeExecutableInvocation`, keeping entry address, mapping identity,
+and ABI pointer inseparable. `execute_verified_native()` loads, binds, runs,
+admits, and releases one effect transactionally. Load or runner failure invokes
+explicit abort restoration; completion rejection restores through the existing
+contract; every ready mapping is released or retained for exact retry. A final
+release failure preserves an already committed `Applied` or `GuardMiss` outcome.
+Six deterministic runner cases prove successful apply, atomic guard miss, load
+short-circuit, runner mutation rollback with cleanup retry, completion-drift
+rollback, and committed outcome retention. No concrete OS adapter, unsafe call
+shim, or machine-code invocation exists yet.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact

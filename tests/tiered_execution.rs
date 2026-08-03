@@ -86,25 +86,27 @@ use execution_native::{
     NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
     NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
-    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
-    NativeExecutableLoadPhase, NativeExecutableMappingId,
-    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
-    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
-    NativeExecutableReleaseRequest, NativeInstructionSyncReport,
+    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
+    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
+    NativeExecutableMappingId, NativeExecutableMappingReport,
+    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
+    NativeExecutablePermission, NativeExecutableReleaseRequest,
+    NativeExecutableRunner, NativeInstructionSyncReport,
     NativeInstructionSyncRequest, NativeRegionBuffers, NativeRegionCallFrame,
     NativeRegionCallFrameError, NativeRegionInvocationError,
     NativeRegionInvocationOutcome, NativeRegionMutationSurface,
     NativeRegionStatus, NativeTerminationTag, PreflightedExecutionTier,
-    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
-    ReadyNativeExecutable, StagedNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
-    emit_direct_initial_halt_coff, emit_direct_input_coff,
-    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
-    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
-    emit_direct_output_coff, emit_direct_rotate_coff, load_native_executable,
+    PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedVerifiedDirectInvocation, ReadyNativeExecutable,
+    StagedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_halt_fetch_coff,
+    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
+    emit_direct_input_coff, emit_direct_jump_code_coff,
+    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
+    emit_direct_non_graphical_coff, emit_direct_output_coff,
+    emit_direct_rotate_coff, execute_verified_native, load_native_executable,
     lower_clang_c23, release_native_executable,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
@@ -183,6 +185,46 @@ struct FakeNativeExecutableAdapter {
     release_failures_remaining: usize,
     release_requests: Vec<NativeExecutableReleaseRequest>,
     synchronization_requests: Vec<NativeInstructionSyncRequest>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FakeNativeRunnerBehavior {
+    Applied,
+    CompletionDrift,
+    FailureAfterMutation,
+    GuardMiss,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FakeNativeRunnerError {
+    Call,
+}
+
+impl Display for FakeNativeRunnerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str("fake native runner call failed")
+    }
+}
+
+#[derive(Debug)]
+struct FakeNativeExecutableRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+impl FakeNativeExecutableRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
 }
 
 impl FakeNativeExecutableAdapter {
@@ -385,6 +427,42 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
             request.start_address(),
             byte_len,
         ))
+    }
+}
+
+impl NativeExecutableRunner for FakeNativeExecutableRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(5, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(5, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
     }
 }
 
@@ -7168,5 +7246,342 @@ fn native_executable_release_failure_retries_exact_mapping()
         Ok(())
     } else {
         Err(String::from("release retry changed exact mapping request"))
+    }
+}
+
+fn prepared_verified_output_call<'artifact, 'buffers>(
+    artifact: &'artifact execution_native::VerifiedDirectNativeArtifact,
+    program: &RegionEffectProgram,
+    buffers: NativeRegionBuffers<'buffers>,
+) -> Result<PreparedVerifiedDirectInvocation<'artifact, 'buffers>, String> {
+    PreparedVerifiedDirectInvocation::new(artifact, program, buffers)
+        .map_err(|error| error.to_string())
+}
+
+fn repeated_release_request(adapter: &FakeNativeExecutableAdapter) -> bool {
+    matches!(
+        adapter.release_requests.as_slice(),
+        [first, second] if first == second
+    )
+}
+
+#[test]
+fn native_executable_execution_applies_and_releases() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?
+        .after;
+    let mapping_id = native_executable_mapping_id(600)?;
+    let base_address = native_executable_address(0x60_000)?;
+    let mut adapter =
+        FakeNativeExecutableAdapter::new(mapping_id, base_address);
+    let mut runner =
+        FakeNativeExecutableRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let outcome = execute_verified_native(&mut adapter, &mut runner, prepared)
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 68
+        && output == [0x10, 0xa8, 0]
+        && runner.calls == 1
+        && runner.entry_addresses == [base_address]
+        && runner.mapping_ids == [mapping_id]
+        && runner.state_pointers_non_null == [true]
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("native execution success transaction drifted"))
+    }
+}
+
+#[test]
+fn native_executable_execution_admits_guard_miss() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mapping_id = native_executable_mapping_id(601)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(0x61_000)?,
+    );
+    let mut runner =
+        FakeNativeExecutableRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let outcome = execute_verified_native(&mut adapter, &mut runner, prepared)
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::GuardMiss
+        && memory == entry_memory
+        && output == entry_output
+        && runner.calls == 1
+        && adapter.release_requests.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("native guard miss transaction drifted"))
+    }
+}
+
+#[test]
+fn native_executable_execution_reports_load_failure_before_runner()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(602)?,
+        native_executable_address(0x62_000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Allocate);
+    let mut runner =
+        FakeNativeExecutableRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let Err(error) =
+        execute_verified_native(&mut adapter, &mut runner, prepared)
+    else {
+        return Err(String::from("configured load failure was ignored"));
+    };
+    let load_error = error
+        .load_failure()
+        .and_then(|failure| failure.adapter_error());
+    if error.phase() == NativeExecutableExecutionPhase::Load
+        && load_error == Some(&FakeNativeAdapterOperation::Allocate)
+        && error.binding_error().is_none()
+        && error.completion_error().is_none()
+        && error.committed_outcome().is_none()
+        && error.release_failure().is_none()
+        && error.release_request().is_none()
+        && error.runner_error().is_none()
+        && runner.calls == 0
+        && memory == entry_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("native execution load failure drifted"))
+    }
+}
+
+#[test]
+fn native_executable_execution_restores_runner_failure_and_retries_release()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(603)?,
+        native_executable_address(0x63_000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeNativeExecutableRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let Err(error) =
+        execute_verified_native(&mut adapter, &mut runner, prepared)
+    else {
+        return Err(String::from("configured runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_none()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("runner failure rollback evidence drifted"));
+    }
+    let release_failure = (*error)
+        .into_release_failure()
+        .ok_or_else(|| String::from("runner cleanup retry state was lost"))?;
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if repeated_release_request(&adapter) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "runner cleanup retry changed mapping identity",
+        ))
+    }
+}
+
+#[test]
+fn native_executable_execution_restores_completion_drift() -> Result<(), String>
+{
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(604)?,
+        native_executable_address(0x64_000)?,
+    );
+    let mut runner = FakeNativeExecutableRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let mut memory = native_verified_output_memory();
+    let entry_memory = memory;
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let entry_output = output;
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let Err(error) =
+        execute_verified_native(&mut adapter, &mut runner, prepared)
+    else {
+        return Err(String::from("configured completion drift was ignored"));
+    };
+    let expected_completion = matches!(
+        error.completion_error(),
+        Some(VerifiedDirectInvocationError::Invocation(
+            NativeRegionInvocationError::AppliedMemory { address: 5, .. }
+        ))
+    );
+    if error.phase() == NativeExecutableExecutionPhase::Complete
+        && expected_completion
+        && error.runner_error().is_none()
+        && error.release_failure().is_none()
+        && error.release_request() == adapter.release_requests.first().copied()
+        && memory == entry_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("completion drift rollback evidence changed"))
+    }
+}
+
+#[test]
+fn native_executable_execution_retains_committed_outcome_on_release_failure()
+-> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?
+        .after;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(605)?,
+        native_executable_address(0x65_000)?,
+    )
+    .with_release_failures(1);
+    let mut runner =
+        FakeNativeExecutableRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = prepared_verified_output_call(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )?;
+    let Err(error) =
+        execute_verified_native(&mut adapter, &mut runner, prepared)
+    else {
+        return Err(String::from(
+            "configured final release failure was ignored",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome()
+            != Some(NativeRegionInvocationOutcome::Applied(expected))
+        || error.release_failure().is_none()
+        || memory[5] != 68
+        || output != [0x10, 0xa8, 0]
+    {
+        return Err(String::from("committed release failure evidence drifted"));
+    }
+    let release_failure = (*error).into_release_failure().ok_or_else(|| {
+        String::from("committed executable retry state was lost")
+    })?;
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if repeated_release_request(&adapter) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "committed release retry changed mapping identity",
+        ))
     }
 }

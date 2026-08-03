@@ -46,6 +46,7 @@ mod lifecycle;
 mod loader;
 mod platform;
 mod profile_metadata;
+mod runner;
 #[path = "x86_64/main.rs"]
 mod x86_64;
 
@@ -140,6 +141,11 @@ pub use platform::{
     NativeExecutableOperationEvidenceError, NativeExecutableReleaseFailure,
     NativeExecutableReleaseResult, NativeInstructionSyncRequest,
     load_native_executable, release_native_executable,
+};
+pub use runner::{
+    NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
+    NativeExecutableExecutionResult, NativeExecutableRunner,
+    execute_verified_native,
 };
 
 use crate::execution_cache::{

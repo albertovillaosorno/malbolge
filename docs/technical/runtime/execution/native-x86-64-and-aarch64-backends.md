@@ -221,7 +221,13 @@ admitted before copy, returned copy evidence is checked exactly, and every
 post-allocation failure attempts release while preserving primary and cleanup
 errors separately. Failed explicit release retains the ready executable for
 retry. A deterministic adapter exercises all 24 direct images plus phase and
-report failures. Concrete Windows/POSIX memory operations remain pending.
+report failures. A separate runner port receives only the exact ready-image and
+ABI binding. Safe orchestration now performs load, bind, runner call,
+completion, and release, restoring the entry snapshot after runner or admission
+failure. Cleanup failure retains the executable for retry; final-release failure
+preserves the committed outcome. Applied, guard-miss, load-failure, runner-failure,
+completion-drift, and release-failure cases pass. Concrete Windows/POSIX memory
+operations and foreign-call shims remain pending.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,

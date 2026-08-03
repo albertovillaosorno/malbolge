@@ -125,6 +125,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retry. Deterministic evidence covers all 24 images and adversarial
   operation/report
   paths. Concrete Windows/POSIX executable-memory adapters remain pending.
+  `NativeExecutableRunner` now receives only the exact bound call. Safe
+  orchestration composes load, bind, run, admission, and release; runner or
+  completion failure restores entry state, cleanup failure retains retry state,
+  and final-release failure preserves the committed outcome. Six deterministic
+  runner cases pass. Concrete architecture call shims remain pending.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden

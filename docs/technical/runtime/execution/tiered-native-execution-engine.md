@@ -186,8 +186,16 @@ before copy; copy bytes and identity are verified afterward. Every subsequent
 adapter or lifecycle failure attempts exact release and retains primary plus
 cleanup diagnostics. Explicit release preserves the ready executable for retry
 when cleanup fails. Deterministic adapter evidence covers all 24 images, four
-operation failures, ten report drifts, cleanup failure, and retry. No concrete
-OS adapter or foreign invocation is implemented.
+operation failures, ten report drifts, cleanup failure, and retry. The
+`NativeExecutableRunner` port now accepts only a fully bound executable
+invocation. `execute_verified_native()` composes load, exact binding, runner
+call, result admission, and release. Load and runner failures explicitly abort
+entry snapshot; completion rejection restores through the invocation contract.
+Cleanup failure retains the ready executable for retry, while final-release
+failure also retains the already committed outcome. Six runner cases cover
+`Applied`, `GuardMiss`, load short-circuit, runner mutation rollback, completion
+drift, and committed release failure. No concrete OS adapter or foreign-call
+implementation exists.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

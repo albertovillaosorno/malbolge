@@ -282,6 +282,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   retry. A deterministic fake adapter covers 24 images, four operation failures,
   ten report drifts, cleanup failure, and exact retry. No concrete OS adapter or
   machine-code call is added.
+- `NativeExecutableRunner` accepts only one exact bound executable invocation.
+  `execute_verified_native()` composes load, bind, run, completion, and release.
+  Load/runner failures abort the entry snapshot, completion rejection restores
+  it, cleanup failure retains exact retry state, and final-release failure keeps
+  the committed outcome. Six deterministic cases cover apply, guard miss, load
+  short-circuit, runner mutation, completion drift, and release failure. No
+  concrete unsafe call shim is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,

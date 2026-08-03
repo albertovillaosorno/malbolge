@@ -80,12 +80,25 @@ yet.
 transactional orchestration. The loader derives an exact RW allocation request,
 prevalidates the mapping before asking for a copy, verifies exact returned bytes
 and copy identity, admits the same mapping as RX, and requests synchronization
-of the complete code range. Every post-allocation failure attempts exact release;
-primary adapter/lifecycle/evidence failure and cleanup failure remain separately
+of the complete code range. Every post-allocation failure attempts exact
+release; primary adapter/lifecycle/evidence failure and cleanup failure remain
+separately
 inspectable. Explicit release consumes a ready executable only on success and
 retains it for exact retry on failure. The retained fake adapter covers all 24
 direct images, every operation failure, report drift, cleanup failure, and
-retry. There is still no concrete Windows/POSIX executable-memory implementation.
+retry. There is still no concrete Windows/POSIX executable-memory
+implementation.
+
+`runner.rs` defines `NativeExecutableRunner` around the already bound
+`PreparedNativeExecutableInvocation`; implementations never receive unrelated
+bytes, addresses, or ABI state. `execute_verified_native()` performs load, bind,
+runner call, completion admission, and release as one safe transaction. Load and
+runner failures abort the borrowed call snapshot, completion failures use the
+same exact rollback, and cleanup failure retains the ready executable for retry.
+If final release fails after admission, the committed outcome remains explicit.
+Fake-runner evidence covers `Applied`, `GuardMiss`, load short-circuit, mutation
+before runner failure, completion drift, cleanup retry, and committed release
+failure. No concrete FFI runner or machine-code call is implemented here.
 
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first

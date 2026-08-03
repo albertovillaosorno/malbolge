@@ -294,6 +294,12 @@ impl Display for NativeRegionInvocationError {
 }
 
 impl PreparedNativeExecutableInvocation<'_, '_, '_> {
+    /// Restores the complete entry snapshot after an uncompleted runner
+    /// attempt.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact expected foreign transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
@@ -338,11 +344,30 @@ impl PreparedNativeExecutableInvocation<'_, '_, '_> {
     pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
         self.invocation.state_mut_ptr()
     }
+
+    /// Simulates one foreign guest-memory mutation for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation
+            .invocation
+            .write_memory_for_test(address, value)
+    }
 }
 
 impl<'artifact, 'buffers>
     PreparedVerifiedDirectInvocation<'artifact, 'buffers>
 {
+    /// Restores the complete entry snapshot after an uncompleted runner
+    /// attempt.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact expected foreign transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
@@ -370,6 +395,7 @@ impl<'artifact, 'buffers>
         NativeExecutableInvocationBindingError,
     > {
         if self.load_image() != executable.image() {
+            self.abort();
             return Err(
                 NativeExecutableInvocationBindingError::ExecutableIdentity,
             );
@@ -462,6 +488,11 @@ impl<'artifact, 'buffers>
 }
 
 impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
+    /// Restores the complete entry snapshot without admitting any call result.
+    pub fn abort(mut self) {
+        self.restore_entry();
+    }
+
     /// Simulates the exact expected foreign transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
