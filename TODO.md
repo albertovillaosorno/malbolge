@@ -384,8 +384,17 @@ entry offset, retains the complete key/target identity, and validates ISA
 instruction alignment. Its only representable policy is RW staging followed by
 RX execution plus mandatory instruction synchronization. All twelve direct
 templates produce exact images on x86-64 and AArch64; machine drift and added
-relocations fail closed. It still allocates no executable memory and invokes no
-code.
+relocations fail closed. `NativeExecutableMappingId` plus staged, sealed, and
+ready typestates now admit explicit platform reports only in RW-copy, RX-seal,
+full-code instruction-sync order. Exact bytes, capacity, alignment, address
+arithmetic, mapping identity/range, permissions, and synchronization range fail
+closed. `ReadyNativeExecutable` retains the image and exact release request;
+`PreparedNativeExecutableInvocation` exposes entry address and ABI state only
+after the ready image equals the prepared call image. All 24 direct images pass
+the complete lifecycle, while adversarial reports and cross-ISA call binding
+fail closed. These reports are adapter evidence, not OS operations: no pages are
+allocated, permissions changed, instructions flushed, mappings released, or
+machine code invoked yet.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact

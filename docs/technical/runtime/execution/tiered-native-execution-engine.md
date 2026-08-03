@@ -171,8 +171,15 @@ that bound COFF, rejects relocations, extracts immutable `.text` plus the exact
 entry offset, retains full key/target identity, and validates ISA alignment.
 The fixed load policy permits only RW staging followed by RX execution and
 requires instruction synchronization. All twelve direct templates produce exact
-images on both ISAs. This still adds no linking, executable-memory allocation,
-permission syscall, cache flush, cleanup owner, or foreign invocation.
+images on both ISAs. A safe lifecycle protocol now admits exact platform
+reports in RW-copy, same-mapping RX-seal, and full-code instruction-sync order.
+It rejects byte, permission, capacity, alignment, address, identity, range, and
+sync drift before producing `ReadyNativeExecutable`, which retains the exact
+release request. `PreparedNativeExecutableInvocation` binds that ready image to
+the prepared call before exposing entry address and ABI state together. All 24
+direct images pass the lifecycle; cross-ISA binding fails closed. Reports remain
+adapter evidence only: no linking, allocation, permission syscall, cache flush,
+cleanup owner, or foreign invocation is implemented.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

@@ -41,6 +41,7 @@ pub mod execution_ir;
 pub mod execution_native;
 
 use std::fs::{create_dir_all, read, remove_dir_all, write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::from_utf8;
@@ -83,19 +84,23 @@ use execution_native::{
     NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
     NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
     NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
-    NativeExecutablePermission, NativeRegionBuffers, NativeRegionCallFrame,
-    NativeRegionCallFrameError, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
-    NativeRegionStatus, NativeTerminationTag, PreflightedExecutionTier,
-    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
-    emit_direct_initial_halt_coff, emit_direct_input_coff,
-    emit_direct_jump_code_coff, emit_direct_jump_data_coff,
-    emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
-    emit_direct_output_coff, emit_direct_rotate_coff, lower_clang_c23,
+    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
+    NativeExecutableMappingId, NativeExecutableMappingReport,
+    NativeExecutablePermission, NativeInstructionSyncReport,
+    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, NativeRegionStatus, NativeTerminationTag,
+    PreflightedExecutionTier, PreparedNativeRegionInvocation,
+    PreparedVerifiedDirectInvocation, ReadyNativeExecutable,
+    StagedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_halt_fetch_coff,
+    emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
+    emit_direct_input_coff, emit_direct_jump_code_coff,
+    emit_direct_jump_data_coff, emit_direct_no_operation_coff,
+    emit_direct_non_graphical_coff, emit_direct_output_coff,
+    emit_direct_rotate_coff, lower_clang_c23,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
@@ -6210,5 +6215,380 @@ fn verified_direct_load_image_rejects_relocations() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("load image admitted relocations"))
+    }
+}
+
+fn native_executable_mapping_id(
+    value: u64,
+) -> Result<NativeExecutableMappingId, String> {
+    NativeExecutableMappingId::new(value)
+        .ok_or_else(|| String::from("native mapping identity must be non-zero"))
+}
+
+fn native_executable_address(value: usize) -> Result<NonZeroUsize, String> {
+    NonZeroUsize::new(value)
+        .ok_or_else(|| String::from("native mapping address must be non-zero"))
+}
+
+fn ready_native_executable(
+    artifact: &execution_native::VerifiedDirectNativeArtifact,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<ReadyNativeExecutable, String> {
+    let image = VerifiedDirectLoadImage::from_artifact_for_test(artifact)
+        .map_err(|error| error.to_string())?;
+    let mapping_id = native_executable_mapping_id(mapping_value)?;
+    let base_address = native_executable_address(base_value)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base_address,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedNativeExecutable::stage(&image, writable, image.code())
+        .map_err(|error| error.to_string())?;
+    let executable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base_address,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let sealed = staged
+        .admit_read_execute(executable)
+        .map_err(|error| error.to_string())?;
+    sealed
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base_address,
+            image.allocation_len(),
+        ))
+        .map_err(|error| error.to_string())
+}
+
+fn direct_output_load_image(
+    isa: HostIsa,
+) -> Result<VerifiedDirectLoadImage, String> {
+    let artifact = select_verified_direct_native(
+        &direct_output_program(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| error.to_string())?;
+    VerifiedDirectLoadImage::from_artifact_for_test(&artifact)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn native_executable_lifecycle_admits_every_direct_template()
+-> Result<(), String> {
+    let cases = direct_selection_cases();
+    let mut sequence = 1u64;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        for (index, (program, kind, _backend_id)) in cases.iter().enumerate() {
+            let artifact = select_verified_direct_native(
+                program,
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                isa,
+            )
+            .map_err(|error| error.to_string())?;
+            let base_value = 0x1000usize
+                .checked_mul(index.saturating_add(1))
+                .ok_or_else(|| {
+                String::from("native mapping base overflow")
+            })?;
+            let ready =
+                ready_native_executable(&artifact, sequence, base_value)?;
+            sequence = sequence.saturating_add(1);
+            let release = ready.release_request();
+            let expected_entry = base_value
+                .checked_add(ready.image().entry_offset())
+                .ok_or_else(|| String::from("native entry address overflow"))?;
+            if artifact.kind() != *kind
+                || ready.entry_address().get() != expected_entry
+                || ready.image().key() != artifact.key()
+                || ready.key() != artifact.key()
+                || ready.mapping().permissions()
+                    != NativeExecutablePermission::ReadExecute
+                || ready.target() != artifact.key().target()
+                || ready.target_triple() != artifact.target_triple()
+                || release.base_address().get() != base_value
+                || release.mapped_len() != ready.image().allocation_len()
+                || release.mapping_id() != ready.mapping().mapping_id()
+            {
+                let detail = format!("{kind:?} on {isa:?}");
+                return Err(format!(
+                    "native executable lifecycle drifted for {detail}",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_executable_lifecycle_rejects_permission_and_code_drift()
+-> Result<(), String> {
+    if NativeExecutableMappingId::new(0).is_some() {
+        return Err(String::from("zero native mapping identity was admitted"));
+    }
+    let image = direct_output_load_image(HostIsa::AArch64)?;
+    let mapping_id = native_executable_mapping_id(31)?;
+    let base = native_executable_address(0x4000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let executable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let mut drifted_code = image.code().to_vec();
+    let first = drifted_code
+        .first_mut()
+        .ok_or_else(|| String::from("direct code image was empty"))?;
+    *first ^= 1;
+    if StagedNativeExecutable::stage(&image, executable, image.code())
+        == Err(NativeExecutableLifecycleError::Permissions)
+        && StagedNativeExecutable::stage(&image, writable, &drifted_code)
+            == Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native staging permission/code drift was admitted",
+        ))
+    }
+}
+
+#[test]
+fn native_executable_lifecycle_rejects_capacity_alignment_and_overflow()
+-> Result<(), String> {
+    let arm_image = direct_output_load_image(HostIsa::AArch64)?;
+    let mapping_id = native_executable_mapping_id(32)?;
+    let aligned = native_executable_address(0x4000)?;
+    let short = NativeExecutableMappingReport::new(
+        mapping_id,
+        aligned,
+        arm_image.allocation_len().saturating_sub(1),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let misaligned = NativeExecutableMappingReport::new(
+        mapping_id,
+        native_executable_address(0x4001)?,
+        arm_image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let x86_image = direct_output_load_image(HostIsa::X86_64)?;
+    let overflowing = NativeExecutableMappingReport::new(
+        mapping_id,
+        native_executable_address(usize::MAX)?,
+        x86_image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    if StagedNativeExecutable::stage(&arm_image, short, arm_image.code())
+        == Err(NativeExecutableLifecycleError::MappingCapacity)
+        && StagedNativeExecutable::stage(
+            &arm_image,
+            misaligned,
+            arm_image.code(),
+        ) == Err(NativeExecutableLifecycleError::MappingAlignment)
+        && StagedNativeExecutable::stage(
+            &x86_image,
+            overflowing,
+            x86_image.code(),
+        ) == Err(NativeExecutableLifecycleError::AddressOverflow)
+    {
+        Ok(())
+    } else {
+        Err(String::from("native staging range drift was admitted"))
+    }
+}
+
+#[test]
+fn native_executable_lifecycle_rejects_seal_drift() -> Result<(), String> {
+    let image = direct_output_load_image(HostIsa::X86_64)?;
+    let mapping_id = native_executable_mapping_id(41)?;
+    let other_id = native_executable_mapping_id(42)?;
+    let base = native_executable_address(0x5000)?;
+    let other_base = native_executable_address(0x6000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedNativeExecutable::stage(&image, writable, image.code())
+        .map_err(|error| error.to_string())?;
+    let wrong_identity = NativeExecutableMappingReport::new(
+        other_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let wrong_range = NativeExecutableMappingReport::new(
+        mapping_id,
+        other_base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    if staged.clone().admit_read_execute(wrong_identity)
+        == Err(NativeExecutableLifecycleError::MappingIdentity)
+        && staged.clone().admit_read_execute(wrong_range)
+            == Err(NativeExecutableLifecycleError::MappingIdentity)
+        && staged.admit_read_execute(writable)
+            == Err(NativeExecutableLifecycleError::Permissions)
+    {
+        Ok(())
+    } else {
+        Err(String::from("native executable seal drift was admitted"))
+    }
+}
+
+#[test]
+fn native_executable_lifecycle_rejects_sync_drift() -> Result<(), String> {
+    let image = direct_output_load_image(HostIsa::X86_64)?;
+    let mapping_id = native_executable_mapping_id(43)?;
+    let other_id = native_executable_mapping_id(44)?;
+    let base = native_executable_address(0x7000)?;
+    let other_base = native_executable_address(0x8000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedNativeExecutable::stage(&image, writable, image.code())
+        .map_err(|error| error.to_string())?;
+    let executable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let sealed = staged
+        .admit_read_execute(executable)
+        .map_err(|error| error.to_string())?;
+    let wrong_id = NativeInstructionSyncReport::new(
+        other_id,
+        base,
+        image.allocation_len(),
+    );
+    let wrong_start = NativeInstructionSyncReport::new(
+        mapping_id,
+        other_base,
+        image.allocation_len(),
+    );
+    let wrong_len = NativeInstructionSyncReport::new(
+        mapping_id,
+        base,
+        image.allocation_len().saturating_sub(1),
+    );
+    if sealed.clone().admit_instruction_sync(wrong_id)
+        == Err(NativeExecutableLifecycleError::MappingIdentity)
+        && sealed.clone().admit_instruction_sync(wrong_start)
+            == Err(NativeExecutableLifecycleError::SynchronizationRange)
+        && sealed.admit_instruction_sync(wrong_len)
+            == Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        Ok(())
+    } else {
+        Err(String::from("native executable sync drift was admitted"))
+    }
+}
+
+#[test]
+fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
+    let program = native_verified_output_program()?;
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&artifact, 51, 0x7000)?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = PreparedVerifiedDirectInvocation::new(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut invocation = prepared
+        .bind_executable(&ready)
+        .map_err(|error| error.to_string())?;
+    if invocation.entry_address() != ready.entry_address()
+        || invocation.executable() != &ready
+        || invocation.mapping_id() != ready.mapping().mapping_id()
+        || invocation.state_mut_ptr().is_null()
+    {
+        return Err(String::from("ready executable call binding drifted"));
+    }
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("verified output fixture has no effect"))?
+        .after;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory[5] == 68
+        && output == [0x10, 0xa8, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "ready executable call did not apply exact effect",
+        ))
+    }
+}
+
+#[test]
+fn native_executable_invocation_rejects_different_image() -> Result<(), String>
+{
+    let program = native_verified_output_program()?;
+    let x86_artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let arm_artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let ready = ready_native_executable(&arm_artifact, 61, 0x8000)?;
+    let mut memory = native_verified_output_memory();
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let prepared = PreparedVerifiedDirectInvocation::new(
+        &x86_artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if matches!(
+        prepared.bind_executable(&ready),
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) && memory == native_verified_output_memory()
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("different executable image was bound to call"))
     }
 }

@@ -35,6 +35,7 @@
 //! Safe preparation and completion contract for one native region call.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::num::NonZeroUsize;
 
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,
@@ -46,6 +47,7 @@ use super::abi::{
     NativeRegionStatusError,
 };
 use super::direct::{DirectNativeKind, VerifiedDirectNativeArtifact};
+use super::lifecycle::{NativeExecutableMappingId, ReadyNativeExecutable};
 use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
@@ -163,6 +165,13 @@ pub struct NativeRegionBuffers<'buffers> {
     output: &'buffers mut [u8],
 }
 
+/// Failure while binding a synchronized executable to one exact call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeExecutableInvocationBindingError {
+    /// Executable image identity differs from the prepared call image.
+    ExecutableIdentity,
+}
+
 /// Failure while binding one verified direct artifact to one exact call.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VerifiedDirectInvocationError {
@@ -176,6 +185,14 @@ pub enum VerifiedDirectInvocationError {
     Invocation(NativeRegionInvocationError),
     /// Verified COFF could not become one relocation-free load image.
     Load(VerifiedDirectLoadError),
+}
+
+/// One synchronized executable inseparably bound to one exact ABI call.
+#[derive(Debug)]
+pub struct PreparedNativeExecutableInvocation<'artifact, 'buffers, 'executable>
+{
+    executable: &'executable ReadyNativeExecutable,
+    invocation: PreparedVerifiedDirectInvocation<'artifact, 'buffers>,
 }
 
 /// One exact verified artifact inseparably bound to one ABI invocation.
@@ -208,6 +225,12 @@ impl<'buffers> NativeRegionBuffers<'buffers> {
         output: &'buffers mut [u8],
     ) -> Self {
         Self { input, memory, output }
+    }
+}
+
+impl Display for NativeExecutableInvocationBindingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str("native executable identity differs from prepared call")
     }
 }
 
@@ -270,6 +293,53 @@ impl Display for NativeRegionInvocationError {
     }
 }
 
+impl PreparedNativeExecutableInvocation<'_, '_, '_> {
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the exact prepared call contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectInvocationError`] when the foreign result
+    /// violates exact application or atomic guard-miss requirements.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<NativeRegionInvocationOutcome, VerifiedDirectInvocationError>
+    {
+        self.invocation.complete(raw_status)
+    }
+
+    /// Returns the synchronized non-zero native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this call.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this call.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    /// Returns the mutable ABI state pointer for the future unsafe invoker.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+}
+
 impl<'artifact, 'buffers>
     PreparedVerifiedDirectInvocation<'artifact, 'buffers>
 {
@@ -284,6 +354,30 @@ impl<'artifact, 'buffers>
     #[must_use]
     pub const fn artifact(&self) -> &VerifiedDirectNativeArtifact {
         self.artifact
+    }
+
+    /// Binds this exact call to one synchronized executable image.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when the executable
+    /// retains any different code, entry, key, target, or load policy.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyNativeExecutable,
+    ) -> Result<
+        PreparedNativeExecutableInvocation<'artifact, 'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedNativeExecutableInvocation {
+            executable,
+            invocation: self,
+        })
     }
 
     /// Admits one raw native status and restores state on every rejection.

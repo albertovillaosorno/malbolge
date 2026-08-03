@@ -42,6 +42,7 @@ mod abi;
 mod coff;
 mod direct;
 mod invocation;
+mod lifecycle;
 mod loader;
 mod profile_metadata;
 #[path = "x86_64/main.rs"]
@@ -112,10 +113,17 @@ pub use direct::{
     verify_direct_output, verify_direct_rotate,
 };
 pub use invocation::{
-    NativeRegionBuffers, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    NativeExecutableInvocationBindingError, NativeRegionBuffers,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, PreparedNativeExecutableInvocation,
     PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
     VerifiedDirectInvocationError,
+};
+pub use lifecycle::{
+    NativeExecutableLifecycleError, NativeExecutableMappingId,
+    NativeExecutableMappingReport, NativeExecutableReleaseRequest,
+    NativeInstructionSyncReport, ReadyNativeExecutable, SealedNativeExecutable,
+    StagedNativeExecutable,
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,

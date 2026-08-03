@@ -112,6 +112,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   validates ISA alignment. Its fixed policy requires RW-to-RX transition plus
   instruction synchronization. This does not link, allocate pages, change real
   permissions, flush instructions, clean up mappings, or invoke code.
+  Staged, sealed, and ready typestates now admit platform reports only in exact
+  RW-copy, same-mapping RX-seal, and full-code instruction-sync order. Byte,
+  capacity, alignment, address, identity, permission, range, and sync drift fail
+  closed. Ready mappings retain exact release requests, and only image-equal
+  prepared calls expose entry address plus ABI state. All 24 direct images pass
+  this protocol. Reports remain adapter evidence rather than performed OS work.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden

@@ -64,8 +64,17 @@ target triple, and validates x86-64/AArch64 instruction alignment. Its fixed
 policy permits RW staging followed by RX execution and requires instruction
 synchronization after the permission transition. The prepared verified call
 retains this image, so a future loader need not accept unrelated object bytes.
-No page allocation, permission syscall, instruction-cache operation, cleanup,
-or foreign call exists yet.
+`lifecycle.rs` admits the future platform operations in one ordered typestate
+protocol. `StagedNativeExecutable` requires exact code bytes in a sufficiently
+large, aligned RW mapping. `SealedNativeExecutable` requires the same mapping to
+be reported RX, and `ReadyNativeExecutable` requires synchronization of the
+complete code range before exposing the non-zero entry address. It retains an
+exact release request. `PreparedNativeExecutableInvocation` then compares the
+ready image with the call-bound image before exposing entry address and ABI
+state through one value. Platform reports are adapter evidence; no page
+allocation,
+permission syscall, instruction-cache operation, cleanup, or foreign call exists
+yet.
 
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first

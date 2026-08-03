@@ -263,8 +263,16 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity, and validates ISA alignment. Its only policy is RW staging followed
   by RX execution with mandatory instruction synchronization. Twelve templates
   across both ISAs pass exact-image evidence; machine drift and relocations fail
-  closed. No page allocation, permission transition, cache flush, cleanup, or
-  foreign invocation is added.
+  closed.
+- Staged, sealed, and ready executable typestates now admit explicit platform
+  reports in exact RW-copy, same-mapping RX-seal, then full-code instruction
+  synchronization order. Bytes, capacity, alignment, address arithmetic,
+  mapping identity/range, permissions, and sync range fail closed. The ready
+  state retains the exact release request; image-equal call binding is required
+  before entry address and ABI state are exposed together. Twenty-four direct
+  images pass the lifecycle and cross-ISA binding fails closed. Reports are
+  adapter evidence only; no page allocation, permission transition, cache flush,
+  cleanup operation, or foreign invocation is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,

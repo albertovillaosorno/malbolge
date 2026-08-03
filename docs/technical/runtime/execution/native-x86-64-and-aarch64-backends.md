@@ -206,8 +206,15 @@ that same artifact/call binding. `VerifiedDirectLoadImage` reparses verified
 COFF, rejects relocations, extracts exact immutable code and entry offset,
 retains full key/target identity, and validates ISA alignment. Its fixed policy
 requires RW-to-RX transition plus instruction synchronization. This remains
-load-plan evidence only; no linker, executable-memory owner, permission syscall,
-foreign call, cache-flush implementation, or cleanup policy is introduced.
+load-plan evidence. Staged, sealed, and ready typestates now admit explicit
+platform reports only after exact code copy into RW, the same mapping becoming
+RX, and full-code instruction synchronization. Capacity, alignment, address,
+identity, permissions, range, and sync drift fail closed. The ready state
+retains an exact release request. Only an image-equal prepared invocation may
+expose
+entry address plus ABI state. Platform reports remain adapter evidence; no
+linker, executable-memory owner, permission syscall, foreign call, cache-flush
+implementation, or cleanup operation is introduced.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
