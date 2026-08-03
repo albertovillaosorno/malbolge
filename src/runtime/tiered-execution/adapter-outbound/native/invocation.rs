@@ -46,6 +46,7 @@ use super::abi::{
     NativeRegionStatusError,
 };
 use super::direct::{DirectNativeKind, VerifiedDirectNativeArtifact};
+use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
@@ -173,6 +174,8 @@ pub enum VerifiedDirectInvocationError {
     Identity(NativeIdentityError),
     /// Guest-buffer preparation or result admission failed.
     Invocation(NativeRegionInvocationError),
+    /// Verified COFF could not become one relocation-free load image.
+    Load(VerifiedDirectLoadError),
 }
 
 /// One exact verified artifact inseparably bound to one ABI invocation.
@@ -180,6 +183,7 @@ pub enum VerifiedDirectInvocationError {
 pub struct PreparedVerifiedDirectInvocation<'artifact, 'buffers> {
     artifact: &'artifact VerifiedDirectNativeArtifact,
     invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedDirectLoadImage,
 }
 
 /// Borrow-scoped exact contract surrounding one future native entry call.
@@ -220,6 +224,7 @@ impl VerifiedDirectInvocationError {
                 "verified invocation identity construction failed"
             },
             Self::Invocation(_) => "verified native invocation contract failed",
+            Self::Load(_) => "verified native load-image preparation failed",
         }
     }
 }
@@ -297,6 +302,12 @@ impl<'artifact, 'buffers>
             .map_err(VerifiedDirectInvocationError::Invocation)
     }
 
+    /// Returns the immutable relocation-free image bound to this call.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedDirectLoadImage {
+        &self.load_image
+    }
+
     /// Binds one verified state-applying artifact to one exact program call.
     ///
     /// # Errors
@@ -318,11 +329,17 @@ impl<'artifact, 'buffers>
         if artifact.key() != &expected_key {
             return Err(VerifiedDirectInvocationError::ArtifactIdentity);
         }
+        let load_image = VerifiedDirectLoadImage::new(artifact)
+            .map_err(VerifiedDirectInvocationError::Load)?;
         let NativeRegionBuffers { input, memory, output } = buffers;
         let invocation =
             PreparedNativeRegionInvocation::new(program, memory, input, output)
                 .map_err(VerifiedDirectInvocationError::Invocation)?;
-        Ok(Self { artifact, invocation })
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
     }
 
     /// Returns canonical verified COFF bytes for the bound artifact.

@@ -82,14 +82,15 @@ use execution_native::{
     NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
     NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
     NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
-    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError, NativeRegionBuffers,
-    NativeRegionCallFrame, NativeRegionCallFrameError,
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, NativeRegionStatus, NativeTerminationTag,
-    PreflightedExecutionTier, PreparedNativeRegionInvocation,
-    PreparedVerifiedDirectInvocation, UntrustedNativeObjectArtifact,
-    VerifiedDirectInvocationError, VerifiedDirectNativeCache,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NativeExecutablePermission, NativeRegionBuffers, NativeRegionCallFrame,
+    NativeRegionCallFrameError, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    NativeRegionStatus, NativeTerminationTag, PreflightedExecutionTier,
+    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
+    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -5874,6 +5875,9 @@ fn verified_direct_invocation_binds_exact_artifact_and_call()
         || invocation.object() != artifact.object()
         || invocation.target() != artifact.key().target()
         || invocation.target_triple() != artifact.target_triple()
+        || invocation.load_image().key() != artifact.key()
+        || invocation.load_image().code()
+            != direct_object_text(artifact.object())?
         || invocation.state_mut_ptr().is_null()
     {
         return Err(String::from("verified invocation binding drifted"));
@@ -6028,5 +6032,183 @@ fn verified_direct_invocation_propagates_buffer_error() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("verified invocation masked buffer rejection"))
+    }
+}
+
+fn direct_object_text(object: &[u8]) -> Result<&[u8], String> {
+    const TEXT_HEADER: usize = 20;
+    const RAW_SIZE_OFFSET: usize = 16;
+    const RAW_START_OFFSET: usize = 20;
+    let raw_size = read_fixture_u32(
+        object,
+        TEXT_HEADER
+            .checked_add(RAW_SIZE_OFFSET)
+            .ok_or_else(|| String::from("text size offset overflow"))?,
+    )?;
+    let raw_start = read_fixture_u32(
+        object,
+        TEXT_HEADER
+            .checked_add(RAW_START_OFFSET)
+            .ok_or_else(|| String::from("text start offset overflow"))?,
+    )?;
+    let size = usize::try_from(raw_size)
+        .map_err(|error| format!("text size conversion: {error}"))?;
+    let start = usize::try_from(raw_start)
+        .map_err(|error| format!("text start conversion: {error}"))?;
+    let end = start
+        .checked_add(size)
+        .ok_or_else(|| String::from("text range overflow"))?;
+    object
+        .get(start..end)
+        .ok_or_else(|| String::from("text range exceeds object"))
+}
+
+fn read_fixture_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("fixture u32 offset overflow"))?;
+    let raw = bytes
+        .get(offset..end)
+        .ok_or_else(|| String::from("fixture u32 exceeds object"))?;
+    let array = <[u8; 4]>::try_from(raw)
+        .map_err(|error| format!("fixture u32 width: {error}"))?;
+    Ok(u32::from_le_bytes(array))
+}
+
+fn write_fixture_u16(
+    bytes: &mut [u8],
+    offset: usize,
+    value: u16,
+) -> Result<(), String> {
+    let end = offset
+        .checked_add(2)
+        .ok_or_else(|| String::from("fixture u16 offset overflow"))?;
+    let target = bytes
+        .get_mut(offset..end)
+        .ok_or_else(|| String::from("fixture u16 exceeds object"))?;
+    target.copy_from_slice(&value.to_le_bytes());
+    Ok(())
+}
+
+fn write_fixture_u32(
+    bytes: &mut [u8],
+    offset: usize,
+    value: u32,
+) -> Result<(), String> {
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| String::from("fixture u32 offset overflow"))?;
+    let target = bytes
+        .get_mut(offset..end)
+        .ok_or_else(|| String::from("fixture u32 exceeds object"))?;
+    target.copy_from_slice(&value.to_le_bytes());
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_extracts_every_template_on_both_isas()
+-> Result<(), String> {
+    let cases = direct_selection_cases();
+    if cases.len() != 12 {
+        return Err(format!(
+            "direct load corpus size drifted: {}",
+            cases.len()
+        ));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        for (program, kind, _backend_id) in &cases {
+            let artifact = select_verified_direct_native(
+                program,
+                safe_rust_profiled_capability(),
+                HostOperatingSystem::Windows,
+                isa,
+            )
+            .map_err(|error| error.to_string())?;
+            let image =
+                VerifiedDirectLoadImage::from_artifact_for_test(&artifact)
+                    .map_err(|error| error.to_string())?;
+            let expected_code = direct_object_text(artifact.object())?;
+            let expected_alignment = match isa {
+                HostIsa::AArch64 => 4,
+                HostIsa::X86_64 => 1,
+            };
+            let policy = image.policy();
+            if artifact.kind() != *kind
+                || image.code() != expected_code
+                || image.entry_code() != expected_code
+                || image.entry_offset() != 0
+                || image.allocation_len() != expected_code.len()
+                || image.host_isa() != isa
+                || image.key() != artifact.key()
+                || image.minimum_instruction_alignment() != expected_alignment
+                || image.target() != artifact.key().target()
+                || image.target_triple() != artifact.target_triple()
+                || policy.initial_permissions()
+                    != NativeExecutablePermission::ReadWrite
+                || policy.final_permissions()
+                    != NativeExecutablePermission::ReadExecute
+                || !policy.requires_instruction_sync()
+            {
+                return Err(format!(
+                    "direct load image drifted for {kind:?} on {isa:?}",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_machine_drift() -> Result<(), String> {
+    let program = direct_output_program();
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = artifact.object().to_vec();
+    write_fixture_u16(&mut object, 0, 0)?;
+    if VerifiedDirectLoadImage::from_object_for_test(&artifact, &object)
+        == Err(VerifiedDirectLoadError::Object(CoffAdmissionError::Machine))
+    {
+        Ok(())
+    } else {
+        Err(String::from("load image admitted machine drift"))
+    }
+}
+
+#[test]
+fn verified_direct_load_image_rejects_relocations() -> Result<(), String> {
+    const TEXT_HEADER: usize = 20;
+    const RELOCATION_START_OFFSET: usize = 24;
+    const RELOCATION_COUNT_OFFSET: usize = 32;
+    let program = direct_output_program();
+    let artifact = select_verified_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut object = artifact.object().to_vec();
+    let relocation_start = u32::try_from(object.len())
+        .map_err(|error| format!("relocation offset conversion: {error}"))?;
+    object.extend_from_slice(&[0u8; 10]);
+    let start_offset = TEXT_HEADER
+        .checked_add(RELOCATION_START_OFFSET)
+        .ok_or_else(|| String::from("relocation start offset overflow"))?;
+    let count_offset = TEXT_HEADER
+        .checked_add(RELOCATION_COUNT_OFFSET)
+        .ok_or_else(|| String::from("relocation count offset overflow"))?;
+    write_fixture_u32(&mut object, start_offset, relocation_start)?;
+    write_fixture_u16(&mut object, count_offset, 1)?;
+    if VerifiedDirectLoadImage::from_object_for_test(&artifact, &object)
+        == Err(VerifiedDirectLoadError::Relocations)
+    {
+        Ok(())
+    } else {
+        Err(String::from("load image admitted relocations"))
     }
 }

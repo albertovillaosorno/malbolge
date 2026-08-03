@@ -202,9 +202,12 @@ Every rejected completion restores the complete entry snapshot.
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
 verified artifact target, rejects program drift, and denies the deoptimization
 stub state-applying authority. `NativeRegionBuffers` keeps all caller loans in
-that same artifact/call binding. This remains call-contract evidence only; no
-linker, executable-memory owner, foreign call, or instruction-cache
-synchronization policy is introduced.
+that same artifact/call binding. `VerifiedDirectLoadImage` reparses verified
+COFF, rejects relocations, extracts exact immutable code and entry offset,
+retains full key/target identity, and validates ISA alignment. Its fixed policy
+requires RW-to-RX transition plus instruction synchronization. This remains
+load-plan evidence only; no linker, executable-memory owner, permission syscall,
+foreign call, cache-flush implementation, or cleanup policy is introduced.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,

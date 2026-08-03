@@ -42,6 +42,7 @@ mod abi;
 mod coff;
 mod direct;
 mod invocation;
+mod loader;
 mod profile_metadata;
 #[path = "x86_64/main.rs"]
 mod x86_64;
@@ -115,6 +116,10 @@ pub use invocation::{
     NativeRegionInvocationOutcome, NativeRegionMutationSurface,
     PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
     VerifiedDirectInvocationError,
+};
+pub use loader::{
+    NativeExecutableLoadPolicy, NativeExecutablePermission,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,

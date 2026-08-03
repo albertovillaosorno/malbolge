@@ -378,7 +378,13 @@ one program plus the verified artifact's exact target, rejects any canonical
 identity mismatch, and denies the guard-miss deoptimization stub state-applying
 authority. `NativeRegionBuffers` groups the three caller-owned buffer loans, so
 verified COFF bytes, target assumptions, and the ABI pointer are exposed only by
-one inseparable binding. It still prepares no executable memory and invokes no
+one inseparable binding. `VerifiedDirectLoadImage` now reparses that verified
+COFF, rejects every relocation, extracts the exact immutable `.text` bytes and
+entry offset, retains the complete key/target identity, and validates ISA
+instruction alignment. Its only representable policy is RW staging followed by
+RX execution plus mandatory instruction synchronization. All twelve direct
+templates produce exact images on x86-64 and AArch64; machine drift and added
+relocations fail closed. It still allocates no executable memory and invokes no
 code.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
@@ -427,8 +433,9 @@ Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
-planning, transactional trace-derived multistep plans, and an untrusted
-cross-ISA bootstrap object boundary are implemented. Combined-region native
+planning, transactional trace-derived multistep plans, relocation-free direct
+load-image planning, and an untrusted cross-ISA bootstrap object boundary are
+implemented. Combined-region native
 executable loading/invocation, durable cache serialization/storage/eviction,
 and wider tier orchestration remain open.
 

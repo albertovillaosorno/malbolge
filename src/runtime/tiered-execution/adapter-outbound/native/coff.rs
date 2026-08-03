@@ -86,6 +86,22 @@ pub enum CoffAdmissionError {
     TextSection,
 }
 
+/// Rejection while extracting a relocation-free executable text image.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CoffExecutableTextError {
+    /// The COFF container failed ordinary structural closure checks.
+    Admission(CoffAdmissionError),
+    /// The object requires relocation processing not owned by this loader.
+    Relocations,
+}
+
+/// Owned executable `.text` plus its validated entry offset.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CoffExecutableText {
+    pub(super) code: Box<[u8]>,
+    pub(super) entry_offset: usize,
+}
+
 impl Display for CoffAdmissionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(match self {
@@ -180,6 +196,56 @@ struct StringTable {
 }
 
 type SymbolSlots = Vec<Option<CoffSymbol>>;
+
+/// Extracts one closed relocation-free executable `.text` image.
+///
+/// # Errors
+///
+/// Returns [`CoffExecutableTextError`] for malformed structure, target drift,
+/// unresolved closure, or any relocation owned by no current loader.
+pub(super) fn extract_relocation_free_executable_text(
+    object: &[u8],
+    isa: HostIsa,
+) -> Result<CoffExecutableText, CoffExecutableTextError> {
+    if read_u16(object, 0).map_err(CoffExecutableTextError::Admission)?
+        != expected_machine(isa)
+    {
+        return Err(CoffExecutableTextError::Admission(
+            CoffAdmissionError::Machine,
+        ));
+    }
+    if read_u16(object, 16).map_err(CoffExecutableTextError::Admission)? != 0 {
+        return Err(CoffExecutableTextError::Admission(
+            CoffAdmissionError::OptionalHeader,
+        ));
+    }
+    let parsed =
+        parse_coff(object).map_err(CoffExecutableTextError::Admission)?;
+    validate_sections(object, &parsed.sections)
+        .map_err(CoffExecutableTextError::Admission)?;
+    validate_symbols_and_relocations(object, &parsed)
+        .map_err(CoffExecutableTextError::Admission)?;
+    if parsed
+        .sections
+        .iter()
+        .any(|section| section.relocation_count != 0)
+    {
+        return Err(CoffExecutableTextError::Relocations);
+    }
+    let text = parsed
+        .sections
+        .iter()
+        .find(|section| section.name == ".text")
+        .ok_or(CoffExecutableTextError::Admission(
+            CoffAdmissionError::TextSection,
+        ))?;
+    let entry_offset = required_entry_offset(&parsed)
+        .map_err(CoffExecutableTextError::Admission)?;
+    let code = slice(object, text.raw_start, text.raw_size)
+        .map_err(CoffExecutableTextError::Admission)?
+        .into();
+    Ok(CoffExecutableText { code, entry_offset })
+}
 
 /// Parses and structurally admits one self-contained Windows COFF candidate.
 ///
@@ -398,10 +464,9 @@ fn validate_profile_metadata(
     }
 }
 
-fn validate_symbols_and_relocations(
-    object: &[u8],
+fn required_entry_offset(
     parsed: &ParsedCoff,
-) -> Result<(), CoffAdmissionError> {
+) -> Result<usize, CoffAdmissionError> {
     let text_index = parsed
         .sections
         .iter()
@@ -413,8 +478,7 @@ fn validate_symbols_and_relocations(
         .sections
         .get(text_index)
         .ok_or(CoffAdmissionError::TextSection)?;
-    let mut entry_count = 0usize;
-
+    let mut entry_offset = None;
     for symbol in parsed.symbols.iter().flatten() {
         if symbol.storage_class != IMAGE_SYM_CLASS_EXTERNAL {
             continue;
@@ -422,23 +486,31 @@ fn validate_symbols_and_relocations(
         if symbol.section_number == 0 {
             return Err(CoffAdmissionError::ExternalDependency);
         }
-        if symbol.symbol_type & IMAGE_SYM_DTYPE_FUNCTION != 0 {
-            if symbol.name != REQUIRED_ENTRY {
-                return Err(CoffAdmissionError::ExtraExternalFunction);
-            }
-            entry_count = entry_count.saturating_add(1);
-            let value = usize_from_u32(symbol.value)?;
-            if symbol.section_number != text_section_number
-                || value >= text.raw_size
-            {
-                return Err(CoffAdmissionError::EntryTarget);
-            }
+        if symbol.symbol_type & IMAGE_SYM_DTYPE_FUNCTION == 0 {
+            continue;
         }
+        if symbol.name != REQUIRED_ENTRY {
+            return Err(CoffAdmissionError::ExtraExternalFunction);
+        }
+        if entry_offset.is_some() {
+            return Err(CoffAdmissionError::EntrySymbol);
+        }
+        let value = usize_from_u32(symbol.value)?;
+        if symbol.section_number != text_section_number
+            || value >= text.raw_size
+        {
+            return Err(CoffAdmissionError::EntryTarget);
+        }
+        entry_offset = Some(value);
     }
-    if entry_count != 1 {
-        return Err(CoffAdmissionError::EntrySymbol);
-    }
+    entry_offset.ok_or(CoffAdmissionError::EntrySymbol)
+}
 
+fn validate_symbols_and_relocations(
+    object: &[u8],
+    parsed: &ParsedCoff,
+) -> Result<(), CoffAdmissionError> {
+    let _entry_offset = required_entry_offset(parsed)?;
     for section in &parsed.sections {
         for relocation_index in 0..section.relocation_count {
             let offset = checked_add(

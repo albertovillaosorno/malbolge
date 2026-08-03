@@ -56,7 +56,16 @@ artifact's exact target, rejects canonical program drift, and refuses to grant
 the deoptimization stub state-applying authority. `NativeRegionBuffers` groups
 the memory/input/output loans, while verified COFF bytes, target identity,
 target triple, and ABI pointer remain reachable only through the same binding.
-The module owns no loader, executable memory, or call site.
+
+`loader.rs` owns relocation-free load-image planning, not executable memory.
+`VerifiedDirectLoadImage` reparses verified COFF, rejects relocations, extracts
+only the exact `.text` bytes plus entry offset, retains the complete key and
+target triple, and validates x86-64/AArch64 instruction alignment. Its fixed
+policy permits RW staging followed by RX execution and requires instruction
+synchronization after the permission transition. The prepared verified call
+retains this image, so a future loader need not accept unrelated object bytes.
+No page allocation, permission syscall, instruction-cache operation, cleanup,
+or foreign call exists yet.
 
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first

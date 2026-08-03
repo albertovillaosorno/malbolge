@@ -106,8 +106,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
   state-applying authority. `NativeRegionBuffers` keeps caller loans bound to
-  the same verified bytes, target assumptions, and ABI pointer. This does not
-  link, allocate, invoke, or synchronize code.
+  the same verified bytes, target assumptions, and ABI pointer.
+  `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations, extracts
+  exact immutable code and entry offset, retains full key/target identity, and
+  validates ISA alignment. Its fixed policy requires RW-to-RX transition plus
+  instruction synchronization. This does not link, allocate pages, change real
+  permissions, flush instructions, clean up mappings, or invoke code.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden

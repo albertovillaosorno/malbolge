@@ -166,8 +166,13 @@ entry snapshot. `PreparedVerifiedDirectInvocation` additionally reconstructs
 full artifact identity from the exact program and the verified artifact target,
 rejects canonical drift, and denies deopt-stub application authority.
 `NativeRegionBuffers` groups caller loans so verified bytes, target assumptions,
-and the ABI pointer remain one binding. This still adds no linking,
-executable-memory allocation, or foreign invocation.
+and the ABI pointer remain one binding. `VerifiedDirectLoadImage` now reparses
+that bound COFF, rejects relocations, extracts immutable `.text` plus the exact
+entry offset, retains full key/target identity, and validates ISA alignment.
+The fixed load policy permits only RW staging followed by RX execution and
+requires instruction synchronization. All twelve direct templates produce exact
+images on both ISAs. This still adds no linking, executable-memory allocation,
+permission syscall, cache flush, cleanup owner, or foreign invocation.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

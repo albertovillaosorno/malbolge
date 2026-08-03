@@ -257,8 +257,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   the program and verified artifact target, rejects canonical drift, and denies
   the deoptimization stub state-applying authority. `NativeRegionBuffers`
   groups memory/input/output loans so verified bytes, target assumptions, and
-  the ABI pointer remain inseparable. No linking, executable memory, or foreign
-  invocation is added.
+  the ABI pointer remain inseparable.
+- `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations, extracts
+  immutable `.text` and its exact entry offset, retains complete key/target
+  identity, and validates ISA alignment. Its only policy is RW staging followed
+  by RX execution with mandatory instruction synchronization. Twelve templates
+  across both ISAs pass exact-image evidence; machine drift and relocations fail
+  closed. No page allocation, permission transition, cache flush, cleanup, or
+  foreign invocation is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,
