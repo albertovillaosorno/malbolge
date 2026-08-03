@@ -179,7 +179,15 @@ release request. `PreparedNativeExecutableInvocation` binds that ready image to
 the prepared call before exposing entry address and ABI state together. All 24
 direct images pass the lifecycle; cross-ISA binding fails closed. Reports remain
 adapter evidence only: no linking, allocation, permission syscall, cache flush,
-cleanup owner, or foreign invocation is implemented.
+cleanup owner, or foreign invocation is implemented. A caller-owned
+`NativeExecutableMemoryAdapter` port now orchestrates exact allocate, copy,
+protect, synchronize, and release operations. Allocation reports are admitted
+before copy; copy bytes and identity are verified afterward. Every subsequent
+adapter or lifecycle failure attempts exact release and retains primary plus
+cleanup diagnostics. Explicit release preserves the ready executable for retry
+when cleanup fails. Deterministic adapter evidence covers all 24 images, four
+operation failures, ten report drifts, cleanup failure, and retry. No concrete
+OS adapter or foreign invocation is implemented.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

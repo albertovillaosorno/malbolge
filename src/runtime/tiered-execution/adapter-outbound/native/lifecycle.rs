@@ -211,6 +211,16 @@ impl NativeExecutableReleaseRequest {
         self.base_address
     }
 
+    /// Constructs the exact release request for any admitted mapping report.
+    #[must_use]
+    pub const fn from_mapping(mapping: NativeExecutableMappingReport) -> Self {
+        Self {
+            base_address: mapping.base_address(),
+            mapped_len: mapping.mapped_len(),
+            mapping_id: mapping.mapping_id(),
+        }
+    }
+
     /// Returns the complete mapped byte length to release.
     #[must_use]
     pub const fn mapped_len(self) -> usize {
@@ -293,22 +303,10 @@ impl StagedNativeExecutable {
         mapping: NativeExecutableMappingReport,
         copied_code: &[u8],
     ) -> Result<Self, NativeExecutableLifecycleError> {
-        if mapping.permissions() != image.policy().initial_permissions() {
-            return Err(NativeExecutableLifecycleError::Permissions);
-        }
+        validate_writable_mapping(image, mapping)?;
         if copied_code != image.code() {
             return Err(NativeExecutableLifecycleError::CodeImage);
         }
-        if mapping.mapped_len() < image.allocation_len() {
-            return Err(NativeExecutableLifecycleError::MappingCapacity);
-        }
-        if !is_aligned(
-            mapping.base_address().get(),
-            image.minimum_instruction_alignment(),
-        ) {
-            return Err(NativeExecutableLifecycleError::MappingAlignment);
-        }
-        validate_mapping_ranges(image, mapping)?;
         Ok(Self {
             image: image.clone(),
             mapping,
@@ -438,6 +436,25 @@ const fn same_mapping(
     left.base_address().get() == right.base_address().get()
         && left.mapped_len() == right.mapped_len()
         && left.mapping_id().get() == right.mapping_id().get()
+}
+
+pub(super) fn validate_writable_mapping(
+    image: &VerifiedDirectLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_mapping_ranges(image, mapping)
 }
 
 fn validate_mapping_ranges(

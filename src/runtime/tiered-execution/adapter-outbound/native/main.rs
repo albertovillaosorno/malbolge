@@ -44,6 +44,7 @@ mod direct;
 mod invocation;
 mod lifecycle;
 mod loader;
+mod platform;
 mod profile_metadata;
 #[path = "x86_64/main.rs"]
 mod x86_64;
@@ -131,6 +132,14 @@ pub use loader::{
 };
 use malbolge::{
     ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,
+};
+pub use platform::{
+    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
+    NativeExecutableLoadFailure, NativeExecutableLoadPhase,
+    NativeExecutableLoadResult, NativeExecutableMemoryAdapter,
+    NativeExecutableOperationEvidenceError, NativeExecutableReleaseFailure,
+    NativeExecutableReleaseResult, NativeInstructionSyncRequest,
+    load_native_executable, release_native_executable,
 };
 
 use crate::execution_cache::{

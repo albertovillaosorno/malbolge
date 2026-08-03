@@ -132,20 +132,25 @@ parts:
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0020
-    path: adapter-outbound/native/profile_metadata.rs
+    path: adapter-outbound/native/platform.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0021
-    path: adapter-outbound/native/x86_64/main.rs
+    path: adapter-outbound/native/profile_metadata.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0022
+    path: adapter-outbound/native/x86_64/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0023
     path: domain/ir/README.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0023
+  - id: part-0024
     path: domain/ir/main.rs
     kind: domain
     language: rust

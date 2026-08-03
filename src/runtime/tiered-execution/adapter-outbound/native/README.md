@@ -76,6 +76,17 @@ allocation,
 permission syscall, instruction-cache operation, cleanup, or foreign call exists
 yet.
 
+`platform.rs` defines the caller-owned `NativeExecutableMemoryAdapter` port and
+transactional orchestration. The loader derives an exact RW allocation request,
+prevalidates the mapping before asking for a copy, verifies exact returned bytes
+and copy identity, admits the same mapping as RX, and requests synchronization
+of the complete code range. Every post-allocation failure attempts exact release;
+primary adapter/lifecycle/evidence failure and cleanup failure remain separately
+inspectable. Explicit release consumes a ready executable only on success and
+retains it for exact retry on failure. The retained fake adapter covers all 24
+direct images, every operation failure, report drift, cleanup failure, and
+retry. There is still no concrete Windows/POSIX executable-memory implementation.
+
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first
 values of every written cell, and output capacity. Only after every local guard

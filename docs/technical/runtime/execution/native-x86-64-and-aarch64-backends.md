@@ -214,7 +214,14 @@ retains an exact release request. Only an image-equal prepared invocation may
 expose
 entry address plus ABI state. Platform reports remain adapter evidence; no
 linker, executable-memory owner, permission syscall, foreign call, cache-flush
-implementation, or cleanup operation is introduced.
+implementation, or cleanup operation is introduced. The safe platform port now
+orchestrates exact RW allocation, copy, RX protection, full-range instruction
+synchronization, and release through a caller-owned adapter. Allocation is
+admitted before copy, returned copy evidence is checked exactly, and every
+post-allocation failure attempts release while preserving primary and cleanup
+errors separately. Failed explicit release retains the ready executable for
+retry. A deterministic adapter exercises all 24 direct images plus phase and
+report failures. Concrete Windows/POSIX memory operations remain pending.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,

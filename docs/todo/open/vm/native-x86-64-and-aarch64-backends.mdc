@@ -118,6 +118,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   closed. Ready mappings retain exact release requests, and only image-equal
   prepared calls expose entry address plus ABI state. All 24 direct images pass
   this protocol. Reports remain adapter evidence rather than performed OS work.
+  A caller-owned platform port now orchestrates allocate, copy, RX protect,
+  full-range sync, and release transactionally. It prevalidates allocation,
+  verifies copy evidence, releases after every later failure, preserves cleanup
+  failure alongside the primary cause, and retains ready state for release
+  retry. Deterministic evidence covers all 24 images and adversarial
+  operation/report
+  paths. Concrete Windows/POSIX executable-memory adapters remain pending.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden

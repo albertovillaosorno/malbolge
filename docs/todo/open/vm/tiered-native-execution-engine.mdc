@@ -273,6 +273,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   images pass the lifecycle and cross-ISA binding fails closed. Reports are
   adapter evidence only; no page allocation, permission transition, cache flush,
   cleanup operation, or foreign invocation is added.
+- `NativeExecutableMemoryAdapter` now exposes exact allocate/copy/protect/sync/
+  release operations to safe transactional orchestration. Allocation evidence is
+  admitted before copy; returned bytes and copy identity are checked afterward.
+  Every post-allocation failure attempts exact release and preserves primary
+  plus cleanup diagnostics. Failed explicit release retains the ready executable
+  for
+  retry. A deterministic fake adapter covers 24 images, four operation failures,
+  ten report drifts, cleanup failure, and exact retry. No concrete OS adapter or
+  machine-code call is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,

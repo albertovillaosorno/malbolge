@@ -394,7 +394,16 @@ after the ready image equals the prepared call image. All 24 direct images pass
 the complete lifecycle, while adversarial reports and cross-ISA call binding
 fail closed. These reports are adapter evidence, not OS operations: no pages are
 allocated, permissions changed, instructions flushed, mappings released, or
-machine code invoked yet.
+machine code invoked yet. `NativeExecutableMemoryAdapter` now defines those five
+platform operations explicitly. `load_native_executable()` derives the exact
+allocation request, admits RW evidence before copy, verifies returned copy bytes
+and identity, seals the same mapping RX, synchronizes the full code range, and
+returns only a ready executable. Every post-allocation adapter or admission
+failure attempts the exact release request; primary and cleanup failures remain
+separate. Explicit release consumes the ready executable on success and retains
+it for exact retry on failure. A deterministic fake adapter proves all 24 direct
+images, four operation failures, ten evidence drifts, cleanup failure retention,
+and release retry. No concrete OS adapter or machine-code call exists yet.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact
