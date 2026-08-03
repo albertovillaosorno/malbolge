@@ -229,8 +229,14 @@ tests cover two inserts followed by two pointer-identical hits, one hit plus one
 insert, preflight-before-lookup, and rollback that preserves an unrelated cached
 `Arc`.
 
-Neither sequence planner links objects, allocates executable memory, invokes
-code, or claims that a guard miss can resume halfway through a sequence.
+The planners still do not fuse objects. `sequence_runner.rs` executes their
+one-step artifact/program pairs through the existing safe transaction in exact
+order. Prior `Applied` steps remain committed; a `GuardMiss` leaves its current
+step untouched and returns the exact resume index plus observation. Indexed
+failures retain committed-step count, continuation state, nested one-step error,
+and release retry evidence. Cached and uncached rotate/output plans match VM
+snapshots after one and two steps. Mappings are still loaded/released per step,
+and no concrete foreign-call shim or interpreter transfer is implemented.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

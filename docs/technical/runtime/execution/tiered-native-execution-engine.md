@@ -399,8 +399,16 @@ two pointer-identical hits, a one-hit/one-insert transaction, runtime preflight
 before lookup, and rollback that preserves an unrelated cached artifact after a
 late hidden deopt.
 
-The result remains an ordered plan only: no object fusion, executable-memory
-allocation, invocation, or mid-sequence deoptimization protocol is implied.
+`sequence_runner.rs` consumes either ordered plan without fusing objects. Each
+program/artifact pair passes through the exact safe single-step transaction.
+Committed prefixes remain visible; guard miss returns the current zero-based
+resume index and entry observation, while step failure reports committed count,
+resume state, nested execution/preparation evidence, and retryable cleanup.
+Retained VM snapshots prove complete cached/uncached rotate-output execution,
+second-step guard resume, mutation rollback, and release failure after applied
+or guard outcomes. Executable mappings are still loaded and released per step;
+no
+unsafe call shim or direct interpreter-transfer implementation is implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct
@@ -446,8 +454,8 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, executable chaining, mid-sequence guard-miss
-recovery, executable-memory policy/invocation, and durable native cache
+Combined-region emission, persistent executable chaining, concrete interpreter
+handoff, executable-memory policy/foreign invocation, and durable native cache
 serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
 direct process-local reuse, and performance policy remain open. The
 interpreter remains the only normative execution authority and the guaranteed

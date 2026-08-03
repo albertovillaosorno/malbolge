@@ -300,10 +300,16 @@ baseline; native tiers are accelerators of identical observable behavior.
   lookup, preserves exact-hit `Arc` identity, stages verified unique misses, and
   inserts them only after complete success. Insert/replay, mixed hit/miss,
   preflight-before-lookup, and late-rejection rollback tests bind that
-  transaction. No object fusion,
-  executable memory, invocation, or partial-resume protocol is added.
-- Remaining fused-region emission, executable chaining, mid-sequence guard-miss
-  policy, plus cache-aware AOT/JIT
+  transaction.
+- Safe cached and uncached sequence runners now execute each exact one-step pair
+  through load/bind/run/complete/release. Applied prefixes remain committed;
+  guard miss returns the exact resume index/observation, and indexed failures
+  preserve committed progress plus cleanup retry evidence. Rotate/output VM
+  snapshots prove full completion, second-step guard resume, rollback, and
+  applied/guard release failure. No object fusion, persistent executable chain,
+  concrete FFI call shim, or direct interpreter handoff is added.
+- Remaining fused-region emission, persistent executable chaining, plus
+  cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

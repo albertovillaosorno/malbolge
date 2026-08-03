@@ -47,6 +47,7 @@ mod loader;
 mod platform;
 mod profile_metadata;
 mod runner;
+mod sequence_runner;
 #[path = "x86_64/main.rs"]
 mod x86_64;
 
@@ -146,6 +147,11 @@ pub use runner::{
     NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
     NativeExecutableExecutionResult, NativeExecutableRunner,
     execute_verified_native,
+};
+pub use sequence_runner::{
+    NativeSequenceExecutionFailure, NativeSequenceExecutionOutcome,
+    NativeSequenceExecutionResult, execute_cached_verified_native_sequence,
+    execute_verified_native_sequence,
 };
 
 use crate::execution_cache::{

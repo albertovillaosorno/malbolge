@@ -427,9 +427,19 @@ identity, unique misses remain staged until every step verifies, and only then
 enter the caller-owned cache. Insert/replay evidence records `0/2` then `2/0`
 hit/insertion counts; mixed reuse records `1/1`, cached runtime rejection
 leaves the exact map unchanged, and a late hidden deopt preserves an unrelated
-cached artifact pointer-identical. This multistep slice still does
-not fuse COFF, allocate executable memory, invoke the chain, or resume after a
-mid-sequence guard miss.
+cached artifact pointer-identical. `execute_verified_native_sequence()` and
+its cached counterpart now pair every retained program with its exact artifact,
+run each one through the safe load/bind/run/complete/release transaction, and
+preserve already committed prefixes. `Applied` advances to the next step;
+`GuardMiss` returns the exact zero-based resume index and entry observation with
+the current step untouched. Preparation, runner, completion, and cleanup failure
+report the failing step, committed-step count, continuation observation, and
+retryable release state. VM snapshots after one and two rotate/output steps
+prove uncached and cached completion, second-step guard resume, second-step
+mutation rollback, and both applied/guard cleanup failures. This still does not
+fuse COFF,
+retain executable mappings across steps, transfer directly into the interpreter,
+or implement the unsafe machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -453,18 +463,19 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, fused-region emission, executable
-loading and the unsafe foreign-call boundary, mid-sequence deoptimization, and
+eviction, synchronization policy, fused-region emission, persistent executable
+chains, concrete interpreter handoff, the unsafe foreign-call boundary, and
 broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
-planning, transactional trace-derived multistep plans, relocation-free direct
-load-image planning, and an untrusted cross-ISA bootstrap object boundary are
-implemented. Combined-region native
-executable loading/invocation, durable cache serialization/storage/eviction,
+planning, transactional trace-derived multistep plans with exact resume,
+relocation-free direct load-image planning, and an untrusted cross-ISA bootstrap
+object boundary are implemented. Combined-region native fusion, persistent
+executable chains, concrete foreign invocation, durable cache
+serialization/storage/eviction,
 and wider tier orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation

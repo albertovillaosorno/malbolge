@@ -116,6 +116,7 @@ pub struct VerifiedDirectSequencePlan {
     entry: ProfileMachineObservation,
     exit: ProfileMachineObservation,
     outcome: RunOutcome,
+    programs: Vec<RegionEffectProgram>,
 }
 
 impl VerifiedDirectSequencePlan {
@@ -157,6 +158,12 @@ impl VerifiedDirectSequencePlan {
     pub const fn outcome(&self) -> RunOutcome {
         self.outcome
     }
+
+    /// Returns exact one-step programs paired with the ordered artifacts.
+    #[must_use]
+    pub fn programs(&self) -> &[RegionEffectProgram] {
+        &self.programs
+    }
 }
 
 /// Cache-aware ordered direct artifacts for one exact multistep region.
@@ -168,6 +175,7 @@ pub struct CachedVerifiedDirectSequencePlan {
     entry: ProfileMachineObservation,
     exit: ProfileMachineObservation,
     outcome: RunOutcome,
+    programs: Vec<RegionEffectProgram>,
 }
 
 impl CachedVerifiedDirectSequencePlan {
@@ -217,6 +225,12 @@ impl CachedVerifiedDirectSequencePlan {
     #[must_use]
     pub const fn outcome(&self) -> RunOutcome {
         self.outcome
+    }
+
+    /// Returns exact one-step programs paired with the ordered artifacts.
+    #[must_use]
+    pub fn programs(&self) -> &[RegionEffectProgram] {
+        &self.programs
     }
 }
 
@@ -271,6 +285,7 @@ pub fn select_verified_direct_sequence<'requirement>(
         entry: boundary.entry,
         exit: boundary.exit,
         outcome: boundary.outcome,
+        programs: programs.to_vec(),
     })
 }
 
@@ -340,6 +355,7 @@ pub fn select_cached_verified_direct_sequence<'requirement>(
         entry: boundary.entry,
         exit: boundary.exit,
         outcome: boundary.outcome,
+        programs: programs.to_vec(),
     })
 }
 

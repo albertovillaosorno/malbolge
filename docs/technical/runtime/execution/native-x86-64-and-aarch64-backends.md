@@ -224,9 +224,10 @@ retry. A deterministic adapter exercises all 24 direct images plus phase and
 report failures. A separate runner port receives only the exact ready-image and
 ABI binding. Safe orchestration now performs load, bind, runner call,
 completion, and release, restoring the entry snapshot after runner or admission
-failure. Cleanup failure retains the executable for retry; final-release failure
-preserves the committed outcome. Applied, guard-miss, load-failure, runner-failure,
-completion-drift, and release-failure cases pass. Concrete Windows/POSIX memory
+failure. Cleanup failure retains the executable for retry; final-release
+failure preserves the committed outcome. Applied, guard-miss, load-failure,
+runner-failure, completion-drift, and release-failure cases pass. Concrete
+Windows/POSIX memory
 operations and foreign-call shims remain pending.
 
 The first multistep planner composes already verified one-step artifacts without
@@ -234,7 +235,13 @@ changing either ISA encoder. Complete VM traces are projected to one-step IR,
 then exact profile and observation continuity are checked before every artifact
 is selected. The retained rotate/output fixture yields two reviewed artifacts on
 both ISAs and rejects empty, discontinuous, profile-mixed, hidden-deopt, and
-post-termination sequences. Its cache-aware form preserves pointer-identical
+post-termination sequences. Safe sequence execution now runs those reviewed
+one-step artifacts in order through the loader/runner transaction. Applied
+prefixes remain committed; a second-step guard miss resumes at index one with
+the exact VM observation, and runner/completion failure restores only the
+current step. Cleanup failure preserves applied or guard progress plus retry
+state. Its
+cache-aware form preserves pointer-identical
 hits, stages unique verified misses until complete success, and publishes no
 partial cache state after a late rejection. This is planning evidence, not a
 fused COFF object or executable call chain.

@@ -54,6 +54,8 @@ use crate::execution_cache::{
 };
 use crate::execution_ir::{EFFECT_IR_VERSION, EffectOp, RegionEffectProgram};
 
+pub(super) type NativeRegionBufferParts<'buffers> =
+    (&'buffers mut [u32], &'buffers [u8], &'buffers mut [u8]);
 type U32Mismatch = (usize, u32, u32);
 type U8Mismatch = (usize, u8, u8);
 
@@ -217,6 +219,10 @@ pub struct PreparedNativeRegionInvocation<'buffers> {
 }
 
 impl<'buffers> NativeRegionBuffers<'buffers> {
+    pub(super) const fn into_parts(self) -> NativeRegionBufferParts<'buffers> {
+        (self.memory, self.input, self.output)
+    }
+
     /// Groups caller-owned memory, input, and output for one exact native call.
     #[must_use]
     pub const fn new(
