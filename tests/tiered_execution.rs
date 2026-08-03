@@ -92,24 +92,30 @@ use execution_native::{
     NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
     NativeExecutablePermission, NativeExecutableReleaseRequest,
     NativeExecutableRunner, NativeInstructionSyncReport,
-    NativeInstructionSyncRequest, NativeRegionBuffers, NativeRegionCallFrame,
-    NativeRegionCallFrameError, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
-    NativeRegionStatus, NativeSequenceExecutionOutcome, NativeTerminationTag,
+    NativeInstructionSyncRequest, NativeLoadedSequenceAdmissionError,
+    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, NativeRegionStatus,
+    NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedNativeExecutableInvocation,
     PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
-    ReadyNativeExecutable, StagedNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, emit_direct_crazy_coff, emit_direct_deopt_coff,
+    ReadyNativeExecutable, ReadyNativeExecutableSequence,
+    StagedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
+    VerifiedDirectSequencePlan, emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
     emit_direct_no_operation_coff, emit_direct_non_graphical_coff,
     emit_direct_output_coff, emit_direct_rotate_coff,
-    execute_cached_verified_native_sequence, execute_verified_native,
-    execute_verified_native_sequence, load_native_executable, lower_clang_c23,
-    release_native_executable, select_cached_preflighted_execution_tier,
+    execute_cached_verified_native_sequence,
+    execute_loaded_cached_verified_native_sequence,
+    execute_loaded_verified_native_sequence, execute_verified_native,
+    execute_verified_native_sequence, load_cached_verified_native_sequence,
+    load_native_executable, load_verified_native_sequence, lower_clang_c23,
+    release_native_executable, release_native_executable_sequence,
+    select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
@@ -181,6 +187,7 @@ struct FakeNativeExecutableAdapter {
     copied_code: Vec<Vec<u8>>,
     drift: Option<FakeNativeAdapterDrift>,
     failure: Option<FakeNativeAdapterOperation>,
+    failure_at: Option<(FakeNativeAdapterOperation, usize)>,
     mapping_id: NativeExecutableMappingId,
     operations: Vec<FakeNativeAdapterOperation>,
     release_attempts: usize,
@@ -266,7 +273,14 @@ impl FakeNativeExecutableAdapter {
         &self,
         operation: FakeNativeAdapterOperation,
     ) -> Result<(), FakeNativeAdapterOperation> {
-        if self.failure == Some(operation) {
+        let attempt = self
+            .operations
+            .iter()
+            .filter(|observed| **observed == operation)
+            .count();
+        if self.failure == Some(operation)
+            || self.failure_at == Some((operation, attempt))
+        {
             Err(operation)
         } else {
             Ok(())
@@ -283,6 +297,7 @@ impl FakeNativeExecutableAdapter {
             copied_code: Vec::new(),
             drift: None,
             failure: None,
+            failure_at: None,
             mapping_id,
             operations: Vec::new(),
             release_attempts: 0,
@@ -303,6 +318,15 @@ impl FakeNativeExecutableAdapter {
         failure: FakeNativeAdapterOperation,
     ) -> Self {
         self.failure = Some(failure);
+        self
+    }
+
+    const fn with_failure_at(
+        mut self,
+        failure: FakeNativeAdapterOperation,
+        attempt: usize,
+    ) -> Self {
+        self.failure_at = Some((failure, attempt));
         self
     }
 
@@ -327,14 +351,27 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
         self.operations.push(FakeNativeAdapterOperation::Allocate);
         self.allocation_requests.push(request);
         self.fail_if_requested(FakeNativeAdapterOperation::Allocate)?;
+        let allocation_index = self.allocation_requests.len().saturating_sub(1);
+        let sequence_index = allocation_index;
+        let address_offset = sequence_index.saturating_mul(0x10_000);
+        let sequence_address = NonZeroUsize::new(
+            self.base_address.get().saturating_add(address_offset),
+        )
+        .unwrap_or(self.base_address);
         let base_address = if self.drift
             == Some(FakeNativeAdapterDrift::AllocationAlignment)
         {
-            NonZeroUsize::new(self.base_address.get().saturating_add(1))
-                .unwrap_or(self.base_address)
+            NonZeroUsize::new(sequence_address.get().saturating_add(1))
+                .unwrap_or(sequence_address)
         } else {
-            self.base_address
+            sequence_address
         };
+        let mapping_id = NativeExecutableMappingId::new(
+            self.mapping_id.get().saturating_add(
+                u64::try_from(sequence_index).unwrap_or(u64::MAX),
+            ),
+        )
+        .unwrap_or(self.mapping_id);
         let mapped_len =
             if self.drift == Some(FakeNativeAdapterDrift::AllocationCapacity) {
                 request.byte_len().saturating_sub(1)
@@ -349,7 +386,7 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
             request.permissions()
         };
         Ok(NativeExecutableMappingReport::new(
-            self.mapping_id,
+            mapping_id,
             base_address,
             mapped_len,
             permissions,
@@ -8042,4 +8079,387 @@ fn native_sequence_execution_preserves_guard_resume_on_release_failure()
             "guard release failure lost exact resume evidence",
         ))
     }
+}
+
+fn assert_loaded_sequence_application(
+    fixture: &NativeSequenceFixture,
+    plan: &VerifiedDirectSequencePlan,
+    sequence: &ReadyNativeExecutableSequence,
+) -> Result<(), String> {
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_loaded_verified_native_sequence(
+        &mut runner,
+        plan,
+        sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if outcome.completed_steps() == 2
+        && memory == fixture.final_memory
+        && output == fixture.final_output
+        && runner.calls == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "persistent sequence reuse changed execution evidence",
+        ))
+    }
+}
+
+#[test]
+fn persistent_native_sequence_loads_reuses_and_releases() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(800)?,
+        native_executable_address(0x80_000)?,
+    );
+    let sequence = load_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?;
+    let expected_release = sequence
+        .executables()
+        .iter()
+        .rev()
+        .map(ReadyNativeExecutable::release_request)
+        .collect::<Vec<_>>();
+    let mapping_ids = sequence
+        .executables()
+        .iter()
+        .map(|executable| executable.mapping().mapping_id())
+        .collect::<Vec<_>>();
+    if sequence.len() != 2
+        || sequence.is_empty()
+        || mapping_ids.first() == mapping_ids.get(1)
+        || adapter.operations.len() != 8
+        || !adapter.release_requests.is_empty()
+    {
+        return Err(String::from("persistent sequence load evidence drifted"));
+    }
+    let operations_after_load = adapter.operations.len();
+    for _iteration in [0usize, 1usize] {
+        assert_loaded_sequence_application(&fixture, &plan, &sequence)?;
+        if adapter.operations.len() != operations_after_load {
+            return Err(String::from(
+                "loaded execution performed memory-adapter operations",
+            ));
+        }
+    }
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|error| error.to_string())?;
+    if adapter.release_requests == expected_release
+        && adapter.operations.len() == operations_after_load.saturating_add(2)
+    {
+        Ok(())
+    } else {
+        Err(String::from("persistent sequence release order drifted"))
+    }
+}
+
+#[test]
+fn persistent_cached_sequence_preserves_second_guard_resume()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let mut cache = VerifiedDirectNativeCache::default();
+    let plan = select_cached_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::AArch64),
+        &mut cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(801)?,
+        native_executable_address(0x81_000)?,
+    );
+    let sequence = load_cached_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?;
+    let operations_after_load = adapter.operations.len();
+    let second_entry = plan
+        .programs()
+        .get(1)
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("persistent second entry missing"))?;
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = execute_loaded_cached_verified_native_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| error.to_string())?;
+    if outcome
+        != (NativeSequenceExecutionOutcome::GuardMiss {
+            index: 1,
+            observation: second_entry,
+        })
+        || memory != fixture.first_memory
+        || output != fixture.first_output
+        || adapter.operations.len() != operations_after_load
+        || runner.calls != 2
+    {
+        return Err(String::from(
+            "persistent cached guard-miss resume evidence drifted",
+        ));
+    }
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn persistent_native_sequence_rolls_back_partial_load() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(802)?,
+        native_executable_address(0x82_000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2);
+    let Err(error) = load_verified_native_sequence(&mut adapter, &plan) else {
+        return Err(String::from("second sequence allocation failure ignored"));
+    };
+    let adapter_error = error
+        .load_failure()
+        .and_then(|failure| failure.adapter_error());
+    if error.index() == 1
+        && error.loaded_count() == 1
+        && error.image_error().is_none()
+        && error.cleanup_failure().is_none()
+        && adapter_error == Some(&FakeNativeAdapterOperation::Allocate)
+        && adapter.release_requests.len() == 1
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("partial sequence load rollback drifted"))
+    }
+}
+
+#[test]
+fn persistent_native_sequence_retains_partial_cleanup_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(803)?,
+        native_executable_address(0x83_000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2)
+    .with_release_failures(1);
+    let Err(error) = load_verified_native_sequence(&mut adapter, &plan) else {
+        return Err(String::from("partial load cleanup failure was ignored"));
+    };
+    let cleanup_evidence = error.cleanup_failure().ok_or_else(|| {
+        String::from("partial load cleanup failure evidence was lost")
+    })?;
+    if error.index() != 1
+        || error.loaded_count() != 1
+        || cleanup_evidence.attempted_count() != 1
+        || cleanup_evidence.failed_count() != 1
+        || cleanup_evidence.released_count() != 0
+    {
+        return Err(String::from(
+            "partial load cleanup aggregation evidence drifted",
+        ));
+    }
+    let retry_cleanup = (*error).into_cleanup_failure().ok_or_else(|| {
+        String::from("partial load cleanup retry ownership was lost")
+    })?;
+    retry_cleanup
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if repeated_release_request(&adapter) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "partial load cleanup retry changed mapping request",
+        ))
+    }
+}
+
+#[test]
+fn persistent_native_sequence_release_attempts_every_mapping()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(804)?,
+        native_executable_address(0x84_000)?,
+    );
+    let sequence = load_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?;
+    let expected_release = sequence
+        .executables()
+        .iter()
+        .rev()
+        .map(ReadyNativeExecutable::release_request)
+        .collect::<Vec<_>>();
+    adapter.release_failure_at = Some(1);
+    let Err(failure) =
+        release_native_executable_sequence(&mut adapter, sequence)
+    else {
+        return Err(String::from("aggregate release failure was ignored"));
+    };
+    if failure.attempted_count() != 2
+        || failure.failed_count() != 1
+        || failure.released_count() != 1
+        || adapter.release_requests != expected_release
+    {
+        return Err(String::from("aggregate release pass stopped early"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if adapter.release_requests.first() == adapter.release_requests.last() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "aggregate release retry changed failed mapping",
+        ))
+    }
+}
+
+#[test]
+fn loaded_native_sequence_rejects_different_plan_before_runner()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let x86_plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let arm_plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(805)?,
+        native_executable_address(0x85_000)?,
+    );
+    let sequence = load_verified_native_sequence(&mut adapter, &x86_plan)
+        .map_err(|error| error.to_string())?;
+    let operations_after_load = adapter.operations.len();
+    let mut memory = fixture.initial_memory.clone();
+    let entry_memory = memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let entry_output = output.clone();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let Err(error) = execute_loaded_verified_native_sequence(
+        &mut runner,
+        &arm_plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("cross-ISA loaded sequence was admitted"));
+    };
+    if error.admission_error()
+        != Some(NativeLoadedSequenceAdmissionError::ExecutableIdentity {
+            index: 0,
+        })
+        || error.completed_steps() != 0
+        || error.resume_index() != 0
+        || runner.calls != 0
+        || memory != entry_memory
+        || output != entry_output
+        || adapter.operations.len() != operations_after_load
+    {
+        return Err(String::from(
+            "loaded sequence prevalidation changed caller state",
+        ));
+    }
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn loaded_native_sequence_restores_failed_second_step() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = select_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(806)?,
+        native_executable_address(0x86_000)?,
+    );
+    let sequence = load_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?;
+    let operations_after_load = adapter.operations.len();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(error) = execute_loaded_verified_native_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("loaded second-step failure was ignored"));
+    };
+    let runner_error = error
+        .execution_failure()
+        .and_then(|failure| failure.runner_error());
+    if error.step_index() != 1
+        || error.completed_steps() != 1
+        || error.resume_index() != 1
+        || runner_error != Some(&FakeNativeRunnerError::Call)
+        || memory != fixture.first_memory
+        || output != fixture.first_output
+        || adapter.operations.len() != operations_after_load
+    {
+        return Err(String::from("loaded second-step rollback drifted"));
+    }
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|release| release.to_string())
 }

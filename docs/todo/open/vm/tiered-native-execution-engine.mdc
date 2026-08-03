@@ -306,9 +306,18 @@ baseline; native tiers are accelerators of identical observable behavior.
   guard miss returns the exact resume index/observation, and indexed failures
   preserve committed progress plus cleanup retry evidence. Rotate/output VM
   snapshots prove full completion, second-step guard resume, rollback, and
-  applied/guard release failure. No object fusion, persistent executable chain,
-  concrete FFI call shim, or direct interpreter handoff is added.
-- Remaining fused-region emission, persistent executable chaining, plus
+  applied/guard release failure.
+- `ReadyNativeExecutableSequence` now prederives every image and loads every
+  mapping before execution. It supports repeated loaded runs without new memory
+  operations,
+  rolls back partial loads in reverse, and releases all mappings while retaining
+  failed cleanup for retry. Complete chain identity is admitted before buffers
+  change. Seven cases cover reuse, cached guard miss, rollback, aggregate
+  release, cross-ISA rejection, and runner failure. The adapter owns unique
+  non-overlapping live mappings. No object fusion, direct branch chain, concrete
+  FFI shim, shared
+  loaded-mapping cache, or interpreter handoff is added.
+- Remaining fused-region emission, loaded-mapping cache/eviction, plus
   cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

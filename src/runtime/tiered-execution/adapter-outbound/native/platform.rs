@@ -137,6 +137,9 @@ pub trait NativeExecutableMemoryAdapter {
 
     /// Allocates one writable, non-executable mapping.
     ///
+    /// Every successful allocation must retain a unique mapping identity and a
+    /// non-overlapping address range until its matching release succeeds.
+    ///
     /// # Errors
     ///
     /// Returns the adapter's stable allocation failure.

@@ -92,12 +92,24 @@ type NativeExecutableAdapterExecutionResult<MemoryAdapter, Runner> =
         <Runner as NativeExecutableRunner>::Error,
     >;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 enum NativeExecutableCallFailure<RunnerError> {
     Binding(NativeExecutableInvocationBindingError),
     Completion(Box<VerifiedDirectInvocationError>),
     Runner(Box<RunnerError>),
 }
+
+/// Failure while executing against one already loaded exact mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeLoadedExecutionFailure<RunnerError> {
+    cause: NativeExecutableCallFailure<RunnerError>,
+}
+
+/// Result of binding, running, and admitting one already loaded executable.
+pub type NativeLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<NativeLoadedExecutionFailure<RunnerError>>,
+>;
 
 #[derive(Debug)]
 struct LoadedNativeExecution<'artifact, 'buffers> {
@@ -140,6 +152,48 @@ pub trait NativeExecutableRunner {
         &mut self,
         invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
     ) -> Result<i32, Self::Error>;
+}
+
+impl<RunnerError> NativeLoadedExecutionFailure<RunnerError> {
+    /// Returns ready-image binding failure, when identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            NativeExecutableCallFailure::Binding(error) => Some(*error),
+            NativeExecutableCallFailure::Completion(_)
+            | NativeExecutableCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns result-admission failure after the runner returned.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<&VerifiedDirectInvocationError> {
+        match &self.cause {
+            NativeExecutableCallFailure::Completion(error) => Some(error),
+            NativeExecutableCallFailure::Binding(_)
+            | NativeExecutableCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        self.cause.phase()
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            NativeExecutableCallFailure::Runner(error) => Some(error),
+            NativeExecutableCallFailure::Binding(_)
+            | NativeExecutableCallFailure::Completion(_) => None,
+        }
+    }
 }
 
 impl<RunnerError> NativeExecutableCallFailure<RunnerError> {
@@ -279,6 +333,29 @@ impl<MemoryError, RunnerError>
     }
 }
 
+impl<RunnerError: Display> Display
+    for NativeLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(
+            f,
+            "loaded native execution failed during {}: ",
+            self.phase()
+        )?;
+        match &self.cause {
+            NativeExecutableCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            NativeExecutableCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            NativeExecutableCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
 impl Display for NativeExecutableExecutionPhase {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(match self {
@@ -326,6 +403,28 @@ impl<MemoryError: Display, RunnerError: Display> Display
         }
         Ok(())
     }
+}
+
+/// Binds, runs, and admits one call against an already loaded executable.
+///
+/// Runner failure aborts and restores the complete current-step entry snapshot.
+/// Completion rejection performs the same restoration through the invocation
+/// contract. This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`NativeLoadedExecutionFailure`] for binding, runner, or completion
+/// failure.
+pub fn execute_loaded_verified_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyNativeExecutable,
+    prepared_call: PreparedVerifiedDirectInvocation<'_, '_>,
+) -> NativeLoadedExecutionResult<Runner::Error>
+where
+    Runner: NativeExecutableRunner,
+{
+    run_prepared(runner, executable, prepared_call)
+        .map_err(|cause| Box::new(NativeLoadedExecutionFailure { cause }))
 }
 
 /// Loads, binds, runs, admits, and releases one verified direct invocation.

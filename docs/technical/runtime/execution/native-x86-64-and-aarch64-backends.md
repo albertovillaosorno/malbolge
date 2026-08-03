@@ -240,11 +240,17 @@ one-step artifacts in order through the loader/runner transaction. Applied
 prefixes remain committed; a second-step guard miss resumes at index one with
 the exact VM observation, and runner/completion failure restores only the
 current step. Cleanup failure preserves applied or guard progress plus retry
-state. Its
-cache-aware form preserves pointer-identical
-hits, stages unique verified misses until complete success, and publishes no
-partial cache state after a late rejection. This is planning evidence, not a
-fused COFF object or executable call chain.
+state. Its cache-aware form preserves pointer-identical hits, stages unique
+verified misses until complete success, and publishes no partial cache state
+after a late rejection.
+
+A persistent executable sequence now loads every reviewed one-step image before
+execution and retains all ready mappings across repeated calls. Partial load
+failure cleans the ready prefix in reverse; aggregate release attempts every
+mapping and keeps failed ownership for retry. Complete image identity is checked
+before buffers change, so an x86-64 chain cannot execute an AArch64 plan. The
+memory adapter must provide unique, non-overlapping live allocations. This is
+not a fused COFF object, a direct branch chain, or a concrete foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

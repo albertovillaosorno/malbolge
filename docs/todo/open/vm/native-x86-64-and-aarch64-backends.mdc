@@ -138,11 +138,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   after full success. Safe sequence execution now runs each exact artifact in
   order, preserves applied prefixes, and returns exact second-step guard resume
   evidence. Indexed failures retain continuation and release-retry state; VM
-  snapshots cover completion, rollback, and applied/guard cleanup failure. This
-  does not fuse objects or provide a concrete foreign-call shim.
-  Remaining fused-region emission, persistent executable chaining,
-  executable-memory
-  integration, and instruction-cache behavior remain pending for this TODO.
+  snapshots cover completion, rollback, and applied/guard cleanup failure.
+  Persistent sequence ownership now preloads all exact mappings, reuses them
+  across calls, rolls back partial loads, and releases every mapping with retry
+  retention. Full chain identity is checked before buffer mutation; adapters own
+  unique non-overlapping live allocations. This does not fuse objects, branch
+  directly between mappings, or provide a concrete foreign-call shim.
+  Remaining fused-region emission, loaded-mapping cache/eviction, concrete
+  executable-memory integration, and instruction-cache implementation remain
+  pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

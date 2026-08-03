@@ -235,8 +235,22 @@ order. Prior `Applied` steps remain committed; a `GuardMiss` leaves its current
 step untouched and returns the exact resume index plus observation. Indexed
 failures retain committed-step count, continuation state, nested one-step error,
 and release retry evidence. Cached and uncached rotate/output plans match VM
-snapshots after one and two steps. Mappings are still loaded/released per step,
-and no concrete foreign-call shim or interpreter transfer is implemented.
+snapshots after one and two steps.
+
+`executable_sequence.rs` adds explicit persistent ownership for all mappings in
+one exact plan. It derives every load image before allocation, loads all
+mappings before execution, rolls back a partial prefix in reverse order, and
+retains
+aggregate cleanup failures for retry. Loaded sequence execution validates exact
+mapping count and complete image equality before borrowing caller buffers. The
+same chain can then execute repeatedly without new allocate/copy/protect/sync
+operations. Final release attempts every mapping and keeps only failed releases.
+The adapter must provide unique identities and non-overlapping ranges for all
+simultaneously live allocations. Tests cover uncached reuse, cached guard miss,
+partial-load cleanup, aggregate release, cross-ISA rejection, and runner
+rollback. Objects remain separate mappings; no direct inter-mapping jump, shared
+executable cache, concrete foreign-call shim, or interpreter transfer is
+implemented.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

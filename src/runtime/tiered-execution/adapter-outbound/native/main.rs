@@ -41,6 +41,7 @@ mod aarch64;
 mod abi;
 mod coff;
 mod direct;
+mod executable_sequence;
 mod invocation;
 mod lifecycle;
 mod loader;
@@ -115,6 +116,13 @@ pub use direct::{
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_rotate,
 };
+pub use executable_sequence::{
+    NativeExecutableSequenceLoadFailure, NativeExecutableSequenceLoadResult,
+    NativeExecutableSequenceReleaseFailure,
+    NativeExecutableSequenceReleaseResult, ReadyNativeExecutableSequence,
+    load_cached_verified_native_sequence, load_verified_native_sequence,
+    release_native_executable_sequence,
+};
 pub use invocation::{
     NativeExecutableInvocationBindingError, NativeRegionBuffers,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
@@ -146,12 +154,16 @@ pub use platform::{
 pub use runner::{
     NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
     NativeExecutableExecutionResult, NativeExecutableRunner,
-    execute_verified_native,
+    NativeLoadedExecutionFailure, NativeLoadedExecutionResult,
+    execute_loaded_verified_native, execute_verified_native,
 };
 pub use sequence_runner::{
-    NativeSequenceExecutionFailure, NativeSequenceExecutionOutcome,
-    NativeSequenceExecutionResult, execute_cached_verified_native_sequence,
-    execute_verified_native_sequence,
+    NativeLoadedSequenceAdmissionError, NativeLoadedSequenceExecutionFailure,
+    NativeLoadedSequenceExecutionResult, NativeSequenceExecutionFailure,
+    NativeSequenceExecutionOutcome, NativeSequenceExecutionResult,
+    execute_cached_verified_native_sequence,
+    execute_loaded_cached_verified_native_sequence,
+    execute_loaded_verified_native_sequence, execute_verified_native_sequence,
 };
 
 use crate::execution_cache::{

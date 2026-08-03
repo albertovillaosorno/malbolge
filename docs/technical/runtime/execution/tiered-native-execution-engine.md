@@ -406,9 +406,21 @@ resume index and entry observation, while step failure reports committed count,
 resume state, nested execution/preparation evidence, and retryable cleanup.
 Retained VM snapshots prove complete cached/uncached rotate-output execution,
 second-step guard resume, mutation rollback, and release failure after applied
-or guard outcomes. Executable mappings are still loaded and released per step;
-no
-unsafe call shim or direct interpreter-transfer implementation is implied.
+or guard outcomes.
+
+`ReadyNativeExecutableSequence` provides the first persistent executable-chain
+owner without fusing objects. It derives all load images before platform work,
+loads every mapping before the first call, and releases a partial ready prefix
+in reverse after a later load failure. Aggregate cleanup attempts every mapping
+and
+retains only failures for retry. Loaded execution first validates exact mapping
+count and complete load-image equality for every position, so cross-ISA or
+reordered chains fail before caller buffers change. One admitted chain can run
+repeatedly without further memory-adapter operations. The adapter contract owns
+unique mapping identities and non-overlapping live ranges. Seven deterministic
+cases bind reuse, cached guard resume, partial cleanup, aggregate release,
+prevalidation, and rollback. Mappings remain independent; no direct jumps,
+shared executable cache, unsafe call shim, or interpreter handoff is implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct
@@ -454,10 +466,11 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, persistent executable chaining, concrete interpreter
-handoff, executable-memory policy/foreign invocation, and durable native cache
-serialization/storage/eviction, cache-aware AOT/JIT policy beyond verified
-direct process-local reuse, and performance policy remain open. The
+Combined-region emission, a shared loaded-mapping cache with eviction,
+concrete interpreter handoff, executable-memory platform implementations and
+foreign invocation, durable native cache serialization/storage/eviction,
+cache-aware AOT/JIT policy beyond verified direct process-local reuse, and
+performance policy remain open. The
 interpreter remains the only normative execution authority and the guaranteed
 fallback.
 
