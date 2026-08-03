@@ -41,6 +41,7 @@ mod aarch64;
 mod abi;
 mod coff;
 mod direct;
+mod executable_cache;
 mod executable_sequence;
 mod invocation;
 mod lifecycle;
@@ -115,6 +116,17 @@ pub use direct::{
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_rotate,
+};
+pub use executable_cache::{
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheDisposition,
+    NativeExecutableSequenceCacheEntry,
+    NativeExecutableSequenceCacheInvalidationResult,
+    NativeExecutableSequenceCacheInvariantError,
+    NativeExecutableSequenceCacheLoadFailure,
+    NativeExecutableSequenceCacheLoadReleaseFailures,
+    NativeExecutableSequenceCacheLoadResult,
+    NativeExecutableSequenceCacheReleaseFailure,
+    NativeExecutableSequenceCacheReleaseResult, NativeExecutableSequenceKey,
 };
 pub use executable_sequence::{
     NativeExecutableSequenceLoadFailure, NativeExecutableSequenceLoadResult,

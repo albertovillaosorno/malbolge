@@ -419,8 +419,21 @@ reordered chains fail before caller buffers change. One admitted chain can run
 repeatedly without further memory-adapter operations. The adapter contract owns
 unique mapping identities and non-overlapping live ranges. Seven deterministic
 cases bind reuse, cached guard resume, partial cleanup, aggregate release,
-prevalidation, and rollback. Mappings remain independent; no direct jumps,
-shared executable cache, unsafe call shim, or interpreter handoff is implied.
+prevalidation, and rollback.
+
+`NativeExecutableSequenceCache` adds bounded process-local reuse above that
+owner. One positive capacity counts whole sequence entries. Exact identity is
+the ordered vector of complete artifact keys; a hit borrows the retained chain,
+preserves FIFO age, and performs no adapter operation. A miss loads completely
+before eviction. At capacity the oldest insertion is released before the new
+entry is published. Failed eviction removes the victim from cache authority,
+attempts candidate cleanup, and returns both release owners for retry. Exact
+invalidation and full drain also remove authority before cleanup and never hide
+failed mappings. Rust borrowing prevents mutation while a returned chain is in
+use. Six cases bind hit execution, non-refreshing FIFO, failed-load isolation,
+dual-owner cleanup, invalidation, and aggregate release. Mappings remain
+independent; no concurrent lease model, byte-weighted budget, durable executable
+store, direct jumps, unsafe call shim, or interpreter handoff is implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct
@@ -466,9 +479,9 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, a shared loaded-mapping cache with eviction,
-concrete interpreter handoff, executable-memory platform implementations and
-foreign invocation, durable native cache serialization/storage/eviction,
+Combined-region emission, concurrent executable leases, byte/mapping-weighted
+cache policy, concrete interpreter handoff, executable-memory platform
+implementations and foreign invocation, durable cache serialization/storage,
 cache-aware AOT/JIT policy beyond verified direct process-local reuse, and
 performance policy remain open. The
 interpreter remains the only normative execution authority and the guaranteed

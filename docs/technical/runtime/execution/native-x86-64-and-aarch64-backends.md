@@ -249,8 +249,16 @@ execution and retains all ready mappings across repeated calls. Partial load
 failure cleans the ready prefix in reverse; aggregate release attempts every
 mapping and keeps failed ownership for retry. Complete image identity is checked
 before buffers change, so an x86-64 chain cannot execute an AArch64 plan. The
-memory adapter must provide unique, non-overlapping live allocations. This is
-not a fused COFF object, a direct branch chain, or a concrete foreign-call shim.
+memory adapter must provide unique, non-overlapping live allocations.
+
+A bounded loaded-sequence FIFO now reuses exact ordered artifact-key chains on
+both ISAs. Hits neither refresh insertion age nor call the memory adapter.
+Candidates load before oldest-entry eviction; load failure preserves prior cache
+state, while release failure returns victim and candidate ownership for retry.
+Exact invalidation and full drain remove cache authority before cleanup. Six
+cases cover all of those paths. This is not a fused COFF object, a concurrent
+lease model, a byte-weighted executable budget, a direct branch chain, or a
+concrete foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

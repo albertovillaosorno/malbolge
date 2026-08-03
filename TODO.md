@@ -449,9 +449,25 @@ reverse order even after one failure and retains only still-owned mappings for
 retry. The adapter contract now requires unique mapping identities and
 non-overlapping live ranges. Seven deterministic cases prove reuse, cached guard
 resume, partial-load rollback, cleanup retention, all-mapping release, cross-ISA
-prevalidation, and current-step rollback. This still does not fuse COFF, jump
-directly between mappings, transfer into the interpreter, cache loaded mappings
-across owners, or implement the unsafe machine-code call shim.
+prevalidation, and current-step rollback.
+`NativeExecutableSequenceCache` now adds bounded caller-owned reuse across exact
+plans. Its positive capacity counts complete sequence entries, and its key is
+the ordered list of full `NativeArtifactKey` values. Exact hits borrow the
+retained chain without refreshing FIFO age or performing memory-adapter
+operations. A miss
+loads its candidate before eviction; load failure leaves existing entries
+unchanged. At capacity, the oldest insertion is released before publication. If
+that release fails, the victim is removed from cache authority, the candidate is
+also cleaned, and every still-owned mapping is returned for aggregate retry.
+Exact invalidation likewise removes authority before release, while
+`release_all` drains FIFO order and attempts every entry. The returned borrow
+prevents cache
+mutation while a chain is in use. Six deterministic cases prove hit execution,
+non-refreshing FIFO, failed-miss isolation, dual-owner eviction failure, exact
+invalidation retry, and aggregate cleanup. This still does not fuse COFF, jump
+directly between mappings, transfer into the interpreter, provide concurrent
+leases, budget by bytes/mappings, persist loaded state, or implement the unsafe
+machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -474,22 +490,22 @@ invalidation removes all regions sharing one complete OS/ISA/backend
 revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
-rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
-eviction, synchronization policy, fused-region emission, loaded-mapping cache
-and eviction, concrete interpreter handoff, the unsafe foreign-call boundary,
-and broader AOT/JIT performance policy remain open.
+rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
+persistence and automatic eviction, executable-cache capacity by bytes/mappings,
+concurrent leases, synchronization policy, fused-region emission, concrete
+interpreter handoff, the unsafe foreign-call boundary, and broader AOT/JIT
+performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
-relocation-free load images, persistent exact-plan executable ownership, and an
-untrusted cross-ISA bootstrap object boundary are implemented. Combined-region
-native fusion, shared loaded-mapping cache/eviction, concrete foreign
-invocation, durable cache serialization/storage/eviction, and wider tier
-orchestration
-remain open.
+relocation-free load images, persistent exact-plan executable ownership,
+bounded exact-sequence FIFO reuse, and an untrusted cross-ISA bootstrap object
+boundary are implemented. Combined-region native fusion, concurrent executable
+leases, byte/mapping-weighted eviction, concrete foreign invocation, durable
+cache serialization/storage, and wider tier orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
 

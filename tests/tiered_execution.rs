@@ -91,9 +91,11 @@ use execution_native::{
     NativeExecutableMappingId, NativeExecutableMappingReport,
     NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
     NativeExecutablePermission, NativeExecutableReleaseRequest,
-    NativeExecutableRunner, NativeInstructionSyncReport,
-    NativeInstructionSyncRequest, NativeLoadedSequenceAdmissionError,
-    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeExecutableRunner, NativeExecutableSequenceCache,
+    NativeExecutableSequenceCacheDisposition, NativeExecutableSequenceKey,
+    NativeInstructionSyncReport, NativeInstructionSyncRequest,
+    NativeLoadedSequenceAdmissionError, NativeRegionBuffers,
+    NativeRegionCallFrame, NativeRegionCallFrameError,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, NativeRegionStatus,
     NativeSequenceExecutionOutcome, NativeTerminationTag,
@@ -8462,4 +8464,373 @@ fn loaded_native_sequence_restores_failed_second_step() -> Result<(), String> {
     }
     release_native_executable_sequence(&mut adapter, sequence)
         .map_err(|release| release.to_string())
+}
+
+fn selected_sequence_prefix(
+    fixture: &NativeSequenceFixture,
+    isa: HostIsa,
+    steps: usize,
+) -> Result<VerifiedDirectSequencePlan, String> {
+    let programs = fixture
+        .programs
+        .get(..steps)
+        .ok_or_else(|| String::from("sequence prefix exceeds fixture"))?;
+    select_verified_direct_sequence(
+        programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_inserts_hits_and_executes() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(900)?,
+        native_executable_address(0x90_000)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let first_mappings = {
+        let entry = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if entry.disposition().is_hit()
+            || entry.disposition().evicted_key().is_some()
+            || entry.key().len() != 2
+        {
+            return Err(String::from("first loaded cache insertion drifted"));
+        }
+        entry
+            .sequence()
+            .executables()
+            .iter()
+            .map(|executable| executable.mapping().mapping_id())
+            .collect::<Vec<_>>()
+    };
+    let operations_after_insert = adapter.operations.len();
+    {
+        let entry = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        let hit_mappings = entry
+            .sequence()
+            .executables()
+            .iter()
+            .map(|executable| executable.mapping().mapping_id())
+            .collect::<Vec<_>>();
+        if entry.disposition() != &NativeExecutableSequenceCacheDisposition::Hit
+            || hit_mappings != first_mappings
+        {
+            return Err(String::from("exact loaded cache hit drifted"));
+        }
+        assert_loaded_sequence_application(&fixture, &plan, entry.sequence())?;
+    }
+    if adapter.operations.len() != operations_after_insert
+        || cache.len() != 1
+        || !cache.contains_plan(&plan)
+    {
+        return Err(String::from("loaded cache hit touched adapter state"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if cache.is_empty() && adapter.release_requests.len() == 2 {
+        Ok(())
+    } else {
+        Err(String::from("loaded cache final release drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_cache_fifo_hit_does_not_refresh() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let third_key = NativeExecutableSequenceKey::from_plan(&third);
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(901)?,
+        native_executable_address(0x91_000)?,
+    );
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+    }
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &second)
+            .map_err(|error| error.to_string())?;
+    }
+    let fifo_before_hit = cache.keys().cloned().collect::<Vec<_>>();
+    let operations_before_hit = adapter.operations.len();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+        if !hit.disposition().is_hit() {
+            return Err(String::from("FIFO reuse was not reported as hit"));
+        }
+    }
+    if cache.keys().cloned().collect::<Vec<_>>() != fifo_before_hit
+        || adapter.operations.len() != operations_before_hit
+    {
+        return Err(String::from(
+            "cache hit refreshed FIFO or touched adapter",
+        ));
+    }
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &third)
+            .map_err(|error| error.to_string())?;
+        if inserted.disposition().evicted_key() != Some(&first_key) {
+            return Err(String::from("FIFO eviction removed the wrong key"));
+        }
+    }
+    let final_keys = cache.keys().cloned().collect::<Vec<_>>();
+    if final_keys != [second_key, third_key]
+        || cache.contains_plan(&first)
+        || !cache.contains_plan(&second)
+        || !cache.contains_plan(&third)
+    {
+        return Err(String::from("FIFO cache state drifted after eviction"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_load_failure_preserves_entries()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(902)?,
+        native_executable_address(0x92_000)?,
+    );
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+    }
+    let release_count = adapter.release_requests.len();
+    let next_allocate = adapter.allocation_requests.len().saturating_add(1);
+    adapter.failure_at =
+        Some((FakeNativeAdapterOperation::Allocate, next_allocate));
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from(
+            "configured cache candidate load failure ignored",
+        ));
+    };
+    if error.requested_key() != &second_key
+        || error.load_failure().is_none()
+        || error.evicted_key().is_some()
+        || error.eviction_failure().is_some()
+        || error.invariant_error().is_some()
+        || error.candidate_cleanup_failure().is_some()
+        || cache.len() != 1
+        || !cache.contains_plan(&first)
+        || cache.contains_plan(&second)
+        || adapter.release_requests.len() != release_count
+    {
+        return Err(String::from(
+            "failed candidate mutated loaded cache state",
+        ));
+    }
+    adapter.failure_at = None;
+    let operations_before_hit = adapter.operations.len();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|failure| failure.to_string())?;
+        if !hit.disposition().is_hit() {
+            return Err(String::from("surviving cache entry was not reusable"));
+        }
+    }
+    if adapter.operations.len() != operations_before_hit {
+        return Err(String::from("surviving hit touched memory adapter"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_eviction_failure_retains_both_owners()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(903)?,
+        native_executable_address(0x93_000)?,
+    );
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+    }
+    adapter.release_failures_remaining = 3;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("configured FIFO eviction failure ignored"));
+    };
+    let eviction = error.eviction_failure().ok_or_else(|| {
+        String::from("FIFO eviction release ownership was lost")
+    })?;
+    let candidate = error
+        .candidate_cleanup_failure()
+        .ok_or_else(|| String::from("candidate cleanup ownership was lost"))?;
+    if error.requested_key() != &second_key
+        || error.evicted_key() != Some(&first_key)
+        || error.load_failure().is_some()
+        || error.invariant_error().is_some()
+        || eviction.failed_count() != 2
+        || candidate.failed_count() != 1
+        || !cache.is_empty()
+        || cache.contains_plan(&first)
+        || cache.contains_plan(&second)
+    {
+        return Err(String::from(
+            "failed eviction published invalid cache state",
+        ));
+    }
+    let retained = (*error).into_release_failures();
+    if retained.eviction_failure().is_none()
+        || retained.candidate_failure().is_none()
+    {
+        return Err(String::from("failed eviction retry owners were lost"));
+    }
+    retained
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if adapter.release_requests.len() == 7 {
+        Ok(())
+    } else {
+        Err(String::from("failed eviction retry count drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_cache_invalidation_retries_exact_mapping()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let mut artifact_cache = VerifiedDirectNativeCache::default();
+    let plan = select_cached_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::AArch64),
+        &mut artifact_cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let capacity = NonZeroUsize::new(1)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(904)?,
+        native_executable_address(0x94_000)?,
+    );
+    {
+        let entry = cache
+            .ensure_cached_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if entry.key() != &NativeExecutableSequenceKey::from_cached_plan(&plan)
+        {
+            return Err(String::from("cached loaded sequence key drifted"));
+        }
+    }
+    adapter.release_failure_at =
+        Some(adapter.release_attempts.saturating_add(1));
+    let Err(failure) = cache.invalidate_cached_plan(&mut adapter, &plan) else {
+        return Err(String::from(
+            "configured invalidation release failure ignored",
+        ));
+    };
+    if failure.failed_count() != 1
+        || failure.attempted_count() != 2
+        || cache.contains_cached_plan(&plan)
+        || !cache.is_empty()
+    {
+        return Err(String::from(
+            "failed invalidation retained cache authority",
+        ));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if cache
+        .invalidate_cached_plan(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?
+    {
+        Err(String::from("missing invalidation reported removal"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn executable_sequence_cache_release_all_aggregates_failures()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("cache capacity missing"))?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(905)?,
+        native_executable_address(0x95_000)?,
+    );
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+    }
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &second)
+            .map_err(|error| error.to_string())?;
+    }
+    adapter.release_failures_remaining = 2;
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from("configured cache release failures ignored"));
+    };
+    if failure.attempted_entries() != 2
+        || failure.failed_entries() != 2
+        || failure.released_entries() != 0
+        || failure.retained_mappings() != 2
+        || failure.failures().len() != 2
+        || !cache.is_empty()
+        || adapter.release_requests.len() != 3
+    {
+        return Err(String::from("cache release aggregation evidence drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if adapter.release_requests.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("cache release aggregate retry drifted"))
+    }
 }

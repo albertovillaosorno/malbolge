@@ -248,9 +248,21 @@ operations. Final release attempts every mapping and keeps only failed releases.
 The adapter must provide unique identities and non-overlapping ranges for all
 simultaneously live allocations. Tests cover uncached reuse, cached guard miss,
 partial-load cleanup, aggregate release, cross-ISA rejection, and runner
-rollback. Objects remain separate mappings; no direct inter-mapping jump, shared
-executable cache, concrete foreign-call shim, or interpreter transfer is
-implemented.
+rollback.
+
+`executable_cache.rs` adds a positive-capacity caller-owned FIFO over complete
+loaded sequences. Exact identity is the ordered list of full artifact keys. Hits
+borrow the same mappings, preserve insertion age, and perform no adapter work.
+Misses load before eviction, so load failure leaves the cache unchanged. At
+capacity the oldest insertion is released before publication; failed eviction
+removes cache authority and returns both victim and candidate cleanup ownership.
+Exact invalidation removes authority before release, and `release_all()` drains
+and attempts every entry. Borrowed entries statically prevent cache mutation
+while in use. Six tests cover hit execution, FIFO behavior, miss isolation,
+dual-owner cleanup, invalidation retry, and aggregate release. Objects remain
+separate mappings; there are no concurrent leases, byte-weighted budgets,
+durable loaded state, direct inter-mapping jumps, concrete foreign-call shim, or
+interpreter transfer.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

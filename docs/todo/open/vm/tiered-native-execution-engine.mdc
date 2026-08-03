@@ -314,11 +314,18 @@ baseline; native tiers are accelerators of identical observable behavior.
   failed cleanup for retry. Complete chain identity is admitted before buffers
   change. Seven cases cover reuse, cached guard miss, rollback, aggregate
   release, cross-ISA rejection, and runner failure. The adapter owns unique
-  non-overlapping live mappings. No object fusion, direct branch chain, concrete
-  FFI shim, shared
-  loaded-mapping cache, or interpreter handoff is added.
-- Remaining fused-region emission, loaded-mapping cache/eviction, plus
-  cache-aware AOT/JIT
+  non-overlapping live mappings.
+- A positive-capacity `NativeExecutableSequenceCache` now keys exact ordered
+  artifact lists, borrows hits without FIFO refresh or adapter work, and loads
+  before eviction. It removes authority before invalidation/full-drain cleanup.
+  Failed
+  eviction retains victim and candidate ownership for retry. Six cases cover hit
+  execution, FIFO order, failed-load isolation, dual cleanup, invalidation, and
+  aggregate release. No concurrent leases, byte/mapping-weighted capacity,
+  durable executable store, object fusion, direct branch chain, concrete FFI
+  shim, or interpreter handoff is added.
+- Remaining fused-region emission, concurrent executable leasing, weighted cache
+  policy, plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.
