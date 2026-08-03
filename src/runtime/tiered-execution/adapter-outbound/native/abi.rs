@@ -15,7 +15,8 @@
 // - Allows:
 //   - Inputs: borrowed guest buffers and exact normative observations.
 //   - Outputs: layout-stable call frames, status values, and observations.
-//   - Side effects: borrowed buffer mutation only by a future native invoker.
+//   - Side effects: borrowed buffer mutation by a future native invoker or
+//   - invocation-contract rollback.
 // - Split-When:
 //   - Executable-memory ownership or foreign-call execution gains policy.
 // - Merge-When:
@@ -355,6 +356,31 @@ impl NativeRegionState {
     pub const fn termination_tag(&self) -> u8 {
         self.termination
     }
+
+    pub(super) fn with_observation(
+        mut self,
+        observation: ProfileMachineObservation,
+    ) -> Result<Self, NativeRegionCallFrameError> {
+        let input_consumed = u64::try_from(observation.input_consumed)
+            .map_err(|_error| NativeRegionCallFrameError::LengthOverflow)?;
+        let output_len = u64::try_from(observation.output_len)
+            .map_err(|_error| NativeRegionCallFrameError::LengthOverflow)?;
+        if input_consumed > self.input_len {
+            return Err(NativeRegionCallFrameError::InputConsumed);
+        }
+        if output_len > self.output_capacity {
+            return Err(NativeRegionCallFrameError::OutputLength);
+        }
+        self.input_consumed = input_consumed;
+        self.output_len = output_len;
+        self.accumulator = observation.registers.accumulator;
+        self.code_pointer = observation.registers.code_pointer;
+        self.data_pointer = observation.registers.data_pointer;
+        self.termination =
+            NativeTerminationTag::from_termination(observation.termination)
+                .code();
+        Ok(self)
+    }
 }
 
 /// Failure while constructing a safe borrowed native call frame.
@@ -432,6 +458,10 @@ impl<'buffers> NativeRegionCallFrame<'buffers> {
         self.memory
     }
 
+    pub(super) const fn memory_mut_for_invocation(&mut self) -> &mut [u32] {
+        self.memory
+    }
+
     /// Creates one native call frame over caller-owned guest buffers.
     ///
     /// # Errors
@@ -491,6 +521,10 @@ impl<'buffers> NativeRegionCallFrame<'buffers> {
         self.output
     }
 
+    pub(super) const fn output_mut_for_invocation(&mut self) -> &mut [u8] {
+        self.output
+    }
+
     /// Returns the committed output prefix described by the current ABI state.
     ///
     /// # Errors
@@ -503,6 +537,13 @@ impl<'buffers> NativeRegionCallFrame<'buffers> {
         self.output
             .get(..output_len)
             .ok_or(NativeRegionObservationError::OutputLength)
+    }
+
+    pub(super) const fn replace_state_for_invocation(
+        &mut self,
+        state: NativeRegionState,
+    ) {
+        self.state = state;
     }
 
     /// Returns the exact ABI state value owned by this frame.

@@ -366,7 +366,14 @@ admission. Native ABI revision 1 now has one Rust `repr(C)` authority with an
 80-byte layout and exact offsets matching both reviewed ISA template families.
 Typed status and termination decoders reject unknown values, while a borrowed
 `NativeRegionCallFrame` validates capacities and cursor bounds before exposing
-a raw state pointer. It prepares no executable memory and invokes no code.
+a raw state pointer. `PreparedNativeRegionInvocation` now validates one
+canonical
+effect against complete memory, input, and output evidence, snapshots every
+caller-visible surface, and admits only an exact `Applied` transition or a
+byte-preserving `GuardMiss`. Unknown status, unexpected invalid arguments,
+foreign topology changes, and partial memory/output/state commits fail closed.
+Every rejected completion restores the complete entry snapshot before return.
+It still prepares no executable memory and invokes no code.
 Complete normative `ProfileStepTrace` evidence can now be projected into exact
 one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
 `select_verified_direct_sequence()` verifies one canonical profile, exact
@@ -407,8 +414,8 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the cache. Persistence, automatic
 eviction, synchronization policy, fused-region emission, executable
-chaining/invocation, mid-sequence deoptimization, and broader AOT/JIT
-performance policy remain open.
+loading and the unsafe foreign-call boundary, mid-sequence deoptimization, and
+broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
@@ -416,10 +423,8 @@ identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans, and an untrusted
 cross-ISA bootstrap object boundary are implemented. Combined-region native
-executable-memory integration,
-durable cache serialization/storage/eviction, and wider tier orchestration
-remain
-open.
+executable loading/invocation, durable cache serialization/storage/eviction,
+and wider tier orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
 

@@ -155,8 +155,15 @@ tested offsets matching the x86-64 and AArch64 templates from byte 0 through
 the termination tag at byte 76. Typed applied, guard-miss, invalid-argument,
 and termination values fail closed on unknown foreign integers. A borrowed
 `NativeRegionCallFrame` validates buffer capacities and cursor bounds before
-exposing a raw state pointer. This establishes the call boundary only; no
-linking, executable-memory allocation, or foreign invocation is added.
+exposing a raw state pointer. `native/invocation.rs` now surrounds that pointer
+with an exact one-effect contract. Preparation validates the IR shape, memory
+footprint, live-ins, input/EOF claim, output movement, and memory-write
+before-values while snapshotting complete state, memory, and output surfaces.
+Completion admits only the exact IR-derived `Applied` result or a fully atomic
+`GuardMiss`; unknown status, unexpected `InvalidArgument`, topology drift, and
+partial commits fail closed. Every rejected completion restores the complete
+entry snapshot. This still adds no linking, executable-memory
+allocation, or foreign invocation.
 
 The next reviewed template is `direct-initial-halt`. Admission requires an exact
 one-effect IR: zero entry registers/input/output counters, no input/output

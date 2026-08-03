@@ -41,6 +41,17 @@ input, and output slices, rejects out-of-bounds cursors, and reconstructs an
 exact normative observation after a future call. It does not allocate
 executable memory, link objects, or invoke machine code.
 
+`invocation.rs` owns the safe contract around one future foreign entry call.
+`PreparedNativeRegionInvocation` requires one canonical one-effect program,
+checks exact memory footprint, live-ins, input/EOF evidence, output movement,
+and every memory-write before-value, then snapshots the full ABI state, memory,
+and output surfaces. Completion admits `Applied` only when the resulting state,
+memory, and output exactly equal the IR-derived transition. `GuardMiss` must
+preserve every snapshot byte-for-byte; unknown status, unexpected
+`InvalidArgument`, topology drift, and partial commits fail closed. Every
+rejected completion restores the complete entry snapshot. The module
+exposes a raw state pointer but owns no loader, executable memory, or call site.
+
 The generated function has a two-phase shape. It first validates its local ABI
 state, exact entry observation, expected input bytes/EOF, memory live-ins, first
 values of every written cell, and output capacity. Only after every local guard
@@ -206,10 +217,10 @@ outstanding
 `Arc` plans valid; reinsertion produces the same keys/bytes under new
 allocations.
 Unrelated regions/targets, interpreter selection, and profile failures remain
-unchanged. There is no automatic eviction or revocation. Persistence, eviction
-policy, synchronization policy, linking, executable memory, and invocation
-remain
-outside; `Arc` supplies ownership only, not concurrent execution.
+unchanged. There is no automatic eviction or revocation. Persistence,
+eviction policy, synchronization policy, linking,
+executable memory, and the unsafe foreign-call boundary remain outside; `Arc`
+supplies ownership only, not concurrent execution.
 
 The state-applying emitters and semantic verifiers also check the derived region
 footprint against the profile capacity embedded in IR. Every memory-backed

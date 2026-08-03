@@ -194,8 +194,13 @@ The native call-frame ABI now has a format-neutral Rust authority in
 by both encoders, including offsets 0, 8, 16, 24, 32, 40, 48, 56, 64, 68,
 72, and 76. Typed status and termination decoders reject unknown values, and
 a borrowed call frame validates capacities before yielding a raw pointer for
-future invocation. This is ABI evidence only; no linker, executable-memory
-owner, or instruction-cache synchronization policy is introduced.
+future invocation. `PreparedNativeRegionInvocation` now derives the only valid
+one-effect exit from portable IR, snapshots complete state/memory/output, and
+admits only exact application or a mutation-free guard miss. Unknown status,
+unexpected invalid arguments, topology drift, and partial commits fail closed.
+Every rejected completion restores the complete entry snapshot. This remains
+call-contract evidence only; no linker, executable-memory owner,
+foreign call, or instruction-cache synchronization policy is introduced.
 
 The first multistep planner composes already verified one-step artifacts without
 changing either ISA encoder. Complete VM traces are projected to one-step IR,
@@ -211,10 +216,10 @@ This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
 `UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
 remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
-jump-data, rotate, crazy, input, and output emitters/verifiers are implemented
-for both ISAs; fused-region emission, executable chaining,
-executable-memory handling, calling/runtime integration, and instruction-cache
-synchronization remain unimplemented.
+jump-data, rotate, crazy, input, and output emitters/verifiers are
+implemented for both ISAs; fused-region emission,
+executable loading, the unsafe foreign-call boundary, runtime integration, and
+instruction-cache synchronization remain unimplemented.
 
 ## Invariants
 

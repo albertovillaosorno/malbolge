@@ -245,8 +245,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   call frame and every 64-bit-host field offset match the reviewed x86-64
   and AArch64 templates. Typed status/termination decoding rejects unknown
   values, and `NativeRegionCallFrame` binds pointers to borrowed slices while
-  rejecting invalid capacities and cursors. No linking, executable memory,
-  or foreign invocation is added.
+  rejecting invalid capacities and cursors.
+- `PreparedNativeRegionInvocation` now validates one canonical effect against
+  exact caller memory, live-ins, input/EOF, output movement, and memory-write
+  before-values. It snapshots complete ABI state, memory, and output, then
+  admits only the exact IR-derived `Applied` result or a mutation-free
+  `GuardMiss`. Unknown status, unexpected invalid arguments, topology drift,
+  and partial commits fail closed. Every rejected completion restores the
+  complete entry snapshot. No linking, executable memory, or foreign
+  invocation is added.
 - `RegionEffectProgram::from_profile_step_trace()` now preserves complete
   fetch/data/encryption evidence as sorted one-step live-ins, while
   `select_verified_direct_sequence()` atomically publishes only a non-empty,

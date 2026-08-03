@@ -83,8 +83,10 @@ use execution_native::{
     NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
     NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
     NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
-    NativeRegionCallFrame, NativeRegionCallFrameError, NativeRegionStatus,
-    NativeTerminationTag, PreflightedExecutionTier,
+    NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    NativeRegionMutationSurface, NativeRegionStatus, NativeTerminationTag,
+    PreflightedExecutionTier, PreparedNativeRegionInvocation,
     UntrustedNativeObjectArtifact, VerifiedDirectNativeCache,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
@@ -5466,5 +5468,364 @@ fn native_region_call_frame_rejects_out_of_bounds_counters()
         Ok(())
     } else {
         Err(String::from("invalid native output length admitted"))
+    }
+}
+
+fn native_invocation_output_program() -> RegionEffectProgram {
+    let before = ProfileMachineObservation {
+        input_consumed: 0,
+        output_len: 1,
+        registers: ProfileRegisters {
+            accumulator: 0x0000_00a8,
+            code_pointer: 0,
+            data_pointer: 1,
+        },
+        termination: None,
+    };
+    let after = ProfileMachineObservation {
+        output_len: 2,
+        registers: ProfileRegisters {
+            code_pointer: 1,
+            data_pointer: 2,
+            ..before.registers
+        },
+        ..before
+    };
+    RegionEffectProgram {
+        effects: vec![EffectOp {
+            after,
+            before,
+            input: None,
+            memory_delta: ProfileMemoryDelta {
+                data: None,
+                encryption: Some(ProfileMemoryWrite {
+                    address: 0,
+                    after: 66,
+                    before: 65,
+                }),
+            },
+            output: Some(0xa8),
+        }],
+        format_version: EFFECT_IR_VERSION,
+        memory_live_ins: vec![MemoryLiveIn { address: 0, value: 65 }],
+        outcome: RunOutcome::BudgetExhausted { steps: 1 },
+        profile_fingerprint: String::from(
+            "malbolge-profile-v1:sha256:native-invocation-output",
+        ),
+        profile_id: String::from("malbolge-2026.2"),
+        profile_requirement: current_profile_requirement(),
+        step_budget: 1,
+    }
+}
+
+#[test]
+fn native_region_invocation_admits_atomic_guard_miss() -> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome = invocation
+        .complete(NativeRegionStatus::GuardMiss.code())
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::GuardMiss
+        && memory == [65, 10, 20]
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("atomic native guard miss changed state"))
+    }
+}
+
+#[test]
+fn native_region_invocation_admits_exact_applied_effect() -> Result<(), String>
+{
+    let program = native_invocation_output_program();
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("native fixture has no effect"))?
+        .after;
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    if invocation.expected_observation() != expected
+        || invocation.memory() != [65, 10, 20]
+        || invocation.input() != input
+        || invocation.output() != [0x10, 0, 0]
+    {
+        return Err(String::from("prepared native invocation changed entry"));
+    }
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| error.to_string())?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == [66, 10, 20]
+        && output == [0x10, 0xa8, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("exact native application was not admitted"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_and_rolls_back_applied_drift()
+-> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    invocation.apply_expected_for_test();
+    if !invocation.write_memory_for_test(0, 99) {
+        return Err(String::from("native mutation fixture address is absent"));
+    }
+    let result = invocation.complete(NativeRegionStatus::Applied.code());
+    if matches!(
+        result,
+        Err(NativeRegionInvocationError::AppliedMemory {
+            address: 0,
+            expected: 66,
+            observed: 99,
+        })
+    ) && memory == [65, 10, 20]
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("applied native drift was not rolled back"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_incomplete_applied_state()
+-> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    if matches!(
+        invocation.complete(NativeRegionStatus::Applied.code()),
+        Err(NativeRegionInvocationError::AppliedObservation)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("incomplete native application was admitted"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_invalid_argument_status()
+-> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    if matches!(
+        invocation.complete(NativeRegionStatus::InvalidArgument.code()),
+        Err(NativeRegionInvocationError::InvalidArgument)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("invalid-argument status was admitted"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_non_applied_mutation() -> Result<(), String>
+{
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    if !invocation.write_memory_for_test(0, 99) {
+        return Err(String::from("native mutation fixture address is absent"));
+    }
+    let result = invocation.complete(NativeRegionStatus::GuardMiss.code());
+    if matches!(
+        result,
+        Err(NativeRegionInvocationError::NonAppliedMutation {
+            status: NativeRegionStatus::GuardMiss,
+            surface: NativeRegionMutationSurface::Memory,
+        })
+    ) && memory == [65, 10, 20]
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "native guard-miss mutation was not rolled back",
+        ))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_unknown_status() -> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| error.to_string())?;
+    if !invocation.write_memory_for_test(0, 99) {
+        return Err(String::from("native mutation fixture address is absent"));
+    }
+    if matches!(
+        invocation.complete(9),
+        Err(NativeRegionInvocationError::Status(error)) if error.code() == 9
+    ) && memory == [65, 10, 20]
+        && output == [0x10, 0, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("unknown native status was not rolled back"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_invalid_live_in() -> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [64u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedNativeRegionInvocation::new(
+            &program,
+            &mut memory,
+            &input,
+            &mut output,
+        ),
+        Err(NativeRegionInvocationError::EntryMemory {
+            address: 0,
+            expected: 65,
+            observed: 64,
+        })
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("invalid native live-in was admitted"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_invalid_output_transition()
+-> Result<(), String> {
+    let mut program = native_invocation_output_program();
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("native fixture has no effect"))?;
+    effect.after.output_len = 3;
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedNativeRegionInvocation::new(
+            &program,
+            &mut memory,
+            &input,
+            &mut output,
+        ),
+        Err(NativeRegionInvocationError::OutputTransition)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "invalid native output transition was admitted",
+        ))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_non_unit_program() -> Result<(), String> {
+    let mut program = native_invocation_output_program();
+    program.step_budget = 2;
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedNativeRegionInvocation::new(
+            &program,
+            &mut memory,
+            &input,
+            &mut output,
+        ),
+        Err(NativeRegionInvocationError::ProgramShape)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("non-unit native program was admitted"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_short_memory() -> Result<(), String> {
+    let program = native_invocation_output_program();
+    let mut memory = [65u32, 10];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedNativeRegionInvocation::new(
+            &program,
+            &mut memory,
+            &input,
+            &mut output,
+        ),
+        Err(NativeRegionInvocationError::MemoryCapacity {
+            available: 2,
+            required: 3,
+        })
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("short native memory was admitted"))
     }
 }

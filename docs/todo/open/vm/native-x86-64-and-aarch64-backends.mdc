@@ -98,7 +98,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder
   families; typed status/termination values and borrowed-buffer construction
-  fail closed. This does not link, allocate, invoke, or synchronize code.
+  fail closed. `PreparedNativeRegionInvocation` now validates one exact effect,
+  snapshots complete state/memory/output, and admits only exact application or
+  a mutation-free guard miss. Unknown status, unexpected invalid arguments,
+  topology drift, and partial commits fail closed. Every rejected completion
+  restores the complete entry snapshot. This does not link, allocate,
+  invoke, or synchronize code.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
   rotate/output case selects reviewed artifacts on both ISAs, while hidden
