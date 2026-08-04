@@ -437,6 +437,18 @@ report the failing step, committed-step count, continuation observation, and
 retryable release state. VM snapshots after one and two rotate/output steps
 prove uncached and cached completion, second-step guard resume, second-step
 mutation rollback, and both applied/guard cleanup failures.
+`NativeInterpreterContinuation` now converts admitted cached, uncached, loaded,
+or ephemeral sequence outcomes/failures into one immutable semantic handoff.
+It validates complete-plan progress and rejects forged final counts, resume
+indices,
+and observations, and retains the full ordered artifact key plus the exact
+remaining artifact-key suffix and cloned one-step programs. Guard misses retain
+a `GuardMiss` reason; indexed failures retain `ExecutionFailure`. Completed
+outcomes and terminal cleanup failures produce no continuation because no
+semantic work remains. Eight deterministic cases cover both plan forms, both
+execution ownership modes, failure and guard paths, malformed public outcomes,
+and terminal cleanup. This object does not invoke the interpreter or transfer
+buffers; those scheduler and runtime integration steps remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
@@ -491,9 +503,9 @@ and the failure reports limits, usage, evicted keys, and blocking retired keys.
 Seven deterministic cases cover pointer-identical hits across threads, weighted
 lease blockage, mixed retire/release eviction, two-lease invalidation,
 lease-aware full drain, insertion cleanup retry, and aggregate reconciliation
-retry. This still does not fuse COFF, jump directly between mappings, transfer
-into the interpreter, persist loaded state, or implement the unsafe machine-code
-call shim.
+retry. This still does not fuse COFF, jump directly between mappings, invoke
+an interpreter consumer, persist loaded state, or implement the unsafe
+machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -518,15 +530,17 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
 persistence and automatic eviction, executable-cache synchronization policy,
-fused-region emission, concrete interpreter handoff, the unsafe foreign-call
-boundary, and broader AOT/JIT performance policy remain open.
+fused-region emission, interpreter continuation consumption/state transfer, the
+unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
+open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
-relocation-free load images, persistent exact-plan executable ownership,
+validated semantic interpreter continuations, relocation-free load images,
+persistent exact-plan executable ownership,
 entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
 limit reconfiguration, shared immutable executable leases with explicit retired
 reconciliation, and an untrusted cross-ISA bootstrap object boundary are

@@ -307,6 +307,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   preserve committed progress plus cleanup retry evidence. Rotate/output VM
   snapshots prove full completion, second-step guard resume, rollback, and
   applied/guard release failure.
+- `NativeInterpreterContinuation` now validates native outcome/failure evidence
+  against the complete cached or uncached plan and publishes an immutable
+  semantic suffix independent of executable mappings. Complete/suffix artifact
+  keys, remaining one-step programs, resume observation, expected exit/outcome,
+  and guard/failure reason remain explicit. Constructors cover ephemeral and
+  loaded failures. Forged counts, indices, observations, and progress fail
+  closed; completed outcomes and terminal cleanup return no continuation. Eight
+  cases cover every constructor family. Interpreter invocation, mutable-buffer
+  transfer, and scheduling policy remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
@@ -343,7 +352,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   usage, removals, and blockers. Seven cases cover cross-thread sharing,
   weighted blockage, mixed retire/release, final-owner cleanup, lease-aware
   drain, and both retry paths. Durable/cross-process leasing, object fusion,
-  direct branch chains, a concrete FFI shim, and interpreter handoff remain out.
+  direct branch chains, a concrete FFI shim, and continuation consumption remain
+  out.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

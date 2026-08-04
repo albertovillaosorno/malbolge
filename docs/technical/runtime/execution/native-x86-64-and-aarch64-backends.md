@@ -244,6 +244,15 @@ state. Its cache-aware form preserves pointer-identical hits, stages unique
 verified misses until complete success, and publishes no partial cache state
 after a late rejection.
 
+An immutable interpreter-continuation object now validates this resume evidence
+against the complete cached or uncached plan. It retains exact complete/suffix
+artifact keys, the cloned remaining one-step IR, resume observation, expected
+exit/outcome, and a guard/failure reason. Constructors cover ephemeral and
+preloaded execution failures; completed plans and terminal cleanup failures
+produce no remaining work. Forged counts, indices, and observations fail closed.
+Eight cases bind both ISAs and every constructor family. This does not yet call
+the interpreter or transfer mutable machine buffers.
+
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
 failure cleans the ready prefix in reverse; aggregate release attempts every

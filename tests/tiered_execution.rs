@@ -101,8 +101,9 @@ use execution_native::{
     NativeExecutableSequenceLeaseCacheDisposition,
     NativeExecutableSequenceLeaseCacheInvalidation,
     NativeInstructionSyncReport, NativeInstructionSyncRequest,
-    NativeLoadedSequenceAdmissionError, NativeRegionBuffers,
-    NativeRegionCallFrame, NativeRegionCallFrameError,
+    NativeInterpreterContinuation, NativeInterpreterContinuationError,
+    NativeInterpreterContinuationReason, NativeLoadedSequenceAdmissionError,
+    NativeRegionBuffers, NativeRegionCallFrame, NativeRegionCallFrameError,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, NativeRegionStatus,
     NativeSequenceExecutionOutcome, NativeTerminationTag,
@@ -257,6 +258,14 @@ struct NativeSequenceFixture {
     initial_output: Vec<u8>,
     input: Vec<u8>,
     programs: Vec<RegionEffectProgram>,
+}
+
+struct SecondStepContinuationExpectation<'plan> {
+    expected_exit: ProfileMachineObservation,
+    expected_outcome: RunOutcome,
+    plan_key: &'plan NativeExecutableSequenceKey,
+    programs: &'plan [RegionEffectProgram],
+    reason: NativeInterpreterContinuationReason,
 }
 
 impl FakeNativeExecutableRunner {
@@ -9840,4 +9849,431 @@ fn executable_sequence_lease_cache_reconciliation_aggregates_failures()
     } else {
         Err(String::from("aggregate reconciliation retry drifted"))
     }
+}
+
+fn native_executable_adapter(
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<FakeNativeExecutableAdapter, String> {
+    Ok(FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    ))
+}
+
+fn second_sequence_entry(
+    programs: &[RegionEffectProgram],
+) -> Result<ProfileMachineObservation, String> {
+    programs
+        .get(1)
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("second continuation entry missing"))
+}
+
+fn assert_second_step_continuation(
+    continuation: &NativeInterpreterContinuation,
+    expected: &SecondStepContinuationExpectation<'_>,
+) -> Result<(), String> {
+    let remaining_key = expected
+        .plan_key
+        .suffix(1)
+        .ok_or_else(|| String::from("second continuation key missing"))?;
+    let remaining_programs = expected
+        .programs
+        .get(1..)
+        .ok_or_else(|| String::from("second continuation suffix missing"))?;
+    let observation = second_sequence_entry(expected.programs)?;
+    if continuation.completed_steps() == 1
+        && continuation.resume_index() == 1
+        && continuation.remaining_steps() == remaining_programs.len()
+        && continuation.observation() == observation
+        && continuation.expected_exit() == expected.expected_exit
+        && continuation.expected_outcome() == expected.expected_outcome
+        && continuation.reason() == expected.reason
+        && continuation.plan_key() == expected.plan_key
+        && continuation.remaining_key() == &remaining_key
+        && continuation.remaining_programs() == remaining_programs
+    {
+        Ok(())
+    } else {
+        Err(String::from("interpreter continuation suffix drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_uncached_guard_miss()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let plan_key = NativeExecutableSequenceKey::from_plan(&plan);
+    let mut adapter = native_executable_adapter(930, 0xb0_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let outcome = execute_verified_native_sequence(
+        &mut adapter,
+        &mut runner,
+        &plan,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let continuation =
+        NativeInterpreterContinuation::from_outcome(&plan, outcome)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("guard miss produced no continuation")
+            })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::GuardMiss,
+        },
+    )
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_cached_loaded_guard_miss()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let mut artifact_cache = VerifiedDirectNativeCache::default();
+    let plan = select_cached_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::AArch64),
+        &mut artifact_cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let plan_key = NativeExecutableSequenceKey::from_cached_plan(&plan);
+    let mut adapter = native_executable_adapter(931, 0xb1_000)?;
+    let sequence = load_cached_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let outcome = execute_loaded_cached_verified_native_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let continuation =
+        NativeInterpreterContinuation::from_cached_outcome(&plan, outcome)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("cached guard miss produced no continuation")
+            })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::GuardMiss,
+        },
+    )?;
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn native_interpreter_continuation_rejects_forged_outcomes()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let bad_steps = NativeInterpreterContinuation::from_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::Applied {
+            observation: plan.exit(),
+            steps: 1,
+        },
+    );
+    let bad_exit = NativeInterpreterContinuation::from_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::Applied {
+            observation: plan.entry(),
+            steps: 2,
+        },
+    );
+    let bad_index = NativeInterpreterContinuation::from_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::GuardMiss {
+            index: 2,
+            observation: plan.exit(),
+        },
+    );
+    let bad_observation = NativeInterpreterContinuation::from_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::GuardMiss {
+            index: 1,
+            observation: plan.entry(),
+        },
+    );
+    if bad_steps
+        == Err(NativeInterpreterContinuationError::AppliedSteps {
+            expected: 2,
+            observed: 1,
+        })
+        && bad_exit
+            == Err(NativeInterpreterContinuationError::AppliedObservation)
+        && bad_index
+            == Err(NativeInterpreterContinuationError::ResumeIndex {
+                observed: 2,
+                steps: 2,
+            })
+        && bad_observation
+            == Err(NativeInterpreterContinuationError::ResumeObservation {
+                index: 1,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("forged continuation outcome was admitted"))
+    }
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_sequence_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let plan_key = NativeExecutableSequenceKey::from_plan(&plan);
+    let mut adapter = native_executable_adapter(932, 0xb2_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_verified_native_sequence(
+        &mut adapter,
+        &mut runner,
+        &plan,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from(
+            "configured continuation failure was ignored",
+        ));
+    };
+    let continuation =
+        NativeInterpreterContinuation::from_failure(&plan, &failure)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("sequence failure produced no continuation")
+            })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::ExecutionFailure,
+        },
+    )
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_loaded_failure() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let plan_key = NativeExecutableSequenceKey::from_plan(&plan);
+    let mut adapter = native_executable_adapter(933, 0xb3_000)?;
+    let sequence = load_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_loaded_verified_native_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("configured loaded failure was ignored"));
+    };
+    let continuation =
+        NativeInterpreterContinuation::from_loaded_failure(&plan, &failure)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("loaded failure produced no continuation")
+            })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::ExecutionFailure,
+        },
+    )?;
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_cached_failure() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let mut artifact_cache = VerifiedDirectNativeCache::default();
+    let plan = select_cached_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        &mut artifact_cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let plan_key = NativeExecutableSequenceKey::from_cached_plan(&plan);
+    let mut adapter = native_executable_adapter(934, 0xb4_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_cached_verified_native_sequence(
+        &mut adapter,
+        &mut runner,
+        &plan,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("configured cached failure was ignored"));
+    };
+    let continuation =
+        NativeInterpreterContinuation::from_cached_failure(&plan, &failure)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("cached failure produced no continuation")
+            })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::ExecutionFailure,
+        },
+    )
+}
+
+#[test]
+fn native_interpreter_continuation_tracks_cached_loaded_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let mut artifact_cache = VerifiedDirectNativeCache::default();
+    let plan = select_cached_verified_direct_sequence(
+        &fixture.programs,
+        safe_rust_profiled_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::AArch64),
+        &mut artifact_cache,
+    )
+    .map_err(|error| error.to_string())?;
+    let plan_key = NativeExecutableSequenceKey::from_cached_plan(&plan);
+    let mut adapter = native_executable_adapter(935, 0xb5_000)?;
+    let sequence = load_cached_verified_native_sequence(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_loaded_cached_verified_native_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("configured cached loaded failure ignored"));
+    };
+    let continuation =
+        NativeInterpreterContinuation::from_cached_loaded_failure(
+            &plan, &failure,
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            String::from("cached loaded failure has no continuation")
+        })?;
+    assert_second_step_continuation(
+        &continuation,
+        &SecondStepContinuationExpectation {
+            expected_exit: plan.exit(),
+            expected_outcome: plan.outcome(),
+            plan_key: &plan_key,
+            programs: plan.programs(),
+            reason: NativeInterpreterContinuationReason::ExecutionFailure,
+        },
+    )?;
+    release_native_executable_sequence(&mut adapter, sequence)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn native_interpreter_continuation_omits_completed_work() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let complete = NativeSequenceExecutionOutcome::Applied {
+        observation: plan.exit(),
+        steps: plan.len(),
+    };
+    if NativeInterpreterContinuation::from_outcome(&plan, complete)
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Err(String::from(
+            "completed outcome retained interpreter work",
+        ));
+    }
+    let mut adapter =
+        native_executable_adapter(936, 0xb6_000)?.with_release_failure_at(2);
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let Err(failure) = execute_verified_native_sequence(
+        &mut adapter,
+        &mut runner,
+        &plan,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from(
+            "configured terminal cleanup failure ignored",
+        ));
+    };
+    if NativeInterpreterContinuation::from_failure(&plan, &failure)
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Err(String::from("terminal cleanup retained semantic work"));
+    }
+    let execution = (*failure)
+        .into_execution_failure()
+        .ok_or_else(|| String::from("terminal execution failure missing"))?;
+    let release = execution
+        .into_release_failure()
+        .ok_or_else(|| String::from("terminal release owner missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())
 }

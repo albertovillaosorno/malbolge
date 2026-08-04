@@ -138,7 +138,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   after full success. Safe sequence execution now runs each exact artifact in
   order, preserves applied prefixes, and returns exact second-step guard resume
   evidence. Indexed failures retain continuation and release-retry state; VM
-  snapshots cover completion, rollback, and applied/guard cleanup failure.
+  snapshots cover completion, rollback, and applied/guard cleanup failure. An
+  immutable semantic continuation now validates cached/uncached and
+  ephemeral/loaded evidence, retaining complete/suffix artifact keys, remaining
+  one-step IR, exact observation, expected exit/outcome, and reason. Forged
+  outcomes fail closed, while completed work yields no continuation. Eight cases
+  cover all constructor families. Interpreter invocation and mutable state
+  transfer remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

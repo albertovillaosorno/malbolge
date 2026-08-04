@@ -272,6 +272,14 @@ impl NativeExecutableSequenceKey {
     pub const fn len(&self) -> usize {
         self.artifact_keys.len()
     }
+
+    /// Returns an exact ordered suffix starting at `index`.
+    #[must_use]
+    pub fn suffix(&self, index: usize) -> Option<Self> {
+        self.artifact_keys.get(index..).map(|artifact_keys| Self {
+            artifact_keys: artifact_keys.to_vec(),
+        })
+    }
 }
 
 impl NativeExecutableSequenceCacheDisposition {

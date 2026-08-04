@@ -237,6 +237,16 @@ failures retain committed-step count, continuation state, nested one-step error,
 and release retry evidence. Cached and uncached rotate/output plans match VM
 snapshots after one and two steps.
 
+`sequence_continuation.rs` turns that indexed evidence into an immutable exact
+semantic suffix. Constructors cover cached/uncached plans and ephemeral/loaded
+failures. They validate completed count, failing step, resume index, and the
+next one-step entry observation before cloning remaining programs. The object
+retains complete and suffix `NativeExecutableSequenceKey` identities, expected
+exit/outcome, reason, and remaining one-step programs. Applied completion and
+terminal cleanup failures return no continuation. Eight tests cover valid guard
+and failure paths plus forged outcomes. This boundary does not invoke the
+interpreter, borrow mappings, or transfer mutable VM buffers.
+
 `executable_sequence.rs` adds explicit persistent ownership for all mappings in
 one exact plan. It derives every load image before allocation, loads all
 mappings before execution, rolls back a partial prefix in reverse order, and

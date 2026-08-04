@@ -167,20 +167,25 @@ parts:
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0027
-    path: adapter-outbound/native/sequence_runner.rs
+    path: adapter-outbound/native/sequence_continuation.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0028
-    path: adapter-outbound/native/x86_64/main.rs
+    path: adapter-outbound/native/sequence_runner.rs
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0029
+    path: adapter-outbound/native/x86_64/main.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0030
     path: domain/ir/README.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0030
+  - id: part-0031
     path: domain/ir/main.rs
     kind: domain
     language: rust

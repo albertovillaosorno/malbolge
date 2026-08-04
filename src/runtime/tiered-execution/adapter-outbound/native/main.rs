@@ -51,6 +51,7 @@ mod loader;
 mod platform;
 mod profile_metadata;
 mod runner;
+mod sequence_continuation;
 mod sequence_runner;
 #[path = "x86_64/main.rs"]
 mod x86_64;
@@ -193,6 +194,10 @@ pub use runner::{
     NativeExecutableExecutionResult, NativeExecutableRunner,
     NativeLoadedExecutionFailure, NativeLoadedExecutionResult,
     execute_loaded_verified_native, execute_verified_native,
+};
+pub use sequence_continuation::{
+    NativeInterpreterContinuation, NativeInterpreterContinuationError,
+    NativeInterpreterContinuationReason, NativeInterpreterContinuationResult,
 };
 pub use sequence_runner::{
     NativeLoadedSequenceAdmissionError, NativeLoadedSequenceExecutionFailure,

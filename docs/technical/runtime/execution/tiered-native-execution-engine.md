@@ -408,6 +408,19 @@ Retained VM snapshots prove complete cached/uncached rotate-output execution,
 second-step guard resume, mutation rollback, and release failure after applied
 or guard outcomes.
 
+`NativeInterpreterContinuation` converts those admitted boundaries into one
+immutable semantic handoff independent of executable lifetime. It supports both
+cached and uncached plans plus ephemeral and already-loaded failures. Complete
+and suffix `NativeExecutableSequenceKey` values retain exact artifact identity;
+the continuation also clones only the remaining one-step programs and records
+resume observation, expected final observation/outcome, and guard/failure
+reason.
+Construction rejects forged applied counts, final observations, resume indices,
+resume observations, or inconsistent failure progress. Applied completion and
+terminal cleanup failure yield no continuation. Eight deterministic cases cover
+all constructor families and malformed public outcomes. No interpreter call,
+buffer transfer, or scheduling policy is performed here.
+
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,
 loads every mapping before the first call, and releases a partial ready prefix
@@ -508,8 +521,9 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, concrete interpreter handoff, executable-memory
-platform implementations and foreign invocation, durable cache
+Combined-region emission, interpreter-continuation consumption and state
+transfer, executable-memory platform implementations and foreign invocation,
+durable cache
 serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
 beyond verified direct process-local reuse, and performance policy remain open.
 The
