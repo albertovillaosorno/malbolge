@@ -15,4 +15,5 @@ It must not bypass another function or architectural kind boundary.
 ## Navigation
 
 - `adapter-outbound/`: governed `adapter-outbound` parts.
+- `application/`: normative continuation handoff orchestration.
 - `domain/`: governed `domain` parts.

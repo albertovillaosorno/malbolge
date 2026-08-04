@@ -250,8 +250,14 @@ artifact keys, the cloned remaining one-step IR, resume observation, expected
 exit/outcome, and a guard/failure reason. Constructors cover ephemeral and
 preloaded execution failures; completed plans and terminal cleanup failures
 produce no remaining work. Forged counts, indices, and observations fail closed.
-Eight cases bind both ISAs and every constructor family. This does not yet call
-the interpreter or transfer mutable machine buffers.
+Eight cases bind both ISAs and every constructor family. The separate
+application bridge now restores either a complete checkpoint or native transfer
+buffers into the normative profile machine. It admits exact profile and entry
+state, executes each remaining traced transition, reprojects it to the retained
+one-step IR, and rolls back a mismatching step to its entry checkpoint. Combined
+native/interpreter progress must reach the verified exit/outcome. Five cases
+cover completion on both ISAs and fail-closed checkpoint/live-in drift. This is
+still not native object fusion, foreign invocation, or a multi-tier scheduler.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

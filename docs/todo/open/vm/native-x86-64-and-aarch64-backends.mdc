@@ -143,8 +143,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   ephemeral/loaded evidence, retaining complete/suffix artifact keys, remaining
   one-step IR, exact observation, expected exit/outcome, and reason. Forged
   outcomes fail closed, while completed work yields no continuation. Eight cases
-  cover all constructor families. Interpreter invocation and mutable state
-  transfer remain pending.
+  cover all constructor families. The application bridge now admits checkpoint
+  or transferred native buffers, restores the normative profile machine, and
+  executes/reprojects every remaining traced step. Drift rolls back the current
+  interpreted step and reports exact combined progress; success validates the
+  original exit/outcome. Five cases cover both ISAs and state/live-in rejection.
+  Multi-tier scheduling and production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

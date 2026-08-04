@@ -314,8 +314,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   and guard/failure reason remain explicit. Constructors cover ephemeral and
   loaded failures. Forged counts, indices, observations, and progress fail
   closed; completed outcomes and terminal cleanup return no continuation. Eight
-  cases cover every constructor family. Interpreter invocation, mutable-buffer
-  transfer, and scheduling policy remain open.
+  cases cover every constructor family. The application handoff now resolves the
+  exact canonical profile, admits either a full checkpoint or transferred
+  memory/input/output-prefix state, and runs each remaining `step_traced()`
+  transition through exact IR reprojection. Any machine, program, projection, or
+  live-in drift returns the step-entry checkpoint and combined resume index;
+  completion validates full-plan exit/outcome. Five cases cover both transfer
+  forms, profile/observation rejection, initial live-in rejection, and late
+  rollback. Bounded budgets, multi-tier scheduling, and product orchestration
+  remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
@@ -352,7 +359,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   usage, removals, and blockers. Seven cases cover cross-thread sharing,
   weighted blockage, mixed retire/release, final-owner cleanup, lease-aware
   drain, and both retry paths. Durable/cross-process leasing, object fusion,
-  direct branch chains, a concrete FFI shim, and continuation consumption remain
+  direct branch chains, a concrete FFI shim, and multi-tier scheduling remain
   out.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache

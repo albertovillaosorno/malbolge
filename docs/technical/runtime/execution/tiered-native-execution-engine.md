@@ -419,7 +419,21 @@ Construction rejects forged applied counts, final observations, resume indices,
 resume observations, or inconsistent failure progress. Applied completion and
 terminal cleanup failure yield no continuation. Eight deterministic cases cover
 all constructor families and malformed public outcomes. No interpreter call,
-buffer transfer, or scheduling policy is performed here.
+buffer transfer, or scheduling policy is performed in the native adapter.
+
+`application/interpreter_handoff.rs` consumes the continuation through the
+normative safe-Rust `ProfileMachine`. Admission accepts either a validated full
+checkpoint or owned memory/input plus the committed output prefix, then resolves
+canonical profile identity/fingerprint/requirement and compares the complete
+checkpoint observation and first remaining live-ins before mutation. Each suffix
+step uses `step_traced()` and reprojects its trace to exact one-step IR.
+Machine,
+projection, program, or live-in drift returns the step-entry checkpoint with the
+combined-plan resume index. Completion combines native and interpreter step
+counts and validates the original plan exit and outcome. Five cases cover both
+transfer forms, checkpoint/profile rejection, immediate live-in rejection, and
+late drift after one admitted interpreter step. Bounded continuation scheduling
+and multi-tier production policy remain outside this bridge.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,
@@ -521,9 +535,8 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, interpreter-continuation consumption and state
-transfer, executable-memory platform implementations and foreign invocation,
-durable cache
+Combined-region emission, bounded/multi-tier continuation scheduling,
+executable-memory platform implementations and foreign invocation, durable cache
 serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
 beyond verified direct process-local reuse, and performance policy remain open.
 The

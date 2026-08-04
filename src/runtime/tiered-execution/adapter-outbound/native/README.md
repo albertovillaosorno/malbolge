@@ -244,8 +244,9 @@ next one-step entry observation before cloning remaining programs. The object
 retains complete and suffix `NativeExecutableSequenceKey` identities, expected
 exit/outcome, reason, and remaining one-step programs. Applied completion and
 terminal cleanup failures return no continuation. Eight tests cover valid guard
-and failure paths plus forged outcomes. This boundary does not invoke the
-interpreter, borrow mappings, or transfer mutable VM buffers.
+and failure paths plus forged outcomes. This native boundary does not invoke
+the interpreter, borrow mappings, or transfer mutable VM buffers; the separate
+application handoff owns that mutation.
 
 `executable_sequence.rs` adds explicit persistent ownership for all mappings in
 one exact plan. It derives every load image before allocation, loads all

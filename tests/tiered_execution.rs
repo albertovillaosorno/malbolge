@@ -39,6 +39,8 @@ pub mod execution_cache;
 pub mod execution_ir;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/application/interpreter_handoff.rs"]
+pub mod interpreter_handoff;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::fs::{create_dir_all, read, remove_dir_all, write};
@@ -134,14 +136,18 @@ use execution_native::{
     verify_direct_jump_data, verify_direct_no_operation,
     verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
+use interpreter_handoff::{
+    NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
+    NativeInterpreterHandoffExecutionCause,
+};
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
     ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisters,
     ProfileRequirementErrorKind, ProfileStepTrace, RunOutcome, Termination,
-    TraceInput, current_profile, decode_profile_instruction, preflight_profile,
-    preflight_runtime_requirement, safe_rust_classic_capability,
-    safe_rust_profiled_capability,
+    TraceInput, current_profile, decode_profile_instruction,
+    historical_profile, preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
 };
 
 #[derive(Clone, Copy)]
@@ -246,6 +252,15 @@ struct FakeNativeSequenceRunner {
     calls: usize,
     entry_addresses: Vec<NonZeroUsize>,
     mapping_ids: Vec<NativeExecutableMappingId>,
+}
+
+#[derive(Debug)]
+struct NativeHandoffFixture {
+    continuation: NativeInterpreterContinuation,
+    input: Vec<u8>,
+    memory: Vec<u32>,
+    output: Vec<u8>,
+    plan: VerifiedDirectSequencePlan,
 }
 
 #[derive(Debug)]
@@ -10276,4 +10291,302 @@ fn native_interpreter_continuation_omits_completed_work() -> Result<(), String>
     release
         .retry(&mut adapter)
         .map_err(|retry| retry.to_string())
+}
+
+fn native_handoff_fixture(
+    isa: HostIsa,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+) -> Result<NativeHandoffFixture, String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, isa, 2)?;
+    let mut adapter = native_executable_adapter(940, 0xc0_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(behaviors);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let outcome = execute_verified_native_sequence(
+        &mut adapter,
+        &mut runner,
+        &plan,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let continuation =
+        NativeInterpreterContinuation::from_outcome(&plan, outcome)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                String::from("native handoff fixture completed unexpectedly")
+            })?;
+    Ok(NativeHandoffFixture {
+        continuation,
+        input: fixture.input,
+        memory,
+        output,
+        plan,
+    })
+}
+
+fn profile_state_observation(
+    state: &ProfileMachineState,
+) -> ProfileMachineObservation {
+    ProfileMachineObservation {
+        input_consumed: state.io().input_consumed(),
+        output_len: state.io().output().len(),
+        registers: state.registers(),
+        termination: state.io().termination(),
+    }
+}
+
+fn distinct_second_live_in(
+    plan: &VerifiedDirectSequencePlan,
+) -> Result<MemoryLiveIn, String> {
+    let [first, second] = plan.programs() else {
+        return Err(String::from("handoff rollback plan length drifted"));
+    };
+    second
+        .memory_live_ins
+        .iter()
+        .find(|candidate| {
+            !first
+                .memory_live_ins
+                .iter()
+                .any(|prior| prior.address == candidate.address)
+        })
+        .copied()
+        .ok_or_else(|| String::from("late handoff live-in missing"))
+}
+
+fn run_one_profile_step(
+    machine: &mut ProfileMachine,
+    context: &str,
+) -> Result<(), String> {
+    let outcome = machine
+        .run(1)
+        .map_err(|error| format!("{context}: {error}"))?;
+    if outcome == (RunOutcome::BudgetExhausted { steps: 1 }) {
+        Ok(())
+    } else {
+        Err(format!("{context} outcome drifted: {outcome:?}"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_completes_from_buffers() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let retained = continuation.clone();
+    let handoff = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?;
+    let completion = handoff.execute().map_err(|error| error.to_string())?;
+    if completion.continuation() == &retained
+        && completion.interpreter_outcome()
+            == (RunOutcome::BudgetExhausted { steps: 1 })
+        && completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+        && profile_state_observation(completion.state()) == plan.exit()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "buffer interpreter handoff completion drifted",
+        ))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_completes_from_checkpoint() -> Result<(), String>
+{
+    let expected = direct_normative_sequence_fixture()?;
+    let NativeHandoffFixture { continuation, plan, .. } =
+        native_handoff_fixture(HostIsa::AArch64, vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::GuardMiss,
+        ])?;
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_normative_sequence_state()?);
+    run_one_profile_step(&mut machine, "handoff checkpoint prefix")?;
+    let checkpoint = machine.snapshot_state();
+    if profile_state_observation(&checkpoint) != continuation.observation() {
+        return Err(String::from("handoff checkpoint prefix drifted"));
+    }
+    let completion =
+        NativeInterpreterHandoff::from_checkpoint(continuation, checkpoint)
+            .map_err(|error| error.to_string())?
+            .execute()
+            .map_err(|error| error.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("checkpoint interpreter handoff drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_rejects_checkpoint_drift() -> Result<(), String> {
+    let NativeHandoffFixture { continuation, .. } =
+        native_handoff_fixture(HostIsa::X86_64, vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::GuardMiss,
+        ])?;
+    let historical = ProfileMachine::from_source(
+        historical_profile(),
+        b"(=%`qL",
+        Vec::new(),
+    )
+    .map_err(|error| format!("historical handoff state: {error}"))?
+    .snapshot_state();
+    let profile_error = NativeInterpreterHandoff::from_checkpoint(
+        continuation.clone(),
+        historical,
+    );
+    let mut machine =
+        ProfileMachine::from_snapshot(direct_normative_sequence_state()?);
+    run_one_profile_step(&mut machine, "observation drift prefix")?;
+    let state = machine.snapshot_state();
+    let io = ProfileMachineIoState::new(
+        state.io().input().to_vec(),
+        state.io().input_consumed(),
+        vec![0x55],
+        state.io().termination(),
+    )
+    .map_err(|error| error.to_string())?;
+    let drifted = ProfileMachineState::new(
+        current_profile(),
+        state.memory().to_vec(),
+        state.registers(),
+        io,
+    )
+    .map_err(|error| error.to_string())?;
+    let observation_error =
+        NativeInterpreterHandoff::from_checkpoint(continuation, drifted);
+    if profile_error
+        == Err(NativeInterpreterHandoffAdmissionError::CheckpointProfile)
+        && observation_error
+            == Err(
+                NativeInterpreterHandoffAdmissionError::CheckpointObservation,
+            )
+    {
+        Ok(())
+    } else {
+        Err(String::from("checkpoint drift was admitted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_rejects_initial_live_in_drift()
+-> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        mut memory,
+        output,
+        ..
+    } = native_handoff_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let live_in = continuation
+        .remaining_programs()
+        .first()
+        .and_then(|program| program.memory_live_ins.first())
+        .copied()
+        .ok_or_else(|| String::from("handoff live-in fixture missing"))?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("handoff live-in index: {error}"))?;
+    let observed = live_in.value.saturating_add(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("handoff live-in address missing"))? =
+        observed;
+    let result = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    );
+    if result
+        == Err(NativeInterpreterHandoffAdmissionError::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("initial handoff live-in drift was admitted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_rolls_back_late_live_in_drift()
+-> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        mut memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let live_in = distinct_second_live_in(&plan)?;
+    let second = plan
+        .programs()
+        .get(1)
+        .ok_or_else(|| String::from("late handoff second program missing"))?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("late handoff live-in index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("late handoff memory address missing"))? =
+        observed;
+    let handoff = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?;
+    let Err(failure) = handoff.execute() else {
+        return Err(String::from("late handoff live-in drift was ignored"));
+    };
+    let expected_observation = second
+        .effects
+        .first()
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("late handoff observation missing"))?;
+    if failure.cause()
+        == (NativeInterpreterHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_index() == 1
+        && profile_state_observation(failure.state()) == expected_observation
+        && failure.state().io().output().is_empty()
+        && failure.state().memory().get(index).copied() == Some(observed)
+    {
+        Ok(())
+    } else {
+        Err(String::from("late handoff rollback evidence drifted"))
+    }
 }

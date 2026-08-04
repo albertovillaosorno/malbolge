@@ -142,6 +142,7 @@ tiers, and cost models. Experiments must be selectable without editing trusted
 semantic code, record exact configuration/seeds/inputs, compare against common
 correctness oracles, and emit reproducible evidence so a new algorithm can be
 accepted, rejected, or retired without becoming architecture by accident.
+
 ### TODO - Jig repository governance
 
 Integrate the evolving Jig validator as repository-local tooling, preserve its
@@ -220,6 +221,7 @@ of turning mature investigations into publication-quality papers with canonical
 bibliography, equations, figures, tables, experiment provenance, limitations,
 and regenerated results without making publication a prerequisite for ordinary
 engineering work.
+
 ## Virtual machine implementations
 
 ### TODO - Safe Rust Malbolge VM
@@ -447,8 +449,21 @@ a `GuardMiss` reason; indexed failures retain `ExecutionFailure`. Completed
 outcomes and terminal cleanup failures produce no continuation because no
 semantic work remains. Eight deterministic cases cover both plan forms, both
 execution ownership modes, failure and guard paths, malformed public outcomes,
-and terminal cleanup. This object does not invoke the interpreter or transfer
-buffers; those scheduler and runtime integration steps remain open.
+and terminal cleanup. This object remains independent from interpreter mutation.
+`NativeInterpreterHandoff` now consumes that object in the normative safe-Rust
+`ProfileMachine`. It accepts either one validated `ProfileMachineState` or owned
+memory/input plus a committed output prefix, resolves exact profile identity,
+fingerprint, and requirement, and admits checkpoint observation plus first-step
+live-ins before execution. Every remaining step runs through `step_traced()` and
+is reprojected to exact `RegionEffectProgram`; machine failure, projection
+drift,
+or live-in mismatch returns the current-step entry checkpoint and exact complete
+plan resume index. Completion combines native-prefix and interpreter-suffix step
+counts and requires the original exit observation/outcome. Five deterministic
+cases cover buffer/checkpoint completion, profile/observation rejection, initial
+live-in rejection, and rollback after one valid interpreter step. Multi-tier
+scheduling, partial interpreter budgets, and production orchestration remain
+open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
@@ -530,17 +545,16 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
 persistence and automatic eviction, executable-cache synchronization policy,
-fused-region emission, interpreter continuation consumption/state transfer, the
-unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
-open.
+fused-region emission, bounded/multi-tier continuation scheduling, the unsafe
+foreign-call boundary, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
-validated semantic interpreter continuations, relocation-free load images,
-persistent exact-plan executable ownership,
+validated semantic interpreter continuations and normative checkpoint handoff,
+relocation-free load images, persistent exact-plan executable ownership,
 entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
 limit reconfiguration, shared immutable executable leases with explicit retired
 reconciliation, and an untrusted cross-ISA bootstrap object boundary are
@@ -604,6 +618,7 @@ optimization, and interpreter fallback, but interpreter-only mode must execute
 the Malbolge machine directly without generating host machine code. Use these
 modes for differential correctness checks and honest measurements of pure VM,
 AOT-only, JIT-only, and fully tiered execution.
+
 ## Malbolge evolution and compatibility
 
 ### TODO - Scalable Malbolge memory model
@@ -900,6 +915,7 @@ formalizes and machine-links classic/profile crazy chunking, decode phase
 reduction, and classic rotate lookup; versioned CPU evidence shows 10.43x crazy
 and 1.50x rotate median speedups on the recorded host with matching checksums.
 Canonical forms, lower bounds, and search-space reductions remain open.
+
 ### TODO - Self-modification state-graph optimizer
 
 Model self-modifying execution as verified state graphs. The active first slice
@@ -1500,6 +1516,7 @@ Synthesis/guided
 strategies, resident or
 fused search, ROCm search implementations, richer orchestration, and broader
 representative comparative evidence remain open.
+
 ### TODO - CUDA exact VM adapter
 
 Implement the first GPU adapter with exact discrete Malbolge semantics and
@@ -3226,6 +3243,7 @@ code/data size, and interpreter/AOT/JIT speedups rather than declaring success
 merely because the program eventually runs. Preserve the same game semantics
 while optimizing; performance-specific substitutions require explicit
 equivalence evidence.
+
 ### TODO - Real-program benchmark suite
 
 Benchmark hello world, byte copying, arithmetic kernels, hashing, parsers,
@@ -3271,6 +3289,7 @@ Malbolge-specific contracts. Remove SHAR-specific assumptions, preserve the
 common legal reasoning that applies here, and add DOOM-source, generated-code,
 public-domain-oracle, compiler-output, and user-supplied-input boundaries
 required by this repository.
+
 ### TODO - Superoptimization research program
 
 Ask which search strategies find smaller or faster verified Malbolge blocks
