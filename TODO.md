@@ -492,12 +492,16 @@ and cross-ISA key drift. An admitted retry can now execute through the existing
 uncached native sequence path using buffers copied from its checkpoint. Success
 and failure both retain the original suspension/plan plus exact memory, input,
 output capacity, and admitted observation. The transfer converts back to a
-validated `ProfileMachineState`; hard native failures and release-retry ownership
-remain unchanged. Five more cases cover initial/progressed completion, guard miss,
+validated `ProfileMachineState`; hard native failures and release-retry
+ownership
+remain unchanged. Five more cases cover initial/progressed completion, guard
+miss,
 runner rollback, and committed cleanup failure. Successful retry evidence now
-rebases through the original complete-plan continuation: applied suffixes produce
+rebases through the original complete-plan continuation: applied suffixes
+produce
 the verified original outcome plus final checkpoint, while guard miss produces a
-new `NativeInterpreterHandoff` with absolute progress including prior interpreter
+new `NativeInterpreterHandoff` with absolute progress including prior
+interpreter
 steps and newly committed retry steps. Rebase failure retains the complete
 successful execution owner. Three cases cover pure-native completion, mixed
 interpreter/native completion, and progressed guard fallback through the
@@ -507,42 +511,86 @@ failure before or after committed retry progress yields an exact normative
 handoff; terminal cleanup failure can yield verified completion while preserving
 the release-retry owner. Rebase rejection retains the complete failed execution.
 Three cases cover zero-progress fallback, progressed fallback, and semantic
-completion with later cleanup retry.
+completion with later cleanup retry. Semantic publication now lives in
+`application/native_retry/rebase.rs`; admission, transfer, and execution remain
+in `native_retry.rs`, with the same reexported API and affine owners.
 `application/leased_retry.rs` now binds an admitted retry to one exact immutable
 lease-cache acquisition. Key drift returns both owners before buffer movement.
 Loaded execution performs no allocation or release and retains hit/insertion
 evidence plus the lease across completion, guard miss, and runner failure.
-Success and failure rebase through the same complete continuation authority while
+Success and failure rebase through the same complete continuation authority
+while
 the lease remains independently reusable or explicitly returnable. Five cases
 cover insertion completion, pointer-identical hit reuse without adapter work,
-progressed guard fallback, runner-failure fallback, and cross-ISA lease rejection.
+progressed guard fallback, runner-failure fallback, and cross-ISA lease
+rejection.
 `application/cached_retry.rs` now composes exact lease-cache acquisition,
 leased binding, and one loaded retry attempt. Hits perform no executable-memory
 work; inserted acquisitions preserve FIFO eviction/retirement evidence. Load
 failure restores the admitted retry plus exact load/cleanup ownership, while
 binding or runner failure retains the acquired lease. Five cases cover inserted
 completion, hit reuse, pre-runner load failure, mixed live-retirement insertion,
-and runner-failure fallback. Semantic rebase and lease return remain caller-owned.
-`application/cached_cycle.rs` now applies immutable attempt policy over the cached
+and runner-failure fallback. Semantic rebase and lease return remain
+caller-owned.
+`application/cached_cycle.rs` now applies immutable attempt policy over the
+cached
 path. Successful attempts record attempt number, committed native steps, and
-exact `Inserted`/`Hit` evidence, then drop only the external lease so active cache
+exact `Inserted`/`Hit` evidence, then drop only the external lease so active
+cache
 authority can serve the next retry. Unchanged guard suffixes reuse the same
-resident mappings; progressed suffixes acquire distinct exact keys. Acquisition
-or runner failure stops immediately with retry or lease ownership. Five cases
-cover zero-limit fallback, `Inserted/Hit/Hit` guard reuse, progressed suffix
-insertion, pre-runner load failure, and runner failure with fallback. Adaptive
-cache policy, async ownership, and durable/cross-process storage remain open.
+resident mappings; progressed suffixes acquire distinct exact keys. Acquisition,
+binding, routing, or runner failure stops immediately with exact owners and
+every
+successful prior attempt. Seven cases cover zero-limit fallback,
+`Inserted/Hit/Hit` guard reuse, progressed suffix insertion, initial and late
+pre-runner failure, initial routing failure, and runner failure with fallback.
+`application/cached_cycle/telemetry.rs` now exposes one exact source view for
+attempt slices, native completion, and normative fallback owners. It summarizes
+attempts, native steps, hits, insertions, evictions, and retirements and fails
+closed on arithmetic overflow. `telemetry_window.rs` retains those summaries in
+a positive-capacity FIFO with monotonic sequences, exact aggregate totals,
+exact checked arithmetic in `telemetry_window/aggregation.rs`, transactional
+capacity changes in `telemetry_window/reconfiguration.rs`, and explicit
+oldest-first removal evidence. `telemetry_assessment.rs` applies
+caller-owned inclusive count thresholds after a positive attempt gate and
+preserves every simultaneously missed signal without selecting policy.
+`telemetry_snapshot.rs` transfers complete window state and validates
+capacity, eviction counts, contiguous sequence evidence, and aggregate totals
+before reconstruction. `telemetry_codec.rs` adds canonical revision-one
+little-endian bytes with exact magic/version/reserved/length checks and repeats
+snapshot validation after decoding. Nine cases cover nonempty/empty roundtrip,
+header drift, length drift, count overflow, zero capacity, total/sequence drift,
+and encoder-side rejection. `telemetry_latency.rs` records caller-supplied
+nanoseconds into strictly increasing inclusive buckets with exact totals,
+extrema, and transactional overflow rejection; six cases cover bounds, bucket
+edges, the overflow bin, and each counter failure.
+`telemetry_latency_snapshot.rs` transfers complete histogram evidence and checks
+bucket counts, sample sums, extrema membership, exact possible total ranges, and
+an impossible overflow bin; eight cases cover roundtrip and every rejection.
+`telemetry_latency_merge.rs` combines identical bucket schemas transactionally,
+retains exact merged totals/extrema, and rejects schema or counter drift; seven
+cases cover exact/no-op merge and every overflow.
+`telemetry_latency_codec.rs` adds canonical revision-one little-endian histogram
+bytes with exact extrema flags, `u128` totals, bound/count pairs, and repeated
+snapshot validation; nine cases cover roundtrip and framing/semantic drift.
+Rebinning, distributed merge, runtime clock acquisition, automatic policy
+recommendation/publication, async ownership, durable storage, and cross-process
+coordination remain open.
 `application/retry_planner.rs` now consumes an exact `NativeRetry` suspension,
 explicit runtime capability, OS, and ISA. It selects and admits the exact native
 suffix on supported Windows hosts; only a direct `TargetFormat` absence becomes
-a normative handoff. Profile, IR shape, continuity, deoptimization, emission, and
+a normative handoff. Profile, IR shape, continuity, deoptimization, emission,
+and
 verification failures remain hard stable categories and retain the suspension.
 Four cases cover Windows native routing, Linux fallback before/after interpreter
-progress, hard profile failure, and rejection of caller-yield reason. Cache-aware
-retry planning remains open.
-`application/retry_policy.rs` now applies one immutable caller-configured maximum
+progress, hard profile failure, and rejection of caller-yield reason. Adaptive
+artifact/cache selection policy above the existing cached execution path remains
+open.
+`application/retry_policy.rs` now applies one immutable caller-configured
+maximum
 native-attempt count before host planning. Available budget returns the exact
-suspension with a one-based next-attempt number. Exhaustion converts the owner to
+suspension with a one-based next-attempt number. Exhaustion converts the owner
+to
 a complete or positive-slice interpreter route; zero maximum attempts falls back
 immediately. Caller supplies the completed-attempt count, and non-`NativeRetry`
 reasons fail while retaining ownership. Four cases cover attempts one/two,
@@ -562,15 +610,18 @@ disposition; failed turns separately retain indexed runner/release ownership.
 Rebase failures retain their complete execution owner. Five cases cover
 interpreter completion, native completion, guard fallback, runner failure, and
 semantic completion with cleanup retry.
-`application/retry_cycle.rs` now executes a complete bounded cycle. It loops only
+`application/retry_cycle.rs` now executes a complete bounded cycle. It loops
+only
 after a successful native guard miss, rescheduling the exact handoff as
 `NativeRetry`; immutable attempt policy guarantees termination through native
 completion or configured normative fallback. Runner/release failure exits on its
 first occurrence with semantic and cleanup owners intact. Seven cases cover
 zero limit, missing-format fallback without native work, repeated guards to
-fallback, guard then native completion, immediate runner failure, cleanup failure
-without retry, and hard routing rejection before adapters. Cache-aware
-planning/execution, adaptive telemetry, async queues,
+fallback, guard then native completion, immediate runner failure, cleanup
+failure
+without retry, and hard routing rejection before adapters. Cached execution is
+owned by `cached_retry.rs` and `cached_cycle.rs`; adaptive telemetry, async
+queues,
 and broader product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
@@ -611,7 +662,9 @@ removed keys, and returns exact release ownership for retry. Repeating the
 request after cleanup publishes the new limits without repeating completed
 releases. Seventeen deterministic cases cover the original hit/FIFO/cleanup and
 weighted-admission behavior plus no-op expansion, entry/mapping/byte shrink, and
-failure during the second reconfiguration eviction.
+failure during the second reconfiguration eviction. Transactional limit result,
+diagnostic, and FIFO-shrink authority now lives in
+`executable_cache/reconfiguration.rs`; lookup/admission remain in the parent.
 `NativeExecutableSequenceLeaseCache` now provides cloneable immutable `Arc`
 leases over exact loaded sequences. Active lookup and retired residency are
 separate: invalidation, eviction, or full drain removes lookup authority, while
@@ -625,15 +678,20 @@ retired resident weight still prevents admission, the candidate cleans itself
 and the failure reports limits, usage, evicted keys, and blocking retired keys.
 `reconfigure_limits()` now publishes expansion or already-satisfied resident
 limits without adapter work. Shrink removes active FIFO authority, releases
-unleased victims, and retires leased victims while preserving their exact charged
+unleased victims, and retires leased victims while preserving their exact
+charged
 weight. Existing retired entries are never reclaimed implicitly. Blockage or
 release failure retains the previous limits and reports exact evicted, retired,
 and blocking keys plus resident usage; final lease return or keyed cleanup retry
 followed by the same request publishes without duplicate releases. Fourteen
 deterministic cases cover the original lease lifecycle plus expansion,
 entry/mapping shrink, live entry/byte blockage, post-return publication, and
-release-failure retry. This still does not fuse COFF, jump directly between
-mappings, persist loaded state, or implement the unsafe machine-code call shim.
+release-failure retry. Explicit reclamation/retry ownership now lives in
+`executable_lease_cache/reconciliation.rs`, while resident-limit transitions
+live in `executable_lease_cache/reconfiguration.rs`; lookup and leasing remain
+in
+the parent. This still does not fuse COFF, jump directly between mappings,
+persist loaded state, or implement the unsafe machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -674,7 +732,7 @@ entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
 limit reconfiguration, shared immutable executable leases with explicit retired
 reconciliation, and an untrusted cross-ISA bootstrap object boundary are
 implemented. Combined-region native fusion, concrete foreign invocation, durable
-cache serialization/storage, native-retry execution, and wider automated tier
+cache serialization/storage, adaptive retry policy, and wider automated tier
 orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation

@@ -107,7 +107,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   rejects canonical program drift, and denies the deoptimization stub
   state-applying authority. `NativeRegionBuffers` keeps caller loans bound to
   the same verified bytes, target assumptions, and ABI pointer.
-  `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations, extracts
+  `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations,
+  extracts
   exact immutable code and entry offset, retains full key/target identity, and
   validates ISA alignment. Its fixed policy requires RW-to-RX transition plus
   instruction synchronization. This does not link, allocate pages, change real
@@ -180,7 +181,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   verified sequence on supported Windows hosts and converts only missing target
   format into a normative handoff. Profile, IR, continuity, deoptimization,
   emission, and verification errors remain hard with suspension ownership. Four
-  cases cover Windows routing, Linux fallback before/after progress, hard profile
+  cases cover Windows routing, Linux fallback before/after progress, hard
+  profile
   rejection, and invalid reason. An immutable attempt policy now preserves
   native retry while caller-supplied budget remains and routes exhaustion to
   complete or positive-slice normative fallback; zero limit falls back
@@ -207,10 +209,23 @@ synchronization, and hardening remain adapters rather than VM semantics.
   mixed retirement, and runner fallback. A bounded cached cycle now records
   per-attempt progress plus `Inserted`/`Hit`, drops successful external leases
   while retaining active cache authority, and reuses unchanged guard suffixes.
-  Progressed suffixes stay distinct; acquisition/runner failure stops with owners.
-  Five cases cover fallback, repeated hits, changed suffixes, load failure, and
-  runner failure. Adaptive telemetry, async queues, durable storage, and broader
-  production orchestration remain pending.
+  Progressed suffixes stay distinct; acquisition, routing, and runner failure
+  retain owners plus prior successful attempts. Seven cases cover fallback,
+  repeated hits, changed suffixes, initial/late load failure, routing failure,
+  and runner failure. A pure source view now covers attempt slices,
+  completion, and fallback owners. Caller-bounded FIFO retention preserves
+  monotonic sequences, exact totals, transactional capacity changes, validated
+  snapshots, canonical revision-one little-endian bytes, and inclusive
+  multi-signal assessment without selecting policy. Caller-supplied latency
+  histograms preserve inclusive buckets, exact totals, and extrema without
+  reading a clock. Validated snapshots transfer complete histogram state and
+  reject impossible count, extrema, total-range, or overflow-bin evidence.
+  Identical-schema histograms merge transactionally with exact rollback.
+  Canonical revision-one latency bytes preserve extrema flags, `u128` totals,
+  bound/count pairs, and repeat snapshot validation after decode. Rebinning,
+  distributed/durable merge, automatic recommendation/publication, runtime clock
+  acquisition, async queues, durable storage, and broader production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

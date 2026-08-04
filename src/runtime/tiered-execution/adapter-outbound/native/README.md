@@ -283,7 +283,9 @@ remain active. Failure reports every key whose authority was removed and retains
 the exact failed executable for retry; repeating the request after cleanup does
 not release completed victims again. Seventeen tests cover original reuse,
 weighted admission and cleanup plus expansion, entry/mapping/byte shrink, and
-second-eviction failure.
+second-eviction failure. Transition result/diagnostic ownership and FIFO shrink
+are isolated in `executable_cache/reconfiguration.rs`; lookup and candidate
+admission remain in `executable_cache.rs`.
 
 `executable_lease_cache.rs` adds shared immutable sequence ownership without
 moving platform cleanup into `Drop`. Exact hits clone one `Arc` and can be read
@@ -293,16 +295,23 @@ the entry to a retired FIFO where its exact weight remains charged. Explicit
 `return_lease()` and `reconcile_retired()` attempt only residents whose final
 external lease has gone, while aggregate keyed failures retain exact retry
 ownership. A candidate blocked by retired resident weight is cleaned and reports
-its limits, usage, active evictions, and retired blockers. `reconfigure_limits()`
+its limits, usage, active evictions, and retired blockers.
+`reconfigure_limits()`
 publishes expansion or already-fitting requests without adapter work; shrink
-releases unleased active FIFO victims, retires leased victims with charged weight,
+releases unleased active FIFO victims, retires leased victims with charged
+weight,
 and never implicitly reconciles prior retired residents. Blockage or keyed
 release failure retains previous limits and exact ownership, while final lease
 return or cleanup retry allows the same request to publish without duplicate
 release. Fourteen tests cover the original lease lifecycle plus entry/mapping
 shrink, live entry/byte blockage, post-return publication, and cleanup retry.
-Objects remain separate mappings; there is no durable loaded state,
-cross-process leasing, direct inter-mapping jump, or concrete foreign-call shim.
+Retired reclamation and keyed cleanup retry are isolated in
+`executable_lease_cache/reconciliation.rs`; resident-limit transitions are in
+`executable_lease_cache/reconfiguration.rs`; lookup and lease publication remain
+in the parent. Objects remain separate mappings; there is no durable loaded
+state, cross-process leasing, direct inter-mapping jump, or concrete
+foreign-call
+shim.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

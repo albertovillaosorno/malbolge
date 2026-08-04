@@ -258,7 +258,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   the deoptimization stub state-applying authority. `NativeRegionBuffers`
   groups memory/input/output loans so verified bytes, target assumptions, and
   the ABI pointer remain inseparable.
-- `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations, extracts
+- `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations,
+  extracts
   immutable `.text` and its exact entry offset, retains complete key/target
   identity, and validates ISA alignment. Its only policy is RW staging followed
   by RX execution with mandatory instruction synchronization. Twelve templates
@@ -314,7 +315,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   and guard/failure reason remain explicit. Constructors cover ephemeral and
   loaded failures. Forged counts, indices, observations, and progress fail
   closed; completed outcomes and terminal cleanup return no continuation.
-  `advance()` rebases complete-plan authority after additional admitted work from
+  `advance()` rebases complete-plan authority after additional admitted work
+  from
   any tier, deriving the exact new suffix or verified completion and rejecting
   overshoot/boundary drift. Eleven cases cover constructors and rebase behavior.
   The application handoff now resolves the
@@ -346,10 +348,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   sequence path from checkpoint-derived owned buffers. Success/failure retain
   exact plan, suspension, memory, input, output capacity, and observation; the
   transfer reconstructs a validated normative checkpoint, and cleanup ownership
-  remains retryable. Five execution cases cover completion, guard miss, rollback,
+  remains retryable. Five execution cases cover completion, guard miss,
+  rollback,
   and committed cleanup failure. Successful retries now rebase through the
   original complete-plan continuation: applied suffixes yield the verified
-  original outcome/final checkpoint, while guard miss advances absolute mixed-tier
+  original outcome/final checkpoint, while guard miss advances absolute
+  mixed-tier
   progress and returns a scheduler-ready normative handoff. Rebase rejection
   retains the complete successful execution owner. Three cases cover pure/mixed
   completion and progressed guard fallback. Failed retry executions now split
@@ -357,9 +361,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   failure before/after progress yields an exact fallback handoff; terminal
   cleanup failure may complete semantics while preserving release retry. Rebase
   rejection retains the full failed execution. Three cases cover both fallback
-  positions and cleanup completion.
-- `application/leased_retry.rs` now binds an admitted retry to one exact immutable
-  lease-cache acquisition. Key drift restores both owners before buffer movement.
+  positions and cleanup completion. Semantic publication now lives in
+  `application/native_retry/rebase.rs`; admission, transfer, and execution
+  remain
+  in the parent with unchanged reexports and owner transitions.
+- `application/leased_retry.rs` now binds an admitted retry to one exact
+  immutable
+  lease-cache acquisition. Key drift restores both owners before buffer
+  movement.
   Loaded execution performs no allocation/release and retains hit/insertion
   evidence plus the lease across completion, guard miss, and runner failure.
   Success/failure rebase through complete continuation authority while lease
@@ -368,7 +377,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   fallback, and cross-ISA lease rejection. The following cached layers add
   automatic acquisition and bounded cycle reuse.
 - `application/cached_retry.rs` now composes exact lease-cache acquisition,
-  leased binding, and one loaded attempt. Hits perform no executable-memory work;
+  leased binding, and one loaded attempt. Hits perform no executable-memory
+  work;
   insertions retain FIFO eviction/retirement evidence. Load failure restores the
   admitted retry plus exact load/cleanup ownership, while binding/runner failure
   retains the acquired lease. Five cases cover insertion, hit reuse, pre-runner
@@ -376,13 +386,35 @@ baseline; native tiers are accelerators of identical observable behavior.
   Semantic rebase and lease return remain caller-owned.
 - `application/cached_cycle.rs` now applies immutable attempt policy to cached
   execution. Successful attempts retain attempt number, committed native steps,
-  and exact `Inserted`/`Hit` evidence, then drop only the external lease so active
+  and exact `Inserted`/`Hit` evidence, then drop only the external lease so
+  active
   cache authority serves later retries. Unchanged guard suffixes hit the same
-  resident sequence; progressed suffixes acquire distinct keys. Acquisition or
-  runner failure stops with retry/lease ownership. Five cases cover zero-limit
-  fallback, `Inserted/Hit/Hit` reuse, progressed suffix insertion, load failure,
-  and runner failure with fallback. Adaptive policy, async ownership, and durable
-  storage remain open.
+  resident sequence; progressed suffixes acquire distinct keys. Acquisition,
+  binding, routing, or runner failure stops with exact owners and all successful
+  prior attempts. Seven cases cover zero-limit fallback, `Inserted/Hit/Hit`
+  reuse, progressed suffix insertion, initial/late load failure, initial routing
+  failure, and runner failure with fallback.
+- `application/cached_cycle/telemetry.rs` now exposes one exact source view for
+  attempt slices, completion, and fallback owners. The summary counts attempts,
+  native steps, hits, insertions, evictions, and retirements and fails closed on
+  overflow. `telemetry_window.rs` retains a positive-capacity FIFO with
+  monotonic sequences and exact totals. `telemetry_window/aggregation.rs`
+  owns checked arithmetic; `telemetry_window/reconfiguration.rs` publishes
+  capacity changes with oldest-first removals. `telemetry_assessment.rs`
+  applies caller-owned inclusive thresholds after a positive attempt gate
+  and retains every missed signal.
+  `telemetry_snapshot.rs` validates complete capacity, eviction, sequence, and
+  total evidence before reconstruction. `telemetry_codec.rs` adds canonical
+  revision-one little-endian bytes and rejects framing, representation, and
+  semantic drift before returning evidence. Caller-supplied latency histograms
+  preserve inclusive buckets, exact totals, extrema, and transactional overflow
+  evidence without reading a clock. Validated snapshots transfer complete
+  histogram state and reject impossible count, extrema, total-range, or
+  overflow-bin evidence. Identical-schema histograms merge transactionally with
+  exact rollback. Canonical revision-one latency bytes preserve extrema flags,
+  `u128` totals, bound/count pairs, and repeat snapshot validation after decode.
+  Rebinning, distributed/durable merge, automatic recommendation/publication,
+  runtime clock acquisition, async ownership, and durable storage remain open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a
@@ -404,8 +436,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   the suspension. Five cases cover Windows route, exhaustion bypass, sliced
   format fallback, hard profile rejection, and invalid reason.
 - `application/retry_turn.rs` now executes exactly one routed turn. Interpreter
-  routes use their scheduler decision without native adapter calls. Native routes
-  execute one attempt and immediately rebase success/failure; attempt evidence and
+  routes use their scheduler decision without native adapter calls. Native
+  routes
+  execute one attempt and immediately rebase success/failure; attempt evidence
+  and
   semantic disposition remain independent from indexed runner/release ownership.
   Rebase rejection retains the full execution owner. Five cases cover both
   completions, guard fallback, runner failure, and cleanup completion.
@@ -415,8 +449,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   fallback. Runner/release failure exits immediately with semantic and cleanup
   owners intact. Seven cases cover zero/format fallback, repeated guards, later
   native completion, runner/cleanup failure, and hard routing rejection before
-  adapters. Cache-aware
-  planning/execution, adaptive telemetry, async queues, and broader product
+  adapters. Cached execution is owned by `cached_retry.rs` and
+  `cached_cycle.rs`; adaptive telemetry, async queues, and broader product
   orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
@@ -442,7 +476,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   ownership;
   retry plus the same request publishes without repeating completed releases.
   Seventeen cases cover original reuse/admission paths plus expansion,
-  entry/mapping/byte shrink, and second-eviction failure.
+  entry/mapping/byte shrink, and second-eviction failure. Transition results,
+  diagnostics, and FIFO shrink now live in
+  `executable_cache/reconfiguration.rs`; lookup/admission remain in the parent.
 - `NativeExecutableSequenceLeaseCache` now shares exact ready chains through
   cloneable immutable `Arc` leases. Active lookup and retired residency are
   separate. Eviction, invalidation, and full drain retire leased entries while
@@ -458,7 +494,10 @@ baseline; native tiers are accelerators of identical observable behavior.
   lease return or cleanup retry permits the same request to publish without
   duplicate release. Fourteen cases cover the original lifecycle plus
   entry/mapping shrink, live entry/byte blockage, post-return publication, and
-  release-failure retry. Durable/cross-process leasing, object fusion, direct
+  release-failure retry. Retired reclamation/keyed cleanup now live in
+  `executable_lease_cache/reconciliation.rs`, while resident-limit transitions
+  live in `executable_lease_cache/reconfiguration.rs`; lookup/leasing remain in
+  the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, adaptive cache policy, and async/product
   scheduling remain out.
 - Remaining fused-region emission plus cache-aware AOT/JIT

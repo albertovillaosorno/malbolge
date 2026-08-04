@@ -279,11 +279,13 @@ sequence execution path from checkpoint-derived owned buffers. Both success and
 failure retain exact transfer state; checkpoint reconstruction is validated and
 cleanup ownership remains retryable. Five execution cases cover completion,
 guard miss, rollback, and committed cleanup failure. Successful retry results
-now rebase against complete-plan continuation authority: applied suffixes produce
+now rebase against complete-plan continuation authority: applied suffixes
+produce
 the original outcome/final checkpoint, while guard miss yields a scheduler-ready
 handoff with absolute mixed-tier progress. Three cases cover pure and mixed
 completion plus progressed guard fallback. Failed retry execution now splits
-semantic disposition from indexed native failure ownership: runner failure yields
+semantic disposition from indexed native failure ownership: runner failure
+yields
 an exact fallback handoff and terminal cleanup failure may complete semantics
 while preserving release retry. Three cases cover zero/progressed fallback and
 cleanup completion. Exact retry host planning now selects the remaining
@@ -293,7 +295,8 @@ verification failures remain hard and retain the suspension. Four cases cover
 Windows routing, Linux fallback at two progress points, profile rejection, and
 invalid reason. An explicit immutable attempt policy now preserves native retry
 while budget remains and routes exhaustion to complete or positive-slice
-normative fallback. Caller owns completed-attempt evidence; zero limit falls back
+normative fallback. Caller owns completed-attempt evidence; zero limit falls
+back
 immediately. Four cases cover attempt numbering, both fallback forms, and reason
 rejection. A bounded router now composes attempt policy with host planning:
 exhaustion bypasses planning, available budget produces a numbered native route,
@@ -305,22 +308,41 @@ cases cover interpreter/native completion, guard fallback, runner failure, and
 cleanup completion. A bounded cycle repeats only successfully rebased guard
 misses; fixed attempt policy terminates in native completion or normative
 fallback, while runner/release failures stop immediately with owners intact.
-Seven cases cover zero/format fallback, repeated guards, later native completion,
+Seven cases cover zero/format fallback, repeated guards, later native
+completion,
 runner/cleanup failure, and hard rejection before adapters. An admitted retry
 can now execute through an exact immutable lease without allocation/release,
-retaining hit/insertion evidence and the lease across semantic rebase. Five cases
+retaining hit/insertion evidence and the lease across semantic rebase. Five
+cases
 cover insertion, pointer-identical hit reuse, guard/failure fallback, and key
 rejection. Exact cache acquisition can now precede one loaded retry attempt:
 hits perform no memory-adapter work, insertions retain FIFO retirement/release
 evidence, and load/runner failures preserve retry or lease ownership. Five cases
 cover insertion, hit reuse, load failure, mixed retirement, and runner fallback.
-A bounded cached cycle now records per-attempt native progress plus `Inserted` or
+A bounded cached cycle now records per-attempt native progress plus `Inserted`
+or
 `Hit`, drops successful external leases while retaining active cache authority,
 and reuses unchanged guard suffixes without platform work. Progressed suffixes
-remain distinct exact entries; acquisition/runner failure stops with owners.
-Five cases cover fallback, repeated hits, changed suffixes, load failure, and
-runner failure. Native object fusion, foreign invocation, adaptive policy, and
-durable/cross-process storage remain open.
+remain distinct exact entries; acquisition, routing, and runner failure retain
+owners plus prior successful attempts. Seven cases cover fallback, repeated
+hits,
+changed suffixes, initial/late load failure, routing failure, and runner
+failure.
+A pure telemetry source now covers attempt slices, completion, and fallback
+owners. Caller-bounded FIFO retention keeps monotonic sequence IDs and exact
+totals,
+transactional capacity changes, validated transfer snapshots, and canonical
+revision-one little-endian snapshot bytes. Explicit inclusive thresholds
+classify insufficient, meeting, or multi-signal miss evidence without selecting
+policy. Caller-supplied latency histograms preserve inclusive buckets, totals,
+and extrema without reading clocks; validated snapshots transfer complete
+histogram state and reject impossible count, range, or overflow-bin evidence.
+Identical-schema histograms merge transactionally with exact rollback on any
+schema or counter failure. Canonical revision-one latency bytes preserve exact
+extrema flags, `u128` totals, and bound/count pairs while repeating snapshot
+validation after decode. Rebinning, distributed merge, native object fusion,
+foreign invocation, telemetry-driven policy, runtime clock acquisition, durable
+storage, and cross-process coordination remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
