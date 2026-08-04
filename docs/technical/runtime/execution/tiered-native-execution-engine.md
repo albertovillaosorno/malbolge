@@ -528,9 +528,10 @@ completion with retryable cleanup.
 successfully rebased native guard miss is rescheduled as a new `NativeRetry`;
 immutable attempt policy guarantees eventual native completion or configured
 normative fallback. Runner or release failure exits immediately with independent
-semantic and native owners, so no hard failure is retried automatically. Four
-cases cover immediate fallback, repeated guards to bounded fallback, guard then
-native completion, and runner failure termination. Cache-aware planning/execution,
+semantic and native owners, so no hard failure is retried automatically. Seven
+cases cover immediate and missing-format fallback, repeated guards to bounded
+fallback, guard then native completion, runner and cleanup failure termination,
+and hard routing rejection before adapters. Cache-aware planning/execution,
 adaptive telemetry, asynchronous ownership, and broader product scheduling remain
 outside.
 

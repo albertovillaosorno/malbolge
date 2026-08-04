@@ -305,8 +305,9 @@ cases cover interpreter/native completion, guard fallback, runner failure, and
 cleanup completion. A bounded cycle repeats only successfully rebased guard
 misses; fixed attempt policy terminates in native completion or normative
 fallback, while runner/release failures stop immediately with owners intact.
-Four cases cover zero limit, repeated guards, later native completion, and runner
-failure. Native object fusion, foreign invocation, cache-aware
+Seven cases cover zero/format fallback, repeated guards, later native completion,
+runner/cleanup failure, and hard rejection before adapters. Native object fusion,
+foreign invocation, cache-aware
 planning/execution, and adaptive policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before

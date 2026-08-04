@@ -542,9 +542,11 @@ semantic completion with cleanup retry.
 after a successful native guard miss, rescheduling the exact handoff as
 `NativeRetry`; immutable attempt policy guarantees termination through native
 completion or configured normative fallback. Runner/release failure exits on its
-first occurrence with semantic and cleanup owners intact. Four cases cover zero
-limit, repeated guards to fallback, guard then native completion, and immediate
-runner failure. Cache-aware planning/execution, adaptive telemetry, async queues,
+first occurrence with semantic and cleanup owners intact. Seven cases cover
+zero limit, missing-format fallback without native work, repeated guards to
+fallback, guard then native completion, immediate runner failure, cleanup failure
+without retry, and hard routing rejection before adapters. Cache-aware
+planning/execution, adaptive telemetry, async queues,
 and broader product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load

@@ -10390,6 +10390,23 @@ const fn one_native_retry_policy() -> NativeContinuationRetryPolicy {
     )
 }
 
+const fn linux_x86_64_retry_cycle_request(
+    policy: NativeContinuationRetryPolicy,
+    suspension: NativeContinuationScheduleSuspension,
+    attempts: usize,
+) -> NativeContinuationRetryCycleRequest {
+    NativeContinuationRetryCycleRequest::new(
+        policy,
+        suspension,
+        attempts,
+        NativeContinuationRetryHost::new(
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Linux,
+            HostIsa::X86_64,
+        ),
+    )
+}
+
 const fn windows_retry_cycle_request(
     policy: NativeContinuationRetryPolicy,
     suspension: NativeContinuationScheduleSuspension,
@@ -12892,5 +12909,178 @@ fn native_retry_cycle_stops_on_runner_failure() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("runner-failure fallback progress drifted"))
+    }
+}
+
+#[test]
+fn native_retry_cycle_uses_format_fallback_without_attempt()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        3,
+        NativeContinuationRetryFallback::sliced(nonzero_test_limit(
+            1,
+            "cycle format fallback",
+        )?),
+    );
+    let request =
+        linux_x86_64_retry_cycle_request(policy, fixture.suspension, 0);
+    let mut adapter = native_executable_adapter(970, 0xe4_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("format-fallback cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::Interpreter(turn) = outcome else {
+        return Err(String::from("format fallback cycle executed native"));
+    };
+    if turn.attempts() != 0
+        || !adapter.allocation_requests.is_empty()
+        || runner.calls != 0
+    {
+        return Err(String::from("format fallback cycle counted native work"));
+    }
+    let NativeContinuationScheduleOutcome::Suspended(pause) =
+        turn.into_outcome()
+    else {
+        return Err(String::from("format fallback slice completed early"));
+    };
+    if pause.interpreter_steps() != 1
+        || pause.reason()
+            != NativeContinuationScheduleStopReason::BudgetExhausted
+    {
+        return Err(String::from("format fallback cycle slice drifted"));
+    }
+    let scheduled = pause
+        .resume(NativeContinuationScheduleDecision::complete_interpreter())
+        .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = scheduled
+    else {
+        return Err(String::from("format fallback cycle did not complete"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("format fallback cycle completion drifted"))
+    }
+}
+
+#[test]
+fn native_retry_cycle_stops_on_cleanup_failure() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        3,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = windows_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let mut adapter =
+        native_executable_adapter(971, 0xe5_000)?.with_release_failure_at(1);
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cleanup-failure cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::NativeFailure(turn) = outcome
+    else {
+        return Err(String::from("cleanup failure cycle retried or fell back"));
+    };
+    if turn.attempt() != 1 || runner.calls != 1 {
+        return Err(String::from("cleanup failure cycle retried native work"));
+    }
+    let (attempt, disposition, sequence_failure) = turn.into_parts();
+    let NativeContinuationRetryDisposition::Completed(completion) = disposition
+    else {
+        return Err(String::from("cleanup failure cycle lost completion"));
+    };
+    if attempt != 1
+        || completion.outcome() != expected_outcome
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("cleanup failure cycle completion drifted"));
+    }
+    let execution = (*sequence_failure)
+        .into_execution_failure()
+        .ok_or_else(|| String::from("cycle cleanup execution owner missing"))?;
+    let release = execution
+        .into_release_failure()
+        .ok_or_else(|| String::from("cycle cleanup release owner missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn native_retry_cycle_preserves_hard_routing_failure() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let expected_state = fixture.suspension.state().clone();
+    let policy = NativeContinuationRetryPolicy::new(
+        3,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = NativeContinuationRetryCycleRequest::new(
+        policy,
+        fixture.suspension,
+        0,
+        NativeContinuationRetryHost::new(
+            safe_rust_classic_capability(),
+            HostOperatingSystem::Windows,
+            HostIsa::X86_64,
+        ),
+    );
+    let mut adapter = native_executable_adapter(972, 0xe6_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let Err(failure) = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    ) else {
+        return Err(String::from("hard cycle routing failure was hidden"));
+    };
+    let retry_cycle::NativeContinuationRetryCycleFailure::Routing(
+        routing_failure,
+    ) = *failure
+    else {
+        return Err(String::from("hard cycle failure phase drifted"));
+    };
+    if routing_failure.error()
+        != (NativeContinuationRetryRoutingError::Planning(
+            NativeContinuationRetryPlanningError::Step {
+                cause: NativeContinuationRetryStepPlanningError::Profile,
+                index: 0,
+            },
+        ))
+        || !adapter.allocation_requests.is_empty()
+        || runner.calls != 0
+    {
+        return Err(String::from("hard cycle routing evidence drifted"));
+    }
+    let recovered = (*routing_failure).into_suspension();
+    if recovered.state() == &expected_state
+        && recovered.reason()
+            == NativeContinuationScheduleStopReason::NativeRetry
+    {
+        Ok(())
+    } else {
+        Err(String::from("hard cycle routing lost suspension"))
     }
 }
