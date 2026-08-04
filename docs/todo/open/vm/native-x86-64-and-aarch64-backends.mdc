@@ -158,8 +158,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   and
   stable stop reason; `resume()` consumes the same owner. Native retry remains
   evidence only. Five cases cover both yields, completion paths, cumulative
-  progress, and hard-failure propagation. Automatic tier policy, executable
-  retry, async queues, and production orchestration remain pending.
+  progress, and hard-failure propagation. Retry admission now binds one
+  caller-replanned verified suffix to the exact `NativeRetry` owner before
+  buffer movement. Reason, ordered programs, artifact key, and checkpoint entry
+  must match; rejection restores both owners. Five cases include progressed and
+  cross-ISA suffixes. Retry loading/invocation, automatic tier policy, async
+  queues, and production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

@@ -43,6 +43,8 @@ pub mod execution_ir;
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/application/interpreter_handoff.rs"]
 pub mod interpreter_handoff;
+#[path = "../src/runtime/tiered-execution/application/native_retry.rs"]
+pub mod native_retry;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::fs::{create_dir_all, read, remove_dir_all, write};
@@ -55,8 +57,8 @@ use std::thread;
 
 use continuation_scheduler::{
     NativeContinuationScheduleDecision, NativeContinuationScheduleOutcome,
-    NativeContinuationScheduleStopReason, NativeContinuationYieldTarget,
-    schedule_native_interpreter_handoff,
+    NativeContinuationScheduleStopReason, NativeContinuationScheduleSuspension,
+    NativeContinuationYieldTarget, schedule_native_interpreter_handoff,
 };
 use execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
@@ -156,6 +158,9 @@ use malbolge::{
     TraceInput, current_profile, decode_profile_instruction,
     historical_profile, preflight_profile, preflight_runtime_requirement,
     safe_rust_classic_capability, safe_rust_profiled_capability,
+};
+use native_retry::{
+    NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
 };
 
 #[derive(Clone, Copy)]
@@ -275,6 +280,12 @@ struct NativeScheduleFixture {
     handoff: NativeInterpreterHandoff,
     memory: Vec<u32>,
     plan: VerifiedDirectSequencePlan,
+}
+
+struct NativeRetryFixture {
+    full_plan: VerifiedDirectSequencePlan,
+    retry_plan: VerifiedDirectSequencePlan,
+    suspension: NativeContinuationScheduleSuspension,
 }
 
 #[derive(Debug)]
@@ -10365,6 +10376,62 @@ fn native_schedule_fixture(
     })
 }
 
+fn native_retry_fixture(
+    isa: HostIsa,
+    interpreter_steps: usize,
+) -> Result<NativeRetryFixture, String> {
+    let fixture = native_schedule_fixture(isa, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let full_plan = fixture.plan.clone();
+    let first = if interpreter_steps == 0 {
+        schedule_native_interpreter_handoff(
+            fixture.handoff,
+            NativeContinuationScheduleDecision::yield_to(
+                NativeContinuationYieldTarget::NativeRetry,
+            ),
+        )
+    } else {
+        schedule_native_interpreter_handoff(
+            fixture.handoff,
+            NativeContinuationScheduleDecision::interpret(nonzero_test_limit(
+                interpreter_steps,
+                "retry prefix",
+            )?),
+        )
+    }
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(first_pause) = first
+    else {
+        return Err(String::from("retry fixture completed unexpectedly"));
+    };
+    let suspension = if interpreter_steps == 0 {
+        first_pause
+    } else {
+        let second = first_pause
+            .resume(NativeContinuationScheduleDecision::yield_to(
+                NativeContinuationYieldTarget::NativeRetry,
+            ))
+            .map_err(|error| error.to_string())?;
+        let NativeContinuationScheduleOutcome::Suspended(pause) = second else {
+            return Err(String::from("retry yield completed unexpectedly"));
+        };
+        pause
+    };
+    let retry_plan = select_verified_direct_sequence(
+        suspension.remaining_programs(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        isa,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(NativeRetryFixture {
+        full_plan,
+        retry_plan,
+        suspension,
+    })
+}
+
 fn profile_state_observation(
     state: &ProfileMachineState,
 ) -> ProfileMachineObservation {
@@ -11061,5 +11128,148 @@ fn native_continuation_scheduler_propagates_drift() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("scheduler resumed failure evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_admits_exact_initial_suffix() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_key = fixture.suspension.remaining_key().clone();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    if admitted.plan().programs() == admitted.suspension().remaining_programs()
+        && NativeExecutableSequenceKey::from_plan(admitted.plan())
+            == expected_key
+        && admitted.plan().entry()
+            == profile_state_observation(admitted.state())
+        && admitted.suspension().reason()
+            == NativeContinuationScheduleStopReason::NativeRetry
+    {
+        Ok(())
+    } else {
+        Err(String::from("exact initial retry admission drifted"))
+    }
+}
+
+#[test]
+fn native_retry_admits_suffix_after_interpreter_progress() -> Result<(), String>
+{
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    if admitted.plan().len() == 1
+        && admitted.suspension().interpreter_steps() == 1
+        && admitted.suspension().resume_index() == 1
+        && admitted.plan().programs()
+            == admitted.suspension().remaining_programs()
+        && admitted.plan().entry()
+            == profile_state_observation(admitted.state())
+    {
+        Ok(())
+    } else {
+        Err(String::from("progressed retry admission drifted"))
+    }
+}
+
+#[test]
+fn native_retry_rejects_caller_yield_and_restores_owners() -> Result<(), String>
+{
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let expected_plan = fixture.plan.clone();
+    let outcome = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = outcome else {
+        return Err(String::from("caller-yield retry fixture completed"));
+    };
+    let Err(failure) = NativeContinuationNativeRetry::new(pause, fixture.plan)
+    else {
+        return Err(String::from("caller yield admitted as native retry"));
+    };
+    if failure.error()
+        != (NativeContinuationRetryAdmissionError::ScheduleReason {
+            observed: NativeContinuationScheduleStopReason::CallerYield,
+        })
+    {
+        return Err(String::from("caller-yield rejection reason drifted"));
+    }
+    let (restored_pause, plan) = failure.into_parts();
+    if plan == expected_plan
+        && restored_pause.reason()
+            == NativeContinuationScheduleStopReason::CallerYield
+        && restored_pause.interpreter_steps() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("caller-yield rejection lost ownership"))
+    }
+}
+
+#[test]
+fn native_retry_rejects_full_plan_after_progress_and_restores_owners()
+-> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let expected_plan = fixture.full_plan.clone();
+    let Err(failure) = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.full_plan,
+    ) else {
+        return Err(String::from("full plan admitted for retry suffix"));
+    };
+    if failure.error() != NativeContinuationRetryAdmissionError::PlanPrograms {
+        return Err(String::from("retry suffix rejection reason drifted"));
+    }
+    let (pause, plan) = failure.into_parts();
+    if plan == expected_plan
+        && pause.reason() == NativeContinuationScheduleStopReason::NativeRetry
+        && pause.interpreter_steps() == 1
+        && pause.remaining_steps() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry suffix rejection lost ownership"))
+    }
+}
+
+#[test]
+fn native_retry_rejects_cross_isa_key() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let cross_isa = select_verified_direct_sequence(
+        fixture.suspension.remaining_programs(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_plan = cross_isa.clone();
+    let Err(failure) =
+        NativeContinuationNativeRetry::new(fixture.suspension, cross_isa)
+    else {
+        return Err(String::from("cross-ISA retry key was admitted"));
+    };
+    if failure.error() != NativeContinuationRetryAdmissionError::PlanKey {
+        return Err(String::from("cross-ISA retry rejection reason drifted"));
+    }
+    let (pause, plan) = failure.into_parts();
+    if plan == expected_plan
+        && pause.reason() == NativeContinuationScheduleStopReason::NativeRetry
+        && pause.interpreter_steps() == 0
+        && pause.remaining_steps() == fixture.full_plan.len()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross-ISA retry rejection lost ownership"))
     }
 }

@@ -333,7 +333,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   only and never replans, loads, invokes, or masks hard failures. Five cases
   cover
   both yields, sliced/direct completion, cumulative progress, and failure
-  propagation. Automatic tier policy, executable retry, async queues, and
+  propagation.
+- `application/native_retry.rs` now binds one caller-replanned verified sequence
+  to an exact `NativeRetry` suspension before buffer movement. Reason, ordered
+  remaining programs, complete artifact key, and checkpoint entry must match;
+  every rejection returns both owners unchanged. Five cases cover initial and
+  progressed suffixes, caller-yield rejection, full-plan drift, and cross-ISA
+  key drift. Loading/invocation, automatic tier policy, async queues, and
   product
   orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every

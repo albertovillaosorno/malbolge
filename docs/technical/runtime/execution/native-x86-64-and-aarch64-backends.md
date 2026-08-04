@@ -267,8 +267,12 @@ pause preserves exact checkpoint/suffix/progress plus a stable stop reason, and
 rescheduling consumes the same owner. Native retry remains evidence only: no
 backend is selected or invoked. Five scheduler cases cover both yields, sliced
 and direct completion, cumulative progress, and hard-failure propagation. Native
-object fusion, foreign invocation, automatic tier policy, and real retry
-execution remain open.
+A separate retry-admission boundary now binds one caller-replanned verified
+sequence to the exact `NativeRetry` suspension. It rejects reason, ordered
+programs, artifact key, or checkpoint-entry drift before buffer movement and
+returns both owners on failure. Five cases include progressed suffix and
+cross-ISA rejection. Native object fusion, foreign invocation, automatic tier
+policy, and retry loading/execution remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

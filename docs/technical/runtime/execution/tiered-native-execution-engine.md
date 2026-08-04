@@ -452,8 +452,19 @@ plus a stable `BudgetExhausted`, `CallerYield`, or `NativeRetry` reason.
 replans, loads, or invokes native code and no scheduler branch converts a hard
 execution failure into fallback. Five cases cover both yield reasons,
 slice/completion, direct completion, cumulative progress, and failure
-propagation. Automated tier policy, real native retry execution, asynchronous
-queue ownership, and product scheduling remain outside this boundary.
+propagation.
+
+`application/native_retry.rs` consumes a `NativeRetry` suspension together with
+one caller-replanned `VerifiedDirectSequencePlan`. Before any buffer movement it
+requires the exact retry reason, ordered remaining programs, complete artifact
+key, and checkpoint entry observation. Rejection returns both supplied affine
+owners unchanged, so the caller may correct the plan or resume interpretation.
+Five cases cover initial and progressed suffix admission, caller-yield
+rejection, full-plan drift after progress, and cross-ISA key drift. This boundary
+still does
+not load, invoke, or automatically select native code. Executable retry,
+asynchronous queue ownership, automated tier policy, and product scheduling
+remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

@@ -477,8 +477,15 @@ the exact handoff suspension with `BudgetExhausted`, `CallerYield`, or
 retry is evidence only: this boundary performs no native replanning, loading, or
 invocation and converts no hard error into fallback. Five deterministic cases
 cover both yield reasons, slice/completion, direct completion, cumulative
-progress, and unchanged failure propagation. Automatic tier policy, real native
-retry execution, async queue ownership, and product orchestration remain open.
+progress, and unchanged failure propagation.
+`application/native_retry.rs` now binds a caller-replanned
+`VerifiedDirectSequencePlan` to one `NativeRetry` suspension before any buffer
+movement. Admission requires the exact scheduler reason, ordered one-step
+program suffix, complete artifact key, and checkpoint entry observation. Every
+rejection retains both affine owners for correction or fallback. Five cases
+cover initial and progressed suffixes, caller-yield rejection, full-plan drift,
+and cross-ISA key drift. Native loading/invocation, automatic tier policy, async
+queue ownership, and product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
