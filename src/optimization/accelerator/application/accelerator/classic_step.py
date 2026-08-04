@@ -101,7 +101,7 @@ class StepMemoryCell:
 
 @dataclass(frozen=True, slots=True)
 class ClassicStepRequest:
-    """One specification-mode classic transition over a compact memory view."""
+    """One interpreter-authority transition over compact memory."""
 
     accumulator: int
     code_pointer: int

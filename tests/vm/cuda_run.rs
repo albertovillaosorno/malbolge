@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Treat CUDA as semantic authority or require a GPU for CPU correctness.
 // - Allows:
-//   - Inputs: complete normative classic machine states and bounded budgets.
+//   - Inputs: complete interpreter-authority states and bounded budgets.
 //   - Outputs: exact register, memory, I/O, termination, and error assertions.
 //   - Side effects: one optional repository-local Python CUDA worker process.
 // - Split-When:
@@ -21,7 +21,7 @@
 // - Merge-When:
 //   - Merge when one accelerator protocol owns all complete-state execution.
 // - Summary:
-//   - Checks resident CUDA bounded runs against normative Rust machine states.
+//   - Checks resident CUDA runs against interpreter-authority Rust states.
 // - Description:
 //   - Compares every one of the 59049 classic memory words plus complete I/O
 //   - and execution state after multi-step, resumed, and rejected runs.
@@ -29,7 +29,7 @@
 //   - Composed by `tests/vm.rs`; unavailable CUDA remains an optional-path
 //   - pass.
 // - Defaults:
-//   - Normative safe Rust execution is always the expected-result oracle.
+//   - Interpreter-authority Rust execution is the expected-result oracle.
 //
 
 //! Exact full-state checks for resident classic CUDA bounded execution.
@@ -41,9 +41,10 @@ use std::process::{Command, Stdio};
 
 use malbolge::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
-    BatchRequest, BatchResult, ExecutionMachine, ExecutionMode, MAX_WORD_VALUE,
-    MEMORY_WORDS, Machine, MachineError, MachineIoState, MachineState, Memory,
-    Registers, RunOutcome, StepOutcome, Termination, Word, execute_batch,
+    BatchRequest, BatchResult, ExecutionMachine, ExecutionMode,
+    InterpreterUndefinedBehavior, MAX_WORD_VALUE, MEMORY_WORDS, Machine,
+    MachineError, MachineIoState, MachineState, Memory, Registers, RunOutcome,
+    StepOutcome, Termination, Word, execute_batch,
     execute_batch_with_backend_report, historical_profile,
 };
 
@@ -170,7 +171,8 @@ impl BatchExecutionBackend for CudaProductBackend {
 }
 
 #[test]
-fn cuda_resident_classic_runs_match_complete_normative_states() -> TestResult {
+fn cuda_resident_classic_runs_match_complete_interpreter_states() -> TestResult
+{
     let fixtures = fixtures()?;
     let request = encode_batch(&fixtures)?;
     let expected = fixtures
@@ -209,13 +211,13 @@ fn product_batch_requests() -> TestResult<Vec<BatchRequest>> {
     let mut resumed = normalize_result(ExecutionMachine::from_source(
         IO_ROUNDTRIP,
         vec![0x51],
-        ExecutionMode::Specification,
+        ExecutionMode::Interpreter,
     ))?;
     let _prefix = normalize_result(resumed.run(2))?;
     let invalid = invalid_jump_fixture(1)?;
     let invalid_machine = normalize_result(ExecutionMachine::from_snapshot(
         invalid.machine.snapshot_state(),
-        ExecutionMode::Specification,
+        ExecutionMode::Interpreter,
         historical_profile(),
     ))?;
     Ok(vec![
@@ -223,14 +225,14 @@ fn product_batch_requests() -> TestResult<Vec<BatchRequest>> {
         BatchRequest::from_source(
             IO_ROUNDTRIP.to_vec(),
             vec![0x62],
-            ExecutionMode::Specification,
+            ExecutionMode::Interpreter,
             3,
         ),
         BatchRequest::from_machine(invalid_machine, 1),
         BatchRequest::from_source(
             b"D".to_vec(),
             Vec::new(),
-            ExecutionMode::Specification,
+            ExecutionMode::Interpreter,
             4,
         ),
     ])
@@ -241,7 +243,7 @@ fn try_cuda_product_batch(
 ) -> TestResult<ProductBackendBatch> {
     if requests
         .iter()
-        .any(|request| request.machine().mode() != ExecutionMode::Specification)
+        .any(|request| request.machine().mode() != ExecutionMode::Interpreter)
     {
         return Ok(Some(repeat_n(None, requests.len()).collect()));
     }
@@ -547,10 +549,12 @@ fn oracle_run(fixture: RunFixture) -> TestResult<RunSnapshot> {
                     status = RUN_TERMINATED;
                     break;
                 },
-                Err(MachineError::InvalidEncryptionTarget {
-                    pointer,
-                    value,
-                }) => {
+                Err(MachineError::UnsupportedInterpreterBehavior(
+                    InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                        pointer,
+                        value,
+                    },
+                )) => {
                     status = RUN_ERROR;
                     error = ERROR_INVALID_ENCRYPTION;
                     error_pointer = u32::from(pointer.value());

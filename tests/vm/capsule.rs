@@ -40,11 +40,10 @@
 use std::ops::Range;
 use std::str::from_utf8;
 
-#[cfg(feature = "legacy-ben")]
-use malbolge::ProfileMachine;
 use malbolge::{
     CapsuleError, ExecutionErrorKind, ExecutionMachine, ExecutionMode,
-    RunOutcome, Termination, build_capsule, current_profile, parse_capsule,
+    ProfileMachine, RunOutcome, Termination, build_capsule, current_profile,
+    parse_capsule,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -213,7 +212,6 @@ fn classic_facade_rejects_current_capsule_before_loader() -> TestResult {
     )
 }
 
-#[cfg(feature = "legacy-ben")]
 #[test]
 fn current_capsule_executes_on_profiled_runtime() -> TestResult {
     let fixture = capsule_fixture()?;
@@ -237,11 +235,11 @@ fn current_capsule_executes_on_profiled_runtime() -> TestResult {
 }
 
 #[test]
-fn fallback_emits_bang_and_halts_in_legacy_mode() -> TestResult {
+fn fallback_emits_bang_and_halts_in_interpreter_mode() -> TestResult {
     let mut machine = normalize_result(ExecutionMachine::from_source(
         b"(C<;_\"K",
         Vec::new(),
-        ExecutionMode::LegacyBen,
+        ExecutionMode::Interpreter,
     ))?;
     let outcome = normalize_result(machine.run(7))?;
     check_equal(

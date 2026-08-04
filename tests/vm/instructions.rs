@@ -96,7 +96,7 @@ fn halt_instruction_is_immediate() -> TestResult {
 #[test]
 fn input_instruction_reads_byte_and_eof() -> TestResult {
     let mut byte_machine =
-        machine_with_data(b'c', Word::ZERO, Word::ZERO, vec![0x41])?;
+        machine_with_data(b'u', Word::ZERO, Word::ZERO, vec![0x41])?;
     check_equal(
         &normalize_result(byte_machine.step())?,
         &StepOutcome::Continued,
@@ -114,12 +114,12 @@ fn input_instruction_reads_byte_and_eof() -> TestResult {
     )?;
     check_equal(
         &normalize_result(byte_machine.memory_word(Word::ZERO))?,
-        &Word::from_byte(b'V'),
+        &Word::from_byte(b'o'),
         "input instruction self-encrypts",
     )?;
 
     let mut eof_machine =
-        machine_with_data(b'c', Word::ZERO, Word::ZERO, Vec::new())?;
+        machine_with_data(b'u', Word::ZERO, Word::ZERO, Vec::new())?;
     check_equal(
         &normalize_result(eof_machine.step())?,
         &StepOutcome::Continued,
@@ -268,7 +268,7 @@ fn noop_instruction_only_encrypts_and_advances() -> TestResult {
 #[test]
 fn output_instruction_emits_low_byte() -> TestResult {
     let mut machine =
-        machine_with_data(b'u', Word::ZERO, Word::MAX, Vec::new())?;
+        machine_with_data(b'c', Word::ZERO, Word::MAX, Vec::new())?;
     check_equal(
         &normalize_result(machine.step())?,
         &StepOutcome::Continued,
@@ -281,7 +281,7 @@ fn output_instruction_emits_low_byte() -> TestResult {
     )?;
     check_equal(
         &normalize_result(machine.memory_word(Word::ZERO))?,
-        &Word::from_byte(b'o'),
+        &Word::from_byte(b'V'),
         "output instruction self-encrypts",
     )
 }

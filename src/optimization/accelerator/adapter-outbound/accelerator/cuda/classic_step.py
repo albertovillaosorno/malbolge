@@ -199,8 +199,8 @@ extern "C" __global__ void malbolge_classic_step_batch(
     result[8] = 1u;
     result[9] = cell;
     if (!graphical(cell)) {{
-        result[0] = STATUS_TERMINATED;
-        result[7] = TERMINATION_NON_GRAPHICAL;
+        result[0] = STATUS_CONTINUED;
+        result[7] = TERMINATION_NONE;
         return;
     }}
 
@@ -246,6 +246,13 @@ extern "C" __global__ void malbolge_classic_step_batch(
     }} else if (decoded == (unsigned int)'j') {{
         planned_d = data_before;
     }} else if (decoded == (unsigned int)'<') {{
+        if (output_len == 0xffffffffu) {{
+            invalid_request(result);
+            return;
+        }}
+        output_present = true;
+        output_value = a & 255u;
+    }} else if (decoded == (unsigned int)'/') {{
         if (request[6] != 0u) {{
             if (request[7] > 255u || input_consumed == 0xffffffffu) {{
                 invalid_request(result);
@@ -259,13 +266,6 @@ extern "C" __global__ void malbolge_classic_step_batch(
             planned_a = MAX_WORD;
             input_kind = INPUT_EOF;
         }}
-    }} else if (decoded == (unsigned int)'/') {{
-        if (output_len == 0xffffffffu) {{
-            invalid_request(result);
-            return;
-        }}
-        output_present = true;
-        output_value = a & 255u;
     }}
 
     unsigned int encryption_pointer = planned_c;

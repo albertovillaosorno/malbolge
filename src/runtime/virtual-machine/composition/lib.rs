@@ -92,8 +92,9 @@ pub use logical::{
     join_profile_logical_outputs,
 };
 pub use machine::{
-    LegacyBehavior, Machine, MachineError, MachineIoState, MachineState,
-    MachineStateError, Registers, RunOutcome, StepOutcome, Termination,
+    InterpreterUndefinedBehavior, Machine, MachineError, MachineIoState,
+    MachineState, MachineStateError, Registers, RunOutcome, StepOutcome,
+    Termination,
 };
 pub use memory::{Memory, MemoryError};
 pub use mode::{ExecutionMode, ExecutionModeParseError};

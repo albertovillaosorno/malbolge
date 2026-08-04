@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Treat host scheduling as guest semantics or inspect private batch state.
 // - Allows:
-//   - Inputs: public batch/execution APIs and normative specification fixtures.
+//   - Inputs: public batch/execution APIs and interpreter-authority fixtures.
 //   - Outputs:
 //   - Equality assertions across sequential and explicit host-worker execution.
 //   - Side effects:
@@ -108,7 +108,7 @@ fn invalid_jump_machine() -> TestResult<ExecutionMachine> {
         code_pointer: Word::ZERO,
         data_pointer: Word::from_byte(1),
     };
-    normalize_result(ExecutionMachine::from_state(
+    Ok(ExecutionMachine::from_state(
         memory,
         Vec::new(),
         registers,

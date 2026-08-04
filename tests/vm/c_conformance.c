@@ -11,16 +11,16 @@
 // - Owns:
 //   - Independent executable conformance evidence for the pure-C VM.
 // - Must-Not:
-//   - Call the Rust VM or use historical interpreter defects as expectations.
+//   - Call the Rust VM or reproduce undefined host-C behavior.
 // - Allows:
-//   - Inputs: public C VM API and canonical specification fixture values.
+//   - Inputs: public C VM API and canonical interpreter fixture values.
 //   - Outputs: zero for success or a deterministic failure count.
 //   - Side effects: mutation of test-local machine and output storage only.
 // - Split-When:
 //   - Split when one conformance family requires independent executable
 //     evidence.
 // - Merge-When:
-//   - Merge when another C harness owns the same specification evidence.
+//   - Merge when another C harness owns the same interpreter evidence.
 // - Summary:
 //   - C-level tests for loader, primitives, instructions, and atomic rejection.
 // - Description:
@@ -31,7 +31,7 @@
 //   - Uses deterministic classic fixtures and a fixed semantic fingerprint.
 //
 
-//! Independent C conformance harness for classic Malbolge semantics.
+//! Independent C conformance harness for interpreter-authority semantics.
 
 #include "malbolge_vm.h"
 
@@ -106,7 +106,7 @@ static int test_state_validation_and_control_edges(void)
     failures += expect_true(g_machine.registers.data_pointer == 0U);
 
     malbolge_machine_init_state(&g_machine, 0U, NULL, 0U, g_output, 0U);
-    g_machine.memory[0] = (MalbolgeWord)'u';
+    g_machine.memory[0] = (MalbolgeWord)'c';
     g_machine.registers.accumulator = 7U;
     g_machine.registers.data_pointer = 1U;
     failures += expect_true(
@@ -115,7 +115,7 @@ static int test_state_validation_and_control_edges(void)
         trace.diagnostic.code == MALBOLGE_DIAGNOSTIC_OUTPUT_CAPACITY);
     failures += expect_true(trace.has_output_byte == 0U);
     failures += expect_true(g_machine.output_length == 0U);
-    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)'u');
+    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)'c');
     failures += expect_true(g_machine.registers.code_pointer == 0U);
     failures += expect_true(g_machine.registers.data_pointer == 1U);
     return failures;
@@ -125,9 +125,10 @@ int main(void);
 
 
 static const uint64_t EXPECTED_SEMANTIC_SIGNATURE =
-    UINT64_C(0xA74CEC75A875C85A);
+    UINT64_C(0xE32AB90CA1522F92);
 static const uint64_t FNV_OFFSET = UINT64_C(14695981039346656037);
 static const uint64_t FNV_PRIME = UINT64_C(1099511628211);
+static const uint8_t SIGNATURE_CONTINUED = UINT8_C(0xA2);
 static const uint8_t SIGNATURE_TERMINATED = UINT8_C(0xA1);
 static const uint8_t SIGNATURE_HALT = UINT8_C(0xB1);
 static const uint8_t SIGNATURE_NON_GRAPHICAL = UINT8_C(0xB2);
@@ -218,12 +219,12 @@ static int test_roundtrip_fixture(void)
         g_machine.termination == MALBOLGE_TERMINATION_HALT);
     failures += expect_true(g_machine.input_cursor == 1U);
     failures += expect_true(g_machine.output_length == 1U);
-    failures += expect_true(g_output[0] == UINT8_C(0x41));
+    failures += expect_true(g_output[0] == UINT8_C(0x00));
     failures += expect_true(steps == 3U);
     return failures;
 }
 
-static int test_non_graphical_termination(void)
+static int test_non_graphical_non_progress(void)
 {
     MalbolgeTrace trace;
     const MalbolgeRegisters before = {7U, 0U, 0U};
@@ -233,9 +234,9 @@ static int test_non_graphical_termination(void)
                                 sizeof(g_output));
     g_machine.registers = before;
     failures += expect_true(
-        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_TERMINATED);
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
     failures += expect_true(
-        g_machine.termination == MALBOLGE_TERMINATION_NON_GRAPHICAL);
+        g_machine.termination == MALBOLGE_TERMINATION_NONE);
     failures += expect_true(g_machine.registers.accumulator == 7U);
     failures += expect_true(g_machine.registers.code_pointer == 0U);
     failures += expect_true(g_machine.registers.data_pointer == 0U);
@@ -249,7 +250,7 @@ static int test_byte_io_edges(void)
 
     malbolge_machine_init_state(&g_machine, 0U, NULL, 0U, g_output,
                                 sizeof(g_output));
-    g_machine.memory[0] = (MalbolgeWord)'u';
+    g_machine.memory[0] = (MalbolgeWord)'c';
     g_machine.registers.accumulator = (MalbolgeWord)MALBOLGE_MAX_WORD;
     g_machine.registers.data_pointer = 1U;
     failures += expect_true(
@@ -259,7 +260,7 @@ static int test_byte_io_edges(void)
 
     malbolge_machine_init_state(&g_machine, 0U, NULL, 0U, g_output,
                                 sizeof(g_output));
-    g_machine.memory[0] = (MalbolgeWord)'c';
+    g_machine.memory[0] = (MalbolgeWord)'u';
     g_machine.registers.data_pointer = 1U;
     failures += expect_true(
         malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
@@ -424,11 +425,11 @@ uint64_t malbolge_c_semantic_signature(void)
     malbolge_machine_init_state(&g_machine, 0U, NULL, 0U, g_output,
                                 sizeof(g_output));
     outcome = malbolge_step(&g_machine, &trace);
-    if (outcome != MALBOLGE_STEP_TERMINATED ||
-        g_machine.termination != MALBOLGE_TERMINATION_NON_GRAPHICAL) {
+    if (outcome != MALBOLGE_STEP_CONTINUED ||
+        g_machine.termination != MALBOLGE_TERMINATION_NONE) {
         return 0U;
     }
-    hash = hash_byte(hash, SIGNATURE_TERMINATED);
+    hash = hash_byte(hash, SIGNATURE_CONTINUED);
     hash = hash_byte(hash, SIGNATURE_NON_GRAPHICAL);
     hash = hash_word(hash, g_machine.registers.accumulator);
     hash = hash_word(hash, g_machine.registers.code_pointer);
@@ -443,7 +444,7 @@ int malbolge_c_conformance(void)
     failures += test_word_primitives();
     failures += test_loader_boundaries();
     failures += test_roundtrip_fixture();
-    failures += test_non_graphical_termination();
+    failures += test_non_graphical_non_progress();
     failures += test_byte_io_edges();
     failures += test_jump_encryption_and_atomic_rejection();
     failures += test_rotate_crazy_and_wrap();

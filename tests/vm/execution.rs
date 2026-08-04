@@ -61,8 +61,8 @@ fn bounded_run_exhaustion_can_resume_to_termination() -> TestResult {
     )?;
     check_equal(
         machine.output(),
-        &[0x41],
-        "budgeted execution preserves output effects",
+        &[0x00],
+        "budgeted execution preserves interpreter output effects",
     )?;
     check_equal(
         &machine.termination(),

@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Independent pure-C implementation of classic Malbolge semantics.
+//   - Independent pure-C implementation of defined interpreter semantics.
 // - Must-Not:
 //   - Share transition implementation code with the Rust VM.
 // - Allows:
@@ -21,9 +21,9 @@
 // - Merge-When:
 //   - Merge when another C module owns the exact same transition semantics.
 // - Summary:
-//   - Specification-derived C oracle for classic Malbolge execution.
+//   - Interpreter-derived safe C oracle for classic Malbolge execution.
 // - Description:
-//   - Implements the written classic profile independently from the Rust VM.
+//   - Implements defined original-interpreter behavior independently.
 // - Usage:
 //   - Called through the public interface in
 //     `src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.h`.
@@ -31,7 +31,7 @@
 //   - Executes only the normative classic profile with caller-owned I/O.
 //
 
-//! Independent specification-derived classic Malbolge VM oracle.
+//! Independent interpreter-derived safe classic Malbolge VM oracle.
 
 #include "malbolge_vm.h"
 
@@ -371,6 +371,10 @@ static void apply_instruction(const MalbolgeMachine *machine,
         next->writes_memory = true;
         break;
     case '<':
+        next->output_byte = (uint8_t)machine->registers.accumulator;
+        next->emits_output = true;
+        break;
+    case '/':
         if (machine->input_cursor < machine->input_length) {
             next->registers.accumulator =
                 (MalbolgeWord)machine->input[machine->input_cursor];
@@ -378,10 +382,6 @@ static void apply_instruction(const MalbolgeMachine *machine,
         } else {
             next->registers.accumulator = (MalbolgeWord)MALBOLGE_MAX_WORD;
         }
-        break;
-    case '/':
-        next->output_byte = (uint8_t)machine->registers.accumulator;
-        next->emits_output = true;
         break;
     case 'o':
     default:
@@ -463,7 +463,9 @@ MalbolgeStepOutcome malbolge_step(MalbolgeMachine *machine,
         trace->fetched_cell = cell;
     }
     if (!is_graphical(cell)) {
-        return terminate(machine, MALBOLGE_TERMINATION_NON_GRAPHICAL, trace);
+        trace_finish(trace, machine, MALBOLGE_STEP_CONTINUED,
+                     diagnostic(MALBOLGE_DIAGNOSTIC_NONE, 0U, 0U));
+        return MALBOLGE_STEP_CONTINUED;
     }
     decoded = decode(cell, machine->registers.code_pointer);
     if (trace != NULL) {
@@ -489,7 +491,7 @@ MalbolgeStepOutcome malbolge_step(MalbolgeMachine *machine,
         return MALBOLGE_STEP_REJECTED;
     }
     commit_transition(machine, &next);
-    if (trace != NULL && decoded == (uint8_t)'<') {
+    if (trace != NULL && decoded == (uint8_t)'/') {
         if (next.consumes_input) {
             trace->has_input_byte = 1U;
             trace->input_byte = (uint8_t)next.registers.accumulator;

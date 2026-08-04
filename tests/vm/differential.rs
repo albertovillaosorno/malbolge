@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Call C implementation code from Rust or share transition internals.
 // - Allows:
-//   - Inputs: public Rust VM API and specification-derived fingerprint
+//   - Inputs: public Rust VM API and interpreter-derived fingerprint
 //   - protocol.
 //   - Outputs: deterministic equality evidence against the independent C VM.
 //   - Side effects: test-process memory only.
@@ -24,7 +24,7 @@
 // - Summary:
 //   - Recomputes the independent C semantic signature through the Rust VM.
 // - Description:
-//   - Hashes specification-derived behavior through only the public Rust API.
+//   - Hashes interpreter-authority behavior through only the public Rust API.
 // - Usage:
 //   - Run by the Cargo VM integration-test target.
 // - Defaults:
@@ -34,13 +34,13 @@
 //! Differential semantic fingerprint shared with the independent pure-C VM.
 
 use malbolge::{
-    MAX_WORD_VALUE, Machine, MachineError, Memory, Registers, RunOutcome,
-    StepOutcome, Termination, Word, load,
+    InterpreterUndefinedBehavior, MAX_WORD_VALUE, Machine, MachineError,
+    Memory, Registers, RunOutcome, StepOutcome, Termination, Word, load,
 };
 
 use super::{TestResult, check_equal, normalize_result};
 
-const C_VM_SEMANTIC_SIGNATURE: u64 = 0xa74c_ec75_a875_c85a;
+const C_VM_SEMANTIC_SIGNATURE: u64 = 0xe32a_b90c_a152_2f92;
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 const IO_ROUNDTRIP: &[u8] =
@@ -50,6 +50,7 @@ const SIGNATURE_INCREMENT: u32 = 23;
 const SIGNATURE_INVALID_ENCRYPTION: u8 = 0xc1;
 const SIGNATURE_MULTIPLIER: u32 = 17;
 const SIGNATURE_NON_GRAPHICAL: u8 = 0xb2;
+const SIGNATURE_CONTINUED: u8 = 0xa2;
 const SIGNATURE_TERMINATED: u8 = 0xa1;
 
 fn hash_byte(hash: u64, value: u8) -> u64 {
@@ -65,16 +66,16 @@ fn hash_loaded_memory(mut hash: u64, memory: &Memory) -> TestResult<u64> {
     Ok(hash)
 }
 
-fn hash_non_graphical_termination(mut hash: u64) -> TestResult<u64> {
+fn hash_non_graphical_non_progress(mut hash: u64) -> TestResult<u64> {
     let memory = Memory::filled(Word::ZERO);
     let mut machine = Machine::new(memory, Vec::new());
     let outcome = normalize_result(machine.step())?;
     check_equal(
         &outcome,
-        &StepOutcome::Terminated(Termination::NonGraphicalCell),
-        "signature non-graphical termination",
+        &StepOutcome::Continued,
+        "signature non-graphical non-progress",
     )?;
-    hash = hash_byte(hash, SIGNATURE_TERMINATED);
+    hash = hash_byte(hash, SIGNATURE_CONTINUED);
     hash = hash_byte(hash, SIGNATURE_NON_GRAPHICAL);
     Ok(hash_registers(hash, machine.registers()))
 }
@@ -98,10 +99,12 @@ fn hash_rejected_jump(mut hash: u64) -> TestResult<u64> {
     let result = machine.step();
     check_equal(
         &result,
-        &Err(MachineError::InvalidEncryptionTarget {
-            pointer: Word::from_byte(2),
-            value: Word::ZERO,
-        }),
+        &Err(MachineError::UnsupportedInterpreterBehavior(
+            InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                pointer: Word::from_byte(2),
+                value: Word::ZERO,
+            },
+        )),
         "signature rejected jump",
     )?;
     hash = hash_byte(hash, SIGNATURE_INVALID_ENCRYPTION);
@@ -182,5 +185,5 @@ fn rust_semantic_signature() -> TestResult<u64> {
     hash = hash_loaded_memory(hash, &memory)?;
     hash = hash_roundtrip_execution(hash)?;
     hash = hash_rejected_jump(hash)?;
-    hash_non_graphical_termination(hash)
+    hash_non_graphical_non_progress(hash)
 }

@@ -11,10 +11,10 @@
 // - Owns:
 //   - Executable conformance evidence for the first safe-Rust classic VM slice.
 // - Must-Not:
-//   - Treat historical C defects as normative or duplicate production
+//   - Reproduce undefined historical C behavior or duplicate production
 //   - internals.
 // - Allows:
-//   - Inputs: public VM APIs and versioned classic specification fixtures.
+//   - Inputs: public VM APIs and classic interpreter-authority fixtures.
 //   - Outputs: deterministic assertions over loading, words, state, and byte
 //   - I/O.
 //   - Side effects: test-process memory only.
@@ -26,19 +26,19 @@
 // - Summary:
 //   - Verifies word primitives, loader boundaries, I/O, and atomic transitions.
 // - Description:
-//   - Exercises normative public behavior rather than implementation details.
+//   - Exercises interpreter-authority behavior rather than internals.
 // - Usage:
 //   - Runs under the `vm` Cargo integration-test composition target.
 // - Defaults:
-//   - Any mismatch with the active specification fixture is a hard test
+//   - Any mismatch with the active interpreter fixture is a hard test
 //   - failure.
 //
 
 //! Conformance tests for the first safe-Rust classic VM implementation slice.
 
 use malbolge::{
-    LoadError, Machine, MachineError, Memory, Registers, StepOutcome,
-    Termination, Word, load, profile_cell_is_graphical,
+    InterpreterUndefinedBehavior, LoadError, Machine, MachineError, Memory,
+    Registers, StepOutcome, Termination, Word, load, profile_cell_is_graphical,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -64,10 +64,12 @@ fn invalid_jump_encryption_target_is_atomic() -> TestResult {
     let error = machine.step();
     check_equal(
         &error,
-        &Err(MachineError::InvalidEncryptionTarget {
-            pointer: Word::from_byte(2),
-            value: Word::ZERO,
-        }),
+        &Err(MachineError::UnsupportedInterpreterBehavior(
+            InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                pointer: Word::from_byte(2),
+                value: Word::ZERO,
+            },
+        )),
         "jump rejects non-graphical encryption target",
     )?;
     check_equal(
@@ -144,15 +146,15 @@ fn profile_graphical_cell_boundary_is_public_and_exact() -> TestResult {
 }
 
 #[test]
-fn non_graphical_current_cell_terminates_without_progress() -> TestResult {
+fn non_graphical_current_cell_does_not_progress() -> TestResult {
     let memory = Memory::filled(Word::ZERO);
     let mut machine = Machine::new(memory, Vec::new());
     let before = machine.registers();
     let outcome = normalize_result(machine.step())?;
     check_equal(
         &outcome,
-        &StepOutcome::Terminated(Termination::NonGraphicalCell),
-        "non-graphical current cell terminates",
+        &StepOutcome::Continued,
+        "non-graphical current cell does not progress",
     )?;
     check_equal(
         &machine.registers(),
@@ -162,12 +164,16 @@ fn non_graphical_current_cell_terminates_without_progress() -> TestResult {
 }
 
 #[test]
-fn roundtrip_fixture_uses_normative_byte_io() -> TestResult {
+fn roundtrip_fixture_uses_interpreter_byte_io() -> TestResult {
     let mut machine =
         normalize_result(Machine::from_source(IO_ROUNDTRIP, vec![0x41]))?;
     let termination = run_to_termination(&mut machine)?;
     check_equal(&termination, &Termination::HaltInstruction, "fixture halts")?;
-    check_equal(machine.output(), &[0x41], "fixture echoes one input byte")?;
+    check_equal(
+        machine.output(),
+        &[0x00],
+        "fixture emits initial accumulator",
+    )?;
     check_equal(
         &machine.input_consumed(),
         &1usize,

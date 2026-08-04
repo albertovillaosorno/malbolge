@@ -9,9 +9,9 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Explicit mode selection around the normative safe-Rust machine state.
+//   - Explicit selection between interpreter authority and specification study.
 // - Must-Not:
-//   - Make `legacy-ben` implicit or let legacy results satisfy verification.
+//   - Make specification comparison implicit or let it satisfy verification.
 // - Allows:
 //   - Inputs: validated classic source/state, byte input, and explicit mode.
 //   - Outputs: mode-tagged execution results, traces, and diagnostics.
@@ -21,16 +21,18 @@
 // - Merge-When:
 //   - Merge when mode selection no longer needs an explicit trust boundary.
 // - Summary:
-//   - Opt-in execution facade separating normative and legacy behavior.
+//   - Execution facade separating interpreter authority from specification
+//     study.
 // - Description:
-//   - Keeps `Machine` normative while routing explicit compatibility execution.
+//   - Keeps `Machine` interpreter-compatible while allowing explicit
+//     comparison.
 // - Usage:
-//   - Use only when callers must select an execution mode deliberately.
+//   - Use when callers must select an execution mode deliberately.
 // - Defaults:
-//   - Legacy execution is unavailable unless the `legacy-ben` feature is built.
+//   - Interpreter behavior is always available and verifier eligible.
 //
 
-//! Explicit execution facade for normative and historical-compatibility modes.
+//! Explicit execution facade for interpreter and specification modes.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
@@ -50,13 +52,6 @@ pub struct ExecutionError {
 }
 
 impl ExecutionError {
-    const fn disabled(mode: ExecutionMode) -> Self {
-        Self {
-            kind: ExecutionErrorKind::LegacyBenDisabled,
-            mode,
-        }
-    }
-
     /// Returns the stable failure category.
     #[must_use]
     pub const fn kind(self) -> ExecutionErrorKind {
@@ -98,9 +93,6 @@ impl Display for ExecutionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(f, "{} execution: ", self.mode)?;
         match self.kind {
-            ExecutionErrorKind::LegacyBenDisabled => {
-                f.write_str("legacy-ben support is disabled in this build")
-            },
             ExecutionErrorKind::Load(error) => Display::fmt(&error, f),
             ExecutionErrorKind::Machine(error) => Display::fmt(&error, f),
             ExecutionErrorKind::Profile(error) => Display::fmt(&error, f),
@@ -111,8 +103,6 @@ impl Display for ExecutionError {
 /// Stable execution-failure category.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExecutionErrorKind {
-    /// Legacy compatibility was explicitly requested in a build without it.
-    LegacyBenDisabled,
     /// Source admission failed before execution began.
     Load(LoadError),
     /// A machine transition failed after construction.
@@ -130,14 +120,6 @@ pub struct ExecutionMachine {
 }
 
 impl ExecutionMachine {
-    fn check_mode(mode: ExecutionMode) -> Result<(), ExecutionError> {
-        if mode == ExecutionMode::LegacyBen && !cfg!(feature = "legacy-ben") {
-            Err(ExecutionError::disabled(mode))
-        } else {
-            Ok(())
-        }
-    }
-
     /// Canonicalizes annotated source before explicit execution-mode selection.
     ///
     /// Raw [`Self::from_source`] remains canonical-only and never interprets
@@ -187,7 +169,6 @@ impl ExecutionMachine {
         mode: ExecutionMode,
         profile: &'static ProfileDescriptor,
     ) -> Result<Self, ExecutionError> {
-        Self::check_mode(mode)?;
         preflight_profile(
             profile,
             profile.memory_words(),
@@ -226,7 +207,6 @@ impl ExecutionMachine {
         mode: ExecutionMode,
         profile: &'static ProfileDescriptor,
     ) -> Result<Self, ExecutionError> {
-        Self::check_mode(mode)?;
         preflight_profile(
             profile,
             profile.memory_words(),
@@ -239,22 +219,18 @@ impl ExecutionMachine {
     }
 
     /// Constructs an execution facade from validated state.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ExecutionError`] when the requested mode is disabled.
-    pub fn from_state(
+    #[must_use]
+    pub const fn from_state(
         memory: Memory,
         input: Vec<u8>,
         registers: Registers,
         mode: ExecutionMode,
-    ) -> Result<Self, ExecutionError> {
-        Self::check_mode(mode)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             machine: Machine::with_registers(memory, input, registers),
             mode,
             profile: historical_profile(),
-        })
+        }
     }
 
     /// Returns the immutable full input stream carried by this machine.

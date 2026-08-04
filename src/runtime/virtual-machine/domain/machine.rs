@@ -9,7 +9,8 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Atomic single-step transitions for the normative classic Malbolge
+//   - Atomic single-step transitions for the interpreter-authority classic
+//     Malbolge
 //   - machine.
 // - Must-Not:
 //   - Reproduce historical C undefined behavior or hide host execution helpers.
@@ -21,7 +22,8 @@
 //   - Split when tracing or execution scheduling gains an independent
 //   - lifecycle.
 // - Merge-When:
-//   - Merge when another module owns the same normative transition function.
+//   - Merge when another module owns the same interpreter-authority transition
+//     function.
 // - Summary:
 //   - Executes one exact classic instruction transition at a time.
 // - Description:
@@ -32,7 +34,7 @@
 //   - Invalid self-encryption targets fail before any transition is committed.
 //
 
-//! Atomic single-step execution for the normative classic machine.
+//! Atomic single-step execution for the interpreter-authority classic machine.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
@@ -56,7 +58,7 @@ pub struct Registers {
     pub data_pointer: Word,
 }
 
-/// Stable termination reason for the normative classic machine.
+/// Stable termination reason for the interpreter-authority classic machine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Termination {
     /// A decoded `v` instruction terminated execution immediately.
@@ -212,12 +214,12 @@ pub enum StepOutcome {
     Terminated(Termination),
 }
 
-/// Reproducible historical behavior that cannot be emulated safely.
+/// Original-interpreter behavior that cannot be emulated safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LegacyBehavior {
+pub enum InterpreterUndefinedBehavior {
     /// Historical code would index the encryption table outside its domain.
     InvalidSelfEncryptionTarget {
-        /// Resulting code pointer selected by the legacy transition.
+        /// Resulting code pointer selected by the interpreter transition.
         pointer: Word,
         /// Non-graphical value that would become the table index source.
         value: Word,
@@ -239,7 +241,7 @@ pub enum MachineError {
     /// A translation-table lookup failed inside its admitted domain.
     TranslationTableInvariant,
     /// Explicit legacy behavior cannot be reproduced without historical UB.
-    UnsupportedLegacyBehavior(LegacyBehavior),
+    UnsupportedInterpreterBehavior(InterpreterUndefinedBehavior),
 }
 
 impl Display for MachineError {
@@ -252,13 +254,16 @@ impl Display for MachineError {
                 value.value()
             ),
             Self::Memory(error) => Display::fmt(error, f),
-            Self::UnsupportedLegacyBehavior(
-                LegacyBehavior::InvalidSelfEncryptionTarget { pointer, value },
+            Self::UnsupportedInterpreterBehavior(
+                InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                    pointer,
+                    value,
+                },
             ) => write!(
                 f,
                 concat!(
-                    "legacy-ben cannot safely emulate self-encryption at {}",
-                    " with value {}",
+                    "interpreter mode cannot safely reproduce ",
+                    "self-encryption at {} with value {}",
                 ),
                 pointer.value(),
                 value.value()
@@ -535,7 +540,7 @@ impl Machine {
         &mut self,
         step_budget: usize,
     ) -> Result<RunOutcome, MachineError> {
-        self.run_in_mode(step_budget, ExecutionMode::Specification)
+        self.run_in_mode(step_budget, ExecutionMode::Interpreter)
     }
 
     pub(crate) fn run_in_mode(
@@ -577,7 +582,7 @@ impl Machine {
     {
         self.run_traced_in_mode(
             step_budget,
-            ExecutionMode::Specification,
+            ExecutionMode::Interpreter,
             observer,
         )
     }
@@ -623,13 +628,13 @@ impl Machine {
         }
     }
 
-    /// Executes one atomic normative transition.
+    /// Executes one atomic interpreter-authority transition.
     ///
     /// # Errors
     ///
     /// Returns [`MachineError`] when a transition cannot commit atomically.
     pub fn step(&mut self) -> Result<StepOutcome, MachineError> {
-        self.step_in_mode(ExecutionMode::Specification)
+        self.step_in_mode(ExecutionMode::Interpreter)
     }
 
     pub(crate) fn step_in_mode(
@@ -656,7 +661,7 @@ impl Machine {
     where
         Observer: FnMut(&StepTrace),
     {
-        self.step_traced_in_mode(ExecutionMode::Specification, observer)
+        self.step_traced_in_mode(ExecutionMode::Interpreter, observer)
     }
 
     pub(crate) fn step_traced_in_mode<Observer>(
@@ -731,7 +736,7 @@ impl Machine {
         }
         let cell = self.memory.read(self.registers.code_pointer)?;
         if !cell.is_graphical() {
-            if mode == ExecutionMode::LegacyBen {
+            if mode == ExecutionMode::Interpreter {
                 return Ok((StepOutcome::Continued, MemoryDelta::default()));
             }
             self.termination = Some(Termination::NonGraphicalCell);
@@ -778,9 +783,10 @@ impl Machine {
         };
         if !target.is_graphical() {
             return match mode {
-                ExecutionMode::LegacyBen => {
-                    Err(MachineError::UnsupportedLegacyBehavior(
-                        LegacyBehavior::InvalidSelfEncryptionTarget {
+                ExecutionMode::Interpreter => {
+                    Err(MachineError::UnsupportedInterpreterBehavior(
+                        InterpreterUndefinedBehavior::
+                            InvalidSelfEncryptionTarget {
                             pointer,
                             value: target,
                         },
@@ -817,12 +823,12 @@ impl Machine {
 
 const fn instruction(decoded: u8, mode: ExecutionMode) -> Instruction {
     match mode {
-        ExecutionMode::LegacyBen => legacy_instruction(decoded),
+        ExecutionMode::Interpreter => interpreter_instruction(decoded),
         ExecutionMode::Specification => specification_instruction(decoded),
     }
 }
 
-const fn legacy_instruction(decoded: u8) -> Instruction {
+const fn interpreter_instruction(decoded: u8) -> Instruction {
     match decoded {
         b'*' => Instruction::Rotate,
         b'/' => Instruction::Input,

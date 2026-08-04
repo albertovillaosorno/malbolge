@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Treat CUDA output as semantic authority or require a GPU for correctness.
 // - Allows:
-//   - Inputs: normative classic Machine traces and compact memory snapshots.
+//   - Inputs: interpreter-authority classic Machine traces and compact memory
+//     snapshots.
 //   - Outputs: exact transition-projection equality assertions.
 //   - Side effects: one optional repository-local Python CUDA worker process.
 // - Split-When:
@@ -28,18 +29,20 @@
 // - Usage:
 //   - Composed by `tests/vm.rs`; unavailable CUDA is an optional-path pass.
 // - Defaults:
-//   - The safe-Rust specification machine is always the expected-result oracle.
+//   - The safe-Rust interpreter-authority machine is always the expected-result
+//     oracle.
 //
 
-//! CUDA compact-step proposals checked against normative classic Rust traces.
+//! CUDA compact-step proposals checked against interpreter-authority classic
+//! Rust traces.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use malbolge::{
-    Machine, MachineError, Memory, MemoryWrite, Registers, StepOutcome,
-    StepTrace, Termination, TraceInput, Word,
+    InterpreterUndefinedBehavior, Machine, MachineError, Memory, MemoryWrite,
+    Registers, StepOutcome, StepTrace, Termination, TraceInput, Word,
 };
 
 use crate::{
@@ -69,9 +72,9 @@ struct ProtocolRequest {
 }
 
 #[test]
-fn cuda_compact_classic_steps_match_normative_rust_traces() -> TestResult {
+fn cuda_compact_classic_steps_match_interpreter_rust_traces() -> TestResult {
     let mut fixtures = fixtures()?;
-    let (request_text, expected) = normative_batch(&mut fixtures)?;
+    let (request_text, expected) = oracle_batch(&mut fixtures)?;
     let Some(observed) = run_cuda_worker(&request_text)? else {
         return Ok(());
     };
@@ -120,7 +123,7 @@ fn fixtures() -> TestResult<Vec<OracleFixture>> {
     Ok(cases)
 }
 
-fn normative_batch(fixtures: &mut [OracleFixture]) -> TestResult<OracleBatch> {
+fn oracle_batch(fixtures: &mut [OracleFixture]) -> TestResult<OracleBatch> {
     let mut request_lines = Vec::with_capacity(fixtures.len());
     let mut expected = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
@@ -287,9 +290,12 @@ fn error_code(
 ) -> TestResult<ErrorProjection> {
     match result {
         Ok(_outcome) => Ok((0, 0, 0)),
-        Err(MachineError::InvalidEncryptionTarget { pointer, value }) => {
-            Ok((1, u32::from(pointer.value()), u32::from(value.value())))
-        },
+        Err(MachineError::UnsupportedInterpreterBehavior(
+            InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                pointer,
+                value,
+            },
+        )) => Ok((1, u32::from(pointer.value()), u32::from(value.value()))),
         Err(error) => {
             Err(format!("unsupported CUDA oracle error fixture: {error}"))
         },

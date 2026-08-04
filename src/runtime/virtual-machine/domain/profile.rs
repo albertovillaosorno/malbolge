@@ -77,7 +77,7 @@ const SAFE_RUST_PROFILED: RuntimeCapability = RuntimeCapability {
 pub enum ProfileKind {
     /// The profile selected as the repository's current language identity.
     Current,
-    /// Frozen written-specification conformance and archaeology.
+    /// Frozen original-interpreter conformance with host UB excluded.
     HistoricalConformance,
     /// Published immutable language identity that is no longer current.
     Versioned,

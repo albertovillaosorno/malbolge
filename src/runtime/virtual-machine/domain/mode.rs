@@ -9,9 +9,9 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Stable execution-mode identity and explicit mode parsing.
+//   - Stable interpreter-authority and specification-comparison mode identity.
 // - Must-Not:
-//   - Select historical compatibility implicitly or grant verifier authority.
+//   - Make specification comparison implicit or grant it verifier authority.
 // - Allows:
 //   - Inputs: explicit execution-mode names.
 //   - Outputs: typed mode identity and deterministic parse diagnostics.
@@ -21,17 +21,17 @@
 // - Merge-When:
 //   - Merge when execution mode no longer has independent public meaning.
 // - Summary:
-//   - Names normative execution and the opt-in Ben compatibility mode.
+//   - Names interpreter-authority execution and specification comparison.
 // - Description:
 //   - Provides one stable identity for traces, diagnostics, caches, and
 //   - benches.
 // - Usage:
-//   - Passed explicitly to the execution facade; default is specification mode.
+//   - Passed explicitly to the execution facade; default is interpreter mode.
 // - Defaults:
-//   - `Specification` is the only verifier-eligible execution mode.
+//   - `Interpreter` is the only verifier-eligible execution mode.
 //
 
-//! Stable identity for normative and historical-compatibility execution.
+//! Stable identity for interpreter-authority and specification execution.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::str::FromStr;
@@ -39,10 +39,10 @@ use std::str::FromStr;
 /// Stable execution-mode identity.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ExecutionMode {
-    /// Explicit compatibility mode for selected reproducible Ben defects.
-    LegacyBen,
-    /// Normative written-specification semantics.
+    /// Normative behavior of Ben Olmstead's original interpreter where defined.
     #[default]
+    Interpreter,
+    /// Explicit written-specification comparison semantics.
     Specification,
 }
 
@@ -50,14 +50,14 @@ impl ExecutionMode {
     /// Returns whether results from this mode may satisfy verifier obligations.
     #[must_use]
     pub const fn is_verifier_eligible(self) -> bool {
-        matches!(self, Self::Specification)
+        matches!(self, Self::Interpreter)
     }
 
     /// Returns the stable identity used in traces, diagnostics, and cache keys.
     #[must_use]
     pub const fn stable_id(self) -> &'static str {
         match self {
-            Self::LegacyBen => "legacy-ben",
+            Self::Interpreter => "interpreter",
             Self::Specification => "specification",
         }
     }
@@ -94,7 +94,9 @@ impl FromStr for ExecutionMode {
 
     fn from_str(requested: &str) -> Result<Self, Self::Err> {
         match requested {
-            "legacy-ben" => Ok(Self::LegacyBen),
+            "interpreter" | "reference-interpreter" | "legacy-ben" => {
+                Ok(Self::Interpreter)
+            },
             "specification" => Ok(Self::Specification),
             _ => Err(ExecutionModeParseError {
                 requested: requested.to_owned(),

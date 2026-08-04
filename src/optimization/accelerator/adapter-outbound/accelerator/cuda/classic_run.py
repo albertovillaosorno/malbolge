@@ -159,7 +159,7 @@ class _ResidentChunk:
 
 @final
 class CudaClassicRunAdapter:
-    """Specification-only resident classic full-memory CUDA adapter."""
+    """Interpreter-authority resident classic CUDA adapter."""
 
     def __init__(self, device_id: int = 0) -> None:
         """Compile and load the bounded resident classic VM kernel.
@@ -174,6 +174,7 @@ class CudaClassicRunAdapter:
             module = runtime.compile_module(
                 resident_kernel_source(
                     ResidentGeometry(
+                        interpreter_authority=True,
                         eof_word=MEMORY_WORDS - 1,
                         memory_words=MEMORY_WORDS,
                         word_modulus=MEMORY_WORDS,

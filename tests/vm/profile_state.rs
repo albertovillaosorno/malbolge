@@ -90,8 +90,8 @@ fn check_live_checkpoint(
     )?;
     check_equal(
         checkpoint.io().output(),
-        &[0x6b],
-        "checkpoint committed output",
+        &[0x00],
+        "checkpoint committed interpreter output",
     )?;
     check_equal(
         &checkpoint.io().termination(),

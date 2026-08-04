@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Treat trace formatting as semantics or depend on private VM internals.
 // - Allows:
-//   - Inputs: public traced execution APIs and specification fixtures.
+//   - Inputs: public traced execution APIs and interpreter fixtures.
 //   - Outputs: exact assertions over observed state, I/O, and rejection
 //   - records.
 //   - Side effects: test-process memory only.
@@ -34,8 +34,8 @@
 //! Trace-hook conformance for the classic VM.
 
 use malbolge::{
-    Machine, MachineError, Memory, Registers, RunOutcome, StepOutcome,
-    StepTrace, Termination, TraceInput, Word,
+    InterpreterUndefinedBehavior, Machine, MachineError, Memory, Registers,
+    RunOutcome, StepOutcome, StepTrace, Termination, TraceInput, Word,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -58,11 +58,11 @@ fn check_halt_trace(trace: &StepTrace) -> TestResult {
 }
 
 fn check_input_trace(trace: &StepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'<'), "first trace decodes input")?;
+    check_equal(&trace.decoded, &Some(b'/'), "second trace decodes input")?;
     check_equal(
         &trace.input,
         &Some(TraceInput::Byte(0x41)),
-        "first trace records consumed byte",
+        "second trace records consumed byte",
     )?;
     check_equal(&trace.output, &None, "input trace emits no byte")?;
     check_equal(
@@ -83,8 +83,8 @@ fn check_input_trace(trace: &StepTrace) -> TestResult {
 }
 
 fn check_output_trace(trace: &StepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'/'), "second trace decodes output")?;
-    check_equal(&trace.output, &Some(0x41), "second trace records output")?;
+    check_equal(&trace.decoded, &Some(b'<'), "first trace decodes output")?;
+    check_equal(&trace.output, &Some(0x00), "first trace records output")?;
     check_equal(
         &trace.after.output_len,
         &1usize,
@@ -115,15 +115,15 @@ fn traced_roundtrip_records_state_and_io_without_changing_semantics()
         &3usize,
         "one trace is emitted per requested step",
     )?;
-    check_input_trace(
-        records
-            .first()
-            .ok_or_else(|| String::from("missing input trace"))?,
-    )?;
     check_output_trace(
         records
-            .get(1)
+            .first()
             .ok_or_else(|| String::from("missing output trace"))?,
+    )?;
+    check_input_trace(
+        records
+            .get(1)
+            .ok_or_else(|| String::from("missing input trace"))?,
     )?;
     check_halt_trace(
         records
@@ -162,10 +162,12 @@ fn rejected_transition_is_traced_without_partial_effects() -> TestResult {
     let result = machine.step_traced(&mut |trace: &StepTrace| {
         observed = Some(*trace);
     });
-    let expected = Err(MachineError::InvalidEncryptionTarget {
-        pointer: Word::from_byte(2),
-        value: Word::ZERO,
-    });
+    let expected = Err(MachineError::UnsupportedInterpreterBehavior(
+        InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+            pointer: Word::from_byte(2),
+            value: Word::ZERO,
+        },
+    ));
     check_equal(&result, &expected, "jump rejection returns typed error")?;
     let trace =
         observed.ok_or_else(|| String::from("missing rejection trace"))?;
@@ -199,7 +201,7 @@ fn rejected_transition_is_traced_without_partial_effects() -> TestResult {
 }
 
 #[test]
-fn non_graphical_termination_is_traced_without_decode() -> TestResult {
+fn non_graphical_non_progress_is_traced_without_decode() -> TestResult {
     let mut machine = Machine::new(Memory::filled(Word::ZERO), Vec::new());
     let mut observed = None;
     let outcome =
@@ -208,8 +210,8 @@ fn non_graphical_termination_is_traced_without_decode() -> TestResult {
         }))?;
     check_equal(
         &outcome,
-        &StepOutcome::Terminated(Termination::NonGraphicalCell),
-        "non-graphical fetch terminates",
+        &StepOutcome::Continued,
+        "non-graphical fetch remains a bounded non-progress step",
     )?;
     let trace =
         observed.ok_or_else(|| String::from("missing termination trace"))?;
@@ -221,7 +223,7 @@ fn non_graphical_termination_is_traced_without_decode() -> TestResult {
     check_equal(&trace.decoded, &None, "non-graphical cell is never decoded")?;
     check_equal(
         &trace.after.termination,
-        &Some(Termination::NonGraphicalCell),
-        "trace records stable termination",
+        &None,
+        "trace preserves live interpreter state",
     )
 }

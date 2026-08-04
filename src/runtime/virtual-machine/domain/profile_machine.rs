@@ -42,11 +42,11 @@ use crate::profile_arithmetic::{
 };
 use crate::{
     AnnotatedLoadError, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryReads, ProfileMemoryWrite, ProfileRequirementError,
-    ProfileStepTrace, RunOutcome, StepOutcome, Termination, TraceInput, XLAT2,
-    canonicalize_annotated_source, preflight_profile,
-    safe_rust_profiled_capability,
+    ProfileKind, ProfileMachineObservation, ProfileMemoryDelta,
+    ProfileMemoryRead, ProfileMemoryReads, ProfileMemoryWrite,
+    ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
+    Termination, TraceInput, XLAT2, canonicalize_annotated_source,
+    preflight_profile, safe_rust_profiled_capability,
 };
 
 const GRAPHICAL_MAX: u32 = 126;
@@ -852,6 +852,12 @@ impl ProfileMachine {
         memory_reads: ProfileMemoryReads,
     ) -> ProfileStepExecution {
         if !profile_cell_is_graphical(cell) {
+            if self.profile.kind() == ProfileKind::HistoricalConformance {
+                return ProfileStepExecution::continued(
+                    ProfileMemoryDelta::default(),
+                    memory_reads,
+                );
+            }
             self.termination = Some(Termination::NonGraphicalCell);
             return ProfileStepExecution::outcome(
                 memory_reads,
@@ -866,7 +872,10 @@ impl ProfileMachine {
                 ProfileMachineError::TranslationTableInvariant,
             );
         };
-        self.step_after_decode(profile_instruction(decoded), memory_reads)
+        self.step_after_decode(
+            profile_instruction_for(self.profile, decoded),
+            memory_reads,
+        )
     }
 
     fn step_execution(&mut self) -> ProfileStepExecution {
@@ -912,7 +921,8 @@ impl ProfileMachine {
             .and_then(|cell| {
                 decode_profile_instruction(cell, before.registers.code_pointer)
             });
-        let decoded_instruction = decoded.map(profile_instruction);
+        let decoded_instruction =
+            decoded.map(|value| profile_instruction_for(self.profile, value));
         let result = execution.result;
         let memory_delta = execution.memory_delta;
         let memory_reads = execution.memory_reads;
@@ -1186,6 +1196,22 @@ pub fn encrypt_profile_cell(cell: u32) -> Option<u32> {
     }
     let index = usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;
     XLAT2.get(index).copied().map(u32::from)
+}
+
+const fn profile_instruction_for(
+    profile: &ProfileDescriptor,
+    decoded: u8,
+) -> ProfileInstruction {
+    match profile.kind() {
+        ProfileKind::HistoricalConformance => match decoded {
+            b'<' => ProfileInstruction::Output,
+            b'/' => ProfileInstruction::Input,
+            _ => profile_instruction(decoded),
+        },
+        ProfileKind::Current | ProfileKind::Versioned => {
+            profile_instruction(decoded)
+        },
+    }
 }
 
 const fn profile_instruction(decoded: u8) -> ProfileInstruction {

@@ -44,8 +44,9 @@ STATE_WORDS = 16
 
 @dataclass(frozen=True, slots=True)
 class ResidentGeometry:
-    """Compile-time geometry for one modular resident Malbolge profile."""
+    """Compile-time geometry and semantics for one resident profile."""
 
+    interpreter_authority: bool
     eof_word: int
     memory_words: int
     word_modulus: int
@@ -59,6 +60,7 @@ def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
         CUDA C++ source compiled by the pinned NVRTC boundary.
 
     """
+    interpreter_authority = int(geometry.interpreter_authority)
     eof_word = geometry.eof_word
     memory_words = geometry.memory_words
     word_modulus = geometry.word_modulus
@@ -66,6 +68,7 @@ def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
     xlat1 = ",".join(str(value) for value in XLAT1)
     xlat2 = ",".join(str(value) for value in XLAT2)
     return f"""
+#define INTERPRETER_AUTHORITY {interpreter_authority}u
 #define MEMORY_WORDS {memory_words}u
 #define STATE_WORDS {STATE_WORDS}u
 #define MAX_WORD {word_modulus - 1}u
@@ -187,10 +190,15 @@ extern "C" __global__ void {kernel_name}(
             break;
         }}
         if (!graphical(cell)) {{
+#if INTERPRETER_AUTHORITY
+            state[15] += 1u;
+            continue;
+#else
             termination = TERMINATION_NON_GRAPHICAL;
             state[11] = STATUS_TERMINATED;
             state[15] += 1u;
             break;
+#endif
         }}
         unsigned int decoded = XLAT1[((cell - 33u) + (c % 94u)) % 94u];
         if (decoded == (unsigned int)'v') {{
@@ -230,19 +238,37 @@ extern "C" __global__ void {kernel_name}(
         }} else if (decoded == (unsigned int)'j') {{
             planned_d = data_before;
         }} else if (decoded == (unsigned int)'<') {{
-            if (input_consumed < input_len) {{
-                planned_a = inputs[input_offset + input_consumed];
-                input_advance = true;
-            }} else {{
-                planned_a = EOF_WORD;
-            }}
-        }} else if (decoded == (unsigned int)'/') {{
+#if INTERPRETER_AUTHORITY
             if (output_len >= output_capacity) {{
                 reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
                 break;
             }}
             output_present = true;
             output_value = a & 255u;
+#else
+            if (input_consumed < input_len) {{
+                planned_a = inputs[input_offset + input_consumed];
+                input_advance = true;
+            }} else {{
+                planned_a = EOF_WORD;
+            }}
+#endif
+        }} else if (decoded == (unsigned int)'/') {{
+#if INTERPRETER_AUTHORITY
+            if (input_consumed < input_len) {{
+                planned_a = inputs[input_offset + input_consumed];
+                input_advance = true;
+            }} else {{
+                planned_a = EOF_WORD;
+            }}
+#else
+            if (output_len >= output_capacity) {{
+                reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
+                break;
+            }}
+            output_present = true;
+            output_value = a & 255u;
+#endif
         }}
 
         unsigned int encryption_pointer = planned_c;

@@ -1019,6 +1019,7 @@ class CudaProfileRunAdapter:
             info = runtime.device_info
             source = resident_kernel_source(
                 ResidentGeometry(
+                    interpreter_authority=False,
                     eof_word=admitted.eof_word,
                     memory_words=admitted.memory_words,
                     word_modulus=admitted.word_modulus,

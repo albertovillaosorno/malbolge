@@ -79,7 +79,7 @@ class ClassicRunRequest:
     termination: StepTermination | int = StepTermination.NONE
 
     def validated(self) -> ClassicRunRequest:
-        """Validate a complete resumable specification-mode classic state.
+        """Validate a complete resumable interpreter-authority classic state.
 
         Returns:
             The unchanged request after validation succeeds.
