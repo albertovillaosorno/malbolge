@@ -522,9 +522,15 @@ suspension with a one-based next-attempt number. Exhaustion converts the owner t
 a complete or positive-slice interpreter route; zero maximum attempts falls back
 immediately. Caller supplies the completed-attempt count, and non-`NativeRetry`
 reasons fail while retaining ownership. Four cases cover attempts one/two,
-complete fallback, zero-limit sliced fallback, and reason rejection. Cache-aware
-planning, adaptive telemetry, async queues, and product orchestration remain
-open.
+complete fallback, zero-limit sliced fallback, and reason rejection.
+`application/retry_router.rs` now composes the attempt policy with exact host
+planning in one affine request. Exhausted limits bypass host planning; available
+budget selects a one-based native attempt; missing target format applies the
+configured normative fallback without counting an attempt. Policy and hard
+planning failures retain the suspension. Five cases cover Windows native route,
+planner bypass at exhaustion, sliced format fallback, hard profile rejection,
+and caller-yield rejection. Route execution, cache-aware planning, adaptive
+telemetry, async queues, and product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready

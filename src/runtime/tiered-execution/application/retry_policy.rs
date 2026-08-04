@@ -195,6 +195,12 @@ impl NativeContinuationRetryNativeRoute {
 }
 
 impl NativeContinuationRetryPolicy {
+    /// Returns the configured scheduler decision used for normative fallback.
+    #[must_use]
+    pub const fn fallback_decision(self) -> NativeContinuationScheduleDecision {
+        self.fallback.decision()
+    }
+
     /// Returns the configured maximum native attempt count.
     #[must_use]
     pub const fn max_native_attempts(self) -> usize {

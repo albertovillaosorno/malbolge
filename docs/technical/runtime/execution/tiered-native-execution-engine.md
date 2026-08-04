@@ -505,8 +505,17 @@ converts the owner to either complete normative interpretation or one configured
 positive interpreter slice. A zero limit falls back immediately. Attempt counts
 are always caller-supplied; non-`NativeRetry` reasons fail without losing the
 suspension. Four cases cover attempts one/two, complete fallback, zero-limit
-sliced fallback, and reason rejection. Cache-aware planning, adaptive telemetry,
-asynchronous queue ownership, and product scheduling remain outside.
+sliced fallback, and reason rejection.
+
+`application/retry_router.rs` composes attempt policy and exact host planning as
+one affine routing request. Exhausted attempts bypass host planning. Remaining
+budget selects a one-based native attempt, while missing target format applies
+the configured complete or sliced normative fallback without incrementing the
+attempt count. Policy and hard planning failures return the exact suspension.
+Five cases cover Windows native routing, exhausted-planner bypass, sliced format
+fallback, hard profile rejection, and invalid scheduler reason. Route execution,
+cache-aware planning, adaptive telemetry, asynchronous ownership, and product
+scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

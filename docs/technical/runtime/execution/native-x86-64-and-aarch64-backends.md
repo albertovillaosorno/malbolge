@@ -295,8 +295,12 @@ invalid reason. An explicit immutable attempt policy now preserves native retry
 while budget remains and routes exhaustion to complete or positive-slice
 normative fallback. Caller owns completed-attempt evidence; zero limit falls back
 immediately. Four cases cover attempt numbering, both fallback forms, and reason
-rejection. Native object fusion, foreign invocation, cache-aware retry planning,
-and adaptive policy remain open.
+rejection. A bounded router now composes attempt policy with host planning:
+exhaustion bypasses planning, available budget produces a numbered native route,
+and missing format uses configured fallback without consuming an attempt. Five
+cases cover both routes and owned hard failures. Native object fusion, foreign
+invocation, route execution, cache-aware planning, and adaptive policy remain
+open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

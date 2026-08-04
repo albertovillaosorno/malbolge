@@ -371,8 +371,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   complete or positive-slice normative fallback, and zero limit falls back
   immediately. Caller supplies attempt counts, while invalid reasons retain the
   owner and fail. Four cases cover attempt numbering, both fallback forms, and
-  reason rejection. Cache-aware planning, adaptive telemetry, async queues, and
-  product orchestration remain open.
+  reason rejection.
+- `application/retry_router.rs` now composes attempt policy and exact host
+  planning in one affine request. Exhaustion bypasses planning; remaining budget
+  selects a numbered native route; missing format applies configured normative
+  fallback without counting an attempt. Policy and hard planning failures retain
+  the suspension. Five cases cover Windows route, exhaustion bypass, sliced
+  format fallback, hard profile rejection, and invalid reason. Route execution,
+  cache-aware planning, adaptive telemetry, async queues, and product
+  orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
