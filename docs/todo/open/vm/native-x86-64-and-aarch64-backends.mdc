@@ -154,10 +154,17 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Previous limits remain active through failure; removed keys and failed release
   ownership remain explicit for retry, and a repeated request does not release
   completed victims again. Seventeen cases cover original reuse/admission plus
-  expansion, entry/mapping/byte shrink, and second-eviction failure. This does
-  not provide concurrent leases, durable executable storage, fused objects,
-  direct branches, or a concrete foreign-call shim. Remaining fused-region
-  emission, concurrent leasing, concrete executable-memory integration, and
+  expansion, entry/mapping/byte shrink, and second-eviction failure. A separate
+  immutable `Arc` lease cache now lets exact ready chains remain usable across
+  threads after active lookup retirement. Retired entries keep exact weighted
+  usage charged until explicit return/reconciliation observes no external
+  owner. Mixed eviction releases unleased entries, retires leased entries, and
+  rejects candidates blocked by resident weight. Invalidation and full drain
+  use the same ownership rule; keyed cleanup failures remain retryable. Seven
+  cases cover cross-thread sharing, weighted blockage, mixed retire/release,
+  final-owner cleanup, and aggregate retry. Durable or cross-process leasing,
+  fused objects, direct branches, and a concrete foreign-call shim remain open.
+  Remaining fused-region emission, concrete executable-memory integration, and
   instruction-cache implementation remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

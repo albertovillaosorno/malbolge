@@ -268,10 +268,19 @@ required releases succeed. Failure reports every removed key and retains exact
 release ownership; retry followed by the same request publishes without
 releasing completed victims again. Seventeen cases cover prior reuse/admission
 behavior plus expansion, entry/mapping/byte shrink, and failure during the
-second
-reconfiguration eviction. This is not a fused COFF object, a concurrent lease
-model, durable executable storage, a direct branch chain, or a concrete
-foreign-call shim.
+second reconfiguration eviction.
+
+A separate lease cache now shares exact ready chains through immutable `Arc`
+ownership. Active FIFO lookup can retire an entry while external leases continue
+to use the same mappings on other threads. Retired entries retain exact weighted
+usage and cannot be released until explicit reconciliation observes no external
+owner. Mixed eviction releases unleased victims immediately, retires leased
+victims, and rejects a candidate when resident weight still cannot fit. Full
+drain and invalidation follow the same rule; keyed cleanup failures remain
+retryable outside cache authority. Seven cases bind cross-thread sharing,
+weighted blockage, mixed retirement/release, final-lease cleanup, and aggregate
+retry. This is not a fused COFF object, durable or cross-process executable
+storage, a direct branch chain, or a concrete foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

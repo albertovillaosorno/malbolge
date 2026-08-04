@@ -476,9 +476,23 @@ removed keys, and returns exact release ownership for retry. Repeating the
 request after cleanup publishes the new limits without repeating completed
 releases. Seventeen deterministic cases cover the original hit/FIFO/cleanup and
 weighted-admission behavior plus no-op expansion, entry/mapping/byte shrink, and
-failure during the second reconfiguration eviction. This still does not fuse
-COFF, jump directly between mappings, transfer into the interpreter, provide
-concurrent leases, persist loaded state, or implement the unsafe machine-code
+failure during the second reconfiguration eviction.
+`NativeExecutableSequenceLeaseCache` now provides cloneable immutable `Arc`
+leases over exact loaded sequences. Active lookup and retired residency are
+separate: invalidation, eviction, or full drain removes lookup authority, while
+live leases keep mappings resident and keep their exact
+entry/mapping/byte weight charged. Lease clone and drop perform no adapter
+operation. Explicit `return_lease()` or `reconcile_retired()` releases only
+residents with no external owners, attempts every releasable entry, and returns
+keyed failures for exact
+retry. A miss can retire leased FIFO victims and release unleased victims; when
+retired resident weight still prevents admission, the candidate cleans itself
+and the failure reports limits, usage, evicted keys, and blocking retired keys.
+Seven deterministic cases cover pointer-identical hits across threads, weighted
+lease blockage, mixed retire/release eviction, two-lease invalidation,
+lease-aware full drain, insertion cleanup retry, and aggregate reconciliation
+retry. This still does not fuse COFF, jump directly between mappings, transfer
+into the interpreter, persist loaded state, or implement the unsafe machine-code
 call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
@@ -503,10 +517,9 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
-persistence and automatic eviction, executable-cache concurrent leases,
-synchronization policy, fused-region emission, concrete interpreter handoff, the
-unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
-open.
+persistence and automatic eviction, executable-cache synchronization policy,
+fused-region emission, concrete interpreter handoff, the unsafe foreign-call
+boundary, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
@@ -515,10 +528,10 @@ process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
 relocation-free load images, persistent exact-plan executable ownership,
 entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
-limit reconfiguration, and an untrusted cross-ISA bootstrap object boundary are
-implemented. Combined-region native fusion, concurrent executable leases,
-concrete foreign invocation, durable cache serialization/storage, and wider tier
-orchestration remain open.
+limit reconfiguration, shared immutable executable leases with explicit retired
+reconciliation, and an untrusted cross-ISA bootstrap object boundary are
+implemented. Combined-region native fusion, concrete foreign invocation, durable
+cache serialization/storage, and wider tier orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
 

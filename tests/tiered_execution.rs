@@ -47,6 +47,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::from_utf8;
 use std::sync::Arc;
+use std::thread;
 
 use execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
@@ -95,6 +96,10 @@ use execution_native::{
     NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
+    NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
+    NativeExecutableSequenceLeaseCacheAcquisition,
+    NativeExecutableSequenceLeaseCacheDisposition,
+    NativeExecutableSequenceLeaseCacheInvalidation,
     NativeInstructionSyncReport, NativeInstructionSyncRequest,
     NativeLoadedSequenceAdmissionError, NativeRegionBuffers,
     NativeRegionCallFrame, NativeRegionCallFrameError,
@@ -148,6 +153,11 @@ type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
 
 type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
+
+type LeaseCacheFixture = (
+    NativeExecutableSequenceLeaseCache,
+    FakeNativeExecutableAdapter,
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FakeNativeAdapterOperation {
@@ -8505,6 +8515,31 @@ const fn executable_cache_usage_is_empty(
     usage.entries() == 0 && usage.mappings() == 0 && usage.mapped_bytes() == 0
 }
 
+fn lease_acquire(
+    cache: &mut NativeExecutableSequenceLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    plan: &VerifiedDirectSequencePlan,
+) -> Result<NativeExecutableSequenceLease, String> {
+    cache
+        .ensure_plan(adapter, plan)
+        .map(NativeExecutableSequenceLeaseCacheAcquisition::into_lease)
+        .map_err(|failure| failure.to_string())
+}
+
+fn lease_fixture(
+    limits: NativeExecutableSequenceCacheLimits,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<LeaseCacheFixture, String> {
+    Ok((
+        NativeExecutableSequenceLeaseCache::with_limits(limits),
+        FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_value)?,
+            native_executable_address(base_value)?,
+        ),
+    ))
+}
+
 fn ensure_executable_cache_plan(
     cache: &mut NativeExecutableSequenceCache,
     adapter: &mut FakeNativeExecutableAdapter,
@@ -9403,4 +9438,406 @@ fn executable_sequence_cache_reconfiguration_retries_failed_eviction()
     cache
         .release_all(&mut adapter)
         .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_shares_hits_across_threads()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let key = NativeExecutableSequenceKey::from_plan(&plan);
+    let capacity = nonzero_test_limit(2, "lease cache capacity")?;
+    let mut cache = NativeExecutableSequenceLeaseCache::new(capacity);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(917)?,
+        native_executable_address(0xa1_000)?,
+    );
+    let first = {
+        let acquisition = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if acquisition.disposition().is_hit()
+            || !acquisition.disposition().evicted_keys().is_empty()
+        {
+            return Err(String::from("first lease acquisition drifted"));
+        }
+        acquisition.into_lease()
+    };
+    let operations = adapter.operations.len();
+    let second = {
+        let acquisition = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if acquisition.disposition()
+            != &NativeExecutableSequenceLeaseCacheDisposition::Hit
+        {
+            return Err(String::from("exact lease hit was not reused"));
+        }
+        acquisition.into_lease()
+    };
+    if !first.shares_resident_with(&second)
+        || first.key() != &key
+        || first.strong_owner_count() != 3
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("shared lease identity drifted"));
+    }
+    let thread_lease = second.clone();
+    let length = thread::spawn(move || thread_lease.sequence().len())
+        .join()
+        .map_err(|_panic| String::from("lease reader thread panicked"))?;
+    if length != 2 || first.strong_owner_count() != 3 {
+        return Err(String::from("cross-thread lease ownership drifted"));
+    }
+    drop(second);
+    drop(first);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if report.released_keys() == [key]
+        && report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_requests.len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("shared lease final release drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_blocks_weighted_resident()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let second_plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first_plan);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        3,
+        "entry limit",
+    )?)
+    .with_mapping_limit(nonzero_test_limit(2, "mapping limit")?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 918, 0xa2_000)?;
+    let first_lease = cache
+        .ensure_plan(&mut adapter, &first_plan)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let Err(error) = cache.ensure_plan(&mut adapter, &second_plan) else {
+        return Err(String::from("leased resident exceeded mapping limit"));
+    };
+    let block = error
+        .block()
+        .ok_or_else(|| String::from("lease capacity blockage missing"))?;
+    if error.evicted_keys() != [first_key.clone()]
+        || error.retired_keys() != [first_key.clone()]
+        || block.limits() != limits
+        || block.retired_keys() != [first_key.clone()]
+        || block.usage() != cache.usage()
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_requests.len() != 1
+    {
+        return Err(String::from("leased resident blockage evidence drifted"));
+    }
+    drop(first_lease);
+    let report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [first_key]
+        || !report.retained_keys().is_empty()
+        || !cache.is_empty()
+        || adapter.release_requests.len() != 3
+    {
+        return Err(String::from("leased resident reconciliation drifted"));
+    }
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second_plan)?;
+    drop(second_lease);
+    let final_report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.retained_keys().is_empty()
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("weighted lease retry insertion drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_mixes_retirement_and_release()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second_plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first_plan);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second_plan);
+    let third_key = NativeExecutableSequenceKey::from_plan(&third_plan);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "lease cache capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 919, 0xa3_000)?;
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first_plan)?;
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second_plan)?;
+    drop(second_lease);
+    let third_acquisition = cache
+        .ensure_plan(&mut adapter, &third_plan)
+        .map_err(|failure| failure.to_string())?;
+    if third_acquisition.disposition().evicted_keys()
+        != [first_key.clone(), second_key]
+        || third_acquisition.disposition().retired_keys() != [first_key.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.retired_keys().cloned().collect::<Vec<_>>()
+            != [first_key.clone()]
+        || cache.active_len() != 1
+        || cache.retired_len() != 1
+        || cache.resident_len() != 2
+        || cache.usage().entries() != 2
+        || cache.usage().mappings() != 3
+        || adapter.release_requests.len() != 1
+    {
+        return Err(String::from("mixed lease eviction state drifted"));
+    }
+    let third_lease = third_acquisition.into_lease();
+    drop(first_lease);
+    let report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [first_key]
+        || !report.retained_keys().is_empty()
+        || cache.resident_len() != 1
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("mixed lease retirement cleanup drifted"));
+    }
+    drop(third_lease);
+    let final_report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed lease final release drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_invalidation_waits_for_all_leases()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let key = NativeExecutableSequenceKey::from_plan(&plan);
+    let mut cache = NativeExecutableSequenceLeaseCache::new(
+        nonzero_test_limit(2, "lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(920)?,
+        native_executable_address(0xa4_000)?,
+    );
+    let first = cache
+        .ensure_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?
+        .into_lease();
+    let second = first.clone();
+    let invalidation = cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|failure| failure.to_string())?;
+    if invalidation
+        != (NativeExecutableSequenceLeaseCacheInvalidation::Retired {
+            leases: 2,
+        })
+        || cache.contains_plan(&plan)
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || !adapter.release_requests.is_empty()
+    {
+        return Err(String::from("leased invalidation did not retire exactly"));
+    }
+    let first_report = cache
+        .return_lease(&mut adapter, first)
+        .map_err(|failure| failure.to_string())?;
+    if !first_report.released_keys().is_empty()
+        || first_report.retained_keys() != [key.clone()]
+        || cache.retired_len() != 1
+        || !adapter.release_requests.is_empty()
+    {
+        return Err(String::from("first lease return released too early"));
+    }
+    let second_report = cache
+        .return_lease(&mut adapter, second)
+        .map_err(|failure| failure.to_string())?;
+    if second_report.released_keys() != [key]
+        || !second_report.retained_keys().is_empty()
+        || !cache.is_empty()
+        || adapter.release_requests.len() != 1
+        || cache
+            .invalidate_plan(&mut adapter, &plan)
+            .map_err(|failure| failure.to_string())?
+            != NativeExecutableSequenceLeaseCacheInvalidation::Missing
+    {
+        return Err(String::from("final lease return reconciliation drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_sequence_lease_cache_release_all_retains_live_lease()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second_plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first_plan);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second_plan);
+    let mut cache = NativeExecutableSequenceLeaseCache::new(
+        nonzero_test_limit(2, "lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(921)?,
+        native_executable_address(0xa5_000)?,
+    );
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first_plan)?;
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second_plan)?;
+    drop(second_lease);
+    let report = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() != [second_key]
+        || report.retained_keys() != [first_key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_requests.len() != 1
+    {
+        return Err(String::from("lease-aware release_all evidence drifted"));
+    }
+    drop(first_lease);
+    let final_report = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if final_report.released_keys() == [first_key]
+        && final_report.retained_keys().is_empty()
+        && cache.is_empty()
+        && adapter.release_requests.len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("lease-aware deferred release drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_retains_eviction_cleanup_failures()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second_plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first_plan);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second_plan);
+    let mut cache = NativeExecutableSequenceLeaseCache::new(
+        nonzero_test_limit(1, "lease cache capacity")?,
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(922)?,
+        native_executable_address(0xa6_000)?,
+    );
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first_plan)?;
+    drop(first_lease);
+    adapter.release_failures_remaining = 2;
+    let Err(error) = cache.ensure_plan(&mut adapter, &second_plan) else {
+        return Err(String::from("configured leased eviction failure ignored"));
+    };
+    if error.requested_key() != &second_key
+        || error.evicted_keys() != [first_key.clone()]
+        || !error.retired_keys().is_empty()
+        || error.release_failure().is_none()
+        || error.candidate_cleanup_failure().is_none()
+        || error.block().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("leased eviction failure evidence drifted"));
+    }
+    let report = (*error)
+        .into_release_failures()
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("leased eviction cleanup retry drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconciliation_aggregates_failures()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first_plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second_plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first_plan);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second_plan);
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "lease cache capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 923, 0xa7_000)?;
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first_plan)?;
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second_plan)?;
+    if cache
+        .invalidate_plan(&mut adapter, &first_plan)
+        .map_err(|failure| failure.to_string())?
+        != (NativeExecutableSequenceLeaseCacheInvalidation::Retired {
+            leases: 1,
+        })
+        || cache
+            .invalidate_plan(&mut adapter, &second_plan)
+            .map_err(|failure| failure.to_string())?
+            != (NativeExecutableSequenceLeaseCacheInvalidation::Retired {
+                leases: 1,
+            })
+    {
+        return Err(String::from("aggregate reconciliation setup drifted"));
+    }
+    drop(first_lease);
+    drop(second_lease);
+    adapter.release_failures_remaining = 2;
+    let Err(failure) = cache.reconcile_retired(&mut adapter) else {
+        return Err(String::from("configured reconciliation failures ignored"));
+    };
+    let failed_keys = failure
+        .failures()
+        .iter()
+        .map(|entry| entry.key().clone())
+        .collect::<Vec<_>>();
+    if failed_keys != [first_key.clone(), second_key.clone()]
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("aggregate reconciliation evidence drifted"));
+    }
+    let report = (*failure)
+        .retry(&mut adapter)
+        .map_err(|retry| retry.to_string())?;
+    if report.released_keys() == [first_key, second_key]
+        && report.retained_keys().is_empty()
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("aggregate reconciliation retry drifted"))
+    }
 }

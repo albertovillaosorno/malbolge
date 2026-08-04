@@ -331,11 +331,20 @@ baseline; native tiers are accelerators of identical observable behavior.
   ownership;
   retry plus the same request publishes without repeating completed releases.
   Seventeen cases cover original reuse/admission paths plus expansion,
-  entry/mapping/byte shrink, and second-eviction failure. No concurrent leases,
-  durable executable store, object fusion, direct branch chain, concrete FFI
-  shim, or interpreter handoff is added.
-- Remaining fused-region emission, concurrent executable leasing, plus
-  cache-aware AOT/JIT
+  entry/mapping/byte shrink, and second-eviction failure.
+- `NativeExecutableSequenceLeaseCache` now shares exact ready chains through
+  cloneable immutable `Arc` leases. Active lookup and retired residency are
+  separate. Eviction, invalidation, and full drain retire leased entries while
+  keeping their exact weighted usage charged; unleased entries release
+  immediately. Lease clone/drop performs no adapter work. Explicit return or
+  reconciliation releases only residents with no external owners, preserves
+  still-leased FIFO entries, and returns keyed failures for exact retry. A miss
+  blocked by retired weight cleans its candidate and reports exact limits,
+  usage, removals, and blockers. Seven cases cover cross-thread sharing,
+  weighted blockage, mixed retire/release, final-owner cleanup, lease-aware
+  drain, and both retry paths. Durable/cross-process leasing, object fusion,
+  direct branch chains, a concrete FFI shim, and interpreter handoff remain out.
+- Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

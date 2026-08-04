@@ -269,9 +269,21 @@ remain active. Failure reports every key whose authority was removed and retains
 the exact failed executable for retry; repeating the request after cleanup does
 not release completed victims again. Seventeen tests cover original reuse,
 weighted admission and cleanup plus expansion, entry/mapping/byte shrink, and
-second-eviction failure. Objects remain separate mappings; there are no
-concurrent leases, durable loaded state, direct inter-mapping jumps, concrete
-foreign-call shim, or interpreter transfer.
+second-eviction failure.
+
+`executable_lease_cache.rs` adds shared immutable sequence ownership without
+moving platform cleanup into `Drop`. Exact hits clone one `Arc` and can be read
+from separate threads without adapter operations or FIFO refresh. Eviction,
+invalidation, and full drain remove active lookup authority; a live lease moves
+the entry to a retired FIFO where its exact weight remains charged. Explicit
+`return_lease()` and `reconcile_retired()` attempt only residents whose final
+external lease has gone, while aggregate keyed failures retain exact retry
+ownership. A candidate blocked by retired resident weight is cleaned and reports
+its limits, usage, active evictions, and retired blockers. Seven tests cover
+cross-thread sharing, weighted blockage, mixed release/retirement, final-lease
+reclamation, lease-aware drain, and both cleanup retry paths. Objects remain
+separate mappings; there is no durable loaded state, cross-process leasing,
+direct inter-mapping jump, concrete foreign-call shim, or interpreter transfer.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

@@ -446,8 +446,23 @@ usage, retains the previous limits, reports every removed key, and returns exact
 release ownership. After retry, the same request publishes without repeating
 completed cleanup. Seventeen cases bind original reuse, weighted admission, and
 cleanup plus expansion, entry/mapping/byte shrink, and second-eviction failure.
-Mappings remain independent; no concurrent lease model, durable executable
-store, direct jumps, unsafe call shim, or interpreter handoff is implied.
+
+`NativeExecutableSequenceLeaseCache` adds cloneable immutable `Arc` leases above
+that lifecycle. Active lookup and retired residency are separate queues. A hit
+shares the exact ready sequence across threads without adapter work or FIFO age
+change. Eviction, invalidation, and full drain end lookup authority, but a live
+lease keeps its mappings and exact weighted usage resident. Lease clone/drop is
+pure ownership accounting; platform release remains explicit through
+`return_lease()` or `reconcile_retired()`. Reconciliation attempts every retired
+entry with no external owner, preserves still-leased FIFO residents, and returns
+keyed release failures for exact retry. If retired weight blocks a new
+candidate,
+the candidate is cleaned and the failure exposes exact limits, usage, active
+removals, and retired blockers. Seven cases cover cross-thread sharing, weighted
+blockage, mixed retirement/release, final-owner reclamation, lease-aware drain,
+and both retry paths. Mappings remain independent; no durable or cross-process
+executable store, direct jumps, unsafe call shim, or interpreter handoff is
+implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct
@@ -493,10 +508,11 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, concurrent executable leases, concrete interpreter
-handoff, executable-memory platform implementations and foreign invocation,
-durable cache serialization/storage, cache-aware AOT/JIT policy beyond verified
-direct process-local reuse, and performance policy remain open. The
+Combined-region emission, concrete interpreter handoff, executable-memory
+platform implementations and foreign invocation, durable cache
+serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
+beyond verified direct process-local reuse, and performance policy remain open.
+The
 interpreter remains the only normative execution authority and the guaranteed
 fallback.
 
