@@ -459,11 +459,17 @@ is reprojected to exact `RegionEffectProgram`; machine failure, projection
 drift,
 or live-in mismatch returns the current-step entry checkpoint and exact complete
 plan resume index. Completion combines native-prefix and interpreter-suffix step
-counts and requires the original exit observation/outcome. Five deterministic
-cases cover buffer/checkpoint completion, profile/observation rejection, initial
-live-in rejection, and rollback after one valid interpreter step. Multi-tier
-scheduling, partial interpreter budgets, and production orchestration remain
-open.
+counts and requires the original exit observation/outcome. `execute_with_budget`
+now executes at most the requested suffix steps and returns `Completed` or one
+affine `NativeInterpreterHandoffSuspension`. A suspension retains the original
+continuation, cumulative interpreter progress, complete-plan resume index, exact
+artifact-key/program suffix, and normative checkpoint; `into_handoff()` resumes
+without readmission or state inference. Zero budget is a no-op suspension,
+and an
+oversized budget completes normally. Ten deterministic cases cover transfer,
+admission, completion, zero/partial/oversized budgets, repeated zero after
+progress, and rollback before or after suspension. Multi-tier scheduling and
+production orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
@@ -545,7 +551,7 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
 persistence and automatic eviction, executable-cache synchronization policy,
-fused-region emission, bounded/multi-tier continuation scheduling, the unsafe
+fused-region emission, multi-tier continuation scheduling, the unsafe
 foreign-call boundary, and broader AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
@@ -553,8 +559,9 @@ deterministic deoptimization, capacity-consistent canonical native cache
 identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
-validated semantic interpreter continuations and normative checkpoint handoff,
-relocation-free load images, persistent exact-plan executable ownership,
+validated semantic interpreter continuations, budgeted normative checkpoint
+handoff, relocation-free load images, persistent exact-plan executable
+ownership,
 entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
 limit reconfiguration, shared immutable executable leases with explicit retired
 reconciliation, and an untrusted cross-ISA bootstrap object boundary are

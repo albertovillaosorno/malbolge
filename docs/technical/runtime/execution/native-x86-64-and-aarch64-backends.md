@@ -255,9 +255,14 @@ application bridge now restores either a complete checkpoint or native transfer
 buffers into the normative profile machine. It admits exact profile and entry
 state, executes each remaining traced transition, reprojects it to the retained
 one-step IR, and rolls back a mismatching step to its entry checkpoint. Combined
-native/interpreter progress must reach the verified exit/outcome. Five cases
-cover completion on both ISAs and fail-closed checkpoint/live-in drift. This is
-still not native object fusion, foreign invocation, or a multi-tier scheduler.
+native/interpreter progress must reach the verified exit/outcome. Explicit
+semantic budgets now return an affine suspension containing cumulative progress,
+complete-plan resume index, exact artifact/program suffix, and normative
+checkpoint. Zero budget preserves state, partial budget resumes without
+readmission, and oversized budget completes. Ten cases cover completion on both
+ISAs, checkpoint/live-in drift, budget boundaries, and rollback after resume.
+This is still not native object fusion, foreign invocation, or a multi-tier
+scheduler.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

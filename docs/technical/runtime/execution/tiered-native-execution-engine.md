@@ -430,10 +430,18 @@ step uses `step_traced()` and reprojects its trace to exact one-step IR.
 Machine,
 projection, program, or live-in drift returns the step-entry checkpoint with the
 combined-plan resume index. Completion combines native and interpreter step
-counts and validates the original plan exit and outcome. Five cases cover both
-transfer forms, checkpoint/profile rejection, immediate live-in rejection, and
-late drift after one admitted interpreter step. Bounded continuation scheduling
-and multi-tier production policy remain outside this bridge.
+counts and validates the original plan exit and outcome.
+
+`execute_with_budget()` limits each invocation to an explicit semantic-step
+budget. Exhausting the budget before the suffix completes returns an affine
+`NativeInterpreterHandoffSuspension` with the original continuation, cumulative
+interpreter progress, complete-plan resume index, exact artifact-key/program
+suffix, and validated checkpoint. `into_handoff()` resumes that owned boundary
+without repeating external admission. A zero budget performs no transition and
+preserves prior progress; an oversized budget completes normally. Ten cases now
+cover both transfer forms, admission drift, completion, zero/partial/oversized
+budgets, repeated zero after progress, and rollback before or after suspension.
+Multi-tier tier choice and production scheduling remain outside this bridge.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,
@@ -535,7 +543,7 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, bounded/multi-tier continuation scheduling,
+Combined-region emission, multi-tier continuation scheduling,
 executable-memory platform implementations and foreign invocation, durable cache
 serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
 beyond verified direct process-local reuse, and performance policy remain open.

@@ -138,6 +138,7 @@ use execution_native::{
 };
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
+    NativeInterpreterHandoffBudgetOutcome,
     NativeInterpreterHandoffExecutionCause,
 };
 use malbolge::{
@@ -10588,5 +10589,245 @@ fn native_interpreter_handoff_rolls_back_late_live_in_drift()
         Ok(())
     } else {
         Err(String::from("late handoff rollback evidence drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_budget_zero_suspends_exactly()
+-> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let retained = continuation.clone();
+    let outcome = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory.clone(),
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(0)
+    .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Suspended(suspension) = outcome
+    else {
+        return Err(String::from("zero budget completed interpreter work"));
+    };
+    if suspension.continuation() == &retained
+        && suspension.interpreter_steps() == 0
+        && suspension.resume_index() == 0
+        && suspension.remaining_steps() == plan.len()
+        && suspension.remaining_key() == retained.remaining_key()
+        && suspension.remaining_programs() == plan.programs()
+        && suspension.state().memory() == memory
+        && suspension.state().io().output().is_empty()
+        && profile_state_observation(suspension.state()) == plan.entry()
+    {
+        Ok(())
+    } else {
+        Err(String::from("zero-budget suspension evidence drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_budget_suspends_then_completes()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let remaining_key = NativeExecutableSequenceKey::from_plan(&plan)
+        .suffix(1)
+        .ok_or_else(|| String::from("budget suffix key missing"))?;
+    let remaining_programs = plan
+        .programs()
+        .get(1..)
+        .ok_or_else(|| String::from("budget program suffix missing"))?;
+    let outcome = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Suspended(suspension) = outcome
+    else {
+        return Err(String::from("one-step budget did not suspend"));
+    };
+    if suspension.interpreter_steps() != 1
+        || suspension.resume_index() != 1
+        || suspension.remaining_steps() != 1
+        || suspension.remaining_key() != &remaining_key
+        || suspension.remaining_programs() != remaining_programs
+        || suspension.state().memory() != expected.first_memory
+    {
+        return Err(String::from("one-step suspension evidence drifted"));
+    }
+    let completion = suspension
+        .into_handoff()
+        .execute()
+        .map_err(|error| error.to_string())?;
+    if completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("resumed budget completion drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_budget_overshoot_completes() -> Result<(), String>
+{
+    let expected = direct_normative_sequence_fixture()?;
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let outcome = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(7)
+    .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("oversized budget suspended unexpectedly"));
+    };
+    if completion.interpreter_outcome()
+        == (RunOutcome::BudgetExhausted { steps: 1 })
+        && completion.outcome() == plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("oversized budget completion drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_budgeted_resume_rolls_back_drift()
+-> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        mut memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let live_in = distinct_second_live_in(&plan)?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("budgeted drift index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("budgeted drift address missing"))? =
+        observed;
+    let first = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Suspended(suspension) = first
+    else {
+        return Err(String::from("budgeted drift did not suspend first"));
+    };
+    let Err(failure) = suspension.into_handoff().execute_with_budget(1) else {
+        return Err(String::from("budgeted resumed drift was ignored"));
+    };
+    if failure.cause()
+        == (NativeInterpreterHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_index() == 1
+        && failure.state().memory().get(index).copied() == Some(observed)
+    {
+        Ok(())
+    } else {
+        Err(String::from("budgeted resumed rollback drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_budget_zero_preserves_progress()
+-> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let first = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?
+    .execute_with_budget(1)
+    .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Suspended(first_pause) = first
+    else {
+        return Err(String::from("progress fixture did not suspend"));
+    };
+    let first_state = first_pause.state().clone();
+    let first_key = first_pause.remaining_key().clone();
+    let second = first_pause
+        .into_handoff()
+        .execute_with_budget(0)
+        .map_err(|error| error.to_string())?;
+    let NativeInterpreterHandoffBudgetOutcome::Suspended(second_pause) = second
+    else {
+        return Err(String::from("zero resumed budget completed work"));
+    };
+    if second_pause.interpreter_steps() == 1
+        && second_pause.resume_index() == 1
+        && second_pause.remaining_steps() == 1
+        && second_pause.remaining_key() == &first_key
+        && second_pause.remaining_programs()
+            == plan.programs().get(1..).unwrap_or(&[])
+        && second_pause.state() == &first_state
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "zero resumed budget lost accumulated progress",
+        ))
     }
 }

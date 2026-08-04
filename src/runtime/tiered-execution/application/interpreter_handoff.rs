@@ -14,20 +14,20 @@
 //   - Call executable mappings, infer omitted state, or bypass traced VM steps.
 // - Allows:
 //   - Inputs: an exact continuation plus owned checkpoint or transfer buffers.
-//   - Outputs: completed checkpoint/outcome or resumable indexed failure.
+//   - Outputs: completion, exact budget suspension, or indexed failure.
 //   - Side effects: owned safe-Rust interpreter mutation only.
 // - Split-When:
 //   - Scheduling across multiple tiers or async ownership gains policy.
 // - Merge-When:
 //   - Native orchestration owns the complete interpreter fallback lifecycle.
 // - Summary:
-//   - Restores and executes the exact remaining semantic suffix normatively.
+//   - Restores and budget-executes exact semantic suffixes normatively.
 // - Description:
-//   - Admits checkpoint identity and validates every traced step against IR.
+//   - Admits checkpoints, validates traced steps, and preserves exact pauses.
 // - Usage:
 //   - Called after `NativeInterpreterContinuation` construction.
 // - Defaults:
-//   - Each mismatching step restores its entry checkpoint and fails closed.
+//   - Zero budget suspends; mismatching steps restore entry and fail closed.
 //
 
 //! Normative interpreter handoff for admitted native sequence continuations.
@@ -41,7 +41,9 @@ use malbolge::{
 };
 
 use crate::execution_ir::{RegionEffectProgram, StepProgramProjectionError};
-use crate::execution_native::NativeInterpreterContinuation;
+use crate::execution_native::{
+    NativeExecutableSequenceKey, NativeInterpreterContinuation,
+};
 
 /// Failure before any interpreter transition can begin.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -124,6 +126,7 @@ pub enum NativeInterpreterHandoffExecutionCause {
 pub struct NativeInterpreterHandoff {
     checkpoint: ProfileMachineState,
     continuation: NativeInterpreterContinuation,
+    interpreter_steps: usize,
 }
 
 /// Successful normative consumption of one native continuation.
@@ -132,6 +135,25 @@ pub struct NativeInterpreterHandoffCompletion {
     continuation: NativeInterpreterContinuation,
     interpreter_outcome: RunOutcome,
     outcome: RunOutcome,
+    state: ProfileMachineState,
+}
+
+/// One budgeted normative handoff result.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeInterpreterHandoffBudgetOutcome {
+    /// Every remaining semantic step completed and final evidence matched.
+    Completed(NativeInterpreterHandoffCompletion),
+    /// The requested budget ended at an exact resumable checkpoint.
+    Suspended(NativeInterpreterHandoffSuspension),
+}
+
+/// Exact resumable interpreter state after a budget boundary.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeInterpreterHandoffSuspension {
+    continuation: NativeInterpreterContinuation,
+    interpreter_steps: usize,
+    remaining_key: NativeExecutableSequenceKey,
+    resume_index: usize,
     state: ProfileMachineState,
 }
 
@@ -146,6 +168,14 @@ pub struct NativeInterpreterHandoffExecutionFailure {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+struct NativeInterpreterBudgetProgress {
+    continuation: NativeInterpreterContinuation,
+    interpreter_steps: usize,
+    state: ProfileMachineState,
+    termination: Option<malbolge::Termination>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct NativeInterpreterStepFailure {
     cause: NativeInterpreterHandoffExecutionCause,
     state: ProfileMachineState,
@@ -154,6 +184,12 @@ struct NativeInterpreterStepFailure {
 /// Result of consuming one exact continuation in the normative interpreter.
 pub type NativeInterpreterHandoffExecutionResult = Result<
     NativeInterpreterHandoffCompletion,
+    Box<NativeInterpreterHandoffExecutionFailure>,
+>;
+
+/// Result of one budgeted interpreter-continuation execution slice.
+pub type NativeInterpreterHandoffBudgetResult = Result<
+    NativeInterpreterHandoffBudgetOutcome,
     Box<NativeInterpreterHandoffExecutionFailure>,
 >;
 
@@ -270,53 +306,68 @@ impl NativeInterpreterHandoff {
     /// Returns [`NativeInterpreterHandoffExecutionFailure`] with the exact last
     /// admitted checkpoint and resume index.
     pub fn execute(self) -> NativeInterpreterHandoffExecutionResult {
-        let Self { checkpoint, continuation } = self;
-        let mut machine = ProfileMachine::from_snapshot(checkpoint);
-        let remaining_steps = continuation.remaining_steps();
-        let mut interpreter_steps = 0usize;
-        let mut termination = None;
-        for offset in 0..remaining_steps {
-            let Some(expected) =
-                continuation.remaining_programs().get(offset).cloned()
-            else {
-                return Err(execution_failure(
+        match self.execute_with_budget(usize::MAX)? {
+            NativeInterpreterHandoffBudgetOutcome::Completed(completion) => {
+                Ok(completion)
+            },
+            NativeInterpreterHandoffBudgetOutcome::Suspended(suspension) => {
+                let NativeInterpreterHandoffSuspension {
+                    continuation,
+                    interpreter_steps,
+                    state,
+                    ..
+                } = suspension;
+                Err(execution_failure(
                     NativeInterpreterHandoffExecutionCause::ProgramMismatch,
                     continuation,
                     interpreter_steps,
-                    machine.snapshot_state(),
-                ));
-            };
-            let outcome = match execute_handoff_step(&mut machine, &expected) {
-                Ok(outcome) => outcome,
-                Err(failure) => {
-                    let NativeInterpreterStepFailure { cause, state } =
-                        *failure;
-                    return Err(execution_failure(
-                        cause,
-                        continuation,
-                        interpreter_steps,
-                        state,
-                    ));
-                },
-            };
-            interpreter_steps = interpreter_steps.saturating_add(1);
-            termination = termination_after_step(termination, outcome);
-            if termination.is_some() && interpreter_steps != remaining_steps {
-                return Err(execution_failure(
-                    NativeInterpreterHandoffExecutionCause::
-                        PrematureTermination,
-                    continuation,
-                    interpreter_steps,
-                    machine.snapshot_state(),
-                ));
-            }
+                    state,
+                ))
+            },
         }
-        complete_handoff(
+    }
+
+    /// Executes at most `step_budget` remaining semantic steps.
+    ///
+    /// A zero budget performs no interpreter transition and returns an exact
+    /// suspension. A budget at least as large as the remaining suffix produces
+    /// the same completion as [`Self::execute`]. Progress is cumulative across
+    /// suspensions and always uses complete-plan indices.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeInterpreterHandoffExecutionFailure`] when a requested
+    /// step fails exact normative admission.
+    pub fn execute_with_budget(
+        self,
+        step_budget: usize,
+    ) -> NativeInterpreterHandoffBudgetResult {
+        let Self {
+            checkpoint,
             continuation,
             interpreter_steps,
-            machine.snapshot_state(),
-            termination,
+        } = self;
+        let progress = execute_handoff_budget_slice(
+            continuation,
+            checkpoint,
+            interpreter_steps,
+            step_budget,
+        )?;
+        if progress.interpreter_steps < progress.continuation.remaining_steps()
+        {
+            return suspend_handoff(
+                progress.continuation,
+                progress.interpreter_steps,
+                progress.state,
+            );
+        }
+        complete_handoff(
+            progress.continuation,
+            progress.interpreter_steps,
+            progress.state,
+            progress.termination,
         )
+        .map(NativeInterpreterHandoffBudgetOutcome::Completed)
     }
 
     /// Constructs a handoff from native transfer buffers.
@@ -395,6 +446,71 @@ impl NativeInterpreterHandoffCompletion {
     }
 
     /// Returns the final validated normative machine checkpoint.
+    #[must_use]
+    pub const fn state(&self) -> &ProfileMachineState {
+        &self.state
+    }
+}
+
+impl NativeInterpreterHandoffSuspension {
+    /// Returns the original exact semantic continuation.
+    #[must_use]
+    pub const fn continuation(&self) -> &NativeInterpreterContinuation {
+        &self.continuation
+    }
+
+    /// Returns normative interpreter steps committed after native progress.
+    #[must_use]
+    pub const fn interpreter_steps(&self) -> usize {
+        self.interpreter_steps
+    }
+
+    /// Converts this affine suspension into its next executable handoff.
+    #[must_use]
+    pub fn into_handoff(self) -> NativeInterpreterHandoff {
+        let Self {
+            continuation,
+            interpreter_steps,
+            state,
+            ..
+        } = self;
+        NativeInterpreterHandoff {
+            checkpoint: state,
+            continuation,
+            interpreter_steps,
+        }
+    }
+
+    /// Returns the exact artifact-key suffix still requiring execution.
+    #[must_use]
+    pub const fn remaining_key(&self) -> &NativeExecutableSequenceKey {
+        &self.remaining_key
+    }
+
+    /// Returns exact one-step programs still pending after this budget slice.
+    #[must_use]
+    pub fn remaining_programs(&self) -> &[RegionEffectProgram] {
+        self.continuation
+            .remaining_programs()
+            .get(self.interpreter_steps..)
+            .unwrap_or(&[])
+    }
+
+    /// Returns the number of semantic steps still requiring execution.
+    #[must_use]
+    pub const fn remaining_steps(&self) -> usize {
+        self.continuation
+            .remaining_steps()
+            .saturating_sub(self.interpreter_steps)
+    }
+
+    /// Returns the next complete-plan semantic index for later execution.
+    #[must_use]
+    pub const fn resume_index(&self) -> usize {
+        self.resume_index
+    }
+
+    /// Returns the exact checkpoint at this budget boundary.
     #[must_use]
     pub const fn state(&self) -> &ProfileMachineState {
         &self.state
@@ -482,7 +598,11 @@ fn admit_handoff(
     if let Some(error) = admission_live_in_error(first, checkpoint.memory()) {
         return Err(error);
     }
-    Ok(NativeInterpreterHandoff { checkpoint, continuation })
+    Ok(NativeInterpreterHandoff {
+        checkpoint,
+        continuation,
+        interpreter_steps: 0,
+    })
 }
 
 const fn combined_outcome(outcome: RunOutcome, completed: usize) -> RunOutcome {
@@ -566,6 +686,73 @@ fn continuation_profile(
         }
     }
     Ok(profile)
+}
+
+fn execute_handoff_budget_slice(
+    continuation: NativeInterpreterContinuation,
+    checkpoint: ProfileMachineState,
+    mut interpreter_steps: usize,
+    step_budget: usize,
+) -> Result<
+    NativeInterpreterBudgetProgress,
+    Box<NativeInterpreterHandoffExecutionFailure>,
+> {
+    let mut termination = checkpoint.io().termination();
+    let mut machine = ProfileMachine::from_snapshot(checkpoint);
+    let remaining_steps = continuation.remaining_steps();
+    if interpreter_steps > remaining_steps {
+        return Err(execution_failure(
+            NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            machine.snapshot_state(),
+        ));
+    }
+    let target = interpreter_steps
+        .saturating_add(step_budget)
+        .min(remaining_steps);
+    while interpreter_steps < target {
+        let Some(expected) = continuation
+            .remaining_programs()
+            .get(interpreter_steps)
+            .cloned()
+        else {
+            return Err(execution_failure(
+                NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+                continuation,
+                interpreter_steps,
+                machine.snapshot_state(),
+            ));
+        };
+        let outcome = match execute_handoff_step(&mut machine, &expected) {
+            Ok(outcome) => outcome,
+            Err(failure) => {
+                let NativeInterpreterStepFailure { cause, state } = *failure;
+                return Err(execution_failure(
+                    cause,
+                    continuation,
+                    interpreter_steps,
+                    state,
+                ));
+            },
+        };
+        interpreter_steps = interpreter_steps.saturating_add(1);
+        termination = termination_after_step(termination, outcome);
+        if termination.is_some() && interpreter_steps != remaining_steps {
+            return Err(execution_failure(
+                NativeInterpreterHandoffExecutionCause::PrematureTermination,
+                continuation,
+                interpreter_steps,
+                machine.snapshot_state(),
+            ));
+        }
+    }
+    Ok(NativeInterpreterBudgetProgress {
+        continuation,
+        interpreter_steps,
+        state: machine.snapshot_state(),
+        termination,
+    })
 }
 
 fn execute_handoff_step(
@@ -683,6 +870,63 @@ fn state_observation(state: &ProfileMachineState) -> ProfileMachineObservation {
         registers: state.registers(),
         termination: state.io().termination(),
     }
+}
+
+fn suspend_handoff(
+    continuation: NativeInterpreterContinuation,
+    interpreter_steps: usize,
+    state: ProfileMachineState,
+) -> NativeInterpreterHandoffBudgetResult {
+    let Some(remaining_key) =
+        continuation.remaining_key().suffix(interpreter_steps)
+    else {
+        return Err(execution_failure(
+            NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    };
+    let Some(next_program) =
+        continuation.remaining_programs().get(interpreter_steps)
+    else {
+        return Err(execution_failure(
+            NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    };
+    let Some(next_entry) =
+        next_program.effects.first().map(|effect| effect.before)
+    else {
+        return Err(execution_failure(
+            NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    };
+    if state_observation(&state) != next_entry {
+        return Err(execution_failure(
+            NativeInterpreterHandoffExecutionCause::ProgramMismatch,
+            continuation,
+            interpreter_steps,
+            state,
+        ));
+    }
+    let resume_index = continuation
+        .completed_steps()
+        .saturating_add(interpreter_steps);
+    Ok(NativeInterpreterHandoffBudgetOutcome::Suspended(
+        NativeInterpreterHandoffSuspension {
+            continuation,
+            interpreter_steps,
+            remaining_key,
+            resume_index,
+            state,
+        },
+    ))
 }
 
 const fn termination_after_step(

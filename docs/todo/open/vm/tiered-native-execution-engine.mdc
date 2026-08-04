@@ -319,10 +319,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   memory/input/output-prefix state, and runs each remaining `step_traced()`
   transition through exact IR reprojection. Any machine, program, projection, or
   live-in drift returns the step-entry checkpoint and combined resume index;
-  completion validates full-plan exit/outcome. Five cases cover both transfer
-  forms, profile/observation rejection, initial live-in rejection, and late
-  rollback. Bounded budgets, multi-tier scheduling, and product orchestration
-  remain open.
+  completion validates full-plan exit/outcome. Explicit budgets now yield
+  completion or an affine suspension retaining cumulative progress, exact
+  complete-plan resume index, artifact/program suffix, and normative checkpoint.
+  Zero budget is a no-op, partial budget resumes without readmission, and
+  oversized budget completes. Ten cases cover both transfer forms, admission,
+  budgets, repeated zero after progress, and rollback before/after suspension.
+  Multi-tier tier selection and product orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

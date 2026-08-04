@@ -147,8 +147,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   or transferred native buffers, restores the normative profile machine, and
   executes/reprojects every remaining traced step. Drift rolls back the current
   interpreted step and reports exact combined progress; success validates the
-  original exit/outcome. Five cases cover both ISAs and state/live-in rejection.
-  Multi-tier scheduling and production orchestration remain pending.
+  original exit/outcome. Explicit budgets now suspend with cumulative progress,
+  exact key/program suffix, complete-plan resume index, and normative
+  checkpoint;
+  zero/partial/oversized cases remain deterministic and resumable without
+  readmission. Ten cases cover both ISAs, state/live-in rejection, budget
+  boundaries, and rollback after resume. Multi-tier scheduling and production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
