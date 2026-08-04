@@ -522,8 +522,16 @@ failed evidence. Both native outcomes expose the one-based attempt plus semantic
 disposition; failed execution separately retains indexed runner/release ownership.
 Rebase rejection keeps the complete execution owner. Five cases cover normative
 completion, native completion, guard fallback, runner failure, and semantic
-completion with retryable cleanup. Cache-aware planning, adaptive telemetry,
-automatic multi-turn loops, asynchronous ownership, and product scheduling remain
+completion with retryable cleanup.
+
+`application/retry_cycle.rs` closes the first bounded multi-turn loop. Only a
+successfully rebased native guard miss is rescheduled as a new `NativeRetry`;
+immutable attempt policy guarantees eventual native completion or configured
+normative fallback. Runner or release failure exits immediately with independent
+semantic and native owners, so no hard failure is retried automatically. Four
+cases cover immediate fallback, repeated guards to bounded fallback, guard then
+native completion, and runner failure termination. Cache-aware planning/execution,
+adaptive telemetry, asynchronous ownership, and broader product scheduling remain
 outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain

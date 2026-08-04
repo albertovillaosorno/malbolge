@@ -302,8 +302,12 @@ cases cover both routes and owned hard failures. One-turn execution now runs
 the selected normative or native route, rebases every native result, and keeps
 semantic disposition independent from indexed runner/release ownership. Five
 cases cover interpreter/native completion, guard fallback, runner failure, and
-cleanup completion. Native object fusion, foreign invocation, cache-aware
-planning, adaptive policy, and automatic retry loops remain open.
+cleanup completion. A bounded cycle repeats only successfully rebased guard
+misses; fixed attempt policy terminates in native completion or normative
+fallback, while runner/release failures stop immediately with owners intact.
+Four cases cover zero limit, repeated guards, later native completion, and runner
+failure. Native object fusion, foreign invocation, cache-aware
+planning/execution, and adaptive policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

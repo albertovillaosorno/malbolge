@@ -537,8 +537,15 @@ Successful and failed native turns expose attempt evidence plus semantic
 disposition; failed turns separately retain indexed runner/release ownership.
 Rebase failures retain their complete execution owner. Five cases cover
 interpreter completion, native completion, guard fallback, runner failure, and
-semantic completion with cleanup retry. Cache-aware planning, adaptive telemetry,
-automatic multi-turn loops, async queues, and product orchestration remain open.
+semantic completion with cleanup retry.
+`application/retry_cycle.rs` now executes a complete bounded cycle. It loops only
+after a successful native guard miss, rescheduling the exact handoff as
+`NativeRetry`; immutable attempt policy guarantees termination through native
+completion or configured normative fallback. Runner/release failure exits on its
+first occurrence with semantic and cleanup owners intact. Four cases cover zero
+limit, repeated guards to fallback, guard then native completion, and immediate
+runner failure. Cache-aware planning/execution, adaptive telemetry, async queues,
+and broader product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready

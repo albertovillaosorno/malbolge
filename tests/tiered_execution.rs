@@ -45,6 +45,8 @@ pub mod execution_native;
 pub mod interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/application/native_retry.rs"]
 pub mod native_retry;
+#[path = "../src/runtime/tiered-execution/application/retry_cycle.rs"]
+pub mod retry_cycle;
 #[path = "../src/runtime/tiered-execution/application/retry_planner.rs"]
 pub mod retry_planner;
 #[path = "../src/runtime/tiered-execution/application/retry_policy.rs"]
@@ -171,6 +173,10 @@ use malbolge::{
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
     NativeContinuationRetryDisposition,
+};
+use retry_cycle::{
+    NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
+    execute_native_continuation_retry_cycle,
 };
 use retry_planner::{
     NativeContinuationRetryPlanningError,
@@ -10384,6 +10390,24 @@ const fn one_native_retry_policy() -> NativeContinuationRetryPolicy {
     )
 }
 
+const fn windows_retry_cycle_request(
+    policy: NativeContinuationRetryPolicy,
+    suspension: NativeContinuationScheduleSuspension,
+    attempts: usize,
+    host_isa: HostIsa,
+) -> NativeContinuationRetryCycleRequest {
+    NativeContinuationRetryCycleRequest::new(
+        policy,
+        suspension,
+        attempts,
+        NativeContinuationRetryHost::new(
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            host_isa,
+        ),
+    )
+}
+
 fn one_attempt_retry_route(
     suspension: NativeContinuationScheduleSuspension,
     runtime: &'static RuntimeCapability,
@@ -12681,4 +12705,192 @@ fn native_retry_turn_splits_cleanup_completion() -> Result<(), String> {
     release
         .retry(&mut adapter)
         .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn native_retry_cycle_falls_back_at_zero_limit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        0,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = windows_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let mut adapter = native_executable_adapter(966, 0xe0_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("zero-limit retry cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::Interpreter(turn) = outcome else {
+        return Err(String::from("zero-limit retry cycle executed native"));
+    };
+    if turn.attempts() != 0 {
+        return Err(String::from("zero-limit cycle counted native attempt"));
+    }
+    let NativeContinuationScheduleOutcome::Completed(completion) =
+        turn.outcome()
+    else {
+        return Err(String::from("zero-limit retry cycle suspended"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+        && adapter.allocation_requests.is_empty()
+        && runner.calls == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("zero-limit retry cycle evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_cycle_guards_until_bounded_fallback() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        2,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = windows_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let mut adapter = native_executable_adapter(967, 0xe1_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("bounded guard cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::Interpreter(turn) = outcome else {
+        return Err(String::from("bounded guards did not fall back"));
+    };
+    if turn.attempts() != 2 || runner.calls != 2 {
+        return Err(String::from("bounded guard attempt evidence drifted"));
+    }
+    let NativeContinuationScheduleOutcome::Completed(completion) =
+        turn.outcome()
+    else {
+        return Err(String::from("bounded guard fallback suspended"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("bounded guard fallback completion drifted"))
+    }
+}
+
+#[test]
+fn native_retry_cycle_guard_then_native_completion() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        2,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = windows_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let mut adapter = native_executable_adapter(968, 0xe2_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("guard-completion retry cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::NativeCompletion(completion) =
+        outcome
+    else {
+        return Err(String::from(
+            "guard-completion cycle did not complete native",
+        ));
+    };
+    if completion.attempts() == 2
+        && completion.completion().outcome() == expected_outcome
+        && completion.completion().retry_steps() == 2
+        && completion.completion().state().memory() == expected.final_memory
+        && completion.completion().state().io().output()
+            == expected.final_output
+        && runner.calls == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("guard-completion cycle evidence drifted"))
+    }
+}
+
+#[test]
+fn native_retry_cycle_stops_on_runner_failure() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let policy = NativeContinuationRetryPolicy::new(
+        3,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let request = windows_retry_cycle_request(
+        policy,
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let mut adapter = native_executable_adapter(969, 0xe3_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_native_continuation_retry_cycle(
+        request,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("runner-failure retry cycle: {failure:?}"))?;
+    let NativeContinuationRetryCycleOutcome::NativeFailure(turn) = outcome
+    else {
+        return Err(String::from("runner-failure cycle retried or completed"));
+    };
+    if turn.attempt() != 1
+        || turn.failure().completed_steps() != 0
+        || turn.failure().resume_index() != 0
+        || runner.calls != 1
+    {
+        return Err(String::from("runner-failure cycle evidence drifted"));
+    }
+    let NativeContinuationRetryDisposition::Resumable(resumption) =
+        turn.disposition()
+    else {
+        return Err(String::from("runner-failure cycle lost fallback"));
+    };
+    if resumption.resume_index() == 0 && resumption.retry_steps() == 0 {
+        Ok(())
+    } else {
+        Err(String::from("runner-failure fallback progress drifted"))
+    }
 }

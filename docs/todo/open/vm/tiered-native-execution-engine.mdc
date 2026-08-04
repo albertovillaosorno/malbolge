@@ -383,8 +383,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   execute one attempt and immediately rebase success/failure; attempt evidence and
   semantic disposition remain independent from indexed runner/release ownership.
   Rebase rejection retains the full execution owner. Five cases cover both
-  completions, guard fallback, runner failure, and cleanup completion. Cache-aware
-  planning, adaptive telemetry, automatic loops, async queues, and product
+  completions, guard fallback, runner failure, and cleanup completion.
+- `application/retry_cycle.rs` now runs a bounded multi-turn cycle. Only
+  successful native guard misses reschedule the exact handoff as `NativeRetry`;
+  immutable attempt policy guarantees native completion or configured normative
+  fallback. Runner/release failure exits immediately with semantic and cleanup
+  owners intact. Four cases cover zero limit, repeated guards to fallback, guard
+  then completion, and immediate runner failure. Cache-aware
+  planning/execution, adaptive telemetry, async queues, and broader product
   orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory

@@ -15,5 +15,5 @@ It must not bypass another function or architectural kind boundary.
 ## Navigation
 
 - `adapter-outbound/`: governed `adapter-outbound` parts.
-- `application/`: handoff, bounded retry routing, execution, and rebase.
+- `application/`: handoff plus bounded retry routing, turns, and cycles.
 - `domain/`: governed `domain` parts.

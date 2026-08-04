@@ -192,8 +192,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   execution now runs the selected route, rebases native success/failure, and
   separates semantic disposition from indexed runner/release ownership. Five
   cases cover both completions, guard fallback, runner failure, and cleanup
-  completion. Cache-aware planning, adaptive telemetry, automatic loops, async
-  queues, and production orchestration remain pending.
+  completion. A bounded cycle now repeats only successfully rebased guard
+  misses; fixed attempt policy terminates in native completion or normative
+  fallback, while runner/release failures stop immediately with owners intact.
+  Four cases cover zero limit, repeated guards, later native completion, and
+  runner failure. Cache-aware planning/execution, adaptive telemetry, async
+  queues, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
