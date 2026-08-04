@@ -658,9 +658,9 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
 persistence and automatic eviction, executable-cache synchronization policy,
-fused-region emission, executable native-retry orchestration, async scheduling,
-the unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
-open.
+fused-region emission, native-retry orchestration beyond bounded process-local
+cached cycles, async scheduling, the unsafe foreign-call boundary, and broader
+AOT/JIT performance policy remain open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache

@@ -666,9 +666,9 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, executable native-retry orchestration,
-asynchronous/product scheduling, executable-memory platform implementations and
-foreign invocation, durable cache
+Combined-region emission, native-retry orchestration beyond bounded
+process-local cached cycles, asynchronous/product scheduling, executable-memory
+platform implementations and foreign invocation, durable cache
 serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
 beyond verified direct process-local reuse, and performance policy remain open.
 The

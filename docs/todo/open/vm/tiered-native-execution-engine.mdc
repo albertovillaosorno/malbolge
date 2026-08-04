@@ -365,8 +365,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   Success/failure rebase through complete continuation authority while lease
   return remains explicit. Five cases cover insertion completion, pointer-exact
   hit reuse without adapter work, progressed guard fallback, runner-failure
-  fallback, and cross-ISA lease rejection. Automatic acquisition and bounded
-  cycle lease reuse remain open.
+  fallback, and cross-ISA lease rejection. The following cached layers add
+  automatic acquisition and bounded cycle reuse.
 - `application/cached_retry.rs` now composes exact lease-cache acquisition,
   leased binding, and one loaded attempt. Hits perform no executable-memory work;
   insertions retain FIFO eviction/retirement evidence. Load failure restores the
@@ -459,8 +459,8 @@ baseline; native tiers are accelerators of identical observable behavior.
   duplicate release. Fourteen cases cover the original lifecycle plus
   entry/mapping shrink, live entry/byte blockage, post-return publication, and
   release-failure retry. Durable/cross-process leasing, object fusion, direct
-  branch chains, a concrete FFI shim, cache-aware retry execution, and
-  automatic/async scheduling remain out.
+  branch chains, a concrete FFI shim, adaptive cache policy, and async/product
+  scheduling remain out.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
