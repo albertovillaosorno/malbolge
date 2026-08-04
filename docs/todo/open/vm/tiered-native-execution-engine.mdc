@@ -342,9 +342,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   remaining programs, complete artifact key, and checkpoint entry must match;
   every rejection returns both owners unchanged. Five cases cover initial and
   progressed suffixes, caller-yield rejection, full-plan drift, and cross-ISA
-  key drift. Loading/invocation, automatic tier policy, async queues, and
-  product
-  orchestration remain open.
+  key drift. Admitted retries now execute through the existing uncached native
+  sequence path from checkpoint-derived owned buffers. Success/failure retain
+  exact plan, suspension, memory, input, output capacity, and observation; the
+  transfer reconstructs a validated normative checkpoint, and cleanup ownership
+  remains retryable. Five execution cases cover completion, guard miss, rollback,
+  and committed cleanup failure. Semantic rebasing, automatic policy, async
+  queues, and product orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

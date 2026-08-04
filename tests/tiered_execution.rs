@@ -11375,3 +11375,193 @@ fn native_interpreter_continuation_advance_rejects_drift() -> Result<(), String>
         Err(String::from("continuation advance drift was admitted"))
     }
 }
+
+#[test]
+fn native_retry_execution_applies_initial_suffix() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(950, 0xd0_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let execution = admitted
+        .execute(&mut adapter, &mut runner)
+        .map_err(|failure| failure.failure().to_string())?;
+    if execution.outcome()
+        != (NativeSequenceExecutionOutcome::Applied {
+            observation: execution.plan().exit(),
+            steps: execution.plan().len(),
+        })
+        || execution.transfer().memory() != expected.final_memory
+        || execution.transfer().output() != expected.final_output
+        || execution.transfer().observation() != execution.plan().exit()
+        || adapter.release_requests.len() != execution.plan().len()
+    {
+        return Err(String::from("initial native retry execution drifted"));
+    }
+    let checkpoint = execution
+        .into_parts()
+        .3
+        .into_checkpoint()
+        .map_err(|error| error.to_string())?;
+    if checkpoint.memory() == expected.final_memory
+        && checkpoint.io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("initial retry checkpoint drifted"))
+    }
+}
+
+#[test]
+fn native_retry_execution_applies_progressed_suffix() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(951, 0xd1_000)?;
+    let mut runner =
+        FakeNativeSequenceRunner::new(vec![FakeNativeRunnerBehavior::Applied]);
+    let execution = admitted
+        .execute(&mut adapter, &mut runner)
+        .map_err(|failure| failure.failure().to_string())?;
+    if execution.outcome().completed_steps() == 1
+        && execution.suspension().interpreter_steps() == 1
+        && execution.transfer().memory() == expected.final_memory
+        && execution.transfer().output() == expected.final_output
+        && execution.transfer().observation() == execution.plan().exit()
+    {
+        Ok(())
+    } else {
+        Err(String::from("progressed native retry execution drifted"))
+    }
+}
+
+#[test]
+fn native_retry_execution_preserves_guard_miss() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let entry = fixture.suspension.state().clone();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(952, 0xd2_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let execution = admitted
+        .execute(&mut adapter, &mut runner)
+        .map_err(|failure| failure.failure().to_string())?;
+    if execution.outcome()
+        != (NativeSequenceExecutionOutcome::GuardMiss {
+            index: 0,
+            observation: execution.plan().entry(),
+        })
+        || execution.transfer().memory() != entry.memory()
+        || execution.transfer().observation() != execution.plan().entry()
+    {
+        return Err(String::from("retry guard miss mutated state"));
+    }
+    let checkpoint = execution
+        .into_parts()
+        .3
+        .into_checkpoint()
+        .map_err(|error| error.to_string())?;
+    if checkpoint == entry {
+        Ok(())
+    } else {
+        Err(String::from("retry guard checkpoint drifted"))
+    }
+}
+
+#[test]
+fn native_retry_execution_retains_runner_rollback() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let entry = fixture.suspension.state().clone();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(953, 0xd3_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = admitted.execute(&mut adapter, &mut runner) else {
+        return Err(String::from("configured retry runner failure ignored"));
+    };
+    if failure.failure().completed_steps() != 0
+        || failure.failure().resume_index() != 0
+        || failure.transfer().memory() != entry.memory()
+        || failure.transfer().observation() != failure.plan().entry()
+    {
+        return Err(String::from("retry runner rollback evidence drifted"));
+    }
+    let checkpoint = failure
+        .into_parts()
+        .3
+        .into_checkpoint()
+        .map_err(|error| error.to_string())?;
+    if checkpoint == entry {
+        Ok(())
+    } else {
+        Err(String::from("retry runner rollback checkpoint drifted"))
+    }
+}
+
+#[test]
+fn native_retry_execution_retains_committed_cleanup_failure()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter =
+        native_executable_adapter(954, 0xd4_000)?.with_release_failure_at(1);
+    let mut runner =
+        FakeNativeSequenceRunner::new(vec![FakeNativeRunnerBehavior::Applied]);
+    let Err(failure) = admitted.execute(&mut adapter, &mut runner) else {
+        return Err(String::from("configured retry cleanup failure ignored"));
+    };
+    if failure.failure().completed_steps() != 1
+        || failure.failure().resume_index() != 1
+        || failure.transfer().memory() != expected.final_memory
+        || failure.transfer().output() != expected.final_output
+        || failure.transfer().observation() != failure.plan().exit()
+    {
+        return Err(String::from("retry cleanup failure lost committed state"));
+    }
+    let (_, _, sequence_failure, transfer) = (*failure).into_parts();
+    let checkpoint = transfer
+        .into_checkpoint()
+        .map_err(|error| error.to_string())?;
+    let execution = (*sequence_failure)
+        .into_execution_failure()
+        .ok_or_else(|| String::from("retry cleanup owner missing"))?;
+    let release = execution
+        .into_release_failure()
+        .ok_or_else(|| String::from("retry release failure missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if checkpoint.memory() == expected.final_memory
+        && checkpoint.io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry cleanup checkpoint drifted"))
+    }
+}

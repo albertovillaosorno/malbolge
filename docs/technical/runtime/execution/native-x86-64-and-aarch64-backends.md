@@ -274,8 +274,13 @@ A separate retry-admission boundary now binds one caller-replanned verified
 sequence to the exact `NativeRetry` suspension. It rejects reason, ordered
 programs, artifact key, or checkpoint-entry drift before buffer movement and
 returns both owners on failure. Five cases include progressed suffix and
-cross-ISA rejection. Native object fusion, foreign invocation, automatic tier
-policy, and retry loading/execution remain open.
+cross-ISA rejection. An admitted retry now runs through the existing uncached
+sequence execution path from checkpoint-derived owned buffers. Both success and
+failure retain exact transfer state; checkpoint reconstruction is validated and
+cleanup ownership remains retryable. Five execution cases cover completion,
+guard miss, rollback, and committed cleanup failure. Native object fusion,
+foreign invocation, semantic retry rebasing, and automatic tier policy remain
+open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

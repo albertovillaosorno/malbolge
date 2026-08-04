@@ -466,9 +466,15 @@ owners unchanged, so the caller may correct the plan or resume interpretation.
 Five cases cover initial and progressed suffix admission, caller-yield
 rejection, full-plan drift after progress, and cross-ISA key drift. This boundary
 still does
-not load, invoke, or automatically select native code. Executable retry,
-asynchronous queue ownership, automated tier policy, and product scheduling
-remain outside.
+not automatically select native code. Once admitted, the owner now executes
+through the existing uncached sequence runner with buffers copied from its exact
+checkpoint. Success and failure retain plan/suspension plus exact memory, input,
+output capacity, and admitted observation; the transfer can reconstruct a
+validated `ProfileMachineState`. Indexed native failures and release-retry
+ownership pass through unchanged. Five execution cases cover initial/progressed
+completion, guard miss, runner rollback, and committed cleanup failure. Semantic
+rebasing of retry results, asynchronous queues, automated tier policy, and
+product scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

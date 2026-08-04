@@ -488,8 +488,15 @@ movement. Admission requires the exact scheduler reason, ordered one-step
 program suffix, complete artifact key, and checkpoint entry observation. Every
 rejection retains both affine owners for correction or fallback. Five cases
 cover initial and progressed suffixes, caller-yield rejection, full-plan drift,
-and cross-ISA key drift. Native loading/invocation, automatic tier policy, async
-queue ownership, and product orchestration remain open.
+and cross-ISA key drift. An admitted retry can now execute through the existing
+uncached native sequence path using buffers copied from its checkpoint. Success
+and failure both retain the original suspension/plan plus exact memory, input,
+output capacity, and admitted observation. The transfer converts back to a
+validated `ProfileMachineState`; hard native failures and release-retry ownership
+remain unchanged. Five more cases cover initial/progressed completion, guard miss,
+runner rollback, and committed cleanup failure. Semantic rebasing of these retry
+results, automatic tier policy, async queues, and product orchestration remain
+open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
