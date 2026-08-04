@@ -251,14 +251,20 @@ mapping and keeps failed ownership for retry. Complete image identity is checked
 before buffers change, so an x86-64 chain cannot execute an AArch64 plan. The
 memory adapter must provide unique, non-overlapping live allocations.
 
-A bounded loaded-sequence FIFO now reuses exact ordered artifact-key chains on
+A weighted loaded-sequence FIFO now reuses exact ordered artifact-key chains on
 both ISAs. Hits neither refresh insertion age nor call the memory adapter.
-Candidates load before oldest-entry eviction; load failure preserves prior cache
-state, while release failure returns victim and candidate ownership for retry.
-Exact invalidation and full drain remove cache authority before cleanup. Six
-cases cover all of those paths. This is not a fused COFF object, a concurrent
-lease model, a byte-weighted executable budget, a direct branch chain, or a
-concrete foreign-call shim.
+`new()` bounds complete entries, while explicit limits can additionally bound
+live mappings and admitted mapped bytes. Candidate weight is derived from the
+ready mapping reports after load. Oversized candidates are released without
+changing prior entries. Candidates that fit alone evict as many oldest entries
+as necessary for every projected limit. Failed later eviction removes cache
+authority for that victim and earlier successful victims, cleans the candidate,
+and retains failed releases for retry. Exact invalidation and full drain update
+usage before cleanup. Twelve cases cover prior reuse/cleanup behavior plus exact
+weighted usage, standalone mapping/byte rejection, repeated FIFO eviction under
+both limits, and second-eviction failure. This is not a fused COFF object, a
+concurrent lease model, dynamic limit replacement, durable executable storage,
+a direct branch chain, or a concrete foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

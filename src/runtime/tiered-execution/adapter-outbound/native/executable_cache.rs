@@ -9,8 +9,8 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Bounded process-local reuse and deterministic FIFO eviction of loaded
-//   - executable sequences.
+//   - Bounded process-local reuse and weighted FIFO eviction of loaded
+//   - executable sequences by entries, mappings, and admitted mapped bytes.
 // - Must-Not:
 //   - Invoke code, share mappings concurrently, or hide failed release
 //     ownership.
@@ -23,18 +23,19 @@
 // - Merge-When:
 //   - One platform owner subsumes executable loading, reuse, and eviction.
 // - Summary:
-//   - Reuses exact loaded chains under a caller-selected positive capacity.
+//   - Reuses exact loaded chains under caller-selected weighted limits.
 // - Description:
-//   - Hits preserve FIFO age; misses publish only after load and eviction
-//     succeed.
+//   - Hits preserve FIFO age; misses publish only after load, accounting, and
+//     every required FIFO release succeed.
 // - Usage:
 //   - Ensure a plan, execute the borrowed ready sequence, then invalidate or
 //     clear.
 // - Defaults:
-//   - Eviction removes the oldest insertion and never refreshes on a hit.
+//   - `new` limits entries only; optional mapping/byte limits use admitted
+//     mapping evidence. Hits never refresh FIFO age.
 //
 
-//! Bounded exact-plan cache for loaded executable sequences.
+//! Weighted exact-plan cache for loaded executable sequences.
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -42,6 +43,11 @@ use std::num::NonZeroUsize;
 
 use super::direct::{
     CachedVerifiedDirectSequencePlan, VerifiedDirectSequencePlan,
+};
+use super::executable_cache_capacity::{
+    NativeExecutableSequenceCacheCapacityError,
+    NativeExecutableSequenceCacheLimits, NativeExecutableSequenceCacheUsage,
+    NativeExecutableSequenceWeight,
 };
 use super::executable_sequence::{
     NativeExecutableSequenceLoadFailure, NativeExecutableSequenceLoadResult,
@@ -65,8 +71,8 @@ pub enum NativeExecutableSequenceCacheDisposition {
     Hit,
     /// A newly loaded sequence entered the cache.
     Inserted {
-        /// Exact oldest sequence removed to make capacity, when applicable.
-        evicted: Option<NativeExecutableSequenceKey>,
+        /// Exact oldest sequences removed to satisfy every capacity limit.
+        evicted: Vec<NativeExecutableSequenceKey>,
     },
 }
 
@@ -74,13 +80,30 @@ pub enum NativeExecutableSequenceCacheDisposition {
 struct NativeExecutableSequenceCacheValue {
     key: NativeExecutableSequenceKey,
     sequence: ReadyNativeExecutableSequence,
+    weight: NativeExecutableSequenceWeight,
 }
 
-/// Caller-owned positive-capacity FIFO cache of loaded executable sequences.
+#[derive(Debug, Eq, PartialEq)]
+struct NativeExecutableSequenceCacheCandidate {
+    key: NativeExecutableSequenceKey,
+    sequence: ReadyNativeExecutableSequence,
+    weight: NativeExecutableSequenceWeight,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct NativeExecutableSequenceCacheCapacityFailureContext {
+    error: NativeExecutableSequenceCacheCapacityError,
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+    key: NativeExecutableSequenceKey,
+    sequence: ReadyNativeExecutableSequence,
+}
+
+/// Caller-owned weighted FIFO cache of loaded executable sequences.
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeExecutableSequenceCache {
-    capacity: NonZeroUsize,
     entries: VecDeque<NativeExecutableSequenceCacheValue>,
+    limits: NativeExecutableSequenceCacheLimits,
+    usage: NativeExecutableSequenceCacheUsage,
 }
 
 /// Borrowed cache result retaining exact disposition and loaded sequence.
@@ -100,6 +123,7 @@ pub enum NativeExecutableSequenceCacheInvariantError {
 
 #[derive(Debug, Eq, PartialEq)]
 enum NativeExecutableSequenceCacheLoadFailureCause<E> {
+    Capacity(NativeExecutableSequenceCacheCapacityError),
     Eviction(Box<NativeExecutableSequenceReleaseFailure<E>>),
     Invariant(NativeExecutableSequenceCacheInvariantError),
     Load(Box<NativeExecutableSequenceLoadFailure<E>>),
@@ -112,13 +136,13 @@ pub struct NativeExecutableSequenceCacheLoadReleaseFailures<E> {
     eviction: Option<NativeExecutableSequenceReleaseFailure<E>>,
 }
 
-/// Failure while loading or publishing one exact sequence cache miss.
+/// Failure while loading, weighing, evicting, or publishing one cache miss.
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeExecutableSequenceCacheLoadFailure<E> {
     candidate_cleanup_failure:
         Option<Box<NativeExecutableSequenceReleaseFailure<E>>>,
     cause: NativeExecutableSequenceCacheLoadFailureCause<E>,
-    evicted_key: Option<NativeExecutableSequenceKey>,
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
     requested_key: NativeExecutableSequenceKey,
 }
 
@@ -144,15 +168,33 @@ pub type NativeExecutableSequenceCacheLoadResult<'cache, E> = Result<
 pub type NativeExecutableSequenceCacheReleaseResult<E> =
     Result<(), Box<NativeExecutableSequenceCacheReleaseFailure<E>>>;
 
-type NativeExecutableSequenceCacheEvictionResult<E> = Result<
-    Option<NativeExecutableSequenceKey>,
-    Box<NativeExecutableSequenceCacheLoadFailure<E>>,
->;
-
 type NativeExecutableSequenceCachePublicationResult<E> = Result<
     NativeExecutableSequenceCacheDisposition,
     Box<NativeExecutableSequenceCacheLoadFailure<E>>,
 >;
+
+type NativeExecutableSequenceCacheFitResult<E> = Result<
+    (
+        NativeExecutableSequenceCacheCandidate,
+        Vec<NativeExecutableSequenceKey>,
+    ),
+    Box<NativeExecutableSequenceCacheLoadFailure<E>>,
+>;
+
+type NativeExecutableSequenceCachePrepareResult<E> = Result<
+    NativeExecutableSequenceCacheCandidate,
+    Box<NativeExecutableSequenceCacheLoadFailure<E>>,
+>;
+
+impl NativeExecutableSequenceCacheCandidate {
+    fn into_value(self) -> NativeExecutableSequenceCacheValue {
+        NativeExecutableSequenceCacheValue {
+            key: self.key,
+            sequence: self.sequence,
+            weight: self.weight,
+        }
+    }
+}
 
 impl NativeExecutableSequenceKey {
     /// Returns every exact artifact key in semantic execution order.
@@ -199,12 +241,18 @@ impl NativeExecutableSequenceKey {
 }
 
 impl NativeExecutableSequenceCacheDisposition {
-    /// Returns the exact evicted key for an inserted miss, when applicable.
+    /// Returns the first exact FIFO key evicted for an inserted miss.
     #[must_use]
-    pub const fn evicted_key(&self) -> Option<&NativeExecutableSequenceKey> {
+    pub fn evicted_key(&self) -> Option<&NativeExecutableSequenceKey> {
+        self.evicted_keys().first()
+    }
+
+    /// Returns every exact FIFO key evicted to satisfy capacity.
+    #[must_use]
+    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
         match self {
-            Self::Hit => None,
-            Self::Inserted { evicted } => evicted.as_ref(),
+            Self::Hit => &[],
+            Self::Inserted { evicted } => evicted,
         }
     }
 
@@ -279,7 +327,7 @@ impl<E> NativeExecutableSequenceCacheLoadReleaseFailures<E> {
 }
 
 impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
-    /// Returns candidate cleanup failure after eviction publication failed.
+    /// Returns candidate cleanup failure after publication failed.
     #[must_use]
     pub const fn candidate_cleanup_failure(
         &self,
@@ -290,10 +338,31 @@ impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
         }
     }
 
-    /// Returns the exact oldest key removed for attempted eviction.
+    /// Returns weighted capacity rejection, when the candidate cannot fit.
     #[must_use]
-    pub const fn evicted_key(&self) -> Option<&NativeExecutableSequenceKey> {
-        self.evicted_key.as_ref()
+    pub const fn capacity_error(
+        &self,
+    ) -> Option<NativeExecutableSequenceCacheCapacityError> {
+        match self.cause {
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(error) => {
+                Some(error)
+            },
+            NativeExecutableSequenceCacheLoadFailureCause::Eviction(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Invariant(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Load(_) => None,
+        }
+    }
+
+    /// Returns the first exact FIFO key removed before publication failed.
+    #[must_use]
+    pub fn evicted_key(&self) -> Option<&NativeExecutableSequenceKey> {
+        self.evicted_keys.first()
+    }
+
+    /// Returns every exact FIFO key removed before publication failed.
+    #[must_use]
+    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
+        &self.evicted_keys
     }
 
     /// Returns failed oldest-entry release, when eviction could not complete.
@@ -305,7 +374,8 @@ impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
             NativeExecutableSequenceCacheLoadFailureCause::Eviction(
                 failure,
             ) => Some(failure),
-            NativeExecutableSequenceCacheLoadFailureCause::Invariant(_)
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Invariant(_)
             | NativeExecutableSequenceCacheLoadFailureCause::Load(_) => None,
         }
     }
@@ -319,7 +389,8 @@ impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
             NativeExecutableSequenceCacheLoadFailureCause::Eviction(
                 failure,
             ) => Some(*failure),
-            NativeExecutableSequenceCacheLoadFailureCause::Invariant(_)
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Invariant(_)
             | NativeExecutableSequenceCacheLoadFailureCause::Load(_) => None,
         };
         NativeExecutableSequenceCacheLoadReleaseFailures {
@@ -334,7 +405,8 @@ impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
         &self,
     ) -> Option<NativeExecutableSequenceCacheInvariantError> {
         match self.cause {
-            NativeExecutableSequenceCacheLoadFailureCause::Eviction(_)
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Eviction(_)
             | NativeExecutableSequenceCacheLoadFailureCause::Load(_) => None,
             NativeExecutableSequenceCacheLoadFailureCause::Invariant(error) => {
                 Some(error)
@@ -348,7 +420,8 @@ impl<E> NativeExecutableSequenceCacheLoadFailure<E> {
         &self,
     ) -> Option<&NativeExecutableSequenceLoadFailure<E>> {
         match &self.cause {
-            NativeExecutableSequenceCacheLoadFailureCause::Eviction(_)
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(_)
+            | NativeExecutableSequenceCacheLoadFailureCause::Eviction(_)
             | NativeExecutableSequenceCacheLoadFailureCause::Invariant(_) => {
                 None
             },
@@ -427,6 +500,9 @@ impl<E: Display> Display for NativeExecutableSequenceCacheLoadFailure<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str("native executable sequence cache miss failed: ")?;
         match &self.cause {
+            NativeExecutableSequenceCacheLoadFailureCause::Capacity(error) => {
+                write!(f, "capacity: {error}")?;
+            },
             NativeExecutableSequenceCacheLoadFailureCause::Eviction(error) => {
                 write!(f, "eviction: {error}")?;
             },
@@ -459,7 +535,7 @@ impl NativeExecutableSequenceCache {
     /// Returns the maximum number of loaded sequence entries retained.
     #[must_use]
     pub const fn capacity(&self) -> NonZeroUsize {
-        self.capacity
+        self.limits.entry_limit()
     }
 
     /// Returns whether one exact cache-aware plan is currently loaded.
@@ -486,12 +562,12 @@ impl NativeExecutableSequenceCache {
     /// Loads or reuses one exact cache-aware verified sequence.
     ///
     /// A hit performs no memory-adapter operation and preserves FIFO age. A
-    /// miss loads the candidate before attempting oldest-entry eviction.
+    /// miss loads the candidate before applying every weighted capacity limit.
     ///
     /// # Errors
     ///
-    /// Returns [`NativeExecutableSequenceCacheLoadFailure`] when candidate load
-    /// or required eviction release fails.
+    /// Returns [`NativeExecutableSequenceCacheLoadFailure`] when candidate
+    /// load, capacity admission, or required eviction release fails.
     pub fn ensure_cached_plan<'cache, Adapter>(
         &'cache mut self,
         memory_adapter: &mut Adapter,
@@ -509,12 +585,12 @@ impl NativeExecutableSequenceCache {
     /// Loads or reuses one exact uncached verified sequence.
     ///
     /// A hit performs no memory-adapter operation and preserves FIFO age. A
-    /// miss loads the candidate before attempting oldest-entry eviction.
+    /// miss loads the candidate before applying every weighted capacity limit.
     ///
     /// # Errors
     ///
-    /// Returns [`NativeExecutableSequenceCacheLoadFailure`] when candidate load
-    /// or required eviction release fails.
+    /// Returns [`NativeExecutableSequenceCacheLoadFailure`] when candidate
+    /// load, capacity admission, or required eviction release fails.
     pub fn ensure_plan<'cache, Adapter>(
         &'cache mut self,
         memory_adapter: &mut Adapter,
@@ -548,18 +624,18 @@ impl NativeExecutableSequenceCache {
                 NativeExecutableSequenceCacheDisposition::Hit,
             );
         }
-        let candidate = load(memory_adapter).map_err(|failure| {
+        let sequence = load(memory_adapter).map_err(|failure| {
             Box::new(NativeExecutableSequenceCacheLoadFailure {
                 candidate_cleanup_failure: None,
                 cause: NativeExecutableSequenceCacheLoadFailureCause::Load(
                     failure,
                 ),
-                evicted_key: None,
+                evicted_keys: Vec::new(),
                 requested_key: key.clone(),
             })
         })?;
         let disposition =
-            self.publish_candidate(memory_adapter, key.clone(), candidate)?;
+            self.publish_candidate(memory_adapter, key.clone(), sequence)?;
         self.entry_for_key(key, disposition)
     }
 
@@ -583,52 +659,46 @@ impl NativeExecutableSequenceCache {
             )
     }
 
-    fn evict_oldest<Adapter>(
+    fn evict_until_fits<Adapter>(
         &mut self,
         memory_adapter: &mut Adapter,
-        requested_key: &NativeExecutableSequenceKey,
-        candidate: ReadyNativeExecutableSequence,
-    ) -> NativeExecutableSequenceCacheEvictionResult<Adapter::Error>
+        candidate: NativeExecutableSequenceCacheCandidate,
+    ) -> NativeExecutableSequenceCacheFitResult<Adapter::Error>
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let Some(victim) = self.entries.pop_front() else {
-            self.entries.push_back(NativeExecutableSequenceCacheValue {
-                key: requested_key.clone(),
-                sequence: candidate,
-            });
-            return Ok(None);
-        };
-        let evicted_key = victim.key;
-        match release_native_executable_sequence(
-            memory_adapter,
-            victim.sequence,
-        ) {
-            Ok(()) => {
-                self.entries.push_back(NativeExecutableSequenceCacheValue {
-                    key: requested_key.clone(),
-                    sequence: candidate,
-                });
-                Ok(Some(evicted_key))
-            },
-            Err(eviction_failure) => {
-                let candidate_cleanup_failure =
-                    release_native_executable_sequence(
-                        memory_adapter,
-                        candidate,
-                    )
-                    .err();
-                Err(Box::new(NativeExecutableSequenceCacheLoadFailure {
-                    candidate_cleanup_failure,
-                    cause:
-                        NativeExecutableSequenceCacheLoadFailureCause::Eviction(
-                            eviction_failure,
-                        ),
-                    evicted_key: Some(evicted_key),
-                    requested_key: requested_key.clone(),
-                }))
-            },
+        let mut evicted_keys = Vec::new();
+        while self.limits.projected_exceeds(self.usage, candidate.weight) {
+            let Some(victim) = self.entries.pop_front() else {
+                let error =
+                    NativeExecutableSequenceCacheCapacityError::WeightOverflow;
+                let context =
+                    NativeExecutableSequenceCacheCapacityFailureContext {
+                        error,
+                        evicted_keys,
+                        key: candidate.key,
+                        sequence: candidate.sequence,
+                    };
+                return Err(Box::new(cache_capacity_failure(
+                    memory_adapter,
+                    context,
+                )));
+            };
+            self.usage.remove(victim.weight);
+            evicted_keys.push(victim.key);
+            if let Err(eviction_failure) = release_native_executable_sequence(
+                memory_adapter,
+                victim.sequence,
+            ) {
+                return Err(Box::new(cache_eviction_failure(
+                    memory_adapter,
+                    candidate,
+                    eviction_failure,
+                    evicted_keys,
+                )));
+            }
         }
+        Ok((candidate, evicted_keys))
     }
 
     /// Invalidates and releases one exact cache-aware verified sequence.
@@ -662,6 +732,7 @@ impl NativeExecutableSequenceCache {
         let Some(entry) = self.entries.remove(index) else {
             return Ok(false);
         };
+        self.usage.remove(entry.weight);
         release_native_executable_sequence(memory_adapter, entry.sequence)
             .map(|()| true)
     }
@@ -700,13 +771,16 @@ impl NativeExecutableSequenceCache {
         self.entries.len()
     }
 
-    /// Constructs one empty caller-owned cache with positive entry capacity.
+    /// Returns every caller-selected weighted capacity limit.
+    #[must_use]
+    pub const fn limits(&self) -> NativeExecutableSequenceCacheLimits {
+        self.limits
+    }
+
+    /// Constructs one empty cache with only a positive entry limit.
     #[must_use]
     pub const fn new(capacity: NonZeroUsize) -> Self {
-        Self {
-            capacity,
-            entries: VecDeque::new(),
-        }
+        Self::with_limits(NativeExecutableSequenceCacheLimits::new(capacity))
     }
 
     fn position(&self, key: &NativeExecutableSequenceKey) -> Option<usize> {
@@ -717,20 +791,32 @@ impl NativeExecutableSequenceCache {
         &mut self,
         memory_adapter: &mut Adapter,
         key: NativeExecutableSequenceKey,
-        candidate: ReadyNativeExecutableSequence,
+        sequence: ReadyNativeExecutableSequence,
     ) -> NativeExecutableSequenceCachePublicationResult<Adapter::Error>
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let evicted = if self.entries.len() == self.capacity.get() {
-            self.evict_oldest(memory_adapter, &key, candidate)?
-        } else {
-            self.entries.push_back(NativeExecutableSequenceCacheValue {
-                key,
-                sequence: candidate,
-            });
-            None
-        };
+        let prepared = prepare_cache_candidate(
+            memory_adapter,
+            self.limits,
+            key,
+            sequence,
+        )?;
+        let (candidate, evicted) =
+            self.evict_until_fits(memory_adapter, prepared)?;
+        if let Err(error) = self.usage.add(candidate.weight) {
+            let context = NativeExecutableSequenceCacheCapacityFailureContext {
+                error,
+                evicted_keys: evicted,
+                key: candidate.key,
+                sequence: candidate.sequence,
+            };
+            return Err(Box::new(cache_capacity_failure(
+                memory_adapter,
+                context,
+            )));
+        }
+        self.entries.push_back(candidate.into_value());
         Ok(NativeExecutableSequenceCacheDisposition::Inserted { evicted })
     }
 
@@ -748,7 +834,70 @@ impl NativeExecutableSequenceCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let entries = self.entries.drain(..).collect::<Vec<_>>();
+        self.usage.reset();
         release_cache_values(memory_adapter, entries)
+    }
+
+    /// Returns exact resources currently retained under cache authority.
+    #[must_use]
+    pub const fn usage(&self) -> NativeExecutableSequenceCacheUsage {
+        self.usage
+    }
+
+    /// Constructs one empty cache with explicit weighted limits.
+    #[must_use]
+    pub const fn with_limits(
+        limits: NativeExecutableSequenceCacheLimits,
+    ) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            limits,
+            usage: NativeExecutableSequenceCacheUsage::empty(),
+        }
+    }
+}
+
+fn cache_capacity_failure<Adapter>(
+    memory_adapter: &mut Adapter,
+    context: NativeExecutableSequenceCacheCapacityFailureContext,
+) -> NativeExecutableSequenceCacheLoadFailure<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let candidate_cleanup_failure =
+        release_native_executable_sequence(memory_adapter, context.sequence)
+            .err();
+    NativeExecutableSequenceCacheLoadFailure {
+        candidate_cleanup_failure,
+        cause: NativeExecutableSequenceCacheLoadFailureCause::Capacity(
+            context.error,
+        ),
+        evicted_keys: context.evicted_keys,
+        requested_key: context.key,
+    }
+}
+
+fn cache_eviction_failure<Adapter>(
+    memory_adapter: &mut Adapter,
+    candidate: NativeExecutableSequenceCacheCandidate,
+    eviction_failure: Box<
+        NativeExecutableSequenceReleaseFailure<Adapter::Error>,
+    >,
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+) -> NativeExecutableSequenceCacheLoadFailure<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let candidate_cleanup_failure =
+        release_native_executable_sequence(memory_adapter, candidate.sequence)
+            .err();
+    NativeExecutableSequenceCacheLoadFailure {
+        candidate_cleanup_failure,
+        cause: NativeExecutableSequenceCacheLoadFailureCause::Eviction(
+            eviction_failure,
+        ),
+        evicted_keys,
+        requested_key: candidate.key,
     }
 }
 
@@ -760,7 +909,7 @@ const fn cache_invariant_failure<E>(
         cause: NativeExecutableSequenceCacheLoadFailureCause::Invariant(
             NativeExecutableSequenceCacheInvariantError::EntryMissing,
         ),
-        evicted_key: None,
+        evicted_keys: Vec::new(),
         requested_key,
     }
 }
@@ -779,6 +928,43 @@ fn cache_release_result<E>(
             released_entries,
         }))
     }
+}
+
+fn prepare_cache_candidate<Adapter>(
+    memory_adapter: &mut Adapter,
+    limits: NativeExecutableSequenceCacheLimits,
+    key: NativeExecutableSequenceKey,
+    sequence: ReadyNativeExecutableSequence,
+) -> NativeExecutableSequenceCachePrepareResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let weight = match NativeExecutableSequenceWeight::from_sequence(&sequence)
+    {
+        Ok(weight) => weight,
+        Err(error) => {
+            let context = NativeExecutableSequenceCacheCapacityFailureContext {
+                error,
+                evicted_keys: Vec::new(),
+                key,
+                sequence,
+            };
+            return Err(Box::new(cache_capacity_failure(
+                memory_adapter,
+                context,
+            )));
+        },
+    };
+    if let Some(error) = limits.candidate_error(weight) {
+        let context = NativeExecutableSequenceCacheCapacityFailureContext {
+            error,
+            evicted_keys: Vec::new(),
+            key,
+            sequence,
+        };
+        return Err(Box::new(cache_capacity_failure(memory_adapter, context)));
+    }
+    Ok(NativeExecutableSequenceCacheCandidate { key, sequence, weight })
 }
 
 fn release_cache_values<Adapter>(

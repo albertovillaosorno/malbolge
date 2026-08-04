@@ -315,17 +315,21 @@ baseline; native tiers are accelerators of identical observable behavior.
   change. Seven cases cover reuse, cached guard miss, rollback, aggregate
   release, cross-ISA rejection, and runner failure. The adapter owns unique
   non-overlapping live mappings.
-- A positive-capacity `NativeExecutableSequenceCache` now keys exact ordered
-  artifact lists, borrows hits without FIFO refresh or adapter work, and loads
-  before eviction. It removes authority before invalidation/full-drain cleanup.
-  Failed
-  eviction retains victim and candidate ownership for retry. Six cases cover hit
-  execution, FIFO order, failed-load isolation, dual cleanup, invalidation, and
-  aggregate release. No concurrent leases, byte/mapping-weighted capacity,
-  durable executable store, object fusion, direct branch chain, concrete FFI
-  shim, or interpreter handoff is added.
-- Remaining fused-region emission, concurrent executable leasing, weighted cache
-  policy, plus cache-aware AOT/JIT
+- `NativeExecutableSequenceCache` now applies positive entry limits plus
+  optional live-mapping and admitted mapped-byte limits to exact ordered artifact lists.
+  Candidate weight comes from ready mapping reports. Hits preserve FIFO age and
+  usage without adapter work. Oversized candidates clean themselves without
+  changing prior entries; candidates that fit alone evict repeatedly until all
+  projected limits fit and report every evicted key. Failed later eviction
+  removes cache authority for that victim and earlier successful victims, cleans
+  the candidate, and retains failed ownership for retry. Invalidation and full
+  drain update usage before cleanup. Twelve cases cover original reuse/cleanup
+  paths plus exact accounting, standalone mapping/byte rejection, repeated
+  eviction under both limits, and failure on the second eviction. No concurrent
+  leases, dynamic limit changes, durable executable store, object fusion, direct
+  branch chain, concrete FFI shim, or interpreter handoff is added.
+- Remaining fused-region emission, concurrent executable leasing, dynamic cache
+  limits, plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.

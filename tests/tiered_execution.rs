@@ -92,7 +92,9 @@ use execution_native::{
     NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
     NativeExecutablePermission, NativeExecutableReleaseRequest,
     NativeExecutableRunner, NativeExecutableSequenceCache,
-    NativeExecutableSequenceCacheDisposition, NativeExecutableSequenceKey,
+    NativeExecutableSequenceCacheCapacityError,
+    NativeExecutableSequenceCacheDisposition,
+    NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeInstructionSyncReport, NativeInstructionSyncRequest,
     NativeLoadedSequenceAdmissionError, NativeRegionBuffers,
     NativeRegionCallFrame, NativeRegionCallFrameError,
@@ -8484,6 +8486,43 @@ fn selected_sequence_prefix(
     .map_err(|error| error.to_string())
 }
 
+fn direct_sequence_mapped_bytes(
+    plan: &VerifiedDirectSequencePlan,
+) -> Result<usize, String> {
+    plan.artifacts().iter().try_fold(0usize, |total, artifact| {
+        let image = VerifiedDirectLoadImage::from_artifact_for_test(artifact)
+            .map_err(|error| error.to_string())?;
+        total
+            .checked_add(image.allocation_len())
+            .ok_or_else(|| String::from("sequence mapped-byte sum overflowed"))
+    })
+}
+
+const fn executable_cache_usage_is_empty(
+    cache: &NativeExecutableSequenceCache,
+) -> bool {
+    let usage = cache.usage();
+    usage.entries() == 0 && usage.mappings() == 0 && usage.mapped_bytes() == 0
+}
+
+fn ensure_executable_cache_plan(
+    cache: &mut NativeExecutableSequenceCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    plan: &VerifiedDirectSequencePlan,
+) -> Result<(), String> {
+    cache
+        .ensure_plan(adapter, plan)
+        .map(|_entry| ())
+        .map_err(|error| error.to_string())
+}
+
+fn nonzero_test_limit(
+    value: usize,
+    name: &str,
+) -> Result<NonZeroUsize, String> {
+    NonZeroUsize::new(value).ok_or_else(|| format!("{name} missing"))
+}
+
 #[test]
 fn executable_sequence_cache_inserts_hits_and_executes() -> Result<(), String> {
     let fixture = direct_normative_sequence_fixture()?;
@@ -8562,16 +8601,8 @@ fn executable_sequence_cache_fifo_hit_does_not_refresh() -> Result<(), String> {
         native_executable_mapping_id(901)?,
         native_executable_address(0x91_000)?,
     );
-    {
-        let _entry = cache
-            .ensure_plan(&mut adapter, &first)
-            .map_err(|error| error.to_string())?;
-    }
-    {
-        let _entry = cache
-            .ensure_plan(&mut adapter, &second)
-            .map_err(|error| error.to_string())?;
-    }
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
     let fifo_before_hit = cache.keys().cloned().collect::<Vec<_>>();
     let operations_before_hit = adapter.operations.len();
     {
@@ -8801,16 +8832,8 @@ fn executable_sequence_cache_release_all_aggregates_failures()
         native_executable_mapping_id(905)?,
         native_executable_address(0x95_000)?,
     );
-    {
-        let _entry = cache
-            .ensure_plan(&mut adapter, &first)
-            .map_err(|error| error.to_string())?;
-    }
-    {
-        let _entry = cache
-            .ensure_plan(&mut adapter, &second)
-            .map_err(|error| error.to_string())?;
-    }
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
     adapter.release_failures_remaining = 2;
     let Err(failure) = cache.release_all(&mut adapter) else {
         return Err(String::from("configured cache release failures ignored"));
@@ -8832,5 +8855,321 @@ fn executable_sequence_cache_release_all_aggregates_failures()
         Ok(())
     } else {
         Err(String::from("cache release aggregate retry drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_cache_tracks_weighted_usage() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let mapped_bytes = direct_sequence_mapped_bytes(&plan)?;
+    let entry_limit = nonzero_test_limit(2, "entry limit")?;
+    let mapping_limit = nonzero_test_limit(3, "mapping limit")?;
+    let doubled_bytes = mapped_bytes
+        .checked_mul(2)
+        .ok_or_else(|| String::from("mapped-byte limit overflowed"))?;
+    let byte_limit = nonzero_test_limit(doubled_bytes, "mapped-byte limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(906)?,
+        native_executable_address(0x96_000)?,
+    );
+    {
+        let inserted = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if inserted.disposition().is_hit()
+            || !inserted.disposition().evicted_keys().is_empty()
+        {
+            return Err(String::from("weighted insertion disposition drifted"));
+        }
+    }
+    let inserted_usage = cache.usage();
+    if cache.limits() != limits
+        || inserted_usage.entries() != 1
+        || inserted_usage.mappings() != 2
+        || inserted_usage.mapped_bytes() != mapped_bytes
+    {
+        return Err(String::from("weighted insertion usage drifted"));
+    }
+    let operations_after_insert = adapter.operations.len();
+    {
+        let hit = cache
+            .ensure_plan(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?;
+        if !hit.disposition().is_hit() {
+            return Err(String::from("weighted exact hit was not reused"));
+        }
+    }
+    if cache.usage() != inserted_usage
+        || adapter.operations.len() != operations_after_insert
+    {
+        return Err(String::from(
+            "weighted hit changed usage or adapter state",
+        ));
+    }
+    if !cache
+        .invalidate_plan(&mut adapter, &plan)
+        .map_err(|error| error.to_string())?
+        || !executable_cache_usage_is_empty(&cache)
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("weighted invalidation accounting drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_sequence_cache_rejects_mapping_oversize() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let entry_limit = nonzero_test_limit(3, "entry limit")?;
+    let mapping_limit = nonzero_test_limit(1, "mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(907)?,
+        native_executable_address(0x97_000)?,
+    );
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("oversized mapping candidate was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::Mappings {
+        limit: mapping_limit,
+        required: 2,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || !error.evicted_keys().is_empty()
+        || error.eviction_failure().is_some()
+        || error.load_failure().is_some()
+        || !cache.is_empty()
+        || !executable_cache_usage_is_empty(&cache)
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("mapping oversize rejection drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_sequence_cache_rejects_byte_oversize() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let mapped_bytes = direct_sequence_mapped_bytes(&plan)?;
+    let entry_limit = nonzero_test_limit(3, "entry limit")?;
+    let byte_limit = mapped_bytes
+        .checked_sub(1)
+        .and_then(NonZeroUsize::new)
+        .ok_or_else(|| String::from("mapped-byte limit missing"))?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(908)?,
+        native_executable_address(0x98_000)?,
+    );
+    let Err(error) = cache.ensure_plan(&mut adapter, &plan) else {
+        return Err(String::from("oversized byte candidate was admitted"));
+    };
+    let expected = NativeExecutableSequenceCacheCapacityError::MappedBytes {
+        limit: byte_limit,
+        required: mapped_bytes,
+    };
+    if error.capacity_error() != Some(expected)
+        || error.candidate_cleanup_failure().is_some()
+        || !error.evicted_keys().is_empty()
+        || error.eviction_failure().is_some()
+        || error.load_failure().is_some()
+        || !cache.is_empty()
+        || !executable_cache_usage_is_empty(&cache)
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("mapped-byte oversize rejection drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn executable_sequence_cache_evicts_multiple_for_mapping_limit()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let candidate = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let candidate_key = NativeExecutableSequenceKey::from_plan(&candidate);
+    let candidate_bytes = direct_sequence_mapped_bytes(&candidate)?;
+    let entry_limit = nonzero_test_limit(3, "entry limit")?;
+    let mapping_limit = nonzero_test_limit(2, "mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(909)?,
+        native_executable_address(0x99_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    if cache.usage().entries() != 2 || cache.usage().mappings() != 2 {
+        return Err(String::from("mapping-limit setup usage drifted"));
+    }
+    let evicted = {
+        let entry = cache
+            .ensure_plan(&mut adapter, &candidate)
+            .map_err(|error| error.to_string())?;
+        entry.disposition().evicted_keys().to_vec()
+    };
+    if evicted != [first_key, second_key]
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != candidate_bytes
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("mapping-limit multi-eviction drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if executable_cache_usage_is_empty(&cache)
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("mapping-limit final cleanup drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_cache_evicts_multiple_for_byte_limit()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let x86_candidate = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let arm_candidate =
+        selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let x86_bytes = direct_sequence_mapped_bytes(&x86_candidate)?;
+    let arm_bytes = direct_sequence_mapped_bytes(&arm_candidate)?;
+    let (candidate, candidate_bytes) = if x86_bytes >= arm_bytes {
+        (x86_candidate, x86_bytes)
+    } else {
+        (arm_candidate, arm_bytes)
+    };
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let candidate_key = NativeExecutableSequenceKey::from_plan(&candidate);
+    let entry_limit = nonzero_test_limit(3, "entry limit")?;
+    let byte_limit = nonzero_test_limit(candidate_bytes, "mapped-byte limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(byte_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(910)?,
+        native_executable_address(0x9a_000)?,
+    );
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &first)
+            .map_err(|error| error.to_string())?;
+    }
+    {
+        let _entry = cache
+            .ensure_plan(&mut adapter, &second)
+            .map_err(|error| error.to_string())?;
+    }
+    let evicted = {
+        let entry = cache
+            .ensure_plan(&mut adapter, &candidate)
+            .map_err(|error| error.to_string())?;
+        entry.disposition().evicted_keys().to_vec()
+    };
+    if evicted != [first_key, second_key]
+        || cache.keys().cloned().collect::<Vec<_>>() != [candidate_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != candidate_bytes
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("byte-limit multi-eviction drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())?;
+    if executable_cache_usage_is_empty(&cache)
+        && adapter.release_requests.len() == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from("byte-limit final cleanup drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_cache_retains_second_eviction_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let candidate = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let candidate_key = NativeExecutableSequenceKey::from_plan(&candidate);
+    let entry_limit = nonzero_test_limit(3, "entry limit")?;
+    let mapping_limit = nonzero_test_limit(2, "mapping limit")?;
+    let limits = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapping_limit(mapping_limit);
+    let mut cache = NativeExecutableSequenceCache::with_limits(limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(911)?,
+        native_executable_address(0x9b_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    adapter.release_failure_at =
+        Some(adapter.release_attempts.saturating_add(2));
+    let Err(error) = cache.ensure_plan(&mut adapter, &candidate) else {
+        return Err(String::from("second weighted eviction failure ignored"));
+    };
+    let expected_keys = [first_key, second_key];
+    let eviction = error.eviction_failure().ok_or_else(|| {
+        String::from("second weighted eviction ownership was lost")
+    })?;
+    if error.requested_key() != &candidate_key
+        || error.evicted_keys() != expected_keys
+        || error.capacity_error().is_some()
+        || error.candidate_cleanup_failure().is_some()
+        || error.load_failure().is_some()
+        || eviction.attempted_count() != 1
+        || eviction.failed_count() != 1
+        || !cache.is_empty()
+        || !executable_cache_usage_is_empty(&cache)
+        || adapter.release_requests.len() != 4
+    {
+        return Err(String::from(
+            "second weighted eviction failure evidence drifted",
+        ));
+    }
+    let retained = (*error).into_release_failures();
+    if retained.candidate_failure().is_some()
+        || retained.eviction_failure().is_none()
+    {
+        return Err(String::from(
+            "second weighted eviction retry ownership drifted",
+        ));
+    }
+    retained
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if adapter.release_requests.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("second weighted eviction retry drifted"))
     }
 }

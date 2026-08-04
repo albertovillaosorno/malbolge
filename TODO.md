@@ -450,23 +450,27 @@ retry. The adapter contract now requires unique mapping identities and
 non-overlapping live ranges. Seven deterministic cases prove reuse, cached guard
 resume, partial-load rollback, cleanup retention, all-mapping release, cross-ISA
 prevalidation, and current-step rollback.
-`NativeExecutableSequenceCache` now adds bounded caller-owned reuse across exact
-plans. Its positive capacity counts complete sequence entries, and its key is
-the ordered list of full `NativeArtifactKey` values. Exact hits borrow the
-retained chain without refreshing FIFO age or performing memory-adapter
-operations. A miss
-loads its candidate before eviction; load failure leaves existing entries
-unchanged. At capacity, the oldest insertion is released before publication. If
-that release fails, the victim is removed from cache authority, the candidate is
-also cleaned, and every still-owned mapping is returned for aggregate retry.
-Exact invalidation likewise removes authority before release, while
-`release_all` drains FIFO order and attempts every entry. The returned borrow
-prevents cache
-mutation while a chain is in use. Six deterministic cases prove hit execution,
-non-refreshing FIFO, failed-miss isolation, dual-owner eviction failure, exact
-invalidation retry, and aggregate cleanup. This still does not fuse COFF, jump
+`NativeExecutableSequenceCache` now adds weighted caller-owned reuse across
+exact plans. Its key remains the ordered list of full `NativeArtifactKey` values.
+`new()` preserves the positive whole-entry limit, while `with_limits()` adds
+optional positive live-mapping and admitted mapped-byte limits. Every candidate
+loads before accounting so weight comes from exact admitted `mapped_len`
+evidence. A candidate that alone exceeds a mapping or byte limit is fully
+released without changing prior cache authority. Otherwise the cache releases
+as many oldest FIFO entries as required for projected entry, mapping, and byte
+usage to fit; the insertion disposition retains every evicted key in order.
+Hits borrow the same mappings, preserve FIFO age and usage, and perform no
+memory-adapter operations. Failed candidate load leaves prior entries untouched.
+A failed later eviction removes that victim and all earlier successful victims
+from cache authority, cleans the candidate, and returns every still-owned
+release for exact retry. Exact invalidation and `release_all()` decrement or
+reset usage before cleanup, so failed release never leaves stale cache budgets.
+Overflow-safe usage reports exact entries, mappings, and mapped bytes. Twelve
+deterministic cases cover original hit/FIFO/cleanup behavior plus weighted
+accounting, standalone mapping/byte rejection, multi-entry eviction under both
+limits, and failure on the second eviction. This still does not fuse COFF, jump
 directly between mappings, transfer into the interpreter, provide concurrent
-leases, budget by bytes/mappings, persist loaded state, or implement the unsafe
+leases, resize limits in place, persist loaded state, or implement the unsafe
 machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
@@ -491,8 +495,8 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
-persistence and automatic eviction, executable-cache capacity by bytes/mappings,
-concurrent leases, synchronization policy, fused-region emission, concrete
+persistence and automatic eviction, executable-cache concurrent leases and
+in-place limit changes, synchronization policy, fused-region emission, concrete
 interpreter handoff, the unsafe foreign-call boundary, and broader AOT/JIT
 performance policy remain open.
 
@@ -502,10 +506,11 @@ identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
 relocation-free load images, persistent exact-plan executable ownership,
-bounded exact-sequence FIFO reuse, and an untrusted cross-ISA bootstrap object
-boundary are implemented. Combined-region native fusion, concurrent executable
-leases, byte/mapping-weighted eviction, concrete foreign invocation, durable
-cache serialization/storage, and wider tier orchestration remain open.
+entry/mapping/mapped-byte weighted exact-sequence FIFO reuse, and an untrusted
+cross-ISA bootstrap object boundary are implemented. Combined-region native
+fusion, concurrent executable leases, dynamic limit changes, concrete foreign
+invocation, durable cache serialization/storage, and wider tier orchestration
+remain open.
 
 ### TODO - Ahead-of-execution native translation
 

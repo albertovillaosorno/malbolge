@@ -250,19 +250,23 @@ simultaneously live allocations. Tests cover uncached reuse, cached guard miss,
 partial-load cleanup, aggregate release, cross-ISA rejection, and runner
 rollback.
 
-`executable_cache.rs` adds a positive-capacity caller-owned FIFO over complete
-loaded sequences. Exact identity is the ordered list of full artifact keys. Hits
-borrow the same mappings, preserve insertion age, and perform no adapter work.
-Misses load before eviction, so load failure leaves the cache unchanged. At
-capacity the oldest insertion is released before publication; failed eviction
-removes cache authority and returns both victim and candidate cleanup ownership.
-Exact invalidation removes authority before release, and `release_all()` drains
-and attempts every entry. Borrowed entries statically prevent cache mutation
-while in use. Six tests cover hit execution, FIFO behavior, miss isolation,
-dual-owner cleanup, invalidation retry, and aggregate release. Objects remain
-separate mappings; there are no concurrent leases, byte-weighted budgets,
-durable loaded state, direct inter-mapping jumps, concrete foreign-call shim, or
-interpreter transfer.
+`executable_cache.rs` and `executable_cache_capacity.rs` add a weighted
+caller-owned FIFO over complete loaded sequences. Exact identity remains the
+ordered list of full artifact keys. `new()` bounds whole entries only;
+`with_limits()` can also bound live mappings and admitted mapped bytes. Weight
+comes from the exact ready mapping reports after load. Oversized candidates are
+released without changing prior entries. Candidates that fit alone evict as many
+oldest entries as necessary for all projected limits, and inserted dispositions
+return every evicted key in FIFO order. Hits borrow the same mappings, preserve
+insertion age and usage, and perform no adapter work. Failed eviction removes
+cache authority for that victim and any earlier successful victims, cleans the
+candidate, and retains failed release ownership. Invalidation and full drain
+update accounting before cleanup, so errors cannot leave stale budgets. Twelve
+tests cover original reuse/cleanup behavior plus exact usage, standalone mapping
+and byte rejection, multi-entry eviction under either limit, and second-eviction
+failure. Objects remain separate mappings; there are no concurrent leases,
+in-place limit changes, durable loaded state, direct inter-mapping jumps,
+concrete foreign-call shim, or interpreter transfer.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

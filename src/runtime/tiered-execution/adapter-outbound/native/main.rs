@@ -42,6 +42,7 @@ mod abi;
 mod coff;
 mod direct;
 mod executable_cache;
+mod executable_cache_capacity;
 mod executable_sequence;
 mod invocation;
 mod lifecycle;
@@ -127,6 +128,11 @@ pub use executable_cache::{
     NativeExecutableSequenceCacheLoadResult,
     NativeExecutableSequenceCacheReleaseFailure,
     NativeExecutableSequenceCacheReleaseResult, NativeExecutableSequenceKey,
+};
+pub use executable_cache_capacity::{
+    NativeExecutableSequenceCacheCapacityError,
+    NativeExecutableSequenceCacheLimits, NativeExecutableSequenceCacheUsage,
+    NativeExecutableSequenceWeight,
 };
 pub use executable_sequence::{
     NativeExecutableSequenceLoadFailure, NativeExecutableSequenceLoadResult,
