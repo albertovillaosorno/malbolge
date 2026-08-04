@@ -441,7 +441,19 @@ without repeating external admission. A zero budget performs no transition and
 preserves prior progress; an oversized budget completes normally. Ten cases now
 cover both transfer forms, admission drift, completion, zero/partial/oversized
 budgets, repeated zero after progress, and rollback before or after suspension.
-Multi-tier tier choice and production scheduling remain outside this bridge.
+
+`application/scheduler.rs` adds the first explicit scheduling owner above that
+bridge. One affine handoff is consumed with one closed decision: complete in the
+interpreter, execute one positive interpreter slice, or yield zero steps to the
+caller or for possible native retry. Suspensions retain the exact checkpoint,
+complete-plan index, key/program suffix, and cumulative interpreter progress,
+plus a stable `BudgetExhausted`, `CallerYield`, or `NativeRetry` reason.
+`resume()` consumes the same owner under a later decision. `NativeRetry` never
+replans, loads, or invokes native code and no scheduler branch converts a hard
+execution failure into fallback. Five cases cover both yield reasons,
+slice/completion, direct completion, cumulative progress, and failure
+propagation. Automated tier policy, real native retry execution, asynchronous
+queue ownership, and product scheduling remain outside this boundary.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,
@@ -543,8 +555,9 @@ outside.
 
 ### Remaining Implementation
 
-Combined-region emission, multi-tier continuation scheduling,
-executable-memory platform implementations and foreign invocation, durable cache
+Combined-region emission, executable native-retry orchestration,
+asynchronous/product scheduling, executable-memory platform implementations and
+foreign invocation, durable cache
 serialization/storage and cross-process leasing, cache-aware AOT/JIT policy
 beyond verified direct process-local reuse, and performance policy remain open.
 The

@@ -261,8 +261,14 @@ complete-plan resume index, exact artifact/program suffix, and normative
 checkpoint. Zero budget preserves state, partial budget resumes without
 readmission, and oversized budget completes. Ten cases cover completion on both
 ISAs, checkpoint/live-in drift, budget boundaries, and rollback after resume.
-This is still not native object fusion, foreign invocation, or a multi-tier
-scheduler.
+An explicit application scheduler now consumes that affine owner with complete,
+positive interpreter-slice, caller-yield, or native-retry-yield decisions. Every
+pause preserves exact checkpoint/suffix/progress plus a stable stop reason, and
+rescheduling consumes the same owner. Native retry remains evidence only: no
+backend is selected or invoked. Five scheduler cases cover both yields, sliced
+and direct completion, cumulative progress, and hard-failure propagation. Native
+object fusion, foreign invocation, automatic tier policy, and real retry
+execution remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

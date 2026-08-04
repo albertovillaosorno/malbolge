@@ -152,8 +152,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   checkpoint;
   zero/partial/oversized cases remain deterministic and resumable without
   readmission. Ten cases cover both ISAs, state/live-in rejection, budget
-  boundaries, and rollback after resume. Multi-tier scheduling and production
-  orchestration remain pending.
+  boundaries, and rollback after resume. An explicit application scheduler now
+  consumes that affine owner with complete, positive-slice, caller-yield, or
+  native-retry-yield decisions. Pauses retain exact checkpoint/suffix/progress
+  and
+  stable stop reason; `resume()` consumes the same owner. Native retry remains
+  evidence only. Five cases cover both yields, completion paths, cumulative
+  progress, and hard-failure propagation. Automatic tier policy, executable
+  retry, async queues, and production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

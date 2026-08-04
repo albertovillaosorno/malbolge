@@ -33,6 +33,8 @@
 
 //! Product tiered-execution identity and cache-key conformance.
 
+#[path = "../src/runtime/tiered-execution/application/scheduler.rs"]
+pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/domain/ir/main.rs"]
@@ -51,6 +53,11 @@ use std::str::from_utf8;
 use std::sync::Arc;
 use std::thread;
 
+use continuation_scheduler::{
+    NativeContinuationScheduleDecision, NativeContinuationScheduleOutcome,
+    NativeContinuationScheduleStopReason, NativeContinuationYieldTarget,
+    schedule_native_interpreter_handoff,
+};
 use execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
     NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
@@ -261,6 +268,12 @@ struct NativeHandoffFixture {
     input: Vec<u8>,
     memory: Vec<u32>,
     output: Vec<u8>,
+    plan: VerifiedDirectSequencePlan,
+}
+
+struct NativeScheduleFixture {
+    handoff: NativeInterpreterHandoff,
+    memory: Vec<u32>,
     plan: VerifiedDirectSequencePlan,
 }
 
@@ -10326,6 +10339,32 @@ fn native_handoff_fixture(
     })
 }
 
+fn native_schedule_fixture(
+    isa: HostIsa,
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+) -> Result<NativeScheduleFixture, String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        memory,
+        output,
+        plan,
+    } = native_handoff_fixture(isa, behaviors)?;
+    let retained_memory = memory.clone();
+    let handoff = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(NativeScheduleFixture {
+        handoff,
+        memory: retained_memory,
+        plan,
+    })
+}
+
 fn profile_state_observation(
     state: &ProfileMachineState,
 ) -> ProfileMachineObservation {
@@ -10829,5 +10868,198 @@ fn native_interpreter_handoff_budget_zero_preserves_progress()
         Err(String::from(
             "zero resumed budget lost accumulated progress",
         ))
+    }
+}
+
+#[test]
+fn native_continuation_scheduler_yields_to_caller_without_execution()
+-> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let key = NativeExecutableSequenceKey::from_plan(&fixture.plan);
+    let outcome = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = outcome else {
+        return Err(String::from("caller yield completed work"));
+    };
+    if pause.reason() == NativeContinuationScheduleStopReason::CallerYield
+        && pause.interpreter_steps() == 0
+        && pause.resume_index() == 0
+        && pause.remaining_steps() == fixture.plan.len()
+        && pause.remaining_key() == &key
+        && pause.remaining_programs() == fixture.plan.programs()
+        && pause.state().memory() == fixture.memory
+        && profile_state_observation(pause.state()) == fixture.plan.entry()
+    {
+        Ok(())
+    } else {
+        Err(String::from("caller yield evidence drifted"))
+    }
+}
+
+#[test]
+fn native_continuation_scheduler_yields_native_retry_after_progress()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let first = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "scheduler slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("scheduler slice did not suspend"));
+    };
+    let second = pause
+        .resume(NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::NativeRetry,
+        ))
+        .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(retry) = second else {
+        return Err(String::from("native retry yield completed work"));
+    };
+    if retry.reason() == NativeContinuationScheduleStopReason::NativeRetry
+        && retry.interpreter_steps() == 1
+        && retry.resume_index() == 1
+        && retry.remaining_steps() == 1
+        && retry.state().memory() == expected.first_memory
+    {
+        Ok(())
+    } else {
+        Err(String::from("native retry yield evidence drifted"))
+    }
+}
+
+#[test]
+fn native_continuation_scheduler_slices_then_completes() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_schedule_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let first = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "scheduler slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("scheduler slice completed unexpectedly"));
+    };
+    if pause.reason() != NativeContinuationScheduleStopReason::BudgetExhausted {
+        return Err(String::from("scheduler slice reason drifted"));
+    }
+    let second = pause
+        .resume(NativeContinuationScheduleDecision::complete_interpreter())
+        .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = second
+    else {
+        return Err(String::from("scheduler completion remained suspended"));
+    };
+    if completion.outcome() == fixture.plan.outcome()
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("scheduled completion drifted"))
+    }
+}
+
+#[test]
+fn native_continuation_scheduler_completes_directly() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let outcome = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("direct scheduler completion suspended"));
+    };
+    if completion.outcome() == fixture.plan.outcome()
+        && completion.interpreter_outcome()
+            == (RunOutcome::BudgetExhausted { steps: 1 })
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("direct scheduler completion drifted"))
+    }
+}
+
+#[test]
+fn native_continuation_scheduler_propagates_drift() -> Result<(), String> {
+    let NativeHandoffFixture {
+        continuation,
+        input,
+        mut memory,
+        output,
+        plan,
+    } = native_handoff_fixture(HostIsa::X86_64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let live_in = distinct_second_live_in(&plan)?;
+    let index = usize::try_from(live_in.address)
+        .map_err(|error| format!("scheduler drift index: {error}"))?;
+    let observed = live_in.value.saturating_sub(1);
+    *memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("scheduler drift address missing"))? =
+        observed;
+    let handoff = NativeInterpreterHandoff::from_buffers(
+        continuation,
+        memory,
+        input,
+        &output,
+    )
+    .map_err(|error| error.to_string())?;
+    let first = schedule_native_interpreter_handoff(
+        handoff,
+        NativeContinuationScheduleDecision::interpret(nonzero_test_limit(
+            1,
+            "scheduler drift slice",
+        )?),
+    )
+    .map_err(|error| error.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("scheduler drift did not suspend"));
+    };
+    let Err(failure) = pause
+        .resume(NativeContinuationScheduleDecision::complete_interpreter())
+    else {
+        return Err(String::from("scheduler resumed drift was ignored"));
+    };
+    if failure.cause()
+        == (NativeInterpreterHandoffExecutionCause::LiveIn {
+            address: live_in.address,
+            expected: live_in.value,
+            observed,
+        })
+        && failure.interpreter_steps() == 1
+        && failure.resume_index() == 1
+        && failure.state().memory().get(index).copied() == Some(observed)
+    {
+        Ok(())
+    } else {
+        Err(String::from("scheduler resumed failure evidence drifted"))
     }
 }

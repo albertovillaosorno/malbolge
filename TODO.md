@@ -468,8 +468,17 @@ without readmission or state inference. Zero budget is a no-op suspension,
 and an
 oversized budget completes normally. Ten deterministic cases cover transfer,
 admission, completion, zero/partial/oversized budgets, repeated zero after
-progress, and rollback before or after suspension. Multi-tier scheduling and
-production orchestration remain open.
+progress, and rollback before or after suspension.
+`application/scheduler.rs` now consumes exactly one affine handoff plus one
+explicit decision: complete in the interpreter, execute one positive slice, or
+yield zero steps to the caller or for possible native retry. Every pause wraps
+the exact handoff suspension with `BudgetExhausted`, `CallerYield`, or
+`NativeRetry`; `resume()` consumes that owner under a later decision. Native
+retry is evidence only: this boundary performs no native replanning, loading, or
+invocation and converts no hard error into fallback. Five deterministic cases
+cover both yield reasons, slice/completion, direct completion, cumulative
+progress, and unchanged failure propagation. Automatic tier policy, real native
+retry execution, async queue ownership, and product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready
@@ -551,8 +560,9 @@ removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
 persistence and automatic eviction, executable-cache synchronization policy,
-fused-region emission, multi-tier continuation scheduling, the unsafe
-foreign-call boundary, and broader AOT/JIT performance policy remain open.
+fused-region emission, executable native-retry orchestration, async scheduling,
+the unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
+open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
@@ -560,13 +570,14 @@ identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
 validated semantic interpreter continuations, budgeted normative checkpoint
-handoff, relocation-free load images, persistent exact-plan executable
-ownership,
+handoff, explicit affine continuation scheduling, relocation-free load images,
+persistent exact-plan executable ownership,
 entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
 limit reconfiguration, shared immutable executable leases with explicit retired
 reconciliation, and an untrusted cross-ISA bootstrap object boundary are
 implemented. Combined-region native fusion, concrete foreign invocation, durable
-cache serialization/storage, and wider tier orchestration remain open.
+cache serialization/storage, native-retry execution, and wider automated tier
+orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
 
