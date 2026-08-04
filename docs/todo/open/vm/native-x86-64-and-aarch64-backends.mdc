@@ -204,8 +204,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   precede one loaded retry attempt: hits perform no adapter work, insertions
   retain FIFO retirement/release evidence, and load/runner failures preserve
   retry or lease ownership. Five cases cover insertion, hit reuse, load failure,
-  mixed retirement, and runner fallback. Bounded-cycle lease reuse, adaptive
-  telemetry, async queues, and broader production orchestration remain pending.
+  mixed retirement, and runner fallback. A bounded cached cycle now records
+  per-attempt progress plus `Inserted`/`Hit`, drops successful external leases
+  while retaining active cache authority, and reuses unchanged guard suffixes.
+  Progressed suffixes stay distinct; acquisition/runner failure stops with owners.
+  Five cases cover fallback, repeated hits, changed suffixes, load failure, and
+  runner failure. Adaptive telemetry, async queues, durable storage, and broader
+  production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

@@ -33,6 +33,8 @@
 
 //! Product tiered-execution identity and cache-key conformance.
 
+#[path = "../src/runtime/tiered-execution/application/cached_cycle.rs"]
+pub mod cached_cycle;
 #[path = "../src/runtime/tiered-execution/application/cached_retry.rs"]
 pub mod cached_retry;
 #[path = "../src/runtime/tiered-execution/application/scheduler.rs"]
@@ -69,6 +71,15 @@ use std::str::from_utf8;
 use std::sync::Arc;
 use std::thread;
 
+use cached_cycle::{
+    NativeContinuationCachedRetryCompletion,
+    NativeContinuationCachedRetryCycleFailure,
+    NativeContinuationCachedRetryCycleOutcome,
+    NativeContinuationCachedRetryCycleRequest,
+    NativeContinuationCachedRetryInterpreterOutcome,
+    NativeContinuationCachedRetryNativeFailure,
+    execute_cached_native_retry_cycle,
+};
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
 };
@@ -339,6 +350,9 @@ struct LeasedNativeRetryFixture {
     full_plan: VerifiedDirectSequencePlan,
     leased: NativeContinuationLeasedRetry,
 }
+
+type CachedRetryCycleNativeFailure =
+    Box<NativeContinuationCachedRetryNativeFailure<FakeNativeRunnerError>>;
 
 struct AdmittedNativeRetryFixture {
     full_plan: VerifiedDirectSequencePlan,
@@ -10759,6 +10773,24 @@ const fn linux_x86_64_retry_cycle_request(
     )
 }
 
+const fn windows_cached_retry_cycle_request(
+    policy: NativeContinuationRetryPolicy,
+    suspension: NativeContinuationScheduleSuspension,
+    attempts: usize,
+    host_isa: HostIsa,
+) -> NativeContinuationCachedRetryCycleRequest {
+    NativeContinuationCachedRetryCycleRequest::new(
+        policy,
+        suspension,
+        attempts,
+        NativeContinuationRetryHost::new(
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            host_isa,
+        ),
+    )
+}
+
 const fn windows_retry_cycle_request(
     policy: NativeContinuationRetryPolicy,
     suspension: NativeContinuationScheduleSuspension,
@@ -10889,6 +10921,50 @@ fn admitted_native_retry(
         retry,
         retry_plan: fixture.retry_plan,
     })
+}
+
+fn cached_cycle_interpreter(
+    outcome: NativeContinuationCachedRetryCycleOutcome<FakeNativeRunnerError>,
+) -> Result<Box<NativeContinuationCachedRetryInterpreterOutcome>, String> {
+    match outcome {
+        NativeContinuationCachedRetryCycleOutcome::Interpreter(interpreter) => {
+            Ok(interpreter)
+        },
+        NativeContinuationCachedRetryCycleOutcome::NativeCompletion(_)
+        | NativeContinuationCachedRetryCycleOutcome::NativeFailure(_) => {
+            Err(String::from("cached retry cycle did not route interpreter"))
+        },
+    }
+}
+
+fn cached_cycle_native_failure(
+    outcome: NativeContinuationCachedRetryCycleOutcome<FakeNativeRunnerError>,
+) -> Result<CachedRetryCycleNativeFailure, String> {
+    match outcome {
+        NativeContinuationCachedRetryCycleOutcome::NativeFailure(failure) => {
+            Ok(failure)
+        },
+        NativeContinuationCachedRetryCycleOutcome::Interpreter(_)
+        | NativeContinuationCachedRetryCycleOutcome::NativeCompletion(_) => {
+            Err(String::from(
+                "cached retry cycle did not retain native failure",
+            ))
+        },
+    }
+}
+
+fn cached_cycle_completion(
+    outcome: NativeContinuationCachedRetryCycleOutcome<FakeNativeRunnerError>,
+) -> Result<Box<NativeContinuationCachedRetryCompletion>, String> {
+    match outcome {
+        NativeContinuationCachedRetryCycleOutcome::NativeCompletion(
+            completion,
+        ) => Ok(completion),
+        NativeContinuationCachedRetryCycleOutcome::Interpreter(_)
+        | NativeContinuationCachedRetryCycleOutcome::NativeFailure(_) => {
+            Err(String::from("cached retry cycle did not complete native"))
+        },
+    }
 }
 
 fn cached_retry_failure_matches(
@@ -14028,6 +14104,278 @@ fn cached_native_retry_preserves_runner_failure_lease() -> Result<(), String> {
         &expected,
     ) {
         return Err(String::from("cached runner fallback drifted"));
+    }
+    release_leased_retry(&mut cache, &mut adapter, lease)
+}
+
+#[test]
+fn cached_retry_cycle_reuses_unchanged_guard_suffix() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let request = windows_cached_retry_cycle_request(
+        NativeContinuationRetryPolicy::new(
+            3,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "cached cycle capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 990, 0xf8_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cached guard cycle failed: {failure:?}"))?;
+    let completion = cached_cycle_completion(outcome)?;
+    let hit_evidence = completion
+        .native_attempts()
+        .iter()
+        .map(|attempt| attempt.disposition().is_hit())
+        .collect::<Vec<_>>();
+    let attempt_numbers = completion
+        .native_attempts()
+        .iter()
+        .map(cached_cycle::NativeContinuationCachedRetryAttempt::attempt)
+        .collect::<Vec<_>>();
+    if completion.attempts() != 3
+        || hit_evidence != [false, true, true]
+        || attempt_numbers != [1, 2, 3]
+        || completion.native_steps() != 2
+        || runner.calls != 4
+        || cache.active_len() != 1
+        || completion.completion().outcome() != fixture.full_plan.outcome()
+        || completion.completion().state().memory() != expected.final_memory
+        || completion.completion().state().io().output()
+            != expected.final_output
+    {
+        return Err(String::from("cached guard reuse evidence drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn cached_retry_cycle_inserts_progressed_suffix() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let request = windows_cached_retry_cycle_request(
+        NativeContinuationRetryPolicy::new(
+            2,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "cached cycle capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 991, 0xf9_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cached progress cycle failed: {failure:?}"))?;
+    let completion = cached_cycle_completion(outcome)?;
+    let hit_evidence = completion
+        .native_attempts()
+        .iter()
+        .map(|attempt| attempt.disposition().is_hit())
+        .collect::<Vec<_>>();
+    if completion.attempts() != 2
+        || hit_evidence != [false, false]
+        || completion.native_steps() != 2
+        || completion.completion().retry_steps() != 1
+        || completion.completion().outcome() != fixture.full_plan.outcome()
+        || completion.completion().state().memory() != expected.final_memory
+        || completion.completion().state().io().output()
+            != expected.final_output
+        || cache.active_len() != 2
+        || runner.calls != 3
+    {
+        return Err(String::from("cached progressed suffix evidence drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn cached_retry_cycle_falls_back_without_cache_work() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let request = windows_cached_retry_cycle_request(
+        NativeContinuationRetryPolicy::new(
+            0,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "cached cycle capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 992, 0xfa_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let outcome = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cached fallback cycle failed: {failure:?}"))?;
+    let interpreter = cached_cycle_interpreter(outcome)?;
+    let NativeContinuationScheduleOutcome::Completed(completion) =
+        interpreter.outcome()
+    else {
+        return Err(String::from("cached zero-limit fallback suspended"));
+    };
+    if interpreter.attempts() != 0
+        || !interpreter.native_attempts().is_empty()
+        || runner.calls != 0
+        || !cache.is_empty()
+        || !adapter.operations.is_empty()
+        || completion.outcome() != fixture.full_plan.outcome()
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        Err(String::from("cached zero-limit fallback drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn cached_retry_cycle_preserves_acquisition_failure() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let expected_key =
+        NativeExecutableSequenceKey::from_plan(&fixture.retry_plan);
+    let request = windows_cached_retry_cycle_request(
+        NativeContinuationRetryPolicy::new(
+            2,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "cached cycle capacity",
+    )?);
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(limits);
+    let mut adapter = native_executable_adapter(993, 0xfb_000)?
+        .with_failure(FakeNativeAdapterOperation::Allocate);
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let failure = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .err()
+    .ok_or_else(|| String::from("cached cycle load failure was ignored"))?;
+    let NativeContinuationCachedRetryCycleFailure::Cached(cached_failure) =
+        failure.as_ref()
+    else {
+        return Err(String::from("cached cycle load failure category drifted"));
+    };
+    let acquisition = cached_failure.acquisition().ok_or_else(|| {
+        String::from("cached cycle acquisition owner missing")
+    })?;
+    if acquisition.failure().requested_key() == &expected_key
+        && acquisition.failure().load_failure().is_some()
+        && acquisition.retry().plan() == &fixture.retry_plan
+        && runner.calls == 0
+        && cache.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached cycle acquisition failure drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_cycle_stops_with_runner_failure_lease() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_key =
+        NativeExecutableSequenceKey::from_plan(&fixture.retry_plan);
+    let request = windows_cached_retry_cycle_request(
+        NativeContinuationRetryPolicy::new(
+            3,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "cached cycle capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 994, 0xfc_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let outcome = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cached runner cycle failed: {failure:?}"))?;
+    let native_failure = cached_cycle_native_failure(outcome)?;
+    if native_failure.attempt() != 1
+        || !native_failure.prior_attempts().is_empty()
+        || native_failure.failure().lease().key() != &expected_key
+        || runner.calls != 1
+    {
+        return Err(String::from("cached cycle runner failure drifted"));
+    }
+    let (_attempt, prior_attempts, failure) = (*native_failure).into_parts();
+    let (disposition, loaded_failure, cache_disposition, lease) =
+        failure.into_parts();
+    if !prior_attempts.is_empty()
+        || loaded_failure.completed_steps() != 0
+        || loaded_failure.resume_index() != 0
+        || cache_disposition.is_hit()
+    {
+        return Err(String::from("cached cycle loaded failure drifted"));
+    }
+    let completion = complete_retry_resumption(retry_resumption(disposition)?)?;
+    if !retry_completion_matches(
+        &completion,
+        fixture.full_plan.outcome(),
+        &expected,
+    ) {
+        return Err(String::from("cached cycle runner fallback drifted"));
     }
     release_leased_retry(&mut cache, &mut adapter, lease)
 }

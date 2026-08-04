@@ -522,8 +522,16 @@ work; inserted acquisitions preserve FIFO eviction/retirement evidence. Load
 failure restores the admitted retry plus exact load/cleanup ownership, while
 binding or runner failure retains the acquired lease. Five cases cover inserted
 completion, hit reuse, pre-runner load failure, mixed live-retirement insertion,
-and runner-failure fallback. Semantic rebase and lease return remain caller-owned;
-bounded-cycle lease reuse remains open.
+and runner-failure fallback. Semantic rebase and lease return remain caller-owned.
+`application/cached_cycle.rs` now applies immutable attempt policy over the cached
+path. Successful attempts record attempt number, committed native steps, and
+exact `Inserted`/`Hit` evidence, then drop only the external lease so active cache
+authority can serve the next retry. Unchanged guard suffixes reuse the same
+resident mappings; progressed suffixes acquire distinct exact keys. Acquisition
+or runner failure stops immediately with retry or lease ownership. Five cases
+cover zero-limit fallback, `Inserted/Hit/Hit` guard reuse, progressed suffix
+insertion, pre-runner load failure, and runner failure with fallback. Adaptive
+cache policy, async ownership, and durable/cross-process storage remain open.
 `application/retry_planner.rs` now consumes an exact `NativeRetry` suspension,
 explicit runtime capability, OS, and ISA. It selects and admits the exact native
 suffix on supported Windows hosts; only a direct `TargetFormat` absence becomes

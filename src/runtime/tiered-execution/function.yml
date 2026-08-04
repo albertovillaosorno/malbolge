@@ -182,60 +182,65 @@ parts:
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0030
-    path: application/cached_retry.rs
+    path: application/cached_cycle.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0031
-    path: application/interpreter_handoff.rs
+    path: application/cached_retry.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0032
-    path: application/leased_retry.rs
+    path: application/interpreter_handoff.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0033
-    path: application/native_retry.rs
+    path: application/leased_retry.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0034
-    path: application/retry_planner.rs
+    path: application/native_retry.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0035
-    path: application/retry_policy.rs
+    path: application/retry_planner.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0036
-    path: application/retry_cycle.rs
+    path: application/retry_policy.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0037
-    path: application/retry_router.rs
+    path: application/retry_cycle.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0038
-    path: application/retry_turn.rs
+    path: application/retry_router.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0039
-    path: application/scheduler.rs
+    path: application/retry_turn.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0040
+    path: application/scheduler.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate use-case policy and orchestration.
+  - id: part-0041
     path: domain/ir/README.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0041
+  - id: part-0042
     path: domain/ir/main.rs
     kind: domain
     language: rust

@@ -373,8 +373,16 @@ baseline; native tiers are accelerators of identical observable behavior.
   admitted retry plus exact load/cleanup ownership, while binding/runner failure
   retains the acquired lease. Five cases cover insertion, hit reuse, pre-runner
   load failure, mixed live-retirement insertion, and runner-failure fallback.
-  Semantic rebase and lease return remain caller-owned; bounded-cycle lease reuse
-  remains open.
+  Semantic rebase and lease return remain caller-owned.
+- `application/cached_cycle.rs` now applies immutable attempt policy to cached
+  execution. Successful attempts retain attempt number, committed native steps,
+  and exact `Inserted`/`Hit` evidence, then drop only the external lease so active
+  cache authority serves later retries. Unchanged guard suffixes hit the same
+  resident sequence; progressed suffixes acquire distinct keys. Acquisition or
+  runner failure stops with retry/lease ownership. Five cases cover zero-limit
+  fallback, `Inserted/Hit/Hit` reuse, progressed suffix insertion, load failure,
+  and runner failure with fallback. Adaptive policy, async ownership, and durable
+  storage remain open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

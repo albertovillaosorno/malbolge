@@ -314,8 +314,13 @@ rejection. Exact cache acquisition can now precede one loaded retry attempt:
 hits perform no memory-adapter work, insertions retain FIFO retirement/release
 evidence, and load/runner failures preserve retry or lease ownership. Five cases
 cover insertion, hit reuse, load failure, mixed retirement, and runner fallback.
-Native object fusion, foreign invocation, bounded-cycle lease reuse, and adaptive
-policy remain open.
+A bounded cached cycle now records per-attempt native progress plus `Inserted` or
+`Hit`, drops successful external leases while retaining active cache authority,
+and reuses unchanged guard suffixes without platform work. Progressed suffixes
+remain distinct exact entries; acquisition/runner failure stops with owners.
+Five cases cover fallback, repeated hits, changed suffixes, load failure, and
+runner failure. Native object fusion, foreign invocation, adaptive policy, and
+durable/cross-process storage remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
