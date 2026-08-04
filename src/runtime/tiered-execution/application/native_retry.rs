@@ -218,12 +218,20 @@ type NativeContinuationRetryAdapterResult<MemoryAdapter, Runner> =
     >;
 
 #[derive(Clone, Copy)]
-struct NativeContinuationRetryRebaseEvidence<'evidence> {
-    observation: ProfileMachineObservation,
-    reason: NativeInterpreterContinuationReason,
-    retry_steps: usize,
-    suspension: &'evidence NativeContinuationScheduleSuspension,
-    transfer: &'evidence NativeContinuationRetryTransfer,
+pub(crate) struct NativeContinuationRetryRebaseEvidence<'evidence> {
+    pub(crate) observation: ProfileMachineObservation,
+    pub(crate) reason: NativeInterpreterContinuationReason,
+    pub(crate) retry_steps: usize,
+    pub(crate) suspension: &'evidence NativeContinuationScheduleSuspension,
+    pub(crate) transfer: &'evidence NativeContinuationRetryTransfer,
+}
+
+pub(crate) struct NativeContinuationRetryTransferParts {
+    pub(crate) input: Vec<u8>,
+    pub(crate) memory: Vec<u32>,
+    pub(crate) observation: ProfileMachineObservation,
+    pub(crate) output: Vec<u8>,
+    pub(crate) profile: &'static ProfileDescriptor,
 }
 
 struct NativeContinuationRetryOwnedBuffers {
@@ -318,6 +326,18 @@ impl Display for NativeContinuationRetryAdmissionError {
 }
 
 impl NativeContinuationRetryTransfer {
+    pub(crate) fn from_parts(
+        parts: NativeContinuationRetryTransferParts,
+    ) -> Self {
+        Self {
+            input: parts.input,
+            memory: parts.memory,
+            observation: parts.observation,
+            output: parts.output,
+            profile: parts.profile,
+        }
+    }
+
     /// Returns the full immutable input stream retained by this retry.
     #[must_use]
     pub fn input(&self) -> &[u8] {
@@ -817,7 +837,7 @@ fn retry_rebase_disposition(
     })
 }
 
-fn retry_rebase_evidence(
+pub(crate) fn retry_rebase_evidence(
     evidence: NativeContinuationRetryRebaseEvidence<'_>,
 ) -> Result<
     NativeContinuationRetryDisposition,

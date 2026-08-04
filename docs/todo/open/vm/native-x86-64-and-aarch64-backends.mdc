@@ -196,9 +196,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   misses; fixed attempt policy terminates in native completion or normative
   fallback, while runner/release failures stop immediately with owners intact.
   Seven cases cover zero/format fallback, repeated guards, later native
-  completion, runner/cleanup failure, and hard rejection before adapters.
-  Cache-aware planning/execution, adaptive telemetry, async
-  queues, and broader production orchestration remain pending.
+  completion, runner/cleanup failure, and hard rejection before adapters. An
+  admitted retry can now execute through an exact immutable lease without
+  allocation/release, retaining hit/insertion evidence and the lease across
+  semantic rebase. Five cases cover insertion, pointer-identical hit reuse,
+  guard/failure fallback, and key rejection. Automatic cache acquisition,
+  bounded-cycle lease reuse, adaptive telemetry, async queues, and broader
+  production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

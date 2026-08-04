@@ -508,6 +508,15 @@ handoff; terminal cleanup failure can yield verified completion while preserving
 the release-retry owner. Rebase rejection retains the complete failed execution.
 Three cases cover zero-progress fallback, progressed fallback, and semantic
 completion with later cleanup retry.
+`application/leased_retry.rs` now binds an admitted retry to one exact immutable
+lease-cache acquisition. Key drift returns both owners before buffer movement.
+Loaded execution performs no allocation or release and retains hit/insertion
+evidence plus the lease across completion, guard miss, and runner failure.
+Success and failure rebase through the same complete continuation authority while
+the lease remains independently reusable or explicitly returnable. Five cases
+cover insertion completion, pointer-identical hit reuse without adapter work,
+progressed guard fallback, runner-failure fallback, and cross-ISA lease rejection.
+Automatic cache acquisition and bounded-cycle lease reuse remain open.
 `application/retry_planner.rs` now consumes an exact `NativeRetry` suspension,
 explicit runtime capability, OS, and ISA. It selects and admits the exact native
 suffix on supported Windows hosts; only a direct `TargetFormat` absence becomes

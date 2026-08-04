@@ -43,6 +43,8 @@ pub mod execution_ir;
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/application/interpreter_handoff.rs"]
 pub mod interpreter_handoff;
+#[path = "../src/runtime/tiered-execution/application/leased_retry.rs"]
+pub mod leased_retry;
 #[path = "../src/runtime/tiered-execution/application/native_retry.rs"]
 pub mod native_retry;
 #[path = "../src/runtime/tiered-execution/application/retry_cycle.rs"]
@@ -158,8 +160,11 @@ use execution_native::{
 };
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
-    NativeInterpreterHandoffBudgetOutcome,
+    NativeInterpreterHandoffBudgetOutcome, NativeInterpreterHandoffCompletion,
     NativeInterpreterHandoffExecutionCause,
+};
+use leased_retry::{
+    NativeContinuationLeasedRetry, NativeContinuationLeasedRetryAdmissionError,
 };
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
@@ -173,7 +178,7 @@ use malbolge::{
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
-    NativeContinuationRetryDisposition,
+    NativeContinuationRetryDisposition, NativeContinuationRetryResumption,
 };
 use retry_cycle::{
     NativeContinuationRetryCycleOutcome, NativeContinuationRetryCycleRequest,
@@ -320,6 +325,13 @@ struct NativeRetryFixture {
     full_plan: VerifiedDirectSequencePlan,
     retry_plan: VerifiedDirectSequencePlan,
     suspension: NativeContinuationScheduleSuspension,
+}
+
+struct LeasedNativeRetryFixture {
+    adapter: FakeNativeExecutableAdapter,
+    cache: NativeExecutableSequenceLeaseCache,
+    full_plan: VerifiedDirectSequencePlan,
+    leased: NativeContinuationLeasedRetry,
 }
 
 #[derive(Debug)]
@@ -10850,6 +10862,64 @@ fn native_retry_fixture(
     })
 }
 
+fn complete_retry_resumption(
+    resumption: Box<NativeContinuationRetryResumption>,
+) -> Result<NativeInterpreterHandoffCompletion, String> {
+    let scheduled = schedule_native_interpreter_handoff(
+        resumption.into_handoff(),
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = scheduled
+    else {
+        return Err(String::from("leased retry fallback suspended"));
+    };
+    Ok(completion)
+}
+
+fn leased_native_retry_fixture(
+    isa: HostIsa,
+    interpreter_steps: usize,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<LeasedNativeRetryFixture, String> {
+    let fixture = native_retry_fixture(isa, interpreter_steps)?;
+    let retry = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan.clone(),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "leased retry capacity",
+    )?);
+    let (mut cache, mut adapter) =
+        lease_fixture(limits, mapping_value, base_value)?;
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &fixture.retry_plan)
+        .map_err(|failure| failure.to_string())?;
+    let leased = NativeContinuationLeasedRetry::new(retry, acquisition)
+        .map_err(|_failure| String::from("leased retry binding failed"))?;
+    Ok(LeasedNativeRetryFixture {
+        adapter,
+        cache,
+        full_plan: fixture.full_plan,
+        leased,
+    })
+}
+
+fn release_leased_retry(
+    cache: &mut NativeExecutableSequenceLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    lease: NativeExecutableSequenceLease,
+) -> Result<(), String> {
+    drop(lease);
+    cache
+        .release_all(adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
 fn profile_state_observation(
     state: &ProfileMachineState,
 ) -> ProfileMachineObservation {
@@ -13411,4 +13481,251 @@ fn native_retry_cycle_preserves_hard_routing_failure() -> Result<(), String> {
     } else {
         Err(String::from("hard cycle routing lost suspension"))
     }
+}
+
+#[test]
+fn leased_native_retry_completes_inserted_sequence() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let retry = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan.clone(),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "leased retry capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 980, 0xee_000)?;
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &fixture.retry_plan)
+        .map_err(|failure| failure.to_string())?;
+    let operations = adapter.operations.len();
+    let leased = NativeContinuationLeasedRetry::new(retry, acquisition)
+        .map_err(|_failure| String::from("exact leased retry was rejected"))?;
+    if leased.cache_disposition().is_hit()
+        || leased.plan() != &fixture.retry_plan
+    {
+        return Err(String::from("inserted leased retry evidence drifted"));
+    }
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let execution = leased
+        .execute(&mut runner)
+        .map_err(|_failure| String::from("inserted leased retry failed"))?;
+    if execution.cache_disposition().is_hit()
+        || execution.plan() != &fixture.retry_plan
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("inserted leased execution touched adapter"));
+    }
+    let rebased = execution
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, cache_disposition, lease) = rebased.into_parts();
+    let NativeContinuationRetryDisposition::Completed(completion) = disposition
+    else {
+        return Err(String::from("inserted leased retry remained resumable"));
+    };
+    if cache_disposition.is_hit()
+        || completion.outcome() != expected_outcome
+        || completion.retry_steps() != 2
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("inserted leased completion drifted"));
+    }
+    drop(lease);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn leased_native_retry_reuses_hit_without_adapter_work() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let retry = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan.clone(),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "leased retry capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 981, 0xef_000)?;
+    let resident = cache
+        .ensure_plan(&mut adapter, &fixture.retry_plan)
+        .map_err(|failure| failure.to_string())?
+        .into_lease();
+    let operations = adapter.operations.len();
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &fixture.retry_plan)
+        .map_err(|failure| failure.to_string())?;
+    if !acquisition.disposition().is_hit()
+        || !acquisition.lease().shares_resident_with(&resident)
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("leased retry cache hit drifted"));
+    }
+    let leased = NativeContinuationLeasedRetry::new(retry, acquisition)
+        .map_err(|_failure| String::from("cache-hit retry binding failed"))?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let execution = leased
+        .execute(&mut runner)
+        .map_err(|_failure| String::from("cache-hit retry execution failed"))?;
+    if !execution.cache_disposition().is_hit()
+        || !execution.lease().shares_resident_with(&resident)
+        || adapter.operations.len() != operations
+        || runner.calls != 1
+    {
+        return Err(String::from("cache-hit retry execution drifted"));
+    }
+    drop(execution);
+    drop(resident);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn leased_native_retry_rebases_guard_with_live_lease() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let LeasedNativeRetryFixture {
+        mut adapter,
+        mut cache,
+        full_plan,
+        leased,
+    } = leased_native_retry_fixture(HostIsa::X86_64, 1, 982, 0xf0_000)?;
+    let operations = adapter.operations.len();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let rebased = leased
+        .execute(&mut runner)
+        .map_err(|_failure| String::from("leased guard execution failed"))?
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    if adapter.operations.len() != operations
+        || rebased.lease().key().is_empty()
+    {
+        return Err(String::from("leased guard touched adapter or lost lease"));
+    }
+    let (disposition, _cache_disposition, lease) = rebased.into_parts();
+    let NativeContinuationRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from("leased guard retry completed"));
+    };
+    if resumption.interpreter_steps() != 1
+        || resumption.retry_steps() != 0
+        || resumption.resume_index() != 1
+    {
+        return Err(String::from("leased guard progress drifted"));
+    }
+    let completion = complete_retry_resumption(resumption)?;
+    if completion.outcome() != full_plan.outcome()
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("leased guard fallback drifted"));
+    }
+    release_leased_retry(&mut cache, &mut adapter, lease)
+}
+
+#[test]
+fn leased_native_retry_rebases_runner_failure() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let LeasedNativeRetryFixture {
+        mut adapter,
+        mut cache,
+        full_plan,
+        leased,
+    } = leased_native_retry_fixture(HostIsa::AArch64, 0, 983, 0xf1_000)?;
+    let operations = adapter.operations.len();
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(execution_failure) = leased.execute(&mut runner) else {
+        return Err(String::from("leased runner failure was ignored"));
+    };
+    if execution_failure.failure().completed_steps() != 0
+        || execution_failure.failure().resume_index() != 0
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("leased runner failure evidence drifted"));
+    }
+    let rebased = execution_failure
+        .rebase()
+        .map_err(|rebase_failure| rebase_failure.error().to_string())?;
+    let (disposition, loaded_failure, _cache_disposition, lease) =
+        rebased.into_parts();
+    if loaded_failure.completed_steps() != 0
+        || loaded_failure.resume_index() != 0
+    {
+        return Err(String::from("rebased loaded failure drifted"));
+    }
+    let NativeContinuationRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from("zero-progress loaded failure completed"));
+    };
+    let completion = complete_retry_resumption(resumption)?;
+    if completion.outcome() != full_plan.outcome()
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("leased failure fallback drifted"));
+    }
+    release_leased_retry(&mut cache, &mut adapter, lease)
+}
+
+#[test]
+fn leased_native_retry_rejects_different_lease_key() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let wrong_plan = select_verified_direct_sequence(
+        fixture.retry_plan.programs(),
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::AArch64,
+    )
+    .map_err(|error| error.to_string())?;
+    let wrong_key = NativeExecutableSequenceKey::from_plan(&wrong_plan);
+    let retry = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan.clone(),
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "leased retry capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 984, 0xf2_000)?;
+    let acquisition = cache
+        .ensure_plan(&mut adapter, &wrong_plan)
+        .map_err(|failure| failure.to_string())?;
+    let Err(failure) = NativeContinuationLeasedRetry::new(retry, acquisition)
+    else {
+        return Err(String::from("different leased retry key was admitted"));
+    };
+    if failure.error() != NativeContinuationLeasedRetryAdmissionError::LeaseKey
+    {
+        return Err(String::from("leased retry key rejection drifted"));
+    }
+    let (recovered_retry, recovered_acquisition) = (*failure).into_parts();
+    if recovered_retry.plan() != &fixture.retry_plan
+        || recovered_acquisition.lease().key() != &wrong_key
+    {
+        return Err(String::from("leased retry rejection lost owners"));
+    }
+    drop(recovered_acquisition.into_lease());
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
 }

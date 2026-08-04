@@ -358,6 +358,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   cleanup failure may complete semantics while preserving release retry. Rebase
   rejection retains the full failed execution. Three cases cover both fallback
   positions and cleanup completion.
+- `application/leased_retry.rs` now binds an admitted retry to one exact immutable
+  lease-cache acquisition. Key drift restores both owners before buffer movement.
+  Loaded execution performs no allocation/release and retains hit/insertion
+  evidence plus the lease across completion, guard miss, and runner failure.
+  Success/failure rebase through complete continuation authority while lease
+  return remains explicit. Five cases cover insertion completion, pointer-exact
+  hit reuse without adapter work, progressed guard fallback, runner-failure
+  fallback, and cross-ISA lease rejection. Automatic acquisition and bounded
+  cycle lease reuse remain open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

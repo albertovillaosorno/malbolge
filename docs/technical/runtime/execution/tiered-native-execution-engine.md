@@ -488,6 +488,16 @@ completion while retaining the exact release-retry owner. Rebase rejection keeps
 the complete failed execution intact. Three cases cover zero-progress fallback,
 progressed fallback, and completion followed by cleanup retry.
 
+`application/leased_retry.rs` binds one admitted retry to an exact immutable
+lease-cache acquisition. Complete key identity is checked before buffers move;
+rejection restores both owners. Loaded execution performs no allocation or
+release and retains cache hit/insertion evidence plus the same lease through
+success, guard miss, or runner failure. Both execution paths rebase against the
+original complete continuation while lease return remains explicit. Five cases
+cover insertion completion, pointer-identical hit reuse without adapter work,
+progressed guard fallback, runner-failure fallback, and cross-ISA lease rejection.
+Automatic acquisition and bounded-cycle lease reuse remain outside this boundary.
+
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
 selects the exact remaining verified sequence, and admits it as a retry on

@@ -306,9 +306,12 @@ cleanup completion. A bounded cycle repeats only successfully rebased guard
 misses; fixed attempt policy terminates in native completion or normative
 fallback, while runner/release failures stop immediately with owners intact.
 Seven cases cover zero/format fallback, repeated guards, later native completion,
-runner/cleanup failure, and hard rejection before adapters. Native object fusion,
-foreign invocation, cache-aware
-planning/execution, and adaptive policy remain open.
+runner/cleanup failure, and hard rejection before adapters. An admitted retry
+can now execute through an exact immutable lease without allocation/release,
+retaining hit/insertion evidence and the lease across semantic rebase. Five cases
+cover insertion, pointer-identical hit reuse, guard/failure fallback, and key
+rejection. Native object fusion, foreign invocation, automatic cache acquisition,
+bounded-cycle lease reuse, and adaptive policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
