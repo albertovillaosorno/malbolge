@@ -126,6 +126,9 @@ pub use executable_cache::{
     NativeExecutableSequenceCacheLoadFailure,
     NativeExecutableSequenceCacheLoadReleaseFailures,
     NativeExecutableSequenceCacheLoadResult,
+    NativeExecutableSequenceCacheReconfiguration,
+    NativeExecutableSequenceCacheReconfigurationFailure,
+    NativeExecutableSequenceCacheReconfigurationResult,
     NativeExecutableSequenceCacheReleaseFailure,
     NativeExecutableSequenceCacheReleaseResult, NativeExecutableSequenceKey,
 };

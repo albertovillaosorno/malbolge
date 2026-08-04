@@ -254,19 +254,24 @@ rollback.
 caller-owned FIFO over complete loaded sequences. Exact identity remains the
 ordered list of full artifact keys. `new()` bounds whole entries only;
 `with_limits()` can also bound live mappings and admitted mapped bytes. Weight
-comes from the exact ready mapping reports after load. Oversized candidates are
+comes from exact ready mapping reports after load. Oversized candidates are
 released without changing prior entries. Candidates that fit alone evict as many
 oldest entries as necessary for all projected limits, and inserted dispositions
 return every evicted key in FIFO order. Hits borrow the same mappings, preserve
-insertion age and usage, and perform no adapter work. Failed eviction removes
-cache authority for that victim and any earlier successful victims, cleans the
-candidate, and retains failed release ownership. Invalidation and full drain
-update accounting before cleanup, so errors cannot leave stale budgets. Twelve
-tests cover original reuse/cleanup behavior plus exact usage, standalone mapping
-and byte rejection, multi-entry eviction under either limit, and second-eviction
-failure. Objects remain separate mappings; there are no concurrent leases,
-in-place limit changes, durable loaded state, direct inter-mapping jumps,
-concrete foreign-call shim, or interpreter transfer.
+insertion age and usage, and perform no adapter work. Failed insertion eviction
+removes cache authority for that victim and earlier successful victims, cleans
+the candidate, and retains failed release ownership. Invalidation and full drain
+update accounting before cleanup, so errors cannot leave stale budgets.
+`reconfigure_limits()` publishes expansion or already-satisfied requests without
+adapter work. Shrink requests release oldest entries until current usage fits,
+then publish atomically. Until all required releases succeed, the prior limits
+remain active. Failure reports every key whose authority was removed and retains
+the exact failed executable for retry; repeating the request after cleanup does
+not release completed victims again. Seventeen tests cover original reuse,
+weighted admission and cleanup plus expansion, entry/mapping/byte shrink, and
+second-eviction failure. Objects remain separate mappings; there are no
+concurrent leases, durable loaded state, direct inter-mapping jumps, concrete
+foreign-call shim, or interpreter transfer.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

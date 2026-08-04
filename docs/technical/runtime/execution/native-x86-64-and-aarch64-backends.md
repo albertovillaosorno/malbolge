@@ -254,17 +254,24 @@ memory adapter must provide unique, non-overlapping live allocations.
 A weighted loaded-sequence FIFO now reuses exact ordered artifact-key chains on
 both ISAs. Hits neither refresh insertion age nor call the memory adapter.
 `new()` bounds complete entries, while explicit limits can additionally bound
-live mappings and admitted mapped bytes. Candidate weight is derived from the
-ready mapping reports after load. Oversized candidates are released without
-changing prior entries. Candidates that fit alone evict as many oldest entries
-as necessary for every projected limit. Failed later eviction removes cache
-authority for that victim and earlier successful victims, cleans the candidate,
-and retains failed releases for retry. Exact invalidation and full drain update
-usage before cleanup. Twelve cases cover prior reuse/cleanup behavior plus exact
-weighted usage, standalone mapping/byte rejection, repeated FIFO eviction under
-both limits, and second-eviction failure. This is not a fused COFF object, a
-concurrent lease model, dynamic limit replacement, durable executable storage,
-a direct branch chain, or a concrete foreign-call shim.
+live mappings and admitted mapped bytes. Candidate weight is derived from ready
+mapping reports after load. Oversized candidates are released without changing
+prior entries. Candidates that fit alone evict as many oldest entries as
+necessary for every projected limit. Failed later insertion eviction removes
+cache authority for that victim and earlier successful victims, cleans the
+candidate, and retains failed releases for retry. Exact invalidation and full
+drain update usage before cleanup.
+Weighted limits can now be reconfigured in place. Expansion and already-fitting
+requests publish without platform work. Shrink requests release oldest mappings
+until current usage fits, while keeping the previous limits active until all
+required releases succeed. Failure reports every removed key and retains exact
+release ownership; retry followed by the same request publishes without
+releasing completed victims again. Seventeen cases cover prior reuse/admission
+behavior plus expansion, entry/mapping/byte shrink, and failure during the
+second
+reconfiguration eviction. This is not a fused COFF object, a concurrent lease
+model, durable executable storage, a direct branch chain, or a concrete
+foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an

@@ -142,18 +142,22 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
-  unique non-overlapping live allocations. A weighted exact-key FIFO now reuses
+  unique non-overlapping live allocations. A weighted exact-key FIFO reuses
   complete loaded chains without refreshing hits. Positive limits cover entries
   and can also cover live mappings plus admitted mapped bytes. Candidate weight
   comes from ready mapping reports; oversized candidates clean themselves, while
   fitting candidates evict repeatedly until every projected limit fits. Failed
-  later eviction returns failed victim/candidate cleanup ownership. Invalidation
-  and full drain update usage before release. Twelve cases cover original reuse
-  and cleanup plus weighted accounting, standalone rejection, repeated eviction,
-  and second-eviction failure. This does not provide concurrent leases, dynamic
-  limit changes, durable executable storage, fused objects, direct branches, or
-  a concrete foreign-call shim. Remaining fused-region emission, concurrent
-  leasing, dynamic cache limits, concrete executable-memory integration, and
+  later insertion eviction returns failed victim/candidate cleanup ownership.
+  Invalidation and full drain update usage before release. Weighted limits now
+  reconfigure in place: expansion or already-fitting requests publish without
+  adapter work, while shrink requests release oldest entries before publishing.
+  Previous limits remain active through failure; removed keys and failed release
+  ownership remain explicit for retry, and a repeated request does not release
+  completed victims again. Seventeen cases cover original reuse/admission plus
+  expansion, entry/mapping/byte shrink, and second-eviction failure. This does
+  not provide concurrent leases, durable executable storage, fused objects,
+  direct branches, or a concrete foreign-call shim. Remaining fused-region
+  emission, concurrent leasing, concrete executable-memory integration, and
   instruction-cache implementation remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software

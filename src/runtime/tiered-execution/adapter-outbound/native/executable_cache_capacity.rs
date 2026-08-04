@@ -156,6 +156,19 @@ impl NativeExecutableSequenceCacheLimits {
             })
     }
 
+    pub(super) fn usage_exceeds(
+        self,
+        usage: NativeExecutableSequenceCacheUsage,
+    ) -> bool {
+        usage.entries > self.entries.get()
+            || self
+                .mappings
+                .is_some_and(|limit| usage.mappings > limit.get())
+            || self
+                .mapped_bytes
+                .is_some_and(|limit| usage.mapped_bytes > limit.get())
+    }
+
     /// Adds a positive mapped-byte limit.
     #[must_use]
     pub const fn with_mapped_byte_limit(

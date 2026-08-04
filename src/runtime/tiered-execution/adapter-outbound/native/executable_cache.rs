@@ -25,11 +25,11 @@
 // - Summary:
 //   - Reuses exact loaded chains under caller-selected weighted limits.
 // - Description:
-//   - Hits preserve FIFO age; misses publish only after load, accounting, and
-//     every required FIFO release succeed.
+//   - Hits preserve FIFO age; misses and limit changes publish only after every
+//     required load, accounting step, and FIFO release succeeds.
 // - Usage:
-//   - Ensure a plan, execute the borrowed ready sequence, then invalidate or
-//     clear.
+//   - Ensure a plan, execute the borrowed ready sequence, reconfigure limits,
+//     then invalidate or clear.
 // - Defaults:
 //   - `new` limits entries only; optional mapping/byte limits use admitted
 //     mapping evidence. Hits never refresh FIFO age.
@@ -154,6 +154,29 @@ pub struct NativeExecutableSequenceCacheReleaseFailure<E> {
     released_entries: usize,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum NativeExecutableSequenceCacheReconfigurationFailureCause<E> {
+    Invariant(NativeExecutableSequenceCacheInvariantError),
+    Release(Box<NativeExecutableSequenceReleaseFailure<E>>),
+}
+
+/// Successful weighted-limit publication and its FIFO removals.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeExecutableSequenceCacheReconfiguration {
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+    new_limits: NativeExecutableSequenceCacheLimits,
+    previous_limits: NativeExecutableSequenceCacheLimits,
+}
+
+/// Failed weighted-limit publication retaining exact cleanup ownership.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeExecutableSequenceCacheReconfigurationFailure<E> {
+    cause: NativeExecutableSequenceCacheReconfigurationFailureCause<E>,
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+    requested_limits: NativeExecutableSequenceCacheLimits,
+    retained_limits: NativeExecutableSequenceCacheLimits,
+}
+
 /// Result of invalidating and releasing one exact loaded sequence entry.
 pub type NativeExecutableSequenceCacheInvalidationResult<E> =
     Result<bool, Box<NativeExecutableSequenceReleaseFailure<E>>>;
@@ -167,6 +190,12 @@ pub type NativeExecutableSequenceCacheLoadResult<'cache, E> = Result<
 /// Result of releasing every sequence removed from one cache.
 pub type NativeExecutableSequenceCacheReleaseResult<E> =
     Result<(), Box<NativeExecutableSequenceCacheReleaseFailure<E>>>;
+
+/// Result of publishing new weighted limits after required FIFO cleanup.
+pub type NativeExecutableSequenceCacheReconfigurationResult<E> = Result<
+    NativeExecutableSequenceCacheReconfiguration,
+    Box<NativeExecutableSequenceCacheReconfigurationFailure<E>>,
+>;
 
 type NativeExecutableSequenceCachePublicationResult<E> = Result<
     NativeExecutableSequenceCacheDisposition,
@@ -184,6 +213,11 @@ type NativeExecutableSequenceCacheFitResult<E> = Result<
 type NativeExecutableSequenceCachePrepareResult<E> = Result<
     NativeExecutableSequenceCacheCandidate,
     Box<NativeExecutableSequenceCacheLoadFailure<E>>,
+>;
+
+type NativeExecutableSequenceCacheReconfigurationEvictionResult<E> = Result<
+    Vec<NativeExecutableSequenceKey>,
+    Box<NativeExecutableSequenceCacheReconfigurationFailure<E>>,
 >;
 
 impl NativeExecutableSequenceCacheCandidate {
@@ -282,6 +316,89 @@ impl NativeExecutableSequenceCacheEntry<'_> {
     #[must_use]
     pub const fn sequence(&self) -> &ReadyNativeExecutableSequence {
         self.sequence
+    }
+}
+
+impl NativeExecutableSequenceCacheReconfiguration {
+    /// Returns exact FIFO keys removed before the new limits were published.
+    #[must_use]
+    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
+        &self.evicted_keys
+    }
+
+    /// Returns `(previous, new)` weighted limits for this publication.
+    #[must_use]
+    pub const fn limit_transition(
+        &self,
+    ) -> (
+        NativeExecutableSequenceCacheLimits,
+        NativeExecutableSequenceCacheLimits,
+    ) {
+        (self.previous_limits, self.new_limits)
+    }
+}
+
+impl<E> NativeExecutableSequenceCacheReconfigurationFailure<E> {
+    /// Returns exact FIFO keys removed before reconfiguration failed.
+    #[must_use]
+    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
+        &self.evicted_keys
+    }
+
+    /// Consumes this failure and returns retryable release ownership.
+    #[must_use]
+    pub fn into_release_failure(
+        self,
+    ) -> Option<NativeExecutableSequenceReleaseFailure<E>> {
+        match self.cause {
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
+                _,
+            ) => None,
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
+                failure,
+            ) => Some(*failure),
+        }
+    }
+
+    /// Returns internal cache-state inconsistency, when detected.
+    #[must_use]
+    pub const fn invariant_error(
+        &self,
+    ) -> Option<NativeExecutableSequenceCacheInvariantError> {
+        match self.cause {
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
+                error,
+            ) => Some(error),
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
+                _,
+            ) => None,
+        }
+    }
+
+    /// Returns `(retained, requested)` limits for this failed publication.
+    #[must_use]
+    pub const fn limit_transition(
+        &self,
+    ) -> (
+        NativeExecutableSequenceCacheLimits,
+        NativeExecutableSequenceCacheLimits,
+    ) {
+        (self.retained_limits, self.requested_limits)
+    }
+
+    /// Returns exact failed FIFO release ownership, when present.
+    #[must_use]
+    pub const fn release_failure(
+        &self,
+    ) -> Option<&NativeExecutableSequenceReleaseFailure<E>> {
+        match &self.cause {
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
+                _,
+            ) => None,
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
+                failure,
+            ) => Some(failure),
+        }
     }
 }
 
@@ -520,6 +637,24 @@ impl<E: Display> Display for NativeExecutableSequenceCacheLoadFailure<E> {
     }
 }
 
+impl<E: Display> Display
+    for NativeExecutableSequenceCacheReconfigurationFailure<E>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(
+            "native executable sequence cache reconfiguration failed: ",
+        )?;
+        match &self.cause {
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
+                error,
+            ) => write!(f, "invariant: {error}"),
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
+                error,
+            ) => write!(f, "release: {error}"),
+        }
+    }
+}
+
 impl<E: Display> Display for NativeExecutableSequenceCacheReleaseFailure<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(
@@ -657,6 +792,43 @@ impl NativeExecutableSequenceCache {
                     })
                 },
             )
+    }
+
+    fn evict_for_reconfiguration<Adapter>(
+        &mut self,
+        memory_adapter: &mut Adapter,
+        requested_limits: NativeExecutableSequenceCacheLimits,
+        retained_limits: NativeExecutableSequenceCacheLimits,
+    ) -> NativeExecutableSequenceCacheReconfigurationEvictionResult<
+        Adapter::Error,
+    >
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let mut evicted_keys = Vec::new();
+        while requested_limits.usage_exceeds(self.usage) {
+            let Some(victim) = self.entries.pop_front() else {
+                return Err(Box::new(cache_reconfiguration_invariant_failure(
+                    evicted_keys,
+                    requested_limits,
+                    retained_limits,
+                )));
+            };
+            self.usage.remove(victim.weight);
+            evicted_keys.push(victim.key);
+            if let Err(release_failure) = release_native_executable_sequence(
+                memory_adapter,
+                victim.sequence,
+            ) {
+                return Err(Box::new(cache_reconfiguration_release_failure(
+                    evicted_keys,
+                    release_failure,
+                    requested_limits,
+                    retained_limits,
+                )));
+            }
+        }
+        Ok(evicted_keys)
     }
 
     fn evict_until_fits<Adapter>(
@@ -820,6 +992,37 @@ impl NativeExecutableSequenceCache {
         Ok(NativeExecutableSequenceCacheDisposition::Inserted { evicted })
     }
 
+    /// Publishes new weighted limits after required FIFO eviction.
+    ///
+    /// Expanded or already-satisfied limits publish without adapter work. A
+    /// shrinking request retains the previous limits until every required
+    /// oldest-entry release succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact failed release ownership or an internal invariant error.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        memory_adapter: &mut Adapter,
+        requested_limits: NativeExecutableSequenceCacheLimits,
+    ) -> NativeExecutableSequenceCacheReconfigurationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits;
+        let evicted_keys = self.evict_for_reconfiguration(
+            memory_adapter,
+            requested_limits,
+            previous_limits,
+        )?;
+        self.limits = requested_limits;
+        Ok(NativeExecutableSequenceCacheReconfiguration {
+            evicted_keys,
+            new_limits: requested_limits,
+            previous_limits,
+        })
+    }
+
     /// Removes and releases every loaded sequence in FIFO insertion order.
     ///
     /// # Errors
@@ -911,6 +1114,39 @@ const fn cache_invariant_failure<E>(
         ),
         evicted_keys: Vec::new(),
         requested_key,
+    }
+}
+
+const fn cache_reconfiguration_invariant_failure<E>(
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+    requested_limits: NativeExecutableSequenceCacheLimits,
+    retained_limits: NativeExecutableSequenceCacheLimits,
+) -> NativeExecutableSequenceCacheReconfigurationFailure<E> {
+    NativeExecutableSequenceCacheReconfigurationFailure {
+        cause:
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Invariant(
+                NativeExecutableSequenceCacheInvariantError::EntryMissing,
+            ),
+        evicted_keys,
+        requested_limits,
+        retained_limits,
+    }
+}
+
+const fn cache_reconfiguration_release_failure<E>(
+    evicted_keys: Vec<NativeExecutableSequenceKey>,
+    release_failure: Box<NativeExecutableSequenceReleaseFailure<E>>,
+    requested_limits: NativeExecutableSequenceCacheLimits,
+    retained_limits: NativeExecutableSequenceCacheLimits,
+) -> NativeExecutableSequenceCacheReconfigurationFailure<E> {
+    NativeExecutableSequenceCacheReconfigurationFailure {
+        cause:
+            NativeExecutableSequenceCacheReconfigurationFailureCause::Release(
+                release_failure,
+            ),
+        evicted_keys,
+        requested_limits,
+        retained_limits,
     }
 }
 

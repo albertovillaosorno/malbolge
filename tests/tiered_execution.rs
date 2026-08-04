@@ -9173,3 +9173,234 @@ fn executable_sequence_cache_retains_second_eviction_failure()
         Err(String::from("second weighted eviction retry drifted"))
     }
 }
+
+#[test]
+fn executable_sequence_cache_expands_limits_without_eviction()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let mut cache = NativeExecutableSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(912)?,
+        native_executable_address(0x9c_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &plan)?;
+    let usage = cache.usage();
+    let byte_limit = nonzero_test_limit(
+        usage.mapped_bytes().saturating_mul(2),
+        "mapped-byte limit",
+    )?;
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    )
+    .with_mapped_byte_limit(byte_limit)
+    .with_mapping_limit(nonzero_test_limit(2, "mapping limit")?);
+    let operations = adapter.operations.len();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| error.to_string())?;
+    if !report.evicted_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != new_limits
+        || cache.usage() != usage
+        || !cache.contains_plan(&plan)
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("limit expansion changed cache state"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_shrinks_entry_limit_fifo() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let third_key = NativeExecutableSequenceKey::from_plan(&third);
+    let third_bytes = direct_sequence_mapped_bytes(&third)?;
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let mut cache = NativeExecutableSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(913)?,
+        native_executable_address(0x9d_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &third)?;
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| error.to_string())?;
+    if report.evicted_keys() != [first_key, second_key]
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || cache.usage().mapped_bytes() != third_bytes
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("entry-limit reconfiguration drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_shrinks_mapping_limit_fifo() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let expected = [
+        NativeExecutableSequenceKey::from_plan(&first),
+        NativeExecutableSequenceKey::from_plan(&second),
+    ];
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let new_limits =
+        old_limits.with_mapping_limit(nonzero_test_limit(2, "mapping limit")?);
+    let mut cache = NativeExecutableSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(914)?,
+        native_executable_address(0x9e_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &third)?;
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| error.to_string())?;
+    if report.evicted_keys() != expected
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.len() != 1
+        || !cache.contains_plan(&third)
+        || cache.usage().mappings() != 2
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("mapping-limit reconfiguration drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_shrinks_byte_limit_fifo() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let expected = [
+        NativeExecutableSequenceKey::from_plan(&first),
+        NativeExecutableSequenceKey::from_plan(&second),
+    ];
+    let third_bytes = direct_sequence_mapped_bytes(&third)?;
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let new_limits = old_limits.with_mapped_byte_limit(nonzero_test_limit(
+        third_bytes,
+        "mapped-byte limit",
+    )?);
+    let mut cache = NativeExecutableSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(915)?,
+        native_executable_address(0x9f_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &third)?;
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|error| error.to_string())?;
+    if report.evicted_keys() != expected
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.len() != 1
+        || !cache.contains_plan(&third)
+        || cache.usage().mapped_bytes() != third_bytes
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("byte-limit reconfiguration drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn executable_sequence_cache_reconfiguration_retries_failed_eviction()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let expected = [
+        NativeExecutableSequenceKey::from_plan(&first),
+        NativeExecutableSequenceKey::from_plan(&second),
+    ];
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let new_limits =
+        old_limits.with_mapping_limit(nonzero_test_limit(2, "mapping limit")?);
+    let mut cache = NativeExecutableSequenceCache::with_limits(old_limits);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(916)?,
+        native_executable_address(0xa0_000)?,
+    );
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &second)?;
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &third)?;
+    adapter.release_failure_at =
+        Some(adapter.release_attempts.saturating_add(2));
+    let Err(error) = cache.reconfigure_limits(&mut adapter, new_limits) else {
+        return Err(String::from("configured reconfiguration failure ignored"));
+    };
+    if error.evicted_keys() != expected
+        || error.limit_transition() != (old_limits, new_limits)
+        || error.invariant_error().is_some()
+        || error.release_failure().is_none()
+        || cache.limits() != old_limits
+        || cache.len() != 1
+        || !cache.contains_plan(&third)
+        || cache.usage().mappings() != 2
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("failed reconfiguration evidence drifted"));
+    }
+    let release = (*error)
+        .into_release_failure()
+        .ok_or_else(|| String::from("reconfiguration release owner missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    let operations = adapter.operations.len();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if !report.evicted_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != new_limits
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("reconfiguration retry publication drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())
+}

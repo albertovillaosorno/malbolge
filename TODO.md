@@ -451,27 +451,35 @@ non-overlapping live ranges. Seven deterministic cases prove reuse, cached guard
 resume, partial-load rollback, cleanup retention, all-mapping release, cross-ISA
 prevalidation, and current-step rollback.
 `NativeExecutableSequenceCache` now adds weighted caller-owned reuse across
-exact plans. Its key remains the ordered list of full `NativeArtifactKey` values.
+exact plans. Its key remains the ordered list of full `NativeArtifactKey`
+values.
 `new()` preserves the positive whole-entry limit, while `with_limits()` adds
 optional positive live-mapping and admitted mapped-byte limits. Every candidate
 loads before accounting so weight comes from exact admitted `mapped_len`
 evidence. A candidate that alone exceeds a mapping or byte limit is fully
 released without changing prior cache authority. Otherwise the cache releases
 as many oldest FIFO entries as required for projected entry, mapping, and byte
-usage to fit; the insertion disposition retains every evicted key in order.
-Hits borrow the same mappings, preserve FIFO age and usage, and perform no
-memory-adapter operations. Failed candidate load leaves prior entries untouched.
-A failed later eviction removes that victim and all earlier successful victims
-from cache authority, cleans the candidate, and returns every still-owned
-release for exact retry. Exact invalidation and `release_all()` decrement or
-reset usage before cleanup, so failed release never leaves stale cache budgets.
-Overflow-safe usage reports exact entries, mappings, and mapped bytes. Twelve
-deterministic cases cover original hit/FIFO/cleanup behavior plus weighted
-accounting, standalone mapping/byte rejection, multi-entry eviction under both
-limits, and failure on the second eviction. This still does not fuse COFF, jump
-directly between mappings, transfer into the interpreter, provide concurrent
-leases, resize limits in place, persist loaded state, or implement the unsafe
-machine-code call shim.
+usage to fit. Exact hits preserve insertion age and usage without memory-adapter
+operations. Failed candidate load leaves prior entries untouched. A failed later
+insertion eviction removes that victim and earlier successful victims from cache
+authority, cleans the candidate, and returns every still-owned release for exact
+retry. Exact invalidation and `release_all()` decrement or reset usage before
+cleanup, so failed release never leaves stale cache budgets. Overflow-safe usage
+reports exact entries, mappings, and mapped bytes.
+`reconfigure_limits()` now expands or publishes already-satisfied limits without
+adapter work and shrinks by releasing oldest entries until current usage fits
+all
+requested budgets. The previous limits remain published until every required
+release succeeds. A failed shrink removes authority and usage for the failed
+victim plus earlier successful victims, retains the previous limits, reports all
+removed keys, and returns exact release ownership for retry. Repeating the
+request after cleanup publishes the new limits without repeating completed
+releases. Seventeen deterministic cases cover the original hit/FIFO/cleanup and
+weighted-admission behavior plus no-op expansion, entry/mapping/byte shrink, and
+failure during the second reconfiguration eviction. This still does not fuse
+COFF, jump directly between mappings, transfer into the interpreter, provide
+concurrent leases, persist loaded state, or implement the unsafe machine-code
+call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys
@@ -495,10 +503,10 @@ revision/native-ABI/features identity while preserving other targets. Requesting
 removed variants again reinserts identical keys/bytes under new allocations.
 Planning performs `002`, `001`, and host-format selection before lookup, so
 rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
-persistence and automatic eviction, executable-cache concurrent leases and
-in-place limit changes, synchronization policy, fused-region emission, concrete
-interpreter handoff, the unsafe foreign-call boundary, and broader AOT/JIT
-performance policy remain open.
+persistence and automatic eviction, executable-cache concurrent leases,
+synchronization policy, fused-region emission, concrete interpreter handoff, the
+unsafe foreign-call boundary, and broader AOT/JIT performance policy remain
+open.
 
 Current implementation foundation: portable effect IR v3, verifier admission,
 deterministic deoptimization, capacity-consistent canonical native cache
@@ -506,11 +514,11 @@ identity,
 process-local collision-safe reuse storage, cache-aware verified direct
 planning, transactional trace-derived multistep plans with exact resume,
 relocation-free load images, persistent exact-plan executable ownership,
-entry/mapping/mapped-byte weighted exact-sequence FIFO reuse, and an untrusted
-cross-ISA bootstrap object boundary are implemented. Combined-region native
-fusion, concurrent executable leases, dynamic limit changes, concrete foreign
-invocation, durable cache serialization/storage, and wider tier orchestration
-remain open.
+entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
+limit reconfiguration, and an untrusted cross-ISA bootstrap object boundary are
+implemented. Combined-region native fusion, concurrent executable leases,
+concrete foreign invocation, durable cache serialization/storage, and wider tier
+orchestration remain open.
 
 ### TODO - Ahead-of-execution native translation
 
