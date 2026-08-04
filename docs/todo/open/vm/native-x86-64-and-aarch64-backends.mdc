@@ -142,8 +142,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   immutable semantic continuation now validates cached/uncached and
   ephemeral/loaded evidence, retaining complete/suffix artifact keys, remaining
   one-step IR, exact observation, expected exit/outcome, and reason. Forged
-  outcomes fail closed, while completed work yields no continuation. Eight cases
-  cover all constructor families. The application bridge now admits checkpoint
+  outcomes fail closed, while completed work yields no continuation. `advance()`
+  rebases complete-plan authority after additional admitted tier work, deriving
+  an exact suffix or verified completion and rejecting drift. Eleven cases cover
+  constructors and rebase behavior. The application bridge now admits checkpoint
   or transferred native buffers, restores the normative profile machine, and
   executes/reprojects every remaining traced step. Drift rolls back the current
   interpreted step and reports exact combined progress; success validates the

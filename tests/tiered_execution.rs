@@ -11273,3 +11273,105 @@ fn native_retry_rejects_cross_isa_key() -> Result<(), String> {
         Err(String::from("cross-ISA retry rejection lost ownership"))
     }
 }
+
+#[test]
+fn native_interpreter_continuation_advances_mixed_tier_suffix()
+-> Result<(), String> {
+    let NativeHandoffFixture { continuation, plan, .. } =
+        native_handoff_fixture(HostIsa::X86_64, vec![
+            FakeNativeRunnerBehavior::GuardMiss,
+        ])?;
+    let second_entry = plan
+        .programs()
+        .get(1)
+        .and_then(|program| program.effects.first())
+        .map(|effect| effect.before)
+        .ok_or_else(|| String::from("advanced continuation entry missing"))?;
+    let expected_key = continuation
+        .remaining_key()
+        .suffix(1)
+        .ok_or_else(|| String::from("advanced continuation key missing"))?;
+    let advanced = continuation
+        .advance(
+            1,
+            second_entry,
+            NativeInterpreterContinuationReason::GuardMiss,
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| String::from("partial continuation completed"))?;
+    if advanced.completed_steps() == 1
+        && advanced.resume_index() == 1
+        && advanced.observation() == second_entry
+        && advanced.reason() == NativeInterpreterContinuationReason::GuardMiss
+        && advanced.remaining_steps() == 1
+        && advanced.remaining_key() == &expected_key
+        && advanced.remaining_programs()
+            == plan.programs().get(1..).unwrap_or(&[])
+        && advanced.expected_exit() == plan.exit()
+        && advanced.expected_outcome() == plan.outcome()
+    {
+        Ok(())
+    } else {
+        Err(String::from("mixed-tier continuation advance drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_continuation_advance_completes_suffix()
+-> Result<(), String> {
+    let NativeHandoffFixture { continuation, plan, .. } =
+        native_handoff_fixture(HostIsa::AArch64, vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::GuardMiss,
+        ])?;
+    if continuation.completed_steps() != 1
+        || continuation.remaining_steps() != 1
+    {
+        return Err(String::from("completion continuation fixture drifted"));
+    }
+    let completed = continuation
+        .advance(
+            1,
+            plan.exit(),
+            NativeInterpreterContinuationReason::GuardMiss,
+        )
+        .map_err(|error| error.to_string())?;
+    if completed.is_none() {
+        Ok(())
+    } else {
+        Err(String::from("completed continuation retained a suffix"))
+    }
+}
+
+#[test]
+fn native_interpreter_continuation_advance_rejects_drift() -> Result<(), String>
+{
+    let NativeHandoffFixture { continuation, plan, .. } =
+        native_handoff_fixture(HostIsa::X86_64, vec![
+            FakeNativeRunnerBehavior::GuardMiss,
+        ])?;
+    let overshoot = continuation.advance(
+        plan.len().saturating_add(1),
+        plan.exit(),
+        NativeInterpreterContinuationReason::ExecutionFailure,
+    );
+    let observation_drift = continuation.advance(
+        1,
+        plan.entry(),
+        NativeInterpreterContinuationReason::ExecutionFailure,
+    );
+    if overshoot
+        == Err(NativeInterpreterContinuationError::ResumeIndex {
+            observed: plan.len().saturating_add(1),
+            steps: plan.len(),
+        })
+        && observation_drift
+            == Err(NativeInterpreterContinuationError::ResumeObservation {
+                index: 1,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("continuation advance drift was admitted"))
+    }
+}

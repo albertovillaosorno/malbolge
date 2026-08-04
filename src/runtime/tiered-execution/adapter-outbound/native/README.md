@@ -243,8 +243,11 @@ failures. They validate completed count, failing step, resume index, and the
 next one-step entry observation before cloning remaining programs. The object
 retains complete and suffix `NativeExecutableSequenceKey` identities, expected
 exit/outcome, reason, and remaining one-step programs. Applied completion and
-terminal cleanup failures return no continuation. Eight tests cover valid guard
-and failure paths plus forged outcomes. This native boundary does not invoke
+terminal cleanup failures return no continuation. `advance()` rebases the
+same complete-plan authority after additional admitted tier progress, deriving
+an exact suffix or verified completion. Eleven tests cover valid paths, forged
+evidence, partial rebase, completion, and drift rejection. This boundary does
+not invoke
 the interpreter, borrow mappings, or transfer mutable VM buffers; the separate
 application handoff owns that mutation.
 

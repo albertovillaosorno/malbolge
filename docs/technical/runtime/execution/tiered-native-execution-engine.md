@@ -417,9 +417,13 @@ resume observation, expected final observation/outcome, and guard/failure
 reason.
 Construction rejects forged applied counts, final observations, resume indices,
 resume observations, or inconsistent failure progress. Applied completion and
-terminal cleanup failure yield no continuation. Eight deterministic cases cover
-all constructor families and malformed public outcomes. No interpreter call,
-buffer transfer, or scheduling policy is performed in the native adapter.
+terminal cleanup failure yield no continuation. `advance()` rebases the same
+complete-plan authority after additional admitted work from any tier. It keeps
+expected exit/outcome, advances the absolute resume index, and derives the exact
+remaining key/program suffix; verified completion yields no continuation, while
+overshoot or boundary drift fails closed. Eleven deterministic cases cover all
+constructor families, malformed evidence, partial rebase, completion, and drift.
+No interpreter call, buffer transfer, or scheduling policy is performed here.
 
 `application/interpreter_handoff.rs` consumes the continuation through the
 normative safe-Rust `ProfileMachine`. Admission accepts either a validated full

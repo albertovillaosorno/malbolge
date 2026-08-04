@@ -313,8 +313,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   keys, remaining one-step programs, resume observation, expected exit/outcome,
   and guard/failure reason remain explicit. Constructors cover ephemeral and
   loaded failures. Forged counts, indices, observations, and progress fail
-  closed; completed outcomes and terminal cleanup return no continuation. Eight
-  cases cover every constructor family. The application handoff now resolves the
+  closed; completed outcomes and terminal cleanup return no continuation.
+  `advance()` rebases complete-plan authority after additional admitted work from
+  any tier, deriving the exact new suffix or verified completion and rejecting
+  overshoot/boundary drift. Eleven cases cover constructors and rebase behavior.
+  The application handoff now resolves the
   exact canonical profile, admits either a full checkpoint or transferred
   memory/input/output-prefix state, and runs each remaining `step_traced()`
   transition through exact IR reprojection. Any machine, program, projection, or

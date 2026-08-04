@@ -250,8 +250,11 @@ artifact keys, the cloned remaining one-step IR, resume observation, expected
 exit/outcome, and a guard/failure reason. Constructors cover ephemeral and
 preloaded execution failures; completed plans and terminal cleanup failures
 produce no remaining work. Forged counts, indices, and observations fail closed.
-Eight cases bind both ISAs and every constructor family. The separate
-application bridge now restores either a complete checkpoint or native transfer
+`advance()` now rebases that same complete-plan authority after additional
+admitted work from any tier, deriving an exact suffix or verified completion and
+rejecting overshoot/boundary drift. Eleven cases bind both ISAs, every
+constructor family, and rebase behavior. The separate application bridge now
+restores either a complete checkpoint or native transfer
 buffers into the normative profile machine. It admits exact profile and entry
 state, executes each remaining traced transition, reprojects it to the retained
 one-step IR, and rolls back a mismatching step to its entry checkpoint. Combined

@@ -447,9 +447,13 @@ and observations, and retains the full ordered artifact key plus the exact
 remaining artifact-key suffix and cloned one-step programs. Guard misses retain
 a `GuardMiss` reason; indexed failures retain `ExecutionFailure`. Completed
 outcomes and terminal cleanup failures produce no continuation because no
-semantic work remains. Eight deterministic cases cover both plan forms, both
-execution ownership modes, failure and guard paths, malformed public outcomes,
-and terminal cleanup. This object remains independent from interpreter mutation.
+semantic work remains. `advance()` now rebases the same complete-plan
+identity after additional admitted work from any tier, preserving expected
+exit/outcome while deriving an exact new key/program suffix. Completion returns
+no continuation only at the verified exit; overshoot and observation drift fail
+closed. Eleven deterministic cases cover constructor families, malformed public
+evidence, partial rebase, completion, and rejected rebase. This object remains
+independent from interpreter mutation.
 `NativeInterpreterHandoff` now consumes that object in the normative safe-Rust
 `ProfileMachine`. It accepts either one validated `ProfileMachineState` or owned
 memory/input plus a committed output prefix, resolves exact profile identity,

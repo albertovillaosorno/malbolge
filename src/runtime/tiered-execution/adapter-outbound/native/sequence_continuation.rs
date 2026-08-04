@@ -131,6 +131,79 @@ struct NativeContinuationFailureEvidence {
 }
 
 impl NativeInterpreterContinuation {
+    /// Advances this semantic continuation by additional admitted tier steps.
+    ///
+    /// The returned continuation keeps complete-plan identity and outcome while
+    /// rebasing its exact suffix to `additional_steps`. Completing the suffix
+    /// returns `None` only when the supplied observation equals the verified
+    /// final observation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeInterpreterContinuationError`] when progress exceeds the
+    /// remaining suffix, the new boundary observation drifts, or retained
+    /// one-step program shape is invalid.
+    pub fn advance(
+        &self,
+        additional_steps: usize,
+        observation: ProfileMachineObservation,
+        reason: NativeInterpreterContinuationReason,
+    ) -> NativeInterpreterContinuationResult {
+        let remaining_steps = self.remaining_steps();
+        let total_steps = self.resume_index.saturating_add(remaining_steps);
+        let Some(resume_index) =
+            self.resume_index.checked_add(additional_steps)
+        else {
+            return Err(NativeInterpreterContinuationError::ResumeIndex {
+                observed: usize::MAX,
+                steps: total_steps,
+            });
+        };
+        if additional_steps > remaining_steps {
+            return Err(NativeInterpreterContinuationError::ResumeIndex {
+                observed: resume_index,
+                steps: total_steps,
+            });
+        }
+        if additional_steps == remaining_steps {
+            if observation == self.expected_exit {
+                return Ok(None);
+            }
+            return Err(NativeInterpreterContinuationError::AppliedObservation);
+        }
+        validate_resume_observation(
+            &self.remaining_programs,
+            additional_steps,
+            observation,
+        )?;
+        validate_remaining_programs(
+            &self.remaining_programs,
+            additional_steps,
+        )?;
+        let programs = self.remaining_programs.get(additional_steps..).ok_or(
+            NativeInterpreterContinuationError::ResumeIndex {
+                observed: resume_index,
+                steps: total_steps,
+            },
+        )?;
+        let remaining_key = self.remaining_key.suffix(additional_steps).ok_or(
+            NativeInterpreterContinuationError::ResumeIndex {
+                observed: resume_index,
+                steps: total_steps,
+            },
+        )?;
+        Ok(Some(Self {
+            expected_exit: self.expected_exit,
+            expected_outcome: self.expected_outcome,
+            observation,
+            plan_key: self.plan_key.clone(),
+            reason,
+            remaining_key,
+            remaining_programs: programs.to_vec(),
+            resume_index,
+        }))
+    }
+
     /// Returns the number of semantic steps committed before this handoff.
     #[must_use]
     pub const fn completed_steps(&self) -> usize {
