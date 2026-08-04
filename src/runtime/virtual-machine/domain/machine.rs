@@ -343,7 +343,8 @@ impl Machine {
     ///
     /// # Errors
     ///
-    /// Returns [`AnnotatedSourceError`] when presentation parsing fails, or
+    /// Returns [`crate::annotated::AnnotatedSourceError`] when presentation
+    /// parsing fails, or
     /// [`LoadError`] after canonicalization when the classic loader rejects the
     /// resulting bytes.
     pub fn from_annotated_source(
