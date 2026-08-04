@@ -34,10 +34,29 @@
 
 //! Shared lease cache for immutable loaded executable sequences.
 
+#[path = "executable_lease_cache/reconciliation.rs"]
+mod reconciliation;
+
+#[path = "executable_lease_cache/reconfiguration.rs"]
+mod reconfiguration;
+
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+
+pub use reconciliation::{
+    NativeExecutableSequenceLeaseCacheEntryReleaseFailure,
+    NativeExecutableSequenceLeaseCacheLoadReleaseFailures,
+    NativeExecutableSequenceLeaseCacheReconciliation,
+    NativeExecutableSequenceLeaseCacheReconciliationResult,
+    NativeExecutableSequenceLeaseCacheReleaseFailure,
+};
+pub use reconfiguration::{
+    NativeExecutableSequenceLeaseCacheReconfiguration,
+    NativeExecutableSequenceLeaseCacheReconfigurationFailure,
+    NativeExecutableSequenceLeaseCacheReconfigurationResult,
+};
 
 use super::direct::{
     CachedVerifiedDirectSequencePlan, VerifiedDirectSequencePlan,
@@ -85,28 +104,6 @@ struct LeaseCacheFailureContext {
     candidate: NativeExecutableSequenceLeaseCacheCandidate,
     evicted_keys: Vec<NativeExecutableSequenceKey>,
     retired_keys: Vec<NativeExecutableSequenceKey>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct LeaseCacheReconfigurationContext {
-    evicted_keys: Vec<NativeExecutableSequenceKey>,
-    requested_limits: NativeExecutableSequenceCacheLimits,
-    retained_limits: NativeExecutableSequenceCacheLimits,
-    retired_keys: Vec<NativeExecutableSequenceKey>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum LeaseCacheReconcileOutcome<E> {
-    ReleaseFailed {
-        failure: Box<NativeExecutableSequenceReleaseFailure<E>>,
-        key: NativeExecutableSequenceKey,
-        weight: NativeExecutableSequenceWeight,
-    },
-    Released {
-        key: NativeExecutableSequenceKey,
-        weight: NativeExecutableSequenceWeight,
-    },
-    Retained(NativeExecutableSequenceLeaseCacheValue),
 }
 
 /// Caller-owned weighted cache with cloneable immutable executable leases.
@@ -162,13 +159,6 @@ enum LeaseCacheLoadFailureCause<E> {
     Release(Box<NativeExecutableSequenceReleaseFailure<E>>),
 }
 
-/// Failed releases retained after one unsuccessful leased-cache insertion.
-#[derive(Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheLoadReleaseFailures<E> {
-    candidate: Option<NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>>,
-    eviction: Option<NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>>,
-}
-
 /// Failure while loading, weighing, evicting, or publishing one leased miss.
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeExecutableSequenceLeaseCacheLoadFailure<E> {
@@ -194,54 +184,6 @@ pub enum NativeExecutableSequenceLeaseCacheInvalidation {
     },
 }
 
-/// Successful explicit reclamation pass over retired resident sequences.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheReconciliation {
-    released_keys: Vec<NativeExecutableSequenceKey>,
-    retained_keys: Vec<NativeExecutableSequenceKey>,
-}
-
-/// One sequence release failure removed from cache ownership for exact retry.
-#[derive(Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E> {
-    failure: NativeExecutableSequenceReleaseFailure<E>,
-    key: NativeExecutableSequenceKey,
-}
-
-/// Aggregate explicit reclamation failure after attempting every releasable
-/// entry.
-#[derive(Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheReleaseFailure<E> {
-    failures: Vec<NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>>,
-    released_keys: Vec<NativeExecutableSequenceKey>,
-    retained_keys: Vec<NativeExecutableSequenceKey>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum LeaseCacheReconfigurationFailureCause<E> {
-    Leases(NativeExecutableSequenceLeaseCacheBlock),
-    Release(NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>),
-}
-
-/// Successful resident-limit publication and active FIFO removals.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheReconfiguration {
-    evicted_keys: Vec<NativeExecutableSequenceKey>,
-    new_limits: NativeExecutableSequenceCacheLimits,
-    previous_limits: NativeExecutableSequenceCacheLimits,
-    retired_keys: Vec<NativeExecutableSequenceKey>,
-}
-
-/// Failed resident-limit publication retaining exact blocker or cleanup owner.
-#[derive(Debug, Eq, PartialEq)]
-pub struct NativeExecutableSequenceLeaseCacheReconfigurationFailure<E> {
-    cause: LeaseCacheReconfigurationFailureCause<E>,
-    evicted_keys: Vec<NativeExecutableSequenceKey>,
-    requested_limits: NativeExecutableSequenceCacheLimits,
-    retained_limits: NativeExecutableSequenceCacheLimits,
-    retired_keys: Vec<NativeExecutableSequenceKey>,
-}
-
 /// Result of acquiring one active immutable sequence lease.
 pub type NativeExecutableSequenceLeaseCacheLoadResult<E> = Result<
     NativeExecutableSequenceLeaseCacheAcquisition,
@@ -252,18 +194,6 @@ pub type NativeExecutableSequenceLeaseCacheLoadResult<E> = Result<
 pub type NativeExecutableSequenceLeaseCacheInvalidationResult<E> = Result<
     NativeExecutableSequenceLeaseCacheInvalidation,
     Box<NativeExecutableSequenceReleaseFailure<E>>,
->;
-
-/// Result of reconciling retired resident sequences.
-pub type NativeExecutableSequenceLeaseCacheReconciliationResult<E> = Result<
-    NativeExecutableSequenceLeaseCacheReconciliation,
-    Box<NativeExecutableSequenceLeaseCacheReleaseFailure<E>>,
->;
-
-/// Result of publishing new resident limits after active FIFO processing.
-pub type NativeExecutableSequenceLeaseCacheReconfigurationResult<E> = Result<
-    NativeExecutableSequenceLeaseCacheReconfiguration,
-    Box<NativeExecutableSequenceLeaseCacheReconfigurationFailure<E>>,
 >;
 
 type NativeExecutableSequenceLeaseCachePrepareResult<E> = Result<
@@ -279,15 +209,6 @@ type NativeExecutableSequenceLeaseCacheFitResult<E> = Result<
     ),
     Box<NativeExecutableSequenceLeaseCacheLoadFailure<E>>,
 >;
-
-type NativeExecutableSequenceLeaseCacheReconfigurationEvictionResult<E> =
-    Result<
-        (
-            Vec<NativeExecutableSequenceKey>,
-            Vec<NativeExecutableSequenceKey>,
-        ),
-        Box<NativeExecutableSequenceLeaseCacheReconfigurationFailure<E>>,
-    >;
 
 impl NativeExecutableSequenceLease {
     /// Returns the exact ordered key retained by this lease.
@@ -383,166 +304,6 @@ impl NativeExecutableSequenceLeaseCacheBlock {
     }
 }
 
-impl NativeExecutableSequenceLeaseCacheReconfiguration {
-    /// Returns every active FIFO key removed before publication.
-    #[must_use]
-    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.evicted_keys
-    }
-
-    /// Returns `(previous, new)` resident capacity limits.
-    #[must_use]
-    pub const fn limit_transition(
-        &self,
-    ) -> (
-        NativeExecutableSequenceCacheLimits,
-        NativeExecutableSequenceCacheLimits,
-    ) {
-        (self.previous_limits, self.new_limits)
-    }
-
-    /// Returns removed keys still resident behind live leases.
-    #[must_use]
-    pub fn retired_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.retired_keys
-    }
-}
-
-impl<E> NativeExecutableSequenceLeaseCacheReconfigurationFailure<E> {
-    /// Returns exact resident lease blockage, when publication cannot fit.
-    #[must_use]
-    pub const fn block(
-        &self,
-    ) -> Option<&NativeExecutableSequenceLeaseCacheBlock> {
-        match &self.cause {
-            LeaseCacheReconfigurationFailureCause::Leases(block) => Some(block),
-            LeaseCacheReconfigurationFailureCause::Release(_) => None,
-        }
-    }
-
-    /// Returns every active FIFO key removed before publication failed.
-    #[must_use]
-    pub fn evicted_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.evicted_keys
-    }
-
-    /// Consumes this failure and returns exact keyed release ownership.
-    #[must_use]
-    pub fn into_release_failure(
-        self,
-    ) -> Option<NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>> {
-        match self.cause {
-            LeaseCacheReconfigurationFailureCause::Leases(_) => None,
-            LeaseCacheReconfigurationFailureCause::Release(failure) => {
-                Some(failure)
-            },
-        }
-    }
-
-    /// Returns `(retained, requested)` limits for this failed publication.
-    #[must_use]
-    pub const fn limit_transition(
-        &self,
-    ) -> (
-        NativeExecutableSequenceCacheLimits,
-        NativeExecutableSequenceCacheLimits,
-    ) {
-        (self.retained_limits, self.requested_limits)
-    }
-
-    /// Returns exact keyed release ownership, when cleanup failed.
-    #[must_use]
-    pub const fn release_failure(
-        &self,
-    ) -> Option<&NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>> {
-        match &self.cause {
-            LeaseCacheReconfigurationFailureCause::Leases(_) => None,
-            LeaseCacheReconfigurationFailureCause::Release(failure) => {
-                Some(failure)
-            },
-        }
-    }
-
-    /// Returns removed keys still resident behind live leases.
-    #[must_use]
-    pub fn retired_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.retired_keys
-    }
-}
-
-impl NativeExecutableSequenceLeaseCacheReconciliation {
-    /// Returns retired keys released during this reconciliation pass.
-    #[must_use]
-    pub fn released_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.released_keys
-    }
-
-    /// Returns retired keys still resident behind external leases.
-    #[must_use]
-    pub fn retained_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.retained_keys
-    }
-}
-
-impl<E> NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E> {
-    /// Returns exact sequence release ownership retained by this entry.
-    #[must_use]
-    pub const fn failure(&self) -> &NativeExecutableSequenceReleaseFailure<E> {
-        &self.failure
-    }
-
-    /// Consumes this entry failure and returns exact sequence release
-    /// ownership.
-    #[must_use]
-    pub fn into_failure(self) -> NativeExecutableSequenceReleaseFailure<E> {
-        self.failure
-    }
-
-    /// Returns exact retired key whose release failed.
-    #[must_use]
-    pub const fn key(&self) -> &NativeExecutableSequenceKey {
-        &self.key
-    }
-}
-
-impl<E> NativeExecutableSequenceLeaseCacheLoadReleaseFailures<E> {
-    /// Returns failed candidate cleanup ownership, when present.
-    #[must_use]
-    pub fn candidate_failure(
-        &self,
-    ) -> Option<&NativeExecutableSequenceReleaseFailure<E>> {
-        self.candidate
-            .as_ref()
-            .map(NativeExecutableSequenceLeaseCacheEntryReleaseFailure::failure)
-    }
-
-    /// Returns failed FIFO victim release ownership, when present.
-    #[must_use]
-    pub fn eviction_failure(
-        &self,
-    ) -> Option<&NativeExecutableSequenceReleaseFailure<E>> {
-        self.eviction
-            .as_ref()
-            .map(NativeExecutableSequenceLeaseCacheEntryReleaseFailure::failure)
-    }
-
-    /// Retries every mapping still owned outside the leased cache.
-    ///
-    /// # Errors
-    ///
-    /// Returns aggregate retained release ownership after attempting both
-    /// owners.
-    pub fn retry<Adapter>(
-        self,
-        adapter: &mut Adapter,
-    ) -> NativeExecutableSequenceLeaseCacheReconciliationResult<E>
-    where
-        Adapter: NativeExecutableMemoryAdapter<Error = E>,
-    {
-        retry_unkeyed_release_failures(adapter, self)
-    }
-}
-
 impl<E> NativeExecutableSequenceLeaseCacheLoadFailure<E> {
     /// Returns resident lease blockage, when no further FIFO release can fit.
     #[must_use]
@@ -595,26 +356,17 @@ impl<E> NativeExecutableSequenceLeaseCacheLoadFailure<E> {
             .cloned()
             .unwrap_or_else(|| self.requested_key.clone());
         let eviction = match self.cause {
-            LeaseCacheLoadFailureCause::Release(failure) => {
-                Some(NativeExecutableSequenceLeaseCacheEntryReleaseFailure {
-                    failure: *failure,
-                    key: eviction_key,
-                })
-            },
+            LeaseCacheLoadFailureCause::Release(failure) => Some(
+                reconciliation::entry_release_failure(eviction_key, *failure),
+            ),
             LeaseCacheLoadFailureCause::Capacity(_)
             | LeaseCacheLoadFailureCause::Leases(_)
             | LeaseCacheLoadFailureCause::Load(_) => None,
         };
         let candidate = self.candidate_cleanup_failure.map(|failure| {
-            NativeExecutableSequenceLeaseCacheEntryReleaseFailure {
-                failure: *failure,
-                key: self.requested_key,
-            }
+            reconciliation::entry_release_failure(self.requested_key, *failure)
         });
-        NativeExecutableSequenceLeaseCacheLoadReleaseFailures {
-            candidate,
-            eviction,
-        }
+        reconciliation::load_release_failures(candidate, eviction)
     }
 
     /// Returns candidate loading failure before resident state changed.
@@ -656,43 +408,6 @@ impl<E> NativeExecutableSequenceLeaseCacheLoadFailure<E> {
     }
 }
 
-impl<E> NativeExecutableSequenceLeaseCacheReleaseFailure<E> {
-    /// Returns every keyed sequence release failure retained outside the cache.
-    #[must_use]
-    pub fn failures(
-        &self,
-    ) -> &[NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>] {
-        &self.failures
-    }
-
-    /// Returns retired keys released before or during this failed pass.
-    #[must_use]
-    pub fn released_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.released_keys
-    }
-
-    /// Returns retired keys still resident behind external leases.
-    #[must_use]
-    pub fn retained_keys(&self) -> &[NativeExecutableSequenceKey] {
-        &self.retained_keys
-    }
-
-    /// Retries all releases removed from cache ownership.
-    ///
-    /// # Errors
-    ///
-    /// Returns only repeated keyed failures after attempting every owner.
-    pub fn retry<Adapter>(
-        self,
-        adapter: &mut Adapter,
-    ) -> NativeExecutableSequenceLeaseCacheReconciliationResult<E>
-    where
-        Adapter: NativeExecutableMemoryAdapter<Error = E>,
-    {
-        retry_keyed_release_failures(adapter, self)
-    }
-}
-
 impl<E: Display> Display for NativeExecutableSequenceLeaseCacheLoadFailure<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str("native executable sequence lease cache miss failed: ")?;
@@ -714,34 +429,6 @@ impl<E: Display> Display for NativeExecutableSequenceLeaseCacheLoadFailure<E> {
             f.write_str("; candidate cleanup also failed")?;
         }
         Ok(())
-    }
-}
-
-impl<E: Display> Display
-    for NativeExecutableSequenceLeaseCacheReconfigurationFailure<E>
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-        f.write_str("native executable lease cache reconfiguration failed: ")?;
-        match &self.cause {
-            LeaseCacheReconfigurationFailureCause::Leases(_) => {
-                f.write_str("resident leases block requested limits")
-            },
-            LeaseCacheReconfigurationFailureCause::Release(failure) => {
-                write!(f, "keyed release: {}", failure.failure)
-            },
-        }
-    }
-}
-
-impl<E: Display> Display
-    for NativeExecutableSequenceLeaseCacheReleaseFailure<E>
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
-        write!(
-            f,
-            "native executable lease cache retained {} failed releases",
-            self.failures.len(),
-        )
     }
 }
 
@@ -853,67 +540,6 @@ impl NativeExecutableSequenceLeaseCache {
             Box::new(lease_cache_load_failure(key.clone(), failure))
         })?;
         self.publish_candidate(adapter, key, sequence)
-    }
-
-    fn evict_for_reconfiguration<Adapter>(
-        &mut self,
-        adapter: &mut Adapter,
-        requested_limits: NativeExecutableSequenceCacheLimits,
-        retained_limits: NativeExecutableSequenceCacheLimits,
-    ) -> NativeExecutableSequenceLeaseCacheReconfigurationEvictionResult<
-        Adapter::Error,
-    >
-    where
-        Adapter: NativeExecutableMemoryAdapter,
-    {
-        let mut evicted_keys = Vec::new();
-        let mut retired_keys = Vec::new();
-        while requested_limits.usage_exceeds(self.usage) {
-            let Some(victim) = self.active.pop_front() else {
-                return Err(Box::new(
-                    lease_cache_reconfiguration_blocked_failure(
-                        LeaseCacheReconfigurationContext {
-                            evicted_keys,
-                            requested_limits,
-                            retained_limits,
-                            retired_keys,
-                        },
-                        self,
-                    ),
-                ));
-            };
-            let victim_key = victim.key.clone();
-            evicted_keys.push(victim_key.clone());
-            match process_lease_cache_victim(adapter, victim) {
-                LeaseCacheVictimOutcome::Released(weight) => {
-                    self.usage.remove(weight);
-                },
-                LeaseCacheVictimOutcome::ReleaseFailed { failure, weight } => {
-                    self.usage.remove(weight);
-                    let release_failure =
-                        NativeExecutableSequenceLeaseCacheEntryReleaseFailure {
-                            failure: *failure,
-                            key: victim_key,
-                        };
-                    return Err(Box::new(
-                        lease_cache_reconfiguration_release_failure(
-                            LeaseCacheReconfigurationContext {
-                                evicted_keys,
-                                requested_limits,
-                                retained_limits,
-                                retired_keys,
-                            },
-                            release_failure,
-                        ),
-                    ));
-                },
-                LeaseCacheVictimOutcome::Retired(retired_entry) => {
-                    retired_keys.push(retired_entry.key.clone());
-                    self.retired.push_back(retired_entry);
-                },
-            }
-        }
-        Ok((evicted_keys, retired_keys))
     }
 
     fn evict_until_fits<Adapter>(
@@ -1118,7 +744,11 @@ impl NativeExecutableSequenceLeaseCache {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        reconcile_retired_values(adapter, &mut self.retired, &mut self.usage)
+        reconciliation::reconcile_retired_values(
+            adapter,
+            &mut self.retired,
+            &mut self.usage,
+        )
     }
 
     /// Publishes new resident limits after active FIFO processing.
@@ -1142,18 +772,20 @@ impl NativeExecutableSequenceLeaseCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let previous_limits = self.limits;
-        let (evicted_keys, retired_keys) = self.evict_for_reconfiguration(
-            adapter,
+        let (evicted_keys, retired_keys) =
+            reconfiguration::evict_for_reconfiguration(
+                self,
+                adapter,
+                requested_limits,
+                previous_limits,
+            )?;
+        self.limits = requested_limits;
+        Ok(reconfiguration::published(
+            evicted_keys,
+            retired_keys,
             requested_limits,
             previous_limits,
-        )?;
-        self.limits = requested_limits;
-        Ok(NativeExecutableSequenceLeaseCacheReconfiguration {
-            evicted_keys,
-            new_limits: requested_limits,
-            previous_limits,
-            retired_keys,
-        })
+        ))
     }
 
     /// Removes all active lookup authority and reclaims every unleased
@@ -1228,37 +860,6 @@ impl NativeExecutableSequenceLeaseCache {
             retired: VecDeque::new(),
             usage: NativeExecutableSequenceCacheUsage::empty(),
         }
-    }
-}
-
-fn lease_cache_reconfiguration_blocked_failure<E>(
-    context: LeaseCacheReconfigurationContext,
-    cache: &NativeExecutableSequenceLeaseCache,
-) -> NativeExecutableSequenceLeaseCacheReconfigurationFailure<E> {
-    let block = NativeExecutableSequenceLeaseCacheBlock {
-        limits: context.requested_limits,
-        retired_keys: cache.retired_keys().cloned().collect(),
-        usage: cache.usage,
-    };
-    NativeExecutableSequenceLeaseCacheReconfigurationFailure {
-        cause: LeaseCacheReconfigurationFailureCause::Leases(block),
-        evicted_keys: context.evicted_keys,
-        requested_limits: context.requested_limits,
-        retained_limits: context.retained_limits,
-        retired_keys: context.retired_keys,
-    }
-}
-
-fn lease_cache_reconfiguration_release_failure<E>(
-    context: LeaseCacheReconfigurationContext,
-    release_failure: NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>,
-) -> NativeExecutableSequenceLeaseCacheReconfigurationFailure<E> {
-    NativeExecutableSequenceLeaseCacheReconfigurationFailure {
-        cause: LeaseCacheReconfigurationFailureCause::Release(release_failure),
-        evicted_keys: context.evicted_keys,
-        requested_limits: context.requested_limits,
-        retained_limits: context.retained_limits,
-        retired_keys: context.retired_keys,
     }
 }
 
@@ -1374,144 +975,6 @@ where
         )));
     }
     Ok(NativeExecutableSequenceLeaseCacheCandidate { key, sequence, weight })
-}
-
-fn reconcile_retired_values<Adapter>(
-    adapter: &mut Adapter,
-    retired: &mut VecDeque<NativeExecutableSequenceLeaseCacheValue>,
-    usage: &mut NativeExecutableSequenceCacheUsage,
-) -> NativeExecutableSequenceLeaseCacheReconciliationResult<Adapter::Error>
-where
-    Adapter: NativeExecutableMemoryAdapter,
-{
-    let mut failures = Vec::new();
-    let mut released_keys = Vec::new();
-    let mut retained_keys = Vec::new();
-    let entries = retired.len();
-    for _ in 0..entries {
-        let Some(entry) = retired.pop_front() else {
-            break;
-        };
-        match process_retired_lease_cache_value(adapter, entry) {
-            LeaseCacheReconcileOutcome::ReleaseFailed {
-                failure,
-                key,
-                weight,
-            } => {
-                usage.remove(weight);
-                failures.push(
-                    NativeExecutableSequenceLeaseCacheEntryReleaseFailure {
-                        failure: *failure,
-                        key,
-                    },
-                );
-            },
-            LeaseCacheReconcileOutcome::Released { key, weight } => {
-                usage.remove(weight);
-                released_keys.push(key);
-            },
-            LeaseCacheReconcileOutcome::Retained(retained_entry) => {
-                retained_keys.push(retained_entry.key.clone());
-                retired.push_back(retained_entry);
-            },
-        }
-    }
-    reconciliation_result(released_keys, retained_keys, failures)
-}
-
-fn process_retired_lease_cache_value<Adapter>(
-    adapter: &mut Adapter,
-    entry: NativeExecutableSequenceLeaseCacheValue,
-) -> LeaseCacheReconcileOutcome<Adapter::Error>
-where
-    Adapter: NativeExecutableMemoryAdapter,
-{
-    let key = entry.key;
-    let weight = entry.weight;
-    match Arc::try_unwrap(entry.sequence) {
-        Err(sequence) => LeaseCacheReconcileOutcome::Retained(
-            NativeExecutableSequenceLeaseCacheValue { key, sequence, weight },
-        ),
-        Ok(sequence) => {
-            match release_native_executable_sequence(adapter, sequence) {
-                Ok(()) => LeaseCacheReconcileOutcome::Released { key, weight },
-                Err(failure) => LeaseCacheReconcileOutcome::ReleaseFailed {
-                    failure,
-                    key,
-                    weight,
-                },
-            }
-        },
-    }
-}
-
-fn reconciliation_result<E>(
-    released_keys: Vec<NativeExecutableSequenceKey>,
-    retained_keys: Vec<NativeExecutableSequenceKey>,
-    failures: Vec<NativeExecutableSequenceLeaseCacheEntryReleaseFailure<E>>,
-) -> NativeExecutableSequenceLeaseCacheReconciliationResult<E> {
-    if failures.is_empty() {
-        Ok(NativeExecutableSequenceLeaseCacheReconciliation {
-            released_keys,
-            retained_keys,
-        })
-    } else {
-        Err(Box::new(NativeExecutableSequenceLeaseCacheReleaseFailure {
-            failures,
-            released_keys,
-            retained_keys,
-        }))
-    }
-}
-
-fn retry_keyed_release_failures<Adapter>(
-    adapter: &mut Adapter,
-    pending: NativeExecutableSequenceLeaseCacheReleaseFailure<Adapter::Error>,
-) -> NativeExecutableSequenceLeaseCacheReconciliationResult<Adapter::Error>
-where
-    Adapter: NativeExecutableMemoryAdapter,
-{
-    let mut failures = Vec::new();
-    let mut released_keys = pending.released_keys;
-    for entry in pending.failures {
-        let key = entry.key;
-        match entry.failure.retry(adapter) {
-            Ok(()) => released_keys.push(key),
-            Err(failure) => failures.push(
-                NativeExecutableSequenceLeaseCacheEntryReleaseFailure {
-                    failure: *failure,
-                    key,
-                },
-            ),
-        }
-    }
-    reconciliation_result(released_keys, pending.retained_keys, failures)
-}
-
-fn retry_unkeyed_release_failures<Adapter>(
-    adapter: &mut Adapter,
-    pending: NativeExecutableSequenceLeaseCacheLoadReleaseFailures<
-        Adapter::Error,
-    >,
-) -> NativeExecutableSequenceLeaseCacheReconciliationResult<Adapter::Error>
-where
-    Adapter: NativeExecutableMemoryAdapter,
-{
-    let mut failures = Vec::with_capacity(2);
-    if let Some(eviction) = pending.eviction {
-        failures.push(eviction);
-    }
-    if let Some(candidate) = pending.candidate {
-        failures.push(candidate);
-    }
-    retry_keyed_release_failures(
-        adapter,
-        NativeExecutableSequenceLeaseCacheReleaseFailure {
-            failures,
-            released_keys: Vec::new(),
-            retained_keys: Vec::new(),
-        },
-    )
 }
 
 fn process_lease_cache_victim<Adapter>(
