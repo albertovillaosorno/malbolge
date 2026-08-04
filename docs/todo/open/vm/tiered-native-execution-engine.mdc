@@ -364,8 +364,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   normative handoff. Profile, IR shape, continuity, deoptimization, emission,
   and verification remain hard stable errors retaining the suspension. Four
   cases cover Windows route, Linux fallback before/after progress, hard profile
-  rejection, and invalid scheduler reason. Cache-aware planning, attempt budgets,
-  async queues, and product orchestration remain open.
+  rejection, and invalid scheduler reason.
+- `application/retry_policy.rs` now applies one immutable caller-configured
+  maximum native-attempt count before planning. Remaining budget preserves the
+  exact suspension with completed/next attempt evidence; exhaustion routes to
+  complete or positive-slice normative fallback, and zero limit falls back
+  immediately. Caller supplies attempt counts, while invalid reasons retain the
+  owner and fail. Four cases cover attempt numbering, both fallback forms, and
+  reason rejection. Cache-aware planning, adaptive telemetry, async queues, and
+  product orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

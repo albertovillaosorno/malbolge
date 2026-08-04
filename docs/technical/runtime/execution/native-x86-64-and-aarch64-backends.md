@@ -291,8 +291,12 @@ verified sequence on Windows and converts only missing target format into a
 normative handoff. Profile, IR, continuity, deoptimization, emission, and
 verification failures remain hard and retain the suspension. Four cases cover
 Windows routing, Linux fallback at two progress points, profile rejection, and
-invalid reason. Native object fusion, foreign invocation, cache-aware retry
-planning, and attempt policy remain open.
+invalid reason. An explicit immutable attempt policy now preserves native retry
+while budget remains and routes exhaustion to complete or positive-slice
+normative fallback. Caller owns completed-attempt evidence; zero limit falls back
+immediately. Four cases cover attempt numbering, both fallback forms, and reason
+rejection. Native object fusion, foreign invocation, cache-aware retry planning,
+and adaptive policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

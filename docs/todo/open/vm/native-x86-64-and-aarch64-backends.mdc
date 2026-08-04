@@ -181,8 +181,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   format into a normative handoff. Profile, IR, continuity, deoptimization,
   emission, and verification errors remain hard with suspension ownership. Four
   cases cover Windows routing, Linux fallback before/after progress, hard profile
-  rejection, and invalid reason. Cache-aware planning, attempt budgets, async
-  queues, and production orchestration remain pending.
+  rejection, and invalid reason. An immutable attempt policy now preserves
+  native retry while caller-supplied budget remains and routes exhaustion to
+  complete or positive-slice normative fallback; zero limit falls back
+  immediately. Four cases cover numbering, both fallback forms, and invalid
+  reason. Cache-aware planning, adaptive telemetry, async queues, and production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

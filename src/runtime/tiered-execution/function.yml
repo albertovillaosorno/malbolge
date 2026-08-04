@@ -197,15 +197,20 @@ parts:
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0033
-    path: application/scheduler.rs
+    path: application/retry_policy.rs
     kind: application
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0034
+    path: application/scheduler.rs
+    kind: application
+    language: rust
+    responsibility: Coordinate use-case policy and orchestration.
+  - id: part-0035
     path: domain/ir/README.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0035
+  - id: part-0036
     path: domain/ir/main.rs
     kind: domain
     language: rust

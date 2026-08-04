@@ -515,7 +515,15 @@ a normative handoff. Profile, IR shape, continuity, deoptimization, emission, an
 verification failures remain hard stable categories and retain the suspension.
 Four cases cover Windows native routing, Linux fallback before/after interpreter
 progress, hard profile failure, and rejection of caller-yield reason. Cache-aware
-retry planning, attempt budgets, async queues, and product orchestration remain
+retry planning remains open.
+`application/retry_policy.rs` now applies one immutable caller-configured maximum
+native-attempt count before host planning. Available budget returns the exact
+suspension with a one-based next-attempt number. Exhaustion converts the owner to
+a complete or positive-slice interpreter route; zero maximum attempts falls back
+immediately. Caller supplies the completed-attempt count, and non-`NativeRetry`
+reasons fail while retaining ownership. Four cases cover attempts one/two,
+complete fallback, zero-limit sliced fallback, and reason rejection. Cache-aware
+planning, adaptive telemetry, async queues, and product orchestration remain
 open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load

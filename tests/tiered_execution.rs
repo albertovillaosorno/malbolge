@@ -47,6 +47,8 @@ pub mod interpreter_handoff;
 pub mod native_retry;
 #[path = "../src/runtime/tiered-execution/application/retry_planner.rs"]
 pub mod retry_planner;
+#[path = "../src/runtime/tiered-execution/application/retry_policy.rs"]
+pub mod retry_policy;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::fs::{create_dir_all, read, remove_dir_all, write};
@@ -169,6 +171,10 @@ use retry_planner::{
     NativeContinuationRetryPlanningError,
     NativeContinuationRetryPlanningOutcome,
     NativeContinuationRetryStepPlanningError, plan_native_continuation_retry,
+};
+use retry_policy::{
+    NativeContinuationRetryFallback, NativeContinuationRetryPolicy,
+    NativeContinuationRetryPolicyError, NativeContinuationRetryPolicyOutcome,
 };
 
 #[derive(Clone, Copy)]
@@ -11984,5 +11990,163 @@ fn native_retry_planner_rejects_non_retry_reason() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("non-retry planning lost suspension"))
+    }
+}
+
+#[test]
+fn native_retry_policy_selects_exact_attempt_numbers() -> Result<(), String> {
+    let policy = NativeContinuationRetryPolicy::new(
+        2,
+        NativeContinuationRetryFallback::complete(),
+    );
+    for (attempts, expected_next) in [(0usize, 1usize), (1usize, 2usize)] {
+        let fixture = native_retry_fixture(HostIsa::X86_64, attempts)?;
+        let expected_state = fixture.suspension.state().clone();
+        let outcome = policy
+            .route(fixture.suspension, attempts)
+            .map_err(|failure| failure.error().to_string())?;
+        let NativeContinuationRetryPolicyOutcome::NativeRetry(route) = outcome
+        else {
+            return Err(String::from("available retry budget fell back"));
+        };
+        if route.attempts() != attempts || route.next_attempt() != expected_next
+        {
+            return Err(String::from("retry attempt numbering drifted"));
+        }
+        let suspension = route.into_suspension();
+        if suspension.state() != &expected_state
+            || suspension.reason()
+                != NativeContinuationScheduleStopReason::NativeRetry
+        {
+            return Err(String::from("retry policy lost suspension ownership"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_retry_policy_completes_after_attempt_limit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let policy = NativeContinuationRetryPolicy::new(
+        2,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let outcome = policy
+        .route(fixture.suspension, 2)
+        .map_err(|failure| failure.error().to_string())?;
+    let NativeContinuationRetryPolicyOutcome::Interpreter(route) = outcome
+    else {
+        return Err(String::from("exhausted retry budget selected native"));
+    };
+    if route.attempts() != 2
+        || route.decision()
+            != NativeContinuationScheduleDecision::complete_interpreter()
+    {
+        return Err(String::from("complete retry fallback route drifted"));
+    }
+    let (handoff, decision) = route.into_parts();
+    let scheduled = schedule_native_interpreter_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = scheduled
+    else {
+        return Err(String::from("complete retry fallback suspended"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("complete retry fallback execution drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_slices_after_zero_limit() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let policy = NativeContinuationRetryPolicy::new(
+        0,
+        NativeContinuationRetryFallback::sliced(nonzero_test_limit(
+            1,
+            "retry policy slice",
+        )?),
+    );
+    let outcome = policy
+        .route(fixture.suspension, 0)
+        .map_err(|failure| failure.error().to_string())?;
+    let NativeContinuationRetryPolicyOutcome::Interpreter(route) = outcome
+    else {
+        return Err(String::from("zero retry limit selected native"));
+    };
+    let (handoff, decision) = route.into_parts();
+    let first = schedule_native_interpreter_handoff(handoff, decision)
+        .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(pause) = first else {
+        return Err(String::from("sliced retry fallback completed early"));
+    };
+    if pause.reason() != NativeContinuationScheduleStopReason::BudgetExhausted
+        || pause.interpreter_steps() != 1
+        || pause.resume_index() != 1
+    {
+        return Err(String::from("sliced retry fallback evidence drifted"));
+    }
+    let second = pause
+        .resume(NativeContinuationScheduleDecision::complete_interpreter())
+        .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = second
+    else {
+        return Err(String::from("sliced retry fallback did not resume"));
+    };
+    if completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("sliced retry fallback completion drifted"))
+    }
+}
+
+#[test]
+fn native_retry_policy_rejects_non_retry_reason() -> Result<(), String> {
+    let fixture = native_schedule_fixture(HostIsa::AArch64, vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+    ])?;
+    let yielded = schedule_native_interpreter_handoff(
+        fixture.handoff,
+        NativeContinuationScheduleDecision::yield_to(
+            NativeContinuationYieldTarget::Caller,
+        ),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Suspended(suspension) = yielded
+    else {
+        return Err(String::from("caller yield completed before retry policy"));
+    };
+    let expected_state = suspension.state().clone();
+    let policy = NativeContinuationRetryPolicy::new(
+        1,
+        NativeContinuationRetryFallback::complete(),
+    );
+    let Err(failure) = policy.route(suspension, 0) else {
+        return Err(String::from("caller yield entered retry policy"));
+    };
+    if failure.error()
+        != (NativeContinuationRetryPolicyError::ScheduleReason {
+            observed: NativeContinuationScheduleStopReason::CallerYield,
+        })
+    {
+        return Err(String::from("retry policy reason rejection drifted"));
+    }
+    let recovered = (*failure).into_suspension();
+    if recovered.state() == &expected_state
+        && recovered.reason()
+            == NativeContinuationScheduleStopReason::CallerYield
+    {
+        Ok(())
+    } else {
+        Err(String::from("retry policy rejection lost suspension"))
     }
 }

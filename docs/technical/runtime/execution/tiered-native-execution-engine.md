@@ -496,8 +496,17 @@ handoff. Profile, program shape, observation continuity, deoptimization,
 emission, and verification failures are classified as stable hard errors and
 retain the exact suspension. Four cases cover Windows native routing, Linux
 fallback before/after interpreter progress, hard profile failure, and invalid
-schedule reason. Cache-aware planning, retry-attempt budgets, asynchronous queue
-ownership, and product scheduling remain outside.
+schedule reason.
+
+`application/retry_policy.rs` adds an immutable caller-configured maximum attempt
+count before host planning. If budget remains it returns the exact suspension
+with completed and one-based next-attempt evidence. At or beyond the limit it
+converts the owner to either complete normative interpretation or one configured
+positive interpreter slice. A zero limit falls back immediately. Attempt counts
+are always caller-supplied; non-`NativeRetry` reasons fail without losing the
+suspension. Four cases cover attempts one/two, complete fallback, zero-limit
+sliced fallback, and reason rejection. Cache-aware planning, adaptive telemetry,
+asynchronous queue ownership, and product scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,
