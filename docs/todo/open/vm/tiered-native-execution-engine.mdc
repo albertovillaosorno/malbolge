@@ -367,6 +367,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   hit reuse without adapter work, progressed guard fallback, runner-failure
   fallback, and cross-ISA lease rejection. Automatic acquisition and bounded
   cycle lease reuse remain open.
+- `application/cached_retry.rs` now composes exact lease-cache acquisition,
+  leased binding, and one loaded attempt. Hits perform no executable-memory work;
+  insertions retain FIFO eviction/retirement evidence. Load failure restores the
+  admitted retry plus exact load/cleanup ownership, while binding/runner failure
+  retains the acquired lease. Five cases cover insertion, hit reuse, pre-runner
+  load failure, mixed live-retirement insertion, and runner-failure fallback.
+  Semantic rebase and lease return remain caller-owned; bounded-cycle lease reuse
+  remains open.
 - `application/retry_planner.rs` now consumes one exact native-retry suspension
   with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
   admitted exact native suffix; only direct `TargetFormat` absence becomes a

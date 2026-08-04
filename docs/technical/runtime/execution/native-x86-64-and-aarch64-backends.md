@@ -310,8 +310,12 @@ runner/cleanup failure, and hard rejection before adapters. An admitted retry
 can now execute through an exact immutable lease without allocation/release,
 retaining hit/insertion evidence and the lease across semantic rebase. Five cases
 cover insertion, pointer-identical hit reuse, guard/failure fallback, and key
-rejection. Native object fusion, foreign invocation, automatic cache acquisition,
-bounded-cycle lease reuse, and adaptive policy remain open.
+rejection. Exact cache acquisition can now precede one loaded retry attempt:
+hits perform no memory-adapter work, insertions retain FIFO retirement/release
+evidence, and load/runner failures preserve retry or lease ownership. Five cases
+cover insertion, hit reuse, load failure, mixed retirement, and runner fallback.
+Native object fusion, foreign invocation, bounded-cycle lease reuse, and adaptive
+policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

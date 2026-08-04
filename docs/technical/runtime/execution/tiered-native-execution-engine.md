@@ -496,7 +496,14 @@ success, guard miss, or runner failure. Both execution paths rebase against the
 original complete continuation while lease return remains explicit. Five cases
 cover insertion completion, pointer-identical hit reuse without adapter work,
 progressed guard fallback, runner-failure fallback, and cross-ISA lease rejection.
-Automatic acquisition and bounded-cycle lease reuse remain outside this boundary.
+`application/cached_retry.rs` composes exact lease-cache acquisition, leased
+binding, and one loaded attempt. Cache hit performs no executable-memory work;
+inserted acquisition retains FIFO eviction and live-retirement evidence. Load
+failure restores the admitted retry plus exact load/cleanup ownership, while
+binding or runner failure retains the acquired lease. Five cases cover inserted
+completion, hit reuse, pre-runner load failure, mixed live-retirement insertion,
+and runner-failure fallback. Semantic rebase and lease return remain caller-owned;
+bounded-cycle lease reuse remains outside this boundary.
 
 `application/retry_planner.rs` adds explicit host routing above those owners. It
 consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,

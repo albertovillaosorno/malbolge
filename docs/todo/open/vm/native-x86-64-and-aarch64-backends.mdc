@@ -200,9 +200,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   admitted retry can now execute through an exact immutable lease without
   allocation/release, retaining hit/insertion evidence and the lease across
   semantic rebase. Five cases cover insertion, pointer-identical hit reuse,
-  guard/failure fallback, and key rejection. Automatic cache acquisition,
-  bounded-cycle lease reuse, adaptive telemetry, async queues, and broader
-  production orchestration remain pending.
+  guard/failure fallback, and key rejection. Exact cache acquisition can now
+  precede one loaded retry attempt: hits perform no adapter work, insertions
+  retain FIFO retirement/release evidence, and load/runner failures preserve
+  retry or lease ownership. Five cases cover insertion, hit reuse, load failure,
+  mixed retirement, and runner fallback. Bounded-cycle lease reuse, adaptive
+  telemetry, async queues, and broader production orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
