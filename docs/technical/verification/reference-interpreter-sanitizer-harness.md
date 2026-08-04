@@ -8,8 +8,8 @@ Proposed
 
 Build the historical interpreter under AddressSanitizer and
 UndefinedBehaviorSanitizer where supported, preserve failing fixtures, and use
-the evidence to distinguish reference semantics from C implementation defects
-without editing Ben's source.
+the evidence to distinguish defined interpreter semantics from host-dependent
+or undefined C behavior without editing Ben's source.
 
 ## Scope
 
@@ -37,8 +37,8 @@ Not implemented. This proposed contract does not claim executable support yet.
 - The untouched historical interpreter can be built and exercised under
   supported sanitizers, and sanitizer findings are captured as fixtures without
   treating undefined behavior as normative semantics.
-- The authoritative rule/specification is deterministic, versionable, and does
-  not depend on undocumented host behavior.
+- Defined interpreter behavior is authoritative and deterministic; sanitizer
+  findings identify non-portable or undefined host behavior.
 
 ## Failure Behavior
 

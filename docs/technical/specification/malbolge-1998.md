@@ -2,11 +2,11 @@
 
 ## Status
 
-Active normative specification
+Active interpreter-authority contract
 
 ## Purpose
 
-- Status: Active normative specification
+- Status: Active interpreter-authority contract
 - Planning identity: `historical-malbolge-semantics-specification`
 - Last reviewed: 2026-07-26
 
@@ -22,16 +22,20 @@ This document governs the following declared TODO scope:
 
 ### Authority
 
-Ben Olmstead's 1998 prose specification is the normative authority for the
-classic machine in this repository. The original C interpreter at
+Defined and reproducible behavior of Ben Olmstead's original C interpreter is
+the semantic authority for `malbolge-1998`. The preserved source at
 `src/interoperability/historical-malbolge/adapter-outbound/main.c` is immutable
-historical evidence, not the semantic
-arbiter when it contradicts the written specification.
+primary executable evidence.
 
-The original interpreter remains valuable for differential testing over the
-intersection where its behavior is defined and agrees with this specification.
-Known disagreements and C defects are cataloged in
-[`historical-undefined-behavior.md`](historical-undefined-behavior.md).
+The 1998 prose remains a primary historical source and an explicit comparison
+model. Where it contradicts defined interpreter behavior, the interpreter wins.
+Ben Olmstead's 2014 interview supports this rule for execution outside graphical
+ASCII and identifies the corresponding prose as erroneous.
+
+Historical host-C undefined behavior is not authoritative. The safe contract
+below rejects or explicitly defines loader underflow, invalid encryption-table
+indices, locale classification, text-mode translation, integer-width, and memory
+model boundaries.
 
 ### Machine State
 
@@ -73,8 +77,10 @@ memory recurrence are rejected rather than resolved through host C behavior.
 
 ### Decode
 
-Before execution, the current cell must be graphical ASCII `33..126`. Otherwise
-the classic machine terminates immediately.
+If the current cell is outside graphical ASCII `33..126`, one requested
+classic step returns `Continued` without changing registers, memory, I/O, or
+termination.
+A bounded run therefore exhausts its budget rather than hanging the host.
 
 For a graphical current cell:
 
@@ -110,23 +116,15 @@ store the result in both `M[D]` and `A`.
 
 ### `<`
 
-Read one input byte into `A` as an unsigned value in `0..=255`.
-
-- Line feed is numeric value `10`.
-- End of input is represented by `59048`.
-- The host text encoding does not reinterpret byte values before they enter `A`.
-
-This is the normative input instruction even though the original C interpreter
-accidentally implements `<` as output.
+Write the low byte of `A`, defined as `A mod 256`, to the output stream. This is
+the original interpreter operation associated with the decoded `<` byte.
 
 ### `/`
 
-Write the low byte of `A`, defined as `A mod 256`, to stdout. Value `10` is
-line feed. Values above `255` therefore have deterministic byte-stream output
-semantics rather than relying on host `putc` conversion details.
-
-This is the normative output instruction even though the original C interpreter
-accidentally implements `/` as input.
+Read one input byte into `A` as an unsigned value in `0..=255`. End of input
+uses the classic maximum word `59048`. This is the original interpreter
+operation
+associated with the decoded `/` byte.
 
 ### `v`
 
@@ -148,9 +146,9 @@ contained the decoded `i` instruction.
 
 The encryption table is defined only for graphical ASCII values `33..=126`. If
 a pointer-changing instruction exposes a non-graphical encryption target, modern
-VMs report an explicit invalid-transition diagnostic before table access and do
-not partially commit the transition. The historical C out-of-bounds behavior is
-H-004 implementation evidence, not normative semantics.
+VMs report `UnsupportedInterpreterBehavior` before table access and do not
+partially commit the transition. Historical out-of-bounds C behavior is not
+portable semantics.
 
 ### Pointer Advancement
 
@@ -164,7 +162,7 @@ D := (D + 1) mod 59049
 
 ### Observation Model
 
-Specification conformance compares:
+Interpreter conformance compares:
 
 - input consumption and EOF handling;
 - output values and order;
@@ -180,31 +178,29 @@ translation, and historical implementation accidents are not guest semantics.
 A conforming VM may use Rust, C, SIMD, JIT/AOT compilation, GPU kernels,
 clusters, lookup tables, packed ternary forms, or other implementations. Those
 choices are correct only when their observable state transitions implement this
-normative machine.
+interpreter-authority contract.
 
 This separation is deliberate: the language semantics remain small and stable
 while execution and compiler algorithms may be optimized aggressively.
 
 ### Historical Interpreter Role
 
-`src/interoperability/historical-malbolge/adapter-outbound/main.c` is retained
-unchanged for:
+The preserved interpreter is the primary semantic source for portable,
+reproducible classic behavior. It is also retained for provenance, sanitizer
+research, and discovery of host-C boundaries. The modern implementation does not
+edit it or invoke its undefined behavior.
 
-- historical provenance;
-- discovering implementation/specification discrepancies;
-- differential testing of semantics on which it agrees with the specification;
-- sanitizer and UB research; and
-- optional `legacy-ben` execution-mode tests.
-
-It does not override the specification.
+The prose specification remains available through
+`ExecutionMode::Specification` for comparison, research, and migration analysis.
+It does not override interpreter authority for `malbolge-1998`.
 
 ## Invariants
 
-- The specification defines loader behavior, registers, memory, instruction
-  decode, crazy operation, rotate, I/O, self-encryption, increments/wrap, and
-  halt/error behavior as explicit state transitions.
-- The authoritative rule/specification is deterministic, versionable, and does
-  not depend on undocumented host behavior.
+- The interpreter-authority contract defines loader behavior, registers,
+  memory, instruction decode, crazy operation, rotate, I/O, self-encryption,
+  increments/wrap, and halt/error behavior as explicit state transitions.
+- The authoritative rule is deterministic, versionable, and excludes
+  undocumented host behavior.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
@@ -227,6 +223,8 @@ It does not override the specification.
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
 
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
+- `docs/bibliography/specifications-and-standards/malbolge/`
+  `ben-olmstead-2014-interview.md`
 - `src/interoperability/historical-malbolge/adapter-outbound/main.c`
 
 ### Governing ADR Paths

@@ -8,7 +8,7 @@ Active implementation
 
 Implement the primary modern VM in safe Rust with explicit errors, deterministic
 state transitions, tracing hooks, and instruction-level conformance with the
-normative 1998 specification.
+defined, reproducible behavior of the original interpreter.
 
 ## Scope
 
@@ -23,9 +23,10 @@ This document governs the following declared TODO scope:
 
 ### Model
 
-The safe-Rust VM is the primary normative classic execution engine. Internal
-representation may change without changing observable behavior, the verification
-trust boundary, or the authority of the written 1998 specification.
+The safe-Rust VM is the primary interpreter-authority classic execution engine.
+Internal representation may change without changing observable behavior, the
+verification trust boundary, or the authority of defined original-interpreter
+semantics.
 
 ### Implementation Status
 
@@ -180,8 +181,8 @@ memory, input consumption, or output.
   family in both profiles.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
-- The historical interpreter is compared only on its documented agreement
-  domain.
+- The original C source is compared only where its behavior is defined and
+  reproducible; undefined host behavior remains a safe failure.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
 

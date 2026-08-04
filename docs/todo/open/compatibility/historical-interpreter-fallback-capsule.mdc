@@ -67,7 +67,7 @@ metadata that the original loader ignores.
   fallback program.
 - The fallback is communication for old tooling, not semantic compatibility
   evidence for the extended payload.
-- Specification-conformant classic programs remain ordinary `.malbolge` when no
+- Interpreter-compatible classic programs remain ordinary `.malbolge` when no
   extension is required.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.

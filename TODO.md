@@ -11,10 +11,12 @@ Rust, C, Python, CUDA, PyTorch, and Malbolge may coexist inside one component
 when they implement the same responsibility. Cargo is a build mechanism, not the
 architecture; artificial Rust crates must not become repository boundaries.
 
-The historical Ben Olmstead interpreter is immutable primary implementation
-evidence, not semantic authority and not project-owned source. Project code is
-MIT licensed; the original interpreter keeps its own public-domain notice and is
-explicitly excluded from relicensing. Planning is intentionally front-loaded.
+The historical Ben Olmstead interpreter is immutable primary semantic evidence
+for defined and reproducible `malbolge-1998` behavior and is not project-owned
+source. Project code is MIT licensed; the original interpreter keeps its own
+public-domain notice and is explicitly excluded from relicensing. Historical C
+undefined behavior remains outside portable semantics. Planning is intentionally
+front-loaded.
 Before implementation begins, TODO work must be decomposed into typed TODOs with
 real dependencies, bounded scope, provable acceptance criteria, and named
 evidence. Once planning is stable, the next pass promotes settled decisions into
@@ -60,13 +62,14 @@ enough for the TODO heading to disappear without losing unfinished intent.
 - The host may execute the VM and provide fundamental byte input/output, but it
   may not secretly implement guest algorithms such as PDF writing, hashing,
   allocation, parsing, formatting, or application logic.
-- The written 1998 specification defines the frozen `malbolge-1998`
-  historical/conformance semantics. Modern historical-conformance backends are
-  verified against that specification; Ben's interpreter supplies differential
-  evidence only on the documented agreement subset.
+- Defined and reproducible original-interpreter behavior defines the frozen
+  `malbolge-1998` historical/conformance semantics. Modern classic backends are
+  verified against that authority; contradictory prose is explicit comparison
+  evidence and historical C undefined behavior fails safely.
 - There is one evolving modern Malbolge product. `malbolge-1998` is its frozen
   historical/conformance profile, not the permanent default resource envelope;
-  `legacy-ben` behavior is historical evidence, not a semantic product line.
+  `legacy-ben` remains only a backward-compatible parser alias for
+  `interpreter`, not a semantic product line.
 - CPU execution is always available on the declared 64-bit host baseline:
   x86-64 and AArch64 are first-class architectures from the initial
   implementation slice.
@@ -180,8 +183,8 @@ behavior separately from intended Malbolge semantics.
 
 Build the historical interpreter under AddressSanitizer and
 UndefinedBehaviorSanitizer where supported, preserve failing fixtures, and use
-the evidence to distinguish reference semantics from C implementation defects
-without editing Ben's source.
+the evidence to distinguish defined interpreter semantics from host-dependent
+or undefined C behavior without editing Ben's source.
 
 ## Documentation authority and promotion
 
@@ -227,20 +230,20 @@ engineering work.
 ### TODO - Safe Rust Malbolge VM
 
 Implement the primary modern VM in safe Rust with explicit errors, deterministic
-state transitions, tracing hooks, and instruction-level conformance with the
-normative 1998 specification.
+state transitions, tracing hooks, and instruction-level conformance with defined
+and reproducible original-interpreter behavior.
 
-### TODO - Specification and legacy-interpreter execution modes
+### TODO - Interpreter-authority and specification-comparison modes
 
-Make specification-conformant execution the default and only normal Malbolge
-semantics. Add an explicit `legacy-ben` mode only for archaeology, differential
-diagnosis, and historical-corpus study; it never becomes a compiler target or
-verification authority.
+Make interpreter-compatible execution the default and verifier authority for
+`malbolge-1998`. Retain specification behavior as an explicit comparison mode;
+keep `legacy-ben` only as a backward-compatible parser alias for `interpreter`.
 
 ### TODO - Independent pure C Malbolge VM
 
 Implement a small auditable pure-C VM independently from the stabilized
-specification rather than mechanically translating the Rust implementation.
+interpreter-authority contract rather than mechanically translating the Rust
+implementation.
 
 ### TODO - CPU VM table optimization
 
@@ -1167,7 +1170,7 @@ and end-to-end tier performance remain open.
 ### TODO - Deterministic CPU optimizer
 
 Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the specification-conformant CPU
+a GPU, even when much slower, and acts as the declared-profile-conformant CPU
 baseline on both x86-64 and AArch64 hosts for accelerator implementations.
 The active `deterministic-corpus-enumeration-v1` strategy searches an explicit
 canonically encoded finite corpus under deterministic seed/budget control and

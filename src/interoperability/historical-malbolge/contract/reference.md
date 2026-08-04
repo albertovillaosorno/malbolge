@@ -13,12 +13,11 @@ Canonical upstream references:
 - <https://www.lscheffer.com/malbolge_interp.html>
 - <https://www.lscheffer.com/malbolge_spec.html>
 
-The interpreter preserves historical implementation evidence and supports
-differential tests on the documented agreement subset. The written 1998
-specification is normative when the prose and this C implementation disagree.
-Historical undefined behavior and implementation defects are cataloged
-separately and are not copied into modern implementations merely because they
-occur here.
+The interpreter is immutable primary evidence and the semantic authority where
+its behavior is defined, reproducible, and independent of host accidents. The
+written prose remains comparison evidence. Undefined behavior and portability
+boundaries are cataloged separately and are not copied into modern
+implementations merely because they occur here.
 
 Do not modify `main.c` when adding sanitizer builds, differential tests, or
 compatibility fixtures. Put repository-owned support beside or outside the

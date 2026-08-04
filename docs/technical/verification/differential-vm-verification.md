@@ -6,10 +6,11 @@ Proposed
 
 ## Purpose
 
-Run specification fixtures through the Rust VM, independent C VM, and
+Run interpreter-authority fixtures through the Rust VM, independent C VM, and
 accelerator VM and compare output, termination, state, mutation, and instruction
-traces. Run the original C interpreter only on the documented agreement subset
-as historical differential evidence.
+traces. Use the preserved original source as primary evidence only where its C
+behavior is defined and reproducible; retain prose behavior as explicit
+comparison evidence.
 
 ## Scope
 
@@ -35,10 +36,9 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 ## Invariants
 
-- The Rust VM, independent C VM, and any accelerator VM agree with the normative
-  specification on all admitted classic fixtures. The historical interpreter
-  participates only for fixtures whose behavior is defined and documented to
-  agree with the specification.
+- The Rust VM, independent C VM, and accelerator VM agree with defined,
+  reproducible original-interpreter behavior on all admitted classic fixtures.
+  Undefined C behavior is a typed boundary, not an oracle result.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
 

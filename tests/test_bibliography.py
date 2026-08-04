@@ -40,7 +40,7 @@ from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 24
+EXPECTED_RECORDS = 25
 EXPECTED_BASELINE = 22
 
 

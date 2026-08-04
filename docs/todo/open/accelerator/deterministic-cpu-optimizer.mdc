@@ -29,13 +29,13 @@ validation:
 ## Objective
 
 Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the specification-conformant CPU
+a GPU, even when much slower, and acts as the declared-profile-conformant CPU
 baseline for accelerator implementations.
 
 ## Acceptance
 
 - A CPU-only optimizer/search path can produce and verify candidates without GPU
-  availability and serves as the reproducible specification-conformant CPU
+  availability and serves as the reproducible declared-profile-conformant CPU
   baseline for accelerator strategies.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.

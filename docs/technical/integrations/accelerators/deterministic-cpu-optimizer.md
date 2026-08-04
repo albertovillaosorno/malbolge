@@ -7,8 +7,8 @@ Active implementation
 ## Purpose
 
 Implement a correct CPU reference optimizer and search engine that remains
-available without a GPU and serves as the specification-conformant baseline on
-both x86-64 and AArch64 hosts.
+available without a GPU and serves as the declared-profile-conformant baseline
+on both x86-64 and AArch64 hosts.
 
 ## Scope
 

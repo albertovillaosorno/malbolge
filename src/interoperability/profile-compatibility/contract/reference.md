@@ -6,8 +6,8 @@ canonical executable profile declaration is the repository-root
 
 ## Current identities
 
-- `malbolge-1998` freezes the written 1998 ten-trit, 59,049-word machine for
-  conformance and archaeology.
+- `malbolge-1998` freezes defined original-interpreter behavior in the
+  ten-trit, 59,049-word machine for conformance and archaeology.
 - `malbolge-2026.1` is the immutable ten-trit transition identity that first
   separated current-language artifacts from historical conformance.
 - `malbolge-2026.2` is the current schema-v2 scalable profile: 14 trits and
@@ -16,8 +16,9 @@ canonical executable profile declaration is the repository-root
 `src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json` records why 14 trits were selected
 for the first scalable profile. Future capacity changes create another immutable
 profile and advance `current_profile`; they never mutate an existing identity.
-Historical interpreter quirks remain outside language profiles and require
-explicit `legacy-ben` execution.
+Defined original-interpreter behavior belongs to `malbolge-1998`.
+Contradictory prose is explicit specification comparison, while undefined C
+behavior remains outside every portable profile.
 
 Profile identity uses `malbolge-profile-v1` canonicalization and self-describing
 SHA-256 fingerprints. `profile-fingerprints.json` is the generated canonical

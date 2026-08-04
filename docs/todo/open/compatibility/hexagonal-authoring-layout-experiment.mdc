@@ -32,7 +32,8 @@ execution engine for compatible programs.
 - The experiment measures whether alternate authoring/module layouts improve
   compiler/research ergonomics without creating language-based repository
   boundaries or changing emitted semantics.
-- `malbolge-1998` preserves the written 1998 machine exactly; current-language
+- `malbolge-1998` preserves defined original-interpreter semantics;
+  current-language
   behavior and capacity are gated by explicit versioned profile identity.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed

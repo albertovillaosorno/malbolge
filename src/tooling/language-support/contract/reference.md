@@ -31,7 +31,10 @@ The Linguist contribution should register one language named **Malbolge** and on
 source.malbolge
 ```
 
-The historical Ben Olmstead C interpreter and the written 1998 specification disagree on some runtime behavior. Those disagreements do not create two lexical languages. This repository treats the written specification as the authority for specification-conformant execution and preserves historical interpreter behavior separately.
+The historical Ben Olmstead C interpreter and the written 1998 specification
+disagree on some runtime behavior. Those disagreements do not create two lexical
+languages. This repository treats defined, reproducible interpreter behavior as
+the `malbolge-1998` authority and retains prose behavior as explicit comparison.
 
 The final Linguist contribution should therefore not invent separate entries such as `Malbolge (Ben)` and `Malbolge (spec)`.
 
@@ -95,7 +98,8 @@ This staging area remains **WIP** until all applicable items below are complete:
 - [x] Every helper/function in `sample.c` is reached from `main`; no dead demonstration helper exists only to inflate feature coverage.
 - [ ] `c2malbolge` compiles that exact C source reproducibly.
 - [ ] The emitted Malbolge artifact is accepted by the modern VM loader for its declared profile.
-- [ ] Executing the artifact produces the expected observable behavior under the specification-conformant VM.
+- [ ] Executing the artifact produces the expected observable behavior under
+  the interpreter-authority VM.
 - [ ] The final artifact is small enough to be useful as a Linguist classifier sample. If it is excessively large, simplify the C sample rather than hand-editing compiler output.
 - [ ] The final sample source, generated artifact, generation command, target profile, expected behavior, and license/provenance are documented together.
 - [ ] The dedicated grammar repository is published under a Linguist-approved license.
@@ -172,7 +176,10 @@ xlat1[(source_byte - 33 + loaded_position) mod 94]
 
 The grammar therefore does not assign fixed opcode scopes to literal source glyphs. It conservatively scopes encoded graphical source units and invalid source-representation bytes, leaving position-dependent instruction validation to the Malbolge loader/toolchain.
 
-The written 1998 specification and the historical C interpreter disagree on some execution semantics. Those are runtime compatibility differences rather than separate lexical languages, so this contribution defines one language named `Malbolge` with the TextMate scope `source.malbolge`.
+The written 1998 specification and historical C interpreter disagree on some
+execution semantics. Those are runtime compatibility differences rather than
+separate lexical languages, so this contribution defines one language named
+`Malbolge` with the TextMate scope `source.malbolge`.
 
 ### Implementation data
 

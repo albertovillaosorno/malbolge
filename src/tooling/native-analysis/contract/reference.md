@@ -96,12 +96,13 @@ compiler/tooling contract regression.
 
 ## Current Malbolge and the 1998 conformance profile
 
-The guest-C profile must not inherit accidental limitations or undefined
-behavior from Ben Olmstead's historical interpreter. Historical implementation
-bugs are evidence, not language authority.
+The guest-C profile follows defined, reproducible interpreter semantics but
+must not inherit undefined behavior, locale dependence, or accidental host-C
+limits from Ben Olmstead's historical implementation.
 
-`malbolge-1998` remains a frozen conformance profile for the written 1998
-machine, including its ten-trit words and 59,049-word memory. Current Malbolge is
+`malbolge-1998` remains a frozen conformance profile for defined original
+interpreter semantics, including ten-trit words and 59,049-word memory. Current
+Malbolge is
 a versioned evolution of the same language rather than a separately branded
 "extended" dialect. It may remove historical resource ceilings while preserving
 Malbolge's defining ternary arithmetic, crazy operation, rotate,

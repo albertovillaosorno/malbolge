@@ -15,8 +15,9 @@ the compiler itself into Malbolge.
 ## Project status
 
 The repository now contains an executable and tested foundation rather than
-only a design skeleton. Durable work includes the normative 1998 specification,
-classic and scalable-profile Rust VMs, an independent C VM, capsules and traces,
+only a design skeleton. Durable work includes interpreter-authority 1998
+semantics, classic and scalable-profile Rust VMs, an independent C VM, capsules
+and traces,
 execution IR, optional native execution tiers, exact CPU/CUDA primitive paths,
 resident CUDA classic/profile sessions, validated asynchronous submissions, and
 bounded evidence-based accelerator admission.
@@ -231,25 +232,29 @@ Linux CUDA loading and per-platform hermetic toolchains remain an explicit TODO.
 
 ## Semantic authority
 
-The written 1998 Malbolge specification is the normative definition of the
-classic machine. Ben Olmstead's original C interpreter is preserved unchanged
-under
+Defined and reproducible behavior of Ben Olmstead's original interpreter is the
+semantic authority for the frozen `malbolge-1998` profile. The interpreter is
+preserved unchanged under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [`src/interoperability/historical-malbolge/adapter-outbound/main.c`](src/interoperability/historical-malbolge/adapter-outbound/main.c)
-as historical evidence,
-not as semantic authority when it contradicts the specification.
+and supplies primary executable evidence.
 
-This distinction is intentional. The specification defines `<` as input and `/`
-as output, while the historical interpreter implements them in reverse. The
-specification also requires immediate termination on a non-graphical executable
-cell, while the C implementation can remain stuck without advancing its
-pointers. Modern VMs, compilers, verifiers, native backends, and accelerators
-follow the specification. A future explicitly named `legacy-ben` mode is kept
-only for archaeology and differential diagnosis.
+This choice preserves the historical ecosystem where the prose and interpreter
+disagree. Classic `<` writes the low byte of `A`, `/` reads input, and a current
+cell outside `33..126` performs bounded non-progress rather than terminating.
+Ben Olmstead later described that graphical-range behavior as intended and said
+the corresponding defect was in the specification.
 
-See the specification-authority ADR under `docs/technical/adr/`, the [normative
-machine specification][machine-spec], and
-`docs/technical/specification/historical-undefined-behavior.md`.
+The authority is deliberately limited to portable, defined behavior. Historical
+C undefined behavior, locale dependence, text-mode translation, and host memory
+or integer assumptions are rejected safely or governed by an explicit versioned
+profile. `ExecutionMode::Specification` remains available for comparison but is
+not the default and is not verifier eligible.
+
+See the interpreter-authority ADR under `docs/technical/adr/`, the [historical
+machine contract][machine-spec], the historical C-boundary catalogue, and the
+Ben Olmstead interview record under
+`docs/bibliography/specifications-and-standards/malbolge/`.
 
 ## Target workflow
 

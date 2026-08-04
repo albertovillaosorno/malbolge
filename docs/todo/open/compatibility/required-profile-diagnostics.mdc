@@ -97,7 +97,8 @@ historical-profile constraint.
 - Programs that require an unsupported target profile fail before unsafe
   execution with deterministic diagnostics naming required
   version/features/memory and the runtime capability that is missing.
-- `malbolge-1998` preserves the written 1998 machine exactly; current-language
+- `malbolge-1998` preserves defined original-interpreter semantics;
+  current-language
   behavior and capacity are gated by explicit versioned profile identity.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.

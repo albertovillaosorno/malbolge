@@ -14,12 +14,13 @@ Verified; evidence verified.
 
 ## Repository Use
 
-These sources define the historical language specification and identify the
-untouched interpreter retained under
-`src/interoperability/historical-malbolge/adapter-outbound/main.c`. The
-repository
-treats specification/interpreter disagreements as explicit implementation
-defects.
+These sources record the historical prose and identify the untouched
+interpreter retained under
+`src/interoperability/historical-malbolge/adapter-outbound/main.c`. For the
+frozen `malbolge-1998` profile, defined and reproducible interpreter behavior is
+the semantic authority. Contradictory prose remains comparison evidence, while
+host-dependent behavior and C undefined behavior remain explicit safe
+boundaries.
 
 ## Provenance
 
@@ -29,8 +30,9 @@ interpreter page presents itself as the original interpreter and contains the
 same public-domain dedication in the source header.
 
 The repository treats the specification and interpreter as historical primary
-sources. Later commentary may help explain them but cannot silently override the
-recorded machine behavior.
+sources. Ben Olmstead's 2014 interview is later author testimony used to resolve
+the authority dispute; exact transitions still derive from the preserved source
+where its C behavior is defined and reproducible.
 
 ## Identity And Version
 
@@ -61,9 +63,15 @@ terms into the repository MIT license.
 
 ### Unresolved
 
-The historical C implementation contains implementation assumptions and defects
-that are not automatically normative language semantics. Those are cataloged by
-separate repository work.
+The historical C implementation contains locale, text-mode, integer-width,
+memory-model, uninitialized-read, and out-of-bounds behavior that cannot define
+portable semantics. Those boundaries are cataloged separately and fail safely in
+modern implementations.
+
+## Related Repository Evidence
+
+- `ben-olmstead-2014-interview.md` - author testimony used by the
+  authority ADR.
 
 ## Sources
 

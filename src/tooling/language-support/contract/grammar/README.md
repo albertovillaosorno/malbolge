@@ -23,7 +23,7 @@ submission time.
 ## Semantic basis
 
 The grammar follows the source-admission boundary implemented by the canonical
-Rust VM and documented by the normative Malbolge specification.
+Rust VM and documented by the interpreter-authority Malbolge contract.
 
 The current Rust loader accepts these source-representation classes:
 

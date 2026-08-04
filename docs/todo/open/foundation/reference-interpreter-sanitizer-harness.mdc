@@ -26,8 +26,8 @@ validation:
 
 Build the historical interpreter under AddressSanitizer and
 UndefinedBehaviorSanitizer where supported, preserve failing fixtures, and use
-the evidence to distinguish reference semantics from C implementation defects
-without editing Ben's source.
+the evidence to distinguish defined interpreter semantics from host-dependent
+or undefined C behavior without editing Ben's source.
 
 ## Acceptance
 

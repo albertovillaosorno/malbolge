@@ -54,9 +54,9 @@ deterministically without changing guest-visible state silently.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
 - Required evidence: semantic fixtures, state/I/O traces where diagnostic, and
-  differential results against independent specification-conformant
-  implementations; the historical interpreter is compared only on its documented
-  agreement domain.
+  differential results against independent interpreter-compatible
+  implementations; the original C source is compared only where its behavior is
+  defined and reproducible.
 - Prerequisite completion evidence: `ahead-of-execution-native-translation`,
   `guarded-self-modification-jit`.
 ## References

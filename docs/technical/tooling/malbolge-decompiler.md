@@ -111,11 +111,12 @@ steps=3
 ```
 
 That native compile/run is implementation evidence, not an independent semantic
-oracle. The normative VM and specification remain the acceptance authority.
+oracle. The interpreter-authority VM and declared target profile remain the
+acceptance authority.
 
 ## References
 
 - [Canonical target profile](../specification/target-profile.md)
-- [Specification authority and Malbolge
+- [Interpreter authority and Malbolge
   evolution](../adr/specification-authority-and-malbolge-evolution.md)
 - [Verification trust boundary](../adr/verification-trust-boundary.md)

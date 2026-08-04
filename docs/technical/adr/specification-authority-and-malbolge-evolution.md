@@ -1,8 +1,8 @@
-# Specification Authority And Malbolge Evolution
+# Interpreter Authority And Malbolge Evolution
 
 ## Status
 
-Accepted.
+Accepted; supersedes the previous specification-first decision in this file.
 
 ## Decision ID
 
@@ -10,106 +10,109 @@ Accepted.
 
 ## Context
 
-Malbolge has two primary historical artifacts from 1998: Ben Olmstead's prose
-specification and his C interpreter. They disagree in observable places. Most
-notably, the specification defines `<` as input and `/` as output, while the C
-interpreter implements those operations in reverse. The prose specification also
-says execution of a non-graphical cell ends immediately, while the C interpreter
-loops without advancing its pointers.
+Malbolge has two primary 1998 artifacts: Ben Olmstead's prose specification and
+his C interpreter. They disagree observably. The prose assigns `<` to input and
+`/` to output, while the interpreter does the reverse. The prose terminates on a
+non-graphical current cell, while the interpreter performs no state transition
+and repeatedly revisits that cell.
 
-A modern compiler, verifier, optimizer, native backend, GPU executor, or cluster
-cannot have a coherent semantic target if implementation accidents silently
-outrank the written machine definition.
+In a 2014 interview, Olmstead said the `33..126` behavior was intended and that,
+on that point, the specification contained the bug. The preserved source
+independently proves the implemented behavior. Compatibility with the ecosystem
+therefore requires a deterministic account of the interpreter, not silent
+preference for contradictory prose.
+
+The original C program also contains host assumptions and undefined behavior.
+Those cannot become portable language semantics merely because they occur in the
+historical implementation.
 
 ## Decision
 
-The 1998 prose specification is the normative authority for the frozen
-`malbolge-1998` historical/conformance profile in this repository. It defines
-what the original language meant and remains the semantic oracle for historical
-conformance; it is not an eternal resource ceiling on current Malbolge.
+For the frozen `malbolge-1998` profile, Ben Olmstead's original interpreter is
+the semantic authority wherever its behavior is defined, reproducible, and
+independent of accidental host behavior.
 
-Current Malbolge is a versioned living language derived from that machine. Its
-defining ternary arithmetic, crazy operation, rotate behavior,
-self-modification,
-post-instruction encryption, sequential guest execution, and deterministic
-semantics are preserved as the language core unless a later reviewed profile
-explicitly changes them. Historical implementation defects and accidental host-C
-limits are not part of that core.
+The written specification remains important explanatory and comparison evidence.
+`ExecutionMode::Specification` exposes that comparison explicitly, but it is not
+the default and is not verifier eligible.
 
-Ben Olmstead's original C interpreter remains immutable historical evidence and
-a differential oracle only over the subset where its behavior is defined and
-agrees with the normative specification. When the interpreter contradicts the
-specification, the specification wins.
+The authoritative classic rules include:
 
-Historical interpreter bugs are documented as implementation defects. Modern
-implementations must not reproduce them in their normal execution mode merely to
-preserve compatibility with programs that accidentally depended on those bugs.
+- `<` emits the low byte of `A`;
+- `/` reads one byte into `A`, or the classic EOF word when input is exhausted;
+- a current cell outside `33..126` performs one bounded non-progress step rather
+  than terminating;
+- all other defined arithmetic, decode, rotation, crazy-operation,
+  self-modification, and pointer behavior follow the preserved interpreter.
 
-An explicitly named legacy-interpreter mode may emulate selected Ben-interpreter
-behavior for archaeology, differential diagnosis, or historical corpus study.
-That mode is not the compiler target, does not redefine the language, and cannot
-be used as verification authority for specification-conformant output.
+Modern implementations must not execute historical C undefined behavior.
+Insufficient recurrence input, invalid self-encryption table indices, locale
+classification, text-mode translation, and host integer or memory-model quirks
+fail safely or are defined by an explicit versioned profile.
 
-Useful evolution such as larger memory uses versioned target profiles derived
-from the normative machine. The current language is not branded as a separate
-"extended" Malbolge merely because it removes a historical ceiling. The exact
-1998 ten-trit/59,049-word machine remains available by selecting
-`malbolge-1998`; current profiles may generalize word/address capacity while
-preserving the defining ternary operations and self-modifying execution model.
-The scaling mechanism must be explicit and deterministic rather than silently
-borrowing host pointer width or memory behavior.
+`ExecutionMode::Interpreter` is the default classic mode and the only
+verifier-eligible classic execution mode. The parser accepts `legacy-ben` as a
+backward-compatible alias for `interpreter`; it does not identify a second
+language or feature-gated product line.
+
+Current Malbolge remains a versioned living language. Profiles such as
+`malbolge-2026.*` may deliberately retain or change documented behavior under
+their own immutable identities. No profile silently inherits semantics from
+another merely because word and memory geometry match.
 
 ## Advantages
 
-- Makes the specification authority and malbolge evolution boundary explicit,
-  reviewable, and stable before implementation depends on it.
+- Preserves compatibility with programs and tools built around the original
+  interpreter.
+- Aligns the frozen historical profile with the author's stated intent.
+- Keeps the prose disagreement available for explicit study.
+- Separates deterministic interpreter behavior from undefined host-C behavior.
+- Gives Rust, C, native, and accelerator implementations one portable target.
 
 ## Disadvantages
 
-- The decision constrains future implementation until a later ADR deliberately
-  supersedes it.
+- Existing specification-first outputs and semantic signatures change.
+- Some documents and tests must distinguish historical interpreter authority
+  from later versioned profile semantics.
+- The non-graphical behavior requires bounded host APIs to prevent an unbounded
+  host hang.
 
 ## Consequences
 
-- `<` means input and `/` means output in `malbolge-1998` and in current
-  profiles unless explicitly versioned otherwise.
-- Executing a non-graphical current cell terminates the classic machine as the
-  specification states.
-- Historical programs that depended on interpreter bugs may behave differently
-  under the modern VM.
-- Test corpora must distinguish specification conformance from Ben-interpreter
-  compatibility.
-- GPU, cluster, JIT/AOT, optimizer, and verifier implementations share one clean
-  semantic contract instead of reproducing host-C accidents.
-- The historical interpreter remains useful without being the architecture's
-  semantic root.
+- Classic Rust, independent C, profile-historical, native, and accelerator paths
+  must agree with interpreter authority.
+- `<` is output and `/` is input for `malbolge-1998`.
+- Non-graphical execution consumes a requested step without state progress.
+- Specification comparison is explicit and cannot satisfy verification.
+- Undefined interpreter behavior remains a typed atomic failure.
+- Differential signatures and compatibility fixtures bind to the new authority.
+- The original interpreter remains immutable primary evidence.
 
 ## Rejected Alternatives
 
-### Treat the original C interpreter as the language authority
+### Keep the prose specification as authority
 
-Rejected. It preserves historical program compatibility at the cost of turning
-implementation defects and C undefined behavior into language semantics. It also
-creates a poor foundation for independent Rust/C implementations and accelerator
-backends.
+Rejected because it contradicts both the preserved implementation and the
+language author's later statement of intent, reducing historical compatibility.
 
-### Preserve every historical program through bug-compatible default semantics
+### Reproduce every observable C behavior
 
-Rejected. Nostalgic compatibility is less important than one deterministic,
-reviewable machine definition suitable for compilers, verifiers, GPUs, clusters,
-and future implementations.
+Rejected because out-of-bounds accesses, uninitialized reads, locale dependence,
+and historical memory-model assumptions are not deterministic portable
+semantics.
 
-### Remove the original interpreter
+### Remove specification comparison
 
-Rejected. The file is valuable primary evidence, exposes historical defects, and
-provides differential coverage for the large semantic intersection where it
-matches the written specification.
+Rejected because the discrepancy is historically important and useful for
+research, diagnostics, and migration analysis.
 
 ## Evidence
 
-The canonical historical profile identifies itself as `malbolge-1998` and
-specification-conformant. The canonical current profile has a distinct versioned
-identity and must never be confused with historical conformance. If a legacy
-Ben-interpreter mode is implemented, its identity and diagnostics remain
-explicit enough that generated artifacts are never accidentally verified
-against it as if it were a language profile.
+- `src/interoperability/historical-malbolge/adapter-outbound/main.c` implements
+  reversed I/O and non-progress outside `33..126`.
+- `tests/vm/modes.rs` proves interpreter authority, explicit comparison mode,
+  bounded non-progress, and safe rejection of undefined behavior.
+- `tests/vm/differential.rs` and the independent C oracle share a reviewed
+  interpreter-derived semantic signature.
+- `docs/bibliography/specifications-and-standards/malbolge/`
+  `ben-olmstead-2014-interview.md` records the author testimony and provenance.

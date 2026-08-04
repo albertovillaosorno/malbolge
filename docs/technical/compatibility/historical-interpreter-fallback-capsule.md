@@ -190,9 +190,8 @@ through the modern capsule path.
   validates recognition, checksum tampering, exact shared fingerprint mismatch,
   and unknown-profile rejection without fallback; proves ordinary-source
   non-recognition, verifies the historical visible bytes, runs the fixed
-  fallback
-  under explicit `legacy-ben`, and proves current-profile execution reaches
-  capability preflight before payload loading.
+  fallback under `ExecutionMode::Interpreter`, and proves current-profile
+  execution reaches capability preflight before payload loading.
 - `tests/compatibility/test_capsule.py` independently decodes the whitespace
   frame, recomputes FNV-1a-64, checks the immutable historical C loader's
   `fopen(..., "r")` plus `isspace` behavior, and reconstructs the seven fixed

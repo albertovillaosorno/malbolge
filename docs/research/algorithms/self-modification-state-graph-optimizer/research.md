@@ -82,7 +82,7 @@ Three deterministic fixtures currently pass:
 - replaying the same bounded execution reuses nodes and edges;
 - forcing every snapshot to digest `0` still keeps distinct input states in
   separate nodes because complete snapshots are compared;
-- only normative specification mode is admitted by this baseline.
+- only verifier-eligible interpreter mode is admitted by this baseline.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex`

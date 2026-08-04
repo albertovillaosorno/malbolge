@@ -95,8 +95,8 @@ transitions do not silently commit partial guest-visible effects.
   the safe-Rust VM. No C implementation code is called by that Rust test.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
   `benchmarks/interpreter/`.
-- The historical interpreter is compared only on its documented agreement
-  domain.
+- The original C source is compared only where its behavior is defined and
+  reproducible; undefined host behavior remains a safe failure.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
 

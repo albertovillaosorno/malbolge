@@ -69,10 +69,12 @@ and the Rust profile projection.
 
 - `malbolge.json` has a closed, versioned schema whose values are consumed
   consistently by VM, compiler, verifier, tidy, runtime, and optimization paths.
-- The authoritative rule/specification is deterministic, versionable, and does
-  not depend on undocumented host behavior.
-- `malbolge-1998` exactly identifies the written 1998 ten-trit/59,049-word
-  machine and remains available for conformance and archaeology.
+- Every authoritative profile rule is deterministic, versionable, and excludes
+  undocumented host behavior.
+- `malbolge-1998` identifies defined, reproducible original-interpreter
+  semantics in the ten-trit/59,049-word envelope and remains available for
+  conformance and
+  archaeology.
 - The canonical current profile is a versioned evolution of Malbolge, not a
   separately branded "extended" language. It may remove historical resource
   ceilings while preserving the defining ternary/self-modifying semantics.

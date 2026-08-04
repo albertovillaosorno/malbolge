@@ -1,4 +1,4 @@
-# Historical Interpreter Defects And Specification Discrepancies
+# Historical Interpreter Behavior And Undefined C Boundaries
 
 ## Status
 
@@ -6,17 +6,18 @@ Active historical catalogue
 
 ## Purpose
 
-This catalogue records places where Ben Olmstead's original C interpreter is
-incorrect, host-dependent, undefined, pathological, or otherwise unsuitable as
-the normative language definition.
+This catalogue separates authoritative original-interpreter behavior from
+host-dependent or undefined behavior in Ben Olmstead's C implementation.
 
-The resolution rule is simple: the written 1998 specification defines classic
-Malbolge. Interpreter disagreements are implementation defects unless a later
-accepted language profile explicitly changes the specification.
+The resolution rule is:
+
+1. defined, reproducible interpreter behavior is authoritative for
+   `malbolge-1998`;
+2. contradictory prose remains explicit specification-comparison evidence;
+3. undefined, locale-dependent, or host-dependent C behavior is rejected safely
+   or governed by an explicit versioned profile.
 
 ## Scope
-
-This document governs the following declared TODO scope:
 
 - `tools/malbolge/`
 - `docs/technical/specification/`
@@ -26,187 +27,143 @@ This document governs the following declared TODO scope:
 
 ### Compatibility Policy
 
-Historical compatibility is evidence, not semantic authority.
+Modern Rust, independent C, native, and accelerator implementations reproduce
+the portable state transitions of the original interpreter. They do not invoke
+historical undefined behavior merely to imitate the C program.
 
-1. Where the C interpreter is defined and agrees with the specification, it is a
-   useful differential oracle. 2. Where it disagrees with the specification, the
-   modern VM follows the specification. 3. Where it invokes or risks C undefined
-   behavior, modern code uses deterministic specification-derived behavior or
-   rejects an underspecified source boundary. 4. `legacy-ben` may emulate
-   selected defects only through explicit, safe modern logic and only for
-   historical study.
+### H-001 - Interpreter I/O Assignment
 
-This policy intentionally permits old bug-dependent examples to stop working.
-The compiler and execution platform optimize a clean machine definition rather
-than preserving accidental nostalgia.
+Classification: **intended interpreter semantics / prose discrepancy**.
 
-### H-001 - Input And Output Reversed
-
-Classification: **historical interpreter defect**.
-
-The specification defines `<` as input and `/` as output. The original C
-interpreter implements the opposite:
+The prose assigns `<` to input and `/` to output. The original interpreter
+implements:
 
 ```c
 case '<': putc(a, stdout); break;
 case '/': x = getc(stdin); /* ... */ break;
 ```
 
-Normative rule: `<` reads and `/` writes.
+Authoritative rule: `<` writes the low byte of `A`; `/` reads a byte into
+`A`, or the classic EOF word when input is exhausted.
+`ExecutionMode::Specification`
+retains the prose assignment only for explicit comparison.
 
-Compatibility consequence: programs written around the interpreter bug may not
-behave the same on the modern specification-conformant VM. That incompatibility
-is accepted. An optional `legacy-ben` mode may model the historical behavior for
-archaeology but cannot redefine the language or satisfy compiler verification.
+### H-002 - Non-Graphical Current Cell Does Not Progress
 
-Required fixture: `spec-io-roundtrip.malbolge` must distinguish the normative
-read-then-write behavior from the historical interpreter's write-then-read bug.
+Classification: **intended interpreter semantics / prose discrepancy**.
 
-### H-002 - Non-Graphical Current Cell Does Not Terminate
-
-Classification: **historical interpreter defect**.
-
-The specification says a current cell outside graphical ASCII `33..126`
-immediately ends the program. The C interpreter instead executes:
+The interpreter executes:
 
 ```c
 if (mem[c] < 33 || mem[c] > 126) continue;
 ```
 
-Because neither pointer advances, the interpreter can remain in a tight
-non-progressing loop.
-
-Normative rule: the machine terminates immediately.
-
-A legacy diagnostic harness may demonstrate the historical non-progressing state
-using bounded stepping or a separately controlled process.
+Neither pointer advances. Modern bounded APIs model one request as `Continued`
+with no state, I/O, memory, or termination change. A bounded run exhausts its
+budget rather than hanging the host. Olmstead's 2014 interview identifies this
+behavior as intended and the contradictory prose as the defect.
 
 ### H-003 - Fewer Than Two Loaded Words
 
 Classification: **C undefined behavior / underspecified loader edge**.
 
-The interpreter completes memory with:
+Memory completion reads `mem[i - 1]` and `mem[i - 2]`. With fewer than two
+loaded words, the original program reads before the allocation.
 
-```c
-mem[i] = op(mem[i - 1], mem[i - 2]);
-```
+Project rule: source admission rejects a recurrence without two predecessor
+words. No arbitrary bytes are invented.
 
-With fewer than two loaded words, this reads before the allocation. The prose
-specification describes completion from the previous two cells but does not give
-a meaningful recurrence base for zero- or one-word programs.
-
-Project rule: normative tooling rejects source that cannot provide the two
-predecessor cells required by the specified recurrence.
-
-### H-004 - Pointer Change Can Expose Invalid Self-Encryption Index
+### H-004 - Invalid Self-Encryption Index After Pointer Change
 
 Classification: **C undefined behavior risk**.
 
-The C interpreter can change `C` during `i` and later index `xlat2` from the
-cell at that resulting address. A state that places a non-graphical value there
-can index outside the 94-character table.
+The `i` instruction may change `C` before post-instruction encryption. If the
+resulting cell is non-graphical, the historical C program can index outside the
+94-character encryption table.
 
-Project rule: the normative transition is defined from the specification and
-validated before any optimized implementation performs a table access. No modern
-VM may reproduce an out-of-bounds C lookup.
+Project rule: modern VMs return
+`UnsupportedInterpreterBehavior::InvalidSelfEncryptionTarget` atomically before
+any table access or state publication.
 
 ### H-005 - Exotic Newline Branch Reads An Uninitialized Local
 
 Classification: **C undefined behavior / portability defect**.
 
-On hosts where the C execution character set does not encode `'\n'` as numeric
-`10`, the interpreter's output branch can inspect local variable `x` before it
-has been initialized by an input instruction.
+On an execution character set where newline is not numeric `10`, one historical
+branch can inspect a local before initialization.
 
-Project rule: line feed is explicit numeric value `10`. Host character-set
-peculiarities do not alter guest semantics.
+Project rule: byte input and output use explicit numeric values. Line feed is
+`10`; no host character-set branch alters guest semantics.
 
-### H-006 - Loader Validation Depends On Host `isspace`
+### H-006 - Loader Validation Uses Host `isspace`
 
-Classification: **portability defect**.
+Classification: **portability boundary**.
 
-The original loader delegates whitespace classification to the host C library
-and validates the instruction mapping only for bytes strictly inside graphical
-ASCII. This can admit host-dependent or non-graphical inputs.
-
-Project rule: source encoding and whitespace are explicit and
-locale-independent.
+The original loader delegates whitespace classification to the host C library.
+Modern source admission uses explicit ASCII whitespace and graphical-byte rules,
+independent of locale.
 
 ### H-007 - Historical Text-Mode I/O
 
-Classification: **portability defect**.
+Classification: **portability boundary**.
 
-The interpreter opens source using C text mode and uses standard text-oriented
-streams. Platform newline/EOF translations are therefore host behavior, not
-Malbolge behavior.
+The interpreter uses C text streams, so newline and EOF translation may vary by
+platform. Modern execution uses explicit byte streams.
 
-Project rule: compiler, VM, tests, and self-hosting runtime define byte-stream
-semantics explicitly.
+### H-008 - Historical Integer And Memory-Model Assumptions
 
-### H-008 - Historical Host Integer And Memory-Model Assumptions
+Classification: **portability boundary**.
 
-Classification: **portability defect**.
-
-The source discusses 16-bit `short` assumptions and special large-array memory
-models for old compilers. These are properties of the 1998 implementation, not
-of the ten-trit abstract machine.
-
-Project rule: guest word width and address-space semantics are independent of
-host integer types and host allocation models.
+Comments and allocation choices reflect historical compiler integer widths and
+large-array models. Classic words and addresses are fixed by the target profile,
+not by host C types.
 
 ### H-009 - Output Conversion Is Host-C Shaped
 
-Classification: **implementation boundary**.
+Classification: **portable projection required**.
 
-The C interpreter passes ten-trit `A` directly to `putc`, whose host-language
-conversion rules are not a satisfactory normative byte-stream definition for a
-modern multi-backend VM.
-
-Project rule: the normative output mapping is specified explicitly by the
-language/runtime profile and implemented identically by Rust, C, native, and
-accelerator backends.
+The historical program passes `A` to `putc`. The portable interpreter contract
+writes `A mod 256`, preserving the defined low-byte result across Rust, C,
+native, and accelerator paths.
 
 ### H-010 - Halt Control Flow Is Easy To Mis-Factor
 
-Classification: **conformance trap, not a specification defect**.
+Classification: **conformance trap**.
 
-The halt instruction terminates immediately; an implementation must not execute
-post-halt self-modification or pointer advancement merely because those actions
-are factored into shared code for other instructions.
+Halt terminates immediately. Implementations must not apply post-halt encryption
+or pointer advancement through shared non-halting code.
 
 ## Invariants
 
-- Every known implementation defect or undefined/pathological behavior is
-  classified as intended semantics, compatibility quirk, implementation defect,
-  or unspecified historical behavior with a regression fixture where
-  reproducible.
-- The authoritative rule/specification is deterministic, versionable, and does
-  not depend on undocumented host behavior.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Every discrepancy is classified as authoritative interpreter behavior,
+  specification-comparison behavior, undefined C behavior, or portability
+  boundary.
+- No modern path invokes C undefined behavior to claim compatibility.
+- Interpreter-authority results are deterministic and versionable.
+- Versioned current profiles retain independent semantic identities.
 
 ## Failure Behavior
 
-- Unsupported, unverified, or contradictory behavior remains explicit; silent
-  semantic fallback is not accepted.
+Unsupported or undefined historical behavior returns a typed deterministic
+failure. No silent fallback to specification semantics and no partial state
+publication are accepted.
 
 ## Verification
 
-- Expected durable artifact surface: `tools/malbolge/`,
-  `docs/technical/specification/`, `tests/compatibility/`.
-- Required evidence: reviewed authority text plus deterministic
-  parser/schema/governance tests for the declared boundary.
-- Prerequisite completion evidence:
-  `historical-malbolge-semantics-specification`.
+- `tests/vm/modes.rs` covers H-001 through H-004.
+- `tests/vm/conformance.rs` covers portable classic transitions.
+- `tests/vm/differential.rs` binds Rust to the independent C oracle.
+- CUDA classic tests compare device results with the interpreter-authority VM.
+- The original source remains unchanged for sanitizer and provenance work.
+
 ## References
 
-- [Specification Authority And Malbolge
+- [Interpreter Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
-
 - [Historical Malbolge semantics](malbolge-1998.md)
 - `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
+- `docs/bibliography/specifications-and-standards/malbolge/`
+  `ben-olmstead-2014-interview.md`
 - `src/interoperability/historical-malbolge/adapter-outbound/main.c`
 
 ### Governing ADR Paths

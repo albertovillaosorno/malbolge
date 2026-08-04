@@ -21,44 +21,43 @@ scope:
 validation:
   - "jig validate --root ."
 ---
-# TODO - Specification and legacy-interpreter execution modes
+# Interpreter Authority And Specification Comparison Modes
 
 ## Objective
 
-Make specification-conformant execution the only normal Malbolge semantics while
-retaining an explicit `legacy-ben` mode for archaeology, differential diagnosis,
-and historical-corpus study.
+Make defined original-interpreter behavior the default and verifier-eligible
+classic semantics. Retain written-specification behavior as an explicit
+comparison mode and preserve `legacy-ben` only as a parser alias for
+`interpreter`.
 
 ## Acceptance
 
-- Normal execution follows the normative target specification and never enables
-  historical interpreter defects implicitly.
-- `legacy-ben` is explicit, safe to disable completely, and cannot satisfy
-  normal compiler/verifier conformance obligations.
-- Observable state, I/O, termination, diagnostics, and mode identity are covered
-  by positive and discrepancy fixtures.
+- `Machine` and default `ExecutionMachine` behavior use interpreter authority.
+- `<` is output, `/` is input, and non-graphical execution is bounded
+  non-progress for `malbolge-1998`.
+- `Specification` remains explicit and cannot satisfy classic verification.
+- Undefined or host-dependent C behavior fails safely before mutation.
+- Observable state, I/O, diagnostics, traces, profiles, C, native, and
+  accelerator paths agree on classic authority.
+- Versioned current profiles retain independent semantics.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
-## Evidence
+## Negative Cases
 
-- Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,
-  `benchmarks/interpreter/`.
-- Required evidence: specification fixtures, explicit legacy discrepancy
-  fixtures, and differential traces against independent implementations; Ben
-  interpreter comparison is limited to its documented agreement domain.
-- Current implementation evidence is
-  `src/runtime/virtual-machine/domain/mode.rs`,
-  `src/runtime/virtual-machine/domain/execution.rs`,
-  mode-aware tracing in `src/runtime/virtual-machine/domain/machine.rs`, and
-  `tests/vm/modes.rs`.
-- Default builds reject `legacy-ben`; feature-enabled tests cover H-001 and
-  H-002 behavior while H-003 and H-004 remain explicit safe failures. Mode
-  identity is asserted in traces and diagnostics, and verifier eligibility is
-  normative-only.
-- Implementation evidence is present. Completion remains gated on the declared
-  repository-wide `jig validate --root .` command passing at retirement time.
+- Specification comparison is never selected from a source, cache, or corpus.
+- `legacy-ben` does not identify a feature-gated semantic product.
+- Locale, text-mode, out-of-bounds, and uninitialized C behavior are not copied.
+
+## Verification
+
+- Current implementation is `ExecutionMode`, `ExecutionMachine`, mode-aware
+  `Machine`, historical `ProfileMachine`, independent C, and CUDA classic paths.
+- `tests/vm/modes.rs` covers the authority discrepancies and safe boundaries.
+- `tests/vm/differential.rs` binds Rust to the independent C signature.
+- Required evidence includes semantic fixtures, traces, and independent
+  interpreter-compatible implementations.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `historical-undefined-behavior-catalogue`.

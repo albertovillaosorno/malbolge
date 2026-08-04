@@ -81,7 +81,8 @@ that reverse engineering can be made cryptographically impossible.
 - Generated artifacts bind to a canonical profile fingerprint; supplying a
   nonmatching external configuration is detected rather than silently
   interpreted under different semantics.
-- `malbolge-1998` preserves the written 1998 machine exactly; current-language
+- `malbolge-1998` preserves defined original-interpreter semantics;
+  current-language
   behavior and capacity are gated by explicit versioned profile identity.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
