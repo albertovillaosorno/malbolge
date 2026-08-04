@@ -172,8 +172,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   continuation authority: applied suffixes yield the original outcome/final
   checkpoint, while guard miss advances absolute mixed-tier progress and returns
   a scheduler-ready normative handoff. Three cases cover pure/mixed completion
-  and progressed guard fallback. Failed-retry rebasing, automatic policy, async
-  queues, and production orchestration remain pending.
+  and progressed guard fallback. Failed retry execution now splits semantic
+  disposition from indexed native failure ownership. Runner failure yields exact
+  fallback handoff; terminal cleanup failure may complete semantics while
+  preserving release retry. Three cases cover zero/progressed fallback and
+  cleanup completion. Automatic policy, async queues, and production
+  orchestration remain pending.
   Persistent sequence ownership now preloads all exact mappings, reuses them
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own

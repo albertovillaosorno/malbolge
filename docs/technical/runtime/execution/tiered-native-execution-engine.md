@@ -480,8 +480,14 @@ newly committed retry steps, then admits a new `NativeInterpreterHandoff` ready
 for the scheduler. Rebase rejection retains the complete successful execution
 owner. Three cases cover pure retry completion, mixed interpreter/retry
 completion, and progressed guard fallback through normative scheduling. Failed
-retry semantic rebasing, asynchronous queues, automated tier policy, and product
-scheduling remain outside.
+Failed retry executions now pass through the same semantic evidence path and
+split into independent disposition plus indexed native failure ownership. Runner
+failure before or after committed retry progress yields a scheduler-ready
+normative handoff. Terminal cleanup failure may publish verified semantic
+completion while retaining the exact release-retry owner. Rebase rejection keeps
+the complete failed execution intact. Three cases cover zero-progress fallback,
+progressed fallback, and completion followed by cleanup retry. Asynchronous queue
+ownership, automated tier policy, and product scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

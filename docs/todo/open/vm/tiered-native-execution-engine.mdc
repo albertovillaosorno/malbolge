@@ -352,8 +352,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   original outcome/final checkpoint, while guard miss advances absolute mixed-tier
   progress and returns a scheduler-ready normative handoff. Rebase rejection
   retains the complete successful execution owner. Three cases cover pure/mixed
-  completion and progressed guard fallback. Failed-retry rebasing, automatic
-  policy, async queues, and product orchestration remain open.
+  completion and progressed guard fallback. Failed retry executions now split
+  independent semantic disposition from indexed native failure ownership. Runner
+  failure before/after progress yields an exact fallback handoff; terminal
+  cleanup failure may complete semantics while preserving release retry. Rebase
+  rejection retains the full failed execution. Three cases cover both fallback
+  positions and cleanup completion. Automatic policy, async queues, and product
+  orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

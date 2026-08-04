@@ -501,8 +501,14 @@ new `NativeInterpreterHandoff` with absolute progress including prior interprete
 steps and newly committed retry steps. Rebase failure retains the complete
 successful execution owner. Three cases cover pure-native completion, mixed
 interpreter/native completion, and progressed guard fallback through the
-scheduler. Failed-execution semantic rebasing, automatic tier policy, async
-queues, and product orchestration remain open.
+scheduler. Failed retry executions now use the same rebase evidence and split
+into independent semantic disposition plus indexed native failure owner. Runner
+failure before or after committed retry progress yields an exact normative
+handoff; terminal cleanup failure can yield verified completion while preserving
+the release-retry owner. Rebase rejection retains the complete failed execution.
+Three cases cover zero-progress fallback, progressed fallback, and semantic
+completion with later cleanup retry. Automatic tier policy, async queues, and
+product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready

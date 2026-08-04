@@ -11685,3 +11685,163 @@ fn native_retry_rebase_resumes_after_progressed_guard() -> Result<(), String> {
         Err(String::from("rebased retry handoff completion drifted"))
     }
 }
+
+#[test]
+fn native_retry_failure_rebase_resumes_before_progress() -> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(958, 0xd8_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(execution_failure) = admitted.execute(&mut adapter, &mut runner)
+    else {
+        return Err(String::from("retry failure fixture completed"));
+    };
+    let rebased = execution_failure
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, sequence_failure) = rebased.into_parts();
+    if sequence_failure.completed_steps() != 0
+        || sequence_failure.resume_index() != 0
+    {
+        return Err(String::from("retry failure progress drifted"));
+    }
+    let NativeContinuationRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from("zero-progress retry failure completed"));
+    };
+    if resumption.interpreter_steps() != 0
+        || resumption.retry_steps() != 0
+        || resumption.resume_index() != 0
+    {
+        return Err(String::from("zero-progress failure rebase drifted"));
+    }
+    let outcome = schedule_native_interpreter_handoff(
+        resumption.into_handoff(),
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("failure-rebased handoff suspended"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("failure-rebased completion drifted"))
+    }
+}
+
+#[test]
+fn native_retry_failure_rebase_resumes_after_retry_progress()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter = native_executable_adapter(959, 0xd9_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(execution_failure) = admitted.execute(&mut adapter, &mut runner)
+    else {
+        return Err(String::from("progressed retry failure completed"));
+    };
+    let rebased = execution_failure
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, sequence_failure) = rebased.into_parts();
+    if sequence_failure.completed_steps() != 1
+        || sequence_failure.resume_index() != 1
+    {
+        return Err(String::from("progressed retry failure evidence drifted"));
+    }
+    let NativeContinuationRetryDisposition::Resumable(resumption) = disposition
+    else {
+        return Err(String::from("progressed retry failure completed"));
+    };
+    if resumption.interpreter_steps() != 0
+        || resumption.retry_steps() != 1
+        || resumption.resume_index() != 1
+    {
+        return Err(String::from("progressed failure rebase drifted"));
+    }
+    let outcome = schedule_native_interpreter_handoff(
+        resumption.into_handoff(),
+        NativeContinuationScheduleDecision::complete_interpreter(),
+    )
+    .map_err(|failure| failure.to_string())?;
+    let NativeContinuationScheduleOutcome::Completed(completion) = outcome
+    else {
+        return Err(String::from("progressed failure handoff suspended"));
+    };
+    if completion.outcome() == expected_outcome
+        && completion.state().memory() == expected.final_memory
+        && completion.state().io().output() == expected.final_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("progressed failure completion drifted"))
+    }
+}
+
+#[test]
+fn native_retry_failure_rebase_completes_with_cleanup_owner()
+-> Result<(), String> {
+    let expected = direct_normative_sequence_fixture()?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 1)?;
+    let expected_outcome = fixture.full_plan.outcome();
+    let admitted = NativeContinuationNativeRetry::new(
+        fixture.suspension,
+        fixture.retry_plan,
+    )
+    .map_err(|failure| failure.error().to_string())?;
+    let mut adapter =
+        native_executable_adapter(960, 0xda_000)?.with_release_failure_at(1);
+    let mut runner =
+        FakeNativeSequenceRunner::new(vec![FakeNativeRunnerBehavior::Applied]);
+    let Err(execution_failure) = admitted.execute(&mut adapter, &mut runner)
+    else {
+        return Err(String::from("cleanup retry failure completed cleanly"));
+    };
+    let rebased = execution_failure
+        .rebase()
+        .map_err(|failure| failure.error().to_string())?;
+    let (disposition, sequence_failure) = rebased.into_parts();
+    let NativeContinuationRetryDisposition::Completed(completion) = disposition
+    else {
+        return Err(String::from("cleanup retry failure remained resumable"));
+    };
+    if completion.interpreter_steps() != 1
+        || completion.retry_steps() != 1
+        || completion.outcome() != expected_outcome
+        || completion.state().memory() != expected.final_memory
+        || completion.state().io().output() != expected.final_output
+    {
+        return Err(String::from("cleanup failure completion rebase drifted"));
+    }
+    let execution = (*sequence_failure)
+        .into_execution_failure()
+        .ok_or_else(|| String::from("rebased cleanup owner missing"))?;
+    let release = execution
+        .into_release_failure()
+        .ok_or_else(|| String::from("rebased release owner missing"))?;
+    release
+        .retry(&mut adapter)
+        .map_err(|failure| failure.to_string())
+}

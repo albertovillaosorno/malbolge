@@ -282,9 +282,12 @@ guard miss, rollback, and committed cleanup failure. Successful retry results
 now rebase against complete-plan continuation authority: applied suffixes produce
 the original outcome/final checkpoint, while guard miss yields a scheduler-ready
 handoff with absolute mixed-tier progress. Three cases cover pure and mixed
-completion plus progressed guard fallback. Native object fusion, foreign
-invocation, failed-retry semantic rebasing, and automatic tier policy remain
-open.
+completion plus progressed guard fallback. Failed retry execution now splits
+semantic disposition from indexed native failure ownership: runner failure yields
+an exact fallback handoff and terminal cleanup failure may complete semantics
+while preserving release retry. Three cases cover zero/progressed fallback and
+cleanup completion. Native object fusion, foreign invocation, and automatic tier
+policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load
