@@ -486,8 +486,18 @@ failure before or after committed retry progress yields a scheduler-ready
 normative handoff. Terminal cleanup failure may publish verified semantic
 completion while retaining the exact release-retry owner. Rebase rejection keeps
 the complete failed execution intact. Three cases cover zero-progress fallback,
-progressed fallback, and completion followed by cleanup retry. Asynchronous queue
-ownership, automated tier policy, and product scheduling remain outside.
+progressed fallback, and completion followed by cleanup retry.
+
+`application/retry_planner.rs` adds explicit host routing above those owners. It
+consumes one `NativeRetry` suspension plus runtime capability, OS, and ISA,
+selects the exact remaining verified sequence, and admits it as a retry on
+supported Windows hosts. Only direct `TargetFormat` absence becomes a normative
+handoff. Profile, program shape, observation continuity, deoptimization,
+emission, and verification failures are classified as stable hard errors and
+retain the exact suspension. Four cases cover Windows native routing, Linux
+fallback before/after interpreter progress, hard profile failure, and invalid
+schedule reason. Cache-aware planning, retry-attempt budgets, asynchronous queue
+ownership, and product scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

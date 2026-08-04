@@ -286,8 +286,13 @@ completion plus progressed guard fallback. Failed retry execution now splits
 semantic disposition from indexed native failure ownership: runner failure yields
 an exact fallback handoff and terminal cleanup failure may complete semantics
 while preserving release retry. Three cases cover zero/progressed fallback and
-cleanup completion. Native object fusion, foreign invocation, and automatic tier
-policy remain open.
+cleanup completion. Exact retry host planning now selects the remaining
+verified sequence on Windows and converts only missing target format into a
+normative handoff. Profile, IR, continuity, deoptimization, emission, and
+verification failures remain hard and retain the suspension. Four cases cover
+Windows routing, Linux fallback at two progress points, profile rejection, and
+invalid reason. Native object fusion, foreign invocation, cache-aware retry
+planning, and attempt policy remain open.
 
 A persistent executable sequence now loads every reviewed one-step image before
 execution and retains all ready mappings across repeated calls. Partial load

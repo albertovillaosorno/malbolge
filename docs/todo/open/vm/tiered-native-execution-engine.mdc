@@ -357,8 +357,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   failure before/after progress yields an exact fallback handoff; terminal
   cleanup failure may complete semantics while preserving release retry. Rebase
   rejection retains the full failed execution. Three cases cover both fallback
-  positions and cleanup completion. Automatic policy, async queues, and product
-  orchestration remain open.
+  positions and cleanup completion.
+- `application/retry_planner.rs` now consumes one exact native-retry suspension
+  with explicit runtime capability/OS/ISA. Supported Windows hosts receive an
+  admitted exact native suffix; only direct `TargetFormat` absence becomes a
+  normative handoff. Profile, IR shape, continuity, deoptimization, emission,
+  and verification remain hard stable errors retaining the suspension. Four
+  cases cover Windows route, Linux fallback before/after progress, hard profile
+  rejection, and invalid scheduler reason. Cache-aware planning, attempt budgets,
+  async queues, and product orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,
