@@ -37,7 +37,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use malbolge::{
     ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineObservation, ProfileMachineState,
+    ProfileMachineObservation, ProfileMachineState, RunOutcome,
 };
 
 use crate::continuation_scheduler::{
@@ -45,9 +45,13 @@ use crate::continuation_scheduler::{
 };
 use crate::execution_native::{
     NativeExecutableMemoryAdapter, NativeExecutableRunner,
-    NativeExecutableSequenceKey, NativeRegionBuffers,
+    NativeExecutableSequenceKey, NativeInterpreterContinuationError,
+    NativeInterpreterContinuationReason, NativeRegionBuffers,
     NativeSequenceExecutionFailure, NativeSequenceExecutionOutcome,
     VerifiedDirectSequencePlan, execute_verified_native_sequence,
+};
+use crate::interpreter_handoff::{
+    NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
 };
 
 /// Why one replanned native retry was rejected before buffer movement.
@@ -67,7 +71,7 @@ pub enum NativeContinuationRetryAdmissionError {
 }
 
 /// Exact owned state transferred out of one native retry attempt.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeContinuationRetryTransfer {
     input: Vec<u8>,
     memory: Vec<u32>,
@@ -97,6 +101,53 @@ pub struct NativeContinuationRetryExecution {
     plan: VerifiedDirectSequencePlan,
     suspension: NativeContinuationScheduleSuspension,
     transfer: NativeContinuationRetryTransfer,
+}
+
+/// Semantic result after rebasing one successful native retry.
+#[derive(Debug, Eq, PartialEq)]
+pub enum NativeContinuationRetryDisposition {
+    /// The complete original plan reached its verified final checkpoint.
+    Completed(Box<NativeContinuationRetryCompletion>),
+    /// Exact remaining work returned as a normative interpreter handoff.
+    Resumable(Box<NativeContinuationRetryResumption>),
+}
+
+/// Complete mixed-tier result after one successful native retry.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryCompletion {
+    interpreter_steps: usize,
+    outcome: RunOutcome,
+    retry_steps: usize,
+    state: ProfileMachineState,
+}
+
+/// Exact scheduler-ready handoff after a retry guard miss.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryResumption {
+    handoff: NativeInterpreterHandoff,
+    interpreter_steps: usize,
+    resume_index: usize,
+    retry_steps: usize,
+}
+
+/// Why successful retry evidence could not be semantically rebased.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeContinuationRetryRebaseError {
+    /// Mixed-tier progress disagreed with complete continuation authority.
+    Continuation(NativeInterpreterContinuationError),
+    /// The rebased continuation/checkpoint pair failed handoff admission.
+    Handoff(NativeInterpreterHandoffAdmissionError),
+    /// Interpreter and retry progress overflowed host indexing.
+    ProgressOverflow,
+    /// Exact transferred buffers could not become a normative checkpoint.
+    Transfer(NativeContinuationRetryTransferError),
+}
+
+/// Rebase rejection retaining the complete successful execution owner.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationRetryRebaseFailure {
+    error: NativeContinuationRetryRebaseError,
+    execution: NativeContinuationRetryExecution,
 }
 
 /// Failed native execution attempt retaining exact state and cleanup evidence.
@@ -167,6 +218,25 @@ pub struct NativeContinuationRetryAdmissionFailure {
 pub struct NativeContinuationNativeRetry {
     plan: VerifiedDirectSequencePlan,
     suspension: NativeContinuationScheduleSuspension,
+}
+
+impl Display for NativeContinuationRetryRebaseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Continuation(error) => {
+                write!(f, "native retry continuation rebase failed: {error}")
+            },
+            Self::Handoff(error) => {
+                write!(f, "native retry handoff rebase failed: {error}")
+            },
+            Self::ProgressOverflow => {
+                f.write_str("native retry mixed-tier progress overflowed")
+            },
+            Self::Transfer(error) => {
+                write!(f, "native retry transfer rebase failed: {error}")
+            },
+        }
+    }
 }
 
 impl Display for NativeContinuationRetryTransferError {
@@ -267,6 +337,72 @@ impl NativeContinuationRetryTransfer {
     }
 }
 
+impl NativeContinuationRetryCompletion {
+    /// Returns interpreter steps committed before this retry attempt.
+    #[must_use]
+    pub const fn interpreter_steps(&self) -> usize {
+        self.interpreter_steps
+    }
+
+    /// Returns the complete original plan outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+
+    /// Returns native retry steps committed by this attempt.
+    #[must_use]
+    pub const fn retry_steps(&self) -> usize {
+        self.retry_steps
+    }
+
+    /// Returns the exact verified final normative checkpoint.
+    #[must_use]
+    pub const fn state(&self) -> &ProfileMachineState {
+        &self.state
+    }
+}
+
+impl NativeContinuationRetryResumption {
+    /// Returns interpreter steps committed before this retry attempt.
+    #[must_use]
+    pub const fn interpreter_steps(&self) -> usize {
+        self.interpreter_steps
+    }
+
+    /// Consumes this exact resumption and returns its normative handoff.
+    #[must_use]
+    pub fn into_handoff(self) -> NativeInterpreterHandoff {
+        self.handoff
+    }
+
+    /// Returns the complete-plan index at which the handoff resumes.
+    #[must_use]
+    pub const fn resume_index(&self) -> usize {
+        self.resume_index
+    }
+
+    /// Returns native retry steps committed by this attempt.
+    #[must_use]
+    pub const fn retry_steps(&self) -> usize {
+        self.retry_steps
+    }
+}
+
+impl NativeContinuationRetryRebaseFailure {
+    /// Returns the exact semantic rebase rejection.
+    #[must_use]
+    pub const fn error(&self) -> NativeContinuationRetryRebaseError {
+        self.error
+    }
+
+    /// Consumes this rejection and restores the successful execution owner.
+    #[must_use]
+    pub fn into_execution(self) -> NativeContinuationRetryExecution {
+        self.execution
+    }
+}
+
 impl NativeContinuationRetryExecution {
     /// Consumes this success and returns entry owner, plan, outcome, and state.
     #[must_use]
@@ -291,6 +427,33 @@ impl NativeContinuationRetryExecution {
     #[must_use]
     pub const fn plan(&self) -> &VerifiedDirectSequencePlan {
         &self.plan
+    }
+
+    /// Rebases successful retry evidence onto complete semantic authority.
+    ///
+    /// Applied completion yields the original plan outcome and final
+    /// checkpoint. Guard miss yields a new normative handoff whose
+    /// continuation index includes both prior interpreter progress and
+    /// newly committed retry steps.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeContinuationRetryRebaseFailure`] while retaining this
+    /// complete execution owner when transfer, continuation, or handoff
+    /// admission fails closed.
+    pub fn rebase(
+        self,
+    ) -> Result<
+        NativeContinuationRetryDisposition,
+        Box<NativeContinuationRetryRebaseFailure>,
+    > {
+        match retry_rebase_disposition(&self) {
+            Ok(disposition) => Ok(disposition),
+            Err(error) => Err(Box::new(NativeContinuationRetryRebaseFailure {
+                error,
+                execution: self,
+            })),
+        }
     }
 
     /// Returns the entry suspension consumed by this retry attempt.
@@ -491,6 +654,59 @@ impl NativeContinuationRetryAdmissionFailure {
     pub const fn suspension(&self) -> &NativeContinuationScheduleSuspension {
         &self.suspension
     }
+}
+
+fn retry_rebase_disposition(
+    execution: &NativeContinuationRetryExecution,
+) -> Result<
+    NativeContinuationRetryDisposition,
+    NativeContinuationRetryRebaseError,
+> {
+    let checkpoint = execution
+        .transfer
+        .clone()
+        .into_checkpoint()
+        .map_err(NativeContinuationRetryRebaseError::Transfer)?;
+    let interpreter_steps = execution.suspension.interpreter_steps();
+    let retry_steps = execution.outcome.completed_steps();
+    let additional_steps = interpreter_steps
+        .checked_add(retry_steps)
+        .ok_or(NativeContinuationRetryRebaseError::ProgressOverflow)?;
+    let reason = match execution.outcome {
+        NativeSequenceExecutionOutcome::GuardMiss { .. } => {
+            NativeInterpreterContinuationReason::GuardMiss
+        },
+        NativeSequenceExecutionOutcome::Applied { .. } => {
+            execution.suspension.continuation().reason()
+        },
+    };
+    let advanced = execution
+        .suspension
+        .continuation()
+        .advance(additional_steps, execution.outcome.observation(), reason)
+        .map_err(NativeContinuationRetryRebaseError::Continuation)?;
+    let Some(continuation) = advanced else {
+        return Ok(NativeContinuationRetryDisposition::Completed(Box::new(
+            NativeContinuationRetryCompletion {
+                interpreter_steps,
+                outcome: execution.suspension.continuation().expected_outcome(),
+                retry_steps,
+                state: checkpoint,
+            },
+        )));
+    };
+    let resume_index = continuation.resume_index();
+    let handoff =
+        NativeInterpreterHandoff::from_checkpoint(continuation, checkpoint)
+            .map_err(NativeContinuationRetryRebaseError::Handoff)?;
+    Ok(NativeContinuationRetryDisposition::Resumable(Box::new(
+        NativeContinuationRetryResumption {
+            handoff,
+            interpreter_steps,
+            resume_index,
+            retry_steps,
+        },
+    )))
 }
 
 fn retry_admission_error(

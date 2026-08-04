@@ -472,9 +472,16 @@ checkpoint. Success and failure retain plan/suspension plus exact memory, input,
 output capacity, and admitted observation; the transfer can reconstruct a
 validated `ProfileMachineState`. Indexed native failures and release-retry
 ownership pass through unchanged. Five execution cases cover initial/progressed
-completion, guard miss, runner rollback, and committed cleanup failure. Semantic
-rebasing of retry results, asynchronous queues, automated tier policy, and
-product scheduling remain outside.
+completion, guard miss, runner rollback, and committed cleanup failure.
+Successful retry evidence now rebases against the original complete-plan
+continuation. Applied suffixes publish the original verified outcome and final
+checkpoint. Guard miss advances absolute progress by prior interpreter plus
+newly committed retry steps, then admits a new `NativeInterpreterHandoff` ready
+for the scheduler. Rebase rejection retains the complete successful execution
+owner. Three cases cover pure retry completion, mixed interpreter/retry
+completion, and progressed guard fallback through normative scheduling. Failed
+retry semantic rebasing, asynchronous queues, automated tier policy, and product
+scheduling remain outside.
 
 `ReadyNativeExecutableSequence` provides the first persistent executable-chain
 owner without fusing objects. It derives all load images before platform work,

@@ -347,8 +347,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   exact plan, suspension, memory, input, output capacity, and observation; the
   transfer reconstructs a validated normative checkpoint, and cleanup ownership
   remains retryable. Five execution cases cover completion, guard miss, rollback,
-  and committed cleanup failure. Semantic rebasing, automatic policy, async
-  queues, and product orchestration remain open.
+  and committed cleanup failure. Successful retries now rebase through the
+  original complete-plan continuation: applied suffixes yield the verified
+  original outcome/final checkpoint, while guard miss advances absolute mixed-tier
+  progress and returns a scheduler-ready normative handoff. Rebase rejection
+  retains the complete successful execution owner. Three cases cover pure/mixed
+  completion and progressed guard fallback. Failed-retry rebasing, automatic
+  policy, async queues, and product orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
   operations,

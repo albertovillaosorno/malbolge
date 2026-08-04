@@ -278,8 +278,12 @@ cross-ISA rejection. An admitted retry now runs through the existing uncached
 sequence execution path from checkpoint-derived owned buffers. Both success and
 failure retain exact transfer state; checkpoint reconstruction is validated and
 cleanup ownership remains retryable. Five execution cases cover completion,
-guard miss, rollback, and committed cleanup failure. Native object fusion,
-foreign invocation, semantic retry rebasing, and automatic tier policy remain
+guard miss, rollback, and committed cleanup failure. Successful retry results
+now rebase against complete-plan continuation authority: applied suffixes produce
+the original outcome/final checkpoint, while guard miss yields a scheduler-ready
+handoff with absolute mixed-tier progress. Three cases cover pure and mixed
+completion plus progressed guard fallback. Native object fusion, foreign
+invocation, failed-retry semantic rebasing, and automatic tier policy remain
 open.
 
 A persistent executable sequence now loads every reviewed one-step image before
