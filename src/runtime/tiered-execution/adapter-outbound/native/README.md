@@ -293,11 +293,16 @@ the entry to a retired FIFO where its exact weight remains charged. Explicit
 `return_lease()` and `reconcile_retired()` attempt only residents whose final
 external lease has gone, while aggregate keyed failures retain exact retry
 ownership. A candidate blocked by retired resident weight is cleaned and reports
-its limits, usage, active evictions, and retired blockers. Seven tests cover
-cross-thread sharing, weighted blockage, mixed release/retirement, final-lease
-reclamation, lease-aware drain, and both cleanup retry paths. Objects remain
-separate mappings; there is no durable loaded state, cross-process leasing,
-direct inter-mapping jump, concrete foreign-call shim, or interpreter transfer.
+its limits, usage, active evictions, and retired blockers. `reconfigure_limits()`
+publishes expansion or already-fitting requests without adapter work; shrink
+releases unleased active FIFO victims, retires leased victims with charged weight,
+and never implicitly reconciles prior retired residents. Blockage or keyed
+release failure retains previous limits and exact ownership, while final lease
+return or cleanup retry allows the same request to publish without duplicate
+release. Fourteen tests cover the original lease lifecycle plus entry/mapping
+shrink, live entry/byte blockage, post-return publication, and cleanup retry.
+Objects remain separate mappings; there is no durable loaded state,
+cross-process leasing, direct inter-mapping jump, or concrete foreign-call shim.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
 boundary above direct selection. A supported Windows direct object returns

@@ -583,13 +583,17 @@ pure ownership accounting; platform release remains explicit through
 `return_lease()` or `reconcile_retired()`. Reconciliation attempts every retired
 entry with no external owner, preserves still-leased FIFO residents, and returns
 keyed release failures for exact retry. If retired weight blocks a new
-candidate,
-the candidate is cleaned and the failure exposes exact limits, usage, active
-removals, and retired blockers. Seven cases cover cross-thread sharing, weighted
-blockage, mixed retirement/release, final-owner reclamation, lease-aware drain,
-and both retry paths. Mappings remain independent; no durable or cross-process
-executable store, direct jumps, unsafe call shim, or interpreter handoff is
-implied.
+candidate, the candidate is cleaned and the failure exposes exact limits, usage,
+active removals, and retired blockers. `reconfigure_limits()` publishes expansion
+or already-fitting requests without adapter work. Shrink removes active FIFO
+authority, releases unleased victims, retires leased victims with exact resident
+weight, and never implicitly reconciles prior retired entries. Blockage or keyed
+release failure retains previous limits; final lease return or cleanup retry then
+permits the same request to publish without duplicate release. Fourteen cases
+cover the original lease lifecycle plus entry/mapping shrink, live entry/byte
+blockage, post-return publication, and release-failure retry. Mappings remain
+independent; no durable or cross-process executable store, direct jumps, or
+unsafe call shim is implied.
 
 `select_preflighted_execution_tier()` is the first planning boundary above
 direct

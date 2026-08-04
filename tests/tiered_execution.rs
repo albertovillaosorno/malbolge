@@ -120,6 +120,7 @@ use execution_native::{
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
     NativeExecutableSequenceLeaseCacheAcquisition,
     NativeExecutableSequenceLeaseCacheDisposition,
+    NativeExecutableSequenceLeaseCacheEntryReleaseFailure,
     NativeExecutableSequenceLeaseCacheInvalidation,
     NativeInstructionSyncReport, NativeInstructionSyncRequest,
     NativeInterpreterContinuation, NativeInterpreterContinuationError,
@@ -9921,6 +9922,333 @@ fn executable_sequence_lease_cache_reconciliation_aggregates_failures()
         Ok(())
     } else {
         Err(String::from("aggregate reconciliation retry drifted"))
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfigures_expansion_with_retired()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 973, 0xe7_000)?;
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first)?;
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second)?;
+    drop(second_lease);
+    let invalidation = cache
+        .invalidate_plan(&mut adapter, &first)
+        .map_err(|failure| failure.to_string())?;
+    let operations = adapter.operations.len();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if invalidation
+        != (NativeExecutableSequenceLeaseCacheInvalidation::Retired {
+            leases: 1,
+        })
+        || !report.evicted_keys().is_empty()
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [first_key]
+        || cache.limits() != new_limits
+        || cache.usage().entries() != 2
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("leased expansion changed resident state"));
+    }
+    drop(first_lease);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfigures_entry_fifo()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let third = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let third_key = NativeExecutableSequenceKey::from_plan(&third);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(3, "entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 974, 0xe8_000)?;
+    drop(lease_acquire(&mut cache, &mut adapter, &first)?);
+    drop(lease_acquire(&mut cache, &mut adapter, &second)?);
+    drop(lease_acquire(&mut cache, &mut adapter, &third)?);
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if report.evicted_keys() != [first_key, second_key]
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [third_key]
+        || cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_requests.len() != 2
+    {
+        return Err(String::from("leased entry shrink FIFO drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfiguration_blocks_live_entries()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 975, 0xe9_000)?;
+    let first_lease = lease_acquire(&mut cache, &mut adapter, &first)?;
+    let second_lease = lease_acquire(&mut cache, &mut adapter, &second)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from("live entry shrink unexpectedly published"));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("entry shrink lease block missing"))?;
+    if failure.evicted_keys() != [first_key.clone(), second_key.clone()]
+        || failure.retired_keys() != [first_key.clone(), second_key.clone()]
+        || failure.limit_transition() != (old_limits, new_limits)
+        || block.limits() != new_limits
+        || block.retired_keys() != [first_key, second_key]
+        || block.usage() != cache.usage()
+        || failure.release_failure().is_some()
+        || cache.limits() != old_limits
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || cache.usage().entries() != 2
+        || !adapter.release_requests.is_empty()
+    {
+        return Err(String::from("live entry shrink blockage drifted"));
+    }
+    drop(first_lease);
+    drop(second_lease);
+    cache
+        .reconcile_retired(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfiguration_publishes_after_return()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let key = NativeExecutableSequenceKey::from_plan(&plan);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let new_limits =
+        old_limits.with_mapping_limit(nonzero_test_limit(1, "mapping limit")?);
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 976, 0xea_000)?;
+    let lease = lease_acquire(&mut cache, &mut adapter, &plan)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from(
+            "leased mapping shrink unexpectedly published",
+        ));
+    };
+    if failure.evicted_keys() != [key.clone()]
+        || failure.retired_keys() != [key.clone()]
+        || failure.limit_transition() != (old_limits, new_limits)
+        || failure.block().is_none()
+        || cache.limits() != old_limits
+        || cache.retired_len() != 1
+        || cache.usage().mappings() != 2
+    {
+        return Err(String::from("leased mapping shrink evidence drifted"));
+    }
+    let reconciliation = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|release| release.to_string())?;
+    let operations = adapter.operations.len();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|retry| retry.to_string())?;
+    if reconciliation.released_keys() != [key]
+        || !reconciliation.retained_keys().is_empty()
+        || !report.evicted_keys().is_empty()
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != new_limits
+        || !cache.is_empty()
+        || adapter.operations.len() != operations
+    {
+        Err(String::from("post-return limit publication drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfiguration_retries_release_failure()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "entry limit")?,
+    );
+    let new_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 977, 0xeb_000)?;
+    drop(lease_acquire(&mut cache, &mut adapter, &first)?);
+    drop(lease_acquire(&mut cache, &mut adapter, &second)?);
+    adapter.release_failure_at =
+        Some(adapter.release_attempts.saturating_add(1));
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from("configured leased shrink failure ignored"));
+    };
+    if failure.evicted_keys() != [first_key.clone()]
+        || !failure.retired_keys().is_empty()
+        || failure.limit_transition() != (old_limits, new_limits)
+        || failure.block().is_some()
+        || failure
+            .release_failure()
+            .map(NativeExecutableSequenceLeaseCacheEntryReleaseFailure::key)
+            != Some(&first_key)
+        || cache.limits() != old_limits
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.usage().entries() != 1
+    {
+        return Err(String::from("leased shrink release failure drifted"));
+    }
+    let keyed = (*failure)
+        .into_release_failure()
+        .ok_or_else(|| String::from("leased shrink release owner missing"))?;
+    keyed
+        .into_failure()
+        .retry(&mut adapter)
+        .map_err(|release| release.to_string())?;
+    let operations = adapter.operations.len();
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|retry| retry.to_string())?;
+    if !report.evicted_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.limits() != new_limits
+        || adapter.operations.len() != operations
+    {
+        return Err(String::from("leased shrink retry publication drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfigures_mapping_fifo()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::X86_64, 2)?;
+    let first_key = NativeExecutableSequenceKey::from_plan(&first);
+    let second_key = NativeExecutableSequenceKey::from_plan(&second);
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(2, "entry limit")?,
+    );
+    let new_limits =
+        old_limits.with_mapping_limit(nonzero_test_limit(2, "mapping limit")?);
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 978, 0xec_000)?;
+    drop(lease_acquire(&mut cache, &mut adapter, &first)?);
+    drop(lease_acquire(&mut cache, &mut adapter, &second)?);
+    let report = cache
+        .reconfigure_limits(&mut adapter, new_limits)
+        .map_err(|failure| failure.to_string())?;
+    if report.evicted_keys() != [first_key]
+        || !report.retired_keys().is_empty()
+        || report.limit_transition() != (old_limits, new_limits)
+        || cache.keys().cloned().collect::<Vec<_>>() != [second_key]
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 2
+        || adapter.release_requests.len() != 1
+    {
+        return Err(String::from("leased mapping shrink FIFO drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|release| release.to_string())
+}
+
+#[test]
+fn executable_sequence_lease_cache_reconfiguration_blocks_byte_resident()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = selected_sequence_prefix(&fixture, HostIsa::AArch64, 2)?;
+    let key = NativeExecutableSequenceKey::from_plan(&plan);
+    let mapped_bytes = direct_sequence_mapped_bytes(&plan)?;
+    let byte_limit = mapped_bytes
+        .checked_sub(1)
+        .and_then(NonZeroUsize::new)
+        .ok_or_else(|| String::from("leased byte shrink limit missing"))?;
+    let old_limits = NativeExecutableSequenceCacheLimits::new(
+        nonzero_test_limit(1, "entry limit")?,
+    );
+    let new_limits = old_limits.with_mapped_byte_limit(byte_limit);
+    let (mut cache, mut adapter) = lease_fixture(old_limits, 979, 0xed_000)?;
+    let lease = lease_acquire(&mut cache, &mut adapter, &plan)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, new_limits)
+    else {
+        return Err(String::from("leased byte shrink unexpectedly published"));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("leased byte shrink block missing"))?;
+    if failure.evicted_keys() != [key.clone()]
+        || failure.retired_keys() != [key.clone()]
+        || block.limits() != new_limits
+        || block.retired_keys() != [key.clone()]
+        || block.usage().mapped_bytes() != mapped_bytes
+        || cache.limits() != old_limits
+        || cache.usage().mapped_bytes() != mapped_bytes
+        || !adapter.release_requests.is_empty()
+    {
+        return Err(String::from("leased byte shrink blockage drifted"));
+    }
+    let report = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|release| release.to_string())?;
+    if report.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("leased byte shrink cleanup drifted"))
     }
 }
 

@@ -220,10 +220,15 @@ synchronization, and hardening remain adapters rather than VM semantics.
   usage charged until explicit return/reconciliation observes no external
   owner. Mixed eviction releases unleased entries, retires leased entries, and
   rejects candidates blocked by resident weight. Invalidation and full drain
-  use the same ownership rule; keyed cleanup failures remain retryable. Seven
-  cases cover cross-thread sharing, weighted blockage, mixed retire/release,
-  final-owner cleanup, and aggregate retry. Durable or cross-process leasing,
-  fused objects, direct branches, and a concrete foreign-call shim remain open.
+  use the same ownership rule; keyed cleanup failures remain retryable.
+  Resident limits now expand without adapter work and shrink through active FIFO
+  release/retirement. Leased victims keep exact weight charged, prior retired
+  entries are not reconciled implicitly, and old limits survive blockage or
+  cleanup failure. Final lease return or keyed retry permits idempotent repeated
+  publication. Fourteen cases cover the original lifecycle plus entry/mapping
+  shrink, live entry/byte blockage, post-return publication, and release-failure
+  retry. Durable or cross-process leasing, fused objects, direct branches, and a
+  concrete foreign-call shim remain open.
   Remaining fused-region emission, concrete executable-memory integration, and
   instruction-cache implementation remain pending for this TODO.
 - Performance evidence pending: raw measurements plus a reproducible

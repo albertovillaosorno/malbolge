@@ -599,12 +599,17 @@ keyed failures for exact
 retry. A miss can retire leased FIFO victims and release unleased victims; when
 retired resident weight still prevents admission, the candidate cleans itself
 and the failure reports limits, usage, evicted keys, and blocking retired keys.
-Seven deterministic cases cover pointer-identical hits across threads, weighted
-lease blockage, mixed retire/release eviction, two-lease invalidation,
-lease-aware full drain, insertion cleanup retry, and aggregate reconciliation
-retry. This still does not fuse COFF, jump directly between mappings, invoke
-an interpreter consumer, persist loaded state, or implement the unsafe
-machine-code call shim.
+`reconfigure_limits()` now publishes expansion or already-satisfied resident
+limits without adapter work. Shrink removes active FIFO authority, releases
+unleased victims, and retires leased victims while preserving their exact charged
+weight. Existing retired entries are never reclaimed implicitly. Blockage or
+release failure retains the previous limits and reports exact evicted, retired,
+and blocking keys plus resident usage; final lease return or keyed cleanup retry
+followed by the same request publishes without duplicate releases. Fourteen
+deterministic cases cover the original lease lifecycle plus expansion,
+entry/mapping shrink, live entry/byte blockage, post-return publication, and
+release-failure retry. This still does not fuse COFF, jump directly between
+mappings, persist loaded state, or implement the unsafe machine-code call shim.
 `NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
 reuse. Derived bucket digests do not participate in identity equality; equal
 keys

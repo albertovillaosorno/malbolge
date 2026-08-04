@@ -426,10 +426,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   reconciliation releases only residents with no external owners, preserves
   still-leased FIFO entries, and returns keyed failures for exact retry. A miss
   blocked by retired weight cleans its candidate and reports exact limits,
-  usage, removals, and blockers. Seven cases cover cross-thread sharing,
-  weighted blockage, mixed retire/release, final-owner cleanup, lease-aware
-  drain, and both retry paths. Durable/cross-process leasing, object fusion,
-  direct branch chains, a concrete FFI shim, executable native retry, and
+  usage, removals, and blockers. Dynamic resident limits now expand without
+  adapter work and shrink through active FIFO release/retirement. Leased victims
+  keep exact weight charged, prior retired entries are never reconciled
+  implicitly, and old limits survive blockage or keyed cleanup failure. Final
+  lease return or cleanup retry permits the same request to publish without
+  duplicate release. Fourteen cases cover the original lifecycle plus
+  entry/mapping shrink, live entry/byte blockage, post-return publication, and
+  release-failure retry. Durable/cross-process leasing, object fusion, direct
+  branch chains, a concrete FFI shim, cache-aware retry execution, and
   automatic/async scheduling remain out.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache

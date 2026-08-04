@@ -152,6 +152,9 @@ pub use executable_lease_cache::{
     NativeExecutableSequenceLeaseCacheLoadResult,
     NativeExecutableSequenceLeaseCacheReconciliation,
     NativeExecutableSequenceLeaseCacheReconciliationResult,
+    NativeExecutableSequenceLeaseCacheReconfiguration,
+    NativeExecutableSequenceLeaseCacheReconfigurationFailure,
+    NativeExecutableSequenceLeaseCacheReconfigurationResult,
     NativeExecutableSequenceLeaseCacheReleaseFailure,
 };
 pub use executable_sequence::{
