@@ -20,7 +20,8 @@
 //     ownership.
 //   - Side effects: bounded cache acquisitions and loaded native attempts.
 // - Split-When:
-//   - Adaptive cache policy, telemetry, or async ownership gains a lifecycle.
+//   - Adaptive policy, latency histograms, or async ownership gains a
+//     lifecycle.
 // - Merge-When:
 //   - Product orchestration owns the complete cached tiered lifecycle.
 // - Summary:
@@ -35,6 +36,83 @@
 //
 
 //! Bounded cache-aware native continuation retry cycles.
+
+#[path = "cached_cycle/telemetry.rs"]
+mod telemetry;
+#[path = "cached_cycle/telemetry_assessment.rs"]
+mod telemetry_assessment;
+#[path = "cached_cycle/telemetry_codec.rs"]
+mod telemetry_codec;
+#[path = "cached_cycle/telemetry_latency.rs"]
+mod telemetry_latency;
+#[path = "cached_cycle/telemetry_latency_codec.rs"]
+mod telemetry_latency_codec;
+#[path = "cached_cycle/telemetry_latency_merge.rs"]
+mod telemetry_latency_merge;
+#[path = "cached_cycle/telemetry_latency_snapshot.rs"]
+mod telemetry_latency_snapshot;
+#[path = "cached_cycle/telemetry_snapshot.rs"]
+mod telemetry_snapshot;
+#[path = "cached_cycle/telemetry_window.rs"]
+mod telemetry_window;
+
+pub use telemetry::{
+    NativeContinuationCachedRetryTelemetry,
+    NativeContinuationCachedRetryTelemetryError,
+    NativeContinuationCachedRetryTelemetrySource,
+    summarize_cached_retry_attempts,
+};
+pub use telemetry_assessment::{
+    NativeContinuationCachedRetryTelemetryAssessment,
+    NativeContinuationCachedRetryTelemetryAssessmentMaximums,
+    NativeContinuationCachedRetryTelemetryAssessmentMinimums,
+    NativeContinuationCachedRetryTelemetryAssessmentSignal,
+    NativeContinuationCachedRetryTelemetryAssessmentThresholds,
+    NativeContinuationCachedRetryTelemetryAssessmentViolations,
+    assess_cached_retry_telemetry,
+};
+pub use telemetry_codec::{
+    NativeContinuationCachedRetryTelemetryCodecError,
+    NativeContinuationCachedRetryTelemetryCodecField,
+    decode_cached_retry_telemetry_snapshot,
+    encode_cached_retry_telemetry_snapshot,
+};
+pub use telemetry_latency::{
+    NativeContinuationCachedRetryLatencyHistogram,
+    NativeContinuationCachedRetryLatencyHistogramError,
+    NativeContinuationCachedRetryLatencyRecord,
+    NativeContinuationCachedRetryLatencySample,
+};
+pub use telemetry_latency_codec::{
+    NativeContinuationCachedRetryLatencyCodecError,
+    NativeContinuationCachedRetryLatencyCodecField,
+    decode_cached_retry_latency_snapshot, encode_cached_retry_latency_snapshot,
+};
+pub use telemetry_latency_merge::{
+    NativeContinuationCachedRetryLatencyMergeError,
+    NativeContinuationCachedRetryLatencyMergeRecord,
+};
+pub use telemetry_latency_snapshot::{
+    NativeContinuationCachedRetryLatencyHistogramSnapshot,
+    NativeContinuationCachedRetryLatencySnapshotCounts,
+    NativeContinuationCachedRetryLatencySnapshotError,
+    NativeContinuationCachedRetryLatencySnapshotRange,
+};
+pub use telemetry_snapshot::{
+    NativeContinuationCachedRetryTelemetrySnapshotError,
+    NativeContinuationCachedRetryTelemetrySnapshotMetadata,
+    NativeContinuationCachedRetryTelemetryWindowSnapshot,
+    NativeContinuationCachedRetryTelemetryWindowSnapshotParts,
+};
+pub use telemetry_window::{
+    NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryWindow,
+    NativeContinuationCachedRetryTelemetryWindowAppend,
+    NativeContinuationCachedRetryTelemetryWindowCounter,
+    NativeContinuationCachedRetryTelemetryWindowError,
+    NativeContinuationCachedRetryTelemetryWindowReconfiguration,
+    NativeContinuationCachedRetryTelemetryWindowReconfigurationResult,
+};
 
 use crate::cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -111,6 +189,16 @@ pub struct NativeContinuationCachedRetryNativeFailure<RunnerError> {
     prior_attempts: Vec<NativeContinuationCachedRetryAttempt>,
 }
 
+/// Cache acquisition or binding failure with prior attempt evidence.
+#[derive(Debug)]
+pub struct NativeContinuationCachedRetryAttemptFailure<MemoryError, RunnerError>
+{
+    attempt: usize,
+    failure:
+        Box<NativeContinuationCachedRetryFailure<MemoryError, RunnerError>>,
+    prior_attempts: Vec<NativeContinuationCachedRetryAttempt>,
+}
+
 /// Terminal or externally actionable result of one cached retry cycle.
 #[derive(Debug)]
 pub enum NativeContinuationCachedRetryCycleOutcome<RunnerError> {
@@ -131,11 +219,25 @@ pub enum NativeContinuationCachedRetryRescheduleFailure {
     Execution(Box<NativeInterpreterHandoffExecutionFailure>),
 }
 
+/// Routing failure retaining cache evidence from earlier successful attempts.
+#[derive(Debug, Eq, PartialEq)]
+pub struct NativeContinuationCachedRetryRoutingCycleFailure {
+    failure: Box<NativeContinuationRetryRoutingFailure>,
+    prior_attempts: Vec<NativeContinuationCachedRetryAttempt>,
+}
+
 /// Hard failure during cached routing, acquisition, rebase, or rescheduling.
 #[derive(Debug)]
 pub enum NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError> {
     /// Cache acquisition/binding failed before a semantic disposition existed.
-    Cached(Box<NativeContinuationCachedRetryFailure<MemoryError, RunnerError>>),
+    Cached(
+        Box<
+            NativeContinuationCachedRetryAttemptFailure<
+                MemoryError,
+                RunnerError,
+            >,
+        >,
+    ),
     /// Failed loaded execution could not be semantically rebased.
     FailureRebase(
         Box<NativeContinuationCachedRetryFailureRebaseCycle<RunnerError>>,
@@ -145,7 +247,7 @@ pub enum NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError> {
     /// Zero-step guard rescheduling failed closed.
     Reschedule(Box<NativeContinuationCachedRetryRescheduleFailure>),
     /// Attempt policy or exact host planning failed with suspension ownership.
-    Routing(Box<NativeContinuationRetryRoutingFailure>),
+    Routing(Box<NativeContinuationCachedRetryRoutingCycleFailure>),
     /// Successful loaded execution could not be semantically rebased.
     SuccessRebase(Box<NativeContinuationCachedRetrySuccessRebaseCycle>),
 }
@@ -176,6 +278,22 @@ pub struct NativeContinuationCachedRetrySuccessRebaseCycle {
     prior_attempts: Vec<NativeContinuationCachedRetryAttempt>,
 }
 
+/// Attempt, prior evidence, and exact cache/binding failure ownership.
+pub type NativeContinuationCachedRetryAttemptFailureParts<
+    MemoryError,
+    RunnerError,
+> = (
+    usize,
+    Vec<NativeContinuationCachedRetryAttempt>,
+    Box<NativeContinuationCachedRetryFailure<MemoryError, RunnerError>>,
+);
+
+/// Prior attempt evidence plus exact routing failure ownership.
+pub type NativeContinuationCachedRetryRoutingFailureParts = (
+    Vec<NativeContinuationCachedRetryAttempt>,
+    Box<NativeContinuationRetryRoutingFailure>,
+);
+
 /// Attempt, prior cache evidence, and complete failed loaded owner.
 pub type NativeContinuationCachedRetryNativeFailureParts<RunnerError> = (
     usize,
@@ -201,6 +319,14 @@ type NativeContinuationCachedRetryAdapterCycleResult<MemoryAdapter, Runner> =
 type NativeContinuationCachedRetryRescheduleResult<MemoryError, RunnerError> =
     Result<
         NativeContinuationScheduleSuspension,
+        Box<
+            NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError>,
+        >,
+    >;
+
+type NativeContinuationCachedRetryRoutingResult<MemoryError, RunnerError> =
+    Result<
+        NativeContinuationRetryRoute,
         Box<
             NativeContinuationCachedRetryCycleFailure<MemoryError, RunnerError>,
         >,
@@ -263,6 +389,54 @@ impl NativeContinuationCachedRetryAttempt {
         &self,
     ) -> &NativeExecutableSequenceLeaseCacheDisposition {
         &self.disposition
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn from_test_evidence(
+        attempt: usize,
+        completed_steps: usize,
+        disposition: NativeExecutableSequenceLeaseCacheDisposition,
+    ) -> Self {
+        Self {
+            attempt,
+            completed_steps,
+            disposition,
+        }
+    }
+}
+
+impl<MemoryError, RunnerError>
+    NativeContinuationCachedRetryAttemptFailure<MemoryError, RunnerError>
+{
+    /// Returns the one-based native attempt whose cache phase failed.
+    #[must_use]
+    pub const fn attempt(&self) -> usize {
+        self.attempt
+    }
+
+    /// Returns exact cache acquisition or binding failure ownership.
+    #[must_use]
+    pub const fn failure(
+        &self,
+    ) -> &NativeContinuationCachedRetryFailure<MemoryError, RunnerError> {
+        &self.failure
+    }
+
+    /// Consumes this owner into attempt, prior evidence, and exact failure.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> NativeContinuationCachedRetryAttemptFailureParts<
+        MemoryError,
+        RunnerError,
+    > {
+        (self.attempt, self.prior_attempts, self.failure)
+    }
+
+    /// Returns cache evidence from successful earlier attempts.
+    #[must_use]
+    pub fn prior_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
+        &self.prior_attempts
     }
 }
 
@@ -413,6 +587,28 @@ impl<RunnerError> NativeContinuationCachedRetryFailureRebaseCycle<RunnerError> {
     }
 }
 
+impl NativeContinuationCachedRetryRoutingCycleFailure {
+    /// Returns exact host/policy routing failure ownership.
+    #[must_use]
+    pub const fn failure(&self) -> &NativeContinuationRetryRoutingFailure {
+        &self.failure
+    }
+
+    /// Consumes this owner into prior evidence and exact routing failure.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> NativeContinuationCachedRetryRoutingFailureParts {
+        (self.prior_attempts, self.failure)
+    }
+
+    /// Returns cache evidence from successful earlier attempts.
+    #[must_use]
+    pub fn prior_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
+        &self.prior_attempts
+    }
+}
+
 impl NativeContinuationCachedRetrySuccessRebaseCycle {
     /// Returns the one-based native attempt whose success could not rebase.
     #[must_use]
@@ -462,16 +658,13 @@ where
     } = request;
     let mut native_attempts = Vec::new();
     loop {
-        let selected_route = route_native_continuation_retry(
-            NativeContinuationRetryRoutingRequest::new(
-                policy, suspension, attempts, host,
-            ),
-        )
-        .map_err(|failure| {
-            Box::new(NativeContinuationCachedRetryCycleFailure::Routing(
-                failure,
-            ))
-        })?;
+        let selected_route =
+            route_cached_retry::<MemoryAdapter::Error, Runner::Error>(
+                NativeContinuationRetryRoutingRequest::new(
+                    policy, suspension, attempts, host,
+                ),
+                &native_attempts,
+            )?;
         match selected_route {
             NativeContinuationRetryRoute::Interpreter(interpreter_route) => {
                 return execute_cached_interpreter_route(
@@ -508,6 +701,20 @@ where
             },
         }
     }
+}
+
+fn route_cached_retry<MemoryError, RunnerError>(
+    request: NativeContinuationRetryRoutingRequest,
+    prior_attempts: &[NativeContinuationCachedRetryAttempt],
+) -> NativeContinuationCachedRetryRoutingResult<MemoryError, RunnerError> {
+    route_native_continuation_retry(request).map_err(|failure| {
+        Box::new(NativeContinuationCachedRetryCycleFailure::Routing(
+            Box::new(NativeContinuationCachedRetryRoutingCycleFailure {
+                failure,
+                prior_attempts: prior_attempts.to_vec(),
+            }),
+        ))
+    })
 }
 
 fn execute_cached_native_route<MemoryAdapter, Runner>(
@@ -667,18 +874,17 @@ where
                 )),
             }
         },
-        NativeContinuationCachedRetryFailure::Acquisition(acquisition) => {
+        cached_failure
+        @ (NativeContinuationCachedRetryFailure::Acquisition(
+            _,
+        )
+        | NativeContinuationCachedRetryFailure::Binding(_)) => {
             Err(Box::new(NativeContinuationCachedRetryCycleFailure::Cached(
-                Box::new(NativeContinuationCachedRetryFailure::Acquisition(
-                    acquisition,
-                )),
-            )))
-        },
-        NativeContinuationCachedRetryFailure::Binding(binding) => {
-            Err(Box::new(NativeContinuationCachedRetryCycleFailure::Cached(
-                Box::new(NativeContinuationCachedRetryFailure::Binding(
-                    binding,
-                )),
+                Box::new(NativeContinuationCachedRetryAttemptFailure {
+                    attempt,
+                    failure: Box::new(cached_failure),
+                    prior_attempts: prior_attempts.to_vec(),
+                }),
             )))
         },
     }

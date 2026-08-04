@@ -72,13 +72,42 @@ use std::sync::Arc;
 use std::thread;
 
 use cached_cycle::{
+    NativeContinuationCachedRetryAttempt,
     NativeContinuationCachedRetryCompletion,
     NativeContinuationCachedRetryCycleFailure,
     NativeContinuationCachedRetryCycleOutcome,
     NativeContinuationCachedRetryCycleRequest,
     NativeContinuationCachedRetryInterpreterOutcome,
+    NativeContinuationCachedRetryLatencyCodecError,
+    NativeContinuationCachedRetryLatencyHistogram,
+    NativeContinuationCachedRetryLatencyHistogramError,
+    NativeContinuationCachedRetryLatencyHistogramSnapshot,
+    NativeContinuationCachedRetryLatencyMergeError,
+    NativeContinuationCachedRetryLatencySample,
+    NativeContinuationCachedRetryLatencySnapshotCounts,
+    NativeContinuationCachedRetryLatencySnapshotError,
+    NativeContinuationCachedRetryLatencySnapshotRange,
     NativeContinuationCachedRetryNativeFailure,
-    execute_cached_native_retry_cycle,
+    NativeContinuationCachedRetryTelemetry,
+    NativeContinuationCachedRetryTelemetryAssessment,
+    NativeContinuationCachedRetryTelemetryAssessmentMaximums,
+    NativeContinuationCachedRetryTelemetryAssessmentMinimums,
+    NativeContinuationCachedRetryTelemetryAssessmentSignal,
+    NativeContinuationCachedRetryTelemetryAssessmentThresholds,
+    NativeContinuationCachedRetryTelemetryCodecError,
+    NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetrySnapshotError,
+    NativeContinuationCachedRetryTelemetrySnapshotMetadata,
+    NativeContinuationCachedRetryTelemetrySource,
+    NativeContinuationCachedRetryTelemetryWindow,
+    NativeContinuationCachedRetryTelemetryWindowCounter,
+    NativeContinuationCachedRetryTelemetryWindowError,
+    NativeContinuationCachedRetryTelemetryWindowSnapshot,
+    assess_cached_retry_telemetry, decode_cached_retry_latency_snapshot,
+    decode_cached_retry_telemetry_snapshot,
+    encode_cached_retry_latency_snapshot,
+    encode_cached_retry_telemetry_snapshot, execute_cached_native_retry_cycle,
+    summarize_cached_retry_attempts,
 };
 use cached_retry::{
     NativeContinuationCachedRetryFailure, execute_cached_native_retry,
@@ -354,10 +383,31 @@ struct LeasedNativeRetryFixture {
 type CachedRetryCycleNativeFailure =
     Box<NativeContinuationCachedRetryNativeFailure<FakeNativeRunnerError>>;
 
+type CachedRetryTelemetryWindowError =
+    NativeContinuationCachedRetryTelemetryWindowError;
+
+type CachedRetryCodecFixture = (
+    NativeContinuationCachedRetryTelemetryWindowSnapshot,
+    Vec<u8>,
+);
+type CachedRetryLatencyCodecFixture = (
+    NativeContinuationCachedRetryLatencyHistogramSnapshot,
+    Vec<u8>,
+);
+
 struct AdmittedNativeRetryFixture {
     full_plan: VerifiedDirectSequencePlan,
     retry: NativeContinuationNativeRetry,
     retry_plan: VerifiedDirectSequencePlan,
+}
+
+struct CachedRetryTelemetryExpectation {
+    attempts: usize,
+    completed_steps: usize,
+    evicted_keys: usize,
+    hits: usize,
+    insertions: usize,
+    retired_keys: usize,
 }
 
 #[derive(Debug)]
@@ -10773,6 +10823,15 @@ const fn linux_x86_64_retry_cycle_request(
     )
 }
 
+const fn complete_retry_policy(
+    max_native_attempts: usize,
+) -> NativeContinuationRetryPolicy {
+    NativeContinuationRetryPolicy::new(
+        max_native_attempts,
+        NativeContinuationRetryFallback::complete(),
+    )
+}
+
 const fn windows_cached_retry_cycle_request(
     policy: NativeContinuationRetryPolicy,
     suspension: NativeContinuationScheduleSuspension,
@@ -10977,6 +11036,87 @@ fn cached_retry_failure_matches(
         && failure.failure().completed_steps() == 0
         && failure.failure().resume_index() == 0
         && !failure.cache_disposition().is_hit()
+}
+
+fn assert_cached_retry_telemetry<Source>(
+    source: &Source,
+    expected: &CachedRetryTelemetryExpectation,
+) -> Result<(), String>
+where
+    Source: NativeContinuationCachedRetryTelemetrySource + ?Sized,
+{
+    let telemetry = source
+        .cached_retry_telemetry()
+        .map_err(|error| error.to_string())?;
+    if telemetry.attempts() == expected.attempts
+        && telemetry.completed_steps() == expected.completed_steps
+        && telemetry.evicted_keys() == expected.evicted_keys
+        && telemetry.hits() == expected.hits
+        && telemetry.insertions() == expected.insertions
+        && telemetry.retired_keys() == expected.retired_keys
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached retry telemetry drifted"))
+    }
+}
+
+fn assert_retirement_pressure_assessment(
+    telemetry: NativeContinuationCachedRetryTelemetry,
+) -> Result<(), String> {
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                1, 1, 0,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                nonzero_test_limit(1, "telemetry assessment attempts")?,
+                0,
+                0,
+            ),
+        );
+    let NativeContinuationCachedRetryTelemetryAssessment::Misses {
+        telemetry: assessed,
+        violations,
+    } = assess_cached_retry_telemetry(telemetry, thresholds)
+    else {
+        return Err(String::from("retirement assessment category drifted"));
+    };
+    let evicted = violations.contains(
+        NativeContinuationCachedRetryTelemetryAssessmentSignal::EvictedKeys,
+    );
+    let retired = violations.contains(
+        NativeContinuationCachedRetryTelemetryAssessmentSignal::RetiredKeys,
+    );
+    let unexpected = [
+        NativeContinuationCachedRetryTelemetryAssessmentSignal::CompletedSteps,
+        NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
+        NativeContinuationCachedRetryTelemetryAssessmentSignal::Insertions,
+    ]
+    .into_iter()
+    .any(|signal| violations.contains(signal));
+    if assessed == telemetry && evicted && retired && !unexpected {
+        Ok(())
+    } else {
+        Err(String::from("retirement assessment signals drifted"))
+    }
+}
+fn assert_retirement_telemetry<Source>(source: &Source) -> Result<(), String>
+where
+    Source: NativeContinuationCachedRetryTelemetrySource + ?Sized,
+{
+    assert_cached_retry_telemetry(source, &CachedRetryTelemetryExpectation {
+        attempts: 1,
+        completed_steps: 2,
+        evicted_keys: 2,
+        hits: 0,
+        insertions: 1,
+        retired_keys: 1,
+    })?;
+    let telemetry = source
+        .cached_retry_telemetry()
+        .map_err(|error| error.to_string())?;
+    assert_retirement_pressure_assessment(telemetry)
 }
 
 fn complete_retry_resumption(
@@ -14113,10 +14253,7 @@ fn cached_retry_cycle_reuses_unchanged_guard_suffix() -> Result<(), String> {
     let expected = direct_normative_sequence_fixture()?;
     let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
     let request = windows_cached_retry_cycle_request(
-        NativeContinuationRetryPolicy::new(
-            3,
-            NativeContinuationRetryFallback::complete(),
-        ),
+        complete_retry_policy(3),
         fixture.suspension,
         0,
         HostIsa::AArch64,
@@ -14140,18 +14277,23 @@ fn cached_retry_cycle_reuses_unchanged_guard_suffix() -> Result<(), String> {
     )
     .map_err(|failure| format!("cached guard cycle failed: {failure:?}"))?;
     let completion = cached_cycle_completion(outcome)?;
-    let hit_evidence = completion
-        .native_attempts()
-        .iter()
-        .map(|attempt| attempt.disposition().is_hit())
-        .collect::<Vec<_>>();
+    assert_cached_retry_telemetry(
+        completion.as_ref(),
+        &CachedRetryTelemetryExpectation {
+            attempts: 3,
+            completed_steps: 2,
+            evicted_keys: 0,
+            hits: 2,
+            insertions: 1,
+            retired_keys: 0,
+        },
+    )?;
     let attempt_numbers = completion
         .native_attempts()
         .iter()
-        .map(cached_cycle::NativeContinuationCachedRetryAttempt::attempt)
+        .map(NativeContinuationCachedRetryAttempt::attempt)
         .collect::<Vec<_>>();
     if completion.attempts() != 3
-        || hit_evidence != [false, true, true]
         || attempt_numbers != [1, 2, 3]
         || completion.native_steps() != 2
         || runner.calls != 4
@@ -14200,13 +14342,18 @@ fn cached_retry_cycle_inserts_progressed_suffix() -> Result<(), String> {
     )
     .map_err(|failure| format!("cached progress cycle failed: {failure:?}"))?;
     let completion = cached_cycle_completion(outcome)?;
-    let hit_evidence = completion
-        .native_attempts()
-        .iter()
-        .map(|attempt| attempt.disposition().is_hit())
-        .collect::<Vec<_>>();
+    assert_cached_retry_telemetry(
+        completion.native_attempts(),
+        &CachedRetryTelemetryExpectation {
+            attempts: 2,
+            completed_steps: 2,
+            evicted_keys: 0,
+            hits: 0,
+            insertions: 2,
+            retired_keys: 0,
+        },
+    )?;
     if completion.attempts() != 2
-        || hit_evidence != [false, false]
         || completion.native_steps() != 2
         || completion.completion().retry_steps() != 1
         || completion.completion().outcome() != fixture.full_plan.outcome()
@@ -14220,6 +14367,58 @@ fn cached_retry_cycle_inserts_progressed_suffix() -> Result<(), String> {
     }
     cache
         .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_counts_eviction_and_retirement() -> Result<(), String>
+{
+    let source = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&source, HostIsa::AArch64, 1)?;
+    let second = selected_sequence_prefix(&source, HostIsa::X86_64, 1)?;
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let request = windows_cached_retry_cycle_request(
+        complete_retry_policy(1),
+        fixture.suspension,
+        0,
+        HostIsa::AArch64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "cached telemetry capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 997, 0xff_000)?;
+    let first_lease = cache
+        .ensure_plan(&mut adapter, &first)
+        .map_err(|failure| failure.to_string())?
+        .into_lease();
+    drop(
+        cache
+            .ensure_plan(&mut adapter, &second)
+            .map_err(|failure| failure.to_string())?
+            .into_lease(),
+    );
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .map_err(|failure| format!("cached telemetry cycle failed: {failure:?}"))?;
+    let completion = cached_cycle_completion(outcome)?;
+    assert_retirement_telemetry(completion.as_ref())?;
+    drop(completion);
+    cache
+        .release_all(&mut adapter)
+        .map(|_report| ())
+        .map_err(|failure| failure.to_string())?;
+    cache
+        .return_lease(&mut adapter, first_lease)
         .map(|_report| ())
         .map_err(|failure| failure.to_string())
 }
@@ -14306,10 +14505,13 @@ fn cached_retry_cycle_preserves_acquisition_failure() -> Result<(), String> {
     else {
         return Err(String::from("cached cycle load failure category drifted"));
     };
-    let acquisition = cached_failure.acquisition().ok_or_else(|| {
-        String::from("cached cycle acquisition owner missing")
-    })?;
-    if acquisition.failure().requested_key() == &expected_key
+    let acquisition =
+        cached_failure.failure().acquisition().ok_or_else(|| {
+            String::from("cached cycle acquisition owner missing")
+        })?;
+    if cached_failure.attempt() == 1
+        && cached_failure.prior_attempts().is_empty()
+        && acquisition.failure().requested_key() == &expected_key
         && acquisition.failure().load_failure().is_some()
         && acquisition.retry().plan() == &fixture.retry_plan
         && runner.calls == 0
@@ -14318,6 +14520,118 @@ fn cached_retry_cycle_preserves_acquisition_failure() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("cached cycle acquisition failure drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_cycle_preserves_late_acquisition_history() -> Result<(), String>
+{
+    let fixture = native_retry_fixture(HostIsa::X86_64, 0)?;
+    let expected_key =
+        NativeExecutableSequenceKey::from_plan(&fixture.retry_plan)
+            .suffix(1)
+            .ok_or_else(|| {
+                String::from("cached late failure suffix missing")
+            })?;
+    let request = windows_cached_retry_cycle_request(
+        complete_retry_policy(3),
+        fixture.suspension,
+        0,
+        HostIsa::X86_64,
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        2,
+        "cached cycle capacity",
+    )?);
+    let mut cache = NativeExecutableSequenceLeaseCache::with_limits(limits);
+    let mut adapter = native_executable_adapter(995, 0xfd_000)?
+        .with_failure_at(FakeNativeAdapterOperation::Allocate, 3);
+    let mut runner = FakeNativeSequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let failure = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .err()
+    .ok_or_else(|| String::from("cached late load failure was ignored"))?;
+    let NativeContinuationCachedRetryCycleFailure::Cached(cached_failure) =
+        failure.as_ref()
+    else {
+        return Err(String::from("cached late load failure category drifted"));
+    };
+    let acquisition = cached_failure
+        .failure()
+        .acquisition()
+        .ok_or_else(|| String::from("cached late acquisition owner missing"))?;
+    let prior = cached_failure.prior_attempts();
+    let first = prior
+        .first()
+        .ok_or_else(|| String::from("cached prior attempt missing"))?;
+    if cached_failure.attempt() == 2
+        && prior.len() == 1
+        && first.attempt() == 1
+        && first.completed_steps() == 1
+        && !first.disposition().is_hit()
+        && acquisition.failure().requested_key() == &expected_key
+        && NativeExecutableSequenceKey::from_plan(acquisition.retry().plan())
+            == expected_key
+        && runner.calls == 2
+        && cache.active_len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached late acquisition history drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_cycle_preserves_initial_routing_failure() -> Result<(), String>
+{
+    let fixture = native_retry_fixture(HostIsa::AArch64, 0)?;
+    let request = NativeContinuationCachedRetryCycleRequest::new(
+        NativeContinuationRetryPolicy::new(
+            2,
+            NativeContinuationRetryFallback::complete(),
+        ),
+        fixture.suspension,
+        0,
+        NativeContinuationRetryHost::new(
+            safe_rust_classic_capability(),
+            HostOperatingSystem::Windows,
+            HostIsa::AArch64,
+        ),
+    );
+    let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
+        1,
+        "cached cycle capacity",
+    )?);
+    let (mut cache, mut adapter) = lease_fixture(limits, 996, 0xfe_000)?;
+    let mut runner = FakeNativeSequenceRunner::new(Vec::new());
+    let failure = execute_cached_native_retry_cycle(
+        request,
+        &mut cache,
+        &mut adapter,
+        &mut runner,
+    )
+    .err()
+    .ok_or_else(|| String::from("cached routing failure was ignored"))?;
+    let NativeContinuationCachedRetryCycleFailure::Routing(routing_failure) =
+        failure.as_ref()
+    else {
+        return Err(String::from("cached routing failure category drifted"));
+    };
+    if routing_failure.prior_attempts().is_empty()
+        && runner.calls == 0
+        && cache.is_empty()
+        && adapter.operations.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached routing failure history drifted"))
     }
 }
 
@@ -14378,4 +14692,1997 @@ fn cached_retry_cycle_stops_with_runner_failure_lease() -> Result<(), String> {
         return Err(String::from("cached cycle runner fallback drifted"));
     }
     release_leased_retry(&mut cache, &mut adapter, lease)
+}
+
+#[test]
+fn cached_retry_telemetry_empty_slice_is_zero() {
+    assert_eq!(
+        summarize_cached_retry_attempts(&[]),
+        Ok(NativeContinuationCachedRetryTelemetry::default()),
+    );
+}
+
+#[test]
+fn cached_retry_telemetry_reports_exact_step_overflow_attempt() {
+    let attempts = [
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            usize::MAX,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            1,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+    ];
+    assert_eq!(
+        summarize_cached_retry_attempts(&attempts),
+        Err(
+            cached_cycle::NativeContinuationCachedRetryTelemetryError::
+                CompletedSteps { attempt: 2 },
+        ),
+    );
+}
+
+fn cached_retry_window_telemetry(
+    attempt: usize,
+    completed_steps: usize,
+    disposition: NativeExecutableSequenceLeaseCacheDisposition,
+) -> Result<NativeContinuationCachedRetryTelemetry, String> {
+    summarize_cached_retry_attempts(&[
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            attempt,
+            completed_steps,
+            disposition,
+        ),
+    ])
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_telemetry_window_starts_empty() -> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    if window.capacity() == capacity
+        && window.evictions() == 0
+        && window.is_empty()
+        && window.last_sequence().is_none()
+        && window.observations().next().is_none()
+        && window.totals() == NativeContinuationCachedRetryTelemetry::default()
+    {
+        Ok(())
+    } else {
+        Err(String::from("empty telemetry window drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_aggregates_exactly() -> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let insertion = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let first = window.append(hit).map_err(|error| error.to_string())?;
+    let second = window
+        .append(insertion)
+        .map_err(|error| error.to_string())?;
+    let totals = window.totals();
+    let sequences = window
+        .observations()
+        .map(|observation| observation.sequence())
+        .collect::<Vec<_>>();
+    if first.observation().sequence() == 1
+        && first.evicted().is_none()
+        && second.observation().sequence() == 2
+        && second.evicted().is_none()
+        && second.totals() == totals
+        && totals.attempts() == 2
+        && totals.completed_steps() == 5
+        && totals.hits() == 1
+        && totals.insertions() == 1
+        && totals.evicted_keys() == 0
+        && totals.retired_keys() == 0
+        && sequences == [1, 2]
+        && window.evictions() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry window aggregation drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_evicts_oldest_exactly() -> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit_one = cached_retry_window_telemetry(
+        1,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let insertion = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let hit_four = cached_retry_window_telemetry(
+        1,
+        4,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _first = window.append(hit_one).map_err(|error| error.to_string())?;
+    let _second = window
+        .append(insertion)
+        .map_err(|error| error.to_string())?;
+    let third = window.append(hit_four).map_err(|error| error.to_string())?;
+    let evicted = third
+        .evicted()
+        .ok_or_else(|| String::from("telemetry FIFO did not evict"))?;
+    let sequences = window
+        .observations()
+        .map(|observation| observation.sequence())
+        .collect::<Vec<_>>();
+    let totals = window.totals();
+    if evicted.sequence() == 1
+        && evicted.telemetry() == hit_one
+        && third.observation().sequence() == 3
+        && third.evictions() == 1
+        && sequences == [2, 3]
+        && totals.attempts() == 2
+        && totals.completed_steps() == 6
+        && totals.hits() == 1
+        && totals.insertions() == 1
+        && window.last_sequence() == Some(3)
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry FIFO eviction drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_rejects_overflow_transactionally()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let maximum = cached_retry_window_telemetry(
+        1,
+        usize::MAX,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let one = cached_retry_window_telemetry(
+        1,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _first = window.append(maximum).map_err(|error| error.to_string())?;
+    let failure = window
+        .append(one)
+        .err()
+        .ok_or_else(|| String::from("telemetry overflow was admitted"))?;
+    let expected =
+        NativeContinuationCachedRetryTelemetryWindowError::AggregateOverflow {
+            sequence: 2,
+            counter:
+                NativeContinuationCachedRetryTelemetryWindowCounter::
+                    CompletedSteps,
+        };
+    if failure == expected
+        && window.len() == 1
+        && window.last_sequence() == Some(1)
+        && window.evictions() == 0
+        && window.totals() == maximum
+        && window
+            .observations()
+            .next()
+            .is_some_and(|observation| observation.sequence() == 1)
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry overflow mutated the window"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_rejects_sequence_exhaustion()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(1, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    window.force_counters_for_test(0, u64::MAX);
+    let failure = window
+        .append(NativeContinuationCachedRetryTelemetry::default())
+        .err()
+        .ok_or_else(|| {
+            String::from("telemetry sequence exhaustion was ignored")
+        })?;
+    if failure
+        == NativeContinuationCachedRetryTelemetryWindowError::SequenceExhausted
+        && window.is_empty()
+        && window.last_sequence() == Some(u64::MAX)
+        && window.evictions() == 0
+        && window.totals() == NativeContinuationCachedRetryTelemetry::default()
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry sequence exhaustion mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_rejects_eviction_count_overflow()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(1, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let first = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let second = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let _append = window.append(first).map_err(|error| error.to_string())?;
+    window.force_counters_for_test(u64::MAX, 1);
+    let failure = window.append(second).err().ok_or_else(|| {
+        String::from("telemetry eviction overflow was ignored")
+    })?;
+    let expected =
+        NativeContinuationCachedRetryTelemetryWindowError::
+            EvictionCountOverflow { sequence: 2 };
+    if failure == expected
+        && window.len() == 1
+        && window.last_sequence() == Some(1)
+        && window.evictions() == u64::MAX
+        && window.totals() == first
+        && window
+            .observations()
+            .next()
+            .is_some_and(|observation| observation.telemetry() == first)
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry eviction overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_assessment_requires_attempt_gate()
+-> Result<(), String> {
+    let telemetry = cached_retry_window_telemetry(
+        1,
+        10,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let required = nonzero_test_limit(2, "telemetry assessment attempts")?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                required, 0, 0,
+            ),
+        );
+    let assessment = assess_cached_retry_telemetry(telemetry, thresholds);
+    let NativeContinuationCachedRetryTelemetryAssessment::Insufficient {
+        observed_attempts,
+        required_attempts,
+    } = assessment
+    else {
+        return Err(String::from("telemetry attempt gate category drifted"));
+    };
+    if observed_attempts == 1 && required_attempts == required {
+        Ok(())
+    } else {
+        Err(String::from("telemetry attempt gate drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_assessment_meets_inclusive_thresholds()
+-> Result<(), String> {
+    let attempts = [
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            1,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+                evicted: Vec::new(),
+                retired: Vec::new(),
+            },
+        ),
+    ];
+    let telemetry = summarize_cached_retry_attempts(&attempts)
+        .map_err(|error| error.to_string())?;
+    let required = nonzero_test_limit(2, "telemetry assessment attempts")?;
+    let maximums =
+        NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(0, 1, 0);
+    let minimums =
+        NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+            required, 3, 1,
+        );
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            maximums, minimums,
+        );
+    let assessment = assess_cached_retry_telemetry(telemetry, thresholds);
+    let NativeContinuationCachedRetryTelemetryAssessment::Meets {
+        telemetry: assessed,
+    } = assessment
+    else {
+        return Err(String::from("inclusive assessment category drifted"));
+    };
+    if assessed == telemetry
+        && thresholds.maximums() == maximums
+        && thresholds.minimums() == minimums
+        && maximums.evicted_keys() == 0
+        && maximums.insertions() == 1
+        && maximums.retired_keys() == 0
+        && minimums.attempts() == required
+        && minimums.completed_steps() == 3
+        && minimums.hits() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("inclusive telemetry assessment drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_assessment_retains_all_missed_signals()
+-> Result<(), String> {
+    let attempts = [
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            1,
+            1,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        ),
+        NativeContinuationCachedRetryAttempt::from_test_evidence(
+            2,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+                evicted: Vec::new(),
+                retired: Vec::new(),
+            },
+        ),
+    ];
+    let telemetry = summarize_cached_retry_attempts(&attempts)
+        .map_err(|error| error.to_string())?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                0, 0, 0,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                nonzero_test_limit(2, "telemetry assessment attempts")?,
+                4,
+                2,
+            ),
+        );
+    let NativeContinuationCachedRetryTelemetryAssessment::Misses {
+        telemetry: assessed,
+        violations,
+    } = assess_cached_retry_telemetry(telemetry, thresholds)
+    else {
+        return Err(String::from("telemetry misses were not retained"));
+    };
+    if assessed == telemetry
+        && violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::
+                CompletedSteps,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::Hits,
+        )
+        && violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::Insertions,
+        )
+        && !violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::EvictedKeys,
+        )
+        && !violations.contains(
+            NativeContinuationCachedRetryTelemetryAssessmentSignal::RetiredKeys,
+        )
+        && !violations.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry miss signals drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_assessment_uses_window_totals() -> Result<(), String>
+{
+    let capacity = nonzero_test_limit(2, "telemetry window capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let hit = cached_retry_window_telemetry(
+        1,
+        2,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let insertion = cached_retry_window_telemetry(
+        1,
+        3,
+        NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+            evicted: Vec::new(),
+            retired: Vec::new(),
+        },
+    )?;
+    let _first = window.append(hit).map_err(|error| error.to_string())?;
+    let _second = window
+        .append(insertion)
+        .map_err(|error| error.to_string())?;
+    let thresholds =
+        NativeContinuationCachedRetryTelemetryAssessmentThresholds::new(
+            NativeContinuationCachedRetryTelemetryAssessmentMaximums::new(
+                0, 1, 0,
+            ),
+            NativeContinuationCachedRetryTelemetryAssessmentMinimums::new(
+                nonzero_test_limit(2, "telemetry assessment attempts")?,
+                5,
+                1,
+            ),
+        );
+    let assessment = assess_cached_retry_telemetry(window.totals(), thresholds);
+    let NativeContinuationCachedRetryTelemetryAssessment::Meets { telemetry } =
+        assessment
+    else {
+        return Err(String::from("window assessment category drifted"));
+    };
+    if telemetry == window.totals() {
+        Ok(())
+    } else {
+        Err(String::from("window telemetry assessment drifted"))
+    }
+}
+
+fn cached_retry_telemetry_snapshot_fixture()
+-> Result<NativeContinuationCachedRetryTelemetryWindow, String> {
+    let capacity = nonzero_test_limit(2, "telemetry snapshot capacity")?;
+    let mut window =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let summaries = [
+        cached_retry_window_telemetry(
+            1,
+            1,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        )?,
+        cached_retry_window_telemetry(
+            1,
+            2,
+            NativeExecutableSequenceLeaseCacheDisposition::Inserted {
+                evicted: Vec::new(),
+                retired: Vec::new(),
+            },
+        )?,
+        cached_retry_window_telemetry(
+            1,
+            4,
+            NativeExecutableSequenceLeaseCacheDisposition::Hit,
+        )?,
+    ];
+    for summary in summaries {
+        let _append =
+            window.append(summary).map_err(|error| error.to_string())?;
+    }
+    Ok(window)
+}
+
+fn cached_retry_latency_histogram()
+-> Result<NativeContinuationCachedRetryLatencyHistogram, String> {
+    NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 10, 100])
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn cached_retry_latency_rejects_invalid_bounds() -> Result<(), String> {
+    let empty = NativeContinuationCachedRetryLatencyHistogram::new(Vec::new())
+        .err()
+        .ok_or_else(|| String::from("empty latency bounds were admitted"))?;
+    let duplicate =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![1, 1])
+            .err()
+            .ok_or_else(|| {
+                String::from("duplicate latency bounds were admitted")
+            })?;
+    let descending =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![2, 1])
+            .err()
+            .ok_or_else(|| {
+                String::from("descending latency bounds were admitted")
+            })?;
+    let expected_duplicate =
+        NativeContinuationCachedRetryLatencyHistogramError::
+            BoundsNotIncreasing {
+                index: 1,
+                previous: 1,
+                observed: 1,
+            };
+    let expected_descending =
+        NativeContinuationCachedRetryLatencyHistogramError::
+            BoundsNotIncreasing {
+                index: 1,
+                previous: 2,
+                observed: 1,
+            };
+    if empty == NativeContinuationCachedRetryLatencyHistogramError::BoundsEmpty
+        && duplicate == expected_duplicate
+        && descending == expected_descending
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency bound rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_records_inclusive_buckets() -> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    let samples = [0, 1, 10, 11, 100, 101];
+    let mut records = Vec::new();
+    for nanoseconds in samples {
+        records.push(
+            histogram
+                .record(NativeContinuationCachedRetryLatencySample::new(
+                    nanoseconds,
+                ))
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let first = records
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("latency records were empty"))?;
+    let last = records
+        .last()
+        .copied()
+        .ok_or_else(|| String::from("latency records were empty"))?;
+    if histogram.upper_bounds() == [0, 10, 100]
+        && histogram.bucket_counts() == [1, 2, 2]
+        && histogram.above_maximum() == 1
+        && histogram.samples() == 6
+        && histogram.total_nanoseconds() == 223
+        && histogram.minimum_nanoseconds() == Some(0)
+        && histogram.maximum_nanoseconds() == Some(101)
+        && !histogram.is_empty()
+        && first.bucket() == Some(0)
+        && first.samples() == 1
+        && first.total_nanoseconds() == 0
+        && first.minimum_nanoseconds() == 0
+        && first.maximum_nanoseconds() == 0
+        && last.bucket().is_none()
+        && last.samples() == 6
+        && last.total_nanoseconds() == 223
+        && last.minimum_nanoseconds() == 0
+        && last.maximum_nanoseconds() == 101
+        && NativeContinuationCachedRetryLatencySample::new(101).nanoseconds()
+            == 101
+    {
+        Ok(())
+    } else {
+        Err(String::from("inclusive latency histogram drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_sample_overflow_is_transactional() -> Result<(), String>
+{
+    let mut histogram = cached_retry_latency_histogram()?;
+    histogram.force_totals_for_test(usize::MAX, 0);
+    let before = histogram.clone();
+    let failure = histogram
+        .record(NativeContinuationCachedRetryLatencySample::new(1))
+        .err()
+        .ok_or_else(|| String::from("latency sample overflow was admitted"))?;
+    if failure
+        == NativeContinuationCachedRetryLatencyHistogramError::
+            SampleCountOverflow
+        && histogram == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency sample overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_total_overflow_is_transactional() -> Result<(), String>
+{
+    let mut histogram = cached_retry_latency_histogram()?;
+    histogram.force_totals_for_test(0, u128::MAX);
+    let before = histogram.clone();
+    let failure = histogram
+        .record(NativeContinuationCachedRetryLatencySample::new(1))
+        .err()
+        .ok_or_else(|| String::from("latency total overflow was admitted"))?;
+    if failure
+        == NativeContinuationCachedRetryLatencyHistogramError::
+            TotalNanosecondsOverflow
+        && histogram == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency total overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_bucket_overflow_is_transactional() -> Result<(), String>
+{
+    let mut histogram = cached_retry_latency_histogram()?;
+    if !histogram.force_bucket_for_test(1, usize::MAX) {
+        return Err(String::from("latency test bucket did not exist"));
+    }
+    let before = histogram.clone();
+    let failure = histogram
+        .record(NativeContinuationCachedRetryLatencySample::new(10))
+        .err()
+        .ok_or_else(|| String::from("latency bucket overflow was admitted"))?;
+    let expected =
+        NativeContinuationCachedRetryLatencyHistogramError::
+            BucketCountOverflow { bucket: Some(1) };
+    if failure == expected && histogram == before {
+        Ok(())
+    } else {
+        Err(String::from("latency bucket overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_overflow_bin_is_transactional() -> Result<(), String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    histogram.force_above_maximum_for_test(usize::MAX);
+    let before = histogram.clone();
+    let failure = histogram
+        .record(NativeContinuationCachedRetryLatencySample::new(101))
+        .err()
+        .ok_or_else(|| {
+            String::from("latency overflow-bin overflow was admitted")
+        })?;
+    let expected =
+        NativeContinuationCachedRetryLatencyHistogramError::
+            BucketCountOverflow { bucket: None };
+    if failure == expected && histogram == before {
+        Ok(())
+    } else {
+        Err(String::from("latency overflow bin mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_combines_exact_schema() -> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    for nanoseconds in [1, 10] {
+        let _record = target
+            .record(NativeContinuationCachedRetryLatencySample::new(
+                nanoseconds,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+    let mut source = cached_retry_latency_histogram()?;
+    for nanoseconds in [0, 11, 101] {
+        let _record = source
+            .record(NativeContinuationCachedRetryLatencySample::new(
+                nanoseconds,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+    let record = target
+        .merge(&source)
+        .map_err(|error| format!("latency merge failed: {error:?}"))?;
+    if target.bucket_counts() == [1, 2, 1]
+        && target.above_maximum() == 1
+        && target.samples() == 5
+        && target.total_nanoseconds() == 123
+        && target.minimum_nanoseconds() == Some(0)
+        && target.maximum_nanoseconds() == Some(101)
+        && record.added_samples() == 3
+        && record.above_maximum() == 1
+        && record.samples() == 5
+        && record.total_nanoseconds() == 123
+        && record.minimum_nanoseconds() == Some(0)
+        && record.maximum_nanoseconds() == Some(101)
+    {
+        Ok(())
+    } else {
+        Err(String::from("exact latency merge drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_empty_source_is_noop() -> Result<(), String> {
+    let mut target = cached_retry_populated_latency_histogram()?;
+    let source = cached_retry_latency_histogram()?;
+    let before = target.clone();
+    let record = target
+        .merge(&source)
+        .map_err(|error| format!("empty latency merge failed: {error:?}"))?;
+    if target == before
+        && record.added_samples() == 0
+        && record.samples() == before.samples()
+        && record.total_nanoseconds() == before.total_nanoseconds()
+    {
+        Ok(())
+    } else {
+        Err(String::from("empty latency merge was not a no-op"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_rejects_schema_mismatch() -> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    let before = target.clone();
+    let short = NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 10])
+        .map_err(|error| error.to_string())?;
+    let length_failure = target
+        .merge(&short)
+        .err()
+        .ok_or_else(|| String::from("short latency schema was merged"))?;
+    let mismatched =
+        NativeContinuationCachedRetryLatencyHistogram::new(vec![0, 11, 100])
+            .map_err(|error| error.to_string())?;
+    let bound_failure = target
+        .merge(&mismatched)
+        .err()
+        .ok_or_else(|| String::from("different latency schema was merged"))?;
+    let expected_length =
+        NativeContinuationCachedRetryLatencyMergeError::BoundsLength {
+            target: 3,
+            source: 2,
+        };
+    let expected_bound =
+        NativeContinuationCachedRetryLatencyMergeError::BoundMismatch {
+            index: 1,
+            target: 10,
+            source: 11,
+        };
+    if length_failure == expected_length
+        && bound_failure == expected_bound
+        && target == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency schema rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_bucket_overflow_is_transactional()
+-> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    if !target.force_bucket_for_test(1, usize::MAX) {
+        return Err(String::from("latency merge test bucket did not exist"));
+    }
+    let mut source = cached_retry_latency_histogram()?;
+    let _record = source
+        .record(NativeContinuationCachedRetryLatencySample::new(10))
+        .map_err(|error| error.to_string())?;
+    let before = target.clone();
+    let failure = target
+        .merge(&source)
+        .err()
+        .ok_or_else(|| String::from("latency bucket overflow was merged"))?;
+    let expected =
+        NativeContinuationCachedRetryLatencyMergeError::BucketCountOverflow {
+            bucket: 1,
+        };
+    if failure == expected && target == before {
+        Ok(())
+    } else {
+        Err(String::from("latency merge bucket overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_above_overflow_is_transactional()
+-> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    target.force_above_maximum_for_test(usize::MAX);
+    let mut source = cached_retry_latency_histogram()?;
+    let _record = source
+        .record(NativeContinuationCachedRetryLatencySample::new(101))
+        .map_err(|error| error.to_string())?;
+    let before = target.clone();
+    let failure = target
+        .merge(&source)
+        .err()
+        .ok_or_else(|| String::from("latency overflow bin was merged"))?;
+    if failure
+        == NativeContinuationCachedRetryLatencyMergeError::AboveMaximumOverflow
+        && target == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency merge overflow bin mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_sample_overflow_is_transactional()
+-> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    target.force_totals_for_test(usize::MAX, 0);
+    let mut source = cached_retry_latency_histogram()?;
+    let _record = source
+        .record(NativeContinuationCachedRetryLatencySample::new(1))
+        .map_err(|error| error.to_string())?;
+    let before = target.clone();
+    let failure = target
+        .merge(&source)
+        .err()
+        .ok_or_else(|| String::from("latency sample overflow was merged"))?;
+    if failure
+        == NativeContinuationCachedRetryLatencyMergeError::SampleCountOverflow
+        && target == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency merge sample overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_merge_total_overflow_is_transactional()
+-> Result<(), String> {
+    let mut target = cached_retry_latency_histogram()?;
+    target.force_totals_for_test(0, u128::MAX);
+    let mut source = cached_retry_latency_histogram()?;
+    let _record = source
+        .record(NativeContinuationCachedRetryLatencySample::new(1))
+        .map_err(|error| error.to_string())?;
+    let before = target.clone();
+    let failure = target
+        .merge(&source)
+        .err()
+        .ok_or_else(|| String::from("latency total overflow was merged"))?;
+    if failure
+        == NativeContinuationCachedRetryLatencyMergeError::
+            TotalNanosecondsOverflow
+        && target == before
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency merge total overflow mutated state"))
+    }
+}
+
+fn cached_retry_populated_latency_histogram()
+-> Result<NativeContinuationCachedRetryLatencyHistogram, String> {
+    let mut histogram = cached_retry_latency_histogram()?;
+    for nanoseconds in [0, 1, 10, 11, 100, 101] {
+        let _record = histogram
+            .record(NativeContinuationCachedRetryLatencySample::new(
+                nanoseconds,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(histogram)
+}
+
+fn cached_retry_latency_snapshot_failure(
+    snapshot: NativeContinuationCachedRetryLatencyHistogramSnapshot,
+) -> Result<NativeContinuationCachedRetryLatencySnapshotError, String> {
+    NativeContinuationCachedRetryLatencyHistogram::from_snapshot(snapshot)
+        .err()
+        .ok_or_else(|| String::from("forged latency snapshot was admitted"))
+}
+
+#[test]
+fn cached_retry_latency_snapshot_roundtrips_exactly() -> Result<(), String> {
+    let histogram = cached_retry_populated_latency_histogram()?;
+    let snapshot = histogram.snapshot();
+    let restored =
+        NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
+            snapshot.clone(),
+        )
+        .map_err(|error| format!("latency snapshot rejected: {error:?}"))?;
+    let counts = snapshot.counts();
+    let range = snapshot.range();
+    let parts = snapshot.clone().into_parts();
+    if restored == histogram
+        && snapshot.upper_bounds() == [0, 10, 100]
+        && counts.bucket_counts() == [1, 2, 2]
+        && counts.above_maximum() == 1
+        && counts.samples() == 6
+        && range.minimum_nanoseconds() == Some(0)
+        && range.maximum_nanoseconds() == Some(101)
+        && range.total_nanoseconds() == 223
+        && parts.0 == vec![0, 10, 100]
+        && parts.1 == *counts
+        && parts.2 == range
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_roundtrips_empty() -> Result<(), String> {
+    let histogram = cached_retry_latency_histogram()?;
+    let snapshot = histogram.snapshot();
+    let restored =
+        NativeContinuationCachedRetryLatencyHistogram::from_snapshot(
+            snapshot.clone(),
+        )
+        .map_err(|error| {
+            format!("empty latency snapshot rejected: {error:?}")
+        })?;
+    if restored == histogram
+        && snapshot.counts().samples() == 0
+        && snapshot.range().minimum_nanoseconds().is_none()
+        && snapshot.range().maximum_nanoseconds().is_none()
+        && snapshot.range().total_nanoseconds() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("empty latency snapshot roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_bucket_count() -> Result<(), String> {
+    let snapshot = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        NativeContinuationCachedRetryLatencySnapshotCounts::new(
+            vec![1, 2],
+            1,
+            4,
+        ),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(0),
+            Some(101),
+            112,
+        ),
+    );
+    let expected =
+        NativeContinuationCachedRetryLatencySnapshotError::BucketCount {
+            expected: 3,
+            observed: 2,
+        };
+    if cached_retry_latency_snapshot_failure(snapshot)? == expected {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot bucket count drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_sample_count() -> Result<(), String> {
+    let snapshot = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        NativeContinuationCachedRetryLatencySnapshotCounts::new(
+            vec![1, 2, 2],
+            1,
+            7,
+        ),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(0),
+            Some(101),
+            223,
+        ),
+    );
+    let expected =
+        NativeContinuationCachedRetryLatencySnapshotError::SampleCount {
+            expected: 6,
+            observed: 7,
+        };
+    if cached_retry_latency_snapshot_failure(snapshot)? == expected {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot sample count drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_empty_state() -> Result<(), String> {
+    let snapshot = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![10],
+        NativeContinuationCachedRetryLatencySnapshotCounts::new(vec![0], 0, 0),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(0),
+            None,
+            0,
+        ),
+    );
+    if cached_retry_latency_snapshot_failure(snapshot)?
+        == NativeContinuationCachedRetryLatencySnapshotError::EmptyState
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot empty-state drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_extrema() -> Result<(), String> {
+    let counts = NativeContinuationCachedRetryLatencySnapshotCounts::new(
+        vec![0, 1, 0],
+        0,
+        1,
+    );
+    let missing = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        counts.clone(),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(None, None, 5),
+    );
+    let order = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        counts.clone(),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(9),
+            Some(5),
+            5,
+        ),
+    );
+    let outside = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        counts,
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(0),
+            Some(5),
+            5,
+        ),
+    );
+    let expected_order =
+        NativeContinuationCachedRetryLatencySnapshotError::ExtremaOrder {
+            maximum: 5,
+            minimum: 9,
+        };
+    let expected_range =
+        NativeContinuationCachedRetryLatencySnapshotError::ExtremaRange {
+            bucket: Some(1),
+            lower: 1,
+            observed: 0,
+            upper: 10,
+        };
+    if cached_retry_latency_snapshot_failure(missing)?
+        == NativeContinuationCachedRetryLatencySnapshotError::ExtremaMissing
+        && cached_retry_latency_snapshot_failure(order)? == expected_order
+        && cached_retry_latency_snapshot_failure(outside)? == expected_range
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot extrema rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_total_range() -> Result<(), String> {
+    let snapshot = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![0, 10, 100],
+        NativeContinuationCachedRetryLatencySnapshotCounts::new(
+            vec![0, 1, 0],
+            0,
+            1,
+        ),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(1),
+            Some(10),
+            11,
+        ),
+    );
+    let expected =
+        NativeContinuationCachedRetryLatencySnapshotError::TotalRange {
+            minimum: 1,
+            maximum: 10,
+            observed: 11,
+        };
+    if cached_retry_latency_snapshot_failure(snapshot)? == expected {
+        Ok(())
+    } else {
+        Err(String::from("latency snapshot total range drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_snapshot_rejects_impossible_overflow_bin()
+-> Result<(), String> {
+    let snapshot = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        vec![u64::MAX],
+        NativeContinuationCachedRetryLatencySnapshotCounts::new(vec![0], 1, 1),
+        NativeContinuationCachedRetryLatencySnapshotRange::new(
+            Some(u64::MAX),
+            Some(u64::MAX),
+            u128::from(u64::MAX),
+        ),
+    );
+    let expected =
+        NativeContinuationCachedRetryLatencySnapshotError::CalculationOverflow {
+            bucket: None,
+        };
+    if cached_retry_latency_snapshot_failure(snapshot)? == expected {
+        Ok(())
+    } else {
+        Err(String::from("impossible latency overflow bin was admitted"))
+    }
+}
+
+fn cached_retry_latency_codec_failure(
+    bytes: &[u8],
+) -> Result<NativeContinuationCachedRetryLatencyCodecError, String> {
+    decode_cached_retry_latency_snapshot(bytes)
+        .err()
+        .ok_or_else(|| String::from("forged latency codec bytes were admitted"))
+}
+
+fn cached_retry_latency_codec_snapshot_error(
+    error: NativeContinuationCachedRetryLatencyCodecError,
+) -> Option<Box<NativeContinuationCachedRetryLatencySnapshotError>> {
+    match error {
+        NativeContinuationCachedRetryLatencyCodecError::Snapshot(cause) => {
+            Some(cause)
+        },
+        NativeContinuationCachedRetryLatencyCodecError::AbsentExtremaValue {
+            ..
+        }
+        | NativeContinuationCachedRetryLatencyCodecError::EncodingRange {
+            ..
+        }
+        | NativeContinuationCachedRetryLatencyCodecError::Flag { .. }
+        | NativeContinuationCachedRetryLatencyCodecError::Length { .. }
+        | NativeContinuationCachedRetryLatencyCodecError::LengthOverflow
+        | NativeContinuationCachedRetryLatencyCodecError::Magic
+        | NativeContinuationCachedRetryLatencyCodecError::Representation {
+            ..
+        }
+        | NativeContinuationCachedRetryLatencyCodecError::Reserved { .. }
+        | NativeContinuationCachedRetryLatencyCodecError::Version {
+            ..
+        } => None,
+    }
+}
+
+fn cached_retry_latency_codec_fixture()
+-> Result<CachedRetryLatencyCodecFixture, String> {
+    let snapshot = cached_retry_populated_latency_histogram()?.snapshot();
+    let bytes = encode_cached_retry_latency_snapshot(&snapshot)
+        .map_err(|error| error.to_string())?;
+    Ok((snapshot, bytes))
+}
+
+#[test]
+fn cached_retry_latency_codec_roundtrips_canonical_bytes() -> Result<(), String>
+{
+    let (snapshot, bytes) = cached_retry_latency_codec_fixture()?;
+    let prefix = bytes
+        .get(..12)
+        .ok_or_else(|| String::from("latency codec prefix was truncated"))?;
+    let decoded = decode_cached_retry_latency_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    let reencoded = encode_cached_retry_latency_snapshot(&decoded)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == 120
+        && prefix == b"MBLATN01\x01\x00\x00\x00"
+        && decoded == snapshot
+        && reencoded == bytes
+    {
+        Ok(())
+    } else {
+        Err(String::from("canonical latency codec roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_roundtrips_empty() -> Result<(), String> {
+    let snapshot = cached_retry_latency_histogram()?.snapshot();
+    let bytes = encode_cached_retry_latency_snapshot(&snapshot)
+        .map_err(|error| error.to_string())?;
+    let decoded = decode_cached_retry_latency_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == 120 && decoded == snapshot {
+        Ok(())
+    } else {
+        Err(String::from("empty latency codec roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_magic() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_latency_codec_fixture()?;
+    let first = bytes
+        .first_mut()
+        .ok_or_else(|| String::from("latency codec fixture was empty"))?;
+    *first = first.wrapping_add(1);
+    if cached_retry_latency_codec_failure(&bytes)?
+        == NativeContinuationCachedRetryLatencyCodecError::Magic
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency codec magic rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_version_and_reserved()
+-> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_latency_codec_fixture()?;
+    let mut version = bytes.clone();
+    replace_cached_retry_codec_bytes(&mut version, 8, 2u16.to_le_bytes())?;
+    let version_failure = cached_retry_latency_codec_failure(&version)?;
+    let mut reserved = bytes;
+    replace_cached_retry_codec_bytes(&mut reserved, 10, 1u16.to_le_bytes())?;
+    let reserved_failure = cached_retry_latency_codec_failure(&reserved)?;
+    let expected_version =
+        NativeContinuationCachedRetryLatencyCodecError::Version { observed: 2 };
+    let expected_reserved =
+        NativeContinuationCachedRetryLatencyCodecError::Reserved {
+            observed: 1,
+        };
+    if version_failure == expected_version
+        && reserved_failure == expected_reserved
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency codec header rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_flags_and_absent_values()
+-> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_latency_codec_fixture()?;
+    let mut flag = bytes;
+    replace_cached_retry_codec_bytes(&mut flag, 36, [2u8])?;
+    let flag_failure = cached_retry_latency_codec_failure(&flag)?;
+    let empty = cached_retry_latency_histogram()?.snapshot();
+    let mut absent = encode_cached_retry_latency_snapshot(&empty)
+        .map_err(|error| error.to_string())?;
+    replace_cached_retry_codec_bytes(&mut absent, 40, 1u64.to_le_bytes())?;
+    let absent_failure = cached_retry_latency_codec_failure(&absent)?;
+    let expected_flag = NativeContinuationCachedRetryLatencyCodecError::Flag {
+        maximum: false,
+        observed: 2,
+    };
+    let expected_absent =
+        NativeContinuationCachedRetryLatencyCodecError::AbsentExtremaValue {
+            maximum: false,
+            observed: 1,
+        };
+    if flag_failure == expected_flag && absent_failure == expected_absent {
+        Ok(())
+    } else {
+        Err(String::from("latency codec extrema framing drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_short_and_trailing_bytes()
+-> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_latency_codec_fixture()?;
+    let short = bytes
+        .get(..71)
+        .ok_or_else(|| String::from("latency codec fixture was too short"))?;
+    let short_failure = cached_retry_latency_codec_failure(short)?;
+    let mut trailing = bytes;
+    trailing.push(0);
+    let trailing_failure = cached_retry_latency_codec_failure(&trailing)?;
+    let expected_short =
+        NativeContinuationCachedRetryLatencyCodecError::Length {
+            expected: 72,
+            observed: 71,
+        };
+    let expected_trailing =
+        NativeContinuationCachedRetryLatencyCodecError::Length {
+            expected: 120,
+            observed: 121,
+        };
+    if short_failure == expected_short && trailing_failure == expected_trailing
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency codec length rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_count_overflow() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_latency_codec_fixture()?;
+    replace_cached_retry_codec_bytes(&mut bytes, 12, u64::MAX.to_le_bytes())?;
+    if cached_retry_latency_codec_failure(&bytes)?
+        == NativeContinuationCachedRetryLatencyCodecError::LengthOverflow
+    {
+        Ok(())
+    } else {
+        Err(String::from("latency codec count overflow drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_semantic_drift() -> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_latency_codec_fixture()?;
+    let mut total = bytes.clone();
+    replace_cached_retry_codec_bytes(&mut total, 56, 0u128.to_le_bytes())?;
+    let total_failure = cached_retry_latency_codec_failure(&total)?;
+    let mut bounds = bytes;
+    replace_cached_retry_codec_bytes(&mut bounds, 88, 0u64.to_le_bytes())?;
+    let bound_failure = cached_retry_latency_codec_failure(&bounds)?;
+    let total_matches = cached_retry_latency_codec_snapshot_error(
+        total_failure,
+    )
+    .is_some_and(|error| {
+        matches!(
+            *error,
+            NativeContinuationCachedRetryLatencySnapshotError::TotalRange {
+                minimum: 125,
+                observed: 0,
+                ..
+            }
+        )
+    });
+    let bound_matches = cached_retry_latency_codec_snapshot_error(
+        bound_failure,
+    )
+    .is_some_and(|error| {
+        matches!(
+            *error,
+            NativeContinuationCachedRetryLatencySnapshotError::Bounds(
+                NativeContinuationCachedRetryLatencyHistogramError::
+                    BoundsNotIncreasing {
+                        index: 1,
+                        previous: 0,
+                        observed: 0,
+                    },
+            )
+        )
+    });
+    if total_matches && bound_matches {
+        Ok(())
+    } else {
+        Err(String::from("latency codec semantic rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_latency_codec_rejects_invalid_snapshot_on_encode()
+-> Result<(), String> {
+    let snapshot = cached_retry_populated_latency_histogram()?.snapshot();
+    let (bounds, counts, range) = snapshot.into_parts();
+    let forged_counts = NativeContinuationCachedRetryLatencySnapshotCounts::new(
+        counts.bucket_counts().to_vec(),
+        counts.above_maximum(),
+        counts.samples().saturating_add(1),
+    );
+    let forged = NativeContinuationCachedRetryLatencyHistogramSnapshot::new(
+        bounds,
+        forged_counts,
+        range,
+    );
+    let failure = encode_cached_retry_latency_snapshot(&forged)
+        .err()
+        .ok_or_else(|| String::from("invalid latency snapshot was encoded"))?;
+    let matches = cached_retry_latency_codec_snapshot_error(failure)
+        .is_some_and(|error| {
+            matches!(
+                *error,
+                NativeContinuationCachedRetryLatencySnapshotError::SampleCount {
+                    expected: 6,
+                    observed: 7,
+                }
+            )
+        });
+    if matches {
+        Ok(())
+    } else {
+        Err(String::from("latency codec encoder validation drifted"))
+    }
+}
+
+fn cached_retry_codec_failure(
+    bytes: &[u8],
+) -> Result<NativeContinuationCachedRetryTelemetryCodecError, String> {
+    decode_cached_retry_telemetry_snapshot(bytes)
+        .err()
+        .ok_or_else(|| {
+            String::from("forged telemetry codec bytes were admitted")
+        })
+}
+
+fn cached_retry_codec_fixture() -> Result<CachedRetryCodecFixture, String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let bytes = encode_cached_retry_telemetry_snapshot(&snapshot)
+        .map_err(|error| error.to_string())?;
+    Ok((snapshot, bytes))
+}
+
+fn replace_cached_retry_codec_bytes<const N: usize>(
+    bytes: &mut [u8],
+    offset: usize,
+    value: [u8; N],
+) -> Result<(), String> {
+    let end = offset
+        .checked_add(N)
+        .ok_or_else(|| String::from("codec test offset overflow"))?;
+    let target = bytes
+        .get_mut(offset..end)
+        .ok_or_else(|| String::from("codec test offset out of range"))?;
+    target.copy_from_slice(&value);
+    Ok(())
+}
+
+#[test]
+fn cached_retry_telemetry_codec_roundtrips_canonical_bytes()
+-> Result<(), String> {
+    let (snapshot, bytes) = cached_retry_codec_fixture()?;
+    let prefix = bytes
+        .get(..12)
+        .ok_or_else(|| String::from("codec prefix was truncated"))?;
+    let expected_prefix = b"MBTELM01   ";
+    let decoded = decode_cached_retry_telemetry_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    let reencoded = encode_cached_retry_telemetry_snapshot(&decoded)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == 204
+        && prefix == expected_prefix
+        && decoded == snapshot
+        && reencoded == bytes
+    {
+        Ok(())
+    } else {
+        Err(String::from("canonical telemetry codec roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_codec_roundtrips_empty_snapshot() -> Result<(), String> {
+    let capacity = nonzero_test_limit(3, "empty codec capacity")?;
+    let snapshot =
+        NativeContinuationCachedRetryTelemetryWindow::new(capacity).snapshot();
+    let bytes = encode_cached_retry_telemetry_snapshot(&snapshot)
+        .map_err(|error| error.to_string())?;
+    let decoded = decode_cached_retry_telemetry_snapshot(&bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() == 92 && decoded == snapshot {
+        Ok(())
+    } else {
+        Err(String::from("empty telemetry codec roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_magic() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_codec_fixture()?;
+    let first = bytes
+        .first_mut()
+        .ok_or_else(|| String::from("codec fixture was empty"))?;
+    *first = first.wrapping_add(1);
+    if cached_retry_codec_failure(&bytes)?
+        == NativeContinuationCachedRetryTelemetryCodecError::Magic
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec magic rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_version_and_reserved()
+-> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_codec_fixture()?;
+    let mut version = bytes.clone();
+    replace_cached_retry_codec_bytes(&mut version, 8, 2u16.to_le_bytes())?;
+    let version_failure = cached_retry_codec_failure(&version)?;
+    let mut reserved = bytes;
+    replace_cached_retry_codec_bytes(&mut reserved, 10, 1u16.to_le_bytes())?;
+    let reserved_failure = cached_retry_codec_failure(&reserved)?;
+    if version_failure
+        == (NativeContinuationCachedRetryTelemetryCodecError::Version {
+            observed: 2,
+        })
+        && reserved_failure
+            == (NativeContinuationCachedRetryTelemetryCodecError::Reserved {
+                observed: 1,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec header rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_short_and_trailing_bytes()
+-> Result<(), String> {
+    let (_snapshot, bytes) = cached_retry_codec_fixture()?;
+    let short = bytes
+        .get(..91)
+        .ok_or_else(|| String::from("codec fixture was too short"))?;
+    let short_failure = cached_retry_codec_failure(short)?;
+    let mut trailing = bytes;
+    trailing.push(0);
+    let trailing_failure = cached_retry_codec_failure(&trailing)?;
+    let expected_short =
+        NativeContinuationCachedRetryTelemetryCodecError::Length {
+            expected: 92,
+            observed: 91,
+        };
+    let expected_trailing =
+        NativeContinuationCachedRetryTelemetryCodecError::Length {
+            expected: 204,
+            observed: 205,
+        };
+    if short_failure == expected_short && trailing_failure == expected_trailing
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec length rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_zero_capacity() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_codec_fixture()?;
+    replace_cached_retry_codec_bytes(&mut bytes, 12, 0u64.to_le_bytes())?;
+    if cached_retry_codec_failure(&bytes)?
+        == NativeContinuationCachedRetryTelemetryCodecError::CapacityZero
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec zero capacity drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_count_overflow() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_codec_fixture()?;
+    replace_cached_retry_codec_bytes(&mut bytes, 36, u64::MAX.to_le_bytes())?;
+    if cached_retry_codec_failure(&bytes)?
+        == NativeContinuationCachedRetryTelemetryCodecError::LengthOverflow
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec count overflow drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_total_drift() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_codec_fixture()?;
+    replace_cached_retry_codec_bytes(&mut bytes, 52, 8u64.to_le_bytes())?;
+    let failure = cached_retry_codec_failure(&bytes)?;
+    let expected = NativeContinuationCachedRetryTelemetryCodecError::Snapshot(
+        NativeContinuationCachedRetryTelemetrySnapshotError::Totals,
+    );
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec total rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_sequence_drift() -> Result<(), String> {
+    let (_snapshot, mut bytes) = cached_retry_codec_fixture()?;
+    replace_cached_retry_codec_bytes(&mut bytes, 92, 1u64.to_le_bytes())?;
+    let failure = cached_retry_codec_failure(&bytes)?;
+    let snapshot_error =
+        NativeContinuationCachedRetryTelemetrySnapshotError::FirstSequence {
+            expected: 2,
+            observed: 1,
+        };
+    let expected = NativeContinuationCachedRetryTelemetryCodecError::Snapshot(
+        snapshot_error,
+    );
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec sequence rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_codec_rejects_invalid_snapshot_on_encode()
+-> Result<(), String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let (capacity, _metadata, observations, totals) = snapshot.into_parts();
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        NativeContinuationCachedRetryTelemetrySnapshotMetadata::new(0, 3),
+        observations,
+        totals,
+    );
+    let failure = encode_cached_retry_telemetry_snapshot(&forged)
+        .err()
+        .ok_or_else(|| String::from("invalid snapshot was encoded"))?;
+    let snapshot_error =
+        NativeContinuationCachedRetryTelemetrySnapshotError::EvictionCount {
+            expected: 1,
+            observed: 0,
+        };
+    let expected = NativeContinuationCachedRetryTelemetryCodecError::Snapshot(
+        snapshot_error,
+    );
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("telemetry codec encoder validation drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_snapshot_roundtrips_exact_window()
+-> Result<(), String> {
+    let window = cached_retry_telemetry_snapshot_fixture()?;
+    let snapshot = window.snapshot();
+    let restored = NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
+        snapshot.clone(),
+    )
+    .map_err(|error| format!("snapshot roundtrip failed: {error:?}"))?;
+    if snapshot.capacity() == window.capacity()
+        && snapshot.metadata().evictions() == 1
+        && snapshot.metadata().last_sequence() == 3
+        && snapshot.observations().len() == 2
+        && snapshot.totals() == window.totals()
+        && restored.snapshot() == snapshot
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry snapshot roundtrip drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_snapshot_rejects_retained_count() -> Result<(), String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let (capacity, metadata, mut observations, totals) = snapshot.into_parts();
+    let duplicate = observations
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("snapshot fixture was empty"))?;
+    observations.push(duplicate);
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        metadata,
+        observations,
+        totals,
+    );
+    let failure =
+        NativeContinuationCachedRetryTelemetryWindow::from_snapshot(forged)
+            .err()
+            .ok_or_else(|| String::from("oversized snapshot was admitted"))?;
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::RetainedCount {
+            expected: 2,
+            observed: 3,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot retained-count rejection drifted"))
+    }
+}
+
+fn cached_retry_snapshot_failure(
+    snapshot: NativeContinuationCachedRetryTelemetryWindowSnapshot,
+) -> Result<NativeContinuationCachedRetryTelemetrySnapshotError, String> {
+    NativeContinuationCachedRetryTelemetryWindow::from_snapshot(snapshot)
+        .err()
+        .ok_or_else(|| String::from("forged telemetry snapshot was admitted"))
+}
+
+#[test]
+fn cached_retry_snapshot_rejects_first_sequence() -> Result<(), String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let (capacity, metadata, mut observations, totals) = snapshot.into_parts();
+    observations.swap(0, 1);
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        metadata,
+        observations,
+        totals,
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::FirstSequence {
+            expected: 2,
+            observed: 3,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot first-sequence rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_snapshot_rejects_eviction_metadata()
+-> Result<(), String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let (capacity, _metadata, observations, totals) = snapshot.into_parts();
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        NativeContinuationCachedRetryTelemetrySnapshotMetadata::new(0, 3),
+        observations,
+        totals,
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::EvictionCount {
+            expected: 1,
+            observed: 0,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot eviction rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_snapshot_rejects_total_drift() -> Result<(), String> {
+    let snapshot = cached_retry_telemetry_snapshot_fixture()?.snapshot();
+    let (capacity, metadata, observations, _totals) = snapshot.into_parts();
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        metadata,
+        observations,
+        NativeContinuationCachedRetryTelemetry::default(),
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    if failure == NativeContinuationCachedRetryTelemetrySnapshotError::Totals {
+        Ok(())
+    } else {
+        Err(String::from("snapshot totals rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_snapshot_roundtrips_empty_window()
+-> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry snapshot capacity")?;
+    let window = NativeContinuationCachedRetryTelemetryWindow::new(capacity);
+    let snapshot = window.snapshot();
+    let restored = NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
+        snapshot.clone(),
+    )
+    .map_err(|error| format!("empty snapshot failed: {error:?}"))?;
+    if snapshot.metadata()
+        == NativeContinuationCachedRetryTelemetrySnapshotMetadata::default()
+        && snapshot.observations().is_empty()
+        && snapshot.totals()
+            == NativeContinuationCachedRetryTelemetry::default()
+        && restored.snapshot() == snapshot
+    {
+        Ok(())
+    } else {
+        Err(String::from("empty telemetry snapshot drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_reconfigures_expansion() -> Result<(), String>
+{
+    let mut window = cached_retry_telemetry_snapshot_fixture()?;
+    let original_totals = window.totals();
+    let same = window
+        .reconfigure_capacity(window.capacity())
+        .map_err(|error| error.to_string())?;
+    let expanded_capacity =
+        nonzero_test_limit(4, "telemetry expanded capacity")?;
+    let expanded = window
+        .reconfigure_capacity(expanded_capacity)
+        .map_err(|error| error.to_string())?;
+    let next = cached_retry_window_telemetry(
+        1,
+        5,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let appended = window.append(next).map_err(|error| error.to_string())?;
+    if same.previous_capacity() == same.current_capacity()
+        && same.removed().is_empty()
+        && same.totals() == original_totals
+        && expanded.previous_capacity().get() == 2
+        && expanded.current_capacity() == expanded_capacity
+        && expanded.evictions() == 1
+        && expanded.removed().is_empty()
+        && expanded.totals() == original_totals
+        && appended.evicted().is_none()
+        && appended.observation().sequence() == 4
+        && window.len() == 3
+        && window.evictions() == 1
+        && NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
+            window.snapshot(),
+        )
+        .is_ok()
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry capacity expansion drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_reconfigures_shrink_and_continuation()
+-> Result<(), String> {
+    let mut window = cached_retry_telemetry_snapshot_fixture()?;
+    let capacity = nonzero_test_limit(1, "telemetry shrunk capacity")?;
+    let shrunk = window
+        .reconfigure_capacity(capacity)
+        .map_err(|error| error.to_string())?;
+    let removed = shrunk
+        .removed()
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("telemetry shrink removed nothing"))?;
+    let retained = window
+        .observations()
+        .next()
+        .copied()
+        .ok_or_else(|| String::from("telemetry shrink retained nothing"))?;
+    let next = cached_retry_window_telemetry(
+        1,
+        5,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let appended = window.append(next).map_err(|error| error.to_string())?;
+    if shrunk.previous_capacity().get() == 2
+        && shrunk.current_capacity() == capacity
+        && removed.sequence() == 2
+        && retained.sequence() == 3
+        && shrunk.evictions() == 2
+        && shrunk.totals() == retained.telemetry()
+        && appended.evicted() == Some(retained)
+        && appended.observation().sequence() == 4
+        && appended.evictions() == 3
+        && window.snapshot().metadata().evictions() == 3
+        && window.snapshot().metadata().last_sequence() == 4
+        && NativeContinuationCachedRetryTelemetryWindow::from_snapshot(
+            window.snapshot(),
+        )
+        .is_ok()
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry capacity shrink drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_telemetry_window_reconfiguration_overflow_is_transactional()
+-> Result<(), String> {
+    let mut window = cached_retry_telemetry_snapshot_fixture()?;
+    let original_capacity = window.capacity();
+    let original_totals = window.totals();
+    let original_observations =
+        window.observations().copied().collect::<Vec<_>>();
+    window.force_counters_for_test(u64::MAX, 3);
+    let capacity = nonzero_test_limit(1, "telemetry shrunk capacity")?;
+    let failure =
+        window.reconfigure_capacity(capacity).err().ok_or_else(|| {
+            String::from("telemetry shrink overflow was admitted")
+        })?;
+    let expected =
+        CachedRetryTelemetryWindowError::EvictionCountOverflow { sequence: 3 };
+    if failure == expected
+        && window.capacity() == original_capacity
+        && window.evictions() == u64::MAX
+        && window.last_sequence() == Some(3)
+        && window.totals() == original_totals
+        && window.observations().copied().collect::<Vec<_>>()
+            == original_observations
+    {
+        Ok(())
+    } else {
+        Err(String::from("telemetry shrink overflow mutated state"))
+    }
+}
+
+#[test]
+fn cached_retry_snapshot_rejects_empty_metadata() -> Result<(), String> {
+    let capacity = nonzero_test_limit(1, "telemetry snapshot capacity")?;
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        NativeContinuationCachedRetryTelemetrySnapshotMetadata::new(1, 1),
+        Vec::new(),
+        NativeContinuationCachedRetryTelemetry::default(),
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::EmptyMetadata {
+            evictions: 1,
+            last_sequence: 1,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot empty-metadata rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_snapshot_rejects_internal_sequence_gap() -> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry snapshot capacity")?;
+    let summary = NativeContinuationCachedRetryTelemetry::default();
+    let observations = vec![
+        NativeContinuationCachedRetryTelemetryObservation::new(1, summary),
+        NativeContinuationCachedRetryTelemetryObservation::new(3, summary),
+    ];
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        NativeContinuationCachedRetryTelemetrySnapshotMetadata::new(0, 2),
+        observations,
+        summary,
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::SequenceGap {
+            index: 1,
+            expected: 2,
+            observed: 3,
+        };
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot sequence-gap rejection drifted"))
+    }
+}
+
+#[test]
+fn cached_retry_snapshot_rejects_aggregate_overflow() -> Result<(), String> {
+    let capacity = nonzero_test_limit(2, "telemetry snapshot capacity")?;
+    let maximum = cached_retry_window_telemetry(
+        1,
+        usize::MAX,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let one = cached_retry_window_telemetry(
+        1,
+        1,
+        NativeExecutableSequenceLeaseCacheDisposition::Hit,
+    )?;
+    let observations = vec![
+        NativeContinuationCachedRetryTelemetryObservation::new(1, maximum),
+        NativeContinuationCachedRetryTelemetryObservation::new(2, one),
+    ];
+    let forged = NativeContinuationCachedRetryTelemetryWindowSnapshot::new(
+        capacity,
+        NativeContinuationCachedRetryTelemetrySnapshotMetadata::new(0, 2),
+        observations,
+        NativeContinuationCachedRetryTelemetry::default(),
+    );
+    let failure = cached_retry_snapshot_failure(forged)?;
+    let aggregate = CachedRetryTelemetryWindowError::AggregateOverflow {
+        sequence: 2,
+        counter:
+            NativeContinuationCachedRetryTelemetryWindowCounter::CompletedSteps,
+    };
+    let expected =
+        NativeContinuationCachedRetryTelemetrySnapshotError::Aggregate(
+            aggregate,
+        );
+    if failure == expected {
+        Ok(())
+    } else {
+        Err(String::from("snapshot aggregate rejection drifted"))
+    }
 }
