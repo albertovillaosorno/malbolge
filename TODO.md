@@ -529,8 +529,16 @@ budget selects a one-based native attempt; missing target format applies the
 configured normative fallback without counting an attempt. Policy and hard
 planning failures retain the suspension. Five cases cover Windows native route,
 planner bypass at exhaustion, sliced format fallback, hard profile rejection,
-and caller-yield rejection. Route execution, cache-aware planning, adaptive
-telemetry, async queues, and product orchestration remain open.
+and caller-yield rejection.
+`application/retry_turn.rs` now executes exactly one routed turn. Interpreter
+routes run their configured scheduler decision without touching native adapters.
+Native routes execute one attempt and immediately rebase success or failure.
+Successful and failed native turns expose attempt evidence plus semantic
+disposition; failed turns separately retain indexed runner/release ownership.
+Rebase failures retain their complete execution owner. Five cases cover
+interpreter completion, native completion, guard fallback, runner failure, and
+semantic completion with cleanup retry. Cache-aware planning, adaptive telemetry,
+automatic multi-turn loops, async queues, and product orchestration remain open.
 `ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
 All load images are derived before allocation; mappings then load
 transactionally before the first call. A failed later load releases the ready

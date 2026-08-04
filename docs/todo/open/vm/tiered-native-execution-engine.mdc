@@ -377,8 +377,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   selects a numbered native route; missing format applies configured normative
   fallback without counting an attempt. Policy and hard planning failures retain
   the suspension. Five cases cover Windows route, exhaustion bypass, sliced
-  format fallback, hard profile rejection, and invalid reason. Route execution,
-  cache-aware planning, adaptive telemetry, async queues, and product
+  format fallback, hard profile rejection, and invalid reason.
+- `application/retry_turn.rs` now executes exactly one routed turn. Interpreter
+  routes use their scheduler decision without native adapter calls. Native routes
+  execute one attempt and immediately rebase success/failure; attempt evidence and
+  semantic disposition remain independent from indexed runner/release ownership.
+  Rebase rejection retains the full execution owner. Five cases cover both
+  completions, guard fallback, runner failure, and cleanup completion. Cache-aware
+  planning, adaptive telemetry, automatic loops, async queues, and product
   orchestration remain open.
 - `ReadyNativeExecutableSequence` now prederives every image and loads every
   mapping before execution. It supports repeated loaded runs without new memory
