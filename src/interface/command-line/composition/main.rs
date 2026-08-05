@@ -446,8 +446,7 @@ fn repository_zig() -> Option<PathBuf> {
 fn run() -> Result<ExitCode, String> {
     let mut arguments = env::args_os().skip(1);
     let Some(first_argument) = arguments.next() else {
-        write_usage()?;
-        return Ok(ExitCode::FAILURE);
+        return Err(String::from("expected source path; use --help for usage"));
     };
     if first_argument == OsStr::new("--help")
         || first_argument == OsStr::new("-h")

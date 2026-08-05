@@ -9,7 +9,9 @@ malbolge <path-to-program.malbolge>
 
 The two extensions intentionally mean different things. `--help` and `-h` are
 accepted only as standalone arguments; combining help with a path or another
-argument fails closed instead of hiding malformed input.
+argument fails closed instead of hiding malformed input. Invoking the command
+without a source path also fails with a diagnostic on stderr and points to
+`--help`; it does not print successful help text to stdout.
 
 ## `.malbolge`: canonical guest execution
 

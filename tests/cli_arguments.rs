@@ -84,3 +84,27 @@ fn help_is_accepted_only_as_the_sole_argument() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn missing_source_is_a_diagnostic_not_help() -> Result<(), String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .output()
+        .map_err(|error| format!("run CLI without arguments: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains("expected source path; use --help for usage")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "missing-source policy mismatch: status={} ",
+                "stdout={} stderr={}",
+            ),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            stderr,
+        ))
+    }
+}
