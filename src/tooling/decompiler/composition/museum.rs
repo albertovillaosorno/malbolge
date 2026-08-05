@@ -40,7 +40,7 @@ use std::path::PathBuf;
 
 use malbolge::historical_profile;
 
-use crate::decompiler;
+use super::decompiler;
 
 /// Converts one locally supplied historical specimen to a local C view.
 ///

@@ -41,7 +41,7 @@ use std::path::PathBuf;
 
 use malbolge::target_profile;
 
-use crate::decompiler;
+use super::decompiler;
 
 const USAGE: &str = concat!(
     "usage: malbolge_decompile --profile ID --representation c INPUT ",
