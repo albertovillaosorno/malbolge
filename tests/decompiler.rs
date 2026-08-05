@@ -113,6 +113,36 @@ fn c_render_contains_atomic_post_jump_encryption_logic() -> Result<(), String> {
     }
 }
 
+
+#[test]
+fn c_render_checks_output_capacity_at_emission() -> Result<(), String> {
+    let rendered = decompiler::render_c(current_profile(), OUTPUT_SOURCE)
+        .map_err(|error| error.to_string())?;
+    if rendered.contains("output_capacity < step_budget")
+        || rendered.contains("step_budget != 0 && output == NULL")
+    {
+        return Err(String::from(
+            "generated C retains budget-sized output precondition",
+        ));
+    }
+    let capacity = rendered
+        .find("if (emits_output && output_len >= output_capacity)")
+        .ok_or_else(|| String::from("dynamic output capacity check missing"))?;
+    let commit = rendered
+        .find("memory[next_code_pointer] = encrypted;")
+        .ok_or_else(|| String::from("encryption commit missing"))?;
+    if rendered.contains("MB_STATUS_OUTPUT_EXHAUSTED = 5")
+        && rendered.contains("output_capacity != 0 && output == NULL")
+        && capacity < commit
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "output capacity rejection is not explicit and atomic",
+        ))
+    }
+}
+
 #[test]
 fn initial_listing_uses_normative_translation_table() -> Result<(), String> {
     let rendered = decompiler::render_c(historical_profile(), OUTPUT_SOURCE)

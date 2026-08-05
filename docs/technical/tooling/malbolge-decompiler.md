@@ -70,8 +70,9 @@ museum.
   profile-declared non-graphical behavior, EOF, and atomic rejection.
 - Self-modification is represented as behavior, not optimized away to make the
   output look more conventional.
-- Output capacity is preflighted to at least the requested step budget; one
-  semantic step emits at most one byte.
+- Output capacity is consumed only when an instruction actually emits a byte;
+  it is never inflated to the requested step budget. Exhaustion rejects the
+  pending transition before output, encryption, register, or pointer mutation.
 - `malbolge_decompiled_run` initializes caller-visible result storage
   deterministically even when arguments are rejected.
 - Generated or museum-derived views do not become semantic or licensing
@@ -83,18 +84,19 @@ Invalid Malbolge source fails before rendering through the selected profile's
 loader diagnostics. Unknown profiles and unknown output representations fail
 explicitly in the general CLI; there is no fallback.
 
-Generated C returns explicit invalid-argument and invalid-encryption statuses.
-A rejected encryption target commits no input, output, register, or memory
-transition. Halt and modern non-graphical termination are distinct outcomes;
+Generated C returns explicit invalid-argument, invalid-encryption, and
+output-exhausted statuses. A rejected encryption target or exhausted output
+buffer commits no input, output, register, or memory transition for that step.
+Halt and modern non-graphical termination are distinct outcomes;
 `malbolge-1998` instead preserves bounded non-progress for a non-graphical
 current cell. Museum conversion never downloads a missing specimen or
 substitutes another source.
 
 ## Verification
 
-`tests/decompiler.rs` provides six product tests covering deterministic
-rendering,
-profile geometry, source rejection, post-jump encryption ordering, normative
+`tests/decompiler.rs` provides seven product tests covering deterministic
+rendering, profile geometry, source rejection, post-jump encryption ordering,
+output-capacity atomicity, normative
 initial translation, and the interpreter-compatible `ubO`
 input/output/halt baseline against `ProfileMachine`.
 

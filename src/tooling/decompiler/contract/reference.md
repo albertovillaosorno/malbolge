@@ -19,12 +19,15 @@ The emitted C is a source-specialized deterministic machine with:
 - profile-declared input/output instruction bytes and non-graphical behavior;
 - position-dependent decode;
 - atomic post-instruction self-encryption, including the post-jump target rule;
-- explicit halt, non-graphical termination, invalid-encryption rejection, and
-  budget exhaustion;
+- explicit halt, non-graphical termination, invalid-encryption rejection,
+  output-capacity exhaustion, and budget exhaustion;
 - an initial normalized decode listing for human inspection.
 
 It deliberately does not call `malloc`, `getchar`, `putchar`, threads, or host
-services. A caller chooses how to supply buffers and I/O.
+services. A caller chooses how to supply buffers and I/O. Output capacity is
+checked only when an instruction emits a byte; it is not required to equal the
+step budget, and exhaustion rejects that transition before encryption, pointer,
+or output mutation commits.
 
 ## CLI
 

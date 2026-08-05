@@ -41,7 +41,8 @@ Keep museum conversion as a separate local convenience over the general tool.
   fallback changes semantics.
 - The C representation preserves normative decode, crazy/rotate, jumps,
   self-encryption, EOF, I/O, pointer sequencing, termination, and atomic
-  rejection while keeping memory/I/O caller-owned.
+  rejection while keeping memory/I/O caller-owned. Output capacity is consumed
+  only by actual emission and never preallocated from the step budget.
 - Initial decode views use `XLAT1` translation and never confuse the raw
   modulo-94
   residue with the decoded instruction.
@@ -66,7 +67,7 @@ Keep museum conversion as a separate local convenience over the general tool.
   `src/tooling/decompiler/application/cli.rs`,
   `src/tooling/decompiler/application/museum.rs`, the two thin Cargo roots, and
   `tests/decompiler.rs`.
-- Current Rust evidence: six strict tests plus Clippy with warnings denied.
+- Current Rust evidence: seven strict tests plus Clippy with warnings denied.
 - Development toolchain evidence: pinned Clang 22.1.8 emitted warning-clean
   x86-64 and AArch64 COFF objects from generated `ubO` C; the x86-64 DLL
   executed

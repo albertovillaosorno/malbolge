@@ -82,7 +82,8 @@ enum mb_status {
     MB_STATUS_HALT = 1,
     MB_STATUS_NON_GRAPHICAL = 2,
     MB_STATUS_INVALID_ENCRYPTION = 3,
-    MB_STATUS_INVALID_ARGUMENT = 4
+    MB_STATUS_INVALID_ARGUMENT = 4,
+    MB_STATUS_OUTPUT_EXHAUSTED = 5
 };
 
 struct mb_result {
@@ -178,8 +179,7 @@ int malbolge_decompiled_run(
     if (memory == NULL || result == NULL
         || memory_words != (size_t)MB_MEMORY_WORDS
         || (input_len != 0 && input == NULL)
-        || output_capacity < step_budget
-        || (step_budget != 0 && output == NULL)) {
+        || (output_capacity != 0 && output == NULL)) {
         return (int)MB_STATUS_INVALID_ARGUMENT;
     }
 
@@ -264,6 +264,10 @@ int malbolge_decompiled_run(
             break;
         }
         encrypted = mb_encrypted(encryption_target);
+        if (emits_output && output_len >= output_capacity) {
+            status = MB_STATUS_OUTPUT_EXHAUSTED;
+            break;
+        }
 
         if (consumes_input) {
             if (input_cursor < input_len) {
