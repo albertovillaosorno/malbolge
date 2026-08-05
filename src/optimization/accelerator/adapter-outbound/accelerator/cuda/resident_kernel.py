@@ -48,7 +48,9 @@ class ResidentGeometry:
 
     interpreter_authority: bool
     eof_word: int
+    input_instruction: int
     memory_words: int
+    output_instruction: int
     word_modulus: int
     word_trits: int
 
@@ -62,7 +64,9 @@ def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
     """
     interpreter_authority = int(geometry.interpreter_authority)
     eof_word = geometry.eof_word
+    input_instruction = geometry.input_instruction
     memory_words = geometry.memory_words
+    output_instruction = geometry.output_instruction
     word_modulus = geometry.word_modulus
     word_trits = geometry.word_trits
     xlat1 = ",".join(str(value) for value in XLAT1)
@@ -75,6 +79,8 @@ def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
 #define WORD_TRITS {word_trits}u
 #define ROTATE_HIGH_WEIGHT {word_modulus // 3}u
 #define EOF_WORD {eof_word}u
+#define INPUT_INSTRUCTION {input_instruction}u
+#define OUTPUT_INSTRUCTION {output_instruction}u
 #define STATUS_BUDGET 0u
 #define STATUS_TERMINATED 1u
 #define STATUS_ERROR 2u
@@ -237,38 +243,20 @@ extern "C" __global__ void {kernel_name}(
             planned_c = data_before;
         }} else if (decoded == (unsigned int)'j') {{
             planned_d = data_before;
-        }} else if (decoded == (unsigned int)'<') {{
-#if INTERPRETER_AUTHORITY
-            if (output_len >= output_capacity) {{
-                reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
-                break;
-            }}
-            output_present = true;
-            output_value = a & 255u;
-#else
+        }} else if (decoded == INPUT_INSTRUCTION) {{
             if (input_consumed < input_len) {{
                 planned_a = inputs[input_offset + input_consumed];
                 input_advance = true;
             }} else {{
                 planned_a = EOF_WORD;
             }}
-#endif
-        }} else if (decoded == (unsigned int)'/') {{
-#if INTERPRETER_AUTHORITY
-            if (input_consumed < input_len) {{
-                planned_a = inputs[input_offset + input_consumed];
-                input_advance = true;
-            }} else {{
-                planned_a = EOF_WORD;
-            }}
-#else
+        }} else if (decoded == OUTPUT_INSTRUCTION) {{
             if (output_len >= output_capacity) {{
                 reject(state, ERROR_INVALID_REQUEST, 0u, 0u);
                 break;
             }}
             output_present = true;
             output_value = a & 255u;
-#endif
         }}
 
         unsigned int encryption_pointer = planned_c;

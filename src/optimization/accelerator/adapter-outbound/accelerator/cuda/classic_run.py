@@ -176,7 +176,9 @@ class CudaClassicRunAdapter:
                     ResidentGeometry(
                         interpreter_authority=True,
                         eof_word=MEMORY_WORDS - 1,
+                        input_instruction=ord("/"),
                         memory_words=MEMORY_WORDS,
+                        output_instruction=ord("<"),
                         word_modulus=MEMORY_WORDS,
                         word_trits=10,
                     ),

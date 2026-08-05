@@ -10,8 +10,11 @@ canonical executable profile declaration is the repository-root
   ten-trit, 59,049-word machine for conformance and archaeology.
 - `malbolge-2026.1` is the immutable ten-trit transition identity that first
   separated current-language artifacts from historical conformance.
-- `malbolge-2026.2` is the current schema-v2 scalable profile: 14 trits and
-  4,782,969 directly addressed words under the same ternary semantic core.
+- `malbolge-2026.2` is the immutable first 14-trit scalable identity. It retains
+  its published specification-first `<` input and `/` output assignment.
+- `malbolge-2026.3` is the current schema-v2 scalable profile: 14 trits,
+  4,782,969 directly addressed words, `/` input, and `<` output. It keeps modern
+  safe failure rules and does not reproduce historical C undefined behavior.
 
 `src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json` records why 14 trits were selected
 for the first scalable profile. Future capacity changes create another immutable

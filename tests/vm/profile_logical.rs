@@ -48,7 +48,9 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
+const CURRENT_IO_ROUNDTRIP: &[u8] =
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const TRANSITION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 const STEP_BUDGET: usize = 8;
 const TRANSITION_ID: &str = "malbolge-2026.1";
@@ -56,13 +58,14 @@ const TRANSITION_ID: &str = "malbolge-2026.1";
 fn profile_task(
     id: u64,
     profile: &'static malbolge::ProfileDescriptor,
+    source: &[u8],
     input: u8,
 ) -> ProfileLogicalTask {
     ProfileLogicalTask::new(
         LogicalTaskId::new(id),
         ProfileBatchRequest::from_source(
             profile,
-            IO_ROUNDTRIP.to_vec(),
+            source.to_vec(),
             vec![input],
             STEP_BUDGET,
         ),
@@ -84,8 +87,8 @@ fn transition_profile() -> TestResult<&'static malbolge::ProfileDescriptor> {
 fn mixed_profiles_keep_identity_under_parallel_logical_join() -> TestResult {
     let transition = transition_profile()?;
     let tasks = vec![
-        profile_task(20, current_profile(), b'B'),
-        profile_task(10, transition, b'A'),
+        profile_task(20, current_profile(), CURRENT_IO_ROUNDTRIP, b'B'),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'A'),
     ];
     let sequential =
         normalize_result(execute_profile_logical_tasks(tasks.clone()))?;
@@ -133,8 +136,8 @@ fn mixed_profiles_keep_identity_under_parallel_logical_join() -> TestResult {
 fn profile_duplicate_identity_fails_before_scheduler() -> TestResult {
     let transition = transition_profile()?;
     let tasks = vec![
-        profile_task(10, transition, b'A'),
-        profile_task(10, transition, b'B'),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'A'),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'B'),
     ];
     let Err(error) = execute_profile_logical_tasks_parallel(tasks, 0) else {
         return Err(String::from("duplicate profile logical ID succeeded"));
@@ -152,7 +155,7 @@ fn profile_duplicate_identity_fails_before_scheduler() -> TestResult {
 fn profile_rejection_blocks_join_but_not_later_task() -> TestResult {
     let transition = transition_profile()?;
     let tasks = vec![
-        profile_task(30, transition, b'C'),
+        profile_task(30, transition, TRANSITION_IO_ROUNDTRIP, b'C'),
         ProfileLogicalTask::new(
             LogicalTaskId::new(20),
             ProfileBatchRequest::from_source(
@@ -162,7 +165,7 @@ fn profile_rejection_blocks_join_but_not_later_task() -> TestResult {
                 STEP_BUDGET,
             ),
         ),
-        profile_task(10, transition, b'A'),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'A'),
     ];
     let results =
         normalize_result(execute_profile_logical_tasks_parallel(tasks, 3))?;
@@ -202,8 +205,8 @@ fn profile_rejection_blocks_join_but_not_later_task() -> TestResult {
 fn profile_join_rejects_reordered_results() -> TestResult {
     let transition = transition_profile()?;
     let mut results = normalize_result(execute_profile_logical_tasks(vec![
-        profile_task(20, transition, b'B'),
-        profile_task(10, transition, b'A'),
+        profile_task(20, transition, TRANSITION_IO_ROUNDTRIP, b'B'),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'A'),
     ]))?;
     results.swap(0, 1);
     let Err(error) = join_profile_logical_outputs(&results) else {

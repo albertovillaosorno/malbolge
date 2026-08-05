@@ -54,7 +54,7 @@ const TEST_XLAT2: &[u8; TABLE_LEN] =
 B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
 
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 
 fn exact_memory_words() -> TestResult<usize> {
     usize::try_from(historical_profile().memory_words()).map_err(|error| {
@@ -90,8 +90,8 @@ fn check_live_checkpoint(
     )?;
     check_equal(
         checkpoint.io().output(),
-        &[0x00],
-        "checkpoint committed interpreter output",
+        &[0x6b],
+        "checkpoint committed interpreter roundtrip output",
     )?;
     check_equal(
         &checkpoint.io().termination(),

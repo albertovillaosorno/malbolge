@@ -40,11 +40,11 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const C_VM_SEMANTIC_SIGNATURE: u64 = 0xe32a_b90c_a152_2f92;
+const C_VM_SEMANTIC_SIGNATURE: u64 = 0xa9da_bd8f_c51d_13c9;
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 const SIGNATURE_HALT: u8 = 0xb1;
 const SIGNATURE_INCREMENT: u32 = 23;
 const SIGNATURE_INVALID_ENCRYPTION: u8 = 0xc1;

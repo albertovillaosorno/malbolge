@@ -40,7 +40,9 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
+const INTERPRETER_IO_ROUNDTRIP: &[u8] =
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const SPECIFICATION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
 fn interpreter_machine_for_invalid_jump() -> TestResult<ExecutionMachine> {
@@ -63,7 +65,7 @@ fn interpreter_machine_for_invalid_jump() -> TestResult<ExecutionMachine> {
 #[test]
 fn interpreter_mode_models_original_io_with_mode_tagged_trace() -> TestResult {
     let mut machine = normalize_result(ExecutionMachine::from_source(
-        IO_ROUNDTRIP,
+        INTERPRETER_IO_ROUNDTRIP,
         vec![0x41],
         ExecutionMode::Interpreter,
     ))?;
@@ -79,7 +81,7 @@ fn interpreter_mode_models_original_io_with_mode_tagged_trace() -> TestResult {
         },
         "interpreter roundtrip halts after three requests",
     )?;
-    check_equal(machine.output(), &[0x00], "interpreter < emits initial A")?;
+    check_equal(machine.output(), &[0x41], "interpreter < emits consumed byte")?;
     check_equal(
         &machine.input_consumed(),
         &1usize,
@@ -88,7 +90,7 @@ fn interpreter_mode_models_original_io_with_mode_tagged_trace() -> TestResult {
     check_equal(
         &machine.registers().accumulator,
         &Word::from_byte(0x41),
-        "interpreter input leaves byte in accumulator",
+        "interpreter roundtrip leaves byte in accumulator",
     )?;
     let first = traces
         .first()
@@ -101,22 +103,26 @@ fn interpreter_mode_models_original_io_with_mode_tagged_trace() -> TestResult {
     )?;
     check_equal(
         &first.decoded,
-        &Some(b'<'),
-        "interpreter trace keeps raw decode",
+        &Some(b'/'),
+        "interpreter input trace keeps raw decode",
     )?;
-    check_equal(&first.input, &None, "interpreter < performs no input")?;
-    check_equal(&first.output, &Some(0x00), "interpreter < records output")?;
+    check_equal(
+        &first.input,
+        &Some(TraceInput::Byte(0x41)),
+        "interpreter / records consumed input",
+    )?;
+    check_equal(&first.output, &None, "interpreter / emits no output")?;
     let second = traces
         .get(1)
         .copied()
         .ok_or_else(|| String::from("missing second interpreter trace"))?;
-    check_equal(&second.decoded, &Some(b'/'), "interpreter / raw decode")?;
+    check_equal(&second.decoded, &Some(b'<'), "interpreter < raw decode")?;
+    check_equal(&second.input, &None, "interpreter < performs no input")?;
     check_equal(
-        &second.input,
-        &Some(TraceInput::Byte(0x41)),
-        "interpreter / records consumed input",
-    )?;
-    check_equal(&second.output, &None, "interpreter / emits no output")
+        &second.output,
+        &Some(0x41),
+        "interpreter < records consumed byte",
+    )
 }
 
 #[test]
@@ -289,7 +295,7 @@ fn mode_identity_is_stable_and_verifier_gated() -> TestResult {
 #[test]
 fn specification_facade_preserves_documented_roundtrip() -> TestResult {
     let mut machine = normalize_result(ExecutionMachine::from_source(
-        IO_ROUNDTRIP,
+        SPECIFICATION_IO_ROUNDTRIP,
         vec![0x41],
         ExecutionMode::Specification,
     ))?;

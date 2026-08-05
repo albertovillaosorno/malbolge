@@ -13,6 +13,14 @@ byte `0x00`, `/` consumes input byte `0x41`, and the program halts. Under
 explicit `ExecutionMode::Specification`, the same program reads `0x41`, writes
 `0x41`, and halts. The disagreement is intentional evidence for H-001.
 
+
+`interpreter-io-roundtrip.malbolge` is the current-profile counterpart. At
+loaded positions 0, 1, and 2, `u`, `b`, and `O` decode to `/`, `<`, and `v`.
+`malbolge-2026.3` therefore consumes one byte, emits the same byte, and halts
+while retaining 14-trit geometry and modern safe failure behavior. The fixture
+does not replace `spec-io-roundtrip.malbolge`; `malbolge-2026.1` and
+`malbolge-2026.2` retain that published specification-first assignment.
+
 State-only cases in `cases.toml` describe boundaries that should not be forced
 through an ordinary source. A non-graphical current cell is bounded non-progress
 under interpreter authority and immediate termination under specification

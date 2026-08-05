@@ -20,7 +20,7 @@ validation:
   # jig-ignore-next-line: exact verification command is indivisible
   - "python src/automation/repository/composition/scripts/validate/target_profile.py"
   # jig-ignore-next-line: exact verification command is indivisible
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
   - "jig validate --root ."
 ---
 # TODO - Canonical Malbolge target profile
@@ -35,14 +35,16 @@ current Malbolge language.
 **Current implementation.**
 
 - `malbolge.json` now has closed schema version 2. It preserves
-  `malbolge-1998`, retains immutable `malbolge-2026.1`, and selects the scalable
-  14-trit `malbolge-2026.2` identity as current.
+  `malbolge-1998`, retains immutable `malbolge-2026.1` and `malbolge-2026.2`,
+  and selects the scalable 14-trit `malbolge-2026.3` identity as current.
 - `malbolge-1998` is locked to radix 3, ten trits, 59,049 words, sequential
   deterministic execution, self-modification/post-encryption, normative I/O,
   EOF 59,048, and byte output modulo 256.
 - Schema-v2 profiles use one ternary word domain for values and direct
-  addresses. `malbolge-2026.2` therefore has modulus/memory 4,782,969 and EOF
-  4,782,968 while preserving the defining semantic core.
+  addresses. `malbolge-2026.2` and `malbolge-2026.3` therefore have
+  modulus/memory 4,782,969 and EOF 4,782,968. I/O assignment is versioned:
+  `2026.1/.2` retain `<` input and `/` output, while current `2026.3` uses
+  interpreter-compatible `/` input and `<` output.
 - `src/automation/repository/composition/scripts/validate/target_profile.py`
   rejects duplicate JSON keys, unknown
   keys, unsupported schemas, inconsistent word/memory domains, invalid EOF,
@@ -60,8 +62,10 @@ current Malbolge language.
   consistently by VM, compiler, verifier, tidy, runtime, and optimization paths.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
-- `malbolge-1998` exactly identifies the written 1998 ten-trit/59,049-word
-  machine and remains available for conformance and archaeology.
+- `malbolge-1998` identifies defined and reproducible original-interpreter
+  behavior in the ten-trit/59,049-word envelope and remains available for
+  conformance and archaeology; contradictory prose remains comparison
+  evidence.
 - The canonical current profile is a versioned evolution of Malbolge, not a
   separately branded "extended" language. It may remove historical resource
   ceilings while preserving the defining ternary/self-modifying semantics.

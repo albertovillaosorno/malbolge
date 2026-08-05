@@ -46,9 +46,9 @@ use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_FINGERPRINT: &str = concat!(
     "malbolge-profile-v1:sha256:",
-    "e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50",
+    "14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230",
 );
-const CURRENT_ID: &str = "malbolge-2026.2";
+const CURRENT_ID: &str = "malbolge-2026.3";
 const HISTORICAL_ID: &str = "malbolge-1998";
 const HISTORICAL_WORDS: u32 = 59_049;
 const IO_ROUNDTRIP: &[u8] =
@@ -64,7 +64,7 @@ fn canonical_projection_exposes_current_geometry() -> TestResult {
         "current profile fingerprint",
     )?;
     check_equal(&current.id(), &CURRENT_ID, "current profile id")?;
-    check_equal(&current.version(), &"2026.2", "current version")?;
+    check_equal(&current.version(), &"2026.3", "current version")?;
     check_equal(&current.kind(), &ProfileKind::Current, "current kind")?;
     check_equal(&current.word_trits(), &14u8, "current trit width")?;
     check_equal(
@@ -77,7 +77,13 @@ fn canonical_projection_exposes_current_geometry() -> TestResult {
         &4_782_969u32,
         "current memory capacity",
     )?;
-    check_equal(&current.eof_word(), &4_782_968u32, "current EOF")
+    check_equal(&current.eof_word(), &4_782_968u32, "current EOF")?;
+    check_equal(&current.input_instruction(), &b'/', "current input opcode")?;
+    check_equal(
+        &current.output_instruction(),
+        &b'<',
+        "current output opcode",
+    )
 }
 
 #[test]
@@ -107,7 +113,7 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
     check_equal(
         &format!("{requirement}"),
         &String::from(concat!(
-            "MALBOLGE-PROFILE-001 profile=malbolge-2026.2 version=2026.2 ",
+            "MALBOLGE-PROFILE-001 profile=malbolge-2026.3 version=2026.3 ",
             "required_features=byte-input,byte-output,crazy-operation,",
             "deterministic,post-instruction-encryption,rotate,",
             "self-modification,sequential-guest required_word_trits=14 ",

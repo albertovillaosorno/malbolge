@@ -136,7 +136,7 @@ executing, while the artifact join fails deterministically at the rejected task.
 Duplicate task IDs and deliberately reordered result sequences also fail closed.
 
 Profile-driven fixtures additionally scramble one `malbolge-2026.1` task and one
-`malbolge-2026.2` task. Sequential and two-worker execution both return logical
+`malbolge-2026.3` task. Sequential and two-worker execution both return logical
 order `10, 20`, preserve transition/current profile identities respectively, and
 join bytes as `AB`. Profile rejection and reordered profile results fail through
 the typed profile join errors without cancelling later independent tasks.

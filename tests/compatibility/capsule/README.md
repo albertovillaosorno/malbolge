@@ -17,10 +17,11 @@ under the documented H-001 reversed-I/O behavior, consumes no input, avoids
 H-004 invalid self-encryption, and halts.
 
 Modern code instead decodes the space/tab suffix as the `MALBCAP1` frame. The
-fixture binds to canonical profile `malbolge-2026.2`, carries its exact
-`malbolge-profile-v1` fingerprint, and contains payload bytes `63 74 4f 0a`
-(`ctO` plus LF).
+fixture binds to canonical profile `malbolge-2026.3`, carries its exact
+`malbolge-profile-v1` fingerprint, and contains payload bytes `75 62 4f 0a`
+(`ubO` plus LF). The payload decodes to `/`, `<`, and `v` under the current
+profile.
 
-The decoded frame checksum is FNV-1a-64 `7e669044b3904931`. This checksum is a
+The decoded frame checksum is FNV-1a-64 `844425f59cae4308`. This checksum is a
 transport-corruption detector only; profile identity is bound separately by the
 SHA-256 profile fingerprint.

@@ -61,7 +61,7 @@ const RUN_ERROR: u32 = 2;
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ENCRYPTION: u32 = 1;
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 
 type ProductBackendBatch = Option<Vec<Option<BatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;

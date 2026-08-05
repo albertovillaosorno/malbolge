@@ -26,7 +26,7 @@ scope:
   - "tests/vm/profile_requirements.rs"
 validation:
   # jig-ignore-next-line: exact verification command is indivisible
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/test_experiment_manifest.py tests/compatibility/test_profile_identity.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_target_profile.py tests/test_experiment_manifest.py tests/compatibility/test_profile_identity.py"
   # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."

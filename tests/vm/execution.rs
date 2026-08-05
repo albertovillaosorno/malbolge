@@ -37,7 +37,7 @@ use malbolge::{Machine, RunOutcome, Termination};
 use super::{TestResult, check_equal, normalize_result};
 
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 
 #[test]
 fn bounded_run_exhaustion_can_resume_to_termination() -> TestResult {
@@ -61,8 +61,8 @@ fn bounded_run_exhaustion_can_resume_to_termination() -> TestResult {
     )?;
     check_equal(
         machine.output(),
-        &[0x00],
-        "budgeted execution preserves interpreter output effects",
+        &[0x41],
+        "budgeted execution preserves interpreter roundtrip output",
     )?;
     check_equal(
         &machine.termination(),

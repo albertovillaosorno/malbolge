@@ -1181,7 +1181,7 @@ pub fn profile_cell_decodes_to_no_operation(
     code_pointer: u32,
 ) -> bool {
     decode_profile_instruction(cell, code_pointer).is_some_and(|decoded| {
-        profile_instruction(decoded) == ProfileInstruction::NoOperation
+        !matches!(decoded, b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v')
     })
 }
 
@@ -1202,23 +1202,18 @@ const fn profile_instruction_for(
     profile: &ProfileDescriptor,
     decoded: u8,
 ) -> ProfileInstruction {
-    match profile.kind() {
-        ProfileKind::HistoricalConformance => match decoded {
-            b'<' => ProfileInstruction::Output,
-            b'/' => ProfileInstruction::Input,
-            _ => profile_instruction(decoded),
-        },
-        ProfileKind::Current | ProfileKind::Versioned => {
-            profile_instruction(decoded)
-        },
+    if decoded == profile.input_instruction() {
+        ProfileInstruction::Input
+    } else if decoded == profile.output_instruction() {
+        ProfileInstruction::Output
+    } else {
+        profile_instruction(decoded)
     }
 }
 
 const fn profile_instruction(decoded: u8) -> ProfileInstruction {
     match decoded {
         b'*' => ProfileInstruction::Rotate,
-        b'/' => ProfileInstruction::Output,
-        b'<' => ProfileInstruction::Input,
         b'i' => ProfileInstruction::JumpCode,
         b'j' => ProfileInstruction::JumpData,
         b'p' => ProfileInstruction::Crazy,

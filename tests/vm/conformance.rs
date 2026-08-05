@@ -44,7 +44,7 @@ use malbolge::{
 use super::{TestResult, check_equal, normalize_result};
 
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 
 #[test]
 fn invalid_jump_encryption_target_is_atomic() -> TestResult {
@@ -106,13 +106,13 @@ fn loader_enforces_recurrence_base_and_accepts_roundtrip_fixture() -> TestResult
     let memory = normalize_result(load(IO_ROUNDTRIP))?;
     check_equal(
         &normalize_result(memory.read(Word::ZERO))?,
-        &Word::from_byte(b'c'),
-        "first loaded word",
+        &Word::from_byte(b'u'),
+        "first interpreter-roundtrip word",
     )?;
     check_equal(
         &normalize_result(memory.read(Word::from_byte(1)))?,
-        &Word::from_byte(b't'),
-        "second loaded word",
+        &Word::from_byte(b'b'),
+        "second interpreter-roundtrip word",
     )?;
     check_equal(
         &normalize_result(memory.read(Word::from_byte(2)))?,
@@ -171,8 +171,8 @@ fn roundtrip_fixture_uses_interpreter_byte_io() -> TestResult {
     check_equal(&termination, &Termination::HaltInstruction, "fixture halts")?;
     check_equal(
         machine.output(),
-        &[0x00],
-        "fixture emits initial accumulator",
+        &[0x41],
+        "fixture emits consumed input byte",
     )?;
     check_equal(
         &machine.input_consumed(),

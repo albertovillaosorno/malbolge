@@ -41,7 +41,7 @@ use malbolge::{
 use super::{TestResult, check_equal, normalize_result};
 
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 
 fn check_halt_trace(trace: &StepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'v'), "third trace decodes halt")?;
@@ -58,11 +58,11 @@ fn check_halt_trace(trace: &StepTrace) -> TestResult {
 }
 
 fn check_input_trace(trace: &StepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'/'), "second trace decodes input")?;
+    check_equal(&trace.decoded, &Some(b'/'), "first trace decodes input")?;
     check_equal(
         &trace.input,
         &Some(TraceInput::Byte(0x41)),
-        "second trace records consumed byte",
+        "first trace records consumed byte",
     )?;
     check_equal(&trace.output, &None, "input trace emits no byte")?;
     check_equal(
@@ -83,8 +83,8 @@ fn check_input_trace(trace: &StepTrace) -> TestResult {
 }
 
 fn check_output_trace(trace: &StepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'<'), "first trace decodes output")?;
-    check_equal(&trace.output, &Some(0x00), "first trace records output")?;
+    check_equal(&trace.decoded, &Some(b'<'), "second trace decodes output")?;
+    check_equal(&trace.output, &Some(0x41), "second trace records output")?;
     check_equal(
         &trace.after.output_len,
         &1usize,
@@ -115,15 +115,15 @@ fn traced_roundtrip_records_state_and_io_without_changing_semantics()
         &3usize,
         "one trace is emitted per requested step",
     )?;
-    check_output_trace(
-        records
-            .first()
-            .ok_or_else(|| String::from("missing output trace"))?,
-    )?;
     check_input_trace(
         records
-            .get(1)
+            .first()
             .ok_or_else(|| String::from("missing input trace"))?,
+    )?;
+    check_output_trace(
+        records
+            .get(1)
+            .ok_or_else(|| String::from("missing output trace"))?,
     )?;
     check_halt_trace(
         records

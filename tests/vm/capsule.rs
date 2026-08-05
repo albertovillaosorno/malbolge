@@ -56,7 +56,7 @@ const FALLBACK: &[u8] = b"(C<;_\"K";
 const FNV1A64_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
 const FRAME_HEADER_BYTES: usize = 18;
-const PAYLOAD: &[u8] = b"ctO\n";
+const PAYLOAD: &[u8] = b"ubO\n";
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
 const UNKNOWN_PROFILE: &[u8] = b"malbolge-2026.x";
@@ -288,7 +288,7 @@ fn parsed_fixture_binds_current_profile_and_payload() -> TestResult {
         .ok_or_else(|| String::from("current fixture was not recognized"))?;
     check_equal(
         &parsed.profile().id(),
-        &"malbolge-2026.2",
+        &current_profile().id(),
         "capsule profile",
     )?;
     check_equal(parsed.payload(), PAYLOAD, "capsule payload")

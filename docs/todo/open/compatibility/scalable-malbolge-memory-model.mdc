@@ -27,7 +27,7 @@ validation:
   # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features profile_machine"
   # jig-ignore-next-line: exact verification command is indivisible
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_scalable_memory.py"
   - "jig validate --root ."
 ---
 # TODO - Scalable Malbolge memory model
@@ -45,7 +45,8 @@ host architecture.
 
 - Schema-v2 geometry is `N` trits, word modulus `3^N`, and exactly `3^N`
   directly addressed memory words; no host pointer width participates.
-- `malbolge-2026.2` is the current 14-trit profile with 4,782,969 words and EOF
+- `malbolge-2026.2` remains the immutable first scalable identity.
+- `malbolge-2026.3` is the current 14-trit profile with 4,782,969 words and EOF
   4,782,968. `malbolge-1998` remains exactly ten trits/59,049 words and
   `malbolge-2026.1` remains an immutable ten-trit transition identity.
 - Rotate is the same one-trit circular operation generalized to N trits; crazy

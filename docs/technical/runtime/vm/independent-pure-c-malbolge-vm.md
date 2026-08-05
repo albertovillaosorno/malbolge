@@ -49,7 +49,7 @@ operation is table-driven. The two VMs share only the written specification and
 versioned test expectations.
 
 `tests/vm/c_conformance.c` is an executable C harness with a normal `main` entry
-point. It also computes semantic signature `0xa74cec75a875c85a`. The Rust
+point. It also computes semantic signature `0xa9dabd8fc51d13c9`. The Rust
 integration suite independently recomputes that signature through the Rust
 public
 API and requires an exact match.
@@ -69,9 +69,9 @@ validation command passes at retirement time.
   semantic profile across positive, boundary, and adversarial fixtures.
 - Classic execution uses only words in `0..=59048` and exactly 59049 memory
   cells after source admission.
-- Halt and non-graphical termination skip post-instruction encryption and
-  pointer
-  advancement.
+- Halt skips post-instruction encryption and pointer advancement. A
+  non-graphical current cell performs one bounded step with no register, memory,
+  input, output, or termination change.
 - Invalid post-jump self-encryption targets reject the transition atomically.
 
 ## Failure Behavior
@@ -85,12 +85,13 @@ transitions do not silently commit partial guest-visible effects.
 ## Verification
 
 - `tests/vm/c_conformance.c` covers word primitives, loader boundaries, the
-  normative `ctO` byte-I/O fixture, non-graphical termination, low-byte output,
+  normative `ubO` byte-I/O roundtrip fixture, non-graphical non-progress,
+  low-byte output,
   EOF, code jumps, post-jump encryption, atomic rejection, rotate, crazy, and
   pointer wrap.
-- The C harness asserts semantic signature `0xa74cec75a875c85a` over every
+- The C harness asserts semantic signature `0xa9dabd8fc51d13c9` over every
   classic word's rotate result, a deterministic 59049-pair crazy sample, the
-  complete loaded `ctO` image, and representative execution boundaries.
+  complete loaded `ubO` image, and representative execution boundaries.
 - `tests/vm/differential.rs` independently computes the same signature through
   the safe-Rust VM. No C implementation code is called by that Rust test.
 - Expected durable artifact surface: `vm/`, `execution/`, `tests/vm/`,

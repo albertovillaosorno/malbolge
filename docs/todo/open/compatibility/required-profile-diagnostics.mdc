@@ -26,7 +26,7 @@ scope:
   - "tests/vm/profile_requirements.rs"
 validation:
   # jig-ignore-next-line: exact verification command is indivisible
-  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/.jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
   # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe test --workspace --all-features"
   - "jig validate --root ."
@@ -52,7 +52,7 @@ historical-profile constraint.
   normative schema-v2 semantic features.
 - `ExecutionMachine::from_source_for_profile()` runs profile/runtime preflight
   before the classic loader and retains the exact accepted profile identity.
-- `malbolge-2026.2` fails before loading with `MALBOLGE-PROFILE-001`, naming its
+- `malbolge-2026.3` fails before loading with `MALBOLGE-PROFILE-001`, naming its
   required 14 trits/4,782,969 words and the classic runtime's missing
   `word-trits,memory-words` dimensions.
 - A requirement beyond `malbolge-1998` emits `MALBOLGE-PROFILE-002` with

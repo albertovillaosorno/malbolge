@@ -60,7 +60,9 @@ WORKLOAD_DESCRIPTION: Final = (
 )
 GEOMETRY: Final = ProfileRunGeometry(
     eof_word=PROFILE_WORDS - 1,
+    input_instruction=ord("/"),
     memory_words=PROFILE_WORDS,
+    output_instruction=ord("<"),
     word_modulus=PROFILE_WORDS,
     word_trits=PROFILE_TRITS,
 )

@@ -54,7 +54,7 @@ observable results.
   pass
   for classic full-state comparisons and for mixed `malbolge-2026.1` plus
   current
-  `malbolge-2026.2` profile identity/join ordering. No logical-layer speedup is
+  `malbolge-2026.3` profile identity/join ordering. No logical-layer speedup is
   claimed yet.
 - This is execution-engine product work, not an algorithm experiment, so no
   research algorithm mirror is created.

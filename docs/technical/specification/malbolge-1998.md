@@ -8,7 +8,7 @@ Active interpreter-authority contract
 
 - Status: Active interpreter-authority contract
 - Planning identity: `historical-malbolge-semantics-specification`
-- Last reviewed: 2026-07-26
+- Last reviewed: 2026-08-04
 
 ## Scope
 
@@ -29,8 +29,13 @@ primary executable evidence.
 
 The 1998 prose remains a primary historical source and an explicit comparison
 model. Where it contradicts defined interpreter behavior, the interpreter wins.
-Ben Olmstead's 2014 interview supports this rule for execution outside graphical
-ASCII and identifies the corresponding prose as erroneous.
+Ben Olmstead's 2014 interview supports treating behavior outside graphical
+ASCII as intentional and identifies the corresponding prose as erroneous. The
+interview's colloquial phrase “stopping execution” does not replace the exact
+control flow in the preserved source: the original loop executes `continue`
+before decode, encryption, or pointer advancement. Portable bounded APIs model
+that exact defined behavior as one non-progress step rather than guest
+termination.
 
 Historical host-C undefined behavior is not authoritative. The safe contract
 below rejects or explicitly defines loader underflow, invalid encryption-table
@@ -48,8 +53,8 @@ exactly `W` words. The machine state contains accumulator `A`, code pointer `C`,
 data pointer `D`, memory `M`, an input byte stream, and an output byte stream.
 All three registers begin at zero.
 
-The normative ternary rotate and crazy operation are defined in The normative
-equation source is
+The normative ternary rotate and crazy operation are defined by the equation
+source
 `src/specification/formal-model/math/specification/malbolge-1998.tex`.
 
 ### Loading

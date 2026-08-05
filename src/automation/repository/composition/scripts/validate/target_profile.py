@@ -41,6 +41,10 @@ import sys
 from typing import Never
 from typing import cast
 
+if __package__ in {None, ""}:
+    composition_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(composition_root))
+
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
@@ -60,8 +64,9 @@ HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
 MEMORY_MODEL = "single-word-modular"
 GUEST_ORDER = "sequential"
-INPUT_INSTRUCTION = "<"
-OUTPUT_INSTRUCTION = "/"
+INPUT_INSTRUCTION = "/"
+OUTPUT_INSTRUCTION = "<"
+IO_INSTRUCTIONS = frozenset({INPUT_INSTRUCTION, OUTPUT_INSTRUCTION})
 OUTPUT_MODULUS = 256
 HISTORICAL_WORDS = 59_049
 HISTORICAL_EOF = 59_048
@@ -98,7 +103,11 @@ SEMANTIC_KEYS = frozenset({
     "rotate",
     "self_modification",
 })
-SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {"eof_word"}
+SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {
+    "eof_word",
+    "input_instruction",
+    "output_instruction",
+}
 
 type JsonScalar = bool | int | float | str | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -227,10 +236,18 @@ def _validate_semantic_flags(semantics: JsonObject, context: str) -> None:
 
 
 def _validate_semantic_io(semantics: JsonObject, context: str) -> None:
-    if semantics["input_instruction"] != INPUT_INSTRUCTION:
-        _fail(f"{context}.input_instruction must be {INPUT_INSTRUCTION}")
-    if semantics["output_instruction"] != OUTPUT_INSTRUCTION:
-        _fail(f"{context}.output_instruction must be {OUTPUT_INSTRUCTION}")
+    input_instruction = _expect_string(
+        semantics["input_instruction"],
+        f"{context}.input_instruction",
+    )
+    output_instruction = _expect_string(
+        semantics["output_instruction"],
+        f"{context}.output_instruction",
+    )
+    if frozenset((input_instruction, output_instruction)) != IO_INSTRUCTIONS:
+        _fail(
+            f"{context} I/O instructions must assign '<' and '/' exactly once"
+        )
     eof_word = _expect_int(semantics["eof_word"], f"{context}.eof_word")
     if eof_word < 0:
         _fail(f"{context}.eof_word must be non-negative")
@@ -307,15 +324,23 @@ def _validate_historical_storage(profile: JsonObject) -> None:
         _fail(f"{HISTORICAL_PROFILE} memory model changed")
 
 
+def _validate_historical_semantics(profile: JsonObject) -> None:
+    semantics = _expect_mapping(profile["semantics"], "historical semantics")
+    if semantics["eof_word"] != HISTORICAL_EOF:
+        _fail(f"{HISTORICAL_PROFILE} EOF word changed")
+    if semantics["input_instruction"] != INPUT_INSTRUCTION:
+        _fail(f"{HISTORICAL_PROFILE} input instruction changed")
+    if semantics["output_instruction"] != OUTPUT_INSTRUCTION:
+        _fail(f"{HISTORICAL_PROFILE} output instruction changed")
+
+
 def _validate_historical(profile: JsonObject) -> None:
     if profile["kind"] != HISTORICAL_KIND:
         _fail(f"{HISTORICAL_PROFILE} must be {HISTORICAL_KIND}")
     if profile["version"] != HISTORICAL_VERSION:
         _fail(f"{HISTORICAL_PROFILE} version must be {HISTORICAL_VERSION}")
     _validate_historical_storage(profile)
-    semantics = _expect_mapping(profile["semantics"], "historical semantics")
-    if semantics["eof_word"] != HISTORICAL_EOF:
-        _fail(f"{HISTORICAL_PROFILE} EOF word changed")
+    _validate_historical_semantics(profile)
 
 
 def _semantic_core(profile: JsonObject) -> JsonObject:
@@ -663,6 +688,13 @@ def _rust_integer(value: JsonValue, context: str) -> str:
     return f"{_expect_int(value, context):_}"
 
 
+def _rust_byte(value: JsonValue, context: str) -> str:
+    instruction = _expect_string(value, context)
+    if instruction not in IO_INSTRUCTIONS:
+        _fail(f"{context} is not a supported I/O instruction")
+    return f"b'{instruction}'"
+
+
 def _rust_profile_kind(kind: str) -> str:
     variants = {
         CURRENT_KIND: "ProfileKind::Current",
@@ -714,13 +746,23 @@ def _profile_projection_lines(
         f"pub(super) const PROFILE_{index}: ProfileDescriptor = "
         "ProfileDescriptor {"
     )
+    input_instruction = _rust_byte(
+        semantics["input_instruction"],
+        "input instruction",
+    )
+    output_instruction = _rust_byte(
+        semantics["output_instruction"],
+        "output instruction",
+    )
     return [
         declaration,
         f"    eof_word: {_rust_integer(semantics["eof_word"], "eof_word")},",
         *_rust_fingerprint_lines(fingerprint),
         f"    id: {_rust_string(profile_id, "profile id")},",
+        f"    input_instruction: {input_instruction},",
         f"    kind: {_rust_profile_kind(kind)},",
         f"    memory_words: {_rust_integer(memory["words"], "memory.words")},",
+        f"    output_instruction: {output_instruction},",
         f"    version: {_rust_string(version, "profile version")},",
         f"    word_modulus: {_rust_integer(word["modulus"], "word.modulus")},",
         f"    word_trits: {_rust_integer(word["trits"], "word.trits")},",

@@ -198,8 +198,10 @@ pub struct ProfileDescriptor {
     eof_word: u32,
     fingerprint: &'static str,
     id: &'static str,
+    input_instruction: u8,
     kind: ProfileKind,
     memory_words: u32,
+    output_instruction: u8,
     version: &'static str,
     word_modulus: u32,
     word_trits: u8,
@@ -224,6 +226,12 @@ impl ProfileDescriptor {
         self.id
     }
 
+    /// Returns the decoded instruction byte assigned to byte input.
+    #[must_use]
+    pub const fn input_instruction(self) -> u8 {
+        self.input_instruction
+    }
+
     /// Returns the immutable profile classification.
     #[must_use]
     pub const fn kind(self) -> ProfileKind {
@@ -234,6 +242,12 @@ impl ProfileDescriptor {
     #[must_use]
     pub const fn memory_words(self) -> u32 {
         self.memory_words
+    }
+
+    /// Returns the decoded instruction byte assigned to byte output.
+    #[must_use]
+    pub const fn output_instruction(self) -> u8 {
+        self.output_instruction
     }
 
     /// Returns all defining schema-v2 semantic capabilities in stable order.

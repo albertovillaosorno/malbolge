@@ -17,10 +17,13 @@ non-graphical current cell, while the interpreter performs no state transition
 and repeatedly revisits that cell.
 
 In a 2014 interview, Olmstead said the `33..126` behavior was intended and that,
-on that point, the specification contained the bug. The preserved source
-independently proves the implemented behavior. Compatibility with the ecosystem
-therefore requires a deterministic account of the interpreter, not silent
-preference for contradictory prose.
+on that point, the specification contained the bug. His phrase “stopping
+execution” is treated as informal description rather than a second operational
+specification: the preserved source independently and exactly performs
+`continue`, leaving state unchanged and revisiting the same cell. Compatibility
+with the ecosystem therefore requires a deterministic account of the
+interpreter, not silent preference for contradictory prose or reinterpretation
+of an interview paraphrase as a halt transition.
 
 The original C program also contains host assumptions and undefined behavior.
 Those cannot become portable language semantics merely because they occur in the

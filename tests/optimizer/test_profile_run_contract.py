@@ -58,9 +58,12 @@ MEMORY_LENGTH_ERROR: Final = "requires 243 words"
 REGISTER_ERROR: Final = "code pointer outside"
 TERMINATION_ERROR: Final = "invalid resident termination"
 IMAGE_GEOMETRY_ERROR: Final = "memory image geometry mismatch"
+IO_ASSIGNMENT_ERROR: Final = "assign '<' and '/' exactly once"
 GEOMETRY = ProfileRunGeometry(
     eof_word=SMALL_WORDS - 1,
+    input_instruction=ord("/"),
     memory_words=SMALL_WORDS,
+    output_instruction=ord("<"),
     word_modulus=SMALL_WORDS,
     word_trits=SMALL_TRITS,
 )
@@ -79,11 +82,19 @@ def test_profile_geometry_rejects_nonternary_modulus() -> None:
     assert MODULUS_ERROR in _invalid(invalid.validated)
 
 
+def test_profile_geometry_rejects_aliased_io_instructions() -> None:
+    """A profile must assign the two I/O opcodes exactly once."""
+    invalid = replace(GEOMETRY, output_instruction=ord("/"))
+    assert IO_ASSIGNMENT_ERROR in _invalid(invalid.validated)
+
+
 def test_profile_geometry_rejects_too_small_encryption_domain() -> None:
     """A profile must represent every graphical self-encryption result."""
     too_small = ProfileRunGeometry(
         eof_word=80,
+        input_instruction=ord("/"),
         memory_words=81,
+        output_instruction=ord("<"),
         word_modulus=81,
         word_trits=4,
     )
@@ -120,7 +131,9 @@ def test_profile_memory_image_rejects_geometry_drift() -> None:
     other_words = 3**6
     other = ProfileRunGeometry(
         eof_word=other_words - 1,
+        input_instruction=ord("/"),
         memory_words=other_words,
+        output_instruction=ord("<"),
         word_modulus=other_words,
         word_trits=6,
     )

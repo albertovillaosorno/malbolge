@@ -50,7 +50,8 @@ METRICS_PATH = (
     / "src/research/algorithms/domain/algorithms/doom/quality/comparison"
     / "metrics.json"
 )
-CURRENT_PROFILE = "malbolge-2026.2"
+CURRENT_PROFILE = "malbolge-2026.3"
+EVIDENCE_SELECTED_PROFILE = "malbolge-2026.2"
 CLASSIC_TRITS = 10
 SCALED_TRITS = 14
 THIRTEEN_TRITS = 13
@@ -126,7 +127,7 @@ def test_scaled_profile_matches_tracked_capacity_evidence() -> None:
         for candidate in candidates
     }
 
-    assert evidence["selected_profile"] == CURRENT_PROFILE
+    assert evidence["selected_profile"] == EVIDENCE_SELECTED_PROFILE
     assert workload["source_sha256"] == corpus["source_sha256"]
     assert workload["source_bytes"] == corpus["source_bytes"]
     source_bytes = _integer(workload["source_bytes"])

@@ -125,7 +125,7 @@ int main(void);
 
 
 static const uint64_t EXPECTED_SEMANTIC_SIGNATURE =
-    UINT64_C(0xE32AB90CA1522F92);
+    UINT64_C(0xA9DABD8FC51D13C9);
 static const uint64_t FNV_OFFSET = UINT64_C(14695981039346656037);
 static const uint64_t FNV_PRIME = UINT64_C(1099511628211);
 static const uint8_t SIGNATURE_CONTINUED = UINT8_C(0xA2);
@@ -199,7 +199,7 @@ static int test_loader_boundaries(void)
 
 static int test_roundtrip_fixture(void)
 {
-    static const uint8_t SOURCE[] = {'c', 't', 'O'};
+    static const uint8_t SOURCE[] = {'u', 'b', 'O'};
     static const uint8_t INPUT[] = {UINT8_C(0x41)};
     MalbolgeDiagnostic result;
     MalbolgeStepOutcome outcome;
@@ -210,8 +210,8 @@ static int test_roundtrip_fixture(void)
                                    INPUT, sizeof(INPUT), g_output,
                                    sizeof(g_output));
     failures += expect_true(result.code == MALBOLGE_DIAGNOSTIC_NONE);
-    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)'c');
-    failures += expect_true(g_machine.memory[1] == (MalbolgeWord)'t');
+    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)'u');
+    failures += expect_true(g_machine.memory[1] == (MalbolgeWord)'b');
     failures += expect_true(g_machine.memory[2] == (MalbolgeWord)'O');
     outcome = malbolge_run(&g_machine, 16U, &steps, &result);
     failures += expect_true(outcome == MALBOLGE_STEP_TERMINATED);
@@ -219,7 +219,7 @@ static int test_roundtrip_fixture(void)
         g_machine.termination == MALBOLGE_TERMINATION_HALT);
     failures += expect_true(g_machine.input_cursor == 1U);
     failures += expect_true(g_machine.output_length == 1U);
-    failures += expect_true(g_output[0] == UINT8_C(0x00));
+    failures += expect_true(g_output[0] == UINT8_C(0x41));
     failures += expect_true(steps == 3U);
     return failures;
 }
@@ -355,7 +355,7 @@ static int test_rotate_crazy_and_wrap(void)
 
 uint64_t malbolge_c_semantic_signature(void)
 {
-    static const uint8_t SOURCE[] = {'c', 't', 'O'};
+    static const uint8_t SOURCE[] = {'u', 'b', 'O'};
     static const uint8_t INPUT[] = {UINT8_C(0x41)};
     MalbolgeDiagnostic result;
     MalbolgeStepOutcome outcome;

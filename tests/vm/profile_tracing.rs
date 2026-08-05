@@ -43,8 +43,8 @@ use malbolge::{
 use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_EOF_LOW_BYTE: u8 = 0x78;
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+const CURRENT_IO_ROUNDTRIP: &[u8] =
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 const REJECTING_JUMP_SOURCE: &[u8] = b"b'";
 const REJECTING_POINTER: u32 = 98;
 
@@ -68,7 +68,7 @@ fn check_halt_trace(trace: &ProfileStepTrace) -> TestResult {
 }
 
 fn check_input_eof_trace(trace: &ProfileStepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'<'), "profile input decode")?;
+    check_equal(&trace.decoded, &Some(b'/'), "profile input decode")?;
     check_equal(
         &trace.input,
         &Some(TraceInput::EndOfInput),
@@ -92,7 +92,7 @@ fn check_input_eof_trace(trace: &ProfileStepTrace) -> TestResult {
 }
 
 fn check_output_trace(trace: &ProfileStepTrace) -> TestResult {
-    check_equal(&trace.decoded, &Some(b'/'), "profile output decode")?;
+    check_equal(&trace.decoded, &Some(b'<'), "profile output decode")?;
     check_equal(
         &trace.output,
         &Some(CURRENT_EOF_LOW_BYTE),
@@ -111,7 +111,7 @@ fn check_current_trace_inertness(
 ) -> TestResult {
     let mut plain = normalize_result(ProfileMachine::from_source(
         current_profile(),
-        IO_ROUNDTRIP,
+        CURRENT_IO_ROUNDTRIP,
         Vec::new(),
     ))?;
     let plain_outcome = normalize_result(plain.run(8))?;
@@ -149,7 +149,7 @@ fn check_current_trace_inertness(
 fn current_trace_records_profile_eof_and_is_inert() -> TestResult {
     let mut traced = normalize_result(ProfileMachine::from_source(
         current_profile(),
-        IO_ROUNDTRIP,
+        CURRENT_IO_ROUNDTRIP,
         Vec::new(),
     ))?;
     let mut records = Vec::<ProfileStepTrace>::new();

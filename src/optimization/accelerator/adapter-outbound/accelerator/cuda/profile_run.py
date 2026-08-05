@@ -1021,7 +1021,9 @@ class CudaProfileRunAdapter:
                 ResidentGeometry(
                     interpreter_authority=False,
                     eof_word=admitted.eof_word,
+                    input_instruction=admitted.input_instruction,
                     memory_words=admitted.memory_words,
+                    output_instruction=admitted.output_instruction,
                     word_modulus=admitted.word_modulus,
                     word_trits=admitted.word_trits,
                 ),

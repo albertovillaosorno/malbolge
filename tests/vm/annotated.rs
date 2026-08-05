@@ -43,6 +43,7 @@ use malbolge::{
 use crate::{TestResult, check_equal, normalize_result};
 
 const CANONICAL_ROUNDTRIP: &[u8] = b"#ctO##/\\?";
+const INTERPRETER_ROUNDTRIP_SOURCE: &[u8] = b"ubO";
 const ROUNDTRIP_SOURCE: &[u8] = b"ctO";
 
 #[test]
@@ -137,16 +138,27 @@ fn annotated_invalid_presentation_fails_closed() -> TestResult {
 #[test]
 fn annotated_vm_execution_matches_canonical_classic_and_current() -> TestResult
 {
-    let annotated = b"# input/output roundtrip\r\nc\n# output\r\nt\nO";
-    check_classic_execution(annotated)?;
-    check_execution_facade(annotated)?;
-    check_profile_execution(annotated)
+    let interpreter_annotated =
+        b"# interpreter input/output roundtrip
+u
+# output
+b
+O";
+    let specification_annotated =
+        b"# specification input/output roundtrip
+c
+# output
+t
+O";
+    check_classic_execution(interpreter_annotated)?;
+    check_execution_facade(specification_annotated)?;
+    check_profile_execution(interpreter_annotated)
 }
 
 fn check_classic_execution(annotated: &[u8]) -> TestResult {
     let input = vec![b'A'];
     let mut canonical = normalize_result(Machine::from_source(
-        ROUNDTRIP_SOURCE,
+        INTERPRETER_ROUNDTRIP_SOURCE,
         input.clone(),
     ))?;
     let mut presented =
@@ -201,7 +213,7 @@ fn check_profile_execution(annotated: &[u8]) -> TestResult {
     let input = vec![b'A'];
     let mut canonical = normalize_result(ProfileMachine::from_source(
         profile,
-        ROUNDTRIP_SOURCE,
+        INTERPRETER_ROUNDTRIP_SOURCE,
         input.clone(),
     ))?;
     let mut presented = normalize_result(

@@ -53,7 +53,7 @@ use crate::{
     TestResult, accelerator_python_path, check_equal, normalize_result,
 };
 
-const MAGIC: &[u8; 8] = b"MBPRN1\0\0";
+const MAGIC: &[u8; 8] = b"MBPRN2\0\0";
 const RESPONSE_RESULTS: u32 = 0;
 const RESPONSE_UNAVAILABLE: u32 = 1;
 const RUN_BUDGET_EXHAUSTED: u32 = 0;
@@ -62,7 +62,7 @@ const RUN_ERROR: u32 = 2;
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ENCRYPTION: u32 = 1;
 const CURRENT_INPUT: u8 = 0xa5;
-const CURRENT_SOURCE: &[u8] = b"(=%`qL";
+const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const REJECTING_JUMP_SOURCE: &[u8] = b"b'";
 const TABLE_LEN: usize = 94;
 const TEST_XLAT1: &[u8; TABLE_LEN] =
@@ -271,7 +271,9 @@ fn encode_profile_product_batch(
     bytes.extend_from_slice(MAGIC);
     for value in [
         profile.eof_word(),
+        u32::from(profile.input_instruction()),
         profile.memory_words(),
+        u32::from(profile.output_instruction()),
         profile.word_modulus(),
         u32::from(profile.word_trits()),
         usize_u32(requests.len())?,
@@ -598,7 +600,9 @@ fn encode_batch(fixtures: &[RunFixture]) -> TestResult<Vec<u8>> {
     bytes.extend_from_slice(MAGIC);
     for value in [
         profile.eof_word(),
+        u32::from(profile.input_instruction()),
         profile.memory_words(),
+        u32::from(profile.output_instruction()),
         profile.word_modulus(),
         u32::from(profile.word_trits()),
         usize_u32(fixtures.len())?,

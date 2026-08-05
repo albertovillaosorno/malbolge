@@ -49,7 +49,8 @@ renders
 `src/runtime/virtual-machine/contract/profile_generated.rs` deterministically
 from the validated canonical JSON.
 The checked-in projection contains immutable descriptors for `malbolge-1998`,
-`malbolge-2026.1`, and `malbolge-2026.2`. A Python regression test requires the
+`malbolge-2026.1`, `malbolge-2026.2`, and `malbolge-2026.3`. A Python
+regression test requires the
 checked-in Rust source to equal the canonical renderer byte for byte, including
 the final rustfmt-compatible layout.
 
@@ -80,11 +81,12 @@ code.
 The Python boundary uses the same normative feature order and the same explicit
 `safe-rust-classic` and `safe-rust-profiled` envelopes as Rust. It validates the
 selected profile's own capacity before runtime capacity, preserves exact
-`malbolge-1998`, `malbolge-2026.1`, and `malbolge-2026.2` identities, rejects
+`malbolge-1998`, `malbolge-2026.1`, `malbolge-2026.2`, and
+`malbolge-2026.3` identities, rejects
 unknown IDs without fallback, and emits byte-identical `MALBOLGE-PROFILE-001`
 and `MALBOLGE-PROFILE-002` text for the shared reference cases.
 
-The current `malbolge-2026.2` profile therefore fails preflight when explicitly
+The current `malbolge-2026.3` profile therefore fails preflight when explicitly
 sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by
 `ProfileMachine`/`safe-rust-profiled`. The retained `malbolge-2026.1` transition
 profile is admitted by both normative interpreters while retaining its exact
@@ -151,7 +153,7 @@ selected profile. Its deterministic text names:
 - runtime capability ID and its maximum word/memory capacity; and
 - the exact missing dimensions.
 
-For `safe-rust-classic` and `malbolge-2026.2`, the missing dimensions are
+For `safe-rust-classic` and `malbolge-2026.3`, the missing dimensions are
 `word-trits,memory-words`. `safe-rust-profiled` has no missing dimension for
 that
 profile.
@@ -175,8 +177,10 @@ a valid profile may still be unsupported by a particular runtime.
 - Profile-capacity validation happens before runtime-capability validation.
 - Runtime-capability validation happens before source loading or execution.
 - `malbolge-1998` retains its exact ten-trit/59,049-word historical machine.
-- `malbolge-2026.1` and `malbolge-2026.2` retain their immutable identities even
-  when two profiles happen to share an implementation capability.
+- `malbolge-2026.1`, `malbolge-2026.2`, and `malbolge-2026.3` retain their
+  immutable identities even when profiles happen to share an implementation
+  capability; only the registry `kind` role may advance without changing an
+  existing fingerprint.
 - Unsupported profiles never execute through silent classic fallback.
 - The default `ExecutionMachine` constructor remains explicitly classic;
   scalable execution requires explicit `ProfileMachine` selection rather than

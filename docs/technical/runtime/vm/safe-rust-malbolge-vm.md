@@ -42,7 +42,8 @@ one final self-encryption change. `ProfileMachine` exposes the parallel
 identity and profile-width `u32` addresses/words. Deltas contain actual final
 changed cells only: unchanged writes are omitted, a data/encryption collision at
 one address is represented once by its final encrypted value, and
-halt/non-graphical termination/rejected transitions report no memory change.
+halt, modern-profile non-graphical termination, historical non-graphical
+non-progress, and rejected transitions report no memory change.
 The public `profile_cell_is_graphical()` predicate owns the profile-width
 33-through-126 decode boundary used by tracing, execution, and verified native
 eligibility. `decode_profile_instruction()` owns the corresponding positional
@@ -81,7 +82,7 @@ The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
 classic compatibility, while `from_source_for_profile()` performs a typed
 `safe-rust-classic` capability preflight before source loading. The current
-14-trit `malbolge-2026.2` profile therefore still fails before reaching this
+14-trit `malbolge-2026.3` profile therefore still fails before reaching this
 classic loader rather than being truncated or silently reinterpreted.
 
 A separate safe-Rust `ProfileMachine` now implements the canonical schema-v2
@@ -108,9 +109,9 @@ crazy and rotate.
 
 Independent differential evidence now exists against the separately implemented
 pure-C VM. Both implementations compute semantic signature
-`0xa74cec75a875c85a` without sharing transition implementation code. The
-signature covers word operations, the complete loaded `ctO` memory image, normal
-byte I/O and halt, rejected jump atomicity, and non-graphical termination.
+`0xa9dabd8fc51d13c9` without sharing transition implementation code. The
+signature covers word operations, the complete loaded `ubO` memory image, interpreter-compatible byte I/O and halt,
+rejected jump atomicity, and historical non-graphical non-progress.
 
 The typed TODO remains active until its declared repository-wide validation
 command passes at retirement time.
@@ -153,7 +154,7 @@ memory, input consumption, or output.
   current-profile fail-closed preflight, transition-profile acceptance, and the
   exact historical-profile ceiling diagnostic.
 - `tests/vm/differential.rs` recomputes semantic signature
-  `0xa74cec75a875c85a` from the public Rust API.
+  `0xa9dabd8fc51d13c9` from the public Rust API.
 - `tests/vm/c_conformance.c` independently produces and asserts the same
   signature from the pure-C VM.
 - `tests/vm/profile_reads.rs` covers every current-profile instruction family

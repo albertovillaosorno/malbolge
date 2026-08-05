@@ -33,24 +33,34 @@ trust boundary, or ownership rules stated by its governing decisions.
 ### Implementation Status
 
 Schema version 2 is implemented in repository-root `malbolge.json`. It contains
-an immutable `malbolge-1998` historical-conformance profile, retains the
-`malbolge-2026.1` ten-trit transition identity, and selects `malbolge-2026.2` as
-the current language profile. The current profile uses the scalable 14-trit
-single-word ternary geometry defined by the scalable-memory contract:
-4,782,969 word values and the same number of directly addressed memory words.
+an immutable `malbolge-1998` historical-conformance profile, retains
+`malbolge-2026.1` and `malbolge-2026.2` as immutable versioned identities, and
+selects `malbolge-2026.3` as the current language profile. The current profile
+uses the scalable 14-trit single-word ternary geometry defined by the
+scalable-memory contract: 4,782,969 word values and the same number of directly
+addressed memory words.
+
+I/O opcode assignment is versioned profile semantics. `malbolge-1998` and the
+current `malbolge-2026.3` use interpreter-compatible `/` input and `<` output.
+The already published `malbolge-2026.1` and `malbolge-2026.2` identities retain
+their specification-first `<` input and `/` output assignment. The current
+profile does not inherit historical C undefined behavior, non-progress as a
+modern termination policy, or the ten-trit resource ceiling merely because its
+I/O is source-compatible with the original interpreter.
 
 `src/automation/repository/composition/scripts/validate/target_profile.py`
 provides a dependency-free closed-schema
 validator using duplicate-key-rejecting JSON parsing. It enforces exact schema
 keys, ternary word consistency, single-word memory consistency, EOF at the
 maximum profile word, the frozen 1998 machine envelope, exactly one selected
-current identity, and preservation of the sequential deterministic
-self-modifying semantic core across schema-v2 profiles.
+current identity, preservation of the sequential deterministic
+self-modifying semantic core across schema-v2 profiles, and an exact
+one-to-one assignment of `<` and `/` to versioned input/output roles.
 
 Cross-component consumption is not complete. The classic safe Rust `Machine`
 still implements `malbolge-1998` constants directly and must not silently
 execute
-a `malbolge-2026.2` artifact. The separate `ProfileMachine` now consumes the
+a `malbolge-2026.3` artifact. The separate `ProfileMachine` now consumes the
 canonical descriptor and executes schema-v2 profiles through 14 trits under
 explicit `safe-rust-profiled` capability. Profile-driven trace evidence now
 carries the same canonical identity. Compiler, tidy, verifier, native, and
@@ -95,7 +105,7 @@ selecting an implicit repository policy.
 - Executable schema checks: `python
   src/automation/repository/composition/scripts/validate/target_profile.py` and
   `.dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c
-  .jig/lang/python/.jig/lang/python/pytest.ini
+  .jig/lang/python/pytest.ini
   tests/test_target_profile.py tests/compatibility/test_scalable_memory.py`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

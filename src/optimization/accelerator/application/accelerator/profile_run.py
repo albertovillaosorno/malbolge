@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 MAX_BYTE: Final = 0xFF
 MAX_GRAPHICAL_WORD: Final = 126
 MAX_PROFILE_TRITS: Final = 20
+PROFILE_IO_INSTRUCTIONS: Final = frozenset((ord("<"), ord("/")))
 TERNARY_RADIX: Final = 3
 WORD_BYTES: Final = 4
 WORD_TYPECODE: Final = "I"
@@ -61,7 +62,9 @@ class ProfileRunGeometry:
     """Exact single-word-modular profile geometry for resident execution."""
 
     eof_word: int
+    input_instruction: int
     memory_words: int
+    output_instruction: int
     word_modulus: int
     word_trits: int
 
@@ -264,6 +267,19 @@ def _validate_geometry_shape(
         message = (
             f"resident profile EOF {geometry.eof_word} != "
             f"modulus-1 ({geometry.word_modulus - 1})"
+        )
+        raise InvalidPrimitiveBatchError(message)
+    _validate_io_instructions(geometry)
+
+
+def _validate_io_instructions(geometry: ProfileRunGeometry) -> None:
+    observed = frozenset(
+        (geometry.input_instruction, geometry.output_instruction)
+    )
+    if observed != PROFILE_IO_INSTRUCTIONS:
+        message = (
+            "resident profile I/O instructions must assign '<' and '/' "
+            "exactly once"
         )
         raise InvalidPrimitiveBatchError(message)
 

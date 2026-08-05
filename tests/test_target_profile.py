@@ -40,10 +40,14 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "malbolge.json"
-CURRENT_PROFILE = "malbolge-2026.2"
+CURRENT_PROFILE = "malbolge-2026.3"
 CURRENT_TRITS = 14
 CURRENT_WORDS = 4_782_969
 CURRENT_EOF = CURRENT_WORDS - 1
+INTERPRETER_INPUT = "/"
+INTERPRETER_OUTPUT = "<"
+SPECIFICATION_INPUT = "<"
+SPECIFICATION_OUTPUT = "/"
 
 
 def _canonical_text() -> str:
@@ -128,6 +132,32 @@ def test_current_profile_is_fourteen_trit_scalable_geometry() -> None:
     assert word["modulus"] == CURRENT_WORDS
     assert memory["words"] == CURRENT_WORDS
     assert semantics["eof_word"] == CURRENT_EOF
+    assert semantics["input_instruction"] == INTERPRETER_INPUT
+    assert semantics["output_instruction"] == INTERPRETER_OUTPUT
+
+
+def test_published_pre_compatibility_profiles_retain_io_assignment() -> None:
+    """The 2026.1/.2 identities keep their published specification-first I/O."""
+    document = validator.load_document(PROFILE_PATH)
+    profiles = document["profiles"]
+    assert isinstance(profiles, dict)
+    for profile_id in ("malbolge-2026.1", "malbolge-2026.2"):
+        profile = profiles[profile_id]
+        assert isinstance(profile, dict)
+        semantics = profile["semantics"]
+        assert isinstance(semantics, dict)
+        assert semantics["input_instruction"] == SPECIFICATION_INPUT
+        assert semantics["output_instruction"] == SPECIFICATION_OUTPUT
+
+
+def test_io_instructions_must_be_assigned_exactly_once() -> None:
+    """Profiles cannot alias or replace the two versioned I/O opcodes."""
+    changed = _canonical_text().replace(
+        '"input_instruction": "/",',
+        '"input_instruction": "<",',
+        1,
+    )
+    _expect_invalid(changed)
 
 
 def test_scaled_eof_must_track_word_maximum() -> None:

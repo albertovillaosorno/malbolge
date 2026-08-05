@@ -68,7 +68,7 @@ batches.
   rejection. RTX 4060 (`sm_89`) development evidence passes this differential.
 - Current-profile resident coverage is now active behind explicit scalable
   geometry. `tests/vm/cuda_profile_run.rs` supplies canonical geometry from Rust
-  and compares eight complete `malbolge-2026.2` results across all 4,782,969
+  and compares eight complete `malbolge-2026.3` results across all 4,782,969
   final
   words plus registers, I/O, termination, steps, wrap, and atomic rejection on
   the

@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
     from accelerator.profile_run import ProfileRunResult
 
-MAGIC: Final = b"MBPRN1\x00\x00"
+MAGIC: Final = b"MBPRN2\x00\x00"
 RESPONSE_RESULTS: Final = 0
 RESPONSE_UNAVAILABLE: Final = 1
 U32_BYTES: Final = 4
@@ -136,7 +136,7 @@ def main() -> int:
             results = adapter.evaluate(requests)
     except AcceleratorUnavailableError as error:
         _ = sys.stdout.buffer.write(_response_prefix(RESPONSE_UNAVAILABLE, 0))
-        _ = sys.stderr.write(f"MBPRN1 UNAVAILABLE {error}\n")
+        _ = sys.stderr.write(f"MBPRN2 UNAVAILABLE {error}\n")
         return 0
     except (
         AcceleratorExecutionError,
@@ -144,7 +144,7 @@ def main() -> int:
         ProfileRunProtocolError,
         ValueError,
     ) as error:
-        _ = sys.stderr.write(f"MBPRN1 INVALID {error}\n")
+        _ = sys.stderr.write(f"MBPRN2 INVALID {error}\n")
         return 1
     output = sys.stdout.buffer
     _ = output.write(_response_prefix(RESPONSE_RESULTS, len(results)))
@@ -162,7 +162,9 @@ def _parse_requests(
         raise ProfileRunProtocolError(message)
     geometry = ProfileRunGeometry(
         eof_word=reader.u32(),
+        input_instruction=reader.u32(),
         memory_words=reader.u32(),
+        output_instruction=reader.u32(),
         word_modulus=reader.u32(),
         word_trits=reader.u32(),
     ).validated()

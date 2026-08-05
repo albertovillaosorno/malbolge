@@ -51,13 +51,13 @@ from scripts.validate import target_profile
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "malbolge.json"
-CURRENT_ID = "malbolge-2026.2"
+CURRENT_ID = "malbolge-2026.3"
 TRANSITION_ID = "malbolge-2026.1"
 HISTORICAL_ID = "malbolge-1998"
 CURRENT_WORDS = 4_782_969
 HISTORICAL_WORDS = 59_049
 CURRENT_RUNTIME_DIAGNOSTIC = (
-    "MALBOLGE-PROFILE-001 profile=malbolge-2026.2 version=2026.2 "
+    "MALBOLGE-PROFILE-001 profile=malbolge-2026.3 version=2026.3 "
     "required_features=byte-input,byte-output,crazy-operation,deterministic,"
     "post-instruction-encryption,rotate,self-modification,sequential-guest "
     "required_word_trits=14 required_memory_words=4782969 "
@@ -111,7 +111,7 @@ def test_current_requirement_is_derived_from_canonical_document() -> None:
     value = _requirement()
 
     assert value.profile_id == CURRENT_ID
-    assert value.version == "2026.2"
+    assert value.version == "2026.3"
     assert value.kind == target_profile.CURRENT_KIND
     assert value.word_trits == 14
     assert value.memory_words == CURRENT_WORDS

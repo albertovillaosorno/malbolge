@@ -100,7 +100,9 @@ NO_OP_CELL: Final = 33
 ENCRYPTED_NO_OP_CELL: Final = 53
 GEOMETRY = ProfileRunGeometry(
     eof_word=SYNTHETIC_WORDS - 1,
+    input_instruction=ord("/"),
     memory_words=SYNTHETIC_WORDS,
+    output_instruction=ord("<"),
     word_modulus=SYNTHETIC_WORDS,
     word_trits=SYNTHETIC_TRITS,
 )

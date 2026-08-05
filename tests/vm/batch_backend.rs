@@ -48,7 +48,9 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
+const INTERPRETER_IO_ROUNDTRIP: &[u8] =
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const SPECIFICATION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
 #[derive(Debug, Eq, PartialEq)]
@@ -168,7 +170,7 @@ impl BatchExecutionBackend for MalformedBackend {
 
 fn classic_requests() -> TestResult<Vec<BatchRequest>> {
     let mut resumed = normalize_result(ExecutionMachine::from_source(
-        IO_ROUNDTRIP,
+        SPECIFICATION_IO_ROUNDTRIP,
         vec![0x61],
         ExecutionMode::Specification,
     ))?;
@@ -182,7 +184,7 @@ fn classic_requests() -> TestResult<Vec<BatchRequest>> {
             8,
         ),
         BatchRequest::from_source(
-            IO_ROUNDTRIP.to_vec(),
+            SPECIFICATION_IO_ROUNDTRIP.to_vec(),
             vec![0x72],
             ExecutionMode::Specification,
             3,
@@ -194,7 +196,7 @@ fn profile_requests() -> Vec<ProfileBatchRequest> {
     vec![
         ProfileBatchRequest::from_source(
             historical_profile(),
-            IO_ROUNDTRIP.to_vec(),
+            INTERPRETER_IO_ROUNDTRIP.to_vec(),
             vec![0x41],
             3,
         ),
@@ -406,7 +408,7 @@ fn profile_backend_route_and_unavailability_match_sequential_state()
 fn profile_backend_views_retain_canonical_profile_identity() -> TestResult {
     let request = ProfileBatchRequest::from_source(
         current_profile(),
-        IO_ROUNDTRIP.to_vec(),
+        INTERPRETER_IO_ROUNDTRIP.to_vec(),
         vec![0x33],
         0,
     );

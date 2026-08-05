@@ -45,12 +45,12 @@ use super::{TestResult, check_equal, normalize_result};
 
 const CRAZY_TRIT_TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
 const CURRENT_INPUT: u8 = 0xa5;
-const CURRENT_SOURCE: &[u8] = b"(=%`qL";
+const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const CURRENT_TRITS: u8 = 14;
 const CURRENT_WORDS: u32 = 4_782_969;
 const HISTORICAL_WORDS: u16 = 59_049;
 const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
 const TERNARY_RADIX: u32 = 3;
 
 fn scalar_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {

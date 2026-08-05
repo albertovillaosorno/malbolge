@@ -46,7 +46,7 @@ EXAMPLE_PATH = (
     / "custom-profile.example.json"
 )
 PROFILE_PATH = ROOT / "malbolge.json"
-CURRENT_PROFILE = "malbolge-2026.2"
+CURRENT_PROFILE = "malbolge-2026.3"
 CUSTOM_PROFILE = "custom-14-example"
 EXAMPLE_FINGERPRINT = (
     "malbolge-profile-v1:sha256:"

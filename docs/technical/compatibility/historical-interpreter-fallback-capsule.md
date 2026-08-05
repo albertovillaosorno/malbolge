@@ -127,9 +127,10 @@ recognized, it validates framing, lengths, checksum, canonical profile lookup,
 and exact profile fingerprint before returning payload bytes and the selected
 canonical descriptor.
 
-The checked-in fixture selects `malbolge-2026.2` and carries `ctO` plus LF as
-its
-small payload. Parsing succeeds. Passing that extracted payload/profile into the
+The checked-in fixture selects `malbolge-2026.3` and carries `ubO` plus LF as
+its small payload. At loaded positions 0, 1, and 2, those bytes decode to
+`/`, `<`, and `v`, matching the current profile's interpreter-compatible I/O
+assignment. Parsing succeeds. Passing that extracted payload/profile into the
 classic `ExecutionMachine::from_source_for_profile()` still fails
 `safe-rust-classic` capability preflight before the ten-trit loader. Passing the
 same explicit descriptor/payload to `ProfileMachine` succeeds under
@@ -142,7 +143,7 @@ advertised capacities.
 
 Classic source remains ordinary `.malbolge`. In particular:
 
-- `ctO` with ordinary whitespace is not a capsule;
+- `ctO` or `ubO` with ordinary whitespace is not a capsule;
 - the fixed fallback followed by ordinary whitespace is not a capsule unless the
   exact whitespace-encoded magic is present;
 - no existing source is reinterpreted merely because whitespace exists.
