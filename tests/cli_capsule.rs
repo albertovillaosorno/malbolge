@@ -55,12 +55,16 @@ struct TemporaryCapsule {
 }
 
 impl TemporaryCapsule {
-    fn new(label: &str, source: &str) -> Result<Self, String> {
+    fn from_bytes(label: &str, source: &[u8]) -> Result<Self, String> {
         let path = temp_dir()
             .join(format!("malbolge-cli-capsule-{}-{label}.malbolge", id()));
-        write(&path, decode_hex(source)?)
+        write(&path, source)
             .map_err(|error| format!("write capsule fixture: {error}"))?;
         Ok(Self { path })
+    }
+
+    fn new(label: &str, source: &str) -> Result<Self, String> {
+        Self::from_bytes(label, &decode_hex(source)?)
     }
 }
 
@@ -121,4 +125,41 @@ fn assert_capsule_dispatch(label: &str, source: &str) -> Result<(), String> {
 fn published_capsules_dispatch_before_classic_fallback() -> Result<(), String> {
     assert_capsule_dispatch("annual", ANNUAL_CAPSULE_HEX)?;
     assert_capsule_dispatch("2026-3", VERSIONED_CAPSULE_HEX)
+}
+
+#[test]
+fn tampered_capsule_fails_before_classic_fallback() -> Result<(), String> {
+    let mut bytes = decode_hex(ANNUAL_CAPSULE_HEX)?;
+    let checksum_byte = bytes
+        .last_mut()
+        .ok_or_else(|| String::from("annual capsule fixture is empty"))?;
+    *checksum_byte = match *checksum_byte {
+        b' ' => 9,
+        9 => b' ',
+        other => {
+            return Err(format!(
+                "capsule transport ended with non-whitespace byte {other}",
+            ));
+        },
+    };
+    let capsule = TemporaryCapsule::from_bytes("tampered", &bytes)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&capsule.path)
+        .output()
+        .map_err(|error| format!("run tampered capsule CLI: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains("Malbolge capsule parsing failed")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "tampered capsule did not fail closed: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
+        ))
+    }
 }
