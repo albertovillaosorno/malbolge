@@ -1,6 +1,6 @@
 ---
 id: "reference-interpreter-sanitizer-harness"
-status: "pending"
+status: "completed"
 lane: "5"
 area: "foundation"
 task: "TODO - Reference interpreter sanitizer harness"
@@ -50,3 +50,12 @@ or undefined C behavior without editing Ben's source.
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence: `historical-interpreter-legal-boundary`,
   `historical-undefined-behavior-catalogue`.
+- Completion evidence recorded 2026-08-05:
+  - immutable source SHA-256 is verified before every build;
+  - pinned Clang 22.1.8 builds the untouched source with ASan and UBSan;
+  - an external `_halloc` compatibility unit is generated only in `.temp`;
+  - the clean interpreter roundtrip emits `0xA8` with no finding;
+  - empty and one-word sources reproduce normalized H-003
+    `address-sanitizer:heap-buffer-overflow` findings;
+  - manifest, reviewed evidence, Ruff, and integration tests fail closed on
+    source, schema, toolchain, or result drift.

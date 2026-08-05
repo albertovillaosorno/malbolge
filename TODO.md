@@ -163,13 +163,6 @@ v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
-### TODO - Reference interpreter sanitizer harness
-
-Build the historical interpreter under AddressSanitizer and
-UndefinedBehaviorSanitizer where supported, preserve failing fixtures, and use
-the evidence to distinguish defined interpreter semantics from host-dependent
-or undefined C behavior without editing Ben's source.
-
 ## Documentation authority and promotion
 
 ### TODO - Planning corpus promotion to durable documentation
