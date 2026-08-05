@@ -14,8 +14,8 @@
 #   - Inspect ignored dependencies, caches, or Jig's own configuration tree.
 # - Allows:
 #   - Inputs: repository-authored textual source and documentation.
-# - Outputs: exact path/line diagnostics for duplicated Jig root segments.
-# - Side effects: repository reads only.
+#   - Outputs: exact path/line diagnostics for duplicated Jig root segments.
+#   - Side effects: repository reads only.
 # - Split-When:
 #   - Split when general link or path validation gains a separate authority.
 # - Merge-When:
