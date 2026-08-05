@@ -534,7 +534,8 @@ pub(super) fn derive_input_program(
     let input = effect.input?;
     if before.termination.is_some()
         || live_in.address != code_pointer
-        || decode_profile_instruction(live_in.value, code_pointer) != Some(b'<')
+        || decode_profile_instruction(live_in.value, code_pointer)
+            != target_profile(&program.profile_id).map(|profile| profile.input_instruction())
     {
         return None;
     }
@@ -658,7 +659,8 @@ pub(super) fn derive_output_program(
     let memory_words = program.profile_requirement.memory_words;
     if before.termination.is_some()
         || live_in.address != code_pointer
-        || decode_profile_instruction(live_in.value, code_pointer) != Some(b'/')
+        || decode_profile_instruction(live_in.value, code_pointer)
+            != target_profile(&program.profile_id).map(|profile| profile.output_instruction())
     {
         return None;
     }

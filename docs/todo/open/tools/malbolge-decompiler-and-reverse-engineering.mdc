@@ -68,7 +68,7 @@ Keep museum conversion as a separate local convenience over the general tool.
   `tests/decompiler.rs`.
 - Current Rust evidence: six strict tests plus Clippy with warnings denied.
 - Development toolchain evidence: pinned Clang 22.1.8 emitted warning-clean
-  x86-64 and AArch64 COFF objects from generated `ctO` C; the x86-64 DLL
+  x86-64 and AArch64 COFF objects from generated `ubO` C; the x86-64 DLL
   executed
   input `0x41` to output `A`, halt, `A=65`, `C=2`, `D=2`, one consumed byte, and
   three semantic steps.

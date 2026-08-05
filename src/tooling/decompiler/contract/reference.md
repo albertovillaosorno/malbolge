@@ -16,6 +16,7 @@ The emitted C is a source-specialized deterministic machine with:
 - explicit `A`, `C`, and `D` registers;
 - caller-owned memory, input, and output buffers;
 - profile-width crazy/rotate operations;
+- profile-declared input/output instruction bytes and non-graphical behavior;
 - position-dependent decode;
 - atomic post-instruction self-encryption, including the post-jump target rule;
 - explicit halt, non-graphical termination, invalid-encryption rejection, and

@@ -324,18 +324,19 @@ structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
 remains rejected.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
-Admission requires one live-in at entry `C`, VM-decoded `/`, one VM-owned low
+Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
 byte, output length incremented by one, exact code encryption, modular `C/D`
 successors, no input, and one exhausted step. Both ISAs guard the complete
-entry, exact 9-word footprint, `memory[5]=112`, non-null output pointer, and
-capacity greater than index 3 before committing byte `0xa8` and
+entry, exact 9-word footprint, `memory[5]=94`, non-null output pointer, and
+capacity greater than index 3 before committing encrypted code 57, byte `0xa8`, and
 `output_len:3->4`. Independent objects are 642/724 bytes. Development x86-64
 execution proves exact hit and atomic code/capacity/output-pointer/footprint/
 null
 memory misses; independent AArch64 decoding confirms eleven common-miss guards.
 
 `direct-input` revision 1 completes reviewed direct coverage of all eight
-instruction families. Admission requires one `<` code-cell live-in and exactly
+instruction families. Admission requires one profile-declared input code-cell
+live-in (`/` for current `malbolge-2026.3`) and exactly
 one byte or EOF input observation. Byte input derives `A` from the exact byte
 and
 increments `input_consumed`; EOF uses VM-owned `profile_eof_word()` and keeps

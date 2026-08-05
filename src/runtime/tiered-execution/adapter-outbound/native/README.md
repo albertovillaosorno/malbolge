@@ -199,7 +199,8 @@ creating a backend identity: exact zero-observation halt selects
 `direct-jump-code`, an exact non-aliasing `j` transition selects
 `direct-jump-data`, an exact non-aliasing `*` transition selects
 `direct-rotate`, an exact non-aliasing `p` transition selects `direct-crazy`,
-an exact `<` transition selects `direct-input`, an exact `/` transition selects
+an exact transition using the selected profile input instruction selects
+`direct-input`, an exact transition using its output instruction selects
 `direct-output`, and an exact no-op
 fetch/encryption/advance selects
 `direct-no-operation`, and every remaining IR selects byte-verified deopt.
@@ -459,18 +460,18 @@ AArch64. Byte-exact fixtures and semantic tampering rejection bind the contract.
 Aliasing `C == D` remains rejected.
 
 `direct-output` revision 1 is the first reviewed direct I/O transition. One
-code-cell live-in must VM-decode as `/`; VM-owned `profile_low_byte()` derives
+code-cell live-in must VM-decode as `<`; VM-owned `profile_low_byte()` derives
 the appended byte. Both ISAs guard the complete entry, exact 9-word footprint,
-`memory[5]=112`, non-null output storage, and capacity greater than output index
-3 before committing `memory[5]:112->68`, `C:5->6`, `D:7->8`, byte `0xa8`, and
+`memory[5]=94`, non-null output storage, and capacity greater than output index
+3 before committing `memory[5]:94->57`, `C:5->6`, `D:7->8`, byte `0xa8`, and
 `output_len:3->4`. Independent complete objects are 642 bytes on x86-64 and 724
 bytes on AArch64. x86-64 execution proves exact hit plus atomic code, capacity,
 output-pointer, footprint, and memory-pointer misses.
 
 `direct-input` revision 1 completes direct coverage of all eight instruction
-families. One code-cell live-in must VM-decode as `<`. The byte form guards a
+families. One code-cell live-in must VM-decode as `/`. The byte form guards a
 non-null input pointer, `input_len > input_consumed`, and the exact byte before
-committing `A=65`, `input_consumed:2->3`, encrypted code 57, and `C/D=6/8`.
+committing `A=65`, `input_consumed:2->3`, encrypted code 68, and `C/D=6/8`.
 The EOF form guards `input_len == input_consumed`, never dereferences the input
 pointer, and uses VM-owned `profile_eof_word()` to commit `A=4782968` while
 leaving the cursor at 2. Independent complete objects are 659/744 bytes for the

@@ -28,8 +28,9 @@ semantic machine.
 Before rendering, the source is admitted by `ProfileMachine::from_source` for
 the
 explicit canonical profile. The generated artifact embeds exact profile ID,
-version, fingerprint, word modulus, memory size, EOF value, trit width, admitted
-source bytes, and the normative initial translation table.
+version, fingerprint, word modulus, memory size, EOF value, trit width,
+input/output instruction bytes, non-graphical progress policy, admitted source
+bytes, and the normative initial translation table.
 
 The generated C exposes explicit accumulator/code/data registers and uses
 caller-owned memory, input, output, and result storage. It implements profile-
@@ -66,7 +67,7 @@ museum.
   index and is never treated as the decoded instruction itself.
 - Executable representations preserve input/output order, crazy, rotate, jumps,
   the post-jump encryption target, pointer advancement/wrap, halt,
-  non-graphical termination, EOF, and atomic rejection.
+  profile-declared non-graphical behavior, EOF, and atomic rejection.
 - Self-modification is represented as behavior, not optimized away to make the
   output look more conventional.
 - Output capacity is preflighted to at least the requested step budget; one
@@ -84,18 +85,20 @@ explicitly in the general CLI; there is no fallback.
 
 Generated C returns explicit invalid-argument and invalid-encryption statuses.
 A rejected encryption target commits no input, output, register, or memory
-transition. Halt and non-graphical termination are distinct outcomes. Museum
-conversion never downloads a missing specimen or substitutes another source.
+transition. Halt and modern non-graphical termination are distinct outcomes;
+`malbolge-1998` instead preserves bounded non-progress for a non-graphical
+current cell. Museum conversion never downloads a missing specimen or
+substitutes another source.
 
 ## Verification
 
 `tests/decompiler.rs` provides six product tests covering deterministic
 rendering,
 profile geometry, source rejection, post-jump encryption ordering, normative
-initial translation, and the known `ctO` input/output/halt baseline against
-`ProfileMachine`.
+initial translation, and the interpreter-compatible `ubO`
+input/output/halt baseline against `ProfileMachine`.
 
-Pinned LLVM 22.1.8 development evidence compiled generated historical `ctO` C
+Pinned LLVM 22.1.8 development evidence compiled generated historical `ubO` C
 with `-std=c23 -ffreestanding -Wall -Wextra -Werror` for both
 `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. The x86-64 object linked
 without the CRT and executed through its exported API. Input byte `0x41`

@@ -167,16 +167,16 @@ structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
 remains rejected.
 
 `direct-output` revision 1 adds the first reviewed output append. One live-in
-binds the entry code cell and must VM-decode as `/`; `profile_low_byte()`
+binds the entry code cell and must VM-decode as `<`; `profile_low_byte()`
 derives
-byte `0xa8`. Both ISAs guard the exact 9-word footprint, `memory[5]=112`, output
+byte `0xa8`. Both ISAs guard the exact 9-word footprint, `memory[5]=94`, output
 pointer, strict capacity, and prior live termination before committing encrypted
-code 68, `C/D=6/8`, byte index 3, and `output_len=4`. Independent complete
+code 57, `C/D=6/8`, byte index 3, and `output_len=4`. Independent complete
 objects are 642/724 bytes. x86-64 execution proves exact hit and five atomic
 miss classes; independent AArch64 decoding confirms one common miss target.
 
-`direct-input` revision 1 completes direct instruction-family coverage. The byte
-form guards a non-null input pointer, strict `input_len > input_consumed`, and
+`direct-input` revision 1 completes direct instruction-family coverage. Its code
+cell must VM-decode as `/`. The byte form guards a non-null input pointer, strict `input_len > input_consumed`, and
 one exact byte before committing accumulator and cursor. The EOF form guards
 length equality, never dereferences the input pointer, and commits the VM-owned
 all-two-trit EOF word without cursor advance. Independent complete objects are

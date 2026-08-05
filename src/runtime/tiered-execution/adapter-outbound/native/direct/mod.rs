@@ -73,7 +73,7 @@ use malbolge::{
     encrypt_profile_cell, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_crazy, profile_eof_word, profile_low_byte,
-    profile_pointer_successor, profile_rotate,
+    profile_pointer_successor, profile_rotate, target_profile,
 };
 use plan::target_triple;
 pub use plan::{

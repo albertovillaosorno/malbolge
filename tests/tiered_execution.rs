@@ -907,7 +907,7 @@ fn program() -> RegionEffectProgram {
             steps: 1,
         },
         profile_fingerprint: String::from("malbolge-profile-v1:sha256:fixture"),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 8,
     }
@@ -1168,7 +1168,7 @@ fn cache_key_includes_declared_profile_identity() -> Result<(), String> {
         return Err(String::from("native key lost exact profile identity"));
     }
     let mut renamed = program;
-    renamed.profile_id = String::from("malbolge-2026.2-alias");
+    renamed.profile_id = String::from("malbolge-2026.3-alias");
     let candidate = NativeArtifactKey::new(&renamed, target)
         .map_err(|error| format!("renamed profile key failed: {error:?}"))?;
     if base == candidate {
@@ -1590,7 +1590,7 @@ fn native_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:native-bootstrap-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 2,
     }
@@ -1656,7 +1656,7 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1705,7 +1705,7 @@ fn direct_halt_fetch_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-halt-fetch-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1754,7 +1754,7 @@ fn direct_non_graphical_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-non-graphical-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1815,7 +1815,7 @@ fn direct_jump_code_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-jump-code-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1875,7 +1875,7 @@ fn direct_jump_data_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-jump-data-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1939,7 +1939,7 @@ fn direct_crazy_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-crazy-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -1985,19 +1985,19 @@ fn direct_input_byte_program() -> RegionEffectProgram {
                 data: None,
                 encryption: Some(ProfileMemoryWrite {
                     address: 5,
-                    after: 57,
-                    before: 94,
+                    after: 68,
+                    before: 112,
                 }),
             },
             output: None,
         }],
         format_version: EFFECT_IR_VERSION,
-        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 94 }],
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 112 }],
         outcome: RunOutcome::BudgetExhausted { steps: 1 },
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-input-byte-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2031,19 +2031,19 @@ fn direct_input_eof_program() -> RegionEffectProgram {
                 data: None,
                 encryption: Some(ProfileMemoryWrite {
                     address: 5,
-                    after: 57,
-                    before: 94,
+                    after: 68,
+                    before: 112,
                 }),
             },
             output: None,
         }],
         format_version: EFFECT_IR_VERSION,
-        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 94 }],
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 112 }],
         outcome: RunOutcome::BudgetExhausted { steps: 1 },
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-input-eof-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2089,19 +2089,19 @@ fn direct_output_program() -> RegionEffectProgram {
                 data: None,
                 encryption: Some(ProfileMemoryWrite {
                     address: 5,
-                    after: 68,
-                    before: 112,
+                    after: 57,
+                    before: 94,
                 }),
             },
             output: Some(0xa8),
         }],
         format_version: EFFECT_IR_VERSION,
-        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 112 }],
+        memory_live_ins: vec![MemoryLiveIn { address: 5, value: 94 }],
         outcome: RunOutcome::BudgetExhausted { steps: 1 },
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-output-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2165,7 +2165,7 @@ fn direct_rotate_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-rotate-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2222,7 +2222,7 @@ fn direct_no_operation_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-no-operation-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2267,7 +2267,7 @@ fn direct_initial_halt_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -2929,7 +2929,7 @@ fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
         return Err(format!("program capacity category: {profile_error}"));
     }
     let expected = concat!(
-        "MALBOLGE-PROFILE-002 profile=malbolge-2026.2 version=2026.2 ",
+        "MALBOLGE-PROFILE-002 profile=malbolge-2026.3 version=2026.3 ",
         "constraint=profile-capacity-ceiling required_memory_words=4782970 ",
         "profile_memory_words=4782969"
     );
@@ -3855,7 +3855,7 @@ fn assert_input_shape_rejections() -> Result<(), String> {
         .memory_live_ins
         .first_mut()
         .ok_or_else(|| String::from("input fixture lost live-in"))?
-        .value = 112;
+        .value = 94;
     if emit_direct_input_coff(
         &wrong_decode,
         direct_input_target(HostIsa::X86_64),
@@ -4848,7 +4848,7 @@ fn assert_direct_profile_metadata_mismatch(
     artifact: &UntrustedNativeObjectArtifact,
 ) -> Result<(), String> {
     let mut renamed_program = program.clone();
-    renamed_program.profile_id = String::from("malbolge-2026.2-alias");
+    renamed_program.profile_id = String::from("malbolge-2026.3-alias");
     let renamed = emit_direct_deopt_coff(
         &renamed_program,
         direct_deopt_target(HostIsa::X86_64),
@@ -5107,7 +5107,7 @@ fn assert_bootstrap_source_profile_metadata(
     program: &RegionEffectProgram,
     source: &str,
 ) -> Result<(), String> {
-    if !source.contains("/* Profile ID: malbolge-2026.2 */") {
+    if !source.contains("/* Profile ID: malbolge-2026.3 */") {
         return Err(String::from("native source lost profile identity"));
     }
     let fingerprint_comment =
@@ -5421,7 +5421,7 @@ fn compile_native_object(
 
 fn direct_normative_sequence_state() -> Result<ProfileMachineState, String> {
     let base =
-        ProfileMachine::from_source(current_profile(), b"(=%`qL", Vec::new())
+        ProfileMachine::from_source(current_profile(), b"(=%r_L", Vec::new())
             .map_err(|error| format!("direct sequence base load: {error}"))?;
     let mut memory = base.snapshot_state().memory().to_vec();
     *memory
@@ -5429,7 +5429,7 @@ fn direct_normative_sequence_state() -> Result<ProfileMachineState, String> {
         .ok_or_else(|| String::from("direct sequence code cell 5 missing"))? =
         34;
     let output_cell = (33u32..=126u32)
-        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'/'))
+        .find(|cell| decode_profile_instruction(*cell, 6) == Some(b'<'))
         .ok_or_else(|| String::from("phase-six output cell missing"))?;
     *memory
         .get_mut(6)
@@ -5563,7 +5563,7 @@ fn normative_trace_sequence_selects_mixed_exact_direct_steps()
                 value: second_fetch.value,
             }]
         || first_trace.decoded != Some(b'*')
-        || second_trace.decoded != Some(b'/')
+        || second_trace.decoded != Some(b'<')
         || second_trace.output != Some(0xd6)
     {
         let detail = format!("traces={traces:?} programs={programs:?}");
@@ -6222,7 +6222,7 @@ fn native_invocation_output_program() -> RegionEffectProgram {
         profile_fingerprint: String::from(
             "malbolge-profile-v1:sha256:native-invocation-output",
         ),
-        profile_id: String::from("malbolge-2026.2"),
+        profile_id: String::from("malbolge-2026.3"),
         profile_requirement: current_profile_requirement(),
         step_budget: 1,
     }
@@ -6555,7 +6555,7 @@ fn native_verified_output_program() -> Result<RegionEffectProgram, String> {
 
 const fn native_verified_output_memory() -> [u32; 9] {
     let mut memory = [0u32; 9];
-    memory[5] = 112;
+    memory[5] = 94;
     memory
 }
 
@@ -6600,7 +6600,7 @@ fn verified_direct_invocation_binds_exact_artifact_and_call()
         .ok_or_else(|| String::from("verified output fixture has no effect"))?
         .after;
     if outcome == NativeRegionInvocationOutcome::Applied(expected)
-        && memory[5] == 68
+        && memory[5] == 57
         && output == [0x10, 0xa8, 0]
     {
         Ok(())
@@ -6732,7 +6732,7 @@ fn verified_direct_invocation_propagates_buffer_error() -> Result<(), String> {
         Err(VerifiedDirectInvocationError::Invocation(
             NativeRegionInvocationError::EntryMemory {
                 address: 5,
-                expected: 112,
+                expected: 94,
                 observed: 111,
             },
         ))
@@ -7245,7 +7245,7 @@ fn native_executable_invocation_binds_ready_mapping() -> Result<(), String> {
         .ok_or_else(|| String::from("verified output fixture has no effect"))?
         .after;
     if outcome == NativeRegionInvocationOutcome::Applied(expected)
-        && memory[5] == 68
+        && memory[5] == 57
         && output == [0x10, 0xa8, 0]
     {
         Ok(())
@@ -7665,7 +7665,7 @@ fn native_executable_execution_applies_and_releases() -> Result<(), String> {
     let outcome = execute_verified_native(&mut adapter, &mut runner, prepared)
         .map_err(|error| error.to_string())?;
     if outcome == NativeRegionInvocationOutcome::Applied(expected)
-        && memory[5] == 68
+        && memory[5] == 57
         && output == [0x10, 0xa8, 0]
         && runner.calls == 1
         && runner.entry_addresses == [base_address]
@@ -7934,7 +7934,7 @@ fn native_executable_execution_retains_committed_outcome_on_release_failure()
         || error.committed_outcome()
             != Some(NativeRegionInvocationOutcome::Applied(expected))
         || error.release_failure().is_none()
-        || memory[5] != 68
+        || memory[5] != 57
         || output != [0x10, 0xa8, 0]
     {
         return Err(String::from("committed release failure evidence drifted"));

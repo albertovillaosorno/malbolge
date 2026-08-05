@@ -42,7 +42,7 @@ use malbolge::{
     historical_profile,
 };
 
-const OUTPUT_SOURCE: &[u8] = b"ctO";
+const OUTPUT_SOURCE: &[u8] = b"ubO";
 
 #[test]
 fn c_render_is_deterministic_and_profile_bound() -> Result<(), String> {
@@ -55,6 +55,9 @@ fn c_render_is_deterministic_and_profile_bound() -> Result<(), String> {
     }
     if !first.contains(current_profile().fingerprint())
         || !first.contains("#define MB_WORD_TRITS UINT32_C(14)")
+        || !first.contains("#define MB_INPUT_INSTRUCTION UINT32_C(47)")
+        || !first.contains("#define MB_OUTPUT_INSTRUCTION UINT32_C(60)")
+        || !first.contains("#define MB_NON_GRAPHICAL_NO_PROGRESS 0")
         || !first.contains("uint32_t *memory")
         || first.contains("malloc(")
     {
@@ -74,6 +77,9 @@ fn c_render_distinguishes_historical_geometry() -> Result<(), String> {
     }
     if historical.contains("#define MB_WORD_TRITS UINT32_C(10)")
         && historical.contains("#define MB_MEMORY_WORDS UINT32_C(59049)")
+        && historical.contains("#define MB_INPUT_INSTRUCTION UINT32_C(47)")
+        && historical.contains("#define MB_OUTPUT_INSTRUCTION UINT32_C(60)")
+        && historical.contains("#define MB_NON_GRAPHICAL_NO_PROGRESS 1")
     {
         Ok(())
     } else {
@@ -112,8 +118,8 @@ fn initial_listing_uses_normative_translation_table() -> Result<(), String> {
     let rendered = decompiler::render_c(historical_profile(), OUTPUT_SOURCE)
         .map_err(|error| error.to_string())?;
     for expected in [
-        "0:  99 -> <  input byte into A",
-        "1: 116 -> /  output low byte of A",
+        "0: 117 -> /  input byte into A",
+        "1:  98 -> <  output low byte of A",
         "2:  79 -> v  halt",
     ] {
         if !rendered.contains(expected) {
