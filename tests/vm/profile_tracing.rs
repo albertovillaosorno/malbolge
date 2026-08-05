@@ -43,8 +43,10 @@ use malbolge::{
 use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_EOF_LOW_BYTE: u8 = 0x78;
-const CURRENT_IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const CURRENT_IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 const REJECTING_JUMP_SOURCE: &[u8] = b"b'";
 const REJECTING_POINTER: u32 = 98;
 

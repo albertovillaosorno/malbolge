@@ -44,8 +44,10 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 const STEP_BUDGET: usize = 8;
 
 type MemorySamples = Vec<(u32, u32)>;

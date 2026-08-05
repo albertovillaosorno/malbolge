@@ -49,8 +49,10 @@ const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const CURRENT_TRITS: u8 = 14;
 const CURRENT_WORDS: u32 = 4_782_969;
 const HISTORICAL_WORDS: u16 = 59_049;
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 const TERNARY_RADIX: u32 = 3;
 
 fn scalar_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {

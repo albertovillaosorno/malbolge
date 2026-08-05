@@ -40,10 +40,13 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const INTERPRETER_IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const INTERPRETER_IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 const SPECIFICATION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
+const INTERPRETER_OUTPUT_CONTEXT: &str = "interpreter < emits consumed byte";
 
 fn interpreter_machine_for_invalid_jump() -> TestResult<ExecutionMachine> {
     let mut memory = Memory::filled(Word::ZERO);
@@ -81,7 +84,7 @@ fn interpreter_mode_models_original_io_with_mode_tagged_trace() -> TestResult {
         },
         "interpreter roundtrip halts after three requests",
     )?;
-    check_equal(machine.output(), &[0x41], "interpreter < emits consumed byte")?;
+    check_equal(machine.output(), &[0x41], INTERPRETER_OUTPUT_CONTEXT)?;
     check_equal(
         &machine.input_consumed(),
         &1usize,

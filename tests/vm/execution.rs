@@ -36,8 +36,10 @@ use malbolge::{Machine, RunOutcome, Termination};
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 
 #[test]
 fn bounded_run_exhaustion_can_resume_to_termination() -> TestResult {

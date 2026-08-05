@@ -40,8 +40,10 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 
 fn check_halt_trace(trace: &StepTrace) -> TestResult {
     check_equal(&trace.decoded, &Some(b'v'), "third trace decodes halt")?;

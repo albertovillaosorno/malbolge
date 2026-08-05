@@ -53,8 +53,10 @@ const TEST_XLAT2: &[u8; TABLE_LEN] =
     b"5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1C\
 B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
 
-const IO_ROUNDTRIP: &[u8] =
-    include_bytes!("../compatibility/specification/interpreter-io-roundtrip.malbolge");
+const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
+    "../compatibility/specification/",
+    "interpreter-io-roundtrip.malbolge",
+));
 
 fn exact_memory_words() -> TestResult<usize> {
     usize::try_from(historical_profile().memory_words()).map_err(|error| {
