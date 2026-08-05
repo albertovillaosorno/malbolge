@@ -3,7 +3,7 @@ id: "specification-and-legacy-interpreter-modes"
 status: "active"
 lane: "6"
 area: "vm"
-task: "TODO - Specification and legacy-interpreter execution modes"
+task: "TODO - Interpreter-authority and specification-comparison modes"
 # jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/vm/specification-and-legacy-interpreter-modes.md"
 depends_on:
@@ -45,13 +45,13 @@ comparison mode and preserve `legacy-ben` only as a parser alias for
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
-## Negative Cases
+### Negative Cases
 
 - Specification comparison is never selected from a source, cache, or corpus.
 - `legacy-ben` does not identify a feature-gated semantic product.
 - Locale, text-mode, out-of-bounds, and uninitialized C behavior are not copied.
 
-## Verification
+## Evidence
 
 - Current implementation is `ExecutionMode`, `ExecutionMachine`, mode-aware
   `Machine`, historical `ProfileMachine`, independent C, and CUDA classic paths.
