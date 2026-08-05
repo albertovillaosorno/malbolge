@@ -16,7 +16,7 @@ This document governs the following declared TODO scope:
 
 - `src/interoperability/historical-malbolge/`
 - `docs/technical/specification/`
-- `math/specification/`
+- `src/specification/formal-model/math/specification/`
 
 ## Current Behavior
 

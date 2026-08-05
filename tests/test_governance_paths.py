@@ -23,11 +23,11 @@
 # - Summary:
 #   - Prevents malformed Jig paths and retired historical source roots.
 # - Description:
-#   - Regresses path corruption and historical interpreter byte drift.
+#   - Regresses path corruption and immutable authority drift.
 # - Usage:
 #   - Runs with the repository Python test suite.
 # - Defaults:
-#   - Generated paths are excluded; historical source bytes are exact.
+#   - Generated paths are excluded; governed authority roots are exact.
 #
 
 """Repository-authored Jig path hygiene regressions."""
@@ -48,6 +48,15 @@ HISTORICAL_INTERPRETER_SHA256 = (
     "fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6"
 )
 RETIRED_HISTORICAL_ROOT = "tools/" "malbolge/"
+FORMAL_SPECIFICATION = ROOT / (
+    "src/specification/formal-model/math/specification"
+)
+FORMAL_SPECIFICATION_MANIFEST = ROOT / (
+    "src/specification/formal-model/function.yml"
+)
+RETIRED_FORMAL_SPECIFICATION_ROOT = re.compile(
+    r"(?<!formal-model/)math/" r"specification/"
+)
 EXCLUDED_DIRECTORIES = frozenset({
     ".cache",
     ".dependencies",
@@ -119,3 +128,19 @@ def test_historical_interpreter_uses_governed_interoperability_root() -> None:
         if RETIRED_HISTORICAL_ROOT in line
     ]
     assert not violations, "retired historical roots:\n" + "\n".join(violations)
+
+
+def test_formal_specification_uses_governed_function_root() -> None:
+    """Global math references resolve to the formal-model function."""
+    assert FORMAL_SPECIFICATION.is_dir()
+    violations = [
+        f"{path.relative_to(ROOT).as_posix()}:{line_number}: {line.strip()}"
+        for path in _authored_text_paths()
+        if path != FORMAL_SPECIFICATION_MANIFEST
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(),
+            1,
+        )
+        if RETIRED_FORMAL_SPECIFICATION_ROOT.search(line)
+    ]
+    assert not violations, "retired formal roots:\n" + "\n".join(violations)

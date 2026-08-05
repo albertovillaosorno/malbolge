@@ -116,9 +116,11 @@ moves to `docs/todo/completed/<area>/<id>.mdc` only after its durable evidence
 is accepted and its exact heading leaves `TODO.md`.
 
 Human explanations of mathematics remain in the appropriate documentation
-family. Machine-governed mathematical sources live under `math/specification/`
-or `math/algorithms/`. A `.tex` specification defines mathematics; it does not
-by itself prove that an implementation satisfies the mathematics.
+family. Machine-governed specification sources live under
+`src/specification/formal-model/math/specification/`. Research-specific
+algorithm equations use the mirror-relative `math/algorithms/` identity. A
+`.tex` specification defines mathematics; it does not by itself prove that an
+implementation satisfies the mathematics.
 
 ## Advantages
 

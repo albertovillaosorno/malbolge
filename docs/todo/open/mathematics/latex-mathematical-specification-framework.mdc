@@ -13,7 +13,7 @@ adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
   - "src/specification/formal-model/math/malbolge-notation.tex"
-  - "math/specification/"
+  - "src/specification/formal-model/math/specification/"
   - "math/algorithms/"
   - "docs/research/algorithms/"
   - "algorithms/"

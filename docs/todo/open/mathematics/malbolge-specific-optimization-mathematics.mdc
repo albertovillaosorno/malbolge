@@ -13,7 +13,7 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
-  - "math/specification/"
+  - "src/specification/formal-model/math/specification/"
   - "docs/research/algorithms/"
   - "algorithms/"
   - "tests/mathematics/"

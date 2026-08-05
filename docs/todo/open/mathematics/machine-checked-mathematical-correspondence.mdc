@@ -14,7 +14,7 @@ adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
-  - "math/specification/"
+  - "src/specification/formal-model/math/specification/"
   - "src/specification/formal-model/math/specification/correspondence.toml"
   - "docs/research/algorithms/"
   - "algorithms/"
@@ -54,7 +54,8 @@ Connect mathematical specifications to executable tests or proof tooling so the
   non-repository paths, evidence outside repository or research-mirror test
   surfaces, missing test functions,
   missing/duplicated source labels, and any difference between the manifest and
-  the complete set of `eq:*` labels under `math/specification/`.
+  the complete set of `eq:*` labels under
+  `src/specification/formal-model/math/specification/`.
 - Current semantic evidence spans exhaustive classic word-domain/successor,
   encryption, loader recurrence/admission/mutations, rotate/crazy/decode,
   replayable classic/profiled

@@ -18,7 +18,7 @@ This document governs the following declared TODO scope:
 - `compiler/linker/`
 - `compiler/`
 - `tests/compiler/`
-- `math/specification/`
+- `src/specification/formal-model/math/specification/`
 
 ## Current Behavior
 

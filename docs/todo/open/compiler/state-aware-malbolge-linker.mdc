@@ -17,7 +17,7 @@ scope:
   - "compiler/linker/"
   - "compiler/"
   - "tests/compiler/"
-  - "math/specification/"
+  - "src/specification/formal-model/math/specification/"
 validation:
   - "jig validate --root ."
 ---
@@ -49,7 +49,7 @@ concatenation.
 ## Evidence
 
 - Expected durable artifact surface: `compiler/linker/`, `compiler/`,
-  `tests/compiler/`, `math/specification/`.
+  `tests/compiler/`, `src/specification/formal-model/math/specification/`.
 - Required evidence: positive/negative relocation fixtures, state/mutation
   contracts, deterministic link-plan hashes, and translation-validation results.
 - Prerequisite completion evidence: `typed-compiler-ir`,

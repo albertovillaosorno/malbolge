@@ -30,7 +30,8 @@ validates the graph fail-closed. It
 requires unique manifest IDs/labels, repository-relative sources, evidence under
 repository `tests/` or an algorithm mirror's `algorithms/<id>/tests/`, exact
 existence of every referenced `fn`/`def`, and exact set
-equality between all `eq:*` labels under `math/specification/` and the manifest.
+equality between all `eq:*` labels under
+`src/specification/formal-model/math/specification/` and the manifest.
 Renaming/removing an equation or a test therefore breaks correspondence instead
 of silently leaving stale documentation.
 

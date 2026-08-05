@@ -11,7 +11,7 @@ adr_paths:
 scope:
   - "src/interoperability/historical-malbolge/"
   - "docs/technical/specification/"
-  - "math/specification/"
+  - "src/specification/formal-model/math/specification/"
 validation:
   - "jig validate --root ."
 ---
