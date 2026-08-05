@@ -34,9 +34,8 @@
 
 use std::num::NonZeroUsize;
 
-use malbolge::ProfileMachineState;
+use malbolge::{ProfileMachineState, RegionEffectProgram};
 
-use crate::execution_ir::RegionEffectProgram;
 use crate::execution_native::{
     NativeExecutableSequenceKey, NativeInterpreterContinuation,
 };

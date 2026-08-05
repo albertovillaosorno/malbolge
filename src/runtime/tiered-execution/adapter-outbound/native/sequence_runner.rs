@@ -35,7 +35,7 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use malbolge::ProfileMachineObservation;
+use malbolge::{ProfileMachineObservation, RegionEffectProgram};
 
 use super::direct::{
     CachedVerifiedDirectSequencePlan, VerifiedDirectNativeArtifact,
@@ -53,7 +53,6 @@ use super::runner::{
     NativeLoadedExecutionFailure, execute_loaded_verified_native,
     execute_verified_native,
 };
-use crate::execution_ir::RegionEffectProgram;
 
 /// Admitted result of executing an ordered verified direct sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

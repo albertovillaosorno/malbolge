@@ -33,7 +33,7 @@
 
 //! Deterministic batching for independent classic and profile-driven machines.
 
-#[path = "../application/batch_backend.rs"]
+#[path = "batch_backend.rs"]
 mod backend;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -48,10 +48,11 @@ pub use backend::{
     execute_profile_batch_with_backend_report,
 };
 
-use crate::{
-    ExecutionError, ExecutionMachine, ExecutionMode, ProfileDescriptor,
-    ProfileMachine, ProfileMachineError, RunOutcome,
-};
+use crate::execution::{ExecutionError, ExecutionMachine};
+use crate::machine::RunOutcome;
+use crate::mode::ExecutionMode;
+use crate::profile::ProfileDescriptor;
+use crate::profile_machine::{ProfileMachine, ProfileMachineError};
 
 #[derive(Clone, Debug)]
 enum BatchSeed {

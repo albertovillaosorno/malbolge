@@ -19,7 +19,7 @@ scope:
   # jig-ignore-next-line: canonical front matter value is indivisible
   - "src/automation/repository/composition/scripts/validate/experiment_manifest.py"
   - "src/runtime/virtual-machine/domain/profile.rs"
-  - "src/runtime/virtual-machine/contract/profile_generated.rs"
+  - "src/runtime/virtual-machine/domain/profile_generated.rs"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
   - "tests/test_experiment_manifest.py"
@@ -49,7 +49,7 @@ that reverse engineering can be made cryptographically impossible.
   same fingerprint when its lifecycle role changes from current to versioned.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 - `src/interoperability/profile-compatibility/contract/profile-fingerprints.json`
-  and `src/runtime/virtual-machine/contract/profile_generated.rs`
+  and `src/runtime/virtual-machine/domain/profile_generated.rs`
   are deterministic generated projections; tests require byte-exact renderer
   equality, and Rust exposes the fingerprint through `ProfileDescriptor`.
 - External schema-v1 custom profiles omit registry `kind`, preserve the defining

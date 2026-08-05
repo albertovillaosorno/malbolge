@@ -27,7 +27,8 @@ This document governs the following declared TODO scope:
 
 ### Implemented Foundation
 
-`src/runtime/tiered-execution/domain/ir/main.rs` now owns portable effect IR v3
+`src/runtime/virtual-machine/domain/execution_ir.rs` now owns portable effect
+IR v3
 as product code. It
 defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`, and re-exports
 the

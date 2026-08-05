@@ -33,10 +33,10 @@
 //! Verification fixtures for portable region effect artifacts.
 
 use malbolge::{
-    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite, current_profile,
+    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite,
+    RegionEffectProgram, current_profile,
 };
 
-use crate::execution_ir::RegionEffectProgram;
 use crate::indexed_state::IndexedMachineState;
 use crate::region_artifact::{
     RegionArtifactVerificationError, UntrustedRegionArtifact,

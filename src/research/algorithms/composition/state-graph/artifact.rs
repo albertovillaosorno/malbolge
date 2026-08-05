@@ -35,12 +35,11 @@
 
 //! Portable untrusted-to-verified region effect artifact boundary.
 
-use malbolge::RunOutcome;
-
-use crate::execution_ir::{
-    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
+use malbolge::{
+    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram, RunOutcome,
     TargetProfileRequirement,
 };
+
 use crate::indexed_state::IndexedMachineState;
 use crate::region_certificate::{
     ExactRegionError, RegionExecutionTier, VerifiedExactRegion,

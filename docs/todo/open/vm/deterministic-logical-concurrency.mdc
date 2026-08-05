@@ -14,8 +14,8 @@ adr_paths:
   - "docs/technical/adr/tiered-native-execution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "src/runtime/virtual-machine/domain/logical.rs"
-  - "src/runtime/virtual-machine/composition/batch.rs"
+  - "src/runtime/virtual-machine/application/logical.rs"
+  - "src/runtime/virtual-machine/application/batch.rs"
   - "tests/vm/logical.rs"
   - "tests/vm/profile_logical.rs"
   - "tests/vm/batch.rs"

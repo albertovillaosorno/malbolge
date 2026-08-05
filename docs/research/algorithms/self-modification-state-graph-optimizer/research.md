@@ -422,7 +422,8 @@ profile fingerprint, format version, dependency set, budget, and outcome and
 require verifier rejection; admitted shortcut/deopt results equal the existing
 verified-region baselines. This is a portable effect-IR research precursor, not
 yet x86-64/AArch64 bytes or a stable serialized native cache format.
-`src/runtime/tiered-execution/domain/ir/main.rs` now owns that portable schema
+`src/runtime/virtual-machine/domain/execution_ir.rs` now owns that portable
+schema
 as product code; research
 consumes it rather than defining a second effect type. The next boundary is an
 independently validated host-code artifact.

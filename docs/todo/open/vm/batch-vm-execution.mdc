@@ -28,7 +28,7 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
 
 **Current implementation.**
 
-- `src/runtime/virtual-machine/composition/batch.rs` keeps classic
+- `src/runtime/virtual-machine/application/batch.rs` keeps classic
   `BatchRequest`/`BatchResult` and adds
   `ProfileBatchRequest`/`ProfileBatchResult` around explicit `ProfileMachine`
   identity. Both families use the same internal host scheduler.

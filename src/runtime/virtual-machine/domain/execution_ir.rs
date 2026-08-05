@@ -28,7 +28,7 @@
 // - Description:
 //   - Carries only state-changing effects and verifier-bound region metadata.
 // - Usage:
-//   - Included by execution/research composition roots through explicit paths.
+//   - Imported from the public `malbolge` domain surface.
 // - Defaults:
 //   - IR data is untrusted until a verifier-owned boundary admits it.
 //
@@ -37,12 +37,13 @@
 
 use std::collections::BTreeMap;
 
-pub use malbolge::TargetProfileRequirement;
-use malbolge::{
+use crate::machine::{RunOutcome, StepOutcome, Termination};
+use crate::profile::TargetProfileRequirement;
+use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
-    TraceInput,
+    ProfileMemoryWrite, ProfileStepTrace,
 };
+use crate::trace::TraceInput;
 
 /// Current portable bounded-region effect-IR schema version.
 pub const EFFECT_IR_VERSION: u16 = 3;

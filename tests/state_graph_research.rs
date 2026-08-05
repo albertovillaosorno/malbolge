@@ -36,8 +36,6 @@
 mod artifact_safety;
 #[path = "../tests/function/algorithms/domain/state-graph/exact.rs"]
 mod exact_state;
-#[path = "../src/runtime/tiered-execution/domain/ir/main.rs"]
-pub mod execution_ir;
 #[path = "../src/research/algorithms/composition/state-graph/index.rs"]
 pub mod indexed;
 #[path = "../tests/function/algorithms/domain/state-graph/i.rs"]

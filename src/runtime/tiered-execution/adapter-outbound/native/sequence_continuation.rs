@@ -35,7 +35,7 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use malbolge::{ProfileMachineObservation, RunOutcome};
+use malbolge::{ProfileMachineObservation, RegionEffectProgram, RunOutcome};
 
 use super::direct::{
     CachedVerifiedDirectSequencePlan, VerifiedDirectSequencePlan,
@@ -45,7 +45,6 @@ use super::sequence_runner::{
     NativeLoadedSequenceExecutionFailure, NativeSequenceExecutionFailure,
     NativeSequenceExecutionOutcome,
 };
-use crate::execution_ir::RegionEffectProgram;
 
 /// Why native execution yielded remaining interpreter work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

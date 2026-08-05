@@ -37,12 +37,13 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::{
-    BatchError, BatchRequest, BatchResult, ExecutionError, ProfileBatchRequest,
-    ProfileBatchResult, ProfileMachineError, execute_batch,
-    execute_batch_parallel, execute_profile_batch,
-    execute_profile_batch_parallel,
+use crate::batch::{
+    BatchError, BatchRequest, BatchResult, ProfileBatchRequest,
+    ProfileBatchResult, execute_batch, execute_batch_parallel,
+    execute_profile_batch, execute_profile_batch_parallel,
 };
+use crate::execution::ExecutionError;
+use crate::profile_machine::ProfileMachineError;
 
 /// Stable logical identity used to define task and join ordering.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

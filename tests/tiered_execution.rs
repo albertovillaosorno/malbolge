@@ -41,8 +41,6 @@ pub mod cached_retry;
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
-#[path = "../src/runtime/tiered-execution/domain/ir/main.rs"]
-pub mod execution_ir;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/application/interpreter_handoff.rs"]
@@ -121,10 +119,6 @@ use execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
     NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
     RegionEffectIdentity,
-};
-use execution_ir::{
-    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram,
-    StepProgramProjectionError, TargetProfileRequirement,
 };
 use execution_native::{
     CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
@@ -213,14 +207,16 @@ use leased_retry::{
     NativeContinuationLeasedRetryExecutionFailure,
 };
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
-    ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisters,
-    ProfileRequirementErrorKind, ProfileStepTrace, RunOutcome,
-    RuntimeCapability, Termination, TraceInput, current_profile,
-    decode_profile_instruction, historical_profile, preflight_profile,
-    preflight_runtime_requirement, safe_rust_classic_capability,
-    safe_rust_profiled_capability, target_profile,
+    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, ProfileMachine,
+    ProfileMachineError, ProfileMachineIoState, ProfileMachineObservation,
+    ProfileMachineState, ProfileMemoryDelta, ProfileMemoryRead,
+    ProfileMemoryWrite, ProfileRegisters, ProfileRequirementErrorKind,
+    ProfileStepTrace, RegionEffectProgram, RunOutcome, RuntimeCapability,
+    StepProgramProjectionError, TargetProfileRequirement, Termination,
+    TraceInput, current_profile, decode_profile_instruction,
+    historical_profile, preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
+    target_profile,
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,

@@ -467,6 +467,11 @@ parts:
     path: domain/algorithms/template/lifecycle.toml
     kind: domain
     responsibility: Own pure rules and domain models.
+  - id: part-0092
+    path: composition/state-graph/main.rs
+    kind: composition
+    language: rust
+    responsibility: Wire runtime policy and executable entrypoints.
 projects: []
 tests: []
 graph:

@@ -16,9 +16,8 @@ future AOT and JIT backends after deterministic verifier admission.
 - Transport of the VM-owned `TargetProfileRequirement`: canonical version,
   semantic features, word width, and directly addressed profile capacity
   required
-  by the artifact. `main.rs` re-exports the semantic type rather than
-  duplicating
-  it.
+  by the artifact. `execution_ir.rs` reuses the semantic type rather than
+  duplicating it.
 - `EFFECT_IR_VERSION`: the portable schema identity.
 
 ## Does Not Own
@@ -31,11 +30,11 @@ future AOT and JIT backends after deterministic verifier admission.
 
 ## Contents
 
-`main.rs` defines the first product-owned IR surface. Data in this IR is not
-trusted by construction: the state-graph verifier remains responsible for
-reprojecting and admitting a candidate program before any accelerated tier may
-execute it. The current research bridge composes this file by explicit Cargo
-paths rather than creating a language-shaped crate boundary.
+`execution_ir.rs` defines the product-owned IR surface exported by `malbolge`.
+Data in this IR is not trusted by construction: the state-graph verifier remains
+responsible for reprojecting and admitting a candidate program before any
+accelerated tier may execute it. Tiered and research consumers use the public
+package boundary instead of mounting this source through explicit paths.
 
 ### Exact one-step trace projection
 

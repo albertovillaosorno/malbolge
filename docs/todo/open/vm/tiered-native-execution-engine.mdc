@@ -54,7 +54,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   defined and reproducible.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
-- Active foundation: `src/runtime/tiered-execution/domain/ir/main.rs` owns
+- Active foundation: `src/runtime/virtual-machine/domain/execution_ir.rs` owns
   portable effect IR v3
   (`EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`) and re-exports the
   VM-owned `TargetProfileRequirement` without creating a Rust crate boundary.

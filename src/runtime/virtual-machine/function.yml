@@ -54,10 +54,10 @@ parts:
     language: rust
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0004
-    path: composition/batch.rs
-    kind: composition
+    path: application/batch.rs
+    kind: application
     language: rust
-    responsibility: Wire runtime policy and executable entrypoints.
+    responsibility: Coordinate use cases and ports.
   - id: part-0005
     path: composition/build.rs
     kind: composition
@@ -69,10 +69,10 @@ parts:
     language: rust
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0007
-    path: contract/profile_generated.rs
-    kind: contract
+    path: domain/profile_generated.rs
+    kind: domain
     language: rust
-    responsibility: Define serialized and cross-boundary representations.
+    responsibility: Own pure rules and domain models.
   - id: part-0008
     path: contract/word.rs
     kind: contract
@@ -99,10 +99,10 @@ parts:
     language: rust
     responsibility: Own pure rules and domain models.
   - id: part-0013
-    path: domain/logical.rs
-    kind: domain
+    path: application/logical.rs
+    kind: application
     language: rust
-    responsibility: Own pure rules and domain models.
+    responsibility: Coordinate use cases and ports.
   - id: part-0014
     path: domain/machine.rs
     kind: domain
@@ -140,6 +140,15 @@ parts:
     responsibility: Own pure rules and domain models.
   - id: part-0021
     path: domain/trace.rs
+    kind: domain
+    language: rust
+    responsibility: Own pure rules and domain models.
+  - id: part-0022
+    path: domain/execution_ir.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0023
+    path: domain/execution_ir.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.

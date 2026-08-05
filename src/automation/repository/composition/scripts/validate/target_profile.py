@@ -50,7 +50,7 @@ from scripts.repository_root import repository_root
 ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = ROOT / "malbolge.json"
 RUST_PROJECTION = (
-    ROOT / "src/runtime/virtual-machine/contract" / "profile_generated.rs"
+    ROOT / "src/runtime/virtual-machine/domain" / "profile_generated.rs"
 )
 FINGERPRINT_MANIFEST = (
     ROOT

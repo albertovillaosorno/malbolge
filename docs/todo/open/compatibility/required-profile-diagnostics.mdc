@@ -16,7 +16,7 @@ scope:
   - "compatibility/"
   - "docs/technical/specification/"
   - "src/runtime/virtual-machine/domain/profile.rs"
-  - "src/runtime/virtual-machine/contract/profile_generated.rs"
+  - "src/runtime/virtual-machine/domain/profile_generated.rs"
   - "src/runtime/virtual-machine/domain/execution.rs"
   - "src/automation/repository/composition/scripts/validate/target_profile.py"
   # jig-ignore-next-line: canonical front matter value is indivisible
@@ -44,7 +44,7 @@ historical-profile constraint.
 **Current implementation.**
 
 - The target-profile validator renders
-  `src/runtime/virtual-machine/contract/profile_generated.rs` from
+  `src/runtime/virtual-machine/domain/profile_generated.rs` from
   canonical `malbolge.json`; pytest requires byte-exact projection equality.
 - `src/runtime/virtual-machine/domain/profile.rs` exposes canonical descriptors
   plus the explicit
@@ -109,7 +109,7 @@ historical-profile constraint.
 
 - Current durable evidence includes
   `src/runtime/virtual-machine/domain/profile.rs`, the generated
-  `src/runtime/virtual-machine/contract/profile_generated.rs` projection,
+  `src/runtime/virtual-machine/domain/profile_generated.rs` projection,
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `src/automation/repository/composition/scripts/validate/profile_requirements.py`,
   `tests/compatibility/test_profile_requirements.py`,

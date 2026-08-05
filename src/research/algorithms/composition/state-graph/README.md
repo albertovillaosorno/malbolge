@@ -171,7 +171,7 @@ live-in dependency fails closed.
 
 `artifact.rs` is the portable effect-IR trust-boundary bridge. Its untrusted
 `RegionEffectProgram` is product-owned by
-`src/runtime/tiered-execution/domain/ir/main.rs` and carries
+`src/runtime/virtual-machine/domain/execution_ir.rs` and carries
 schema version, profile fingerprint, verifier-derived live-ins, step budget,
 outcome, and compact state-changing effects. Admission independently reprojects
 every effect from `VerifiedExactRegion` traces and compares every field exactly.

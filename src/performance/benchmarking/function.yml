@@ -222,11 +222,6 @@ parts:
     kind: composition
     language: rust
     responsibility: Wire runtime policy and executable entrypoints.
-  - id: part-0035
-    path: composition/state_graph_benchmark.rs
-    kind: composition
-    language: rust
-    responsibility: Wire runtime policy and executable entrypoints.
 projects: []
 tests: []
 graph:

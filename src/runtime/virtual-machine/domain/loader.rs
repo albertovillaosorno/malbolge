@@ -37,7 +37,9 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::{MEMORY_WORDS, Memory, MemoryError, Word, decode_instruction};
+use crate::instruction::decode_instruction;
+use crate::memory::{Memory, MemoryError};
+use crate::word::{MEMORY_WORDS, Word};
 
 /// Deterministic failure while admitting classic Malbolge source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

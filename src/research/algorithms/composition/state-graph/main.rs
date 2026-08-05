@@ -32,22 +32,24 @@
 
 //! Cargo composition root for the state-graph research benchmark.
 
-#[path = "../../../research/algorithms/composition/state-graph/bench.rs"]
+#[path = "artifact.rs"]
+pub mod artifact;
+#[path = "bench.rs"]
 pub mod benchmark;
-#[path = "../../../runtime/tiered-execution/domain/ir/main.rs"]
-pub mod execution_ir;
-#[path = "../../../research/algorithms/composition/state-graph/index.rs"]
+#[path = "index.rs"]
 pub mod indexed;
-#[path = "../../../research/algorithms/composition/state-graph/state.rs"]
+#[path = "state.rs"]
 pub mod indexed_state;
-#[path = "../../../research/algorithms/composition/state-graph/memory.rs"]
+#[path = "memory.rs"]
 pub mod persistent;
-#[path = "../../../research/algorithms/composition/state-graph/output.rs"]
+#[path = "output.rs"]
 pub mod persistent_output;
-#[path = "../../../research/algorithms/composition/state-graph/profile.rs"]
+#[path = "profile.rs"]
 pub mod profile_graph;
-#[path = "../../../research/algorithms/composition/state-graph/region.rs"]
+#[path = "region.rs"]
 pub mod region_certificate;
+#[path = "state_graph.rs"]
+pub mod state_graph;
 
 use std::io::Result as IoResult;
 

@@ -38,10 +38,9 @@ use super::{
     ProfileBatchRequest, ProfileBatchResult, execute_built,
     execute_profile_built,
 };
-use crate::{
-    ExecutionMachine, MachineState, ProfileMachine, ProfileMachineState,
-    RunOutcome, Termination,
-};
+use crate::execution::ExecutionMachine;
+use crate::machine::{MachineState, RunOutcome, Termination};
+use crate::profile_machine::{ProfileMachine, ProfileMachineState};
 
 /// Actual execution origin recorded for one product-routed batch item.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

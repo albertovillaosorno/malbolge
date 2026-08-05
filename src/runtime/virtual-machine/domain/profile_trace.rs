@@ -34,10 +34,10 @@
 
 //! Immutable trace evidence for profile-driven safe Rust execution.
 
-use crate::{
-    ProfileDescriptor, ProfileMachineError, ProfileRegisters, StepOutcome,
-    Termination, TraceInput,
-};
+use crate::machine::{StepOutcome, Termination};
+use crate::profile::ProfileDescriptor;
+use crate::profile_machine::{ProfileMachineError, ProfileRegisters};
+use crate::trace::TraceInput;
 
 /// Observable profile-driven machine state at one trace boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

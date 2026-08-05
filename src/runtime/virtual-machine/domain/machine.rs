@@ -39,13 +39,14 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
+use crate::instruction::{decode_instruction, encrypt};
 use crate::loader::{LoadError, load};
+use crate::memory::{Memory, MemoryError};
+use crate::mode::ExecutionMode;
 use crate::trace::{
     MachineObservation, MemoryDelta, MemoryWrite, StepTrace, TraceInput,
 };
-use crate::{
-    ExecutionMode, Memory, MemoryError, Word, decode_instruction, encrypt,
-};
+use crate::word::Word;
 
 /// Classic machine registers.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

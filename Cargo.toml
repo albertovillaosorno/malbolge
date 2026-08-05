@@ -25,7 +25,7 @@ doc = false
 
 [[bin]]
 name = "state_graph_benchmark"
-path = "src/performance/benchmarking/composition/state_graph_benchmark.rs"
+path = "src/research/algorithms/composition/state-graph/main.rs"
 test = false
 bench = false
 doc = false
@@ -43,6 +43,7 @@ path = "src/tooling/decompiler/composition/museum_convert.rs"
 test = false
 bench = false
 doc = false
+
 [workspace]
 resolver = "3"
 members = ["."]

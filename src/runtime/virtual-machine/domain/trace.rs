@@ -33,7 +33,8 @@
 //! Deterministic in-memory trace records for classic VM execution.
 
 use crate::machine::{MachineError, Registers, StepOutcome, Termination};
-use crate::{ExecutionMode, Word};
+use crate::mode::ExecutionMode;
+use crate::word::Word;
 
 /// Compact observable machine state at one trace boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

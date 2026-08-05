@@ -28,7 +28,7 @@ This document currently governs:
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 - `src/automation/repository/composition/scripts/validate/experiment_manifest.py`
 - `src/runtime/virtual-machine/domain/profile.rs`
-- `src/runtime/virtual-machine/contract/profile_generated.rs`
+- `src/runtime/virtual-machine/domain/profile_generated.rs`
 - `tests/test_target_profile.py`
 - `tests/compatibility/test_profile_identity.py`
 - `tests/test_experiment_manifest.py`

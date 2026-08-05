@@ -18,8 +18,8 @@ independent VM requests.
 
 This contract currently governs:
 
-- `src/runtime/virtual-machine/domain/logical.rs`
-- `src/runtime/virtual-machine/composition/batch.rs`
+- `src/runtime/virtual-machine/application/logical.rs`
+- `src/runtime/virtual-machine/application/batch.rs`
 - `tests/vm/logical.rs`
 - `tests/vm/profile_logical.rs`
 - `tests/vm/batch.rs`

@@ -36,13 +36,20 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::{
-    AnnotatedLoadError, ExecutionMode, LoadError, Machine, MachineError,
-    MachineState, Memory, MemoryError, ProfileDescriptor,
-    ProfileRequirementError, Registers, RunOutcome, StepOutcome, StepTrace,
-    Termination, Word, canonicalize_annotated_source, historical_profile,
+use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
+use crate::loader::LoadError;
+use crate::machine::{
+    Machine, MachineError, MachineState, Registers, RunOutcome, StepOutcome,
+    Termination,
+};
+use crate::memory::{Memory, MemoryError};
+use crate::mode::ExecutionMode;
+use crate::profile::{
+    ProfileDescriptor, ProfileRequirementError, historical_profile,
     preflight_profile, safe_rust_classic_capability,
 };
+use crate::trace::StepTrace;
+use crate::word::Word;
 
 /// Mode-tagged failure from construction or execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

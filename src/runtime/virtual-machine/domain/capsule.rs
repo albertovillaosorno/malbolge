@@ -37,7 +37,7 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::str;
 
-use crate::{ProfileDescriptor, target_profile};
+use crate::profile::{ProfileDescriptor, target_profile};
 
 const BITS_PER_BYTE: usize = 8;
 const BIT_MASKS: [u8; BITS_PER_BYTE] =

@@ -37,10 +37,10 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileMachineError,
     ProfileMachineIoState, ProfileMachineObservation, ProfileMachineState,
-    RunOutcome, StepOutcome, TargetProfileRequirement, target_profile,
+    RegionEffectProgram, RunOutcome, StepOutcome, StepProgramProjectionError,
+    TargetProfileRequirement, target_profile,
 };
 
-use crate::execution_ir::{RegionEffectProgram, StepProgramProjectionError};
 use crate::execution_native::{
     NativeExecutableSequenceKey, NativeInterpreterContinuation,
 };

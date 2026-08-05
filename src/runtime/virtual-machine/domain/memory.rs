@@ -36,7 +36,7 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::{MEMORY_WORDS, Word};
+use crate::word::{MEMORY_WORDS, Word};
 
 /// Failure to preserve or access the fixed classic memory invariant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

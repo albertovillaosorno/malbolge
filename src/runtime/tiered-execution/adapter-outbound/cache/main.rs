@@ -39,7 +39,7 @@ use std::collections::BTreeMap;
 use std::mem::replace;
 use std::sync::Arc;
 
-use crate::execution_ir::{
+use malbolge::{
     IrEncodingError, RegionEffectProgram, TargetProfileRequirement,
 };
 

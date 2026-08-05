@@ -38,7 +38,8 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,
+    EFFECT_IR_VERSION, EffectOp, ProfileMachineObservation, ProfileMemoryWrite,
+    RegionEffectProgram, RunOutcome, TraceInput,
 };
 
 use super::abi::{
@@ -52,7 +53,6 @@ use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
-use crate::execution_ir::{EFFECT_IR_VERSION, EffectOp, RegionEffectProgram};
 
 pub(super) type NativeRegionBufferParts<'buffers> =
     (&'buffers mut [u32], &'buffers [u8], &'buffers mut [u8]);

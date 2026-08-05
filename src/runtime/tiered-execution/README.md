@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Tiered execution IR, cache, and native adapters.
+Tiered execution cache, orchestration, and native adapters.
 
 ## Ownership
 

@@ -312,14 +312,10 @@ parts:
     language: rust
     responsibility: Coordinate use-case policy and orchestration.
   - id: part-0056
-    path: domain/ir/README.md
-    kind: domain
-    responsibility: Own pure rules and domain models.
-  - id: part-0057
-    path: domain/ir/main.rs
-    kind: domain
+    path: composition/lib.rs
+    kind: composition
     language: rust
-    responsibility: Own pure rules and domain models.
+    responsibility: Wire runtime policy and executable entrypoints.
 projects: []
 tests: []
 graph:

@@ -28,9 +28,9 @@ This document currently governs:
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 - `src/automation/repository/composition/scripts/validate/profile_requirements.py`
 - `src/runtime/virtual-machine/domain/profile.rs`
-- `src/runtime/virtual-machine/contract/profile_generated.rs`
+- `src/runtime/virtual-machine/domain/profile_generated.rs`
 - `src/runtime/virtual-machine/domain/execution.rs`
-- `src/runtime/tiered-execution/domain/ir/main.rs`
+- `src/runtime/virtual-machine/domain/execution_ir.rs`
 - `tests/test_target_profile.py`
 - `tests/vm/profile_requirements.rs`
 - `tests/tiered_execution.rs`
@@ -46,7 +46,7 @@ second handwritten copy of profile geometry.
 
 `src/automation/repository/composition/scripts/validate/target_profile.py`
 renders
-`src/runtime/virtual-machine/contract/profile_generated.rs` deterministically
+`src/runtime/virtual-machine/domain/profile_generated.rs` deterministically
 from the validated canonical JSON.
 The checked-in projection contains immutable descriptors for `malbolge-1998`,
 `malbolge-2026`, `malbolge-2026.1`, `malbolge-2026.2`, and
@@ -113,7 +113,8 @@ nearest-version, or implicit historical fallback.
 ### Portable Artifact Preflight
 
 `TargetProfileRequirement` is now VM-owned semantic data and is re-exported by
-`src/runtime/tiered-execution/domain/ir/main.rs` for transport in effect IR. It
+`src/runtime/virtual-machine/domain/execution_ir.rs` for transport in effect
+IR. It
 carries the published
 version, stable feature IDs, word trits, and profile capacity without copying
 the

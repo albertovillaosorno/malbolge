@@ -182,7 +182,8 @@ pub use loader::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
 };
 use malbolge::{
-    ProfileMachineObservation, ProfileMemoryWrite, RunOutcome, TraceInput,
+    EFFECT_IR_VERSION, ProfileMachineObservation, ProfileMemoryWrite,
+    RegionEffectProgram, RunOutcome, TraceInput,
 };
 pub use platform::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
@@ -215,7 +216,6 @@ use crate::execution_cache::{
     HostIsa, HostOperatingSystem, NativeArtifactKey, NativeIdentityError,
     NativeTargetIdentity,
 };
-use crate::execution_ir::{EFFECT_IR_VERSION, RegionEffectProgram};
 
 /// Stable bootstrap backend identity bound into native artifact keys.
 pub const CLANG_C23_BOOTSTRAP_BACKEND_ID: &str = "clang-c23-bootstrap";

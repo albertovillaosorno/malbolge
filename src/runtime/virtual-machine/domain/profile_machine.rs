@@ -37,17 +37,22 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
+use crate::instruction::{decode_profile_value, encrypt_profile_value};
+use crate::loader::is_source_whitespace;
+use crate::machine::{RunOutcome, StepOutcome, Termination};
+use crate::profile::{
+    ProfileDescriptor, ProfileKind, ProfileRequirementError, preflight_profile,
+    safe_rust_profiled_capability,
+};
 use crate::profile_arithmetic::{
     TERNARY_RADIX, profile_crazy, profile_low_byte,
 };
-use crate::{
-    AnnotatedLoadError, DECODE_TABLE, DECODE_TABLE_LEN, ProfileDescriptor,
-    ProfileKind, ProfileMachineObservation, ProfileMemoryDelta,
-    ProfileMemoryRead, ProfileMemoryReads, ProfileMemoryWrite,
-    ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
-    Termination, TraceInput, XLAT2, canonicalize_annotated_source,
-    is_source_whitespace, preflight_profile, safe_rust_profiled_capability,
+use crate::profile_trace::{
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
+    ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
+use crate::trace::TraceInput;
 
 const GRAPHICAL_MAX: u32 = 126;
 const GRAPHICAL_MIN: u32 = 33;
@@ -1163,19 +1168,7 @@ fn load_profile(
 /// wider profile code pointers are reduced by the 94-position decode phase.
 #[must_use]
 pub fn decode_profile_instruction(cell: u32, code_pointer: u32) -> Option<u8> {
-    if !profile_cell_is_graphical(cell) {
-        return None;
-    }
-    let cell_offset =
-        usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;
-    let phase = usize::try_from(
-        code_pointer.rem_euclid(u32::try_from(DECODE_TABLE_LEN).ok()?),
-    )
-    .ok()?;
-    let index = cell_offset
-        .saturating_mul(DECODE_TABLE_LEN)
-        .saturating_add(phase);
-    DECODE_TABLE.get(index).copied()
+    decode_profile_value(cell, code_pointer)
 }
 
 /// Reports whether one profile-width cell decodes to a no-op at this position.
@@ -1195,11 +1188,7 @@ pub fn profile_cell_decodes_to_no_operation(
 /// selected profile width and preserves the canonical Malbolge `XLAT2` table.
 #[must_use]
 pub fn encrypt_profile_cell(cell: u32) -> Option<u32> {
-    if !profile_cell_is_graphical(cell) {
-        return None;
-    }
-    let index = usize::try_from(cell.saturating_sub(GRAPHICAL_MIN)).ok()?;
-    XLAT2.get(index).copied().map(u32::from)
+    encrypt_profile_value(cell)
 }
 
 const fn profile_instruction_for(

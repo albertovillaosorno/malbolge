@@ -34,7 +34,7 @@
 
 //! Target-profile identity and deterministic runtime-capability preflight.
 
-#[path = "../contract/profile_generated.rs"]
+#[path = "profile_generated.rs"]
 mod generated;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};

@@ -42,12 +42,11 @@ use std::ptr;
 use std::sync::Arc;
 
 use malbolge::{
-    ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
+    EffectOp, ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
     ProfileRegisters, ProfileStepTrace, Termination, TraceInput,
 };
 
-use crate::execution_ir::EffectOp;
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
 use crate::persistent_output::PersistentOutput;
 
