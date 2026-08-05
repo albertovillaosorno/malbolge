@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "clean-interpreter-roundtrip",
+      "source": "tests/compatibility/specification/interpreter-io-roundtrip.malbolge",
+      "input_hex": ""
+    },
+    {
+      "id": "empty-source-overread",
+      "source_hex": "",
+      "input_hex": ""
+    },
+    {
+      "id": "one-word-source-overread",
+      "source_hex": "44",
+      "input_hex": ""
+    }
+  ]
+}

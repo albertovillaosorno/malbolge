@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "compiler": "clang-22.1.8",
+  "sanitizers": [
+    "address",
+    "undefined"
+  ],
+  "source_sha256": "fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6",
+  "cases": [
+    {
+      "id": "clean-interpreter-roundtrip",
+      "status": "clean",
+      "stdout_hex": "a8",
+      "findings": []
+    },
+    {
+      "id": "empty-source-overread",
+      "status": "sanitizer-failure",
+      "stdout_hex": "",
+      "findings": [
+        "address-sanitizer:heap-buffer-overflow"
+      ]
+    },
+    {
+      "id": "one-word-source-overread",
+      "status": "sanitizer-failure",
+      "stdout_hex": "",
+      "findings": [
+        "address-sanitizer:heap-buffer-overflow"
+      ]
+    }
+  ]
+}
