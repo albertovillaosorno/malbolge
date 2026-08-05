@@ -68,7 +68,7 @@ memory-model, uninitialized-read, and out-of-bounds behavior that cannot define
 portable semantics. Those boundaries are cataloged separately and fail safely in
 modern implementations.
 
-## Related Repository Evidence
+### Related Repository Evidence
 
 - `ben-olmstead-2014-interview.md` - author testimony used by the
   authority ADR.
