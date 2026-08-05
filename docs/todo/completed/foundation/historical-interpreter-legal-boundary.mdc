@@ -1,6 +1,6 @@
 ---
 id: "historical-interpreter-legal-boundary"
-status: "pending"
+status: "completed"
 lane: "1"
 area: "foundation"
 task: "TODO - Historical interpreter legal boundary"
@@ -42,3 +42,15 @@ repository MIT license does not relicense that specific file.
   `src/interoperability/historical-malbolge/`, `docs/legal/`, and `README.md`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
+- Completion evidence recorded 2026-08-05:
+  - immutable source path:
+    `src/interoperability/historical-malbolge/adapter-outbound/main.c`;
+  - LF-normalized byte length: 4,738;
+  - SHA-256:
+    `fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6`;
+  - original public-domain notice retained in the source header;
+  - legal boundary recorded in
+    `docs/legal/licenses/ben-olmstead-malbolge-public-domain.md`;
+  - source provenance recorded in
+    `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`;
+  - repository governance recomputes the exact byte length and SHA-256.

@@ -163,13 +163,6 @@ v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
-### TODO - Historical interpreter legal boundary
-
-Keep Ben Olmstead's original interpreter under
-`src/interoperability/historical-malbolge/`, retain its original notice,
-document its public-domain status, and state that the
-repository MIT license does not relicense that specific file.
-
 ### TODO - Historical Malbolge semantics specification
 
 Specify the original 1998 machine: 59,049 ten-trit words, registers, decoding,
