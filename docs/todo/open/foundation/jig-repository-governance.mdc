@@ -14,6 +14,7 @@ scope:
   - ".dependencies/jig/"
   - "docs/todo/"
   - "TODO.md"
+  - "tests/test_governance_paths.py"
 validation:
   - ".dependencies/jig/bin/jig.cmd validate --root ."
 ---
@@ -39,7 +40,7 @@ without weakening unrelated linter contracts.
 
 ## Evidence
 
-- Repository-local Jig 26.3.1 remains installed through the source-linked
+- Repository-local Jig 26.3.0 remains installed through the source-linked
   launcher under `.dependencies/jig/bin/`; the active development authority now
   requires configuration schema 8.
 - `.jig/jig.toml` schema 8 declares the repository-owned typed TODO workflow:
@@ -54,6 +55,8 @@ without weakening unrelated linter contracts.
   scratch evidence into repository history.
 - The installed commit-message hook parses the schema-8 configuration and
   accepts new compliant commits fail-closed.
+- `tests/test_governance_paths.py` rejects duplicated nested `.jig` path segments
+  in authored text outside the validator-owned configuration tree.
 - `.dependencies/jig/bin/jig.cmd validate --root .` is the canonical command.
   It builds and runs the source-linked authority instead of the stale versioned
   release executable.

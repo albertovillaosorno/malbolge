@@ -29,7 +29,7 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ## Evidence Boundary
 
-- Repository-local Jig 26.3.1 is installed under `.dependencies/jig/bin/` and
+- Repository-local Jig 26.3.0 is installed under `.dependencies/jig/bin/` and
   executes from the repository-local source-linked authority.
 - The active source-linked Jig requires configuration schema 8. Malbolge
   declares
@@ -46,6 +46,9 @@ trust boundary, or ownership rules stated by its governing decisions.
   schema-8 validator.
 - Commit-message validation accepts compliant new commits with this
   configuration.
+- `tests/test_governance_paths.py` rejects authored path references that enter a
+  second `.jig` root, preventing silent duplicated-segment tool paths outside
+  Jig's own configuration tree.
 - Historical message repair plan
   `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
   208 linear unsigned commits. Every tree, author/committer identity, timestamp,
