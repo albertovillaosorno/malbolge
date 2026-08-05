@@ -16,7 +16,7 @@ explicit `ExecutionMode::Specification`, the same program reads `0x41`, writes
 
 `interpreter-io-roundtrip.malbolge` is the current-profile counterpart. At
 loaded positions 0, 1, and 2, `u`, `b`, and `O` decode to `/`, `<`, and `v`.
-`malbolge-2026.3` therefore consumes one byte, emits the same byte, and halts
+`malbolge-2026` therefore consumes one byte, emits the same byte, and halts
 while retaining 14-trit geometry and modern safe failure behavior. The fixture
 does not replace `spec-io-roundtrip.malbolge`; `malbolge-2026.1` and
 `malbolge-2026.2` retain that published specification-first assignment.

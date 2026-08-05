@@ -52,7 +52,7 @@ into guest semantics.
 Classic integration tests compare sequential results with worker counts 1, 2,
 and 8, including full-memory fingerprints, registers, I/O, termination, run
 outcome, and typed diagnostics. Profile-driven tests execute two independent
-`malbolge-2026.3` machines plus rejected neighbors through both sequential and
+`malbolge-2026` machines plus rejected neighbors through both sequential and
 2-worker paths and compare profile identity, sampled memory including addresses
 above 59,048, registers, I/O, outcomes, and exact errors.
 
@@ -144,7 +144,7 @@ deterministically without changing guest-visible state silently.
 - `tests/vm/cuda_run.rs` verifies resident classic bounded execution against
   normative Rust, including all 59,049 final memory words, registers, I/O,
   termination, step counts, resumption, and atomic rejection.
-- `tests/vm/cuda_profile_run.rs` verifies resident `malbolge-2026.3` execution
+- `tests/vm/cuda_profile_run.rs` verifies resident `malbolge-2026` execution
   against normative `ProfileMachine` across eight edge/real-program cases and
   every
   one of the 4,782,969 final memory words.

@@ -46,7 +46,7 @@ host architecture.
 - Schema-v2 geometry is `N` trits, word modulus `3^N`, and exactly `3^N`
   directly addressed memory words; no host pointer width participates.
 - `malbolge-2026.2` remains the immutable first scalable identity.
-- `malbolge-2026.3` is the current 14-trit profile with 4,782,969 words and EOF
+- `malbolge-2026` is the current 14-trit profile with 4,782,969 words and EOF
   4,782,968. `malbolge-1998` remains exactly ten trits/59,049 words and
   `malbolge-2026.1` remains an immutable ten-trit transition identity.
 - Rotate is the same one-trit circular operation generalized to N trits; crazy

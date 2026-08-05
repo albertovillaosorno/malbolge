@@ -2,6 +2,7 @@
   "canonicalization": "malbolge-profile-v1",
   "profiles": {
     "malbolge-1998": "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e",
+    "malbolge-2026": "malbolge-profile-v1:sha256:1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76",
     "malbolge-2026.1": "malbolge-profile-v1:sha256:e72da529edefea13c4855b83decf61593d3ad64e5231c4911a2391cbd7567204",
     "malbolge-2026.2": "malbolge-profile-v1:sha256:e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50",
     "malbolge-2026.3": "malbolge-profile-v1:sha256:14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230"

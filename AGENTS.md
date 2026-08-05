@@ -47,17 +47,17 @@ resource ceilings or interpreter defects into permanent current-language
 constraints.
 
 Repository-root `malbolge.json` is the target-profile identity authority. Schema
-v2 selects the 14-trit `malbolge-2026.3` profile as current, retains
+v2 selects the 14-trit `malbolge-2026` profile as current, retains
 `malbolge-2026.1` and `malbolge-2026.2` as immutable versioned identities,
 and preserves `malbolge-1998` as frozen historical conformance. The current
 profile uses interpreter-compatible `/` input and `<` output without inheriting
-historical undefined behavior or the ten-trit resource ceiling. Validate profile edits with
-`python
+historical undefined behavior or the ten-trit resource ceiling. Validate profile
+edits with `python
 src/automation/repository/composition/scripts/validate/target_profile.py` and
 the Python compatibility tests.
 The safe Rust runtime has two explicit interpreters. `Machine` and
 `ExecutionMachine` remain classic-capability and preflight against
-`safe-rust-classic`; they must never silently execute `malbolge-2026.3` through
+`safe-rust-classic`; they must never silently execute `malbolge-2026` through
 the ten-trit loader. `ProfileMachine` is the normative profile-driven
 interpreter
 and preflights against `safe-rust-profiled`, currently up to 14 trits and

@@ -40,7 +40,10 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "malbolge.json"
-CURRENT_PROFILE = "malbolge-2026.3"
+CURRENT_PROFILE = "malbolge-2026"
+CURRENT_VERSION = "2026"
+TRANSITION_PROFILE = "malbolge-2026.3"
+TRANSITION_VERSION = "2026.3"
 CURRENT_TRITS = 14
 CURRENT_WORDS = 4_782_969
 CURRENT_EOF = CURRENT_WORDS - 1
@@ -71,6 +74,7 @@ def test_canonical_profile_is_valid() -> None:
 def test_current_profile_identity_is_distinct() -> None:
     """Current-language identity never aliases historical conformance."""
     document = validator.load_document(PROFILE_PATH)
+    assert document["current_profile"] == validator.CURRENT_PROFILE_ID
     assert document["current_profile"] != validator.HISTORICAL_PROFILE
 
 
@@ -122,6 +126,7 @@ def test_current_profile_is_fourteen_trit_scalable_geometry() -> None:
     assert current_id == CURRENT_PROFILE
     current = profiles[current_id]
     assert isinstance(current, dict)
+    assert current["version"] == CURRENT_VERSION
     word = current["word"]
     memory = current["memory"]
     semantics = current["semantics"]
@@ -148,6 +153,45 @@ def test_published_pre_compatibility_profiles_retain_io_assignment() -> None:
         assert isinstance(semantics, dict)
         assert semantics["input_instruction"] == SPECIFICATION_INPUT
         assert semantics["output_instruction"] == SPECIFICATION_OUTPUT
+
+
+def test_interpreter_compatible_transition_remains_versioned() -> None:
+    """The published 2026.3 identity remains immutable evidence."""
+    document = validator.load_document(PROFILE_PATH)
+    profiles = document["profiles"]
+    assert isinstance(profiles, dict)
+    current = profiles[CURRENT_PROFILE]
+    transition = profiles[TRANSITION_PROFILE]
+    assert isinstance(current, dict)
+    assert isinstance(transition, dict)
+    assert transition["kind"] == validator.VERSIONED_KIND
+    assert transition["version"] == TRANSITION_VERSION
+    assert transition["word"] == current["word"]
+    assert transition["memory"] == current["memory"]
+    assert transition["semantics"] == current["semantics"]
+    assert validator.profile_fingerprint(
+        document, TRANSITION_PROFILE
+    ) != validator.profile_fingerprint(document, CURRENT_PROFILE)
+
+
+def test_annual_current_identity_cannot_drift() -> None:
+    """Schema v2 fixes the official selected identity to the release year."""
+    changed = _canonical_text().replace(
+        '"current_profile": "malbolge-2026"',
+        '"current_profile": "malbolge-2026.3"',
+        1,
+    )
+    _expect_invalid(changed)
+
+
+def test_annual_current_version_cannot_drift() -> None:
+    """The official annual profile version matches its year-only ID."""
+    changed = _canonical_text().replace(
+        '"version": "2026"',
+        '"version": "2026.3"',
+        1,
+    )
+    _expect_invalid(changed)
 
 
 def test_io_instructions_must_be_assigned_exactly_once() -> None:

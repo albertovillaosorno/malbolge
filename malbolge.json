@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "current_profile": "malbolge-2026.3",
+  "current_profile": "malbolge-2026",
   "profiles": {
     "malbolge-1998": {
       "kind": "historical-conformance",
@@ -24,6 +24,31 @@
         "input_instruction": "/",
         "output_instruction": "<",
         "eof_word": 59048,
+        "output_modulus": 256
+      }
+    },
+    "malbolge-2026": {
+      "kind": "current",
+      "version": "2026",
+      "word": {
+        "radix": 3,
+        "trits": 14,
+        "modulus": 4782969
+      },
+      "memory": {
+        "model": "single-word-modular",
+        "words": 4782969
+      },
+      "semantics": {
+        "guest_order": "sequential",
+        "deterministic": true,
+        "crazy_operation": true,
+        "rotate": true,
+        "self_modification": true,
+        "post_instruction_encryption": true,
+        "input_instruction": "/",
+        "output_instruction": "<",
+        "eof_word": 4782968,
         "output_modulus": 256
       }
     },
@@ -78,7 +103,7 @@
       }
     },
     "malbolge-2026.3": {
-      "kind": "current",
+      "kind": "versioned",
       "version": "2026.3",
       "word": {
         "radix": 3,

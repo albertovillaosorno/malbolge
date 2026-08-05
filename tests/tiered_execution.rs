@@ -220,7 +220,7 @@ use malbolge::{
     RuntimeCapability, Termination, TraceInput, current_profile,
     decode_profile_instruction, historical_profile, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
-    safe_rust_profiled_capability,
+    safe_rust_profiled_capability, target_profile,
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
@@ -247,6 +247,9 @@ use retry_router::{
 use retry_turn::{
     NativeContinuationRetryTurnOutcome, execute_native_continuation_retry_turn,
 };
+
+const FIXTURE_PROFILE_ID: &str = "malbolge-2026.3";
+const FIXTURE_PROFILE_VERSION: &str = "2026.3";
 
 #[derive(Clone, Copy)]
 struct CoffCompileCase {
@@ -857,8 +860,11 @@ fn rendered_profile_metadata(source: &str) -> Result<Vec<u8>, String> {
         .collect()
 }
 
-fn current_profile_requirement() -> TargetProfileRequirement {
-    TargetProfileRequirement::from_descriptor(current_profile())
+fn fixture_profile_requirement() -> TargetProfileRequirement {
+    let mut requirement =
+        TargetProfileRequirement::from_descriptor(current_profile());
+    requirement.version = String::from(FIXTURE_PROFILE_VERSION);
+    requirement
 }
 
 fn observation(seed: u32) -> ProfileMachineObservation {
@@ -908,7 +914,7 @@ fn program() -> RegionEffectProgram {
         },
         profile_fingerprint: String::from("malbolge-profile-v1:sha256:fixture"),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 8,
     }
 }
@@ -1268,14 +1274,15 @@ fn process_cache_removes_all_regions_for_exact_target() -> Result<(), String> {
 #[test]
 fn portable_ir_uses_shared_runtime_diagnostic() -> Result<(), String> {
     let program = program();
-    let current = current_profile();
+    let fixture = target_profile(FIXTURE_PROFILE_ID)
+        .ok_or_else(|| String::from("fixture profile is missing"))?;
     let Err(canonical) = preflight_profile(
-        current,
-        current.memory_words(),
+        fixture,
+        fixture.memory_words(),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from(
-            "classic runtime unexpectedly admitted current profile",
+            "classic runtime unexpectedly admitted fixture profile",
         ));
     };
     let Err(portable) = preflight_runtime_requirement(
@@ -1591,7 +1598,7 @@ fn native_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:native-bootstrap-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 2,
     }
 }
@@ -1657,7 +1664,7 @@ fn direct_halt_registers_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-halt-registers-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1706,7 +1713,7 @@ fn direct_halt_fetch_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-halt-fetch-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1755,7 +1762,7 @@ fn direct_non_graphical_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-non-graphical-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1816,7 +1823,7 @@ fn direct_jump_code_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-jump-code-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1876,7 +1883,7 @@ fn direct_jump_data_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-jump-data-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1940,7 +1947,7 @@ fn direct_crazy_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-crazy-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -1998,7 +2005,7 @@ fn direct_input_byte_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-input-byte-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2044,7 +2051,7 @@ fn direct_input_eof_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-input-eof-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2102,7 +2109,7 @@ fn direct_output_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-output-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2166,7 +2173,7 @@ fn direct_rotate_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-rotate-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2223,7 +2230,7 @@ fn direct_no_operation_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-no-operation-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2268,7 +2275,7 @@ fn direct_initial_halt_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:direct-initial-halt-fixture",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }
@@ -2958,13 +2965,14 @@ fn direct_selector_prioritizes_profile_preflight() -> Result<(), String> {
             "profile preflight lost precedence to direct selection: {error}"
         ));
     };
-    let current = current_profile();
+    let fixture = target_profile(FIXTURE_PROFILE_ID)
+        .ok_or_else(|| String::from("fixture profile is missing"))?;
     let Err(canonical) = preflight_profile(
-        current,
-        current.memory_words(),
+        fixture,
+        fixture.memory_words(),
         safe_rust_classic_capability(),
     ) else {
-        return Err(String::from("canonical current profile was admitted"));
+        return Err(String::from("fixture profile was admitted"));
     };
     if format!("{profile_error}") == format!("{canonical}") {
         Ok(())
@@ -6223,7 +6231,7 @@ fn native_invocation_output_program() -> RegionEffectProgram {
             "malbolge-profile-v1:sha256:native-invocation-output",
         ),
         profile_id: String::from("malbolge-2026.3"),
-        profile_requirement: current_profile_requirement(),
+        profile_requirement: fixture_profile_requirement(),
         step_budget: 1,
     }
 }

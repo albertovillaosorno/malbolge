@@ -82,12 +82,14 @@ The canonical identities are currently:
 - `malbolge-2026.1`: retained versioned transition identity, `N = 10`.
 - `malbolge-2026.2`: immutable first scalable profile, `N = 14`, 4,782,969
   words.
-- `malbolge-2026.3`: current profile, `N = 14`, 4,782,969 words with
+- `malbolge-2026.3`: immutable interpreter-compatible transition profile,
+  `N = 14`, 4,782,969 words.
+- `malbolge-2026`: official current profile, `N = 14`, 4,782,969 words with
   interpreter-compatible I/O assignment.
 
 A profile is immutable once published. If measurements show that 14 trits are
 insufficient, the project publishes another profile with a larger `N`; it never
-silently enlarges `malbolge-2026.3`.
+silently enlarges `malbolge-2026`.
 
 ### Why Fourteen Trits
 
@@ -114,7 +116,8 @@ The exact source snapshot and candidate arithmetic are retained in
 
 ### Implementation Status
 
-`malbolge.json` schema version 2 defines the immutable scalable identities and selects `malbolge-2026.3`.
+`malbolge.json` schema version 2 defines the immutable scalable identities and
+selects `malbolge-2026`.
 `tests/compatibility/test_scalable_memory.py` independently verifies profile
 geometry, N-trit rotate, digitwise crazy, EOF, wraparound, and the link to the
 tracked DOOM evidence snapshot.
@@ -134,7 +137,7 @@ implicit fifteenth trit can enter the result.
 
 `Machine` and `ExecutionMachine` intentionally remain the frozen/classic
 surface.
-They still reject `malbolge-2026.3` through `safe-rust-classic` preflight rather
+They still reject `malbolge-2026` through `safe-rust-classic` preflight rather
 than silently changing classic types or loader behavior. `ProfileMachine` is the
 explicit runtime surface for current scalable execution. Compiler, native tiers,
 and accelerators are not yet universally

@@ -34,7 +34,7 @@
 
 use super::{ProfileDescriptor, ProfileKind};
 
-pub(super) const CURRENT_PROFILE: &ProfileDescriptor = &PROFILE_3;
+pub(super) const CURRENT_PROFILE: &ProfileDescriptor = &PROFILE_1;
 pub(super) const HISTORICAL_PROFILE: &ProfileDescriptor = &PROFILE_0;
 
 pub(super) const PROFILE_0: ProfileDescriptor = ProfileDescriptor {
@@ -54,6 +54,22 @@ pub(super) const PROFILE_0: ProfileDescriptor = ProfileDescriptor {
 };
 
 pub(super) const PROFILE_1: ProfileDescriptor = ProfileDescriptor {
+    eof_word: 4_782_968,
+    fingerprint: concat!(
+        "malbolge-profile-v1:sha256:",
+        "1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76",
+    ),
+    id: "malbolge-2026",
+    input_instruction: b'/',
+    kind: ProfileKind::Current,
+    memory_words: 4_782_969,
+    output_instruction: b'<',
+    version: "2026",
+    word_modulus: 4_782_969,
+    word_trits: 14,
+};
+
+pub(super) const PROFILE_2: ProfileDescriptor = ProfileDescriptor {
     eof_word: 59_048,
     fingerprint: concat!(
         "malbolge-profile-v1:sha256:",
@@ -69,7 +85,7 @@ pub(super) const PROFILE_1: ProfileDescriptor = ProfileDescriptor {
     word_trits: 10,
 };
 
-pub(super) const PROFILE_2: ProfileDescriptor = ProfileDescriptor {
+pub(super) const PROFILE_3: ProfileDescriptor = ProfileDescriptor {
     eof_word: 4_782_968,
     fingerprint: concat!(
         "malbolge-profile-v1:sha256:",
@@ -85,7 +101,7 @@ pub(super) const PROFILE_2: ProfileDescriptor = ProfileDescriptor {
     word_trits: 14,
 };
 
-pub(super) const PROFILE_3: ProfileDescriptor = ProfileDescriptor {
+pub(super) const PROFILE_4: ProfileDescriptor = ProfileDescriptor {
     eof_word: 4_782_968,
     fingerprint: concat!(
         "malbolge-profile-v1:sha256:",
@@ -93,7 +109,7 @@ pub(super) const PROFILE_3: ProfileDescriptor = ProfileDescriptor {
     ),
     id: "malbolge-2026.3",
     input_instruction: b'/',
-    kind: ProfileKind::Current,
+    kind: ProfileKind::Versioned,
     memory_words: 4_782_969,
     output_instruction: b'<',
     version: "2026.3",
@@ -101,5 +117,5 @@ pub(super) const PROFILE_3: ProfileDescriptor = ProfileDescriptor {
     word_trits: 14,
 };
 
-pub(super) const PROFILE_DESCRIPTORS: [&ProfileDescriptor; 4] =
-    [&PROFILE_0, &PROFILE_1, &PROFILE_2, &PROFILE_3];
+pub(super) const PROFILE_DESCRIPTORS: [&ProfileDescriptor; 5] =
+    [&PROFILE_0, &PROFILE_1, &PROFILE_2, &PROFILE_3, &PROFILE_4];

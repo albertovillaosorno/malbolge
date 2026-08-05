@@ -336,7 +336,7 @@ memory misses; independent AArch64 decoding confirms eleven common-miss guards.
 
 `direct-input` revision 1 completes reviewed direct coverage of all eight
 instruction families. Admission requires one profile-declared input code-cell
-live-in (`/` for current `malbolge-2026.3`) and exactly
+live-in (`/` for current `malbolge-2026`) and exactly
 one byte or EOF input observation. Byte input derives `A` from the exact byte
 and
 increments `input_consumed`; EOF uses VM-owned `profile_eof_word()` and keeps

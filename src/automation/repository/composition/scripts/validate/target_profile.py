@@ -58,6 +58,8 @@ FINGERPRINT_MANIFEST = (
     / "profile-fingerprints.json"
 )
 HISTORICAL_PROFILE = "malbolge-1998"
+CURRENT_PROFILE_ID = "malbolge-2026"
+CURRENT_VERSION = "2026"
 SCHEMA_VERSION = 2
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
@@ -371,15 +373,25 @@ def _validate_semantic_cores(
             _fail(f"schema v2 profile {profile_id} changed semantic core")
 
 
+def _validate_current_profile(
+    current_profile: str,
+    current: JsonObject,
+) -> None:
+    if current_profile != CURRENT_PROFILE_ID:
+        _fail(f"current_profile must be {CURRENT_PROFILE_ID}")
+    if current["kind"] != CURRENT_KIND:
+        _fail(f"current_profile must have kind={CURRENT_KIND}")
+    if current["version"] != CURRENT_VERSION:
+        _fail(f"{CURRENT_PROFILE_ID} version must be {CURRENT_VERSION}")
+
+
 def _validate_profile_identities(
     current_profile: str,
     validated: dict[str, JsonObject],
 ) -> None:
     historical = validated[HISTORICAL_PROFILE]
     _validate_historical(historical)
-    current = validated[current_profile]
-    if current["kind"] != CURRENT_KIND:
-        _fail(f"current_profile must have kind={CURRENT_KIND}")
+    _validate_current_profile(current_profile, validated[current_profile])
     if current_profile == HISTORICAL_PROFILE:
         _fail(f"current profile identity must differ from {HISTORICAL_PROFILE}")
     if _current_profile_ids(validated) != [current_profile]:

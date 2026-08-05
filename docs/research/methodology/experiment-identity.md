@@ -69,7 +69,7 @@ negative evidence remains reconstructible instead of disappearing from analysis.
 
 Canonical target profiles are content-bound, not name-only. A manifest naming
 `malbolge-1998`, `malbolge-2026.1`, `malbolge-2026.2`, or
-`malbolge-2026.3` must carry
+`malbolge-2026` must carry
 `challenge.target_profile_fingerprint`, and the validator recomputes the
 expected
 fingerprint from validated `malbolge.json`. A mismatch emits stable

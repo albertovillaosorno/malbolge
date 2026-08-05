@@ -34,16 +34,20 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 Schema version 2 is implemented in repository-root `malbolge.json`. It contains
 an immutable `malbolge-1998` historical-conformance profile, retains
-`malbolge-2026.1` and `malbolge-2026.2` as immutable versioned identities, and
-selects `malbolge-2026.3` as the current language profile. The current profile
+`malbolge-2026.1`, `malbolge-2026.2`, and `malbolge-2026.3` as immutable
+versioned identities, and selects the year-only `malbolge-2026` as
+the current language profile. The current profile
 uses the scalable 14-trit single-word ternary geometry defined by the
 scalable-memory contract: 4,782,969 word values and the same number of directly
 addressed memory words.
 
 I/O opcode assignment is versioned profile semantics. `malbolge-1998` and the
-current `malbolge-2026.3` use interpreter-compatible `/` input and `<` output.
+current `malbolge-2026` use interpreter-compatible `/` input and `<` output.
 The already published `malbolge-2026.1` and `malbolge-2026.2` identities retain
-their specification-first `<` input and `/` output assignment. The current
+their specification-first `<` input and `/` output assignment. The published
+`malbolge-2026.3` compatibility identity retains the same interpreter-compatible
+I/O and geometry as the annual current profile, but remains a distinct immutable
+artifact identity. The current
 profile does not inherit historical C undefined behavior, non-progress as a
 modern termination policy, or the ten-trit resource ceiling merely because its
 I/O is source-compatible with the original interpreter.
@@ -60,7 +64,7 @@ one-to-one assignment of `<` and `/` to versioned input/output roles.
 Cross-component consumption is not complete. The classic safe Rust `Machine`
 still implements `malbolge-1998` constants directly and must not silently
 execute
-a `malbolge-2026.3` artifact. The separate `ProfileMachine` now consumes the
+a `malbolge-2026` artifact. The separate `ProfileMachine` now consumes the
 canonical descriptor and executes schema-v2 profiles through 14 trits under
 explicit `safe-rust-profiled` capability. Profile-driven trace evidence now
 carries the same canonical identity. Compiler, tidy, verifier, native, and

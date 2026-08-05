@@ -46,9 +46,9 @@ use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_FINGERPRINT: &str = concat!(
     "malbolge-profile-v1:sha256:",
-    "14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230",
+    "1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76",
 );
-const CURRENT_ID: &str = "malbolge-2026.3";
+const CURRENT_ID: &str = "malbolge-2026";
 const HISTORICAL_ID: &str = "malbolge-1998";
 const HISTORICAL_WORDS: u32 = 59_049;
 const IO_ROUNDTRIP: &[u8] =
@@ -64,7 +64,7 @@ fn canonical_projection_exposes_current_geometry() -> TestResult {
         "current profile fingerprint",
     )?;
     check_equal(&current.id(), &CURRENT_ID, "current profile id")?;
-    check_equal(&current.version(), &"2026.3", "current version")?;
+    check_equal(&current.version(), &"2026", "current version")?;
     check_equal(&current.kind(), &ProfileKind::Current, "current kind")?;
     check_equal(&current.word_trits(), &14u8, "current trit width")?;
     check_equal(
@@ -113,7 +113,7 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
     check_equal(
         &format!("{requirement}"),
         &String::from(concat!(
-            "MALBOLGE-PROFILE-001 profile=malbolge-2026.3 version=2026.3 ",
+            "MALBOLGE-PROFILE-001 profile=malbolge-2026 version=2026 ",
             "required_features=byte-input,byte-output,crazy-operation,",
             "deterministic,post-instruction-encryption,rotate,",
             "self-modification,sequential-guest required_word_trits=14 ",

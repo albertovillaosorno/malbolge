@@ -158,7 +158,7 @@ Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 Schema
 v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1` and
-`malbolge-2026.2`, and selects the scalable 14-trit `malbolge-2026.3` profile
+`malbolge-2026.2`, and selects the scalable 14-trit `malbolge-2026` profile
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
@@ -803,7 +803,7 @@ AOT-only, JIT-only, and fully tiered execution.
 
 Remove the practical 59,049-word ceiling from current Malbolge while retaining
 `malbolge-1998` as exact historical conformance. Schema v2 selects the 14-trit
-`malbolge-2026.3` geometry with 4,782,969 directly addressed words, and the new
+`malbolge-2026` geometry with 4,782,969 directly addressed words, and the new
 safe-Rust `ProfileMachine` executes that profile explicitly while the classic
 facade remains ten-trit. Current-profile tracing is also explicit and
 profile-aware; the resident CUDA accelerator now has explicit current-profile
@@ -824,7 +824,7 @@ explicit.
 
 Emit deterministic diagnostics naming required profile/features/capacity and
 runtime capability. Safe Rust and the Python non-VM preflight now reject
-`malbolge-2026.3` with byte-identical 14-trit/4,782,969-word diagnostics, report
+`malbolge-2026` with byte-identical 14-trit/4,782,969-word diagnostics, report
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
 profile-before-runtime precedence. Portable effect IR v3, native keys, and
 direct
@@ -1711,7 +1711,7 @@ and
 matches normative Rust across every final memory word, registers, I/O,
 termination, step count, resumption, and atomic rejection. The same
 geometry-bound
-resident kernel now executes `malbolge-2026.3`; Rust compares eight current
+resident kernel now executes `malbolge-2026`; Rust compares eight current
 cases
 across all 4,782,969 final words plus complete observable state. Rust product
 batches now route classic and current-profile states through hardware-neutral

@@ -12,7 +12,10 @@ canonical executable profile declaration is the repository-root
   separated current-language artifacts from historical conformance.
 - `malbolge-2026.2` is the immutable first 14-trit scalable identity. It retains
   its published specification-first `<` input and `/` output assignment.
-- `malbolge-2026.3` is the current schema-v2 scalable profile: 14 trits,
+- `malbolge-2026.3` is the immutable interpreter-compatible transition
+  identity used by byte-exact compatibility fixtures.
+- `malbolge-2026` is the official year-only current schema-v2 scalable profile:
+  14 trits,
   4,782,969 directly addressed words, `/` input, and `<` output. It keeps modern
   safe failure rules and does not reproduce historical C undefined behavior.
 

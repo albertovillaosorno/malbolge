@@ -17,7 +17,7 @@ under the documented H-001 reversed-I/O behavior, consumes no input, avoids
 H-004 invalid self-encryption, and halts.
 
 Modern code instead decodes the space/tab suffix as the `MALBCAP1` frame. The
-fixture binds to canonical profile `malbolge-2026.3`, carries its exact
+fixture binds to canonical profile `malbolge-2026`, carries its exact
 `malbolge-profile-v1` fingerprint, and contains payload bytes `75 62 4f 0a`
 (`ubO` plus LF). The payload decodes to `/`, `<`, and `v` under the current
 profile.

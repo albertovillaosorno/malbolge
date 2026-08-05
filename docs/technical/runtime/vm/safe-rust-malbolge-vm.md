@@ -82,7 +82,7 @@ The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
 classic compatibility, while `from_source_for_profile()` performs a typed
 `safe-rust-classic` capability preflight before source loading. The current
-14-trit `malbolge-2026.3` profile therefore still fails before reaching this
+14-trit `malbolge-2026` profile therefore still fails before reaching this
 classic loader rather than being truncated or silently reinterpreted.
 
 A separate safe-Rust `ProfileMachine` now implements the canonical schema-v2

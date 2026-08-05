@@ -121,7 +121,7 @@ tables
 and atomic transition rules.
 
 `tests/vm/cuda_profile_run.rs` obtains geometry exclusively from canonical Rust
-`current_profile()` and compares eight complete `malbolge-2026.3` cases against
+`current_profile()` and compares eight complete `malbolge-2026` cases against
 `ProfileMachine`. The RTX 4060 / `sm_89` differential compares every one of the
 4,782,969 final memory words plus registers, input/output, termination, step
 counts, and rejection details. Cases cover the real six-step current program

@@ -50,7 +50,7 @@ METRICS_PATH = (
     / "src/research/algorithms/domain/algorithms/doom/quality/comparison"
     / "metrics.json"
 )
-CURRENT_PROFILE = "malbolge-2026.3"
+CURRENT_PROFILE = "malbolge-2026"
 EVIDENCE_SELECTED_PROFILE = "malbolge-2026.2"
 CLASSIC_TRITS = 10
 SCALED_TRITS = 14

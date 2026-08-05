@@ -59,7 +59,7 @@ const FRAME_HEADER_BYTES: usize = 18;
 const PAYLOAD: &[u8] = b"ubO\n";
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
-const UNKNOWN_PROFILE: &[u8] = b"malbolge-2026.x";
+const UNKNOWN_PROFILE: &[u8] = b"malbolge-2027";
 
 type IdentityRanges = (Range<usize>, Range<usize>);
 
@@ -401,7 +401,7 @@ fn unknown_profile_remains_explicit_without_fallback() -> TestResult {
     };
     check_equal(
         &format!("{error}"),
-        &String::from("MALBOLGE-CAPSULE-004 unknown profile=malbolge-2026.x"),
+        &String::from("MALBOLGE-CAPSULE-004 unknown profile=malbolge-2027"),
         "unknown capsule profile diagnostic",
     )?;
     let CapsuleError::UnknownProfile { profile_id } = error else {
@@ -409,7 +409,7 @@ fn unknown_profile_remains_explicit_without_fallback() -> TestResult {
     };
     check_equal(
         profile_id.as_ref(),
-        "malbolge-2026.x",
+        "malbolge-2027",
         "unknown capsule profile identity",
     )
 }

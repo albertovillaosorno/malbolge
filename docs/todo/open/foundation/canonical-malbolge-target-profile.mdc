@@ -35,16 +35,18 @@ current Malbolge language.
 **Current implementation.**
 
 - `malbolge.json` now has closed schema version 2. It preserves
-  `malbolge-1998`, retains immutable `malbolge-2026.1` and `malbolge-2026.2`,
-  and selects the scalable 14-trit `malbolge-2026.3` identity as current.
+  `malbolge-1998`, retains immutable `malbolge-2026.1`, `malbolge-2026.2`,
+  and `malbolge-2026.3`, and selects the scalable 14-trit `malbolge-2026`
+  identity as current.
 - `malbolge-1998` is locked to radix 3, ten trits, 59,049 words, sequential
   deterministic execution, self-modification/post-encryption, normative I/O,
   EOF 59,048, and byte output modulo 256.
 - Schema-v2 profiles use one ternary word domain for values and direct
-  addresses. `malbolge-2026.2` and `malbolge-2026.3` therefore have
-  modulus/memory 4,782,969 and EOF 4,782,968. I/O assignment is versioned:
-  `2026.1/.2` retain `<` input and `/` output, while current `2026.3` uses
-  interpreter-compatible `/` input and `<` output.
+  addresses. `malbolge-2026.2`, `malbolge-2026.3`, and `malbolge-2026`
+  therefore have modulus/memory 4,782,969 and EOF 4,782,968. I/O assignment is
+  versioned: `2026.1/.2` retain `<` input and `/` output, while versioned
+  `2026.3` and official current `2026` use interpreter-compatible `/` input and
+  `<` output.
 - `src/automation/repository/composition/scripts/validate/target_profile.py`
   rejects duplicate JSON keys, unknown
   keys, unsupported schemas, inconsistent word/memory domains, invalid EOF,

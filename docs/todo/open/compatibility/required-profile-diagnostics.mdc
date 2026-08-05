@@ -52,7 +52,7 @@ historical-profile constraint.
   normative schema-v2 semantic features.
 - `ExecutionMachine::from_source_for_profile()` runs profile/runtime preflight
   before the classic loader and retains the exact accepted profile identity.
-- `malbolge-2026.3` fails before loading with `MALBOLGE-PROFILE-001`, naming its
+- `malbolge-2026` fails before loading with `MALBOLGE-PROFILE-001`, naming its
   required 14 trits/4,782,969 words and the classic runtime's missing
   `word-trits,memory-words` dimensions.
 - A requirement beyond `malbolge-1998` emits `MALBOLGE-PROFILE-002` with

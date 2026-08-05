@@ -127,7 +127,7 @@ recognized, it validates framing, lengths, checksum, canonical profile lookup,
 and exact profile fingerprint before returning payload bytes and the selected
 canonical descriptor.
 
-The checked-in fixture selects `malbolge-2026.3` and carries `ubO` plus LF as
+The checked-in fixture selects `malbolge-2026` and carries `ubO` plus LF as
 its small payload. At loaded positions 0, 1, and 2, those bytes decode to
 `/`, `<`, and `v`, matching the current profile's interpreter-compatible I/O
 assignment. Parsing succeeds. Passing that extracted payload/profile into the

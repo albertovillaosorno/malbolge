@@ -56,8 +56,10 @@ bytes are hashed with SHA-256. The self-describing fingerprint is:
 Repository registry field `kind` is intentionally excluded. `kind` describes a
 profile's lifecycle role in the registry, not its immutable language meaning.
 For example, `malbolge-2026.1` changed from `current` to `versioned` when
-`malbolge-2026.2` became current, and `malbolge-2026.2` later made the same
-registry-only transition when `malbolge-2026.3` became current. Artifacts bound
+`malbolge-2026.2` became current, `malbolge-2026.2` made the same transition
+when `malbolge-2026.3` became current, and `malbolge-2026.3` became versioned
+when the official year-only `malbolge-2026` identity was selected. Artifacts
+bound
 to either published identity must not acquire a new fingerprint because of a
 registry transition.
 

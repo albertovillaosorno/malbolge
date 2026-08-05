@@ -49,7 +49,7 @@ metadata that the original loader ignores.
   source remains ordinary source until exact magic is recognized; malformed
   recognized capsules fail closed with stable diagnostics.
 - The current-profile fixture parses successfully. The classic facade still
-  rejects `malbolge-2026.3` before its loader, while explicit `ProfileMachine`
+  rejects `malbolge-2026` before its loader, while explicit `ProfileMachine`
   executes the same payload under `safe-rust-profiled`. No semantic fallback or
   implicit runtime substitution occurs.
 - Rust and independent Python fixtures prove the fallback surface, legacy
