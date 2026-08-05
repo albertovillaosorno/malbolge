@@ -106,11 +106,7 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
         match argument.to_str() {
             Some("--profile") => {
                 let value = next_utf8(raw, &mut index, "--profile")?;
-                set_once(
-                    &mut profile_id,
-                    String::from(value),
-                    "--profile",
-                )?;
+                set_once(&mut profile_id, String::from(value), "--profile")?;
             },
             Some("--representation") => {
                 let value = next_utf8(raw, &mut index, "--representation")?;
@@ -165,11 +161,7 @@ fn requests_help(raw: &[OsString]) -> IoResult<bool> {
     Ok(requested)
 }
 
-fn set_once<T>(
-    target: &mut Option<T>,
-    value: T,
-    option: &str,
-) -> IoResult<()> {
+fn set_once<T>(target: &mut Option<T>, value: T, option: &str) -> IoResult<()> {
     if target.is_some() {
         return Err(IoError::other(format!("duplicate {option}")));
     }

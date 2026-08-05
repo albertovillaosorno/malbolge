@@ -89,11 +89,10 @@ fn cli_help_is_exclusive() -> Result<(), String> {
     {
         return Err(String::from("standalone help did not succeed"));
     }
-    for arguments in [
-        ["--help", "--unknown"],
-        ["--profile", "--help"],
-        ["-h", "input.malbolge"],
-    ] {
+    for arguments in [["--help", "--unknown"], ["--profile", "--help"], [
+        "-h",
+        "input.malbolge",
+    ]] {
         let output = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
             .args(arguments)
             .output()
@@ -178,7 +177,6 @@ fn c_render_contains_atomic_post_jump_encryption_logic() -> Result<(), String> {
         Err(String::from("post-jump encryption ordering is wrong"))
     }
 }
-
 
 #[test]
 fn c_render_checks_output_capacity_at_emission() -> Result<(), String> {
