@@ -8,7 +8,7 @@ Active interpreter-authority contract
 
 - Status: Active interpreter-authority contract
 - Planning identity: `historical-malbolge-semantics-specification`
-- Last reviewed: 2026-08-04
+- Last reviewed: 2026-08-05
 
 ## Scope
 
@@ -223,6 +223,9 @@ It does not override interpreter authority for `malbolge-1998`.
   `docs/technical/specification/`, and `math/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
+- Executable evidence includes exhaustive word, rotate, crazy, encryption,
+  loader, and successor domains plus classic/profiled differential execution.
+
 ## References
 
 - [Specification Authority And Malbolge

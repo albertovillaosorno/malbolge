@@ -163,12 +163,6 @@ v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
-### TODO - Historical Malbolge semantics specification
-
-Specify the original 1998 machine: 59,049 ten-trit words, registers, decoding,
-crazy operation, rotation, self-encryption, input/output, wraparound, loading,
-and termination behavior.
-
 ### TODO - Historical undefined-behavior catalogue
 
 Catalogue one-instruction loading, invalid executable cells, platform-dependent

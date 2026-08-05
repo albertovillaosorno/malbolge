@@ -1,6 +1,6 @@
 ---
 id: "historical-malbolge-semantics-specification"
-status: "pending"
+status: "completed"
 lane: "1"
 area: "foundation"
 task: "TODO - Historical Malbolge semantics specification"
@@ -42,3 +42,13 @@ and termination behavior.
   `docs/technical/specification/`, and `math/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
+- Completion evidence recorded 2026-08-05:
+  - `docs/technical/specification/malbolge-1998.md` defines machine state,
+    loading, decode, every instruction, self-modification, wraparound,
+    observation, and failure behavior;
+  - `src/specification/formal-model/math/specification/malbolge-1998.tex`
+    defines the ten-trit word domain, rotate, and crazy operation;
+  - `correspondence.toml` binds the equations to exhaustive executable tests;
+  - classic/profiled differential execution compares complete final state;
+  - safe loader and transition failures replace historical host-C undefined
+    behavior without changing defined interpreter semantics.
