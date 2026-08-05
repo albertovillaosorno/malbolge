@@ -60,6 +60,8 @@ terms into the repository MIT license.
   then the executed cell is self-encrypted.
 - The language, documentation, and interpreter were dedicated to the public
   domain by the author.
+- The retained LF-normalized interpreter blob is 4,738 bytes with SHA-256
+  `fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6`.
 
 ### Unresolved
 

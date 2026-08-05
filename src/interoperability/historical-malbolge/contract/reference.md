@@ -23,6 +23,16 @@ Do not modify `main.c` when adding sanitizer builds, differential tests, or
 compatibility fixtures. Put repository-owned support beside or outside the
 historical file and preserve the historical file bytes.
 
+The reviewed LF-normalized repository blob is exactly 4,738 bytes with SHA-256:
+
+```text
+fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6
+```
+
+`tests/test_governance_paths.py` recomputes both values from the checked-out
+source. A mismatch is source drift and must fail before the historical artifact
+is used as authority.
+
 # Original Specification
 
 ```

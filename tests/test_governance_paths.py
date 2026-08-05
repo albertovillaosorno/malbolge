@@ -14,7 +14,7 @@
 #   - Inspect ignored dependencies, caches, or Jig's own configuration tree.
 # - Allows:
 #   - Inputs: repository-authored textual source and documentation.
-#   - Outputs: exact path/line diagnostics and historical-root assertions.
+#   - Outputs: exact path diagnostics and immutable-source identity checks.
 #   - Side effects: repository reads only.
 # - Split-When:
 #   - Split when general link or path validation gains a separate authority.
@@ -23,17 +23,18 @@
 # - Summary:
 #   - Prevents malformed Jig paths and retired historical source roots.
 # - Description:
-#   - Regresses path corruption and historical interpreter location drift.
+#   - Regresses path corruption and historical interpreter byte drift.
 # - Usage:
 #   - Runs with the repository Python test suite.
 # - Defaults:
-#   - Generated, ignored, binary, and Jig-owned paths are excluded.
+#   - Generated paths are excluded; historical source bytes are exact.
 #
 
 """Repository-authored Jig path hygiene regressions."""
 
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 import re
 
@@ -41,6 +42,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DUPLICATED_JIG_ROOT = re.compile(r"\.jig/[^\s`\"']*/\.jig/")
 HISTORICAL_INTERPRETER = ROOT / (
     "src/interoperability/historical-malbolge/adapter-outbound/main.c"
+)
+HISTORICAL_INTERPRETER_BYTES = 4_738
+HISTORICAL_INTERPRETER_SHA256 = (
+    "fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6"
 )
 RETIRED_HISTORICAL_ROOT = "tools/" "malbolge/"
 EXCLUDED_DIRECTORIES = frozenset({
@@ -101,6 +106,9 @@ def test_authored_text_has_no_nested_jig_root_paths() -> None:
 def test_historical_interpreter_uses_governed_interoperability_root() -> None:
     """Historical source references resolve to the governed immutable file."""
     assert HISTORICAL_INTERPRETER.is_file()
+    source = HISTORICAL_INTERPRETER.read_bytes()
+    assert len(source) == HISTORICAL_INTERPRETER_BYTES
+    assert sha256(source).hexdigest() == HISTORICAL_INTERPRETER_SHA256
     violations = [
         f"{path.relative_to(ROOT).as_posix()}:{line_number}: {line.strip()}"
         for path in _authored_text_paths()
