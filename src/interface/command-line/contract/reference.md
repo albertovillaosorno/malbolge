@@ -15,9 +15,11 @@ argument fails closed instead of hiding malformed input.
 
 `malbolge program.malbolge` executes the supplied Malbolge artifact in the
 repository VM. Raw source uses classic interpreter-authority semantics. A
-versioned capsule selects the profile carried by that capsule. The CLI does not
-compile the
-Malbolge program into a persistent native executable.
+versioned capsule selects the profile carried by that capsule before classic
+fallback is considered. The CLI does not compile the Malbolge program into a
+persistent native executable. Empty input therefore exposes the selected word
+width: classic raw source emits EOF low byte `0xA8`, while the annual and 2026.3
+14-trit capsules emit `0x78`.
 
 The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup. Interactive
