@@ -152,10 +152,12 @@ publication are accepted.
 
 ## Verification
 
-- `tests/vm/modes.rs` covers H-001 through H-004.
-- `tests/vm/conformance.rs` covers portable classic transitions.
-- `tests/vm/differential.rs` binds Rust to the independent C oracle.
-- CUDA classic tests compare device results with the interpreter-authority VM.
+- `tests/compatibility/specification/cases.toml` registers H-001 through H-010
+  and names the exact executable evidence for every case.
+- `tests/compatibility/test_historical_cases.py` rejects missing issues,
+  duplicate IDs, absent fixtures, and unresolved evidence functions.
+- VM mode, instruction, loader, arithmetic, differential, and CUDA tests execute
+  the registered policies across safe implementations.
 - The original source remains unchanged for sanitizer and provenance work.
 
 ## References

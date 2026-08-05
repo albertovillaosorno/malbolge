@@ -8,6 +8,9 @@ spec_termination = "halt"
 legacy_ben_output_hex = "00"
 legacy_ben_termination = "halt"
 issue = "H-001"
+evidence = [
+  "tests/vm/modes.rs::interpreter_mode_models_original_io_with_mode_tagged_trace",
+]
 
 [[case]]
 id = "non-graphical-current-cell"
@@ -19,6 +22,9 @@ accumulator = 0
 spec_termination = "immediate"
 legacy_ben_behavior = "non-progressing-loop"
 issue = "H-002"
+evidence = [
+  "tests/vm/modes.rs::interpreter_non_graphical_cell_is_bounded_non_progress",
+]
 
 [[case]]
 id = "empty-source"
@@ -27,6 +33,9 @@ source_hex = ""
 specification_policy = "reject-insufficient-recurrence-base"
 legacy_ben_behavior = "undefined-memory-read"
 issue = "H-003"
+evidence = [
+  "tests/vm/modes.rs::interpreter_source_boundary_rejects_undefined_loader_case",
+]
 
 [[case]]
 id = "one-word-source"
@@ -35,15 +44,9 @@ source_hex = "44"
 specification_policy = "reject-insufficient-recurrence-base"
 legacy_ben_behavior = "undefined-memory-read"
 issue = "H-003"
-
-[[case]]
-id = "output-low-byte"
-kind = "state"
-decoded_instruction = "/"
-accumulator = 59048
-spec_output_hex = "A8"
-spec_termination = "continue"
-issue = "spec-io-byte-domain"
+evidence = [
+  "tests/vm/modes.rs::interpreter_source_boundary_rejects_undefined_loader_case",
+]
 
 [[case]]
 id = "invalid-self-encryption-target"
@@ -54,3 +57,77 @@ next_code_cell = 0
 specification_policy = "reject-transition-atomically"
 legacy_ben_behavior = "out-of-bounds-xlat2-risk"
 issue = "H-004"
+evidence = [
+  "tests/vm/modes.rs::interpreter_unsafe_self_encryption_fails_explicitly",
+]
+
+[[case]]
+id = "newline-character-set-branch"
+kind = "byte-io"
+input_hex = "0A"
+portable_input_hex = "0A"
+portable_output_hex = "0A"
+legacy_ben_behavior = "host-execution-character-set-dependent"
+issue = "H-005"
+evidence = [
+  "tests/vm/instructions.rs::byte_io_preserves_text_mode_sensitive_values",
+]
+
+[[case]]
+id = "vertical-tab-source-whitespace"
+kind = "source-boundary"
+source_hex = "750B624F"
+portable_policy = "ignore-without-consuming-loaded-position"
+legacy_ben_behavior = "host-isspace-dependent"
+issue = "H-006"
+evidence = [
+  "tests/exhaustive/loader_boundaries.rs::ascii_whitespace_preserves_loaded_positions",
+]
+
+[[case]]
+id = "text-mode-sensitive-byte-transport"
+kind = "byte-io"
+sensitive_bytes_hex = ["0A", "0D", "1A"]
+portable_policy = "preserve-each-byte-exactly"
+legacy_ben_behavior = "host-text-stream-dependent"
+issue = "H-007"
+evidence = [
+  "tests/vm/instructions.rs::byte_io_preserves_text_mode_sensitive_values",
+]
+
+[[case]]
+id = "classic-word-domain"
+kind = "numeric-domain"
+word_min = 0
+word_max = 59048
+word_modulus = 59049
+portable_policy = "fixed-ten-trit-domain"
+legacy_ben_behavior = "host-integer-and-memory-model-dependent"
+issue = "H-008"
+evidence = [
+  "tests/exhaustive/math_correspondence.rs::classic_word_domain_matches_ten_trit_modulus",
+]
+
+[[case]]
+id = "output-low-byte"
+kind = "state"
+decoded_instruction = "<"
+accumulator = 59048
+interpreter_output_hex = "A8"
+interpreter_termination = "continue"
+portable_policy = "accumulator-modulo-256"
+issue = "H-009"
+evidence = [
+  "tests/vm/instructions.rs::output_instruction_emits_low_byte",
+]
+
+[[case]]
+id = "halt-is-immediate"
+kind = "state"
+decoded_instruction = "v"
+portable_policy = "terminate-without-encryption-or-pointer-advance"
+legacy_ben_behavior = "immediate-return"
+issue = "H-010"
+evidence = [
+  "tests/vm/instructions.rs::halt_instruction_is_immediate",
+]

@@ -21,6 +21,12 @@ while retaining 14-trit geometry and modern safe failure behavior. The fixture
 does not replace `spec-io-roundtrip.malbolge`; `malbolge-2026.1` and
 `malbolge-2026.2` retain that published specification-first assignment.
 
+`cases.toml` is an executable registry rather than narrative metadata. It covers
+exactly H-001 through H-010, and every entry names one or more test functions
+that implement its evidence. `tests/compatibility/test_historical_cases.py`
+rejects missing issues, duplicate IDs, absent fixtures, and unresolved evidence
+references.
+
 State-only cases in `cases.toml` describe boundaries that should not be forced
 through an ordinary source. A non-graphical current cell is bounded non-progress
 under interpreter authority and immediate termination under specification
@@ -30,7 +36,7 @@ The historical interpreter must never be modified to make fixtures pass. Modern
 VMs reproduce its defined portable behavior and reject its undefined C behavior.
 
 The `output-low-byte` fixture fixes portable output as `A mod 256`; accumulator
-`59048` therefore emits byte `0xA8` through interpreter `<`.
+`59048` therefore emits byte `0xA8` through authoritative interpreter `<`.
 
 The `invalid-self-encryption-target` fixture fixes the H-004 safe boundary. If
 `i` exposes a non-graphical encryption target, a modern VM reports a typed
