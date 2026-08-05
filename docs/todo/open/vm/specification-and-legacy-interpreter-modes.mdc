@@ -45,7 +45,7 @@ comparison mode and preserve `legacy-ben` only as a parser alias for
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
-### Negative Cases
+Negative cases:
 
 - Specification comparison is never selected from a source, cache, or corpus.
 - `legacy-ben` does not identify a feature-gated semantic product.
