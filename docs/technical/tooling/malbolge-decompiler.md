@@ -97,7 +97,7 @@ substitutes another source.
 
 ## Verification
 
-`tests/decompiler.rs` provides eight product tests covering deterministic
+`tests/decompiler.rs` provides ten product tests covering deterministic
 rendering, profile geometry, source rejection, post-jump encryption ordering,
 output-capacity atomicity, normative
 initial translation, and the interpreter-compatible `ubO`
