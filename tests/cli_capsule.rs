@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Rebuild capsule framing or infer profile identity from the payload.
 // - Allows:
-//   - Inputs: checked-in annual and 2026.3 capsule hex vectors.
+//   - Inputs: checked-in annual/2026.3 vectors and one checksum mutation.
 //   - Outputs: exact status, EOF byte, and diagnostic assertions.
 //   - Side effects: temporary capsule files removed after each invocation.
 // - Split-When:
@@ -21,13 +21,13 @@
 // - Merge-When:
 //   - Merge when the CLI owns direct capsule parser unit tests.
 // - Summary:
-//   - Published capsules select their carried profiles through the real CLI.
+//   - Published capsules dispatch and checksum tampering fails closed.
 // - Description:
-//   - Proves modern capsule recognition precedes classic fallback execution.
+//   - Proves capsule dispatch and checksum rejection precede classic fallback.
 // - Usage:
 //   - Collected by the repository Cargo test suite.
 // - Defaults:
-//   - Empty payload input emits the profile EOF low byte.
+//   - Valid frames emit profile EOF; malformed frames emit nothing.
 //
 
 //! End-to-end CLI capsule dispatch evidence.

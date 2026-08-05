@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Compile or execute guest programs.
 // - Allows:
-//   - Inputs: standalone and combined help arguments.
+//   - Inputs: empty argv plus standalone and combined help arguments.
 //   - Outputs: exact status and diagnostic assertions.
 //   - Side effects: child process execution only.
 // - Split-When:
@@ -21,13 +21,13 @@
 // - Merge-When:
 //   - Merge when the CLI composition owns direct parser unit tests.
 // - Summary:
-//   - Fail-closed help argument regression evidence.
+//   - Fail-closed help and missing-source argument evidence.
 // - Description:
-//   - Proves help cannot mask malformed or contradictory arguments.
+//   - Proves help cannot mask malformed input and missing source is diagnostic.
 // - Usage:
 //   - Collected by the repository Cargo test suite.
 // - Defaults:
-//   - Only standalone help succeeds.
+//   - Standalone help succeeds; missing or combined arguments fail.
 //
 
 //! End-to-end top-level CLI argument-policy evidence.
