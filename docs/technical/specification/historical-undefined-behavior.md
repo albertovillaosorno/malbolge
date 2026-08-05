@@ -100,8 +100,10 @@ Project rule: byte input and output use explicit numeric values. Line feed is
 Classification: **portability boundary**.
 
 The original loader delegates whitespace classification to the host C library.
-Modern source admission uses explicit ASCII whitespace and graphical-byte rules,
-independent of locale.
+Modern source admission fixes the C-locale result explicitly: hexadecimal bytes
+`09`, `0A`, `0B`, `0C`, `0D`, and `20` are whitespace, and `21..7E` are the
+only remaining source bytes. This includes vertical tab `0B`, which Rust's
+WHATWG-derived `u8::is_ascii_whitespace()` does not classify as whitespace.
 
 ### H-007 - Historical Text-Mode I/O
 

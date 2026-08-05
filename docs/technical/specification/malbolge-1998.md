@@ -59,7 +59,8 @@ source
 
 ### Loading
 
-Whitespace is ignored and does not consume memory. Each non-whitespace source
+The six C-locale whitespace bytes `09`, `0A`, `0B`, `0C`, `0D`, and `20`
+(hexadecimal) are ignored and do not consume memory. Each remaining source
 character is checked using its loaded position `i`:
 
 ```text
@@ -75,10 +76,11 @@ j i * p < / v o
 Source bytes are loaded sequentially. Remaining memory is filled by repeatedly
 applying the crazy operation to the previous two cells.
 
-Modern tooling defines the source representation deterministically as ASCII
-whitespace plus graphical ASCII source bytes `33..126`. Inputs for which the
-historical prose lacks enough information to construct the required two-cell
-memory recurrence are rejected rather than resolved through host C behavior.
+Modern tooling defines the source representation deterministically as those six
+whitespace bytes plus graphical ASCII source bytes `33..126`. Inputs for which
+the historical prose lacks enough information to construct the required
+two-cell memory recurrence are rejected rather than resolved through host C
+behavior.
 
 ### Decode
 

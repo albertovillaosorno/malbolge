@@ -40,6 +40,8 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
+use crate::loader::is_source_whitespace;
+
 const COMMENT_MARKER: u8 = b'#';
 
 /// Failure while preprocessing annotated source and loading canonical bytes.
@@ -279,7 +281,7 @@ pub fn canonicalize_annotated_source(
                 byte: 0,
             },
         )?;
-        if byte.is_ascii_whitespace() {
+        if is_source_whitespace(byte) {
             cursor.advance_whitespace(source, byte);
             continue;
         }

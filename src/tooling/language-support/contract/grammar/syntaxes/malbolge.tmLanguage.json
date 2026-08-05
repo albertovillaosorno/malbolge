@@ -17,7 +17,7 @@
   "repository": {
     "invalid-control-character": {
       "name": "invalid.illegal.control-character.malbolge",
-      "match": "[\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]"
+      "match": "[\\x00-\\x08\\x0E-\\x1F\\x7F]"
     },
     "invalid-non-ascii": {
       "name": "invalid.illegal.non-ascii.malbolge",

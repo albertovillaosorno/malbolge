@@ -61,6 +61,15 @@ fn annotated_comment_marker_preserves_all_hash_code_forms() -> TestResult {
 }
 
 #[test]
+fn annotated_source_ignores_vertical_tab() -> TestResult {
+    check_canonical(
+        &[b'u', 0x0b, b'b', b'O'],
+        INTERPRETER_ROUNDTRIP_SOURCE,
+        "vertical-tab source whitespace",
+    )
+}
+
+#[test]
 fn annotated_comments_are_line_ending_independent() -> TestResult {
     for source in [
         b"# comment\nctO".as_slice(),
@@ -138,14 +147,12 @@ fn annotated_invalid_presentation_fails_closed() -> TestResult {
 #[test]
 fn annotated_vm_execution_matches_canonical_classic_and_current() -> TestResult
 {
-    let interpreter_annotated =
-        b"# interpreter input/output roundtrip
+    let interpreter_annotated = b"# interpreter input/output roundtrip
 u
 # output
 b
 O";
-    let specification_annotated =
-        b"# specification input/output roundtrip
+    let specification_annotated = b"# specification input/output roundtrip
 c
 # output
 t

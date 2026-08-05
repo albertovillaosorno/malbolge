@@ -27,7 +27,8 @@ Rust VM and documented by the interpreter-authority Malbolge contract.
 
 The current Rust loader accepts these source-representation classes:
 
-- ASCII whitespace bytes `0x09`, `0x0A`, `0x0C`, `0x0D`, and `0x20`;
+- C-locale ASCII whitespace bytes `0x09`, `0x0A`, `0x0B`, `0x0C`, `0x0D`,
+  and `0x20`;
 - graphical ASCII source units `0x21..0x7E`;
 - every other byte is rejected as source representation.
 
@@ -71,22 +72,12 @@ machine capacity or other target properties change.
 The historical Ben interpreter is also not a separate syntax target. Its known
 execution defects belong to runtime compatibility, not lexical highlighting.
 
-## Known source-admission discrepancy
+## Source-whitespace contract
 
-The grammar currently follows the canonical Rust loader in
-`src/runtime/virtual-machine/domain/loader.rs`.
-That loader uses `u8::is_ascii_whitespace()`, which excludes vertical tab
-`0x0B`.
-
-The independent C VM in
-`src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.c` currently accepts
-`0x0B` as
-whitespace. That is a real cross-implementation discrepancy. It is intentionally
-not hidden in this staging package.
-
-Before the Linguist contribution is declared complete, the repository should
-resolve or normatively document that boundary so the grammar can follow one
-explicit source contract.
+The Rust classic/profiled loaders, independent C VM, annotated frontend,
+decompiler, and grammar use the same six-byte C-locale ASCII whitespace set.
+Vertical tab `0x0B` is therefore ignored without consuming a loaded position,
+matching the retained historical interpreter in the C locale.
 
 ## Upstream packaging
 
@@ -115,7 +106,7 @@ Before publishing the grammar repository:
 1. Parse `syntaxes/malbolge.tmLanguage.json` as strict JSON.
 1. Verify `scopeName` is exactly `source.malbolge`.
 1. Verify the regex classes still match the selected VM source boundary.
-1. Resolve the documented Rust/C whitespace discrepancy.
+1. Verify the six-byte source-whitespace set remains exact.
 1. Run the current Linguist grammar compiler against the published repository.
 1. Run `script/add-grammar` from a clean current Linguist checkout.
 

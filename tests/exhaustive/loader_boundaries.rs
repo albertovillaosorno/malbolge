@@ -22,7 +22,7 @@
 // - Merge-When:
 //   - Merge when another suite owns identical source-admission boundaries.
 // - Summary:
-//   - Exhausts invalid bytes and all 94 decode phases around loader admission.
+//   - Exhausts whitespace, invalid bytes, and 94 loader decode phases.
 // - Description:
 //   - Mutates one valid 94-word source at every phase to an invalid
 //   - instruction.
@@ -36,10 +36,13 @@
 
 use malbolge::{
     LoadError, MEMORY_WORDS, ProfileLoadError, ProfileMachine,
-    ProfileMachineError, Word, decode_instruction, historical_profile, load,
+    ProfileMachineError, Word, decode_instruction, historical_profile,
+    is_source_whitespace, load,
 };
 
 const ALLOWED_INSTRUCTIONS: &[u8; 8] = b"ji*p</vo";
+const ASCII_WHITESPACE: [u8; 6] = [0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20];
+const DECODE_MIDPOINT: usize = 47;
 const DECODE_PHASES: usize = 94;
 
 fn pointer(position: usize) -> Result<Word, String> {
@@ -78,13 +81,41 @@ fn every_non_whitespace_non_graphical_byte_is_rejected() -> Result<(), String> {
     for raw in 0u16..=u16::from(u8::MAX) {
         let byte = u8::try_from(raw)
             .map_err(|error| format!("byte conversion failed: {error}"))?;
-        if byte.is_ascii_whitespace() || (33..=126).contains(&byte) {
+        if is_source_whitespace(byte) || (33..=126).contains(&byte) {
             continue;
         }
         let observed = load(&[prefix, byte, suffix]);
         let expected = Err(LoadError::InvalidSourceByte { offset: 1, byte });
         if observed != expected {
             return Err(format!("invalid byte={byte}: observed={observed:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn ascii_whitespace_preserves_loaded_positions() -> Result<(), String> {
+    let canonical = valid_phase_source()?;
+    let expected = load(&canonical)
+        .map_err(|error| format!("canonical source: {error}"))?;
+    for whitespace in ASCII_WHITESPACE {
+        for insertion in [0usize, DECODE_MIDPOINT, DECODE_PHASES] {
+            let mut source = canonical.clone();
+            source.insert(insertion, whitespace);
+            let observed = load(&source).map_err(|error| {
+                format!(
+                    "whitespace={whitespace} insertion={insertion}: {error}"
+                )
+            })?;
+            if observed != expected {
+                return Err(format!(
+                    concat!(
+                        "whitespace changed loaded memory: byte={} ",
+                        "insertion={}",
+                    ),
+                    whitespace, insertion,
+                ));
+            }
         }
     }
     Ok(())

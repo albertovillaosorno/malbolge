@@ -23,7 +23,7 @@
 // - Summary:
 //   - Exact public-API tests for every classic Malbolge instruction family.
 // - Description:
-//   - Verifies operation effects, self-encryption, increments, EOF, and wrap.
+//   - Verifies effects, byte transport, encryption, increments, EOF, and wrap.
 // - Usage:
 //   - Composed by `tests/vm.rs` into the Cargo VM integration-test target.
 // - Defaults:
@@ -135,6 +135,47 @@ fn input_instruction_reads_byte_and_eof() -> TestResult {
         &0usize,
         "EOF does not advance byte cursor",
     )
+}
+
+#[test]
+fn byte_io_preserves_text_mode_sensitive_values() -> TestResult {
+    for byte in [0x0a, 0x0d, 0x1a] {
+        let mut input_machine =
+            machine_with_data(b'u', Word::ZERO, Word::ZERO, vec![byte])?;
+        check_equal(
+            &normalize_result(input_machine.step())?,
+            &StepOutcome::Continued,
+            "sensitive byte input continues",
+        )?;
+        check_equal(
+            &input_machine.registers().accumulator,
+            &Word::from_byte(byte),
+            "sensitive input remains exact",
+        )?;
+        check_equal(
+            &input_machine.input_consumed(),
+            &1usize,
+            "sensitive input consumes one byte",
+        )?;
+
+        let mut output_machine = machine_with_data(
+            b'c',
+            Word::ZERO,
+            Word::from_byte(byte),
+            Vec::new(),
+        )?;
+        check_equal(
+            &normalize_result(output_machine.step())?,
+            &StepOutcome::Continued,
+            "sensitive byte output continues",
+        )?;
+        check_equal(
+            output_machine.output(),
+            &[byte],
+            "sensitive output remains exact",
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

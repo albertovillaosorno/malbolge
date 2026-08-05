@@ -38,6 +38,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult, Write as _};
 
 use malbolge::{
     ProfileDescriptor, ProfileKind, ProfileMachine, ProfileMachineError,
+    is_source_whitespace,
 };
 
 const INITIAL_TRANSLATION: &[u8; 94] =
@@ -345,7 +346,7 @@ pub fn render_c(
     let admitted = source
         .iter()
         .copied()
-        .filter(|byte| !byte.is_ascii_whitespace())
+        .filter(|byte| !is_source_whitespace(*byte))
         .collect::<Vec<_>>();
     let listing = initial_listing(profile, &admitted)?;
     let bytes = source_bytes(&admitted)?;

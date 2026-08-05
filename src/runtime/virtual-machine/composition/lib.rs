@@ -82,7 +82,7 @@ pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
-pub use loader::{LoadError, load};
+pub use loader::{LoadError, is_source_whitespace, load};
 pub use logical::{
     LogicalConcurrencyError, LogicalJoinError, LogicalTask, LogicalTaskId,
     LogicalTaskResult, ProfileLogicalJoinError, ProfileLogicalTask,

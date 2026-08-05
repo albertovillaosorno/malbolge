@@ -46,7 +46,7 @@ use crate::{
     ProfileMemoryRead, ProfileMemoryReads, ProfileMemoryWrite,
     ProfileRequirementError, ProfileStepTrace, RunOutcome, StepOutcome,
     Termination, TraceInput, XLAT2, canonicalize_annotated_source,
-    preflight_profile, safe_rust_profiled_capability,
+    is_source_whitespace, preflight_profile, safe_rust_profiled_capability,
 };
 
 const GRAPHICAL_MAX: u32 = 126;
@@ -1104,7 +1104,7 @@ fn load_profile(
         .ok_or(ProfileLoadError::MemoryAllocation)?;
     let mut words = Vec::new();
     for (offset, byte) in source.iter().copied().enumerate() {
-        if byte.is_ascii_whitespace() {
+        if is_source_whitespace(byte) {
             continue;
         }
         if !(33..=126).contains(&byte) {

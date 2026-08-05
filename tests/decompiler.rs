@@ -153,6 +153,20 @@ fn c_render_distinguishes_historical_geometry() -> Result<(), String> {
 }
 
 #[test]
+fn c_render_ignores_vertical_tab_source_whitespace() -> Result<(), String> {
+    let plain = decompiler::render_c(historical_profile(), OUTPUT_SOURCE)
+        .map_err(|error| error.to_string())?;
+    let spaced =
+        decompiler::render_c(historical_profile(), &[b'u', 0x0b, b'b', b'O'])
+            .map_err(|error| error.to_string())?;
+    if plain == spaced {
+        Ok(())
+    } else {
+        Err(String::from("vertical tab changed generated C"))
+    }
+}
+
+#[test]
 fn c_render_rejects_invalid_source() {
     let observed = decompiler::render_c(historical_profile(), b"not malbolge");
     assert!(observed.is_err(), "invalid source unexpectedly decompiled");

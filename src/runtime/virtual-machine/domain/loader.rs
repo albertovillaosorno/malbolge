@@ -94,6 +94,15 @@ impl From<MemoryError> for LoadError {
     }
 }
 
+/// Reports whether one byte is C-locale source whitespace.
+///
+/// The six admitted bytes match the historical interpreter's `isspace`
+/// behavior in the C locale, including vertical tab (`0x0b`).
+#[must_use]
+pub const fn is_source_whitespace(byte: u8) -> bool {
+    matches!(byte, 0x09 | 0x0a | 0x0b | 0x0c | 0x0d | 0x20)
+}
+
 /// Loads validated classic source and fills the complete memory recurrence.
 ///
 /// # Errors
@@ -108,7 +117,7 @@ pub fn load(source: &[u8]) -> Result<Memory, LoadError> {
 fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
     let mut admitted = Vec::new();
     for (offset, byte) in source.iter().copied().enumerate() {
-        if byte.is_ascii_whitespace() {
+        if is_source_whitespace(byte) {
             continue;
         }
         if !(33..=126).contains(&byte) {
