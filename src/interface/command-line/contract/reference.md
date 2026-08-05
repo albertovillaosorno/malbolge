@@ -7,7 +7,9 @@ malbolge <path-to-program.c>
 malbolge <path-to-program.malbolge>
 ```
 
-The two extensions intentionally mean different things.
+The two extensions intentionally mean different things. `--help` and `-h` are
+accepted only as standalone arguments; combining help with a path or another
+argument fails closed instead of hiding malformed input.
 
 ## `.malbolge`: canonical guest execution
 

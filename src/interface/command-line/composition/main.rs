@@ -452,6 +452,11 @@ fn run() -> Result<ExitCode, String> {
     if first_argument == OsStr::new("--help")
         || first_argument == OsStr::new("-h")
     {
+        if arguments.next().is_some() {
+            return Err(String::from(
+                "--help cannot be combined with other arguments",
+            ));
+        }
         write_usage()?;
         return Ok(ExitCode::SUCCESS);
     }
