@@ -35,8 +35,8 @@
 use std::collections::BTreeMap;
 
 use malbolge::{
-    ExecutionMode, MEMORY_WORDS, Machine, MachineError, Registers, StepOutcome,
-    StepTrace, Termination, Word,
+    ExecutionMode, InterpreterUndefinedBehavior, MEMORY_WORDS, Machine,
+    MachineError, Registers, StepOutcome, StepTrace, Termination, Word,
 };
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -294,7 +294,7 @@ impl Default for ExactStateGraph {
 /// Returns the only execution mode admitted by this exact research baseline.
 #[must_use]
 pub const fn admitted_mode() -> ExecutionMode {
-    ExecutionMode::Specification
+    ExecutionMode::Interpreter
 }
 
 /// Digest function that deliberately maps every state to one bucket.
@@ -410,13 +410,19 @@ const fn normalize_step_result(
             pointer: 0,
             value: 0,
         }),
-        Err(MachineError::InvalidEncryptionTarget { pointer, value }) => {
-            Ok(ExactStepResult {
-                kind: ExactStepKind::RejectedEncryption,
-                pointer: pointer.value(),
-                value: value.value(),
-            })
-        },
+        Err(
+            MachineError::InvalidEncryptionTarget { pointer, value }
+            | MachineError::UnsupportedInterpreterBehavior(
+                InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                    pointer,
+                    value,
+                },
+            ),
+        ) => Ok(ExactStepResult {
+            kind: ExactStepKind::RejectedEncryption,
+            pointer: pointer.value(),
+            value: value.value(),
+        }),
         Err(error) => Err(StateGraphError::UnexpectedMachine(error)),
     }
 }

@@ -34,8 +34,9 @@
 //! Seeded differential property over independently exposed 1998 runtimes.
 
 use malbolge::{
-    MEMORY_WORDS, Machine, MachineError, ProfileMachine, ProfileMachineError,
-    StepOutcome, Termination, Word, historical_profile,
+    InterpreterUndefinedBehavior, MEMORY_WORDS, Machine, MachineError,
+    ProfileMachine, ProfileMachineError, StepOutcome, Termination, Word,
+    historical_profile,
 };
 
 use crate::cases::{FuzzCase, default_seed, generate_case, shrink_candidates};
@@ -89,12 +90,18 @@ fn classic_step(machine: &mut Machine) -> Result<StepObservation, String> {
         Ok(StepOutcome::Terminated(reason)) => {
             Ok(StepObservation::terminated(reason))
         },
-        Err(MachineError::InvalidEncryptionTarget { pointer, value }) => {
-            Ok(StepObservation::rejected(
-                u32::from(pointer.value()),
-                u32::from(value.value()),
-            ))
-        },
+        Err(
+            MachineError::InvalidEncryptionTarget { pointer, value }
+            | MachineError::UnsupportedInterpreterBehavior(
+                InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                    pointer,
+                    value,
+                },
+            ),
+        ) => Ok(StepObservation::rejected(
+            u32::from(pointer.value()),
+            u32::from(value.value()),
+        )),
         Err(error) => Err(format!("unexpected classic step error: {error}")),
     }
 }
@@ -204,7 +211,7 @@ fn minimized_failure(case: &FuzzCase) -> FuzzCase {
     loop {
         let mut reduced = None;
         for candidate in shrink_candidates(&minimal) {
-            if check_case(&candidate).is_err() {
+            if candidate != minimal && check_case(&candidate).is_err() {
                 reduced = Some(candidate);
                 break;
             }

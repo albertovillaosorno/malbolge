@@ -29,17 +29,23 @@ loaded position it chooses only graphical bytes whose public
 ambient entropy is used. The fixed seed plus ordinal fully reconstructs source,
 input bytes, and step budget.
 
-The same module defines deterministic shrink candidates. Shrinking reduces
-source length while preserving the already-valid prefix, then input length and
-step budget. A differential failure repeatedly tests smaller candidates and
-reports the minimized replay identity rather than discarding the original case.
+The same module defines deterministic shrink candidates. Every candidate is
+strictly smaller in at least one of source length, input length, or step budget;
+a one-byte input therefore shrinks to empty rather than reproducing itself.
+Shrinking preserves an already-valid source prefix. A differential failure
+repeatedly tests only progressive candidates and reports the minimized replay
+identity rather than discarding the original case.
 
 `tests/differential/classic_profile.rs` currently replays 24 generated cases
 through the public classic `Machine` and `ProfileMachine` selected explicitly
 for
 `malbolge-1998`. Each requested step compares normalized continuation,
 termination, or invalid-self-encryption rejection plus registers, input cursor,
-output, and termination state. Final comparison checks all 59,049 memory words.
+output, and termination state. The classic interpreter-mode
+`UnsupportedInterpreterBehavior::InvalidSelfEncryptionTarget` and the profiled
+`InvalidEncryptionTarget` are normalized only for this portable atomic-rejection
+comparison; their public diagnostics remain distinct. Final comparison checks
+all 59,049 memory words.
 The two runtime APIs do not share private transition helpers in this test.
 
 ### Exhaustive finite domains
@@ -69,7 +75,7 @@ into nondeterministic CI fuzzing.
 
 - Generators cover valid/invalid words, instruction positions, crazy/rotate
   arithmetic, self-modification, loader boundaries, and small-state exhaustive
-  domains with deterministic shrinking/replay.
+  domains with deterministic, strictly progressive shrinking and replay.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
 

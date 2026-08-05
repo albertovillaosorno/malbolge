@@ -37,9 +37,11 @@ and crazy operations.
 - `tests/fuzz/cases.rs` generates valid classic source by position-dependent
   decode admission from a fixed seed/ordinal; no host entropy or retry-based
   validity filter is used.
-- The generator has deterministic replay and shrink candidates that reduce valid
-  source prefixes, input, and step budget. Differential failures retest smaller
-  candidates and report the minimized replay identity.
+- The generator has deterministic replay and strictly progressive shrink
+  candidates that reduce valid source prefixes, input, or step budget. A
+  one-byte input shrinks to empty, and the minimizer skips any future
+  non-progressing candidate before retesting failures and reporting replay
+  identity.
 - `tests/differential/classic_profile.rs` executes 24 generated programs through
   classic `Machine` and explicit profiled `malbolge-1998`, comparing every
   requested step, registers, I/O, termination, normalized encryption rejection,

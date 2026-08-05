@@ -38,21 +38,26 @@ Cargo is a build mechanism and must not create artificial architecture. Keep the
 VM under `vm/`; do not move it into a language-shaped path such as
 `crates/malbolge-vm/` merely because it is Rust.
 
-The written 1998 specification is the semantic authority for the frozen
-`malbolge-1998` historical/conformance profile. Current Malbolge may evolve
-through explicit versioned profiles; do not turn historical resource ceilings or
-Ben-interpreter defects into permanent current-language constraints.
+Defined and reproducible behavior of Ben Olmstead's original interpreter is
+the semantic authority for the frozen `malbolge-1998` historical/conformance
+profile. Contradictory prose remains explicit comparison evidence, and
+historical C undefined behavior remains outside portable semantics. Current
+Malbolge evolves through explicit versioned profiles; do not turn historical
+resource ceilings or interpreter defects into permanent current-language
+constraints.
 
 Repository-root `malbolge.json` is the target-profile identity authority. Schema
-v2 selects the 14-trit `malbolge-2026.2` profile as current, retains
-`malbolge-2026.1` as an immutable ten-trit transition identity, and preserves
-`malbolge-1998` as frozen historical conformance. Validate profile edits with
+v2 selects the 14-trit `malbolge-2026.3` profile as current, retains
+`malbolge-2026.1` and `malbolge-2026.2` as immutable versioned identities,
+and preserves `malbolge-1998` as frozen historical conformance. The current
+profile uses interpreter-compatible `/` input and `<` output without inheriting
+historical undefined behavior or the ten-trit resource ceiling. Validate profile edits with
 `python
 src/automation/repository/composition/scripts/validate/target_profile.py` and
 the Python compatibility tests.
 The safe Rust runtime has two explicit interpreters. `Machine` and
 `ExecutionMachine` remain classic-capability and preflight against
-`safe-rust-classic`; they must never silently execute `malbolge-2026.2` through
+`safe-rust-classic`; they must never silently execute `malbolge-2026.3` through
 the ten-trit loader. `ProfileMachine` is the normative profile-driven
 interpreter
 and preflights against `safe-rust-profiled`, currently up to 14 trits and
@@ -171,7 +176,7 @@ language or terminology.
 
 Keep changes inside the owning responsibility and avoid opportunistic cleanup.
 Never discard unrelated uncommitted work. Do not change
-`.jig/lang/python/.jig/lang/python/pytest.ini` or another
+`.jig/lang/python/pytest.ini` or another
 concurrently edited configuration merely to make a global gate green unless the
 current task explicitly owns that configuration.
 

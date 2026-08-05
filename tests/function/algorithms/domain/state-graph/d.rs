@@ -38,10 +38,10 @@
 //! Complete-memory witnesses for the normative per-step mutation-count bound.
 
 use malbolge::{
-    MEMORY_WORDS, Machine, MachineError, Memory, MemoryDelta, ProfileMachine,
-    ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
-    ProfileMemoryDelta, ProfileRegisters, ProfileStepTrace, Registers,
-    StepTrace, Word, current_profile,
+    InterpreterUndefinedBehavior, MEMORY_WORDS, Machine, MachineError, Memory,
+    MemoryDelta, ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineState, ProfileMemoryDelta, ProfileRegisters,
+    ProfileStepTrace, Registers, StepTrace, Word, current_profile,
 };
 
 const ACCUMULATOR: u8 = 7;
@@ -231,10 +231,12 @@ fn classic_case(case: InstructionCase) -> ClassicCaseResult {
         traced_delta = Some(trace.memory_delta);
     });
     if case.rejection {
-        let expected = Err(MachineError::InvalidEncryptionTarget {
-            pointer: Word::from_byte(ENCRYPTION_TARGET),
-            value: Word::ZERO,
-        });
+        let expected = Err(MachineError::UnsupportedInterpreterBehavior(
+            InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
+                pointer: Word::from_byte(ENCRYPTION_TARGET),
+                value: Word::ZERO,
+            },
+        ));
         if result != expected {
             return Err(format!("classic rejection mismatch: {result:?}"));
         }

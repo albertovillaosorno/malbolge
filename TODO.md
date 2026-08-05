@@ -157,8 +157,9 @@ without weakening unrelated linter contracts.
 Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 Schema
-v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`, and selects
-the scalable 14-trit `malbolge-2026.2` profile as current; universal consumer
+v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1` and
+`malbolge-2026.2`, and selects the scalable 14-trit `malbolge-2026.3` profile
+as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
 ### TODO - Historical interpreter legal boundary
@@ -333,13 +334,13 @@ footprint, two live-in guards, two writes, and three register commits. Aliasing
 and out-of-domain data or accumulator operands remain rejected.
 `direct-output` revision 1 adds the first direct I/O transition. VM-owned
 decode,
-`profile_low_byte()`, encryption, and successors derive `memory[5]:112->68`,
+`profile_low_byte()`, encryption, and successors derive `memory[5]:94->57`,
 byte `0xa8`, `C:5->6`, `D:7->8`, and `output_len:3->4`. Independent 642/724-byte
 objects bind the exact 9-word footprint plus output pointer and capacity guards;
 x86-64 execution proves atomic code/capacity/pointer/footprint misses.
 `direct-input` revision 1 completes direct instruction-family coverage with
 independent byte and EOF forms. VM-owned decode, `profile_eof_word()`,
-encryption, and successors derive `memory[5]:94->57` plus `C/D=6/8`. Byte input
+encryption, and successors derive `memory[5]:112->68` plus `C/D=6/8`. Byte input
 binds cursor 2 and byte `0x41`, commits `A=65`, and advances the cursor to 3;
 EOF binds `input_len=cursor=2`, commits `A=4782968`, and leaves the cursor
 unchanged without dereferencing the input pointer. Independent complete objects
@@ -802,7 +803,7 @@ AOT-only, JIT-only, and fully tiered execution.
 
 Remove the practical 59,049-word ceiling from current Malbolge while retaining
 `malbolge-1998` as exact historical conformance. Schema v2 selects the 14-trit
-`malbolge-2026.2` geometry with 4,782,969 directly addressed words, and the new
+`malbolge-2026.3` geometry with 4,782,969 directly addressed words, and the new
 safe-Rust `ProfileMachine` executes that profile explicitly while the classic
 facade remains ten-trit. Current-profile tracing is also explicit and
 profile-aware; the resident CUDA accelerator now has explicit current-profile
@@ -823,7 +824,7 @@ explicit.
 
 Emit deterministic diagnostics naming required profile/features/capacity and
 runtime capability. Safe Rust and the Python non-VM preflight now reject
-`malbolge-2026.2` with byte-identical 14-trit/4,782,969-word diagnostics, report
+`malbolge-2026.3` with byte-identical 14-trit/4,782,969-word diagnostics, report
 classic overflow as a 59,049-word historical-profile ceiling, and preserve
 profile-before-runtime precedence. Portable effect IR v3, native keys, and
 direct
@@ -1007,7 +1008,8 @@ for implementation and verification.
 Build a profile-explicit reverse-engineering tool that turns valid Malbolge into
 readable executable representations without pretending arbitrary self-modifying
 programs preserve their original C source. The first active backend emits C23
-with caller-owned state/I/O and exact profile metadata; `ctO` currently compiles
+with caller-owned state/I/O and exact profile metadata; profile-declared I/O
+and non-graphical behavior now render explicitly, and `ubO` currently compiles
 warning-clean with pinned Clang 22.1.8 for x86-64 and AArch64, and the x86-64
 artifact executes with the same input/output/register/step result as the
 normative
@@ -1709,7 +1711,7 @@ and
 matches normative Rust across every final memory word, registers, I/O,
 termination, step count, resumption, and atomic rejection. The same
 geometry-bound
-resident kernel now executes `malbolge-2026.2`; Rust compares eight current
+resident kernel now executes `malbolge-2026.3`; Rust compares eight current
 cases
 across all 4,782,969 final words plus complete observable state. Rust product
 batches now route classic and current-profile states through hardware-neutral

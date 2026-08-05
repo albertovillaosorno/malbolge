@@ -2,7 +2,7 @@
 
 `exact.rs` owns the first correctness baseline: identical execution replays must
 deduplicate exact nodes/edges, a forced constant digest must not merge distinct
-input states, and the research graph admits specification mode only.
+input states, and the research graph admits interpreter-authority mode only.
 
 The first reduced-state fixture exhausts all 256 possible consumed first-byte
 values for `cbO` (`<`, `<`, `v`) and proves consumed-prefix contents disappear

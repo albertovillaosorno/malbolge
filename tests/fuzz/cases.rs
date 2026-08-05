@@ -159,7 +159,8 @@ pub fn shrink_candidates(case: &FuzzCase) -> Vec<FuzzCase> {
     }
     if !case.input.is_empty() {
         let mut reduced = case.clone();
-        reduced.input.truncate(case.input.len().div_ceil(2));
+        let reduced_len = case.input.len().checked_shr(1).unwrap_or(0);
+        reduced.input.truncate(reduced_len);
         candidates.push(reduced);
     }
     if case.budget > SHRINK_FLOOR_BUDGET {
@@ -196,6 +197,24 @@ fn shrink_sequence_is_deterministic_and_nonexpanding() -> Result<(), String> {
         {
             return Err(String::from("shrink candidate expanded fuzz case"));
         }
+        if candidate == case {
+            return Err(String::from("shrink candidate made no progress"));
+        }
     }
-    Ok(())
+    let single_input = FuzzCase {
+        budget: 1,
+        input: vec![0x41],
+        ordinal: 0,
+        seed: DEFAULT_SEED,
+        source: vec![b'c', b't'],
+    };
+    let single_candidates = shrink_candidates(&single_input);
+    if matches!(
+        single_candidates.as_slice(),
+        [candidate] if candidate.input.is_empty() && candidate != &single_input
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("single-byte input shrink did not progress"))
+    }
 }

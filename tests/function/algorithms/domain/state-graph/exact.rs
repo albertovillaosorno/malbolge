@@ -27,7 +27,7 @@
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:
-//   - Uses classic specification mode and bounded deterministic execution.
+//   - Uses classic interpreter authority and bounded deterministic execution.
 //
 
 //! Exact-state graph baseline correctness fixtures.
@@ -44,11 +44,11 @@ use crate::state_graph::{
 const BUDGET: usize = 8;
 const HALT_SECOND_BYTES: &[u8; 8] = b"&'=CPabt";
 const REGISTER_VARIANTS: &[u16; 3] = &[0, 7, 59_048];
-const INPUT_PREFIX_RESET: &[u8] = b"cbO";
+const INPUT_PREFIX_RESET: &[u8] = b"utO";
 const INPUT_STEPS: usize = 2;
 const SHARED_SECOND_INPUT: u8 = 0x7a;
 const ROUNDTRIP: &[u8] = include_bytes!(
-    "../../../../compatibility/specification/spec-io-roundtrip.malbolge"
+    "../../../../compatibility/specification/interpreter-io-roundtrip.malbolge"
 );
 
 fn check_terminal_reference(
@@ -112,12 +112,12 @@ fn forced_digest_collision_keeps_distinct_inputs() -> Result<(), String> {
 }
 
 #[test]
-fn exact_baseline_admits_specification_mode_only() -> Result<(), String> {
-    if admitted_mode() == ExecutionMode::Specification {
+fn exact_baseline_admits_interpreter_mode_only() -> Result<(), String> {
+    if admitted_mode() == ExecutionMode::Interpreter {
         Ok(())
     } else {
         Err(String::from(
-            "exact graph baseline selected non-specification mode",
+            "exact graph baseline selected non-interpreter mode",
         ))
     }
 }

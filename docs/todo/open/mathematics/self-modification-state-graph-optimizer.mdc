@@ -40,13 +40,13 @@ VM evidence.
 **Current implementation.**
 
 - `state_graph.rs` establishes a conservative exact-state baseline for classic
-  specification-mode execution before any state reduction is trusted.
+  interpreter-authority execution before any state reduction is trusted.
 - Exact identity confirms profile, registers, full deterministic input and
   cursor, committed output, termination, and all 59,049 memory words. A
   deterministic FNV digest only selects a bucket; it never authorizes a merge.
 - The forced-collision fixture replaces the digest with constant zero and proves
   unequal input states remain separate. Identical replays deduplicate exact
-  nodes/edges, and legacy mode is outside the admitted baseline.
+  nodes/edges, and specification-comparison mode is outside the admitted baseline.
 - `profile.rs` consumes validated `ProfileMachineState` values directly and
   extends exact collision-safe identity to current 14-trit checkpoints. Full
   4,782,969-word replay deduplicates, and forced digest collision keeps unequal

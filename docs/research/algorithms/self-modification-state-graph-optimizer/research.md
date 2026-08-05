@@ -95,7 +95,7 @@ owned tests.
 The first reduced-state key is now admitted for one structural fact:
 `future_input_snapshot` removes only the contents of bytes strictly before the
 committed input cursor while retaining that cursor and the exact remaining input
-suffix. The `cbO` fixture (`<`, `<`, `v`) exhausts all 256 possible first input
+suffix. The `utO` fixture (`/`, `/`, `v`) exhausts all 256 possible first input
 bytes, applies one common second byte that overwrites `A`, and proves the
 reduced
 keys are equal both before and after the common future halt.
@@ -110,7 +110,7 @@ a live machine is rejected from this domain.
 The exact baseline now also consumes the runtime-owned
 `ProfileMachineState` checkpoint directly. `profile.rs` indexes the complete
 validated checkpoint by profile fingerprint, I/O state, registers, and every
-profile memory word; a current `malbolge-2026.2` replay deduplicates and a
+profile memory word; a then-current `malbolge-2026.2` replay deduplicates and a
 forced
 constant digest does not merge checkpoints with different input. This extends
 the
