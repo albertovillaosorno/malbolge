@@ -22,15 +22,15 @@ width: classic raw source emits EOF low byte `0xA8`, while the annual and 2026.3
 14-trit capsules emit `0x78`.
 
 The current VM input model is pre-buffered rather than interactive. The CLI does
-not fake real-time input by reading the terminal to EOF before startup. Interactive
-DOOM input belongs to the versioned host-capability runner work.
+not fake real-time input by reading the terminal to EOF before startup.
+Interactive DOOM input belongs to the versioned host-capability runner work.
 
 ## `.c`: fast native debugging only
 
 `malbolge program.c` compiles the C file directly for the current host, runs the
 temporary executable with inherited stdin/stdout/stderr, and removes the native
-artifact after the process exits. This path deliberately does **not** translate C
-to Malbolge. It is for fast behavioral debugging of the future single-TU
+artifact after the process exits. This path deliberately does **not** translate
+C to Malbolge. It is for fast behavioral debugging of the future single-TU
 `doom.c`, not Malbolge performance or conformance evidence.
 
 The C driver is selected in this order:
@@ -45,19 +45,21 @@ frontend/linker. Zig itself is development tooling; generated `.malbolge`
 programs must not require it at execution time.
 
 When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
-`src/interface/command-line/adapter-outbound/adapters/doom/windows.c` as a separate host-only translation unit. The
-adapter supplies the debug window, keyboard/mouse input, audio, files, and clock.
-It does not embed an IWAD and is never part of `doom.c` or `doom.malbolge`.
+`src/interface/command-line/adapter-outbound/adapters/doom/windows.c` as a
+separate host-only translation unit. The adapter supplies the debug window,
+keyboard/mouse input, audio, files, and clock. It does not embed an IWAD and is
+never part of `doom.c` or `doom.malbolge`.
 
 When executable C tokens reference the function-like identifier
-`__malbolge_output_byte`, the CLI links `src/interface/command-line/adapter-outbound/adapters/guest/output.c` as a separate
-host-only debug translation unit. Lexical discovery applies C line splicing and
-ignores comments, string literals, character literals, identifier prefixes, and
-non-function-like uses. The guest source still includes no hosted headers and calls
-no host libc routine. The adapter maps the byte-output boundary to native stdout
-only for `.c` debug execution. It is not linked into generated `.malbolge` artifacts
-and is not evidence that C-to-Malbolge lowering, the guest runtime, libc, or `libm`
-is implemented.
+`__malbolge_output_byte`, the CLI links
+`src/interface/command-line/adapter-outbound/adapters/guest/output.c` as a
+separate host-only debug translation unit. Lexical discovery applies C line
+splicing and ignores comments, string literals, character literals, identifier
+prefixes, and non-function-like uses. The guest source still includes no hosted
+headers and calls no host libc routine. The adapter maps the byte-output
+boundary to native stdout only for `.c` debug execution. It is not linked into
+generated `.malbolge` artifacts and is not evidence that C-to-Malbolge lowering,
+the guest runtime, libc, or `libm` is implemented.
 
 DOOM debug execution uses the directory containing `doom.c` as its working
 directory. Put `settings.json`, local WADs, `default.cfg`, and saves beside that
@@ -71,22 +73,23 @@ The Windows adapter reads `iwad`, `wads`, `language`, `maximized`, `resolution`,
 `vsync`, and `show_fps` from `settings.json`. Gameplay uses centered relative
 mouse capture; pause, menus, automap, demos, and focus loss release the cursor.
 When `show_fps` is enabled, language-neutral execution telemetry drives titles
-such as `FPS 232 - C doom.c:258 R_RenderPlayerView(...)` and, for the
-future capability-linked artifact,
-`FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
+such as `FPS 232 - C doom.c:258 R_RenderPlayerView(...)` and, for the future
+capability-linked artifact, `FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
 
-`src/interface/command-line/adapter-outbound/adapters/doom/abi.malbolge` and `windows.malbolge` currently reserve the
-annotated module contracts with intentionally empty canonical payloads. They are
-not executable adapters yet. The open capability-runner TODO requires automatic
-loading only when a `.malbolge` capsule explicitly declares `doom.host.v1`.
+`src/interface/command-line/adapter-outbound/adapters/doom/abi.malbolge` and
+`windows.malbolge` currently reserve the annotated module contracts with
+intentionally empty canonical payloads. They are not executable adapters yet.
+The open capability-runner TODO requires automatic loading only when a
+`.malbolge` capsule explicitly declares `doom.host.v1`.
 
 ## Debug DOOM with Clang sanitizers
 
 The Windows debugging launcher validates both `doom.c` and the host adapter with
 standalone pinned Clang 22.1.8 using strict warnings and `-Werror`. It then uses
-Zig's Clang frontend and Windows linker support to build one local executable with
-AddressSanitizer, UndefinedBehaviorSanitizer, symbols, and frame pointers. Debug
-executables and logs stay beside `doom.c` under the ignored `.debug/` directory.
+Zig's Clang frontend and Windows linker support to build one local executable
+with AddressSanitizer, UndefinedBehaviorSanitizer, symbols, and frame pointers.
+Debug executables and logs stay beside `doom.c` under the ignored `.debug/`
+directory.
 
 Validate and build without launching:
 
@@ -114,8 +117,9 @@ CLI; use `--iwad <path>` to select one explicitly.
 
 ## Build the CLI
 
-The Rust frontend is `src/interface/command-line/composition/main.rs` and the Cargo binary name is `malbolge`.
-Generated host binaries stay local under `cli/bin/`.
+The Rust frontend is `src/interface/command-line/composition/main.rs` and the
+Cargo binary name is `malbolge`. Generated host binaries stay local under
+`cli/bin/`.
 
 Windows:
 
@@ -156,8 +160,8 @@ Two shims are installed: `malbolge.cmd` for PowerShell/cmd and an extensionless
 ./src/interface/command-line/composition/scripts/install-unix.sh
 ```
 
-This installs a symlink in `~/.local/bin` by default. Pass another destination as
-the first argument when desired.
+This installs a symlink in `~/.local/bin` by default. Pass another destination
+as the first argument when desired.
 
 ## Examples
 
@@ -169,6 +173,6 @@ malbolge examples/example.malbolge
 malbolge algorithms/doom/amalgamate/in/doom.c
 ```
 
-Arguments after a `.c` path are forwarded to the native debug program. Additional
-arguments for `.malbolge` execution are intentionally rejected until interactive
-runtime input/capability semantics are explicit.
+Arguments after a `.c` path are forwarded to the native debug program.
+Additional arguments for `.malbolge` execution are intentionally rejected until
+interactive runtime input/capability semantics are explicit.
