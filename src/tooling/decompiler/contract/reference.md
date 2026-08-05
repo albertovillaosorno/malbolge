@@ -36,8 +36,9 @@ cargo run --bin malbolge_decompile -- \
   --profile malbolge-1998 --representation c input.malbolge --output output.c
 ```
 
-Omitting `--output` writes the selected representation to stdout. Profile and
-representation selection are both exact and have no fallback. `c` is the first
+Omitting `--output` writes the selected representation to stdout. Profile,
+representation, and output selection are exact, reject duplicate options, and
+have no fallback. `c` is the first
 implemented representation; the CLI is intentionally shaped for additional
 readable representations without redefining decompilation as C-only.
 

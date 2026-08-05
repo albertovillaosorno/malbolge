@@ -46,8 +46,9 @@ Keep museum conversion as a separate local convenience over the general tool.
 - Initial decode views use `XLAT1` translation and never confuse the raw
   modulo-94
   residue with the decoded instruction.
-- The general CLI selects output representation explicitly so future readable
-  forms do not redefine decompilation as C-only.
+- The general CLI selects profile, output representation, and output path
+  explicitly, rejects duplicate semantic options, and keeps future readable
+  forms from redefining decompilation as C-only.
 - `museum_convert` performs no acquisition or redistribution: it consumes only a
   local caller-supplied historical file, selects `malbolge-1998`, and writes a
   rebuildable local view.
@@ -67,7 +68,7 @@ Keep museum conversion as a separate local convenience over the general tool.
   `src/tooling/decompiler/application/cli.rs`,
   `src/tooling/decompiler/application/museum.rs`, the two thin Cargo roots, and
   `tests/decompiler.rs`.
-- Current Rust evidence: seven strict tests plus Clippy with warnings denied.
+- Current Rust evidence: eight strict tests plus Clippy with warnings denied.
 - Development toolchain evidence: pinned Clang 22.1.8 emitted warning-clean
   x86-64 and AArch64 COFF objects from generated `ubO` C; the x86-64 DLL
   executed

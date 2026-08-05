@@ -37,12 +37,46 @@
 #[path = "../src/tooling/decompiler/application/render.rs"]
 pub mod decompiler;
 
+use std::process::Command;
+
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, current_profile,
     historical_profile,
 };
 
 const OUTPUT_SOURCE: &[u8] = b"ubO";
+
+type DuplicateCliCase = (&'static [&'static str], &'static str);
+
+#[test]
+fn cli_rejects_duplicate_semantic_options() -> Result<(), String> {
+    let cases: [DuplicateCliCase; 3] = [
+        (&["--profile", "a", "--profile", "b"], "duplicate --profile"),
+        (
+            &["--representation", "c", "--representation", "c"],
+            "duplicate --representation",
+        ),
+        (&["--output", "a", "-o", "b"], "duplicate --output"),
+    ];
+    for (arguments, expected) in cases {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+            .args(arguments)
+            .output()
+            .map_err(|error| format!("run decompiler CLI: {error}"))?;
+        if output.status.success() {
+            return Err(format!(
+                "duplicate CLI option unexpectedly succeeded: {arguments:?}"
+            ));
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains(expected) {
+            return Err(format!(
+                "duplicate CLI diagnostic missing {expected:?}: {stderr}"
+            ));
+        }
+    }
+    Ok(())
+}
 
 #[test]
 fn c_render_is_deterministic_and_profile_bound() -> Result<(), String> {

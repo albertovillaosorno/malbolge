@@ -93,10 +93,7 @@ pub fn run() -> IoResult<()> {
 }
 
 fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
-    if raw
-        .iter()
-        .any(|argument| argument == "--help" || argument == "-h")
-    {
+    if requests_help(raw) {
         return Ok(None);
     }
     let mut input = None;
@@ -109,18 +106,26 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
         match argument.to_str() {
             Some("--profile") => {
                 let value = next_utf8(raw, &mut index, "--profile")?;
-                profile_id = Some(String::from(value));
+                set_once(
+                    &mut profile_id,
+                    String::from(value),
+                    "--profile",
+                )?;
             },
             Some("--representation") => {
                 let value = next_utf8(raw, &mut index, "--representation")?;
-                representation = Some(parse_representation(value)?);
+                set_once(
+                    &mut representation,
+                    parse_representation(value)?,
+                    "--representation",
+                )?;
             },
             Some("--output" | "-o") => {
                 index = index.saturating_add(1);
                 let value = raw.get(index).ok_or_else(|| {
                     IoError::other("--output requires a path")
                 })?;
-                output = Some(PathBuf::from(value));
+                set_once(&mut output, PathBuf::from(value), "--output")?;
             },
             Some(value) if value.starts_with('-') => {
                 return Err(IoError::other(format!(
@@ -146,6 +151,23 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
         representation: representation
             .ok_or_else(|| IoError::other("missing --representation"))?,
     }))
+}
+
+fn requests_help(raw: &[OsString]) -> bool {
+    raw.iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+}
+
+fn set_once<T>(
+    target: &mut Option<T>,
+    value: T,
+    option: &str,
+) -> IoResult<()> {
+    if target.is_some() {
+        return Err(IoError::other(format!("duplicate {option}")));
+    }
+    *target = Some(value);
+    Ok(())
 }
 
 fn next_utf8<'input>(
