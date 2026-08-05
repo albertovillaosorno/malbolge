@@ -22,6 +22,11 @@ execution IR, optional native execution tiers, exact CPU/CUDA primitive paths,
 resident CUDA classic/profile sessions, validated asynchronous submissions, and
 bounded evidence-based accelerator admission.
 
+Repository-root `malbolge.json` selects `malbolge-2026` as the official current
+language profile. The published `malbolge-2026.1`, `malbolge-2026.2`, and
+`malbolge-2026.3` identities remain immutable compatibility and test evidence;
+none replaces the year-only current name.
+
 The CUDA path remains optional and fail-closed. Retained ticket profiles bind to
 an exact capability, workload, host/runtime identity, driver API, display-driver
 build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
