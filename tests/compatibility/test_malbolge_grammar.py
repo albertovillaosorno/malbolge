@@ -45,6 +45,7 @@ GRAMMAR = ROOT / (
 )
 SOURCE_WHITESPACE = (0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20)
 REJECTED_CONTROLS = (0x00, 0x08, 0x0E, 0x1F, 0x7F)
+SCOPE_NAME = "source.malbolge"
 
 
 def _grammar() -> dict[str, object]:
@@ -66,7 +67,7 @@ def _pattern(document: dict[str, object], key: str) -> re.Pattern[str]:
 def test_grammar_admits_exact_source_whitespace() -> None:
     """The invalid-control class excludes all six source whitespace bytes."""
     document = _grammar()
-    assert document["scopeName"] == "source.malbolge"
+    assert document["scopeName"] == SCOPE_NAME
     invalid = _pattern(document, "invalid-control-character")
     for byte in SOURCE_WHITESPACE:
         assert invalid.fullmatch(chr(byte)) is None

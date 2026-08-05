@@ -56,18 +56,23 @@ def _cases() -> list[dict[str, object]]:
     return cases
 
 
+def _matches_function_signature(line: str, name: str) -> bool:
+    stripped = line.strip()
+    prefixes = ("fn ", "def ", "pub fn ", "async fn ", "pub async fn ")
+    for prefix in prefixes:
+        signature = prefix + name
+        if stripped.startswith(signature):
+            remainder = stripped.removeprefix(signature)
+            return remainder.startswith(("(", "<"))
+    return False
+
+
 def _function_exists(path: Path, name: str) -> bool:
     source = path.read_text(encoding="utf-8")
-    prefixes = ("fn ", "def ", "pub fn ", "async fn ", "pub async fn ")
-    for line in source.splitlines():
-        stripped = line.strip()
-        for prefix in prefixes:
-            signature = prefix + name
-            if stripped.startswith(signature):
-                remainder = stripped.removeprefix(signature)
-                if remainder.startswith(("(", "<")):
-                    return True
-    return False
+    return any(
+        _matches_function_signature(line, name)
+        for line in source.splitlines()
+    )
 
 
 def test_historical_registry_covers_every_catalogue_issue() -> None:
