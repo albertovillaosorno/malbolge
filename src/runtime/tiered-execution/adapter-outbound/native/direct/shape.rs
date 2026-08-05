@@ -535,7 +535,8 @@ pub(super) fn derive_input_program(
     if before.termination.is_some()
         || live_in.address != code_pointer
         || decode_profile_instruction(live_in.value, code_pointer)
-            != target_profile(&program.profile_id).map(|profile| profile.input_instruction())
+            != target_profile(&program.profile_id)
+                .map(|profile| profile.input_instruction())
     {
         return None;
     }
@@ -660,7 +661,8 @@ pub(super) fn derive_output_program(
     if before.termination.is_some()
         || live_in.address != code_pointer
         || decode_profile_instruction(live_in.value, code_pointer)
-            != target_profile(&program.profile_id).map(|profile| profile.output_instruction())
+            != target_profile(&program.profile_id)
+                .map(|profile| profile.output_instruction())
     {
         return None;
     }
