@@ -56,7 +56,7 @@ RUN_BUDGET_ERROR = "run budget exhausted"
 MAX_RUNS_ERROR = "max runs must be positive"
 OUTPUT_CAPACITY_ERROR = "output capacity exceeds unsigned 32-bit domain"
 OUTPUT_BYTE = 65
-OUTPUT_DECODED = ord("/")
+OUTPUT_DECODED = ord("<")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
