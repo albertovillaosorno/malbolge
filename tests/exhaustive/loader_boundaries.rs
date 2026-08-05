@@ -34,7 +34,10 @@
 
 //! Exhaustive classic loader byte and positional-decode admission checks.
 
-use malbolge::{LoadError, MEMORY_WORDS, Word, decode_instruction, load};
+use malbolge::{
+    LoadError, MEMORY_WORDS, ProfileLoadError, ProfileMachine,
+    ProfileMachineError, Word, decode_instruction, historical_profile, load,
+};
 
 const ALLOWED_INSTRUCTIONS: &[u8; 8] = b"ji*p</vo";
 const DECODE_PHASES: usize = 94;
@@ -134,6 +137,20 @@ fn recurrence_and_capacity_boundaries_fail_closed() -> Result<(), String> {
     if oversized_observed != Err(LoadError::SourceTooLong) {
         return Err(format!(
             "oversized source mismatch: {oversized_observed:?}"
+        ));
+    }
+    let Err(profiled_oversized) = ProfileMachine::from_source(
+        historical_profile(),
+        &oversized,
+        Vec::new(),
+    ) else {
+        return Err(String::from("profiled oversized source was admitted"));
+    };
+    let expected_profiled =
+        ProfileMachineError::Load(ProfileLoadError::SourceTooLong);
+    if profiled_oversized != expected_profiled {
+        return Err(format!(
+            "profiled oversized source mismatch: {profiled_oversized:?}"
         ));
     }
     Ok(())

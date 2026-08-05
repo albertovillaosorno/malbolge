@@ -1113,10 +1113,15 @@ fn load_profile(
         if words.len() >= memory_words {
             return Err(ProfileLoadError::SourceTooLong);
         }
-        let position = u32::try_from(words.len())
+        words.push(u32::from(byte));
+    }
+    for (loaded_position, cell) in words.iter().copied().enumerate() {
+        let position = u32::try_from(loaded_position)
             .ok()
             .ok_or(ProfileLoadError::MemoryAllocation)?;
-        let cell = u32::from(byte);
+        let byte = u8::try_from(cell)
+            .ok()
+            .ok_or(ProfileLoadError::MemoryAllocation)?;
         let decoded = decode_profile_instruction(cell, position)
             .ok_or(ProfileLoadError::InvalidInstruction { position, byte })?;
         if !matches!(
@@ -1128,7 +1133,6 @@ fn load_profile(
                 byte,
             });
         }
-        words.push(cell);
     }
     if words.len() < 2 {
         return Err(ProfileLoadError::InsufficientRecurrenceBase);
