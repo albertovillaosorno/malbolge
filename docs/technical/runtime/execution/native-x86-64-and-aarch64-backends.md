@@ -176,8 +176,9 @@ objects are 642/724 bytes. x86-64 execution proves exact hit and five atomic
 miss classes; independent AArch64 decoding confirms one common miss target.
 
 `direct-input` revision 1 completes direct instruction-family coverage. Its code
-cell must VM-decode as `/`. The byte form guards a non-null input pointer, strict `input_len > input_consumed`, and
-one exact byte before committing accumulator and cursor. The EOF form guards
+cell must VM-decode as `/`. The byte form guards a non-null input pointer,
+strict `input_len > input_consumed`, and one exact byte before committing
+accumulator and cursor. The EOF form guards
 length equality, never dereferences the input pointer, and commits the VM-owned
 all-two-trit EOF word without cursor advance. Independent complete objects are
 659/744 bytes for byte input and 634/715 bytes for EOF on x86-64/AArch64.

@@ -328,9 +328,10 @@ Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
 byte, output length incremented by one, exact code encryption, modular `C/D`
 successors, no input, and one exhausted step. Both ISAs guard the complete
 entry, exact 9-word footprint, `memory[5]=94`, non-null output pointer, and
-capacity greater than index 3 before committing encrypted code 57, byte `0xa8`, and
-`output_len:3->4`. Independent objects are 642/724 bytes. Development x86-64
-execution proves exact hit and atomic code/capacity/output-pointer/footprint/
+capacity greater than index 3 before committing encrypted code 57, byte
+`0xa8`, and `output_len:3->4`. Independent objects are 642/724 bytes.
+Development x86-64 execution proves exact hit and atomic
+code/capacity/output-pointer/footprint/
 null
 memory misses; independent AArch64 decoding confirms eleven common-miss guards.
 

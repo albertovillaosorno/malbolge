@@ -55,8 +55,8 @@ without weakening unrelated linter contracts.
   scratch evidence into repository history.
 - The installed commit-message hook parses the schema-8 configuration and
   accepts new compliant commits fail-closed.
-- `tests/test_governance_paths.py` rejects duplicated nested `.jig` path segments
-  in authored text outside the validator-owned configuration tree.
+- `tests/test_governance_paths.py` rejects duplicated nested `.jig` path
+  segments in authored text outside the validator-owned configuration tree.
 - `.dependencies/jig/bin/jig.cmd validate --root .` is the canonical command.
   It builds and runs the source-linked authority instead of the stale versioned
   release executable.

@@ -110,8 +110,9 @@ crazy and rotate.
 Independent differential evidence now exists against the separately implemented
 pure-C VM. Both implementations compute semantic signature
 `0xa9dabd8fc51d13c9` without sharing transition implementation code. The
-signature covers word operations, the complete loaded `ubO` memory image, interpreter-compatible byte I/O and halt,
-rejected jump atomicity, and historical non-graphical non-progress.
+signature covers word operations, the complete loaded `ubO` memory image,
+interpreter-compatible byte I/O and halt, rejected jump atomicity, and
+historical non-graphical non-progress.
 
 The typed TODO remains active until its declared repository-wide validation
 command passes at retirement time.
