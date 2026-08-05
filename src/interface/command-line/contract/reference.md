@@ -14,8 +14,9 @@ argument fails closed instead of hiding malformed input.
 ## `.malbolge`: canonical guest execution
 
 `malbolge program.malbolge` executes the supplied Malbolge artifact in the
-repository VM. Raw source uses classic specification semantics. A versioned
-capsule selects the profile carried by that capsule. The CLI does not compile the
+repository VM. Raw source uses classic interpreter-authority semantics. A
+versioned capsule selects the profile carried by that capsule. The CLI does not
+compile the
 Malbolge program into a persistent native executable.
 
 The current VM input model is pre-buffered rather than interactive. The CLI does
