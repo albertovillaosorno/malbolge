@@ -1,6 +1,6 @@
 ---
 id: "historical-undefined-behavior-catalogue"
-status: "pending"
+status: "completed"
 lane: "2"
 area: "foundation"
 task: "TODO - Historical undefined-behavior catalogue"
@@ -46,3 +46,11 @@ behavior separately from intended Malbolge semantics.
   parser/schema/governance tests for the declared boundary.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`.
+- Completion evidence recorded 2026-08-05:
+  - `historical-undefined-behavior.md` classifies H-001 through H-010;
+  - `cases.toml` registers every catalogue issue and portable policy;
+  - `test_historical_cases.py` enforces issue coverage, unique IDs, fixture
+    existence, and named executable evidence;
+  - VM mode, instruction, loader, arithmetic, differential, and CUDA suites
+    execute the registered boundaries without invoking historical host-C UB;
+  - the immutable historical source remains byte-identical to its pinned hash.

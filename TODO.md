@@ -163,12 +163,6 @@ v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
-### TODO - Historical undefined-behavior catalogue
-
-Catalogue one-instruction loading, invalid executable cells, platform-dependent
-newline behavior, source validation quirks, and other accidental or undefined C
-behavior separately from intended Malbolge semantics.
-
 ### TODO - Reference interpreter sanitizer harness
 
 Build the historical interpreter under AddressSanitizer and
