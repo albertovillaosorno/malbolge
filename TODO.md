@@ -157,8 +157,9 @@ without weakening unrelated linter contracts.
 Define `malbolge.json` as the single target-profile authority consumed by the
 VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
 Schema
-v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1` and
-`malbolge-2026.2`, and selects the scalable 14-trit `malbolge-2026` profile
+v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
+`malbolge-2026.2`, and `malbolge-2026.3`, and selects the scalable 14-trit
+`malbolge-2026` profile
 as current; universal consumer
 adoption remains open. Evolution is versioned rather than branded "extended".
 
