@@ -56,7 +56,10 @@ PROBE_PROFILE_ID = "windows-x86_64-clang22-v1"
 _CLANG_TOOL = "clang"
 _LINK_TOOL = "lld-link"
 _CODE_ROOT = "linuxdoom-1.10"
-_ASSET_ROOT = "algorithms/doom/generator/probe_assets/fixed_point"
+_ASSET_ROOT = (
+    "src/research/algorithms/domain/algorithms/doom/generator/"
+    "probe_assets/fixed_point"
+)
 _SHIM_ROOT = f"{_ASSET_ROOT}/shim"
 _PROBE_SOURCE = f"{_ASSET_ROOT}/probe.c"
 _FIXED_SOURCE = f"{_CODE_ROOT}/m_fixed.c"

@@ -59,6 +59,11 @@ _CONTEXT = b"synthetic-rust-emitter-v1"
 _PROFILE = "synthetic-rust-emitter-v1"
 _BLOCK_COUNT = 48
 _RUSTC_ENV = "MALBOLGE_RUSTC"
+_PINNED_RUSTC = (
+    Path(__file__).resolve().parents[5]
+    / ".dependencies/jig/source/.dependencies/rust"
+    / "stable-1.97.1-x86_64-pc-windows-gnu/bin/rustc.exe"
+)
 _TARGET_ONLY_TEXT = "TARGET-ONLY"
 _NEW_TARGET_TEXT = "new-target-only"
 _STD_MARKER = "use std::"
@@ -141,13 +146,15 @@ def _fixture(
 
 def _rustc() -> Path:
     configured = os.environ.get(_RUSTC_ENV)
-    located = configured or shutil.which("rustc")
-    if located is None:
-        pytest.skip("repository-pinned rustc is unavailable")
-    path = Path(located)
-    if not path.is_file():
+    located = Path(configured) if configured is not None else _PINNED_RUSTC
+    if not located.is_file():
+        fallback = shutil.which("rustc")
+        if fallback is None:
+            pytest.skip("repository-pinned rustc is unavailable")
+        located = Path(fallback)
+    if not located.is_file():
         pytest.skip("configured rustc path is unavailable")
-    return path
+    return located
 
 
 def _compile(rust_source: Path, executable: Path) -> sp.CompletedProcess[bytes]:

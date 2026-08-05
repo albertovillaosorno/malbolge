@@ -55,7 +55,7 @@ def _expect(condition: object, message: str) -> None:
 
 
 def _repository_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return Path(__file__).resolve().parents[5]
 
 
 def _require_pinned_windows_llvm(repository_root: Path) -> None:
