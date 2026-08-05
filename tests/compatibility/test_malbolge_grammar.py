@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 GRAMMAR = ROOT / (
@@ -48,20 +49,30 @@ REJECTED_CONTROLS = (0x00, 0x08, 0x0E, 0x1F, 0x7F)
 SCOPE_NAME = "source.malbolge"
 
 
+def _mapping(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    raw = cast("dict[object, object]", value)
+    result: dict[str, object] = {}
+    for key, item in raw.items():
+        assert isinstance(key, str)
+        result[key] = item
+    return result
+
+
+def _string(value: object) -> str:
+    assert isinstance(value, str)
+    return value
+
+
 def _grammar() -> dict[str, object]:
-    document = json.loads(GRAMMAR.read_text(encoding="utf-8"))
-    assert isinstance(document, dict)
-    return document
+    parsed = cast("object", json.loads(GRAMMAR.read_text(encoding="utf-8")))
+    return _mapping(parsed)
 
 
 def _pattern(document: dict[str, object], key: str) -> re.Pattern[str]:
-    repository = document["repository"]
-    assert isinstance(repository, dict)
-    entry = repository[key]
-    assert isinstance(entry, dict)
-    pattern = entry["match"]
-    assert isinstance(pattern, str)
-    return re.compile(pattern)
+    repository = _mapping(document["repository"])
+    entry = _mapping(repository[key])
+    return re.compile(_string(entry["match"]))
 
 
 def test_grammar_admits_exact_source_whitespace() -> None:

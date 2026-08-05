@@ -9,6 +9,7 @@ legacy_ben_output_hex = "00"
 legacy_ben_termination = "halt"
 issue = "H-001"
 evidence = [
+# jig-ignore-next-line: stable executable evidence identifier
   "tests/vm/modes.rs::interpreter_mode_models_original_io_with_mode_tagged_trace",
 ]
 
@@ -34,6 +35,7 @@ specification_policy = "reject-insufficient-recurrence-base"
 legacy_ben_behavior = "undefined-memory-read"
 issue = "H-003"
 evidence = [
+# jig-ignore-next-line: stable executable evidence identifier
   "tests/vm/modes.rs::interpreter_source_boundary_rejects_undefined_loader_case",
 ]
 
@@ -45,6 +47,7 @@ specification_policy = "reject-insufficient-recurrence-base"
 legacy_ben_behavior = "undefined-memory-read"
 issue = "H-003"
 evidence = [
+# jig-ignore-next-line: stable executable evidence identifier
   "tests/vm/modes.rs::interpreter_source_boundary_rejects_undefined_loader_case",
 ]
 
@@ -81,6 +84,7 @@ portable_policy = "ignore-without-consuming-loaded-position"
 legacy_ben_behavior = "host-isspace-dependent"
 issue = "H-006"
 evidence = [
+# jig-ignore-next-line: stable executable evidence identifier
   "tests/exhaustive/loader_boundaries.rs::ascii_whitespace_preserves_loaded_positions",
 ]
 
@@ -105,6 +109,7 @@ portable_policy = "fixed-ten-trit-domain"
 legacy_ben_behavior = "host-integer-and-memory-model-dependent"
 issue = "H-008"
 evidence = [
+# jig-ignore-next-line: stable executable evidence identifier
   "tests/exhaustive/math_correspondence.rs::classic_word_domain_matches_ten_trit_modulus",
 ]
 

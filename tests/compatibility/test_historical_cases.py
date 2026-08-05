@@ -37,22 +37,45 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import tomllib
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/compatibility/specification/cases.toml"
 EXPECTED_ISSUES = {f"H-{number:03d}" for number in range(1, 11)}
-EVIDENCE = re.compile(
-    r"^(?P<path>tests/[A-Za-z0-9_./-]+\.(?:rs|py))::"
-    r"(?P<function>[a-z][a-z0-9_]*)$"
-)
+EVIDENCE_PATH = r"^(?P<path>tests/[A-Za-z0-9_./-]+\.(?:rs|py))::"
+EVIDENCE_FUNCTION = r"(?P<function>[a-z][a-z0-9_]*)$"
+EVIDENCE = re.compile(EVIDENCE_PATH + EVIDENCE_FUNCTION)
+
+
+def _mapping(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    raw = cast("dict[object, object]", value)
+    result: dict[str, object] = {}
+    for key, item in raw.items():
+        assert isinstance(key, str)
+        result[key] = item
+    return result
+
+
+def _array(value: object) -> list[object]:
+    assert isinstance(value, list)
+    return cast("list[object]", value)
+
+
+def _strings(value: object) -> list[str]:
+    values = _array(value)
+    assert all(isinstance(item, str) for item in values)
+    return [cast("str", item) for item in values]
 
 
 def _cases() -> list[dict[str, object]]:
-    document = tomllib.loads(REGISTRY.read_text(encoding="utf-8"))
-    cases = document.get("case")
-    assert isinstance(cases, list)
+    parsed = cast(
+        "object",
+        tomllib.loads(REGISTRY.read_text(encoding="utf-8")),
+    )
+    document = _mapping(parsed)
+    cases = [_mapping(case) for case in _array(document.get("case"))]
     assert cases
-    assert all(isinstance(case, dict) for case in cases)
     return cases
 
 
@@ -70,8 +93,7 @@ def _matches_function_signature(line: str, name: str) -> bool:
 def _function_exists(path: Path, name: str) -> bool:
     source = path.read_text(encoding="utf-8")
     return any(
-        _matches_function_signature(line, name)
-        for line in source.splitlines()
+        _matches_function_signature(line, name) for line in source.splitlines()
     )
 
 
@@ -92,12 +114,10 @@ def test_historical_registry_references_real_fixtures_and_tests() -> None:
         if source is not None:
             assert isinstance(source, str)
             assert (REGISTRY.parent / source).is_file()
-        evidence = case.get("evidence")
-        assert isinstance(evidence, list)
+        evidence = _strings(case.get("evidence"))
         assert evidence
         assert len(evidence) == len(set(evidence))
         for reference in evidence:
-            assert isinstance(reference, str)
             matched = EVIDENCE.fullmatch(reference)
             assert matched is not None
             path = ROOT / matched.group("path")

@@ -47,7 +47,7 @@ HISTORICAL_INTERPRETER_BYTES = 4_738
 HISTORICAL_INTERPRETER_SHA256 = (
     "fe29a717f9f684d6cc81d5c63273d446d9c65fec73e62164538514d5737b07a6"
 )
-RETIRED_HISTORICAL_ROOT = "tools/" "malbolge/"
+RETIRED_HISTORICAL_ROOT = "tools/" + "malbolge/"
 FORMAL_SPECIFICATION = ROOT / (
     "src/specification/formal-model/math/specification"
 )
@@ -55,7 +55,7 @@ FORMAL_SPECIFICATION_MANIFEST = ROOT / (
     "src/specification/formal-model/function.yml"
 )
 RETIRED_FORMAL_SPECIFICATION_ROOT = re.compile(
-    r"(?<!formal-model/)math/" r"specification/"
+    r"(?<!formal-model/)math/" + r"specification/"
 )
 EXCLUDED_DIRECTORIES = frozenset({
     ".cache",

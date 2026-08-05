@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
+  "source_root": "tests/compatibility/specification",
   "cases": [
     {
       "id": "clean-interpreter-roundtrip",
-      "source": "tests/compatibility/specification/interpreter-io-roundtrip.malbolge",
+      "source": "interpreter-io-roundtrip.malbolge",
       "input_hex": ""
     },
     {

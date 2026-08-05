@@ -47,6 +47,7 @@ import sys
 import tempfile
 from typing import Never
 from typing import TYPE_CHECKING
+from typing import cast
 
 from scripts.repository_root import repository_root
 
@@ -59,8 +60,7 @@ SOURCE = ROOT / (
 )
 CASES = ROOT / "benchmarks/interpreter/sanitizer-cases.json"
 EVIDENCE = ROOT / (
-    "benchmarks/interpreter/evidence/"
-    "windows-x86_64-sanitizer-findings.json"
+    "benchmarks/interpreter/evidence/windows-x86_64-sanitizer-findings.json"
 )
 CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
 ASAN_RUNTIME = ROOT / (
@@ -76,8 +76,7 @@ WINDOWS_OS_NAME = "nt"
 ASAN_ERROR = re.compile(r"ERROR: AddressSanitizer: ([a-z0-9-]+)")
 UBSAN_ERROR = re.compile(r"runtime error: ([^\r\n]+)")
 HALLOC_HEADER = (
-    "#include <stddef.h>\n"
-    "void *_halloc(size_t count, size_t size);\n"
+    "#include <stddef.h>\nvoid *_halloc(size_t count, size_t size);\n"
 )
 HALLOC_SOURCE = (
     "#include <stddef.h>\n"
@@ -105,6 +104,14 @@ class SanitizerCase:
     source_bytes: bytes
 
 
+class _Arguments(argparse.Namespace):
+    print_json: bool
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.print_json = False
+
+
 def _fail(message: str) -> Never:
     raise SanitizerHarnessError(message)
 
@@ -123,14 +130,33 @@ def is_supported() -> bool:
     )
 
 
+def _mapping(value: object, context: str) -> JsonObject:
+    if not isinstance(value, dict):
+        _fail(f"{context} must be an object")
+    raw = cast("dict[object, object]", value)
+    result: JsonObject = {}
+    for key, item in raw.items():
+        if not isinstance(key, str):
+            _fail(f"{context} contains a non-string key")
+        result[key] = item
+    return result
+
+
+def _array(value: object, context: str) -> list[object]:
+    if not isinstance(value, list):
+        _fail(f"{context} must be an array")
+    return cast("list[object]", value)
+
+
 def _load_object(path: Path) -> JsonObject:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        parsed = cast(
+            "object",
+            json.loads(path.read_text(encoding="utf-8")),
+        )
     except (OSError, json.JSONDecodeError) as error:
         _fail(f"cannot load {path}: {error}")
-    if not isinstance(document, dict):
-        _fail(f"JSON root is not an object: {path}")
-    return document
+    return _mapping(parsed, str(path))
 
 
 def _decode_hex(value: object, context: str) -> bytes:
@@ -142,12 +168,16 @@ def _decode_hex(value: object, context: str) -> bytes:
         _fail(f"invalid {context}: {error}")
 
 
-def _path_source(value: object, identifier: str) -> bytes:
+def _path_source(
+    value: object,
+    identifier: str,
+    source_root: Path,
+) -> bytes:
     if not isinstance(value, str):
         _fail(f"case {identifier} source must be text")
-    path = (ROOT / value).resolve()
+    path = (source_root / value).resolve()
     try:
-        path.relative_to(ROOT)
+        _ = path.relative_to(ROOT)
     except ValueError:
         _fail(f"case {identifier} source escapes the repository")
     if not path.is_file():
@@ -155,20 +185,27 @@ def _path_source(value: object, identifier: str) -> bytes:
     return path.read_bytes()
 
 
-def _case_source(raw: JsonObject, identifier: str) -> bytes:
+def _case_source(
+    raw: JsonObject,
+    identifier: str,
+    source_root: Path,
+) -> bytes:
     source = raw.get("source")
     source_hex = raw.get("source_hex")
     if (source is None) == (source_hex is None):
         _fail(f"case {identifier} must declare exactly one source form")
     if source is not None:
-        return _path_source(source, identifier)
+        return _path_source(source, identifier, source_root)
     return _decode_hex(source_hex, f"case {identifier} source_hex")
 
 
-def _parse_case(raw: object, identifiers: set[str]) -> SanitizerCase:
-    if not isinstance(raw, dict):
-        _fail("sanitizer case must be an object")
-    identifier = raw.get("id")
+def _parse_case(
+    raw: object,
+    identifiers: set[str],
+    source_root: Path,
+) -> SanitizerCase:
+    case = _mapping(raw, "sanitizer case")
+    identifier = case.get("id")
     if not isinstance(identifier, str) or not identifier:
         _fail("sanitizer case id must be non-empty")
     if identifier in identifiers:
@@ -177,11 +214,25 @@ def _parse_case(raw: object, identifiers: set[str]) -> SanitizerCase:
     return SanitizerCase(
         identifier=identifier,
         input_bytes=_decode_hex(
-            raw.get("input_hex"),
+            case.get("input_hex"),
             f"case {identifier} input_hex",
         ),
-        source_bytes=_case_source(raw, identifier),
+        source_bytes=_case_source(case, identifier, source_root),
     )
+
+
+def _source_root(document: JsonObject) -> Path:
+    value = document.get("source_root")
+    if not isinstance(value, str):
+        _fail("sanitizer source_root must be text")
+    source_root = (ROOT / value).resolve()
+    try:
+        _ = source_root.relative_to(ROOT)
+    except ValueError:
+        _fail("sanitizer source_root escapes the repository")
+    if not source_root.is_dir():
+        _fail("sanitizer source_root is missing")
+    return source_root
 
 
 def load_cases() -> tuple[SanitizerCase, ...]:
@@ -194,11 +245,14 @@ def load_cases() -> tuple[SanitizerCase, ...]:
     document = _load_object(CASES)
     if document.get("schema_version") != SCHEMA_VERSION:
         _fail("unsupported sanitizer case schema")
-    raw_cases = document.get("cases")
-    if not isinstance(raw_cases, list) or not raw_cases:
+    source_root = _source_root(document)
+    raw_cases = _array(document.get("cases"), "sanitizer cases")
+    if not raw_cases:
         _fail("sanitizer cases must be a non-empty list")
     identifiers: set[str] = set()
-    return tuple(_parse_case(raw, identifiers) for raw in raw_cases)
+    return tuple(
+        _parse_case(raw, identifiers, source_root) for raw in raw_cases
+    )
 
 
 def load_evidence() -> JsonObject:
@@ -219,7 +273,6 @@ def _run(
     *,
     cwd: Path,
 ) -> subprocess.CompletedProcess[bytes]:
-    # jig-ignore-next-line: reviewed local subprocess boundary uses argv only
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         command,
         cwd=cwd,
@@ -253,8 +306,8 @@ def _build(work: Path) -> Path:
     header = work / "halloc_compat.h"
     shim = work / "halloc_compat.c"
     executable = work / "malbolge-sanitized.exe"
-    header.write_text(HALLOC_HEADER, encoding="ascii", newline="\n")
-    shim.write_text(HALLOC_SOURCE, encoding="ascii", newline="\n")
+    _ = header.write_text(HALLOC_HEADER, encoding="ascii", newline="\n")
+    _ = shim.write_text(HALLOC_SOURCE, encoding="ascii", newline="\n")
     command = (
         str(CLANG),
         "-D_CRT_SECURE_NO_WARNINGS=1",
@@ -286,12 +339,12 @@ def _build(work: Path) -> Path:
 def _findings(stderr: bytes) -> list[str]:
     text = stderr.decode("utf-8", errors="replace")
     findings = [
-        f"address-sanitizer:{match}"
-        for match in ASAN_ERROR.findall(text)
+        f"address-sanitizer:{match.group(1)}"
+        for match in ASAN_ERROR.finditer(text)
     ]
     findings.extend(
-        f"undefined-behavior-sanitizer:{match.strip()}"
-        for match in UBSAN_ERROR.findall(text)
+        f"undefined-behavior-sanitizer:{match.group(1).strip()}"
+        for match in UBSAN_ERROR.finditer(text)
     )
     return sorted(set(findings))
 
@@ -302,7 +355,7 @@ def _execute_case(
     case: SanitizerCase,
 ) -> JsonObject:
     source = work / f"{case.identifier}.malbolge"
-    source.write_bytes(case.source_bytes)
+    _ = source.write_bytes(case.source_bytes)
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = (
         "halt_on_error=1:abort_on_error=0:detect_leaks=0:symbolize=0"
@@ -322,17 +375,16 @@ def _execute_case(
     findings = _findings(completed.stderr)
     if findings:
         if completed.returncode == 0:
-            _fail(
-                f"case {case.identifier} reported a finding with status zero"
-            )
+            _fail(f"case {case.identifier} reported a finding with status zero")
         status = "sanitizer-failure"
     else:
         if completed.returncode != 0:
             stderr = completed.stderr.decode("utf-8", errors="replace")
-            _fail(
+            message = (
                 f"case {case.identifier} failed without sanitizer evidence: "
-                f"{stderr}"
+                + stderr
             )
+            _fail(message)
         status = "clean"
     return {
         "id": case.identifier,
@@ -362,8 +414,7 @@ def run_harness() -> JsonObject:
         work = Path(directory)
         executable = _build(work)
         results = [
-            _execute_case(executable, work, case)
-            for case in load_cases()
+            _execute_case(executable, work, case) for case in load_cases()
         ]
     return {
         "schema_version": SCHEMA_VERSION,
@@ -390,11 +441,18 @@ def _verified_harness() -> JsonObject:
     if actual != expected:
         actual_text = json.dumps(actual, indent=2, sort_keys=True)
         expected_text = json.dumps(expected, indent=2, sort_keys=True)
-        _fail(
+        message = (
             f"sanitizer evidence drift\nexpected:\n{expected_text}"
             f"\nactual:\n{actual_text}"
         )
+        _fail(message)
     return actual
+
+
+def _parse_arguments() -> _Arguments:
+    arguments = _Arguments()
+    _ = _parser().parse_args(namespace=arguments)
+    return arguments
 
 
 def main() -> int:
@@ -404,7 +462,7 @@ def main() -> int:
         Zero when evidence matches, otherwise one.
 
     """
-    arguments = _parser().parse_args()
+    arguments = _parse_arguments()
     try:
         actual = _verified_harness()
     except (

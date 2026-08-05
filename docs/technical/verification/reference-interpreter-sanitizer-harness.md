@@ -71,10 +71,10 @@ selecting an implicit repository policy.
 - `tests/test_historical_interpreter_sanitizer.py` verifies schema, identity,
   clean behavior, and both H-003 failures.
 
-## Reproduction
+### Reproduction
 
 ```powershell
-.dependencies\python.14.6\Scripts\python-jig.cmd -m `
+.dependencies\\python\\3.14.6\\Scripts\\python-jig.cmd -m `
   scripts.validate.historical_interpreter_sanitizer
 ```
 
