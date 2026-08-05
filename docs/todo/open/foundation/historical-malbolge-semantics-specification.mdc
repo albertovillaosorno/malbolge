@@ -9,7 +9,7 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
 scope:
-  - "tools/malbolge/"
+  - "src/interoperability/historical-malbolge/"
   - "docs/technical/specification/"
   - "math/specification/"
 validation:
@@ -37,7 +37,8 @@ and termination behavior.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/malbolge/`,
-  `docs/technical/specification/`, `math/`.
+- Expected durable artifact surface:
+  `src/interoperability/historical-malbolge/`,
+  `docs/technical/specification/`, and `math/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

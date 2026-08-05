@@ -165,8 +165,9 @@ adoption remains open. Evolution is versioned rather than branded "extended".
 
 ### TODO - Historical interpreter legal boundary
 
-Keep Ben Olmstead's original interpreter under `tools/malbolge/`, retain its
-original notice, document its public-domain status, and state that the
+Keep Ben Olmstead's original interpreter under
+`src/interoperability/historical-malbolge/`, retain its original notice,
+document its public-domain status, and state that the
 repository MIT license does not relicense that specific file.
 
 ### TODO - Historical Malbolge semantics specification

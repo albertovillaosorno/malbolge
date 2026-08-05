@@ -15,7 +15,7 @@ or undefined C behavior without editing Ben's source.
 
 This document governs the following declared TODO scope:
 
-- `tools/malbolge/`
+- `src/interoperability/historical-malbolge/`
 - `tests/compatibility/`
 - `benchmarks/interpreter/`
 
@@ -47,7 +47,8 @@ selecting an implicit repository policy.
 
 ## Verification
 
-- Expected durable artifact surface: `tools/malbolge/`, `tests/compatibility/`,
+- Expected durable artifact surface:
+  `src/interoperability/historical-malbolge/`, `tests/compatibility/`, and
   `benchmarks/interpreter/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.

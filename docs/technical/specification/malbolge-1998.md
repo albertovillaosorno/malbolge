@@ -14,7 +14,7 @@ Active interpreter-authority contract
 
 This document governs the following declared TODO scope:
 
-- `tools/malbolge/`
+- `src/interoperability/historical-malbolge/`
 - `docs/technical/specification/`
 - `math/specification/`
 
@@ -218,8 +218,9 @@ It does not override interpreter authority for `malbolge-1998`.
 
 ## Verification
 
-- Expected durable artifact surface: `tools/malbolge/`,
-  `docs/technical/specification/`, `math/`.
+- Expected durable artifact surface:
+  `src/interoperability/historical-malbolge/`,
+  `docs/technical/specification/`, and `math/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
 ## References

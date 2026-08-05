@@ -19,7 +19,7 @@ The resolution rule is:
 
 ## Scope
 
-- `tools/malbolge/`
+- `src/interoperability/historical-malbolge/`
 - `docs/technical/specification/`
 - `tests/compatibility/`
 

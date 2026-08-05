@@ -14,7 +14,7 @@ adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "tools/malbolge/"
+  - "src/interoperability/historical-malbolge/"
   - "tests/compatibility/"
   - "benchmarks/interpreter/"
 validation:
@@ -43,7 +43,8 @@ or undefined C behavior without editing Ben's source.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/malbolge/`, `tests/compatibility/`,
+- Expected durable artifact surface:
+  `src/interoperability/historical-malbolge/`, `tests/compatibility/`, and
   `benchmarks/interpreter/`.
 - Required evidence: reviewed authority text plus deterministic
   parser/schema/governance tests for the declared boundary.
