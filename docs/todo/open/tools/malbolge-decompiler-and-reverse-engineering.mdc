@@ -47,8 +47,9 @@ Keep museum conversion as a separate local convenience over the general tool.
   modulo-94
   residue with the decoded instruction.
 - The general CLI selects profile, output representation, and output path
-  explicitly, rejects duplicate semantic options, and keeps future readable
-  forms from redefining decompilation as C-only.
+  explicitly, rejects duplicate semantic options, accepts help only as a sole
+  argument, and keeps future readable forms from redefining decompilation as
+  C-only.
 - `museum_convert` performs no acquisition or redistribution: it consumes only a
   local caller-supplied historical file, selects `malbolge-1998`, and writes a
   rebuildable local view.

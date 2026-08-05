@@ -79,6 +79,38 @@ fn cli_rejects_duplicate_semantic_options() -> Result<(), String> {
 }
 
 #[test]
+fn cli_help_is_exclusive() -> Result<(), String> {
+    let help = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+        .arg("--help")
+        .output()
+        .map_err(|error| format!("run decompiler help: {error}"))?;
+    if !help.status.success()
+        || !String::from_utf8_lossy(&help.stdout).contains("usage:")
+    {
+        return Err(String::from("standalone help did not succeed"));
+    }
+    for arguments in [
+        ["--help", "--unknown"],
+        ["--profile", "--help"],
+        ["-h", "input.malbolge"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+            .args(arguments)
+            .output()
+            .map_err(|error| format!("run combined help: {error}"))?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success()
+            || !stderr.contains("--help cannot be combined")
+        {
+            return Err(format!(
+                "combined help did not fail closed: {arguments:?}: {stderr}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn c_render_is_deterministic_and_profile_bound() -> Result<(), String> {
     let first = decompiler::render_c(current_profile(), OUTPUT_SOURCE)
         .map_err(|error| error.to_string())?;

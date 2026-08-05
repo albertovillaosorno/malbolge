@@ -43,7 +43,8 @@ The general Cargo entrypoint delegates policy to
 `src/tooling/decompiler/application/cli.rs` and
 requires both profile and output representation explicitly. Repeating
 `--profile`, `--representation`, or `--output`/`-o` is rejected instead of
-silently replacing an earlier semantic choice:
+silently replacing an earlier semantic choice. Help is accepted only as the
+sole argument, so it cannot hide malformed or contradictory input:
 
 ```text
 cargo run --bin malbolge_decompile -- \

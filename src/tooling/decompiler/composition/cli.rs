@@ -93,7 +93,7 @@ pub fn run() -> IoResult<()> {
 }
 
 fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
-    if requests_help(raw) {
+    if requests_help(raw)? {
         return Ok(None);
     }
     let mut input = None;
@@ -153,9 +153,16 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
     }))
 }
 
-fn requests_help(raw: &[OsString]) -> bool {
-    raw.iter()
-        .any(|argument| argument == "--help" || argument == "-h")
+fn requests_help(raw: &[OsString]) -> IoResult<bool> {
+    let requested = raw
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h");
+    if requested && raw.len() != 1 {
+        return Err(IoError::other(
+            "--help cannot be combined with other arguments",
+        ));
+    }
+    Ok(requested)
 }
 
 fn set_once<T>(
