@@ -16,8 +16,8 @@ This contract governs:
 
 - `accelerator/cuda/`
 - `scripts/bootstrap/`
-- `.jig/version/.jig/version/rust-toolchain.toml`
-- `.jig/lang/python/.jig/lang/python/pyrightconfig.json`
+- `.jig/version/rust-toolchain.toml`
+- `.jig/lang/python/pyrightconfig.json`
 - CUDA and bootstrap tests under `tests/`
 
 It does not change guest semantics, candidate acceptance, or the independent CPU

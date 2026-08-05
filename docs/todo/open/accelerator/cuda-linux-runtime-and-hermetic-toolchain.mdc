@@ -16,8 +16,8 @@ adr_paths:
 scope:
   - "accelerator/cuda/"
   - "scripts/bootstrap/"
-  - ".jig/version/.jig/version/rust-toolchain.toml"
-  - ".jig/lang/python/.jig/lang/python/pyrightconfig.json"
+  - ".jig/version/rust-toolchain.toml"
+  - ".jig/lang/python/pyrightconfig.json"
   - "tests/"
 validation:
   - "jig validate --root ."
