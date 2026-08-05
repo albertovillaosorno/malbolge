@@ -40,6 +40,13 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = (
     ROOT / "tests" / "compatibility" / "capsule" / "current-profile-capsule.hex"
 )
+VERSIONED_FIXTURE = (
+    ROOT
+    / "tests"
+    / "compatibility"
+    / "capsule"
+    / "malbolge-2026.3-capsule.hex"
+)
 HISTORICAL_C = (
     ROOT / "src/interoperability/historical-malbolge/adapter-outbound/main.c"
 )
@@ -60,9 +67,14 @@ FRAME_MAGIC = b"MALBCAP1"
 FRAME_VERSION = 1
 FRAME_FLAGS = 0
 CURRENT_PROFILE = b"malbolge-2026"
+VERSIONED_PROFILE = b"malbolge-2026.3"
 CURRENT_FINGERPRINT = (
     b"malbolge-profile-v1:sha256:"
     b"1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76"
+)
+VERSIONED_FINGERPRINT = (
+    b"malbolge-profile-v1:sha256:"
+    b"14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230"
 )
 PAYLOAD = b"ubO\n"
 FNV1A64_OFFSET = 0xCBF2_9CE4_8422_2325
@@ -85,8 +97,8 @@ CRAZY_TABLE = (
 )
 
 
-def _fixture_bytes() -> bytes:
-    return bytes.fromhex(FIXTURE.read_text(encoding="ascii"))
+def _fixture_bytes(path: Path = FIXTURE) -> bytes:
+    return bytes.fromhex(path.read_text(encoding="ascii"))
 
 
 def _crazy(left: int, right: int) -> int:
@@ -196,13 +208,31 @@ def test_capsule_frame_decodes_exact_identity_payload_and_checksum() -> None:
     assert stored == _fnv1a64(frame[:checksum_start])
 
 
+def test_versioned_capsule_retains_published_identity() -> None:
+    """The former current capsule remains exact versioned compatibility."""
+    frame = _decode_sideband(_fixture_bytes(VERSIONED_FIXTURE))
+    profile_len = int.from_bytes(frame[10:12], "big")
+    fingerprint_len = int.from_bytes(frame[12:14], "big")
+    payload_len = int.from_bytes(frame[14:18], "big")
+    profile_start = 18
+    fingerprint_start = profile_start + profile_len
+    payload_start = fingerprint_start + fingerprint_len
+    checksum_start = payload_start + payload_len
+    assert frame[profile_start:fingerprint_start] == VERSIONED_PROFILE
+    assert frame[fingerprint_start:payload_start] == VERSIONED_FINGERPRINT
+    assert frame[payload_start:checksum_start] == PAYLOAD
+    stored = int.from_bytes(frame[checksum_start:], "big")
+    assert stored == _fnv1a64(frame[:checksum_start])
+
+
 def test_historical_loader_sees_only_fixed_fallback() -> None:
     """Space/tab sideband bytes disappear under the historical loader rule."""
-    source = _fixture_bytes()
-    visible = bytes(
-        byte for byte in source if byte not in {SPACE_BYTE, TAB_BYTE}
-    )
-    assert visible == FALLBACK
+    for path in (FIXTURE, VERSIONED_FIXTURE):
+        source = _fixture_bytes(path)
+        visible = bytes(
+            byte for byte in source if byte not in {SPACE_BYTE, TAB_BYTE}
+        )
+        assert visible == FALLBACK
     historical_source = HISTORICAL_C.read_text(encoding="ascii")
     assert HISTORICAL_OPEN_FRAGMENT in historical_source
     assert HISTORICAL_SPACE_FRAGMENT in historical_source

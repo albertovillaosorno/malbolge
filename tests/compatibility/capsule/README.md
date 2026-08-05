@@ -1,8 +1,10 @@
 # Historical-Fallback Capsule Fixture
 
-`current-profile-capsule.hex` is the canonical version-one compatibility byte
-vector. It is lowercase hexadecimal wrapped for text hygiene; decoding it yields
-the exact `.malbolge` bytes emitted by the Rust `build_capsule()` API.
+`current-profile-capsule.hex` is the canonical annual-current version-one
+compatibility byte vector. `malbolge-2026.3-capsule.hex` preserves the exact
+previously published current capsule as immutable versioned evidence. Both are
+lowercase hexadecimal wrapped for text hygiene; decoding the current vector
+yields the exact `.malbolge` bytes emitted by the Rust `build_capsule()` API.
 
 Its historical visible source is exactly:
 
@@ -22,6 +24,7 @@ fixture binds to canonical profile `malbolge-2026`, carries its exact
 (`ubO` plus LF). The payload decodes to `/`, `<`, and `v` under the current
 profile.
 
-The decoded frame checksum is FNV-1a-64 `844425f59cae4308`. This checksum is a
-transport-corruption detector only; profile identity is bound separately by the
-SHA-256 profile fingerprint.
+The decoded annual-current frame checksum is FNV-1a-64
+`aa0e195952c9af9d`. The preserved `malbolge-2026.3` frame retains checksum
+`844425f59cae4308`. These checksums are transport-corruption detectors only;
+profile identity is bound separately by each SHA-256 profile fingerprint.

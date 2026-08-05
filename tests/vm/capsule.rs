@@ -52,6 +52,9 @@ const BITS_PER_BYTE: usize = 8;
 const CHECKSUM_BYTES: usize = 8;
 const CURRENT_CAPSULE_HEX: &str =
     include_str!("../compatibility/capsule/current-profile-capsule.hex");
+const VERSIONED_2026_3_CAPSULE_HEX: &str = include_str!(
+    "../compatibility/capsule/malbolge-2026.3-capsule.hex"
+);
 const FALLBACK: &[u8] = b"(C<;_\"K";
 const FNV1A64_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -60,11 +63,24 @@ const PAYLOAD: &[u8] = b"ubO\n";
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
 const UNKNOWN_PROFILE: &[u8] = b"malbolge-2027";
+const VERSIONED_2026_3_FINGERPRINT: &str = concat!(
+    "malbolge-profile-v1:sha256:",
+    "14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230",
+);
+const VERSIONED_2026_3_PROFILE: &str = "malbolge-2026.3";
 
 type IdentityRanges = (Range<usize>, Range<usize>);
 
 fn capsule_fixture() -> TestResult<Vec<u8>> {
-    let digits: Vec<u8> = CURRENT_CAPSULE_HEX
+    capsule_fixture_from_hex(CURRENT_CAPSULE_HEX)
+}
+
+fn versioned_2026_3_capsule_fixture() -> TestResult<Vec<u8>> {
+    capsule_fixture_from_hex(VERSIONED_2026_3_CAPSULE_HEX)
+}
+
+fn capsule_fixture_from_hex(source: &str) -> TestResult<Vec<u8>> {
+    let digits: Vec<u8> = source
         .bytes()
         .filter(|byte| !byte.is_ascii_whitespace())
         .collect();
@@ -232,6 +248,45 @@ fn current_capsule_executes_on_profiled_runtime() -> TestResult {
         "profiled capsule halt",
     )?;
     check_equal(machine.output(), b"A".as_slice(), "profiled capsule output")
+}
+
+#[test]
+fn versioned_2026_3_capsule_remains_executable() -> TestResult {
+    let fixture = versioned_2026_3_capsule_fixture()?;
+    let parsed = normalize_result(parse_capsule(&fixture))?.ok_or_else(|| {
+        String::from("versioned 2026.3 fixture was not recognized")
+    })?;
+    check_equal(
+        &parsed.profile().id(),
+        &VERSIONED_2026_3_PROFILE,
+        "versioned capsule profile",
+    )?;
+    check_equal(
+        &parsed.profile().fingerprint(),
+        &VERSIONED_2026_3_FINGERPRINT,
+        "versioned capsule fingerprint",
+    )?;
+    check_equal(parsed.payload(), PAYLOAD, "versioned capsule payload")?;
+
+    let mut machine = normalize_result(ProfileMachine::from_source(
+        parsed.profile(),
+        parsed.payload(),
+        vec![0x41],
+    ))?;
+    let outcome = normalize_result(machine.run(8))?;
+    check_equal(
+        &outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "versioned capsule halt",
+    )?;
+    check_equal(
+        machine.output(),
+        b"A".as_slice(),
+        "versioned capsule output",
+    )
 }
 
 #[test]

@@ -21,12 +21,15 @@ This contract currently governs:
 - `tests/vm/capsule.rs`
 - `tests/compatibility/test_capsule.py`
 - `tests/compatibility/capsule/current-profile-capsule.hex`
+- `tests/compatibility/capsule/malbolge-2026.3-capsule.hex`
 - `tests/compatibility/capsule/README.md`
 
-The raw capsule contains intentional tabs and trailing whitespace, so the
-versioned fixture is stored as a text-hygienic hexadecimal byte vector. Tests
-decode that vector and require `build_capsule()` to reproduce it exactly. This
-changes fixture storage only, never the `.malbolge` wire format.
+Raw capsules contain intentional tabs and trailing whitespace, so the annual
+and versioned fixtures are stored as text-hygienic hexadecimal byte vectors.
+Tests decode both vectors and require `build_capsule()` to reproduce the
+selected annual-current vector exactly. This changes fixture storage only, never
+the
+`.malbolge` wire format.
 
 The canonical profile authority remains repository-root `malbolge.json` and
 profile fingerprints remain governed by
@@ -127,8 +130,10 @@ recognized, it validates framing, lengths, checksum, canonical profile lookup,
 and exact profile fingerprint before returning payload bytes and the selected
 canonical descriptor.
 
-The checked-in fixture selects `malbolge-2026` and carries `ubO` plus LF as
-its small payload. At loaded positions 0, 1, and 2, those bytes decode to
+The annual-current fixture selects `malbolge-2026` and carries `ubO` plus LF
+as its small payload. The preserved `malbolge-2026.3` fixture carries the same
+payload under its immutable published ID and fingerprint. At loaded positions
+0, 1, and 2, those bytes decode to
 `/`, `<`, and `v`, matching the current profile's interpreter-compatible I/O
 assignment. Parsing succeeds. Passing that extracted payload/profile into the
 classic `ExecutionMachine::from_source_for_profile()` still fails
@@ -187,13 +192,14 @@ through the modern capsule path.
 
 ## Verification
 
-- `tests/vm/capsule.rs` locks the Rust builder against the checked-in fixture,
-  validates recognition, checksum tampering, exact shared fingerprint mismatch,
-  and unknown-profile rejection without fallback; proves ordinary-source
-  non-recognition, verifies the historical visible bytes, runs the fixed
-  fallback under `ExecutionMode::Interpreter`, and proves current-profile
-  execution reaches capability preflight before payload loading.
-- `tests/compatibility/test_capsule.py` independently decodes the whitespace
+- `tests/vm/capsule.rs` locks the Rust builder against the annual-current
+  fixture, parses and executes the preserved `malbolge-2026.3` vector, validates
+  checksum tampering, exact shared fingerprint mismatch, and unknown-profile
+  rejection without fallback; proves ordinary-source non-recognition, verifies
+  the historical visible bytes, runs the fixed fallback under
+  `ExecutionMode::Interpreter`, and proves current-profile execution reaches
+  capability preflight before payload loading.
+- `tests/compatibility/test_capsule.py` independently decodes both whitespace
   frame, recomputes FNV-1a-64, checks the immutable historical C loader's
   `fopen(..., "r")` plus `isspace` behavior, and reconstructs the seven fixed
   historical transitions including every xlat2 safety boundary.
