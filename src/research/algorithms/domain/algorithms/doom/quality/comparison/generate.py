@@ -49,16 +49,34 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repo-loc
 import sys
 from typing import Never
 
+
+class _ComparisonError(RuntimeError):
+    """Deterministic comparison configuration or stability failure."""
+
+
+def _fail(message: str) -> Never:
+    raise _ComparisonError(message)
+
+
+def _repository_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "Cargo.toml").is_file() and (
+            candidate / "malbolge.json"
+        ).is_file():
+            return candidate
+    _fail(f"repository root not found from {start}")
+
+
 SCRIPT = Path(__file__).resolve()
 COMPARISON_ROOT = SCRIPT.parent
 QUALITY_ROOT = COMPARISON_ROOT.parent
-REPO_ROOT = QUALITY_ROOT.parents[2]
+REPO_ROOT = _repository_root(SCRIPT.parent)
 LLVM_BIN = REPO_ROOT / ".dependencies" / "llvm" / "22.1.8" / "bin"
 CLANG = LLVM_BIN / "clang.exe"
 CLANG_TIDY = LLVM_BIN / "clang-tidy.exe"
 CLANG_FORMAT = LLVM_BIN / "clang-format.exe"
-ROOT_TIDY = REPO_ROOT / ".jig/lang/cpp/.jig/lang/c/.clang-tidy"
-ROOT_FORMAT = REPO_ROOT / ".jig/lang/cpp/.jig/lang/c/.clang-format"
+ROOT_TIDY = REPO_ROOT / ".jig" / "lang" / "cpp" / ".clang-tidy"
+ROOT_FORMAT = REPO_ROOT / ".jig" / "lang" / "cpp" / ".clang-format"
 ALPINE_ROOT = REPO_ROOT / ".dependencies" / "sysroots" / "alpine" / "3.24.1"
 DEFAULT_BEFORE = REPO_ROOT / "doom"
 DEFAULT_AFTER = QUALITY_ROOT / "in" / "doom"
@@ -219,14 +237,6 @@ class _Arguments(argparse.Namespace):
         self.after = DEFAULT_AFTER
         self.tex = DEFAULT_TEX
         self.json = DEFAULT_JSON
-
-
-class _ComparisonError(RuntimeError):
-    """Deterministic comparison configuration or stability failure."""
-
-
-def _fail(message: str) -> Never:
-    raise _ComparisonError(message)
 
 
 def _run(
@@ -1034,7 +1044,11 @@ def _ensure_inputs(before: Path, after: Path) -> None:
         message = "clang-format policy is unusable with LLVM 22.1.8:\n"
         _fail(message + format_probe.stdout)
 
-    tidy_probe = _run([str(CLANG_TIDY), "--verify-config"])
+    tidy_probe = _run([
+        str(CLANG_TIDY),
+        "--verify-config",
+        f"--config-file={ROOT_TIDY}",
+    ])
     if tidy_probe.returncode != 0:
         message = "clang-tidy policy is unusable with LLVM 22.1.8:\n"
         _fail(message + tidy_probe.stdout)

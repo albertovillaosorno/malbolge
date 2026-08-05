@@ -44,7 +44,7 @@ does not yet claim complete C-to-Malbolge lowerability.
 - Guest-C validation is opt-in for explicitly selected translation units;
   arbitrary
   repository C is never enrolled by extension, inherited
-  `.jig/lang/cpp/.jig/lang/c/.clang-tidy`, or magic
+  `.jig/lang/cpp/.clang-tidy`, or magic
   source comments. An explicitly passed directory named `doom` is the sole
   recursive convenience and remains an explicit caller action.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics

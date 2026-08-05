@@ -4,7 +4,7 @@
       "combined_status": "not-clean",
       "combined_unique_findings": 36519,
       "general_profile": {
-        "profile": ".jig/lang/cpp/.jig/lang/c/.clang-tidy",
+        "profile": ".jig/lang/cpp/.clang-tidy",
         "raw_findings": 96625,
         "status": "not-clean",
         "unique_findings": 36519
@@ -165,7 +165,7 @@
   },
   "comparison_policy": {
     "combined_policy": "general host/native profile plus guest-C bootstrap plus strict six-target compiler matrix",
-    "general_profile": ".jig/lang/cpp/.jig/lang/c/.clang-tidy",
+    "general_profile": ".jig/lang/cpp/.clang-tidy",
     "guest_profile": "src/tooling/native-analysis/contract/malbolge-clang-tidy.yaml",
     "interpretation": [
       "Malbolge-specific checks are additive and never erase general findings.",

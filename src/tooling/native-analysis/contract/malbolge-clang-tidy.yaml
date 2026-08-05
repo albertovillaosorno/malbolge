@@ -1,7 +1,7 @@
 # Malbolge guest-C compatibility profile.
 #
 # jig-ignore-next-line: indivisible reviewed identifier
-# This file is intentionally NOT named .jig/lang/cpp/.jig/lang/c/.clang-tidy. It must never be inherited
+# This file is intentionally NOT named .jig/lang/cpp/.clang-tidy. It must never be inherited
 # by arbitrary host/native C in this repository. It is used only when a caller
 # jig-ignore-next-line: indivisible reviewed identifier
 # explicitly invokes src/automation/repository/composition/scripts/validate/main.py (or tools/tidy directly) for a C

@@ -528,7 +528,7 @@ The source-bound compatibility stage is complete only when the generated
 multi-translation-unit tree is stable, reproducible, and clean under the
 guest-C,
 strict compiler, behavior, provenance, and runtime acceptance gates. The general
-host/native `.jig/lang/cpp/.jig/lang/c/.clang-tidy` profile remains additive
+host/native `.jig/lang/cpp/.clang-tidy` profile remains additive
 modernization evidence and is
 not currently clean.
 
