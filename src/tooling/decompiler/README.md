@@ -19,3 +19,4 @@ It must not bypass another function or architectural kind boundary.
 - `application/`: governed `application` parts.
 - `composition/`: governed `composition` parts.
 - `contract/`: governed `contract` parts.
+- `domain/`: typed initial-state reverse-engineering analysis.

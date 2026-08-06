@@ -57,6 +57,11 @@ parts:
     path: contract/reference.md
     kind: contract
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0005
+    path: domain/analysis.rs
+    kind: domain
+    language: rust
+    responsibility: Model initial reverse-engineering state and effects.
 projects: []
 tests: []
 graph:

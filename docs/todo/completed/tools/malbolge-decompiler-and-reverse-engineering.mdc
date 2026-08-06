@@ -1,6 +1,6 @@
 ---
 id: "malbolge-decompiler-and-reverse-engineering"
-status: "active"
+status: "completed"
 lane: "6"
 area: "tools"
 task: "TODO - Malbolge decompiler and reverse engineering"
@@ -13,6 +13,7 @@ adr_paths:
   - "docs/technical/adr/specification-authority-and-malbolge-evolution.md"
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
+  - "src/tooling/decompiler/domain/analysis.rs"
   - "src/tooling/decompiler/application/render.rs"
   - "src/tooling/decompiler/composition/cli.rs"
   - "src/tooling/decompiler/composition/malbolge_decompile.rs"
@@ -68,11 +69,16 @@ Keep historical conversion as an explicit profile choice in the general tool.
 - Implemented surface: `src/tooling/decompiler/application/render.rs`,
   `src/tooling/decompiler/composition/cli.rs`, the single Cargo root, and
   `tests/decompiler.rs`.
-- Current Rust evidence: ten strict tests plus Clippy with warnings denied.
+- Current Rust evidence: twelve strict tests plus Clippy with warnings denied.
 - Development toolchain evidence: pinned Clang 22.1.8 emitted warning-clean
   x86-64 and AArch64 COFF objects from generated `ubO` C; the x86-64 DLL
   executed
   input `0x41` to output `A`, halt, `A=65`, `C=2`, `D=2`, one consumed byte, and
   three semantic steps.
+- Typed analysis evidence classifies initial accumulator/data effects,
+  sequential/indirect/halt control flow, and self-encryption while preserving
+  unresolved-target and mutation limitations.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`.
+- **Completion:** Completed on 2026-08-06 after the profile-explicit C and
+  analysis representations, 12 strict product tests, and strict Clippy passed.

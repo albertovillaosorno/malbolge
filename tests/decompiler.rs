@@ -34,6 +34,8 @@
 
 //! Product Malbolge decompiler conformance.
 
+#[path = "../src/tooling/decompiler/domain/analysis.rs"]
+pub mod analysis;
 #[path = "../src/tooling/decompiler/application/render.rs"]
 pub mod decompiler;
 
@@ -44,6 +46,7 @@ use malbolge::{
     historical_profile,
 };
 
+const ANALYSIS_SOURCE: &[u8] = b"b&&;@L";
 const OUTPUT_SOURCE: &[u8] = b"ubO";
 
 type DuplicateCliCase = (&'static [&'static str], &'static str);
@@ -256,6 +259,68 @@ fn synthetic_roundtrip_fixture_matches_normative_vm() -> Result<(), String> {
         || machine.input_consumed() != 1
     {
         return Err(String::from("synthetic roundtrip VM baseline changed"));
+    }
+    Ok(())
+}
+
+#[test]
+fn analysis_report_classifies_initial_state_without_guessing()
+-> Result<(), String> {
+    let rendered =
+        decompiler::render_analysis(historical_profile(), ANALYSIS_SOURCE)
+            .map_err(|error| error.to_string())?;
+    for expected in [
+        "profile_id=malbolge-1998",
+        "indirect-targets=unresolved",
+        concat!(
+            "cell position=0 raw=98 decoded=i ",
+            "control=indirect-code-pointer-from-data data=read-data-cell ",
+            "accumulator=none post_step_encryption=yes"
+        ),
+        concat!(
+            "cell position=1 raw=38 decoded=* control=sequential ",
+            "data=read-write-data-cell accumulator=write ",
+            "post_step_encryption=yes"
+        ),
+        concat!(
+            "cell position=5 raw=76 decoded=v control=halt data=none ",
+            "accumulator=none post_step_encryption=no"
+        ),
+    ] {
+        if !rendered.contains(expected) {
+            return Err(format!("analysis report missing: {expected}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn cli_emits_analysis_representation() -> Result<(), String> {
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/compatibility/specification/interpreter-io-roundtrip.malbolge"
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+        .args([
+            "--profile",
+            "malbolge-1998",
+            "--representation",
+            "analysis",
+            source,
+        ])
+        .output()
+        .map_err(|error| format!("run analysis CLI: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success()
+        || !stdout.contains("Malbolge initial-state analysis")
+        || !stdout.contains("profile_id=malbolge-1998")
+        || !stdout.contains("decoded=/")
+        || !stdout.contains("decoded=<")
+        || !stdout.contains("decoded=v")
+    {
+        return Err(format!(
+            "analysis CLI did not emit expected report: {stdout}"
+        ));
     }
     Ok(())
 }

@@ -44,12 +44,14 @@ use malbolge::target_profile;
 use super::decompiler;
 
 const USAGE: &str = concat!(
-    "usage: malbolge_decompile --profile ID --representation c INPUT ",
+    "usage: malbolge_decompile --profile ID --representation analysis|c ",
+    "INPUT ",
     "[--output FILE]"
 );
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OutputRepresentation {
+    Analysis,
     CSource,
 }
 
@@ -81,6 +83,9 @@ pub fn run() -> IoResult<()> {
     })?;
     let source = read(&arguments.input)?;
     let rendered = match arguments.representation {
+        OutputRepresentation::Analysis => {
+            decompiler::render_analysis(profile, &source)
+        },
         OutputRepresentation::CSource => decompiler::render_c(profile, &source),
     }
     .map_err(|error| IoError::other(error.to_string()))?;
@@ -182,6 +187,7 @@ fn next_utf8<'input>(
 
 fn parse_representation(value: &str) -> IoResult<OutputRepresentation> {
     match value {
+        "analysis" => Ok(OutputRepresentation::Analysis),
         "c" => Ok(OutputRepresentation::CSource),
         _ => Err(IoError::other(format!(
             "unknown output representation: {value}"

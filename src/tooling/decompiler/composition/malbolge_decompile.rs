@@ -32,6 +32,8 @@
 
 //! General explicit-profile Malbolge decompiler executable.
 
+#[path = "../domain/analysis.rs"]
+pub mod analysis;
 #[path = "../application/render.rs"]
 pub mod decompiler;
 #[path = "cli.rs"]

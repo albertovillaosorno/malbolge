@@ -3,11 +3,20 @@
 ## Purpose
 
 `tools/decompile/` owns reverse engineering from an explicitly selected Malbolge
-profile into readable representations. The first production backend emits C23.
+profile into readable representations. Production representations include a
+typed initial-state analysis report and executable C23.
 
 The tool is a decompiler/transcompiler, not a source-recovery oracle. Arbitrary
 self-modifying Malbolge does not retain enough information to reconstruct the
 original C program that may have produced it.
+
+## Initial analysis
+
+`--representation analysis` reports the selected profile identity and one typed
+annotation per initially loaded source cell: decoded opcode, accumulator/data
+effects, control-flow class, and post-step self-encryption. Indirect targets are
+unresolved by design, and the report states that later self-modification
+invalidates static decode assumptions.
 
 ## C backend
 
@@ -38,9 +47,8 @@ cargo run --bin malbolge_decompile -- \
 
 Omitting `--output` writes the selected representation to stdout. Profile,
 representation, and output selection are exact, reject duplicate options, and
-have no fallback. `c` is the first
-implemented representation; the CLI is intentionally shaped for additional
-readable representations without redefining decompilation as C-only.
+have no fallback. `analysis` and `c` share the same admitted profile-bound
+initial model without redefining decompilation as source recovery.
 
 ## Historical conversion
 

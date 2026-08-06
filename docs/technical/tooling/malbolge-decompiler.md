@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -15,6 +15,7 @@ recovered from arbitrary Malbolge.
 
 ## Scope
 
+- `src/tooling/decompiler/domain/analysis.rs`
 - `src/tooling/decompiler/application/render.rs`
 - `src/tooling/decompiler/composition/cli.rs`
 - `src/tooling/decompiler/composition/malbolge_decompile.rs`
@@ -49,13 +50,25 @@ sole argument, so it cannot hide malformed or contradictory input:
 ```text
 cargo run --bin malbolge_decompile -- \
   --profile malbolge-1998 \
+  --representation analysis input.malbolge
+  --profile malbolge-1998 \
   --representation c input.malbolge \
   --output output.c
 ```
 
-`c` is the first representation, not the definition of decompilation. Future
-reverse-engineering IR, control-flow/state annotations, mutation-history views,
-or other readable forms remain open.
+`analysis` emits a typed initial-state report before execution mutates code or
+pointers. It records raw/decoded cells, accumulator and data effects,
+sequential/indirect/halt control-flow classes, and post-step encryption.
+Indirect targets remain explicitly unresolved and the report states that
+self-modification invalidates a purely static decode.
+
+```text
+cargo run --bin malbolge_decompile -- \n  --profile malbolge-1998 \n  --representation analysis input.malbolge
+```
+
+Dynamic traces, mutation-history views, and deeper recovered structure are
+optional extensions with separate ownership; they do not reopen this accepted
+initial reverse-engineering boundary.
 
 Historical museum conversion uses the same general CLI with the explicit frozen
 `malbolge-1998` profile. No second executable root or implicit profile policy is
@@ -105,10 +118,10 @@ substitutes another source.
 
 ## Verification
 
-`tests/decompiler.rs` provides ten product tests covering deterministic
+`tests/decompiler.rs` provides twelve product tests covering deterministic
 rendering, profile geometry, source rejection, post-jump encryption ordering,
-output-capacity atomicity, normative
-initial translation, and the interpreter-compatible `ubO`
+output-capacity atomicity, normative initial translation, typed initial-state
+analysis, CLI analysis output, and the interpreter-compatible `ubO`
 input/output/halt baseline against `ProfileMachine`.
 
 Pinned LLVM 22.1.8 development evidence compiled generated historical `ubO` C
