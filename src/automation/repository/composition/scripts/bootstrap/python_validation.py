@@ -35,28 +35,66 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import io
+import json
 import os
 from pathlib import Path
+import platform
 import stat
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repository-local argv.
 import sys
+import tarfile
+from typing import BinaryIO
 from typing import Final
 from typing import Never
+from typing import cast
+import urllib.error
+import urllib.request
 import venv
+import zipfile
 
 from scripts.repository_root import repository_root
 
 ROOT: Final = repository_root(Path(__file__))
 PYTHON_VERSION: Final = (3, 14, 6)
-REQUIREMENTS: Final = (
-    ROOT
-    / "src/automation/repository/composition/scripts/bootstrap"
-    / "python-validation-requirements.txt"
+BOOTSTRAP_ROOT: Final = (
+    ROOT / "src/automation/repository/composition/scripts/bootstrap"
 )
+REQUIREMENTS: Final = BOOTSTRAP_ROOT / "python-validation-requirements.txt"
+UV_MANIFEST: Final = BOOTSTRAP_ROOT / "uv-toolchain.json"
 WINDOWS_OS_NAME: Final = "nt"
 WINDOWS: Final = os.name == WINDOWS_OS_NAME
+SYSTEM_NAMES: Final = {
+    "darwin": "macos",
+    "linux": "linux",
+    "windows": "windows",
+}
+MACHINE_NAMES: Final = {
+    "aarch64": "aarch64",
+    "amd64": "x86_64",
+    "arm64": "aarch64",
+    "x86_64": "x86_64",
+}
+SHA256_HEX_LENGTH: Final = 64
+LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
+UV_RELEASE_BASE: Final = (
+    "https://github.com/astral-sh/uv/releases/download/"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class UvArtifact:
+    """One pinned standalone uv release artifact."""
+
+    asset: str
+    base_url: str
+    member: str
+    platform_id: str
+    sha256: str
+    version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +112,226 @@ class ValidationEnvironmentLayout:
 
 class ProvisionError(RuntimeError):
     """Deterministic local Python provisioning failure."""
+
+
+def uv_platform_id(
+    *,
+    system: str | None = None,
+    machine: str | None = None,
+) -> str:
+    """Return the normalized platform key used by the uv manifest.
+
+    Returns:
+        Supported operating-system and architecture identity.
+
+    """
+    observed_system = (system or platform.system()).strip().lower()
+    observed_machine = (machine or platform.machine()).strip().lower()
+    operating_system = SYSTEM_NAMES.get(observed_system)
+    architecture = MACHINE_NAMES.get(observed_machine)
+    if operating_system is None or architecture is None:
+        _fail("".join((
+            "unsupported uv bootstrap platform: ",
+            f"{observed_system}-{observed_machine}",
+        )))
+    return f"{operating_system}-{architecture}"
+
+
+def _required_string(
+    document: dict[str, object],
+    key: str,
+    label: str,
+) -> str:
+    value = document.get(key)
+    if not isinstance(value, str) or not value:
+        _fail(f"{label}.{key} must be a nonempty string")
+    return value
+
+
+def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
+    try:
+        parsed = cast(
+            "object",
+            json.loads(manifest_path.read_text(encoding="utf-8")),
+        )
+    except (json.JSONDecodeError, OSError) as error:
+        _fail(f"cannot read uv toolchain manifest: {error}")
+    if not isinstance(parsed, dict):
+        _fail("uv toolchain manifest must be an object")
+    return cast("dict[str, object]", parsed)
+
+
+def _uv_artifact_document(
+    document: dict[str, object],
+    platform_id: str,
+) -> dict[str, object]:
+    artifacts = document.get("artifacts")
+    if not isinstance(artifacts, dict):
+        _fail("uv manifest.artifacts must be an object")
+    artifact_value = cast("dict[str, object]", artifacts).get(platform_id)
+    if not isinstance(artifact_value, dict):
+        _fail(f"uv manifest has no artifact for {platform_id}")
+    return cast("dict[str, object]", artifact_value)
+
+
+def _validated_uv_sha256(
+    artifact: dict[str, object],
+    platform_id: str,
+) -> str:
+    value = artifact.get("sha256")
+    if not isinstance(value, list) or not value:
+        _fail(f"{platform_id}.sha256 must be a nonempty chunk list")
+    raw_chunks = cast("list[object]", value)
+    if not all(isinstance(chunk, str) and chunk for chunk in raw_chunks):
+        _fail(f"{platform_id}.sha256 chunks must be nonempty strings")
+    chunks = cast("list[str]", raw_chunks)
+    sha256 = "".join(chunks)
+    if len(sha256) != SHA256_HEX_LENGTH or any(
+        character not in LOWER_HEX_DIGITS for character in sha256
+    ):
+        _fail(f"{platform_id}.sha256 must be lowercase SHA-256")
+    return sha256
+
+
+def uv_artifact(
+    platform_id: str,
+    manifest_path: Path = UV_MANIFEST,
+) -> UvArtifact:
+    """Load one pinned uv artifact from the tracked manifest.
+
+    Returns:
+        Verified platform artifact identity and archive metadata.
+
+    """
+    document = _uv_manifest_document(manifest_path)
+    version = _required_string(document, "version", "uv manifest")
+    base_url = _required_string(document, "base_url", "uv manifest")
+    if not base_url.startswith(UV_RELEASE_BASE):
+        _fail("uv manifest.base_url must use the official HTTPS release root")
+    artifact = _uv_artifact_document(document, platform_id)
+    return UvArtifact(
+        asset=_required_string(artifact, "asset", platform_id),
+        base_url=base_url,
+        member=_required_string(artifact, "member", platform_id),
+        platform_id=platform_id,
+        sha256=_validated_uv_sha256(artifact, platform_id),
+        version=version,
+    )
+
+
+def uv_executable(
+    artifact: UvArtifact,
+    root: Path = ROOT,
+) -> Path:
+    """Resolve the repository-local executable path for one uv artifact.
+
+    Returns:
+        Exact repository-local standalone executable path.
+
+    """
+    suffix = ".exe" if artifact.platform_id.startswith("windows-") else ""
+    return (
+        root
+        / ".dependencies"
+        / "uv"
+        / artifact.version
+        / "bin"
+        / f"uv{suffix}"
+    )
+
+
+def verify_uv_archive(data: bytes, expected_sha256: str) -> None:
+    """Reject uv archive bytes that do not match the tracked SHA-256."""
+    observed = hashlib.sha256(data).hexdigest()
+    if observed != expected_sha256:
+        _fail("".join((
+            f"uv archive SHA-256 mismatch: expected {expected_sha256}; ",
+            f"got {observed}",
+        )))
+
+
+def _download_uv_archive(artifact: UvArtifact) -> bytes:
+    url = f"{artifact.base_url}{artifact.asset}"
+    # The manifest restricts this request to the official HTTPS release root.
+    request = urllib.request.Request(  # ruff: ignore[suspicious-url-open-usage]
+        url,
+        headers={"User-Agent": "malbolge-bootstrap/1"},
+    )
+    try:
+        response = cast(
+            "BinaryIO",
+            # The request URL was validated against the fixed release root.
+            urllib.request.urlopen(  # ruff: ignore[suspicious-url-open-usage]
+                request,
+                timeout=120,
+            ),
+        )
+        with response:
+            data = response.read()
+    except (OSError, urllib.error.URLError) as error:
+        _fail(f"cannot download pinned uv artifact: {error}")
+    verify_uv_archive(data, artifact.sha256)
+    return data
+
+
+def _zip_member_bytes(data: bytes, member: str) -> bytes:
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return archive.read(member)
+
+
+def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        member = archive.extractfile(member_name)
+        if member is None:
+            _fail(f"uv archive member is not a file: {member_name}")
+        return member.read()
+
+
+def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
+    try:
+        if artifact.asset.endswith(".zip"):
+            return _zip_member_bytes(data, artifact.member)
+        return _tar_member_bytes(data, artifact.member)
+    except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as error:
+        _fail(f"cannot extract pinned uv artifact: {error}")
+
+
+def _uv_version_matches(output: str, version: str) -> bool:
+    expected = f"uv {version}"
+    return output == expected or output.startswith(f"{expected} ")
+
+
+def ensure_uv(
+    root: Path = ROOT,
+    *,
+    platform_id: str | None = None,
+) -> Path:
+    """Provision and verify the pinned standalone uv executable.
+
+    Returns:
+        Verified repository-local uv executable.
+
+    """
+    selected = platform_id or uv_platform_id()
+    artifact = uv_artifact(selected)
+    executable = uv_executable(artifact, root)
+    if executable.is_file():
+        output = _run([str(executable), "--version"])
+        if _uv_version_matches(output, artifact.version):
+            return executable
+        _fail(f"unexpected uv version at {executable}: {output!r}")
+    data = _download_uv_archive(artifact)
+    binary = _uv_member_bytes(data, artifact)
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    temporary = executable.with_name(f"{executable.name}.tmp")
+    _ = temporary.write_bytes(binary)
+    if not selected.startswith("windows-"):
+        _make_executable(temporary)
+    _ = temporary.replace(executable)
+    output = _run([str(executable), "--version"])
+    if not _uv_version_matches(output, artifact.version):
+        _fail(f"unexpected provisioned uv version: {output!r}")
+    return executable
 
 
 def validation_layout(
@@ -211,18 +469,28 @@ def write_launchers(
 
 
 def _provision(layout: ValidationEnvironmentLayout) -> None:
+    uv = ensure_uv()
     if not layout.python.is_file():
-        builder = venv.EnvBuilder(with_pip=True, clear=False)
+        builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
     _ = _run([
-        str(layout.python),
-        "-m",
+        str(uv),
         "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--no-input",
-        "--requirement",
+        "sync",
+        "--no-config",
+        "--no-progress",
+        "--python",
+        str(layout.python),
         str(REQUIREMENTS),
+    ])
+    _ = _run([
+        str(uv),
+        "pip",
+        "uninstall",
+        "--no-config",
+        "--python",
+        str(layout.python),
+        "pip",
     ])
     write_launchers(layout, windows=WINDOWS)
 

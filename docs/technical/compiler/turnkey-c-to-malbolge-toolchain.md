@@ -59,4 +59,4 @@ artifacts.
 - `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
 - `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
 - `docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md`
-- `docs/todo/open/compiler/turnkey-c-to-malbolge-toolchain.mdc`
+- `docs/todo/open/self_hosting/turnkey-c-to-malbolge-toolchain.mdc`

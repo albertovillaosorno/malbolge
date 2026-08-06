@@ -142,6 +142,10 @@ parts:
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0022
+    path: composition/scripts/bootstrap/uv-toolchain.json
+    kind: composition
+    responsibility: Pin standalone uv artifacts by platform and SHA-256.
 projects: []
 tests: []
 graph:

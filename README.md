@@ -18,9 +18,11 @@ to its complete typed record under `docs/todo/open/`.
 ## Initialize a checkout
 
 The repository bootstrap creates ignored local state, provisions the exact
-Python 3.14.6 validation environment, and reports the readiness of pinned Rust,
-Jig, and CUDA components. Run it from the repository root with an exact Python
-3.14.6 host interpreter:
+Python 3.14.6 validation environment with pinned standalone uv 0.11.16, and
+reports the readiness of pinned Rust, Jig, and CUDA components. The bootstrap
+creates the virtual environment without pip, verifies the uv archive SHA-256,
+and synchronizes the complete package set. Run it from the repository root with
+an exact Python 3.14.6 host interpreter:
 
 ```powershell
 py -3.14 -m scripts.bootstrap.project
@@ -32,7 +34,8 @@ python3.14 -m scripts.bootstrap.project
 
 Use `--skip-python` for diagnostics without installing Python packages, or
 `--require-cuda` when a missing or platform-mismatched CUDA bundle must fail the
-initialization. Optional native components are never downloaded implicitly.
+initialization. uv is the only downloaded bootstrap executable; optional Rust,
+LLVM, and CUDA components remain diagnostic and are never downloaded implicitly.
 The current tracked CUDA 13.3.1 manifest and runtime are Windows x86-64 only;
 Linux CUDA loading and per-platform hermetic toolchains remain an explicit TODO.
 

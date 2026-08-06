@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -63,6 +64,10 @@ CACHE_VARIABLE = "PYTHONPYCACHEPREFIX"
 POSIX_PYTHON_EXEC = 'exec "$SCRIPT_DIR/python" "$@"'
 POSIX_PYTEST_EXEC = 'exec "$SCRIPT_DIR/python" -m pytest "$@"'
 LINUX_AARCH64 = "linux-aarch64"
+UV_VERSION = "0.11.16"
+PIP_REQUIREMENT_PREFIX = "pip=="
+VALIDATION_REQUIREMENT_COUNT = 9
+WINDOWS_UV_ASSET = "uv-x86_64-pc-windows-msvc.zip"
 
 
 def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
@@ -89,6 +94,58 @@ def _write_rust_manifest(root: Path, channel: str = WINDOWS_CHANNEL) -> Path:
         newline="\n",
     )
     return manifest
+
+
+def test_uv_platform_identity_normalizes_supported_hosts() -> None:
+    """Uv bootstrap keys match the tracked host artifact identities."""
+    assert (
+        python_validation.uv_platform_id(
+            system="Windows",
+            machine="AMD64",
+        )
+        == WINDOWS_PLATFORM
+    )
+    assert (
+        python_validation.uv_platform_id(
+            system="Linux",
+            machine="arm64",
+        )
+        == LINUX_AARCH64
+    )
+
+
+def test_uv_manifest_pins_exact_windows_artifact(tmp_path: Path) -> None:
+    """Tracked uv metadata resolves one exact executable path."""
+    artifact = python_validation.uv_artifact(WINDOWS_PLATFORM)
+    executable = python_validation.uv_executable(artifact, tmp_path)
+
+    assert artifact.version == UV_VERSION
+    assert artifact.asset == WINDOWS_UV_ASSET
+    assert artifact.base_url.startswith("https://github.com/astral-sh/uv/")
+    assert len(artifact.sha256) == python_validation.SHA256_HEX_LENGTH
+    assert executable == (
+        tmp_path / ".dependencies/uv/0.11.16/bin/uv.exe"
+    )
+
+
+def test_uv_archive_hash_verification_fails_closed() -> None:
+    """Standalone uv bytes must match the tracked digest."""
+    payload = b"reviewed uv archive"
+    digest = hashlib.sha256(payload).hexdigest()
+    python_validation.verify_uv_archive(payload, digest)
+
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="SHA-256 mismatch",
+    ):
+        python_validation.verify_uv_archive(b"forged", digest)
+
+
+def test_validation_requirements_do_not_install_pip() -> None:
+    """The uv-synchronized environment has no pip package requirement."""
+    requirements = python_validation.REQUIREMENTS.read_text(encoding="utf-8")
+    assert PIP_REQUIREMENT_PREFIX not in requirements
+    assert len(requirements.splitlines()) == VALIDATION_REQUIREMENT_COUNT
 
 
 def test_validation_layout_uses_windows_native_names(tmp_path: Path) -> None:
