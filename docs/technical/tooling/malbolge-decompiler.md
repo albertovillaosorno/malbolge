@@ -50,10 +50,8 @@ sole argument, so it cannot hide malformed or contradictory input:
 ```text
 cargo run --bin malbolge_decompile -- \
   --profile malbolge-1998 \
-  --representation analysis input.malbolge
-  --profile malbolge-1998 \
-  --representation c input.malbolge \
-  --output output.c
+  --representation analysis \
+  input.malbolge
 ```
 
 `analysis` emits a typed initial-state report before execution mutates code or
@@ -61,10 +59,6 @@ pointers. It records raw/decoded cells, accumulator and data effects,
 sequential/indirect/halt control-flow classes, and post-step encryption.
 Indirect targets remain explicitly unresolved and the report states that
 self-modification invalidates a purely static decode.
-
-```text
-cargo run --bin malbolge_decompile -- \n  --profile malbolge-1998 \n  --representation analysis input.malbolge
-```
 
 Dynamic traces, mutation-history views, and deeper recovered structure are
 optional extensions with separate ownership; they do not reopen this accepted
