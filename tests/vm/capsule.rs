@@ -52,9 +52,8 @@ const BITS_PER_BYTE: usize = 8;
 const CHECKSUM_BYTES: usize = 8;
 const CURRENT_CAPSULE_HEX: &str =
     include_str!("../compatibility/capsule/current-profile-capsule.hex");
-const VERSIONED_2026_3_CAPSULE_HEX: &str = include_str!(
-    "../compatibility/capsule/malbolge-2026.3-capsule.hex"
-);
+const VERSIONED_2026_3_CAPSULE_HEX: &str =
+    include_str!("../compatibility/capsule/malbolge-2026.3-capsule.hex");
 const FALLBACK: &[u8] = b"(C<;_\"K";
 const FNV1A64_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV1A64_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -253,9 +252,10 @@ fn current_capsule_executes_on_profiled_runtime() -> TestResult {
 #[test]
 fn versioned_2026_3_capsule_remains_executable() -> TestResult {
     let fixture = versioned_2026_3_capsule_fixture()?;
-    let parsed = normalize_result(parse_capsule(&fixture))?.ok_or_else(|| {
-        String::from("versioned 2026.3 fixture was not recognized")
-    })?;
+    let parsed =
+        normalize_result(parse_capsule(&fixture))?.ok_or_else(|| {
+            String::from("versioned 2026.3 fixture was not recognized")
+        })?;
     check_equal(
         &parsed.profile().id(),
         &VERSIONED_2026_3_PROFILE,
