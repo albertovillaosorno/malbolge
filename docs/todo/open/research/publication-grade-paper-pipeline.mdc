@@ -1,11 +1,13 @@
 ---
 id: "publication-grade-paper-pipeline"
 status: "pending"
-lane: "5"
+lane: "18"
 area: "research"
 task: "TODO - Publication-grade paper pipeline"
 contract: "docs/research/methodology/publication-pipeline.md"
 depends_on:
+  - "human-scale-malbolge-search-study"
+  - "historical-capability-demonstration"
   - "repository-bibliography-taxonomy-and-citation-provenance"
   - "reproducible-experiment-identity-and-manifest"
   - "documentation-readiness-and-implementation-gate"
@@ -52,8 +54,9 @@ engineering work.
   `benchmarks/research/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-- Prerequisite completion evidence:
-  `repository-bibliography-taxonomy-and-citation-provenance`,
+- Prerequisite completion evidence: `human-scale-malbolge-search-study`,
+  `historical-capability-demonstration`,
+  `repository-bibliography-taxonomy-and-citation-provenance`, and
   `reproducible-experiment-identity-and-manifest`.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed

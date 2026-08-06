@@ -1,14 +1,13 @@
 ---
 id: "historical-capability-demonstration"
 status: "pending"
-lane: "16"
+lane: "17"
 area: "research"
 task: "TODO - Historical capability demonstration"
 contract: "docs/research/studies/historical-capability-demonstration.md"
 depends_on:
   - "self-hosting-equivalence-proof"
   - "real-program-benchmark-suite"
-  - "publication-grade-paper-pipeline"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
@@ -46,5 +45,5 @@ historical attribution and compatibility evidence explicit.
   `benchmarks/research/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-- Prerequisite completion evidence: `self-hosting-equivalence-proof`,
-  `real-program-benchmark-suite`, `publication-grade-paper-pipeline`.
+- Prerequisite completion evidence: `self-hosting-equivalence-proof` and
+  `real-program-benchmark-suite`.

@@ -27,7 +27,7 @@ For the first Rust VM slice, the primary authorities are:
 
 - `docs/technical/specification/malbolge-1998.md`
 - `docs/technical/runtime/vm/safe-rust-malbolge-vm.md`
-- `docs/todo/open/vm/safe-rust-malbolge-vm.mdc`
+- `docs/todo/completed/vm/safe-rust-malbolge-vm.mdc`
 - `docs/technical/adr/specification-authority-and-malbolge-evolution.md`
 - `docs/technical/adr/verification-trust-boundary.md`
 
@@ -97,8 +97,9 @@ independent deterministic verification decides whether that code is accepted.
 
 ## Current implementation handoff
 
-The repository contains the first real safe-Rust VM baseline. Its owning TODO
-remains open until the complete acceptance evidence is durable. The root
+The repository contains the accepted safe-Rust VM baseline. Its owning TODO
+is completed; future extensions remain owned by their separate typed work.
+The root
 `Cargo.toml` points the library directly at
 `src/runtime/virtual-machine/composition/lib.rs`.
 
@@ -130,9 +131,9 @@ Important settled VM edges include:
   explicitly before an invalid encryption-table lookup and without partially
   committing an otherwise invalid transition.
 
-Do not mark `Safe Rust Malbolge VM` complete merely because this first slice
-passes tests. Its typed TODO still owns tracing, full conformance evidence, and
-all remaining acceptance criteria.
+Do not reopen `Safe Rust Malbolge VM` for unrelated extensions. Tracing,
+profiles, native tiers, accelerators, and compiler work retain their own
+contracts and TODO identities.
 
 ## Planning decisions already settled
 

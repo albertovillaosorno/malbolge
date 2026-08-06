@@ -1,10 +1,10 @@
 # Malbolge TODO
 
-Only unfinished work appears here. P0 is the highest-priority horizon and P4
-is the latest. Within each P section, work is ordered heuristically by
-dependency readiness, active implementation, how many open tasks it unlocks,
-and responsibility. Those ranking details remain implicit rather than repeated
-in every entry.
+Only unfinished work appears here. P0 is the highest-priority horizon and P5
+is the final documentation and publication horizon. Within each P section,
+work is ordered heuristically by dependency readiness, active implementation,
+how many open tasks it unlocks, and responsibility. Those ranking details remain
+implicit rather than repeated in every entry.
 
 Full metadata, acceptance criteria, dependencies, evidence, and migrated
 planning notes remain in the typed records under `docs/todo/open/`. Completed
@@ -17,26 +17,6 @@ record. No per-item field labels belong in this index.
 ## P0 — Authority and governance
 
 ## P1 — Semantic and language foundations
-
-### TODO - LaTeX mathematical specification framework
-
-Create a `math/` surface of `.tex` specifications for ternary words, rotation,
-crazy operation, decoding, self-modification, memory models, compiler lowering,
-equivalence relations, and search cost functions.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/mathematics/latex-mathematical-specification-framework.mdc](docs/todo/open/mathematics/latex-mathematical-specification-framework.mdc)
-
-### TODO - Publication-grade paper pipeline
-
-Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
-of turning mature investigations into publication-quality papers with canonical
-bibliography, equations, figures, tables, experiment provenance, limitations,
-and regenerated results without making publication a prerequisite for ordinary
-engineering work.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)
 
 ### TODO - Superoptimization research program
 
@@ -54,15 +34,6 @@ force or stochastic optimization begins.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc](docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc)
-
-### TODO - Malbolge decompiler and reverse engineering
-
-Build a profile-explicit professional Malbolge reverse-engineering tool that can
-emit executable readable representations, including C, without claiming to
-recover unavailable original source from arbitrary self-modifying programs.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/tools/malbolge-decompiler-and-reverse-engineering.mdc](docs/todo/open/tools/malbolge-decompiler-and-reverse-engineering.mdc)
 
 ### TODO - Deterministic C-to-Malbolge ABI
 
@@ -82,16 +53,6 @@ executable cells, and input-dependent cycles or hangs.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc](docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc)
 
-### TODO - Human-scale Malbolge search study
-
-Create a bounded experiment illustrating why manual Malbolge synthesis is
-cognitively impractical even for very capable humans, separating attention and
-energy limits from machine-search throughput without bogus IQ or neuroscience
-claims.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/research/human-scale-malbolge-search-study.mdc](docs/todo/open/research/human-scale-malbolge-search-study.mdc)
-
 ### TODO - Required-profile diagnostics
 
 Emit deterministic diagnostics naming the required Malbolge profile/features,
@@ -99,14 +60,6 @@ required memory or address capacity, and missing runtime capability.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/compatibility/required-profile-diagnostics.mdc](docs/todo/open/compatibility/required-profile-diagnostics.mdc)
-
-### TODO - Machine-checked mathematical correspondence
-
-Connect mathematical specifications to executable tests or proof tooling so the
-`.tex` files are reviewable mathematics rather than decorative documentation.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/mathematics/machine-checked-mathematical-correspondence.mdc](docs/todo/open/mathematics/machine-checked-mathematical-correspondence.mdc)
 
 ### TODO - tools/tidy clang-tidy plugin
 
@@ -209,6 +162,16 @@ produce capacity curves and Pareto frontiers rather than one pass/fail score.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
+
+### TODO - Resumable compilation progress sidecars
+
+Persist an atomic JSON sidecar and compatible checkpoint for long-running
+source, block, optimization, verification, and GPU jobs so elapsed time,
+scientific provenance, current stage, and recoverable work survive process or
+host failure without publishing an incomplete final `.malbolge` artifact.
+
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+[docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc](docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc)
 
 ### TODO - Tiered native execution engine
 
@@ -566,6 +529,8 @@ supported AMD hardware and an explicit maintainer are available.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/accelerator/rocm-accelerator-adapter.mdc](docs/todo/open/accelerator/rocm-accelerator-adapter.mdc)
 
+## P5 — Documentation and publication
+
 ### TODO - Historical capability demonstration
 
 Produce a reproducible demonstration from the 1998 interpreter through modern
@@ -574,3 +539,24 @@ historical attribution and compatibility evidence explicit.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/research/historical-capability-demonstration.mdc](docs/todo/open/research/historical-capability-demonstration.mdc)
+
+### TODO - Human-scale Malbolge search study
+
+Create a bounded experiment illustrating why manual Malbolge synthesis is
+cognitively impractical even for very capable humans, separating attention and
+energy limits from machine-search throughput without bogus IQ or neuroscience
+claims.
+
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+[docs/todo/open/research/human-scale-malbolge-search-study.mdc](docs/todo/open/research/human-scale-malbolge-search-study.mdc)
+
+### TODO - Publication-grade paper pipeline
+
+Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
+of turning mature investigations into publication-quality papers with canonical
+bibliography, equations, figures, tables, experiment provenance, limitations,
+and regenerated results without making publication a prerequisite for ordinary
+engineering work.
+
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+[docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)

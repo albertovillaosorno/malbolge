@@ -23,7 +23,7 @@
 # - Summary:
 #   - Prevents the TODO index from duplicating or drifting from its authorities.
 # - Description:
-#   - Enforces P0-P4 grouping and compact title/summary/link blocks.
+#   - Enforces P0-P5 grouping and compact title/summary/link blocks.
 # - Usage:
 #   - Runs with the repository Python test suite.
 # - Defaults:
@@ -45,7 +45,7 @@ TODO_PATH = ROOT / "TODO.md"
 OPEN_ROOT = ROOT / "docs/todo/open"
 COMPLETED_ROOT = ROOT / "docs/todo/completed"
 ACTIVE_STATUS = "active"
-EXPECTED_TODO_COUNT = 63
+EXPECTED_TODO_COUNT = 61
 MAX_SUMMARY_SENTENCES = 4
 TODO_TARGET_PATTERN = r"docs/todo/open/.+?\.mdc"
 MIGRATED_ROOT_DETAIL = "**Migrated root planning detail.**"
@@ -60,24 +60,27 @@ P_GROUPS = (
     ("P2", "Compiler, runtime, and accelerator core", range(8, 11)),
     ("P3", "Optimization, proof, and reusable scale", range(11, 14)),
     ("P4", "Applications, evidence, and self-hosting", range(14, 17)),
+    ("P5", "Documentation and publication", range(17, 19)),
 )
 AREA_ORDER = {
     name: index
-    for index, name in enumerate((
-        "foundation",
-        "documentation",
-        "compatibility",
-        "vm",
-        "verification",
-        "mathematics",
-        "c",
-        "compiler",
-        "accelerator",
-        "tools",
-        "applications",
-        "research",
-        "self_hosting",
-    ))
+    for index, name in enumerate(
+        (
+            "foundation",
+            "documentation",
+            "compatibility",
+            "vm",
+            "verification",
+            "mathematics",
+            "c",
+            "compiler",
+            "accelerator",
+            "tools",
+            "applications",
+            "research",
+            "self_hosting",
+        )
+    )
 }
 LINK_TARGET = re.compile(
     rf"^\[({TODO_TARGET_PATTERN})\]\(({TODO_TARGET_PATTERN})\)$"
@@ -126,11 +129,13 @@ def _dependencies(text: str) -> tuple[str, ...]:
     )
     if match is None:
         return ()
-    return tuple(re.findall(
-        r'^\s*-\s*"([^"]+)"',
-        match.group(1),
-        re.MULTILINE,
-    ))
+    return tuple(
+        re.findall(
+            r'^\s*-\s*"([^"]+)"',
+            match.group(1),
+            re.MULTILINE,
+        )
+    )
 
 
 def _summary(text: str) -> str:
@@ -234,9 +239,7 @@ def _parse_todo_entry(
     record = _parse_link(lines[link_index])
     assert title == record.title
     assert summary == record.summary
-    assert not any(
-        marker in summary for marker in FORBIDDEN_SUMMARY_MARKERS
-    )
+    assert not any(marker in summary for marker in FORBIDDEN_SUMMARY_MARKERS)
     assert not summary.startswith(("Active,", "Pending,"))
     sentences = tuple(SENTENCE.findall(summary))
     assert 1 <= len(sentences) <= MAX_SUMMARY_SENTENCES
@@ -263,35 +266,53 @@ def _parse_sections(text: str) -> tuple[ParsedSection, ...]:
     return tuple(sections)
 
 
+def _assert_section_headers(sections: tuple[ParsedSection, ...]) -> None:
+    actual = tuple((section.identifier, section.title) for section in sections)
+    expected = tuple(
+        (identifier, title) for identifier, title, _lanes in P_GROUPS
+    )
+    assert actual == expected
+
+
+def _expected_section_records(
+    lanes: range,
+    open_records: tuple[PlanningRecord, ...],
+    *,
+    dependent_counts: Counter[str],
+) -> tuple[PlanningRecord, ...]:
+    return tuple(
+        sorted(
+            (record for record in open_records if record.lane in lanes),
+            key=lambda record: _priority_key(record, dependent_counts),
+        )
+    )
+
+
+def _assert_record_identity(records: list[PlanningRecord]) -> None:
+    assert len(records) == EXPECTED_TODO_COUNT
+    identifiers = {record.identifier for record in records}
+    assert len(identifiers) == EXPECTED_TODO_COUNT
+    completed_titles = _completed_titles()
+    actual_titles = {f"TODO - {record.title}" for record in records}
+    assert not actual_titles.intersection(completed_titles)
+
+
 def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
     """Every open TODO has one compact block in heuristic priority order."""
     sections = _parse_sections(TODO_PATH.read_text(encoding="utf-8"))
-    assert tuple(
-        (section.identifier, section.title)
-        for section in sections
-    ) == tuple((identifier, title) for identifier, title, _lanes in P_GROUPS)
-
+    _assert_section_headers(sections)
     open_records = _open_records()
     dependent_counts = _dependent_counts(open_records)
     actual_records: list[PlanningRecord] = []
     for section, group in zip(sections, P_GROUPS, strict=True):
-        lanes = group[2]
-        expected = tuple(sorted(
-            (record for record in open_records if record.lane in lanes),
-            key=lambda record: _priority_key(record, dependent_counts),
-        ))
+        expected = _expected_section_records(
+            group[2],
+            open_records,
+            dependent_counts=dependent_counts,
+        )
         assert tuple(section.records) == expected
         actual_records.extend(section.records)
-
-    assert len(actual_records) == EXPECTED_TODO_COUNT
-    assert (
-        len({record.identifier for record in actual_records})
-        == EXPECTED_TODO_COUNT
-    )
-    completed_titles = _completed_titles()
-    assert not {
-        f"TODO - {record.title}" for record in actual_records
-    }.intersection(completed_titles)
+    _assert_record_identity(actual_records)
 
 
 def test_open_records_do_not_retain_migrated_root_detail() -> None:

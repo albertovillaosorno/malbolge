@@ -47,8 +47,9 @@ Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`. The [LaTeX
 bibliography record](../../bibliography/tooling/latex.md) defines the
-publication tool family; a repository-local pinned TeX toolchain is still
-required before PDF regeneration can be called reproducible.
+publication tool family. The final pipeline consumes mature study records,
+including the historical capability demonstration and bounded human-scale
+search study, rather than blocking their evidence collection.
 
 ## Evidence
 
