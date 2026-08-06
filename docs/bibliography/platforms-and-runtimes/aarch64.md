@@ -21,6 +21,7 @@ used in the 64-bit Armv8-A architecture, also known as AArch64.
 
 ## Identity And Version
 
+- Stable identifier: Arm AArch64 architecture documentation
 - Authority: Arm Limited.
 - Subject: A64 Instruction Set Architecture / AArch64 execution state.
 - Review date: 2026-07-26.

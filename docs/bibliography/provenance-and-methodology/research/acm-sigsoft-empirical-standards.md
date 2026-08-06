@@ -46,6 +46,7 @@ Relevant verified guidance includes:
 
 ## Identity And Version
 
+- Stable identifier: ACM SIGSOFT Empirical Standards
 - Canonical site: ACM SIGSOFT Empirical Standards
 - Standards site observed: 2026-07-26
 - Cited report identity: Paul Ralph et al., *Empirical Standards for Software

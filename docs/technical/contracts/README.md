@@ -18,5 +18,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `documentation-readiness-gate.md`
 - `jig-repository-governance.md`
 - `planning-corpus-promotion.md`
-- `shar-documentation-reuse.md`
+- `bibliography-completion.md`
 - `template.md`

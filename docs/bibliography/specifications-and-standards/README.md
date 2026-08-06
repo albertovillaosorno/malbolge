@@ -17,4 +17,5 @@ Repository policy, legal conclusions, or research conclusions.
 - `malbolge/`
 - `citation-file-format.md`
 - `commonmark.md`
+- `json-schema-store.md`
 - `toml.md`

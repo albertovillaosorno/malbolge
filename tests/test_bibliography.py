@@ -36,12 +36,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 25
-EXPECTED_BASELINE = 22
+EXPECTED_RECORDS = 47
+EXPECTED_BASELINE = 44
+EXPECTED_VALIDATION_PACKAGES = 9
+EXPECTED_DURABLE_REFERENCES = 17
+MISSING_COVERAGE_MESSAGE = "lack bibliography coverage"
+DUPLICATE_IDENTITY_MESSAGE = "duplicate stable identifier"
+VALIDATION_REQUIREMENTS = ROOT / (
+    "src/automation/repository/composition/scripts/bootstrap/"
+    "python-validation-requirements.txt"
+)
 
 
 def _expect_failure(text: str, message: str) -> None:
@@ -60,11 +69,31 @@ def _c_record() -> str:
     return C_RECORD.read_text(encoding="utf-8")
 
 
+def _expect_requirements_failure(text: str, message: str) -> None:
+    try:
+        validator.validate_validation_requirements_text(text)
+    except validator.BibliographyValidationError as error:
+        if message not in str(error):
+            mismatch = f"unexpected requirements validation error: {error}"
+            raise AssertionError(mismatch) from error
+        return
+    failure = "invalid validation requirements unexpectedly succeeded"
+    raise AssertionError(failure)
+
+
 def test_repository_bibliography_taxonomy_and_baseline_are_valid() -> None:
     """Current bibliography satisfies taxonomy and baseline coverage."""
     report = validator.validate_repository()
     assert report.record_count == EXPECTED_RECORDS
     assert report.required_baseline_count == EXPECTED_BASELINE
+    assert (
+        report.required_validation_package_count
+        == EXPECTED_VALIDATION_PACKAGES
+    )
+    assert (
+        report.covered_external_reference_count
+        == EXPECTED_DURABLE_REFERENCES
+    )
     assert report.categories == validator.CATEGORIES
 
 
@@ -106,3 +135,53 @@ def test_source_record_heading_order_is_stable() -> None:
     text = text.replace("## Provenance", "## Subject", 1)
     text = text.replace("## Temporary", "## Provenance", 1)
     _expect_failure(text, "bibliography headings are out of order")
+
+
+def test_validation_requirements_have_exact_bibliography_coverage() -> None:
+    """Every pinned validation package has one exact canonical record."""
+    text = VALIDATION_REQUIREMENTS.read_text(encoding="utf-8")
+    validator.validate_validation_requirements_text(text)
+
+
+def test_validation_requirement_version_drift_fails_closed() -> None:
+    """A dependency update requires the bibliography to move in one change."""
+    text = VALIDATION_REQUIREMENTS.read_text(encoding="utf-8")
+    text = text.replace("ruff==0.16.0", "ruff==0.16.1", 1)
+    _expect_requirements_failure(
+        text,
+        "Python validation requirements mismatch canonical bibliography",
+    )
+
+
+def test_durable_external_reference_requires_canonical_coverage() -> None:
+    """A new durable URL cannot bypass the canonical source inventory."""
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=MISSING_COVERAGE_MESSAGE,
+    ):
+        _ = validator.validate_external_reference_coverage(
+            ("https://uncovered.example.invalid/source",),
+            (),
+        )
+
+
+def test_git_transport_suffix_does_not_split_source_identity() -> None:
+    """A Git transport suffix resolves to the canonical repository identity."""
+    count = validator.validate_external_reference_coverage(
+        ("https://github.com/id-Software/DOOM.git",),
+        ("https://github.com/id-Software/DOOM",),
+    )
+    assert count == 1
+
+
+def test_duplicate_stable_source_identity_fails_closed() -> None:
+    """Two records cannot claim the same canonical source identity."""
+    text = _c_record()
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=DUPLICATE_IDENTITY_MESSAGE,
+    ):
+        validator.validate_unique_stable_identifiers((
+            ("first", text),
+            ("second", text),
+        ))

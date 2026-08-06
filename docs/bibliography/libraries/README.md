@@ -15,5 +15,9 @@ Repository policy, legal conclusions, or research conclusions.
 
 ## Contents
 
-No baseline source record is currently required in this category. New material
-claims add records here before citing the category as durable evidence.
+- `colorama.md`
+- `iniconfig.md`
+- `nodejs-wheel-binaries.md`
+- `packaging.md`
+- `pluggy.md`
+- `pygments.md`

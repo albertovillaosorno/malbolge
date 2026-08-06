@@ -62,3 +62,4 @@ own lawful basis.
 ## Sources
 
 - <https://github.com/id-Software/DOOM> - accessed 2026-07-26.
+- <https://github.com/id-Software/DOOM.git> - accessed 2026-08-05.

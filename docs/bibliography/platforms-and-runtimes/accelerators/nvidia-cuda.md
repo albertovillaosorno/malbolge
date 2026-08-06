@@ -53,3 +53,5 @@ scaling claim is accepted without repository measurements on identified devices.
 
 - <https://docs.nvidia.com/cuda/cuda-programming-guide/index.html> - accessed
   2026-07-26.
+- <https://developer.download.nvidia.com/compute/cuda/redist/> - accessed
+  2026-08-05.

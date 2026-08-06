@@ -15,4 +15,5 @@ Repository policy, legal conclusions, or research conclusions.
 ## Contents
 
 - `c.md`
+- `python.md`
 - `rust.md`

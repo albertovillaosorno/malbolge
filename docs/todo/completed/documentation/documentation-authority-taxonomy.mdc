@@ -53,12 +53,10 @@ Malbolge must not grow a parallel documentation linter to enforce it.
 
 - Expected durable artifact surface: `docs/` taxonomy plus the future
   family-local ADR governance records.
-- Accepted ADR evidence records the 2026-07-27 local topology comparison: Jig
-  uses four family-local ADR roots with no global ADR, SHAR separates subject
-  families while retaining a global ADR namespace, and the current STM checkout
-  has no documentation tree and is therefore not misrepresented as current
-  topology evidence. Malbolge adopts the Jig-style authority split without
-  copying unrelated product taxonomy or implementing a parallel linter.
+- Accepted ADR evidence records four family-local ADR roots with no global ADR
+  namespace. The topology follows Malbolge ownership and validation needs
+  without
+  importing unrelated product taxonomy or implementing a parallel linter.
 - Repository inspection confirms all current nested documentation directories
   outside typed TODO state have `README.md`, no `index.md` competes with them,
   no

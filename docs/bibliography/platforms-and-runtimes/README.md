@@ -17,5 +17,7 @@ Repository policy, legal conclusions, or research conclusions.
 - `accelerators/`
 - `compiler/`
 - `aarch64.md`
+- `nodejs-24-16-0.md`
 - `rocm.md`
+- `rust-toolchain-1-97-1.md`
 - `x86-64.md`

@@ -183,16 +183,11 @@ can drift while appearing equally authoritative.
 - Each authoritative family has a local `adr/`; no global `docs/adr/` exists.
   CSpell data remains under `.jig/cspell/`, and no `.tex` source lives
   under the Markdown-only documentation families.
-- A local topology comparison on 2026-07-27 shows Jig using the selected
-  family-local model: `bibliography`, `legal`, `research`, and `technical` each
-  own `adr/`, with no global `docs/adr/`. SHAR separates bibliography, legal,
-  and technical documentation but retains a global `docs/adr`, demonstrating the
-  useful family split while retaining the centralized decision namespace this
-  ADR rejects.
-- The current STM checkout has no `docs/` tree, so it is not presented as
-  current positive topology evidence. The earlier STM-style global-ADR pattern
-  remains only a design antecedent for the rejected monolithic alternative; this
-  record does not infer historical files that are absent from the checkout.
+- The selected family-local model keeps bibliography, legal, research, and
+  technical decisions near their owning evidence without a global `docs/adr/`
+  namespace.
+- The accepted topology is justified by repository ownership and validation
+  needs rather than by copying another project's product taxonomy.
 - `docs/todo/open/`, `.jig/cspell/`, and
   `src/specification/formal-model/README.md` demonstrate the
   explicit non-family governance, editorial-data, and mathematical boundaries.

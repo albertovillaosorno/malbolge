@@ -2,7 +2,7 @@
 
 ## Status
 
-Active verification ledger, reviewed 2026-07-26.
+Active verification ledger, reviewed 2026-08-05.
 
 ## Subject
 
@@ -29,10 +29,11 @@ the change.
 
 ## Identity And Version
 
+- Stable identifier: Malbolge repository source verification ledger
 - Record owner: Malbolge repository bibliography.
 - Governance:
   `docs/bibliography/adr/source-taxonomy-and-citation-provenance.md`.
-- Review date: 2026-07-26.
+- Review date: 2026-08-05.
 - Git is cataloged separately under `docs/bibliography/tooling/git.md`.
 
 ## License Or Terms
@@ -45,25 +46,28 @@ relicense any external source.
 
 ### Current High-Impact Claims
 
-- **Claim:** Written 1998 spec is normative classic authority
-  - **Evidence:** Ben spec + commit `fc871a3`
-  - **Verification state:** verified
+- **Claim:** Defined and reproducible interpreter behavior is authoritative for
+  `malbolge-1998`
+  - **Evidence:** original interpreter, accepted authority ADR, and VM
+    mode tests
+  - **Verification state:** accepted and verified
 
-- **Claim:** Spec defines `<` as input and `/` as output
-  - **Evidence:** original specification
+- **Claim:** `malbolge-1998` assigns `<` to output and `/` to input
+  - **Evidence:** original interpreter C and canonical target profile
   - **Verification state:** verified directly
 
-- **Claim:** Ben C reverses `<` and `/`
-  - **Evidence:** original interpreter C
-  - **Verification state:** verified directly
+- **Claim:** The written prose assigns the two I/O characters oppositely
+  - **Evidence:** original written specification
+  - **Verification state:** verified comparison evidence
 
-- **Claim:** Spec terminates on a non-graphical executable cell
-  - **Evidence:** original specification
-  - **Verification state:** verified directly
+- **Claim:** A non-graphical current cell is bounded non-progress in the
+  historical profile
+  - **Evidence:** original interpreter C and `tests/vm/modes.rs`
+  - **Verification state:** verified portable interpretation
 
-- **Claim:** Ben C can fail to advance on that case
-  - **Evidence:** original interpreter C
-  - **Verification state:** verified directly
+- **Claim:** Historical C undefined behavior is not portable semantics
+  - **Evidence:** sanitizer catalogue and accepted authority ADR
+  - **Verification state:** accepted boundary
 
 - **Claim:** Classic words are ten trits; memory is 59,049 words
   - **Evidence:** original specification
@@ -103,27 +107,29 @@ relicense any external source.
 
 ### Specification Versus Interpreter Divergence
 
-The first major contradiction discovered during documentation promotion
-concerned I/O. The written specification states that `<` reads into A and `/`
-writes A. The historical C `switch` performs those operations in reverse. A
-second observable disagreement exists for non-graphical executable cells: the
-prose requires termination while the C implementation can continue without
-pointer advancement.
+The first major contradiction discovered during documentation promotion concerns
+I/O. The written prose assigns `<` to input and `/` to output, while the
+preserved interpreter implements `<` as output and `/` as input. A second
+disagreement concerns non-graphical executable cells: the prose describes
+termination, while the interpreter performs no state transition and revisits the
+same cell.
 
-The repository resolved the conflict in favor of the written specification for
-modern semantics. The historical interpreter remains unchanged and useful as
-implementation evidence on the subset where it agrees with the specification.
+The repository resolves portable `malbolge-1998` semantics in favor of defined
+and reproducible interpreter behavior. The prose remains explicit comparison
+evidence through `ExecutionMode::Specification`; it is not verifier eligible.
+Undefined C behavior, host locale and text-mode effects, invalid table accesses,
+and accidental memory-model behavior remain outside portable semantics. Modern
+implementations bound non-progress and fail safely at undefined boundaries.
 
-The decision entered repository history in:
+The accepted authority is recorded in:
 
 ```text
-fc871a3e6510d15e6098d327d9394393a49623a7
-docs: make Malbolge specification authoritative
+docs/technical/adr/specification-authority-and-malbolge-evolution.md
 ```
 
-That commit is provenance for the repository decision. The historical
-specification and interpreter remain the primary evidence for the underlying
-facts.
+The original interpreter and written specification remain primary evidence for
+the underlying disagreement. Git history records repository decisions but does
+not replace either historical source.
 
 ### Research Prior-Work Verification
 
@@ -138,13 +144,22 @@ verification result, and threats to validity.
 
 ### Tooling And Publication Verification
 
-The repository records authoritative references for C, Rust, LLVM/Clang,
-clang-tidy, CUDA, ROCm, PyTorch, x86-64, AArch64, CommonMark, TOML, LaTeX, Git,
+The repository records authoritative references for C, Rust, Python, the Rust
+1.97.1 toolchain, Node.js 24.16.0, uv, LLVM/Clang, clang-tidy, pytest, Ruff,
+BasedPyright, CUDA, ROCm, PyTorch, x86-64, AArch64, CommonMark, TOML,
+LaTeX, Git,
 GitHub repository citation metadata, and Citation File Format. Source records
 support identity and capabilities without making upstream tools part of runtime
 architecture automatically.
 
 ### Baseline Coverage
+
+The executable bibliography audit currently validates 47 source/provenance
+records, 44 required baseline records, nine exact Python validation packages,
+and 17 distinct durable external references. Durable coverage scans source,
+manifests, technical and research documentation, completed lifecycle evidence,
+generated text artifacts, and Jig configuration. Open TODO records, synthetic
+tests, and the repository's own canonical URL are excluded deliberately.
 
 - **Required source class:** Historical Malbolge specification/interpreter
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
@@ -152,7 +167,8 @@ architecture automatically.
   - **State:** covered
 
 - **Required source class:** Programming languages
-  - **Canonical records:** `languages/c.md`, `languages/rust.md`
+  - **Canonical records:** `languages/c.md`, `languages/python.md`,
+                           `languages/rust.md`
   - **State:** covered
 
 - **Required source class:** Host architectures
@@ -161,7 +177,13 @@ architecture automatically.
 
 - **Required source class:** Compiler/toolchain
   - **Canonical records:** `platforms-and-runtimes/compiler/`,
+                           `rust-toolchain-1-97-1.md`,
                            `tooling/clang-tidy.md`
+  - **State:** covered
+
+- **Required source class:** Validation host runtime
+  - **Canonical records:** `platforms-and-runtimes/nodejs-24-16-0.md`,
+                           `tooling/uv.md`
   - **State:** covered
 
 - **Required source class:** Accelerator computing
@@ -185,13 +207,15 @@ architecture automatically.
   - **State:** covered
 
 - **Required source class:** Validation/provenance tooling
-  - **Canonical records:** Git and clang-tidy records
+  - **Canonical records:** Git, uv, clang-tidy, pytest, Ruff, and
+                           BasedPyright records
   - **State:** covered
 
-The closed bibliography taxonomy also reserves `legal-and-regulatory/` and
-`libraries/` for future source records. No baseline source is fabricated merely
-to make those categories non-empty. New material claims must add a canonical
-record before relying on a source class not covered above.
+The closed bibliography taxonomy still reserves `legal-and-regulatory/` for
+future source records. `libraries/` now contains the exact transitive packages
+pinned by the Python validation environment. No baseline source is fabricated
+merely to make a category non-empty. New material claims must add a canonical
+record before relying on an uncovered source class.
 
 ### Discarded Or Rejected Evidence Patterns
 

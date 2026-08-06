@@ -39,11 +39,17 @@ from pathlib import Path
 import re
 import sys
 from typing import Never
+from urllib.parse import urlsplit
+from urllib.parse import urlunsplit
 
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
 BIBLIOGRAPHY_ROOT = ROOT / "docs" / "bibliography"
+VALIDATION_REQUIREMENTS_FILE = ROOT / (
+    "src/automation/repository/composition/scripts/bootstrap/"
+    "python-validation-requirements.txt"
+)
 CANONICAL_TEMPLATE = (
     BIBLIOGRAPHY_ROOT / "provenance-and-methodology" / "template.md"
 )
@@ -70,8 +76,17 @@ REQUIRED_HEADINGS = (
 )
 BASELINE_RECORDS = (
     "languages/c.md",
+    "languages/python.md",
     "languages/rust.md",
+    "libraries/colorama.md",
+    "libraries/iniconfig.md",
+    "libraries/nodejs-wheel-binaries.md",
+    "libraries/packaging.md",
+    "libraries/pluggy.md",
+    "libraries/pygments.md",
     "platforms-and-runtimes/aarch64.md",
+    "platforms-and-runtimes/nodejs-24-16-0.md",
+    "platforms-and-runtimes/rust-toolchain-1-97-1.md",
     "platforms-and-runtimes/accelerators/nvidia-cuda.md",
     "platforms-and-runtimes/accelerators/pytorch.md",
     "platforms-and-runtimes/compiler/clang-libtooling.md",
@@ -88,10 +103,70 @@ BASELINE_RECORDS = (
     "specifications-and-standards/commonmark.md",
     "specifications-and-standards/malbolge/malbolge-1998.md",
     "specifications-and-standards/toml.md",
+    "tooling/basedpyright.md",
     "tooling/clang-tidy.md",
     "tooling/git.md",
     "tooling/latex.md",
+    "tooling/uv.md",
+    "tooling/pytest.md",
+    "tooling/ruff.md",
+    "organizations-and-projects/andrew-cooke-malbolge.md",
+    "organizations-and-projects/github-linguist.md",
+    "organizations-and-projects/internet-archive-wayback-machine.md",
+    "organizations-and-projects/nagoya-malbolge-project.md",
+    "organizations-and-projects/ninety-nine-bottles-of-beer.md",
+    "specifications-and-standards/json-schema-store.md",
+    "tooling/cspell.md",
+    "tooling/markdownlint-cli2.md",
+    "tooling/textmate-language-grammar.md",
 )
+VALIDATION_REQUIREMENT_RECORDS = (
+    ("basedpyright==1.39.9", "tooling/basedpyright.md"),
+    ("colorama==0.4.6", "libraries/colorama.md"),
+    ("iniconfig==2.3.0", "libraries/iniconfig.md"),
+    (
+        "nodejs-wheel-binaries==24.16.0",
+        "libraries/nodejs-wheel-binaries.md",
+    ),
+    ("packaging==26.2", "libraries/packaging.md"),
+    ("pluggy==1.6.0", "libraries/pluggy.md"),
+    ("Pygments==2.20.0", "libraries/pygments.md"),
+    ("pytest==9.1.1", "tooling/pytest.md"),
+    ("ruff==0.16.0", "tooling/ruff.md"),
+)
+URL_PATTERN = re.compile(r"https?://[^\s<>\"'`]+")
+DURABLE_REFERENCE_SUFFIXES = frozenset((
+    ".c",
+    ".cff",
+    ".cmd",
+    ".h",
+    ".json",
+    ".jsonc",
+    ".md",
+    ".mdc",
+    ".py",
+    ".rs",
+    ".sh",
+    ".toml",
+    ".yaml",
+    ".yml",
+))
+DURABLE_REFERENCE_EXCLUDED_PARTS = frozenset((
+    ".cache",
+    ".dependencies",
+    ".git",
+    ".logs",
+    ".temp",
+    "target",
+))
+DURABLE_REFERENCE_EXCLUDED_PREFIXES = (
+    "docs/bibliography/",
+    "docs/todo/open/",
+    "tests/",
+)
+SELF_OWNED_URLS = frozenset((
+    "https://github.com/albertovillaosorno/malbolge",
+))
 DATE_PATTERN = re.compile(r"20\d{2}-\d{2}-\d{2}")
 PLACEHOLDERS = (
     "{required}",
@@ -114,6 +189,8 @@ class BibliographyReport:
     categories: tuple[str, ...]
     record_count: int
     required_baseline_count: int
+    required_validation_package_count: int
+    covered_external_reference_count: int
 
 
 def _fail(message: str) -> Never:
@@ -225,12 +302,46 @@ def validate_source_text(text: str, label: str = "source record") -> None:
     _validate_source_entries(text, label)
 
 
+def _stable_identifier(text: str, label: str) -> str:
+    section = _section(text, "## Identity And Version")
+    prefix = "- Stable identifier: "
+    identifiers = tuple(
+        line.removeprefix(prefix).strip()
+        for line in section.splitlines()
+        if line.startswith(prefix)
+    )
+    if len(identifiers) != 1 or not identifiers[0]:
+        _fail(f"{label} must declare exactly one stable identifier")
+    return identifiers[0]
+
+
+def validate_unique_stable_identifiers(
+    records: tuple[tuple[str, str], ...],
+) -> None:
+    """Reject duplicate canonical source identities across records."""
+    seen: dict[str, str] = {}
+    for label, text in records:
+        identifier = _stable_identifier(text, label)
+        previous = seen.get(identifier)
+        if previous is not None:
+            _fail("".join((
+                f"duplicate stable identifier {identifier!r}: ",
+                f"{previous} and {label}",
+            )))
+        seen[identifier] = label
+
+
 def _validate_records() -> int:
-    records = _source_record_paths()
-    if not records:
+    paths = _source_record_paths()
+    if not paths:
         _fail("bibliography contains no source records")
-    for path in records:
-        validate_source_text(path.read_text(encoding="utf-8"), _relative(path))
+    records = tuple(
+        (_relative(path), path.read_text(encoding="utf-8"))
+        for path in paths
+    )
+    for label, text in records:
+        validate_source_text(text, label)
+    validate_unique_stable_identifiers(records)
     return len(records)
 
 
@@ -249,6 +360,127 @@ def _validate_baseline() -> None:
         _fail("repository source ledger lacks baseline coverage report")
 
 
+def validate_validation_requirements_text(text: str) -> None:
+    """Validate the exact pinned Python validation dependency set."""
+    actual = tuple(line.strip() for line in text.splitlines() if line.strip())
+    expected = tuple(
+        requirement for requirement, _record in VALIDATION_REQUIREMENT_RECORDS
+    )
+    if actual != expected:
+        _fail("".join((
+            "Python validation requirements mismatch canonical bibliography ",
+            f"coverage: {actual}",
+        )))
+
+
+def _validate_validation_requirements() -> None:
+    requirements_text = VALIDATION_REQUIREMENTS_FILE.read_text(encoding="utf-8")
+    validate_validation_requirements_text(requirements_text)
+    for requirement, relative in VALIDATION_REQUIREMENT_RECORDS:
+        path = BIBLIOGRAPHY_ROOT / relative
+        if not path.is_file():
+            _fail("".join((
+                "validation dependency lacks bibliography record: ",
+                f"{requirement} -> {relative}",
+            )))
+        record = path.read_text(encoding="utf-8")
+        if f"`{requirement}`" not in record:
+            _fail("".join((
+                "validation dependency record lacks exact pin: ",
+                f"{requirement} -> {relative}",
+            )))
+
+
+def _normalized_url(value: str) -> str:
+    cleaned = value.rstrip(".,;:)]}")
+    parts = urlsplit(cleaned)
+    path = parts.path.rstrip("/").removesuffix(".git")
+    return urlunsplit((
+        parts.scheme.lower(),
+        parts.netloc.lower(),
+        path,
+        parts.query,
+        "",
+    ))
+
+
+def _urls_from_text(text: str) -> tuple[str, ...]:
+    return tuple(
+        _normalized_url(match.group(0))
+        for match in URL_PATTERN.finditer(text)
+    )
+
+
+def validate_external_reference_coverage(
+    references: tuple[str, ...],
+    source_urls: tuple[str, ...],
+) -> int:
+    """Reject durable external references without a canonical source record.
+
+    Returns:
+        Count of distinct covered external references.
+
+    """
+    normalized_sources = frozenset(_normalized_url(url) for url in source_urls)
+    self_owned = frozenset(_normalized_url(url) for url in SELF_OWNED_URLS)
+    normalized_references = frozenset(
+        _normalized_url(url) for url in references
+    ) - self_owned
+    missing = tuple(sorted(normalized_references - normalized_sources))
+    if missing:
+        _fail("".join((
+            "durable external references lack bibliography coverage: ",
+            f"{missing}",
+        )))
+    return len(normalized_references)
+
+
+def _is_durable_reference_path(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    relative = path.relative_to(ROOT)
+    excluded_part = any(
+        part in DURABLE_REFERENCE_EXCLUDED_PARTS
+        for part in relative.parts
+    )
+    excluded_prefix = relative.as_posix().startswith(
+        DURABLE_REFERENCE_EXCLUDED_PREFIXES
+    )
+    return (
+        not excluded_part
+        and not excluded_prefix
+        and path.suffix in DURABLE_REFERENCE_SUFFIXES
+    )
+
+
+def _durable_reference_paths() -> tuple[Path, ...]:
+    return tuple(sorted(
+        path for path in ROOT.rglob("*")
+        if _is_durable_reference_path(path)
+    ))
+
+
+def _durable_external_references() -> tuple[str, ...]:
+    references: set[str] = set()
+    for path in _durable_reference_paths():
+        references.update(_urls_from_text(path.read_text(encoding="utf-8")))
+    return tuple(sorted(references))
+
+
+def _bibliography_source_urls() -> tuple[str, ...]:
+    urls: set[str] = set()
+    for path in _source_record_paths():
+        urls.update(_urls_from_text(path.read_text(encoding="utf-8")))
+    return tuple(sorted(urls))
+
+
+def _validate_external_references() -> int:
+    return validate_external_reference_coverage(
+        _durable_external_references(),
+        _bibliography_source_urls(),
+    )
+
+
 def validate_repository() -> BibliographyReport:
     """Validate bibliography topology, record schema, and baseline coverage.
 
@@ -259,10 +491,16 @@ def validate_repository() -> BibliographyReport:
     _validate_topology()
     count = _validate_records()
     _validate_baseline()
+    _validate_validation_requirements()
+    covered_external_reference_count = _validate_external_references()
     return BibliographyReport(
         categories=CATEGORIES,
         record_count=count,
         required_baseline_count=len(BASELINE_RECORDS),
+        required_validation_package_count=len(
+            VALIDATION_REQUIREMENT_RECORDS
+        ),
+        covered_external_reference_count=covered_external_reference_count,
     )
 
 
@@ -280,7 +518,9 @@ def main() -> int:
         return 1
     message = "".join((
         f"bibliography valid: {report.record_count} records, ",
-        f"{report.required_baseline_count} baseline records\n",
+        f"{report.required_baseline_count} baseline records, ",
+        f"{report.required_validation_package_count} validation packages, ",
+        f"{report.covered_external_reference_count} durable references\n",
     ))
     _ = sys.stdout.write(message)
     return 0

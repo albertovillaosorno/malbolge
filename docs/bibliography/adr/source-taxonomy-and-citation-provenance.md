@@ -79,8 +79,8 @@ verification ledgers. Those ledgers may cite Git commits as internal decision
 provenance, but external facts still resolve to primary or authoritative
 bibliography records.
 
-The repository baseline currently contains 24 source/provenance records. The
-coverage ledger names the required first-pass classes and 22 canonical baseline
+The repository baseline currently contains 47 source/provenance records. The
+coverage ledger names the required first-pass classes and 44 canonical baseline
 records spanning historical Malbolge, languages, host architectures, compiler
 tooling, accelerators, superoptimization, verification, research methodology,
 standards, publication metadata, and validation tooling. Every current source
@@ -91,9 +91,8 @@ padded with fabricated source records.
 `src/automation/repository/composition/scripts/validate/bibliography.py`
 enforces the closed first-level taxonomy,
 README coverage, one canonical template, source-record heading order, dated
-provenance, explicit uncertainty, nonempty sources, and the required baseline.
-`tests/test_bibliography.py` exercises those fail-closed boundaries. The
-validator
-checks repository evidence shape and coverage; it does not independently
-re-fetch
-or re-prove external claims.
+provenance, explicit uncertainty, nonempty sources, unique stable identities,
+exact validation-package pins, durable external-reference coverage, and the
+required baseline. `tests/test_bibliography.py` exercises those fail-closed
+boundaries. The validator checks repository evidence shape and coverage; it does
+not independently re-fetch or re-prove external claims.

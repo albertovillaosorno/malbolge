@@ -39,6 +39,7 @@ primary executable evidence for exact behavior.
 
 ## Identity And Version
 
+- Stable identifier: Temkin-Olmstead interview 2014
 - Interviewer: Daniel Temkin
 - Interviewee: Ben Olmstead
 - Displayed publication date supplied by the recovered page: 2014-11-03

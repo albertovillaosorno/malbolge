@@ -25,6 +25,7 @@ programming interfaces.
 
 ## Identity And Version
 
+- Stable identifier: AMD ROCm documentation
 - Authority: Advanced Micro Devices, Inc.
 - Canonical product: ROCm.
 - Current documentation observed: ROCm 7.14.0.
