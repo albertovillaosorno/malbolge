@@ -33,31 +33,31 @@
 
 //! Product tiered-execution identity and cache-key conformance.
 
-#[path = "../src/runtime/tiered-execution/application/cached_cycle.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/cached_cycle.rs"]
 pub mod cached_cycle;
-#[path = "../src/runtime/tiered-execution/application/cached_retry.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/cached_retry.rs"]
 pub mod cached_retry;
-#[path = "../src/runtime/tiered-execution/application/scheduler.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
-#[path = "../src/runtime/tiered-execution/application/interpreter_handoff.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
-#[path = "../src/runtime/tiered-execution/application/leased_retry.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
 pub mod leased_retry;
-#[path = "../src/runtime/tiered-execution/application/native_retry.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/native_retry.rs"]
 pub mod native_retry;
-#[path = "../src/runtime/tiered-execution/application/retry_cycle.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/retry_cycle.rs"]
 pub mod retry_cycle;
-#[path = "../src/runtime/tiered-execution/application/retry_planner.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/retry_planner.rs"]
 pub mod retry_planner;
-#[path = "../src/runtime/tiered-execution/application/retry_policy.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/retry_policy.rs"]
 pub mod retry_policy;
-#[path = "../src/runtime/tiered-execution/application/retry_router.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/retry_router.rs"]
 pub mod retry_router;
-#[path = "../src/runtime/tiered-execution/application/retry_turn.rs"]
+#[path = "../src/runtime/tiered-execution/composition/tier/retry_turn.rs"]
 pub mod retry_turn;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};

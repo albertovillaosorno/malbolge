@@ -33,29 +33,29 @@
 
 //! Canonical module topology for the complete tiered-execution function.
 
-#[path = "../application/cached_cycle.rs"]
+#[path = "tier/cached_cycle.rs"]
 pub mod cached_cycle;
-#[path = "../application/cached_retry.rs"]
+#[path = "tier/cached_retry.rs"]
 pub mod cached_retry;
-#[path = "../application/scheduler.rs"]
+#[path = "tier/scheduler.rs"]
 pub mod continuation_scheduler;
 #[path = "../adapter-outbound/cache/main.rs"]
 pub mod execution_cache;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
-#[path = "../application/interpreter_handoff.rs"]
+#[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
-#[path = "../application/leased_retry.rs"]
+#[path = "tier/leased_retry.rs"]
 pub mod leased_retry;
-#[path = "../application/native_retry.rs"]
+#[path = "tier/native_retry.rs"]
 pub mod native_retry;
-#[path = "../application/retry_cycle.rs"]
+#[path = "tier/retry_cycle.rs"]
 pub mod retry_cycle;
-#[path = "../application/retry_planner.rs"]
+#[path = "tier/retry_planner.rs"]
 pub mod retry_planner;
-#[path = "../application/retry_policy.rs"]
+#[path = "tier/retry_policy.rs"]
 pub mod retry_policy;
-#[path = "../application/retry_router.rs"]
+#[path = "tier/retry_router.rs"]
 pub mod retry_router;
-#[path = "../application/retry_turn.rs"]
+#[path = "tier/retry_turn.rs"]
 pub mod retry_turn;

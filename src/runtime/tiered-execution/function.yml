@@ -197,120 +197,120 @@ parts:
     language: rust
     responsibility: Bind outbound capabilities to external systems.
   - id: part-0033
-    path: application/cached_cycle.rs
-    kind: application
+    path: composition/tier/cached_cycle.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0034
-    path: application/cached_cycle/telemetry.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0035
-    path: application/cached_cycle/telemetry_assessment.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_assessment.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0036
-    path: application/cached_cycle/telemetry_codec.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_codec.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0037
-    path: application/cached_cycle/telemetry_latency.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_latency.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0038
-    path: application/cached_cycle/telemetry_latency_codec.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_latency_codec.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0039
-    path: application/cached_cycle/telemetry_latency_merge.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_latency_merge.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0040
-    path: application/cached_cycle/telemetry_latency_snapshot.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_latency_snapshot.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0041
-    path: application/cached_cycle/telemetry_snapshot.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_snapshot.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0042
-    path: application/cached_cycle/telemetry_window.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_window.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0043
-    path: application/cached_cycle/telemetry_window/aggregation.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_window/aggregation.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0044
-    path: application/cached_cycle/telemetry_window/reconfiguration.rs
-    kind: application
+    path: composition/tier/cached_cycle/telemetry_window/reconfiguration.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0045
-    path: application/cached_retry.rs
-    kind: application
+    path: composition/tier/cached_retry.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0046
-    path: application/interpreter_handoff.rs
-    kind: application
+    path: composition/tier/handoff.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0047
-    path: application/leased_retry.rs
-    kind: application
+    path: composition/tier/leased_retry.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0048
-    path: application/native_retry.rs
-    kind: application
+    path: composition/tier/native_retry.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0049
-    path: application/native_retry/rebase.rs
-    kind: application
+    path: composition/tier/native_retry/rebase.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0050
-    path: application/retry_planner.rs
-    kind: application
+    path: composition/tier/retry_planner.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0051
-    path: application/retry_policy.rs
-    kind: application
+    path: composition/tier/retry_policy.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0052
-    path: application/retry_cycle.rs
-    kind: application
+    path: composition/tier/retry_cycle.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0053
-    path: application/retry_router.rs
-    kind: application
+    path: composition/tier/retry_router.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0054
-    path: application/retry_turn.rs
-    kind: application
+    path: composition/tier/retry_turn.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0055
-    path: application/scheduler.rs
-    kind: application
+    path: composition/tier/scheduler.rs
+    kind: composition
     language: rust
-    responsibility: Coordinate use-case policy and orchestration.
+    responsibility: Wire concrete tier policy and adapters.
   - id: part-0056
     path: composition/lib.rs
     kind: composition
