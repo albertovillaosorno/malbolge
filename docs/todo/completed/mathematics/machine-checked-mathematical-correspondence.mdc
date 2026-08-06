@@ -1,6 +1,6 @@
 ---
 id: "machine-checked-mathematical-correspondence"
-status: "active"
+status: "completed"
 lane: "7"
 area: "mathematics"
 task: "TODO - Machine-checked mathematical correspondence"
@@ -43,8 +43,8 @@ Connect mathematical specifications to executable tests or proof tooling so the
 
 **Current implementation.**
 
-- Seventeen correctness-relevant equations across `malbolge-1998.tex` and
-  `profile-model.tex` now have stable `eq:*` labels and exact entries in
+- Forty correctness-relevant equations across classic, profile, state-graph,
+  and optimization mathematics have stable `eq:*` labels and exact entries in
   `src/specification/formal-model/math/specification/correspondence.toml`.
 - The manifest records each equation's explicit admitted domain/coverage and the
   concrete Rust/Python test functions that supply semantic evidence.
@@ -56,11 +56,10 @@ Connect mathematical specifications to executable tests or proof tooling so the
   missing/duplicated source labels, and any difference between the manifest and
   the complete set of `eq:*` labels under
   `src/specification/formal-model/math/specification/`.
-- Current semantic evidence spans exhaustive classic word-domain/successor,
-  encryption, loader recurrence/admission/mutations, rotate/crazy/decode,
-  replayable classic/profiled
-  differential execution with full final memory comparison, current 14-trit
-  scalar fixtures, EOF tracing, and atomic invalid self-encryption rejection.
+- Current semantic evidence spans exhaustive classic arithmetic/loading,
+  replayable classic/profiled differential execution, profile boundaries,
+  exact state-graph materialization/replay, forced collisions, read sets,
+  live-ins, guards, and optimization-math reductions.
 - The manifest is only traceability. It cannot turn a bounded fixture into a
   universal proof, and compiler/research equations without an executable owner
   remain deliberately unlabeled/unclaimed until their implementation exists.
@@ -88,8 +87,12 @@ Connect mathematical specifications to executable tests or proof tooling so the
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`, `safe-rust-malbolge-vm`,
   `property-fuzz-and-exhaustive-testing`.
-- Current correspondence graph contains seventeen promoted equations with
-  explicit
-  coverage/domain metadata and executable evidence functions.
-- Closure still requires correspondence for future implementation-relevant
-  compiler/research equations; this TODO therefore remains active.
+- The accepted graph contains 40 promoted equations with explicit domain and
+  mechanism metadata plus executable evidence functions.
+- `math_correspondence.py`, 11 manifest/framework tests, 12 property tests,
+  and 116 VM tests passed on 2026-08-06.
+- Future implementation-relevant equations must extend the same closed graph
+  from their owning TODO before making correctness claims.
+- **Completion:** Completed on 2026-08-06 after the 40-equation graph, LaTeX
+  framework, mapped Python/Rust evidence, and fail-closed manifest tests
+  passed.

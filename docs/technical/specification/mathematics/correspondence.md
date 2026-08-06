@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -37,11 +37,10 @@ of silently leaving stale documentation.
 
 ### Current promoted equations
 
-The first slice promotes twelve equations from
-`src/specification/formal-model/math/specification/profile-model.tex`: word
-modulus/domain, modular memory,
-pointer successor, rotate, crazy, decode, self-encryption, EOF, loading,
-committed transition, and observable equivalence.
+The accepted graph contains 40 promoted equations: 19 from the
+self-modification state-graph model, 14 from the generic profile model, four
+from Malbolge-specific optimization mathematics, and three from the classic
+1998 specialization.
 
 The manifest deliberately reuses independent evidence rather than duplicating
 semantics in a new proof harness. Coverage currently includes:
@@ -57,9 +56,9 @@ semantics in a new proof harness. Coverage currently includes:
   atomic post-jump encryption rejection.
 
 A manifest link does not upgrade fixture coverage into a proof outside its
-stated
-`domain` and `coverage`. Compiler/research notation without an implementation is
-not labeled as correspondence yet and remains outside this claimed slice.
+stated `domain` and `mechanism`. New compiler or research equations become
+eligible only when their owning implementation exists; that owning work must
+extend this closed graph before making a correctness claim.
 
 ## Invariants
 
@@ -87,14 +86,13 @@ extrapolate a proof by convention.
   `property-fuzz-and-exhaustive-testing`.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 - `src/automation/repository/composition/scripts/validate/math_correspondence.py`
-  currently closes seventeen promoted
-  equation labels against concrete test functions.
+  closes 40 promoted equation labels against concrete test functions.
 - `tests/mathematics/test_correspondence_manifest.py` proves orphan labels,
   stale test functions, and duplicate TOML authority fail closed.
 - Semantic evidence is executed by the mapped Rust/Python suites; the manifest
   is traceability, not a substitute oracle.
-- Further correspondence remains open for compiler/research mathematics when
-  those equations become implementation-relevant.
+- Future implementation-relevant equations must extend the manifest and its
+  independent evidence from the owning compiler, optimizer, or research TODO.
 ## References
 
 - [Verification Trust Boundary](../../adr/verification-trust-boundary.md)

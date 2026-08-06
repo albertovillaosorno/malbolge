@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -52,7 +52,8 @@ the document set, shared-notation requirement, cache-only output mapping, and
 the
 historical/current profile-width specializations.
 
-The framework makes equations stable and buildable; it does not by itself prove
+The framework is complete as the repository-owned notation and build surface.
+It makes equations stable and buildable; it does not by itself prove
 that executable implementations satisfy them.
 Exhaustive/property/machine-checked
 correspondence remains a separate downstream obligation.

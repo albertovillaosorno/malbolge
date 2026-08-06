@@ -1,6 +1,6 @@
 ---
 id: "latex-mathematical-specification-framework"
-status: "active"
+status: "completed"
 lane: "5"
 area: "mathematics"
 task: "TODO - LaTeX mathematical specification framework"
@@ -71,8 +71,8 @@ lowering, equivalence relations, and search cost functions.
   explicit domain assumptions and a traceable executable correspondence check.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Completed on 2026-08-06 after all nine documents compiled with the
+  fail-closed MiKTeX command and the structural tests passed.
 
 ## Evidence
 
@@ -85,3 +85,8 @@ lowering, equivalence relations, and search cost functions.
 - Framework/build evidence is executable and retained in the validator/tests.
   Mathematical correspondence between equations and implementation remains the
   separate downstream `machine-checked-mathematical-correspondence` obligation.
+
+**Completion evidence.** MiKTeX 25.12 compiled all nine standalone
+documents with `--disable-installer` and `--disable-write18`; the framework
+tests passed 5/5. Semantic correspondence remains separately owned by
+`machine-checked-mathematical-correspondence`.
