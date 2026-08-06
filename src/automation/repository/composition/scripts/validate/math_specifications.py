@@ -35,11 +35,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed TeX argv, never a shell command.
 import sys
 from typing import Never
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+if __package__ in {None, ""}:
+    composition_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
 
@@ -138,11 +147,26 @@ def output_directory(source: Path) -> Path:
     return CACHE_ROOT / relative.parent / relative.stem
 
 
+def latex_compiler(
+    lookup: Callable[[str], str | None] = shutil.which,
+) -> str:
+    """Resolve the required LaTeX compiler or fail with one stable diagnostic.
+
+    Returns:
+        Absolute or PATH-resolved `pdflatex` executable.
+
+    """
+    compiler = lookup(LATEX_COMPILER)
+    if compiler is None:
+        _fail(f"LaTeX compiler not found: {LATEX_COMPILER}")
+    return compiler
+
+
 def _compile_document(source: Path) -> None:
     output = output_directory(source)
     _ = output.mkdir(parents=True, exist_ok=True)
     command = [
-        LATEX_COMPILER,
+        latex_compiler(),
         "-disable-installer",
         "-disable-write18",
         "-interaction=nonstopmode",

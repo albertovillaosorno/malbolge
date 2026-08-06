@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import pytest
 from scripts.validate import math_specifications as validator
 
 HISTORICAL_TRITS = "N=10"
@@ -95,3 +96,16 @@ def test_generic_profile_math_names_historical_and_current_widths() -> None:
     assert HISTORICAL_WORDS in text
     assert CURRENT_TRITS in text
     assert CURRENT_WORDS in text
+
+
+def _missing_compiler(name: str) -> None:
+    _ = name
+
+
+def test_missing_latex_compiler_fails_with_stable_diagnostic() -> None:
+    """Direct validation names the missing tool instead of leaking WinError."""
+    with pytest.raises(
+        validator.MathSpecificationError,
+        match="LaTeX compiler not found: pdflatex",
+    ):
+        _ = validator.latex_compiler(_missing_compiler)
