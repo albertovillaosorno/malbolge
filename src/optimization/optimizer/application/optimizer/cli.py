@@ -41,6 +41,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import sys
+from typing import Never
 from typing import TYPE_CHECKING
 from typing import final
 from typing import override
@@ -88,6 +89,20 @@ type CudaAdapterFactory = Callable[[], CudaExactPrimitiveAdapter]
 
 class SearchCliError(ValueError):
     """Search runner input, configuration, or registry state is invalid."""
+
+
+class _SearchArgumentParser(argparse.ArgumentParser):
+    """Argument parser that reports invalid input through the CLI boundary."""
+
+    @override
+    def error(self, message: str) -> Never:
+        """Raise one stable configuration error instead of exiting.
+
+        Raises:
+            SearchCliError: Always, with the parser diagnostic.
+
+        """
+        raise SearchCliError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +165,7 @@ class _UnavailableSearchAdapter(SearchExecutionAdapter):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _SearchArgumentParser(
         description=(
             "Run one versioned Malbolge search configuration and emit "
             "reproducible untrusted proposal evidence as JSON."
@@ -332,6 +347,19 @@ def _write_error(error: object) -> None:
     _ = sys.stderr.write(f"error: {error}\n")
 
 
+def _execute_arguments(arguments: _Arguments) -> str:
+    configuration = load_search_configuration(arguments.config)
+    problem = arguments.problem.read_bytes()
+    options = SearchRunOptions(
+        algorithm_override=arguments.algorithm,
+        backend_override=arguments.backend,
+        evaluation_budget=arguments.budget,
+        seed=arguments.seed,
+    )
+    record = run_configured_search(configuration, problem, options)
+    return search_record_json(configuration, problem, record)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run configured search and write deterministic JSON proposal evidence.
 
@@ -339,18 +367,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         Zero on successful search execution, otherwise a configuration error.
 
     """
-    arguments = _parse_arguments(argv)
     try:
-        configuration = load_search_configuration(arguments.config)
-        problem = arguments.problem.read_bytes()
-        options = SearchRunOptions(
-            algorithm_override=arguments.algorithm,
-            backend_override=arguments.backend,
-            evaluation_budget=arguments.budget,
-            seed=arguments.seed,
-        )
-        record = run_configured_search(configuration, problem, options)
-        rendered = search_record_json(configuration, problem, record)
+        arguments = _parse_arguments(argv)
+        rendered = _execute_arguments(arguments)
     except (AcceleratorError, OSError, ValueError) as error:
         _write_error(error)
         return CONFIGURATION_ERROR

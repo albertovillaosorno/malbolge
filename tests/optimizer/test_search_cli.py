@@ -72,6 +72,7 @@ CRAZY_ALL_ONES = 29_524
 CONFIG_SOURCE = "config/search.toml"
 BASE_SOURCE = "base.toml"
 UNSUPPORTED_PAIR = "unsupported search algorithm/backend"
+INVALID_INTEGER = "invalid int value"
 TWO_PROPOSALS = 2
 CRAZY_PROPOSALS = 4
 
@@ -352,6 +353,26 @@ backend_id = "{CPU_BACKEND}"
     assert payload["actual_backend_id"] == CPU_BACKEND
     assert len(_json_list(payload["proposals"])) == TWO_PROPOSALS
     assert not stderr.getvalue()
+
+
+def test_main_reports_argument_errors_without_process_exit() -> None:
+    """Malformed typed arguments return the documented configuration status."""
+    stdout = StringIO()
+    stderr = StringIO()
+
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main((
+            "--config",
+            "search.toml",
+            "--problem",
+            "problem.bin",
+            "--budget",
+            "not-an-integer",
+        ))
+
+    assert status == CONFIGURATION_ERROR
+    assert INVALID_INTEGER in stderr.getvalue()
+    assert not stdout.getvalue()
 
 
 def test_main_reports_configuration_errors(tmp_path: Path) -> None:

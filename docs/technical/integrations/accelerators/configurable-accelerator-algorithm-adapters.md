@@ -75,7 +75,9 @@ route
 that cannot initialize is represented as optional unavailable capacity and falls
 back through the normal CPU reference path while retaining configured CUDA
 identity. Unsupported pairs such as deterministic corpus enumeration plus CUDA
-fail explicitly instead of changing strategy. The first retained side-by-side
+fail explicitly instead of changing strategy. Malformed typed command arguments
+return the same stable configuration-error status instead of terminating an
+embedded `main(argv)` caller through `argparse`. The first retained side-by-side
 performance record uses the complete 59,049-word classic domain with 15 retained
 samples per backend, one warmup, fixed CPU-then-CUDA interleaving, retain-all
 outlier policy, exact proposal equality, and independent CPU admission. On the
