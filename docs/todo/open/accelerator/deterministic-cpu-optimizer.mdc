@@ -10,6 +10,7 @@ depends_on:
   - "safe-rust-malbolge-vm"
   - "translation-validation"
   - "compiler-algorithm-experimentation-platform"
+  - "resumable-compilation-progress-sidecars"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"

@@ -15,6 +15,7 @@ depends_on:
   - "malbolge-layout-and-encoding-backend"
   - "translation-validation"
   - "required-profile-diagnostics"
+  - "resumable-compilation-progress-sidecars"
   - "cuda-linux-runtime-and-hermetic-toolchain"
   - "cross-platform-native-capability-runners"
 adr_paths:

@@ -1,0 +1,76 @@
+---
+id: "resumable-compilation-progress-sidecars"
+status: "active"
+lane: "9"
+area: "compiler"
+task: "TODO - Resumable compilation progress sidecars"
+contract: "docs/technical/compiler/resumable-compilation-progress-sidecars.md"
+depends_on:
+  - "reproducible-experiment-identity-and-manifest"
+  - "custom-target-profile-identity"
+  - "benchmark-and-statistical-evidence-protocol"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/parametric-multi-objective-algorithm-evaluation.md"
+scope:
+  - "src/interface/command-line/"
+  - "src/automation/repository/composition/scripts/progress_sidecar.py"
+  - "src/compiler/"
+  - "src/optimization/accelerator/"
+  - "tests/compiler/"
+  - "tests/test_progress_sidecar.py"
+  - "tests/optimizer/"
+  - "docs/technical/compiler/resumable-compilation-progress-sidecars.md"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Resumable compilation progress sidecars
+
+## Objective
+
+Persist an atomic JSON sidecar and compatible checkpoint for long-running
+source, block, optimization, verification, and GPU jobs so elapsed time,
+scientific provenance, current stage, and recoverable work survive process or
+host failure without publishing an incomplete final `.malbolge` artifact.
+
+## Acceptance
+
+- `output.malbolge.progress.json` records versioned source, profile, toolchain,
+  algorithm, backend, stage, counters, timing, checkpoint, and diagnostic
+  identity.
+- Active monotonic time, total wall time, pause time, verification,
+  serialization, and checkpoint overhead remain separately measurable.
+- Unknown work totals remain unknown rather than producing a fabricated
+  percentage.
+- Checkpoints and sidecars are atomically replaced and reject incompatible or
+  corrupted resume attempts.
+- CPU and accelerator jobs can resume from backend-neutral durable state and
+  produce the same independently verified artifact as uninterrupted execution.
+- The requested final `.malbolge` path appears only after complete verification;
+  partial state uses explicit `.partial`, `.checkpoint`, and `.progress.json`
+  paths.
+- Cancellation, crash, power-loss simulation, and completed-job restart are
+  covered by deterministic tests.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- `scripts/progress_sidecar.py` implements the flat v1 reference schema,
+  canonical backend-neutral resume fingerprint, duplicate-key rejection,
+  exact lifecycle/timing/checkpoint validation, canonical JSON, and
+  same-filesystem atomic replacement.
+- `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
+  atomic replacement, stale identity, impossible timing, duplicate/unknown
+  keys, torn checkpoint/partial groups, and terminal diagnostics.
+- Product CLI, compiler-state serialization, crash injection, and CPU/CUDA
+  resume equivalence remain open; this TODO is therefore still active.
+- Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
+  compatibility fingerprint, CLI/service integration, injected-clock tests,
+  crash fixtures, CPU/CUDA resume differential evidence, and timing reports.
+- The resident compiler WAL may reuse this job-level contract but cannot replace
+  it with process-private state.
+- Prerequisite completion evidence: experiment identity, target profile
+  identity, benchmark/statistical evidence protocol, and documentation gate.

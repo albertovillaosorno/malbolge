@@ -9,6 +9,7 @@ depends_on:
   - "deterministic-cpu-optimizer"
   - "configurable-accelerator-algorithm-adapters"
   - "benchmark-and-statistical-evidence-protocol"
+  - "resumable-compilation-progress-sidecars"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"

@@ -11,6 +11,7 @@ depends_on:
   - "malbolge-layout-and-encoding-backend"
   - "deterministic-cpu-optimizer"
   - "resident-incremental-compiler-and-wal"
+  - "resumable-compilation-progress-sidecars"
   - "empirical-malbolge-synthesis-scaling-law"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:

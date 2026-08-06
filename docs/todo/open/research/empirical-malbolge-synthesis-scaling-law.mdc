@@ -11,6 +11,7 @@ depends_on:
   - "parametric-compiler-challenge-generator"
   - "reusable-block-catalogue"
   - "stochastic-and-guided-search"
+  - "resumable-compilation-progress-sidecars"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"

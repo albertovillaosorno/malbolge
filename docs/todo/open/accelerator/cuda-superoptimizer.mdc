@@ -10,6 +10,7 @@ depends_on:
   - "stochastic-and-guided-search"
   - "search-pruning-and-state-canonicalization"
   - "translation-validation"
+  - "resumable-compilation-progress-sidecars"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"

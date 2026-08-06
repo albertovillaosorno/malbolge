@@ -146,6 +146,11 @@ parts:
     path: composition/scripts/bootstrap/uv-toolchain.json
     kind: composition
     responsibility: Pin standalone uv artifacts by platform and SHA-256.
+  - id: part-0023
+    path: composition/scripts/progress_sidecar.py
+    kind: composition
+    language: python
+    responsibility: Validate and atomically persist progress sidecars.
 projects: []
 tests: []
 graph:
