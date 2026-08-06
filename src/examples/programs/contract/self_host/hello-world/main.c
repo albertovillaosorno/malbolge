@@ -126,8 +126,8 @@ typedef struct AuditRecord
         unsigned int state_digest;
 } AuditRecord;
 
-/// The proof object is intentionally explicit so the joke cannot hide a magical
-/// boolean named `secure` behind an undocumented helper.
+/// The proof object is intentionally explicit so the implementation cannot hide
+/// a boolean named `secure` behind an undocumented helper.
 typedef struct LatticeProof
 {
         unsigned int challenge;

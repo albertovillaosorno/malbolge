@@ -541,8 +541,9 @@ Runtime lookup replaced language-frozen static initializers in areas including:
 Customized chat macros remain user overrides. Unmodified defaults follow the
 active language.
 
-The Korean catalog remains exactly the intentionally satirical artifact it was.
-I did not "fix" the joke out of it while converting the selection mechanism.
+The Korean catalog remains unchanged as the retained historical artifact. The
+runtime lookup conversion preserves its content while changing only the
+selection mechanism.
 
 ## Guest Runtime and Host Boundary
 
