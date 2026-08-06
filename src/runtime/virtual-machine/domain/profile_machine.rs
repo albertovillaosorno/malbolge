@@ -45,16 +45,15 @@ use crate::profile::{
     ProfileDescriptor, ProfileKind, ProfileRequirementError, preflight_profile,
     safe_rust_profiled_capability,
 };
-use crate::profile_arithmetic::{
-    TERNARY_RADIX, profile_crazy, profile_low_byte,
-};
 use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
 use crate::trace::TraceInput;
+use crate::word::{profile_crazy, profile_low_byte};
 
 const GRAPHICAL_MAX: u32 = 126;
+const TERNARY_RADIX: u32 = 3;
 const GRAPHICAL_MIN: u32 = 33;
 
 /// Registers for one profile-driven Malbolge machine.

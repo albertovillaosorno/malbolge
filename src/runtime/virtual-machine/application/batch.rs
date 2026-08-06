@@ -37,7 +37,6 @@
 mod backend;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
-use std::thread;
 
 pub use backend::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
@@ -51,6 +50,7 @@ pub use backend::{
 use crate::execution::{ExecutionError, ExecutionMachine};
 use crate::machine::RunOutcome;
 use crate::mode::ExecutionMode;
+use crate::parallel_port::{ParallelExecutionError, ParallelExecutionPort};
 use crate::profile::ProfileDescriptor;
 use crate::profile_machine::{ProfileMachine, ProfileMachineError};
 
@@ -151,9 +151,14 @@ pub enum ProfileBatchResult {
     },
 }
 
-impl BatchError {
-    const fn worker_panicked(worker: usize) -> Self {
-        Self::WorkerPanicked { worker }
+impl From<ParallelExecutionError> for BatchError {
+    fn from(error: ParallelExecutionError) -> Self {
+        match error {
+            ParallelExecutionError::WorkerPanicked { worker } => {
+                Self::WorkerPanicked { worker }
+            },
+            ParallelExecutionError::ZeroWorkers => Self::ZeroWorkers,
+        }
     }
 }
 
@@ -358,11 +363,15 @@ pub fn execute_batch(requests: Vec<BatchRequest>) -> Vec<BatchResult> {
 ///
 /// Returns [`BatchError::ZeroWorkers`] for `worker_count == 0`, or
 /// [`BatchError::WorkerPanicked`] if a host worker panics.
-pub fn execute_batch_parallel(
+pub fn execute_batch_parallel_with<Parallel>(
     requests: Vec<BatchRequest>,
     worker_count: usize,
-) -> Result<Vec<BatchResult>, BatchError> {
-    execute_parallel(requests, worker_count, execute_one)
+) -> Result<Vec<BatchResult>, BatchError>
+where
+    Parallel: ParallelExecutionPort,
+{
+    Parallel::execute(requests, worker_count, execute_one)
+        .map_err(BatchError::from)
 }
 
 fn execute_one(request: BatchRequest) -> BatchResult {
@@ -383,49 +392,6 @@ fn execute_built(request: BuiltRequest) -> BatchResult {
     }
 }
 
-fn execute_parallel<Request, Output>(
-    requests: Vec<Request>,
-    worker_count: usize,
-    execute: fn(Request) -> Output,
-) -> Result<Vec<Output>, BatchError>
-where
-    Request: Send,
-    Output: Send,
-{
-    if worker_count == 0 {
-        return Err(BatchError::ZeroWorkers);
-    }
-    if requests.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let workers = worker_count.min(requests.len());
-    let chunk_size = requests.len().div_ceil(workers);
-    let chunks = owned_chunks(requests, chunk_size);
-    thread::scope(|scope| {
-        let handles = chunks
-            .into_iter()
-            .enumerate()
-            .map(|(worker, chunk)| {
-                (
-                    worker,
-                    scope.spawn(move || {
-                        chunk.into_iter().map(execute).collect::<Vec<_>>()
-                    }),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut results = Vec::new();
-        for (worker, handle) in handles {
-            let mut chunk_results = handle
-                .join()
-                .map_err(|_panic| BatchError::worker_panicked(worker))?;
-            results.append(&mut chunk_results);
-        }
-        Ok(results)
-    })
-}
-
 /// Executes all independent profile requests sequentially in exact input order.
 #[must_use]
 pub fn execute_profile_batch(
@@ -441,12 +407,17 @@ pub fn execute_profile_batch(
 ///
 /// # Errors
 ///
-/// Returns the same host scheduler failures as [`execute_batch_parallel`].
-pub fn execute_profile_batch_parallel(
+/// Returns the same host scheduler failures as
+/// [`execute_batch_parallel_with`].
+pub fn execute_profile_batch_parallel_with<Parallel>(
     requests: Vec<ProfileBatchRequest>,
     worker_count: usize,
-) -> Result<Vec<ProfileBatchResult>, BatchError> {
-    execute_parallel(requests, worker_count, execute_profile_one)
+) -> Result<Vec<ProfileBatchResult>, BatchError>
+where
+    Parallel: ParallelExecutionPort,
+{
+    Parallel::execute(requests, worker_count, execute_profile_one)
+        .map_err(BatchError::from)
 }
 
 fn execute_profile_one(request: ProfileBatchRequest) -> ProfileBatchResult {
@@ -465,20 +436,4 @@ fn execute_profile_built(request: BuiltProfileRequest) -> ProfileBatchResult {
             machine: Some(machine),
         },
     }
-}
-
-fn owned_chunks<Request>(
-    requests: Vec<Request>,
-    chunk_size: usize,
-) -> Vec<Vec<Request>> {
-    let mut remaining = requests.into_iter();
-    let mut chunks = Vec::new();
-    loop {
-        let chunk = remaining.by_ref().take(chunk_size).collect::<Vec<_>>();
-        if chunk.is_empty() {
-            break;
-        }
-        chunks.push(chunk);
-    }
-    chunks
 }

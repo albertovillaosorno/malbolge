@@ -124,34 +124,39 @@ parts:
     language: rust
     responsibility: Own pure rules and domain models.
   - id: part-0018
-    path: domain/profile_arithmetic.rs
-    kind: domain
-    language: rust
-    responsibility: Own pure rules and domain models.
-  - id: part-0019
     path: domain/profile_machine.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.
-  - id: part-0020
+  - id: part-0019
     path: domain/profile_trace.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.
-  - id: part-0021
+  - id: part-0020
     path: domain/trace.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.
-  - id: part-0022
+  - id: part-0021
     path: domain/execution_ir.md
     kind: domain
     responsibility: Own pure rules and domain models.
-  - id: part-0023
+  - id: part-0022
     path: domain/execution_ir.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.
+  - id: part-0023
+    path: port-outbound/parallel.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define outbound capability contracts.
+  - id: part-0024
+    path: adapter-outbound/threading.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind outbound capabilities to external systems.
 projects: []
 tests: []
 graph:

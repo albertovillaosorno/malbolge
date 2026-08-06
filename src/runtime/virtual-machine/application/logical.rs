@@ -39,10 +39,11 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::batch::{
     BatchError, BatchRequest, BatchResult, ProfileBatchRequest,
-    ProfileBatchResult, execute_batch, execute_batch_parallel,
-    execute_profile_batch, execute_profile_batch_parallel,
+    ProfileBatchResult, execute_batch, execute_batch_parallel_with,
+    execute_profile_batch, execute_profile_batch_parallel_with,
 };
 use crate::execution::ExecutionError;
+use crate::parallel_port::ParallelExecutionPort;
 use crate::profile_machine::ProfileMachineError;
 
 /// Stable logical identity used to define task and join ordering.
@@ -290,12 +291,16 @@ pub fn execute_logical_tasks(
 ///
 /// Returns duplicate-identity failure before execution, or propagates typed
 /// batch scheduler failures such as zero workers or worker panic.
-pub fn execute_logical_tasks_parallel(
+pub fn execute_logical_tasks_parallel_with<Parallel>(
     tasks: Vec<LogicalTask>,
     worker_count: usize,
-) -> Result<Vec<LogicalTaskResult>, LogicalConcurrencyError> {
+) -> Result<Vec<LogicalTaskResult>, LogicalConcurrencyError>
+where
+    Parallel: ParallelExecutionPort,
+{
     let plan = logical_plan(tasks)?;
-    let results = execute_batch_parallel(plan.requests, worker_count)?;
+    let results =
+        execute_batch_parallel_with::<Parallel>(plan.requests, worker_count)?;
     Ok(tag_results(plan.ids, results))
 }
 
@@ -320,12 +325,18 @@ pub fn execute_profile_logical_tasks(
 ///
 /// Returns duplicate-identity failure before scheduling, or the shared typed
 /// batch scheduler failure.
-pub fn execute_profile_logical_tasks_parallel(
+pub fn execute_profile_logical_tasks_parallel_with<Parallel>(
     tasks: Vec<ProfileLogicalTask>,
     worker_count: usize,
-) -> Result<Vec<ProfileLogicalTaskResult>, LogicalConcurrencyError> {
+) -> Result<Vec<ProfileLogicalTaskResult>, LogicalConcurrencyError>
+where
+    Parallel: ParallelExecutionPort,
+{
     let plan = profile_logical_plan(tasks)?;
-    let results = execute_profile_batch_parallel(plan.requests, worker_count)?;
+    let results = execute_profile_batch_parallel_with::<Parallel>(
+        plan.requests,
+        worker_count,
+    )?;
     Ok(tag_profile_results(plan.ids, results))
 }
 
