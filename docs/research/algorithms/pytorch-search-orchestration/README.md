@@ -1,4 +1,4 @@
-# Pytorch Search Orchestration
+# PyTorch Search Orchestration
 
 ## Purpose
 

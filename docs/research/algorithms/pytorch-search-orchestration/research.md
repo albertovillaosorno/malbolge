@@ -48,7 +48,7 @@ Candidate generation, heuristics, models, and accelerators are untrusted. A
 research result can compare quality or cost only after the trusted semantic
 verifier accepts the candidate under the declared target profile.
 
-- PyTorch is restricted to representation/orchestration/heuristic guidance where
+- PyTorch is restricted to representation/tier/heuristic guidance where
   useful; exact semantic evaluation remains in deterministic implementations
   when tensor semantics are unsuitable.
 - Training corpora are verifier-labeled and versioned; model/checkpoint

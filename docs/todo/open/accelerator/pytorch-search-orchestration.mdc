@@ -32,7 +32,7 @@ retain exact semantic execution where tensor operations are a poor fit.
 
 ## Acceptance
 
-- PyTorch is restricted to representation/orchestration/heuristic guidance where
+- PyTorch is restricted to representation/tier/heuristic guidance where
   useful; exact semantic evaluation remains in deterministic implementations
   when tensor semantics are unsuitable.
 - Training data, model identity, checkpoints, feature schemas, and held-out
