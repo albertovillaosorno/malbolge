@@ -37,13 +37,6 @@ test = false
 bench = false
 doc = false
 
-[[bin]]
-name = "museum_convert"
-path = "src/tooling/decompiler/composition/museum_convert.rs"
-test = false
-bench = false
-doc = false
-
 [workspace]
 resolver = "3"
 members = ["."]

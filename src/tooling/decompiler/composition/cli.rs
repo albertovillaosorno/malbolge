@@ -76,9 +76,9 @@ pub fn run() -> IoResult<()> {
         output.write_all(b"\n")?;
         return Ok(());
     };
-    let profile = target_profile(&arguments.profile_id).ok_or_else(|| {
-        IoError::other(format!("unknown profile: {}", arguments.profile_id))
-    })?;
+    let profile = target_profile(&arguments.profile_id)
+        // jig-ignore-next-line: rustfmt output is indivisible
+        .ok_or_else(|| IoError::other(format!("unknown profile: {}", arguments.profile_id)))?;
     let source = read(&arguments.input)?;
     let rendered = match arguments.representation {
         OutputRepresentation::CSource => decompiler::render_c(profile, &source),
@@ -107,7 +107,7 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
             Some("--profile") => {
                 let value = next_utf8(raw, &mut index, "--profile")?;
                 set_once(&mut profile_id, String::from(value), "--profile")?;
-            },
+            }
             Some("--representation") => {
                 let value = next_utf8(raw, &mut index, "--representation")?;
                 set_once(
@@ -115,37 +115,34 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
                     parse_representation(value)?,
                     "--representation",
                 )?;
-            },
+            }
             Some("--output" | "-o") => {
                 index = index.saturating_add(1);
-                let value = raw.get(index).ok_or_else(|| {
-                    IoError::other("--output requires a path")
-                })?;
+                let value = raw
+                    .get(index)
+                    .ok_or_else(|| IoError::other("--output requires a path"))?;
                 set_once(&mut output, PathBuf::from(value), "--output")?;
-            },
+            }
             Some(value) if value.starts_with('-') => {
-                return Err(IoError::other(format!(
-                    "unknown argument: {value}"
-                )));
-            },
+                // jig-ignore-next-line: rustfmt output is indivisible
+                return Err(IoError::other(format!("unknown argument: {value}")));
+            }
             _ => {
                 if input.is_some() {
-                    return Err(IoError::other(
-                        "multiple input paths supplied",
-                    ));
+                    return Err(IoError::other("multiple input paths supplied"));
                 }
                 input = Some(PathBuf::from(argument));
-            },
+            }
         }
         index = index.saturating_add(1);
     }
     Ok(Some(Arguments {
         input: input.ok_or_else(|| IoError::other("missing input path"))?,
         output,
-        profile_id: profile_id
-            .ok_or_else(|| IoError::other("missing --profile"))?,
-        representation: representation
-            .ok_or_else(|| IoError::other("missing --representation"))?,
+        // jig-ignore-next-line: rustfmt output is indivisible
+        profile_id: profile_id.ok_or_else(|| IoError::other("missing --profile"))?,
+        // jig-ignore-next-line: rustfmt output is indivisible
+        representation: representation.ok_or_else(|| IoError::other("missing --representation"))?,
     }))
 }
 

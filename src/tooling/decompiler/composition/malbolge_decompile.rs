@@ -9,21 +9,21 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Cargo entrypoint selecting the general decompiler frontend.
+//   - Cargo entrypoint and sole module topology for decompilation.
 // - Must-Not:
-//   - Duplicate module topology, renderer semantics, or argument policy.
+//   - Duplicate renderer semantics or infer profile and representation policy.
 // - Allows:
-//   - Inputs: the canonical shared decompiler composition.
+//   - Inputs: explicit CLI arguments and responsibility-owned modules.
 //   - Outputs: one general decompiler command execution.
 //   - Side effects: delegated frontend behavior only.
 // - Split-When:
 //   - The general command gains an independent package lifecycle.
 // - Merge-When:
-//   - Cargo supports executable aliases without another target source.
+//   - No independent executable composition policy remains.
 // - Summary:
-//   - Selects `malbolge_decompile` from one shared composition topology.
+//   - Owns the single general decompiler executable topology.
 // - Description:
-//   - Keeps Cargo target identity separate from shared module ownership.
+//   - Wires the renderer and explicit CLI under one logical root.
 // - Usage:
 //   - Compiled as the `malbolge_decompile` binary.
 // - Defaults:
@@ -32,8 +32,13 @@
 
 //! General explicit-profile Malbolge decompiler executable.
 
-include!("shared.rs");
+#[path = "../application/render.rs"]
+pub mod decompiler;
+#[path = "cli.rs"]
+pub mod decompiler_cli;
+
+use std::io::Result as IoResult;
 
 fn main() -> IoResult<()> {
-    run_selected(DECOMPILER_BINARY)
+    decompiler_cli::run()
 }

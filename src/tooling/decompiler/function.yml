@@ -54,21 +54,6 @@ parts:
     language: rust
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0004
-    path: composition/museum.rs
-    kind: composition
-    language: rust
-    responsibility: Wire runtime policy and executable entrypoints.
-  - id: part-0005
-    path: composition/museum_convert.rs
-    kind: composition
-    language: rust
-    responsibility: Wire runtime policy and executable entrypoints.
-  - id: part-0006
-    path: composition/shared.rs
-    kind: composition
-    language: rust
-    responsibility: Wire runtime policy and executable entrypoints.
-  - id: part-0007
     path: contract/reference.md
     kind: contract
     responsibility: Define serialized and cross-boundary representations.

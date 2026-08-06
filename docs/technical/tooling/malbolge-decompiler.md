@@ -15,9 +15,9 @@ recovered from arbitrary Malbolge.
 
 ## Scope
 
-- `tools/decompile/`
-- `src/tooling/decompiler/composition/shared.rs`
-- `src/tooling/decompiler/composition/shared.rs`
+- `src/tooling/decompiler/application/render.rs`
+- `src/tooling/decompiler/composition/cli.rs`
+- `src/tooling/decompiler/composition/malbolge_decompile.rs`
 - `tests/decompiler.rs`
 - local generated views of `examples/museum/` specimens
 
@@ -57,10 +57,18 @@ cargo run --bin malbolge_decompile -- \
 reverse-engineering IR, control-flow/state annotations, mutation-history views,
 or other readable forms remain open.
 
-`museum_convert` is a separate tiny policy layer. It consumes one local file,
-selects only frozen `malbolge-1998`, and writes a local C view through the same
-general renderer. It performs no acquisition and adds nothing to the committed
-museum.
+Historical museum conversion uses the same general CLI with the explicit frozen
+`malbolge-1998` profile. No second executable root or implicit profile policy is
+required:
+
+```text
+cargo run --bin malbolge_decompile -- \
+  --profile malbolge-1998 \
+  --representation c INPUT.malbolge \
+  --output OUTPUT.c
+```
+
+The command performs no acquisition and adds nothing to the committed museum.
 
 ## Invariants
 
@@ -92,7 +100,7 @@ output-exhausted statuses. A rejected encryption target or exhausted output
 buffer commits no input, output, register, or memory transition for that step.
 Halt and modern non-graphical termination are distinct outcomes;
 `malbolge-1998` instead preserves bounded non-progress for a non-graphical
-current cell. Museum conversion never downloads a missing specimen or
+current cell. Historical conversion never downloads a missing specimen or
 substitutes another source.
 
 ## Verification

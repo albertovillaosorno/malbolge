@@ -42,9 +42,8 @@ have no fallback. `c` is the first
 implemented representation; the CLI is intentionally shaped for additional
 readable representations without redefining decompilation as C-only.
 
-## Museum helper
+## Historical conversion
 
-`museum_convert` is intentionally smaller and separate. It always selects the
-frozen `malbolge-1998` profile and converts a locally supplied historical file to
-a local C view. It does not download museum artifacts and does not add generated
-C to `examples/museum/`.
+Historical specimens use the general `malbolge_decompile` CLI with an explicit
+`malbolge-1998` profile and C representation. The tool performs no acquisition,
+redistribution, or implicit profile selection.
