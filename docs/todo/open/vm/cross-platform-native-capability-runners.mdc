@@ -81,3 +81,25 @@ automatic
 ABI and current-platform adapter resolution during `malbolge
 <artifact.malbolge>`;
 filename heuristics and implicit capability grants are forbidden.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Implement the version-1 host-capability contract for supported 64-bit Windows,
+macOS, and Linux runners on x86-64 and AArch64. Keep adapters outside the guest
+and require the same `.malbolge` payload and guest-visible behavior on every
+runner. The normalized DOOM C corpus already passes the strict freestanding
+compile gate on all six target/architecture pairs without OS-selection macros;
+the remaining platform work is capability implementation and runtime validation,
+not guest-source porting. Runners must not require LLVM or an externally
+installed
+multimedia library merely to execute an already generated program. Replace the
+non-executable
+`src/interface/command-line/adapter-outbound/adapters/doom/abi.malbolge` and
+`src/interface/command-line/adapter-outbound/adapters/doom/windows.malbolge`
+scaffolds with compiler-generated, verified
+modules. When a `.malbolge` capsule explicitly declares `doom.host.v1`,
+`malbolge <artifact.malbolge>` must resolve and load the ABI plus
+current-platform
+adapter automatically; ordinary programs receive no implicit DOOM capabilities.

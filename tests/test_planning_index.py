@@ -1,0 +1,290 @@
+# Copyright:
+#   - Copyright (c) 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - MIT
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE-MIT
+#
+# Boundary-Contract:
+# - Owns:
+#   - Canonical compact TODO priority-index evidence.
+# - Must-Not:
+#   - Duplicate typed metadata or accept completed work as active planning.
+# - Allows:
+#   - Inputs: `TODO.md` and typed TODO records.
+#   - Outputs: exact group, heuristic-order, summary, and link assertions.
+#   - Side effects: repository reads only.
+# - Split-When:
+#   - Planning surfaces acquire an independent machine-readable schema.
+# - Merge-When:
+#   - Jig directly validates compact priority-grouped TODO content.
+# - Summary:
+#   - Prevents the TODO index from duplicating or drifting from its authorities.
+# - Description:
+#   - Enforces P0-P4 grouping and compact title/summary/link blocks.
+# - Usage:
+#   - Runs with the repository Python test suite.
+# - Defaults:
+#   - Open records are indexed; completed records are excluded.
+#
+
+"""Compact priority-grouped TODO index regressions."""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+from dataclasses import field
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+TODO_PATH = ROOT / "TODO.md"
+OPEN_ROOT = ROOT / "docs/todo/open"
+COMPLETED_ROOT = ROOT / "docs/todo/completed"
+ACTIVE_STATUS = "active"
+EXPECTED_TODO_COUNT = 82
+MAX_SUMMARY_SENTENCES = 4
+TODO_TARGET_PATTERN = r"docs/todo/open/.+?\.mdc"
+FORBIDDEN_SUMMARY_MARKERS = (
+    "**Synthesis:**",
+    "**Full TODO:**",
+    "priority lane",
+)
+P_GROUPS = (
+    ("P0", "Authority and governance", range(1, 5)),
+    ("P1", "Semantic and language foundations", range(5, 8)),
+    ("P2", "Compiler, runtime, and accelerator core", range(8, 11)),
+    ("P3", "Optimization, proof, and reusable scale", range(11, 14)),
+    ("P4", "Applications, evidence, and self-hosting", range(14, 17)),
+)
+AREA_ORDER = {
+    name: index
+    for index, name in enumerate((
+        "foundation",
+        "documentation",
+        "compatibility",
+        "vm",
+        "verification",
+        "mathematics",
+        "c",
+        "compiler",
+        "accelerator",
+        "tools",
+        "applications",
+        "research",
+        "self_hosting",
+    ))
+}
+LINK_TARGET = re.compile(
+    rf"^\[({TODO_TARGET_PATTERN})\]\(({TODO_TARGET_PATTERN})\)$"
+)
+SENTENCE = re.compile(r"[^.!?]+[.!?]")
+
+
+@dataclass(frozen=True)
+class PlanningRecord:
+    """One open typed TODO's canonical index identity."""
+
+    identifier: str
+    lane: int
+    status_order: int
+    area_order: int
+    title: str
+    path: str
+    dependencies: tuple[str, ...]
+    summary: str
+
+
+@dataclass
+class ParsedSection:
+    """One parsed P section and its ordered TODO records."""
+
+    identifier: str
+    title: str
+    records: list[PlanningRecord] = field(default_factory=list)
+
+
+def _front_matter(text: str, field_name: str) -> str:
+    match = re.search(
+        rf'^\s*{field_name}:\s*"?([^"\n]+)',
+        text,
+        re.MULTILINE,
+    )
+    assert match is not None, f"missing {field_name}"
+    return match.group(1).strip()
+
+
+def _dependencies(text: str) -> tuple[str, ...]:
+    match = re.search(
+        r"^depends_on:\s*\n(.*?)(?=^[a-z_]+:|^---$)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if match is None:
+        return ()
+    return tuple(re.findall(
+        r'^\s*-\s*"([^"]+)"',
+        match.group(1),
+        re.MULTILINE,
+    ))
+
+
+def _summary(text: str) -> str:
+    match = re.search(
+        r"^## Objective\s*$\n(.*?)(?=^## |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None, "missing Objective"
+    objective = " ".join(match.group(1).split())
+    sentence = re.match(r"(.+?[.!?])(?:\s|$)", objective)
+    summary = sentence.group(1) if sentence is not None else objective
+    return summary.replace("Malbolge- specific", "Malbolge-specific")
+
+
+def _record_from_typed_todo(path: Path) -> PlanningRecord:
+    text = path.read_text(encoding="utf-8")
+    task = _front_matter(text, "task")
+    assert task.startswith("TODO - ")
+    status = _front_matter(text, "status")
+    assert status in {ACTIVE_STATUS, "pending"}
+    area = _front_matter(text, "area")
+    return PlanningRecord(
+        identifier=_front_matter(text, "id"),
+        lane=int(_front_matter(text, "lane")),
+        status_order=0 if status == ACTIVE_STATUS else 1,
+        area_order=AREA_ORDER.get(area, 99),
+        title=task.removeprefix("TODO - "),
+        path=path.relative_to(ROOT).as_posix(),
+        dependencies=_dependencies(text),
+        summary=_summary(text),
+    )
+
+
+def _open_records() -> tuple[PlanningRecord, ...]:
+    return tuple(
+        _record_from_typed_todo(path)
+        for path in OPEN_ROOT.rglob("*.mdc")
+    )
+
+
+def _dependent_counts(
+    records: tuple[PlanningRecord, ...],
+) -> Counter[str]:
+    identifiers = {record.identifier for record in records}
+    return Counter(
+        dependency
+        for record in records
+        for dependency in record.dependencies
+        if dependency in identifiers
+    )
+
+
+def _priority_key(
+    record: PlanningRecord,
+    dependent_counts: Counter[str],
+) -> tuple[int, int, int, int, str]:
+    return (
+        record.lane,
+        record.status_order,
+        -dependent_counts[record.identifier],
+        record.area_order,
+        record.title.casefold(),
+    )
+
+
+def _completed_titles() -> frozenset[str]:
+    return frozenset(
+        _front_matter(path.read_text(encoding="utf-8"), "task")
+        for path in COMPLETED_ROOT.rglob("*.mdc")
+    )
+
+
+def _parse_link(line: str) -> PlanningRecord:
+    match = LINK_TARGET.fullmatch(line)
+    assert match is not None
+    visible_path = match.group(1)
+    target_path = match.group(2)
+    assert visible_path == target_path
+    assert (ROOT / target_path).is_file()
+    return _record_from_typed_todo(ROOT / target_path)
+
+
+def _parse_todo_entry(
+    lines: list[str],
+    index: int,
+) -> tuple[int, PlanningRecord]:
+    title = lines[index].removeprefix("### TODO - ")
+    assert not lines[index + 1]
+    index += 2
+    summary_lines: list[str] = []
+    while index < len(lines) and lines[index]:
+        summary_lines.append(lines[index])
+        index += 1
+    assert summary_lines
+    summary = " ".join(summary_lines)
+    assert index + 1 < len(lines)
+    record = _parse_link(lines[index + 1])
+    assert title == record.title
+    assert summary == record.summary
+    assert not any(
+        marker in summary for marker in FORBIDDEN_SUMMARY_MARKERS
+    )
+    assert not summary.startswith(("Active,", "Pending,"))
+    sentences = tuple(SENTENCE.findall(summary))
+    assert 1 <= len(sentences) <= MAX_SUMMARY_SENTENCES
+    return index + 2, record
+
+
+def _parse_sections(text: str) -> tuple[ParsedSection, ...]:
+    lines = text.splitlines()
+    sections: list[ParsedSection] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith("## P"):
+            identifier, title = line.removeprefix("## ").split(" — ", 1)
+            sections.append(ParsedSection(identifier=identifier, title=title))
+            index += 1
+            continue
+        if line.startswith("### TODO - "):
+            assert sections, "TODO entry appears before its priority section"
+            index, record = _parse_todo_entry(lines, index)
+            sections[-1].records.append(record)
+            continue
+        index += 1
+    return tuple(sections)
+
+
+def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
+    """Every open TODO has one compact block in heuristic priority order."""
+    sections = _parse_sections(TODO_PATH.read_text(encoding="utf-8"))
+    assert tuple(
+        (section.identifier, section.title)
+        for section in sections
+    ) == tuple((identifier, title) for identifier, title, _lanes in P_GROUPS)
+
+    open_records = _open_records()
+    dependent_counts = _dependent_counts(open_records)
+    actual_records: list[PlanningRecord] = []
+    for section, group in zip(sections, P_GROUPS, strict=True):
+        lanes = group[2]
+        expected = tuple(sorted(
+            (record for record in open_records if record.lane in lanes),
+            key=lambda record: _priority_key(record, dependent_counts),
+        ))
+        assert tuple(section.records) == expected
+        actual_records.extend(section.records)
+
+    assert len(actual_records) == EXPECTED_TODO_COUNT
+    assert (
+        len({record.identifier for record in actual_records})
+        == EXPECTED_TODO_COUNT
+    )
+    completed_titles = _completed_titles()
+    assert not {
+        f"TODO - {record.title}" for record in actual_records
+    }.intersection(completed_titles)

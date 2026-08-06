@@ -52,3 +52,29 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `supported-libc-contract`,
   `safe-rust-malbolge-vm`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Implement startup, calling convention, frames, allocation, streams, integer
+helpers, strings, deterministic math helpers, scheduling primitives, and other
+runtime facilities as code that ultimately executes under Malbolge semantics.
+Fundamental compiler intrinsics such as byte output require real Malbolge
+lowerings. The native CLI adapter may mirror the boundary for debugging but is
+not guest-runtime or lowerability evidence. The DOOM interoperability
+bootstrap already uses the intended memory shape: the host exposes one stable
+guest-memory region and the guest zone allocator owns object allocation inside
+it; no host malloc-like service remains. Guest-side formatting likewise owns
+fatal-message construction before raw diagnostic bytes cross the host boundary.
+The DOOM quality corpus now also carries its deterministic memory/string
+runtime, including compiler-synthesized standard memory symbols, and passes the
+real guest-C validator without a libc shim. Generalize those primitives into the
+reusable guest runtime rather than treating the DOOM-local implementation as the
+final shared library. The DOOM corpus now also parses/sequences MIDI and MUS and
+synthesizes music into guest-owned PCM, so its host ABI no longer contains a
+music decoder/player service. Improve guest synthesis fidelity separately
+without
+weakening that boundary. Raw external effects remain behind a narrow
+host-capability boundary rather than growing into a shadow libc or hidden
+application runtime.

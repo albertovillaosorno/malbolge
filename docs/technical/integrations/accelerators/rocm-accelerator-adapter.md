@@ -1,71 +1,37 @@
-# ROCm accelerator adapter
+# ROCm accelerator adapter reservation
 
 ## Status
 
-Proposed
+Reserved; not implemented and not part of the supported release matrix.
 
 ## Purpose
 
-Add a ROCm accelerator implementation behind the same hardware-neutral port
-without changing compiler semantics, target profiles, or verifier contracts.
+Preserve a hardware-neutral adapter slot for a possible future ROCm/HIP backend
+without making AMD packages, drivers, hardware, or benchmarks a dependency of
+the compiler or its completion gate.
 
-## Scope
+## Current behavior
 
-This document governs the following declared TODO scope:
-
-- `accelerator/rocm/`
-- `algorithms/`
-- `optimizer/`
-- `benchmarks/accelerator/`
-- `tests/optimizer/`
-
-## Current Behavior
-
-### Proposed Model
-
-This record defines the contract that implementation must satisfy for
-`rocm-accelerator-adapter`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
-
-### Implementation Status
-
-Not implemented. This proposed contract does not claim executable support yet.
+No ROCm implementation exists. Adapter selection must report a stable
+unavailable/not-implemented result. Shared code and public bootstrap do not
+install or import ROCm packages.
 
 ## Invariants
 
-- The ROCm adapter satisfies the same capability/algorithm contracts without
-  CUDA types, APIs, or configuration becoming required by shared compiler code.
-- ROCm/HIP/runtime identity is recorded in experiment and benchmark evidence
-  when the adapter participates in a result.
-- A CPU/reference path remains sufficient for correctness, and accelerator
-  failure/unavailability changes performance rather than semantic acceptance.
+- CPU/reference execution remains sufficient for correctness.
+- CUDA and ROCm types do not leak into the hardware-neutral port.
+- ROCm absence changes no semantic or verifier decision.
+- No support claim exists without exact supported GPU, OS, runtime, package,
+  differential-test, and live-device evidence.
 
-## Failure Behavior
+## Future implementation boundary
 
-Missing hardware, resource exhaustion, or accelerator disagreement falls back or
-fails explicitly without changing correctness rules.
+Implementation is intentionally deferred until supported AMD hardware and a
+maintainer are available. That work must be proposed as a new reviewed TODO;
+this reservation alone never authorizes a support or performance claim.
 
-## Verification
-
-- Expected durable artifact surface: `accelerator/rocm/`, `algorithms/`,
-  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
-- Required evidence: CPU/reference differential results against x86-64 and
-  AArch64 hosts, ROCm device/runtime metadata, failure/fallback tests, and
-  benchmark samples for claimed speedups.
-- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
-  `configurable-accelerator-algorithm-adapters`.
 ## References
 
-### Host Architecture Baseline
-
 - `docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md`
-
-- [Replaceable Accelerator And Algorithm
-  Ports](../../adr/replaceable-accelerator-and-algorithm-ports.md)
-- [Verification Trust Boundary](../../adr/verification-trust-boundary.md)
-
-### Governing ADR Paths
-
 - `docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md`
 - `docs/technical/adr/verification-trust-boundary.md`

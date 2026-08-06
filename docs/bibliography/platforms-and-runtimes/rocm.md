@@ -11,7 +11,8 @@ GPU and accelerator hardware.
 
 ## Repository Use
 
-ROCm is the software/runtime identity for the first AMD-family GPU adapter. The
+ROCm is the reserved software/runtime identity for a possible future AMD-family
+adapter. The
 adapter may provide batch VM execution, candidate evaluation, search, and
 superoptimization capacity without becoming a semantic dependency.
 

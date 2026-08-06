@@ -57,3 +57,13 @@ must expose the state and layout contract required for safe linking.
 - Prerequisite completion evidence: `deterministic-cpu-optimizer`,
   `translation-validation`, `malbolge-layout-and-encoding-backend`,
   `state-aware-malbolge-linker`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Build a deterministic catalogue of verified arithmetic, branch, memory, calling
+convention, and runtime blocks so common operations are solved once and reused
+instead of synthesized from scratch for every compilation. Every reusable block
+must carry entry/exit state, layout assumptions, mutation footprint, target
+profile, cost, provenance, and verifier evidence required for safe linking.

@@ -61,3 +61,19 @@ TODO by TODO with its governing documents already available.
   `repository-bibliography-taxonomy-and-citation-provenance`.
 - Documentation/bootstrap commits may precede this gate; product implementation
   commits require this gate to be accepted.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Establish the documentation baseline that must pass before normal product
+implementation history begins. The gate requires the four documentation families
+and their local ADR roots, a usable repository bibliography baseline, all
+existing TODO decisions routed to an owning durable document or an explicitly
+unresolved record, valid local links, and no accidental global `docs/adr/`.
+`.jig/cspell/` remains intact as editorial support. Scaffolding,
+configuration, and concurrent Jig development may exist before this gate, but
+new product implementation work starts only after the documentation baseline is
+reviewable. Documentation and planning commits may precede this gate. Passing it
+authorizes product implementation commits; subsequent implementation proceeds
+TODO by TODO with its governing documents already available.

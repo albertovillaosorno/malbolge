@@ -29,8 +29,9 @@ instruction selection and calling conventions, but those details never become
 Malbolge semantics.
 
 GPU acceleration is named by the software runtime boundary that the repository
-integrates. CUDA is the first NVIDIA GPU adapter and ROCm is the first AMD GPU
-computing adapter. CPU, CUDA, ROCm, and future adapters implement replaceable
+integrates. CUDA is the supported NVIDIA GPU adapter. ROCm reserves a possible future AMD
+GPU adapter identity without claiming implementation. CPU, CUDA, and future
+adapters implement replaceable
 capability ports; none of them is required for semantic correctness beyond the
 portable CPU baseline.
 

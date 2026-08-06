@@ -45,3 +45,14 @@ repository.
   `docs/technical/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Adapt the project-owned MIT legal, interoperability, licensing, provenance, and
+publication-boundary documentation from `C:/Repos/mit/shar` into
+Malbolge-specific contracts. Remove SHAR-specific assumptions, preserve the
+common legal reasoning that applies here, and add DOOM-source, generated-code,
+public-domain-oracle, compiler-output, and user-supplied-input boundaries
+required by this repository.

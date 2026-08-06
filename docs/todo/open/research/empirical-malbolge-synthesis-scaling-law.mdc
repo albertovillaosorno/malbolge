@@ -58,3 +58,15 @@ budgets and fit empirical models instead of assuming a complexity class.
   `benchmark-and-statistical-evidence-protocol`,
   `parametric-compiler-challenge-generator`, `reusable-block-catalogue`,
   `stochastic-and-guided-search`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Measure how verified synthesis cost grows with block difficulty, target-state
+entropy, self-modification footprint, layout coupling, and available reusable
+catalogue coverage. Compare blind search, structured search, compositional
+reuse,
+learned guidance, and accelerator-backed evaluation under identical budgets.
+Fit competing empirical models rather than assuming exponential, linear, or
+sublinear behavior, and report where each model ceases to explain observations.

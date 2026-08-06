@@ -20,7 +20,7 @@ Hardware acceleration and search algorithms are independent ports.
 
 Hardware adapters provide capabilities such as batch execution, candidate
 evaluation, memory/resource reporting, and asynchronous work submission. CPU is
-the mandatory reference implementation; CUDA is the first GPU adapter; ROCm and
+the mandatory reference implementation; CUDA is the supported GPU adapter; ROCm and
 future devices can implement the same contract.
 
 Algorithm adapters describe enumerative, stochastic, Monte Carlo, evolutionary,

@@ -44,3 +44,13 @@ provider, and AST frontend instead of building another C parser.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Use Clang as the build-time C parser, type system, constant evaluator,
+source-location provider, and AST frontend instead of building another C parser.
+Do not make Clang or LLVM a runtime dependency of already generated `.malbolge`
+programs; execution must remain possible with the standalone interpreter and
+guest runtime alone.

@@ -59,3 +59,14 @@ code-size explosion or compilation cost.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Evaluate a VM-inside-Malbolge strategy where large programs are represented as
+compact internal bytecode interpreted by a reusable Malbolge runtime when that
+reduces code-size explosion or compilation cost. If adopted, the bytecode is
+embedded inside the final `.malbolge` program or exists transiently during
+compilation/execution; it does not create a required published `*.bytecode`
+sidecar and never replaces `.malbolge` as the canonical guest artifact.

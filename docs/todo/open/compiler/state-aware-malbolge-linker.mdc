@@ -54,3 +54,14 @@ concatenation.
   contracts, deterministic link-plan hashes, and translation-validation results.
 - Prerequisite completion evidence: `typed-compiler-ir`,
   `malbolge-layout-and-encoding-backend`, `translation-validation`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Build a linker that composes independently compiled Malbolge blocks while
+resolving symbols, addresses, entry/exit machine-state contracts, positional
+decode phase, post-instruction encryption phase, and self-modification
+footprints.
+Relocation is valid only when independent verification proves that stitching the
+blocks preserves the same guest-visible transition semantics.

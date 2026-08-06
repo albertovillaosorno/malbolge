@@ -1,0 +1,81 @@
+---
+id: "turnkey-c-to-malbolge-toolchain"
+status: "pending"
+lane: "16"
+area: "compiler"
+task: "TODO - Turnkey C-to-Malbolge toolchain"
+contract: "docs/technical/compiler/turnkey-c-to-malbolge-toolchain.md"
+depends_on:
+  - "tools-tidy-clang-tidy-plugin"
+  - "deterministic-c-to-malbolge-abi"
+  - "clang-c-frontend-integration"
+  - "typed-compiler-ir"
+  - "ternary-machine-lowering"
+  - "guest-runtime-and-allocator"
+  - "malbolge-layout-and-encoding-backend"
+  - "translation-validation"
+  - "required-profile-diagnostics"
+  - "cuda-linux-runtime-and-hermetic-toolchain"
+  - "cross-platform-native-capability-runners"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
+scope:
+  - "README.md"
+  - "src/automation/repository/composition/scripts/bootstrap/"
+  - "src/automation/repository/"
+  - "src/interface/command-line/"
+  - "src/compiler/"
+  - "tests/compiler/"
+  - "tests/cli/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Turnkey C-to-Malbolge toolchain
+
+## Objective
+
+Deliver the final supported workflow: bootstrap every public project dependency
+except Jig, accept an explicitly named C source file, and emit one verified
+`.malbolge` artifact through a single documented command on supported Windows and
+Linux hosts. CPU compilation remains universally available; NVIDIA CUDA is an
+optional accelerator on Windows and Linux and never changes semantic acceptance.
+
+## Acceptance
+
+- One repository command provisions or verifies pinned public dependencies,
+  including Python, Rust, LLVM/Clang, C analysis tools, and optional manifest-
+  selected CUDA user-space packages; Jig is not downloaded, installed, or
+  required by the end-user bootstrap.
+- Privileged operating-system prerequisites such as NVIDIA kernel drivers are
+  detected and diagnosed with exact remediation guidance rather than installed
+  silently or replaced by an unpinned system dependency.
+- After bootstrap, one stable command such as
+  `malbolge compile input.c -o input.malbolge` validates the guest-C profile,
+  compiles the source, verifies the result, and atomically writes the requested
+  `.malbolge` file without requiring the user to invoke intermediate stages.
+- The CPU/reference path works without a GPU. A supported NVIDIA GPU may
+  accelerate search or optimization on Windows or Linux, including headless
+  Linux servers, while missing CUDA falls back explicitly to CPU execution.
+- Re-running bootstrap and compilation is deterministic, offline-capable after
+  the exact archives are cached, and produces provenance sufficient to reproduce
+  the toolchain and artifact identity.
+- End-to-end fixtures cover a minimal C program, byte I/O, an unsupported-C
+  diagnostic, CPU-only compilation, Linux NVIDIA selection/fallback, and output
+  path collision or partial-write failure.
+- Completion requires all dependencies above and represents the user-facing
+  project completion gate: a clean checkout can become a working C-to-Malbolge
+  compiler without undocumented manual setup.
+
+## Evidence
+
+- Required durable artifacts: cross-platform bootstrap manifests, one public
+  compile command, atomic output handling, end-to-end C/`.malbolge` fixtures,
+  CPU-only evidence, and retained Linux NVIDIA pipeline evidence.
+- Jig remains repository-governance tooling for maintainers and is explicitly
+  outside the redistributable/end-user dependency contract until a separate
+  publication decision exists.
+- ROCm is not a completion dependency; its reserved adapter contract must remain
+  unavailable rather than pretending to have an implementation or device
+  evidence.

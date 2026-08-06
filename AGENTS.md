@@ -134,9 +134,9 @@ Do not mark `Safe Rust Malbolge VM` complete merely because this first slice
 passes tests. Its typed TODO still owns tracing, full conformance evidence, and
 all remaining acceptance criteria.
 
-## Roadmap decisions already settled
+## Planning decisions already settled
 
-The roadmap intentionally records these decisions:
+The planning corpus intentionally records these decisions:
 
 - Synthesis scaling is an empirical research question. Do not assume the whole
   problem is exponential, linear, or amortized linear before measurements.

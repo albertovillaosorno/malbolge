@@ -1,51 +1,46 @@
 ---
 id: "rocm-accelerator-adapter"
 status: "pending"
-lane: "9"
+lane: "16"
 area: "accelerator"
-task: "TODO - ROCm accelerator adapter"
+task: "TODO - ROCm adapter contract reservation"
 contract: "docs/technical/integrations/accelerators/rocm-accelerator-adapter.md"
 depends_on:
   - "replaceable-accelerator-boundary"
-  - "configurable-accelerator-algorithm-adapters"
-  - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
-  - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "accelerator/rocm/"
-  - "algorithms/"
-  - "optimizer/"
-  - "benchmarks/accelerator/"
-  - "tests/optimizer/"
+  - "docs/technical/integrations/accelerators/"
+  - "src/optimization/accelerator/port-outbound/"
 validation:
   - "jig validate --root ."
 ---
-# TODO - ROCm accelerator adapter
+# TODO - ROCm adapter contract reservation
 
 ## Objective
 
-Add a ROCm accelerator implementation behind the same hardware-neutral port
-without changing compiler semantics, target profiles, or verifier contracts.
+Reserve a hardware-neutral ROCm adapter identity and capability boundary without
+implementing, packaging, benchmarking, or advertising ROCm support until
+supported AMD hardware and an explicit maintainer are available.
 
 ## Acceptance
 
-- The ROCm adapter satisfies the same capability/algorithm contracts without
-  CUDA types, APIs, or configuration becoming required by shared compiler code.
-- A CPU/reference path remains sufficient for correctness, and accelerator
-  failure/unavailability changes performance rather than semantic acceptance.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Shared compiler, optimizer, verifier, bootstrap, and CLI code contains no ROCm
+  package, HIP runtime, AMD driver, or device requirement.
+- Selecting the reserved adapter reports a stable unavailable/not-implemented
+  diagnostic and may fall back to the CPU/reference path only where the caller
+  explicitly permits accelerator fallback.
+- No ROCm dependency is installed by the public bootstrap, no fake device
+  evidence is committed, and this reservation does not block the turnkey
+  C-to-Malbolge completion gate.
+- The hardware-neutral accelerator port remains sufficient for a future real
+  adapter without introducing CUDA-specific types into shared contracts.
 
 ## Evidence
 
-- Expected durable artifact surface: `accelerator/rocm/`, `algorithms/`,
-  `optimizer/`, `benchmarks/accelerator/`, `tests/optimizer/`.
-- Required evidence: CPU/reference differential results against x86-64 and
-  AArch64 hosts, ROCm device/runtime metadata, failure/fallback tests, and
-  benchmark samples for claimed speedups.
-- Prerequisite completion evidence: `replaceable-accelerator-boundary`,
-  `configurable-accelerator-algorithm-adapters`.
+- Required evidence is limited to the reviewed contract, stable unavailable
+  diagnostic, and proof that CPU and CUDA paths do not depend on ROCm packages.
+- A future implementation requires a new reviewed TODO with supported AMD
+  hardware, exact ROCm/OS identity, differential tests, and retained live-device
+  evidence.

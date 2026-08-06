@@ -86,3 +86,15 @@ metadata that the original loader ignores.
   extension/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `scalable-malbolge-memory-model`,
   `required-profile-diagnostics`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Define a versioned `.malbolge` capsule recognized by modern runtimes while the
+1998 loader sees only a safe classic fallback. Version one now uses a fixed
+`!`-emitting historical sentinel plus a space/tab `MALBCAP1` sideband carrying
+profile ID/fingerprint, payload, lengths, flags, and deterministic checksum.
+Current scalable payloads execute through `ProfileMachine`; the classic facade
+still rejects them before its ten-trit loader, so runtime choice remains
+explicit.

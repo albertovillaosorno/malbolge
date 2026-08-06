@@ -26,7 +26,7 @@ validation:
 
 ## Objective
 
-Once ROADMAP and typed TODO coverage are stable, classify every settled planning
+Once typed TODO coverage is stable, classify every settled planning
 choice into its durable owning surface instead of copying TODO prose wholesale.
 Create bounded ADRs for decisions, technical specifications/contracts for
 repository behavior, research records and `.tex` artifacts for investigations,
@@ -64,3 +64,207 @@ chat-history archive is created during promotion.
   `reuse-shar-legal-and-interoperability-corpus`.
 - Evidence must include a complete mapping from active TODO intent to owning
   durable documentation or an explicit unresolved decision record.
+
+**Migrated README project-status snapshot.**
+
+The exact former README status narrative moved here on 2026-08-05. Durable technical records remain authoritative; this snapshot prevents planning history from being lost during README simplification.
+
+The repository now contains an executable and tested foundation rather than
+only a design skeleton. Durable work includes interpreter-authority 1998
+semantics, classic and scalable-profile Rust VMs, an independent C VM, capsules
+and traces,
+execution IR, optional native execution tiers, exact CPU/CUDA primitive paths,
+resident CUDA classic/profile sessions, validated asynchronous submissions, and
+bounded evidence-based accelerator admission.
+
+Repository-root `malbolge.json` selects `malbolge-2026` as the official current
+language profile. The published `malbolge-2026.1`, `malbolge-2026.2`, and
+`malbolge-2026.3` identities remain immutable compatibility and test evidence;
+none replaces the year-only current name.
+
+The CUDA path remains optional and fail-closed. Retained ticket profiles bind to
+an exact capability, workload, host/runtime identity, driver API, display-driver
+build, NVRTC version, and tracked toolchain manifest. Opt-in admission reports
+and bounded completion/failure telemetry explain what ran without changing the
+selected route, retaining exception text, or learning new policy online. The two
+FIFOs can be captured as canonical bounded JSON and explicitly restored without
+automatic loading. `caller-owned-ticket-admission-telemetry-store-v1` adds an
+explicit alternate-store port plus a bounded memory adapter. It retains exact
+schema-v1 canonical bytes under the established SHA-256 document identity,
+defaults
+to 4,096 unique documents and 16 MiB, treats exact duplicate puts as idempotent,
+and exposes only explicit put/get/remove/snapshot operations. Limits are
+immutable,
+removal releases budget, snapshots are fingerprint-ordered, and collisions or
+corrupted retained bytes fail closed. It performs no filesystem I/O, automatic
+loading, summaries, merging, recommendations, or policy changes.
+`ticket-admission-telemetry-schema-migration-v1` publishes a fixed lossless
+1-to-1, 1-to-2, 2-to-1, and 2-to-2 compatibility matrix. Schema-v2 is canonical
+sorted JSON containing the exact canonical schema-v1 bytes as standard Base64,
+plus the required schema-v1 document identity and SHA-256 fingerprint. Versioned
+decoding defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
+observations per FIFO. Upgrade and downgrade are explicit; schema-v1 bytes
+remain
+unchanged. There is no automatic migration, file loading, snapshot
+reinterpretation, merge, recommendation, lineage inference, or policy change.
+A deterministic offline summary groups one document by exact
+execution context and exposes only integer totals, retention ranges, stable
+failure categories, and selected-evidence appearance counts. Explicit document
+collections assign canonical SHA-256 identities and deduplicate only
+byte-identical
+JSON while retaining separate summaries for every distinct snapshot. Collection
+limits default to 4,096 documents and 16 MiB of canonical input. A
+pairwise report compares completed and failed retained ranges, exact matching
+observations, and conflicting sequence IDs without claiming common lineage. A
+collection-wide index deduplicates first, rejects more than 65,536 unique pairs
+before comparison, orders pair reports by fingerprint, and counts all four
+overlap
+classifications independently for completed and failed FIFOs. A compatibility
+graph selects only nonconflicting pairs with at least one exact retained match,
+retains isolated documents, and distinguishes direct cliques from transitive
+bridges. Connectivity is not pairwise equivalence or recorder lineage.
+`authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
+document fingerprint to caller-supplied recorder, completed/failed stream,
+capture
+sequence, key, and optional immediate-predecessor identities with canonical
+HMAC-SHA-256. The secret is never stored; verification requires the caller to
+select the trusted key identity and provide at least 32 secret bytes. Capture
+forks, adjacent predecessor mismatch, and nonadjacent direct links fail closed.
+`caller-owned-ticket-admission-telemetry-lineage-trust-v1` adds an explicit
+in-memory trust set of at most 256 unique HMAC keys. Keys are selected by exact
+identity and inclusive capture-sequence windows, allowing independently verified
+comparisons across rotations. Empty sets trust nothing; secrets are not
+displayed,
+loaded, or persisted.
+`ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key
+identities,
+opaque external reference identities, and inclusive capture windows. Canonical
+sorted JSON is bounded to 256 entries and 64 KiB, has a stable SHA-256
+fingerprint,
+and is read or atomically written only through explicit calls. Secret resolution
+requires exact caller-supplied coverage; resolving a reference does not certify
+the
+secret until an attestation verifies.
+`explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
+caller-supplied synchronous provider and validates the manifest plus a default
+256-request budget before the first call. It emits immutable requests in
+canonical
+key order and accepts only typed `resolved`, `unavailable`, or `failed`
+outcomes.
+Each entry is requested exactly once. There is no discovery, retry, cache,
+persistence, provider lifecycle, or hidden worker.
+
+`bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one reusable bounded caller-owned synchronous provider over explicit
+immutable secret entries. Each hidden key is bound to one canonical manifest
+fingerprint, key reference, key identity, and inclusive capture window. The
+service
+permits 256 entries by default and 4096 at the supported maximum, sorts entries
+by
+manifest fingerprint and reference, and rejects duplicate manifest/reference
+bindings. Construction and every call revalidate the exact service type and
+identity, provider identity, configured limit, secret count, entry tuple,
+canonical
+ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden
+key. A
+different provider identity returns typed `failed`; an unknown
+manifest/reference
+returns `unavailable`; a known binding with conflicting key/window metadata
+returns
+`failed`; and an exact binding returns `resolved` with unchanged hidden bytes.
+Request index remains ordering context rather than a secret binding. Repeated
+calls
+validate and resolve again without mutation or an external cache. The service
+reads
+no environment, file, network, process credential state, secret store, or hosted
+API
+and performs no discovery, refresh, retry, persistence, logging, worker
+creation,
+certificate rule, PKI operation, algorithm choice, or admission-policy
+operation.
+
+`explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+defines one caller-driven sequential async port over the same manifest-bound
+requests and typed outcomes. The synchronous port exposes one immutable
+nonsecret
+preflight, exact request/result validators, one result materializer, and one
+final
+trust materializer; both routes share those contracts. Manifest validation,
+provider identity, and the request budget complete before the first `await`. The
+provider is awaited once per entry in canonical order and never concurrently.
+Cancellation propagates directly; ordinary provider exceptions become stable
+errors
+without vendor text; typed non-success stops the walk without retry. Repeated
+explicit resolutions await again. The port creates no event loop, task, thread,
+executor, worker, cache, lifecycle, discovery, refresh, persistence,
+secret-store
+access, certificate rule, PKI operation, algorithm choice, or policy operation.
+`bounded-in-memory-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact bounded memory secret provider to that async port. Construction
+and
+every call revalidate the adapter identity, hidden wrapped service, provider
+identity, secret count, and entry limit. Each await delegates exactly once to
+the
+synchronous memory lookup and completes inline without an internal suspension or
+hidden task. Repeated calls reuse only explicit immutable caller-owned memory
+and
+validate it again. The adapter reads no environment, file, network, process
+credential state, external secret store, or hosted API and adds no retry, cache,
+refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
+
+`explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+implements one bounded read-only provider over caller-supplied absolute
+raw-secret
+paths. Every hidden path is bound to an exact manifest fingerprint, key
+reference,
+key identity, and capture window. Construction and validation perform no file
+I/O.
+A provider mismatch returns typed `failed`; an unknown manifest/reference
+returns
+`unavailable`; conflicting key/window metadata returns `failed`; all three
+outcomes
+occur before any open. An exact match opens the selected path once and reads at
+most
+`max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
+errors, oversized files, and bytes outside the shared 32-to-4096-byte key
+contract
+return `failed` without operating-system text. Exact raw bytes, including
+trailing
+newlines, are preserved. Repeated calls reopen and reread the file, so rotation
+is
+caller-controlled and no secret cache exists. The provider does not discover
+paths,
+write files, scan directories, inspect ownership or permissions, validate
+symlinks,
+decrypt values, create workers, retry, persist, log paths or secrets, choose
+algorithms, or change admission policy.
+
+`offloaded-async-file-ticket-admission-telemetry-lineage-secret-provider-v1`
+adapts one exact explicit file provider through a caller-supplied async
+offloader.
+Construction and every call revalidate the adapter identity, hidden wrapped
+provider, copied provider identity, secret count, entry and byte limits, and
+callable offloader. Each request is fully validated before the first await; a
+provider-identity mismatch returns typed `failed` without awaiting. An exact
+request awaits the offloader once with the same immutable provider and request.
+The caller alone chooses whether that await completes inline, uses a thread or
+executor, or suspends by another mechanism. Cancellation propagates directly;
+ordinary offloader exceptions become stable adapter errors without vendor text.
+Returned results reuse the shared exact type and enum validation; nonresolved
+results cannot carry secret bytes, while resolved bytes must use the exact bytes
+type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
+calls offload and reread again. The adapter creates no event loop, task, thread,
+executor, worker, path discovery, retry, cache, persistence, environment access,
+external-store integration, secret logging, algorithm choice, or policy action.
+
+The full developer promise is not complete. Ordinary C-to-Malbolge lowering,
+the complete compiler backend, generated `.malbolge` artifacts for general C,
+self-hosting, Linux CUDA support, ROCm, and broad cross-device evidence remain
+open work. The repository therefore describes implemented behavior and planned
+behavior separately.
+
+[`TODO.md`](TODO.md) contains unfinished work only. Its 85 headings each have
+one
+typed record under [`docs/todo/open/`](docs/todo/open/). A TODO disappears only
+after its contract, implementation or research result, tests, and evidence are
+durable.

@@ -100,3 +100,19 @@ that reverse engineering can be made cryptographically impossible.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Allow user-supplied target profiles with canonical hashing and explicit artifact
+identity. `malbolge-profile-v1` fingerprints and the verification CLI now detect
+external configuration mismatch. Experiment Manifest v1 and the `MALBCAP1`
+runtime capsule bind canonical target IDs to exact generated fingerprints,
+share the expected/observed mismatch diagnostic, and reject unknown identity
+without fallback. Portable effect IR v3/native cache keys retain the exact
+pair plus canonical version/features/geometry, and direct x86-64/AArch64 COFF
+embeds the same envelope in read-only `.mbprof` metadata checked against the key
+before semantic admission. Bootstrap compiler-object and product
+artifact propagation plus any profile-dependent encoding research remain open,
+without claiming cryptographic resistance to reverse engineering.

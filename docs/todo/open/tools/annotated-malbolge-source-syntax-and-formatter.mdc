@@ -72,3 +72,21 @@ by the selected profile loader.
   source-map composition against real emitted layout.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`, `malbolge-layout-and-encoding-backend`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Define a non-canonical annotated source form for readable Malbolge without
+changing executable byte semantics. Canonical `.malbolge` remains the exact
+artifact. Annotated source may use arbitrary ASCII whitespace, deterministic
+automatic line wrapping, and full-line `#` comments whose marker is the first
+non-whitespace byte followed by horizontal space or tab. Bare hash, hash before
+a
+line ending/end of file, `#X`, and inline hashes remain ordinary code, so every
+graphical canonical sequence is representable without escapes. The active
+safe-Rust frontend now canonicalizes presentation to exact position-sensitive
+bytes, records loaded-position source locations, wraps automatically, and has
+explicit classic/facade/current-profile constructors while raw loaders remain
+unchanged. Compiler/decompiler C/IR-aligned comments and composed source maps
+remain follow-on layout work.

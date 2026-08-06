@@ -75,3 +75,20 @@ raw hardware scale.
   dominance, admissible heuristics, and preregistered performance evidence
   remain
   open.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Develop exact pruning, dominance rules, partial-equivalence checks, canonical
+states, admissible heuristics, and profile-aware constraints before relying on
+raw hardware scale.
+The first active rule removes only byte-identical pre-identity candidates.
+Adversarial fixtures preserve one-byte, prefix, and length differences; a
+duplicate-rich fixture reduces eight evaluations to five while an all-unique
+null
+fixture remains four-to-four. The deterministic CPU enumerator now applies the
+same stable-first relation before logical candidate identity, preserving the
+encoded corpus while spending evaluation budget only on exact representatives.
+Stronger equivalence, dominance, heuristics, and preregistered performance
+evidence remain open.

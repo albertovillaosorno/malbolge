@@ -119,3 +119,24 @@ historical-profile constraint.
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `scalable-malbolge-memory-model`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Emit deterministic diagnostics naming required profile/features/capacity and
+runtime capability. Safe Rust and the Python non-VM preflight now reject
+`malbolge-2026` with byte-identical 14-trit/4,782,969-word diagnostics, report
+classic overflow as a 59,049-word historical-profile ceiling, and preserve
+profile-before-runtime precedence. Portable effect IR v3, native keys, and
+direct
+COFF `MBPF` v3 metadata now carry every canonical profile-side input for
+`MALBOLGE-PROFILE-001` plus exact region memory for
+`MALBOLGE-PROFILE-002`. VM-owned portable preflight consumes independently
+admitted IR against explicit classic/profiled capability with byte-identical
+canonical diagnostics and fail-closed unknown features. Effect IR now derives
+exact region memory and direct selection applies byte-identical
+`MALBOLGE-PROFILE-002` before `001`; the preflighted tier plan maps only direct
+format absence to interpreter. Equivalent non-IR program requirements,
+bootstrap artifacts, durable-cache/AOT/JIT/runtime orchestration, and universal
+product invocation remain open.

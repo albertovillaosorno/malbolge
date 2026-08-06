@@ -67,3 +67,25 @@ oracle; no performance claim starts until the compiler generates
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
+accelerator-assisted compilation until the user-supplied DOOM interoperability
+pipeline produces a `.malbolge` build that is genuinely interactive and playable
+under the modern runtime. The same `.malbolge` payload must be portable across
+supported x86-64/AArch64 Windows, macOS, and Linux runners; it must not require
+LLVM or the host libc at execution time. A redistributable self-contained test
+mode may embed Freedoom asset bytes into the guest/data image, while user-owned
+commercial IWADs remain external host-provided data. Any compact bytecode or
+native translation used for acceleration is transient/rebuildable execution
+state rather than a second required DOOM artifact. Measure compile latency,
+frame
+pacing, input latency, VM instructions per game tick, memory footprint,
+generated
+code/data size, and interpreter/AOT/JIT speedups rather than declaring success
+merely because the program eventually runs. Preserve the same game semantics
+while optimizing; performance-specific substitutions require explicit
+equivalence evidence.

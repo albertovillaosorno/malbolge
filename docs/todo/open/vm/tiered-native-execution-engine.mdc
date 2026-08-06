@@ -505,3 +505,492 @@ baseline; native tiers are accelerators of identical observable behavior.
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and
   end-to-end tier performance remain unimplemented.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Build a tiered execution engine instead of choosing between interpretation, AOT,
+and JIT. Decode Malbolge into a compact execution IR, simplify that IR through
+verified state-graph mathematics, compile demonstrably stable regions to native
+machine code before execution, specialize hot or mutation-sensitive regions at
+runtime, and deoptimize safely to the interpreter whenever a code-version guard
+or speculative assumption fails. The normative VM contract remains the semantic
+baseline; native tiers are accelerators of identical observable behavior.
+Portable effect IR v3 is now product-owned under `execution/ir/`, and the
+verifier/deoptimization research boundary exercises it directly. The first
+host-code boundary under `execution/native/` lowers verified-effect-shaped IR to
+atomic freestanding C23 candidates and pinned Clang 22.1.8 emits real untrusted
+Windows COFF objects for both x86-64 and AArch64. Safe-Rust COFF admission now
+checks target ISA, executable/non-writable `.text`, exact entry identity,
+self-contained relocations, and absence of undefined host dependencies. A
+private
+`profile_metadata.rs` owner now supplies one format-neutral `MBPF` encoding to
+bootstrap/direct emitters and structural admission. Direct objects additionally
+require read-only `.mbprof` metadata matching
+profile ID/fingerprint, published version, ordered semantic features, word
+trits,
+profile capacity, and exact derived `u64` region memory retained by their native
+key; absence, tampering, or object/key mismatch fails structurally. Bootstrap
+revision-2 C23 source now renders the same canonical payload into a read-only
+`.mbprof` declaration, and structural admission requires it for revision 2 while
+preserving historical revision-1 absence. The pinned cross-ISA compile test
+remains
+the object-level confirmation boundary. A separate direct deopt backend now
+emits canonical x86-64/AArch64 COFF stubs whose complete bytes are independently
+verified: they return guard miss without touching state, providing the first
+semantically admitted native artifact and deterministic fallback floor. A second
+byte-canonical direct backend now admits the exact initial-halt IR subset and
+performs the first native guest-state commit: after zero-state preflight it sets
+only termination to halt; misses are atomic. `direct-halt-registers` revision 5
+extends that exact template to every 32-bit `A/C/D` combination and full 64-bit
+input/output counter observations, still with no memory/I/O effects.
+Independently
+rendered 495/564-byte x86-64/AArch64 fixtures bind counters above `u32::MAX` and
+nontrivial registers; counter, opcode, and historical-revision mismatches fail
+closed. `direct-halt-fetch` revision 2 binds real graphical halt termination to
+one exact code-cell live-in at `C`; VM-owned positional decode must produce `v`.
+Full entry observation, non-null memory, and the exact IR footprint precede the
+`memory[C]` guard and sole termination-tag `1` commit. Independent 535/628-byte
+objects, x86-64 hit/live-in/capacity/null execution, and AArch64 instruction
+decoding bind the contract. `direct-non-graphical` revision 2 applies the same
+memory guards to a VM-classified non-graphical live-in and commits only tag `2`.
+Independent 538/631-byte objects bind that path. `direct-no-operation` revision
+2
+is the first non-terminal and memory-writing direct effect: VM-owned decode,
+`XLAT2`, and modular-successor helpers derive one exact `memory[C]` encryption
+plus
+`C/D` advance. Independent 557/658-byte objects bind `memory[5]:77->65`,
+`C:5->6`, and `D:7->8`; x86-64 execution and AArch64 instruction decoding
+confirm
+atomic hit/miss behavior. `direct-jump-data` revision 1 adds the first
+instruction-specific data read for distinct `C/D` live-ins. VM-owned decode,
+`XLAT2`, and successor helpers derive `memory[5]:35->93`, `C:5->6`, and
+`D:7->124`; independent 564/699-byte objects and cross-ISA evidence bind the
+contract while aliasing remains rejected. `direct-jump-code` revision 1 adds the
+three-live-in post-jump encryption order: `memory[5]=93` decodes `i`,
+`memory[7]=11` selects the new code pointer, and `memory[11]:68->33` is
+encrypted
+before `C:5->12` and `D:7->8`. Independent 622/731-byte objects, x86-64
+execution,
+and AArch64 decoding bind exact hit behavior plus code/data/encryption/capacity/
+null misses; all three addresses must be distinct. `direct-rotate` revision 1 is
+the first reviewed direct effect with two guest-memory writes. VM-owned decode,
+`profile_rotate()`, encryption, and successor helpers derive
+`memory[7]:10->1594326`, `memory[5]:34->122`, `A:0xdeadbeef->1594326`,
+`C:5->6`, and `D:7->8`. Independent 578/732-byte objects, x86-64 execution, and
+AArch64 decoding bind exact hit behavior plus code/data/capacity/null misses;
+`C == D` remains rejected.
+
+`direct-crazy` revision 1 adds the second reviewed two-write arithmetic
+transition. VM-owned decode, `profile_crazy()`, encryption, and successor
+helpers derive `memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`,
+`C:5->6`, and `D:7->8`. Independent 577/731-byte objects bind the exact 9-word
+footprint, two live-in guards, two writes, and three register commits. Aliasing
+and out-of-domain data or accumulator operands remain rejected.
+`direct-output` revision 1 adds the first direct I/O transition. VM-owned
+decode,
+`profile_low_byte()`, encryption, and successors derive `memory[5]:94->57`,
+byte `0xa8`, `C:5->6`, `D:7->8`, and `output_len:3->4`. Independent 642/724-byte
+objects bind the exact 9-word footprint plus output pointer and capacity guards;
+x86-64 execution proves atomic code/capacity/pointer/footprint misses.
+`direct-input` revision 1 completes direct instruction-family coverage with
+independent byte and EOF forms. VM-owned decode, `profile_eof_word()`,
+encryption, and successors derive `memory[5]:112->68` plus `C/D=6/8`. Byte input
+binds cursor 2 and byte `0x41`, commits `A=65`, and advances the cursor to 3;
+EOF binds `input_len=cursor=2`, commits `A=4782968`, and leaves the cursor
+unchanged without dereferencing the input pointer. Independent complete objects
+are 659/744 bytes for byte input and 634/715 for EOF. Every memory-backed direct
+template now guards ABI `memory_words` against the exact
+key-bound IR footprint before any read or write. Direct-template selection
+requires an explicit runtime capability, derives exact `u64` region memory
+from C/D pointers, live-ins, and writes, and applies
+`MALBOLGE-PROFILE-002` before `001`, host, or backend selection.
+After admission, zero-register halt chooses the smallest specialization, other
+no-live-in halts choose observation-bound code, graphical halt fetch and
+non-graphical termination choose their terminal live-in templates, exact
+non-aliasing jump-code, jump-data, rotate, crazy, input, output, and no-op IR
+choose
+reviewed state-applying templates, and remaining IR chooses verified deopt;
+unsupported direct host formats remain
+explicit at that narrow boundary. A product-neutral preflighted tier plan maps
+only
+that format absence to the normative interpreter after `002`/`001` checks; real
+backend/emission/admission failures remain errors. Raw untrusted IR remains
+canonically transportable for deterministic rejection,
+but `RegionEffectIdentity` and `NativeArtifactKey` reject addressing beyond the
+embedded profile capacity before hashing, bootstrap lowering, or direct object
+construction. Direct deopt/initial-halt revision-4, halt-observation revision-5,
+plus halt-fetch/non-graphical/no-operation revision-2 and
+jump-code/jump-data/rotate/crazy/input/output revision-1 objects bind that exact
+footprint in `MBPF` v3, and same-profile footprint mismatch fails structural
+admission. Native ABI revision 1 now has one Rust `repr(C)` authority with an
+80-byte layout and exact offsets matching both reviewed ISA template families.
+Typed status and termination decoders reject unknown values, while a borrowed
+`NativeRegionCallFrame` validates capacities and cursor bounds before exposing
+a raw state pointer. `PreparedNativeRegionInvocation` now validates one
+canonical
+effect against complete memory, input, and output evidence, snapshots every
+caller-visible surface, and admits only an exact `Applied` transition or a
+byte-preserving `GuardMiss`. Unknown status, unexpected invalid arguments,
+foreign topology changes, and partial memory/output/state commits fail closed.
+Every rejected completion restores the complete entry snapshot before return.
+`PreparedVerifiedDirectInvocation` now reconstructs the complete native key from
+one program plus the verified artifact's exact target, rejects any canonical
+identity mismatch, and denies the guard-miss deoptimization stub state-applying
+authority. `NativeRegionBuffers` groups the three caller-owned buffer loans, so
+verified COFF bytes, target assumptions, and the ABI pointer are exposed only by
+one inseparable binding. `VerifiedDirectLoadImage` now reparses that verified
+COFF, rejects every relocation, extracts the exact immutable `.text` bytes and
+entry offset, retains the complete key/target identity, and validates ISA
+instruction alignment. Its only representable policy is RW staging followed by
+RX execution plus mandatory instruction synchronization. All twelve direct
+templates produce exact images on x86-64 and AArch64; machine drift and added
+relocations fail closed. `NativeExecutableMappingId` plus staged, sealed, and
+ready typestates now admit explicit platform reports only in RW-copy, RX-seal,
+full-code instruction-sync order. Exact bytes, capacity, alignment, address
+arithmetic, mapping identity/range, permissions, and synchronization range fail
+closed. `ReadyNativeExecutable` retains the image and exact release request;
+`PreparedNativeExecutableInvocation` exposes entry address and ABI state only
+after the ready image equals the prepared call image. All 24 direct images pass
+the complete lifecycle, while adversarial reports and cross-ISA call binding
+fail closed. These reports are adapter evidence, not OS operations: no pages are
+allocated, permissions changed, instructions flushed, mappings released, or
+machine code invoked yet. `NativeExecutableMemoryAdapter` now defines those five
+platform operations explicitly. `load_native_executable()` derives the exact
+allocation request, admits RW evidence before copy, verifies returned copy bytes
+and identity, seals the same mapping RX, synchronizes the full code range, and
+returns only a ready executable. Every post-allocation adapter or admission
+failure attempts the exact release request; primary and cleanup failures remain
+separate. Explicit release consumes the ready executable on success and retains
+it for exact retry on failure. A deterministic fake adapter proves all 24 direct
+images, four operation failures, ten evidence drifts, cleanup failure retention,
+and release retry. `NativeExecutableRunner` now receives only an exact
+`PreparedNativeExecutableInvocation`, keeping entry address, mapping identity,
+and ABI pointer inseparable. `execute_verified_native()` loads, binds, runs,
+admits, and releases one effect transactionally. Load or runner failure invokes
+explicit abort restoration; completion rejection restores through the existing
+contract; every ready mapping is released or retained for exact retry. A final
+release failure preserves an already committed `Applied` or `GuardMiss` outcome.
+Six deterministic runner cases prove successful apply, atomic guard miss, load
+short-circuit, runner mutation rollback with cleanup retry, completion-drift
+rollback, and committed outcome retention. No concrete OS adapter, unsafe call
+shim, or machine-code invocation exists yet.
+Complete normative `ProfileStepTrace` evidence can now be projected into exact
+one-step IR with sorted, deduplicated fetch/data/encryption live-ins.
+`select_verified_direct_sequence()` verifies one canonical profile, exact
+adjacent observations, final-only termination, and a real non-deopt direct
+artifact for every step before publishing the ordered plan. A retained
+rotate/output VM trace selects exact artifacts on both ISAs; empty,
+discontinuous, profile-mixed, hidden-deopt, and post-termination sequences fail
+closed. `select_cached_verified_direct_sequence()` extends that boundary with
+transactional process-local reuse: exact entry-cache hits preserve `Arc`
+identity, unique misses remain staged until every step verifies, and only then
+enter the caller-owned cache. Insert/replay evidence records `0/2` then `2/0`
+hit/insertion counts; mixed reuse records `1/1`, cached runtime rejection
+leaves the exact map unchanged, and a late hidden deopt preserves an unrelated
+cached artifact pointer-identical. `execute_verified_native_sequence()` and
+its cached counterpart now pair every retained program with its exact artifact,
+run each one through the safe load/bind/run/complete/release transaction, and
+preserve already committed prefixes. `Applied` advances to the next step;
+`GuardMiss` returns the exact zero-based resume index and entry observation with
+the current step untouched. Preparation, runner, completion, and cleanup failure
+report the failing step, committed-step count, continuation observation, and
+retryable release state. VM snapshots after one and two rotate/output steps
+prove uncached and cached completion, second-step guard resume, second-step
+mutation rollback, and both applied/guard cleanup failures.
+`NativeInterpreterContinuation` now converts admitted cached, uncached, loaded,
+or ephemeral sequence outcomes/failures into one immutable semantic handoff.
+It validates complete-plan progress and rejects forged final counts, resume
+indices,
+and observations, and retains the full ordered artifact key plus the exact
+remaining artifact-key suffix and cloned one-step programs. Guard misses retain
+a `GuardMiss` reason; indexed failures retain `ExecutionFailure`. Completed
+outcomes and terminal cleanup failures produce no continuation because no
+semantic work remains. `advance()` now rebases the same complete-plan
+identity after additional admitted work from any tier, preserving expected
+exit/outcome while deriving an exact new key/program suffix. Completion returns
+no continuation only at the verified exit; overshoot and observation drift fail
+closed. Eleven deterministic cases cover constructor families, malformed public
+evidence, partial rebase, completion, and rejected rebase. This object remains
+independent from interpreter mutation.
+`NativeInterpreterHandoff` now consumes that object in the normative safe-Rust
+`ProfileMachine`. It accepts either one validated `ProfileMachineState` or owned
+memory/input plus a committed output prefix, resolves exact profile identity,
+fingerprint, and requirement, and admits checkpoint observation plus first-step
+live-ins before execution. Every remaining step runs through `step_traced()` and
+is reprojected to exact `RegionEffectProgram`; machine failure, projection
+drift,
+or live-in mismatch returns the current-step entry checkpoint and exact complete
+plan resume index. Completion combines native-prefix and interpreter-suffix step
+counts and requires the original exit observation/outcome. `execute_with_budget`
+now executes at most the requested suffix steps and returns `Completed` or one
+affine `NativeInterpreterHandoffSuspension`. A suspension retains the original
+continuation, cumulative interpreter progress, complete-plan resume index, exact
+artifact-key/program suffix, and normative checkpoint; `into_handoff()` resumes
+without readmission or state inference. Zero budget is a no-op suspension,
+and an
+oversized budget completes normally. Ten deterministic cases cover transfer,
+admission, completion, zero/partial/oversized budgets, repeated zero after
+progress, and rollback before or after suspension.
+`application/scheduler.rs` now consumes exactly one affine handoff plus one
+explicit decision: complete in the interpreter, execute one positive slice, or
+yield zero steps to the caller or for possible native retry. Every pause wraps
+the exact handoff suspension with `BudgetExhausted`, `CallerYield`, or
+`NativeRetry`; `resume()` consumes that owner under a later decision. Native
+retry is evidence only: this boundary performs no native replanning, loading, or
+invocation and converts no hard error into fallback. Five deterministic cases
+cover both yield reasons, slice/completion, direct completion, cumulative
+progress, and unchanged failure propagation.
+`application/native_retry.rs` now binds a caller-replanned
+`VerifiedDirectSequencePlan` to one `NativeRetry` suspension before any buffer
+movement. Admission requires the exact scheduler reason, ordered one-step
+program suffix, complete artifact key, and checkpoint entry observation. Every
+rejection retains both affine owners for correction or fallback. Five cases
+cover initial and progressed suffixes, caller-yield rejection, full-plan drift,
+and cross-ISA key drift. An admitted retry can now execute through the existing
+uncached native sequence path using buffers copied from its checkpoint. Success
+and failure both retain the original suspension/plan plus exact memory, input,
+output capacity, and admitted observation. The transfer converts back to a
+validated `ProfileMachineState`; hard native failures and release-retry
+ownership
+remain unchanged. Five more cases cover initial/progressed completion, guard
+miss,
+runner rollback, and committed cleanup failure. Successful retry evidence now
+rebases through the original complete-plan continuation: applied suffixes
+produce
+the verified original outcome plus final checkpoint, while guard miss produces a
+new `NativeInterpreterHandoff` with absolute progress including prior
+interpreter
+steps and newly committed retry steps. Rebase failure retains the complete
+successful execution owner. Three cases cover pure-native completion, mixed
+interpreter/native completion, and progressed guard fallback through the
+scheduler. Failed retry executions now use the same rebase evidence and split
+into independent semantic disposition plus indexed native failure owner. Runner
+failure before or after committed retry progress yields an exact normative
+handoff; terminal cleanup failure can yield verified completion while preserving
+the release-retry owner. Rebase rejection retains the complete failed execution.
+Three cases cover zero-progress fallback, progressed fallback, and semantic
+completion with later cleanup retry. Semantic publication now lives in
+`application/native_retry/rebase.rs`; admission, transfer, and execution remain
+in `native_retry.rs`, with the same reexported API and affine owners.
+`application/leased_retry.rs` now binds an admitted retry to one exact immutable
+lease-cache acquisition. Key drift returns both owners before buffer movement.
+Loaded execution performs no allocation or release and retains hit/insertion
+evidence plus the lease across completion, guard miss, and runner failure.
+Success and failure rebase through the same complete continuation authority
+while
+the lease remains independently reusable or explicitly returnable. Five cases
+cover insertion completion, pointer-identical hit reuse without adapter work,
+progressed guard fallback, runner-failure fallback, and cross-ISA lease
+rejection.
+`application/cached_retry.rs` now composes exact lease-cache acquisition,
+leased binding, and one loaded retry attempt. Hits perform no executable-memory
+work; inserted acquisitions preserve FIFO eviction/retirement evidence. Load
+failure restores the admitted retry plus exact load/cleanup ownership, while
+binding or runner failure retains the acquired lease. Five cases cover inserted
+completion, hit reuse, pre-runner load failure, mixed live-retirement insertion,
+and runner-failure fallback. Semantic rebase and lease return remain
+caller-owned.
+`application/cached_cycle.rs` now applies immutable attempt policy over the
+cached
+path. Successful attempts record attempt number, committed native steps, and
+exact `Inserted`/`Hit` evidence, then drop only the external lease so active
+cache
+authority can serve the next retry. Unchanged guard suffixes reuse the same
+resident mappings; progressed suffixes acquire distinct exact keys. Acquisition,
+binding, routing, or runner failure stops immediately with exact owners and
+every
+successful prior attempt. Seven cases cover zero-limit fallback,
+`Inserted/Hit/Hit` guard reuse, progressed suffix insertion, initial and late
+pre-runner failure, initial routing failure, and runner failure with fallback.
+`application/cached_cycle/telemetry.rs` now exposes one exact source view for
+attempt slices, native completion, and normative fallback owners. It summarizes
+attempts, native steps, hits, insertions, evictions, and retirements and fails
+closed on arithmetic overflow. `telemetry_window.rs` retains those summaries in
+a positive-capacity FIFO with monotonic sequences, exact aggregate totals,
+exact checked arithmetic in `telemetry_window/aggregation.rs`, transactional
+capacity changes in `telemetry_window/reconfiguration.rs`, and explicit
+oldest-first removal evidence. `telemetry_assessment.rs` applies
+caller-owned inclusive count thresholds after a positive attempt gate and
+preserves every simultaneously missed signal without selecting policy.
+`telemetry_snapshot.rs` transfers complete window state and validates
+capacity, eviction counts, contiguous sequence evidence, and aggregate totals
+before reconstruction. `telemetry_codec.rs` adds canonical revision-one
+little-endian bytes with exact magic/version/reserved/length checks and repeats
+snapshot validation after decoding. Nine cases cover nonempty/empty roundtrip,
+header drift, length drift, count overflow, zero capacity, total/sequence drift,
+and encoder-side rejection. `telemetry_latency.rs` records caller-supplied
+nanoseconds into strictly increasing inclusive buckets with exact totals,
+extrema, and transactional overflow rejection; six cases cover bounds, bucket
+edges, the overflow bin, and each counter failure.
+`telemetry_latency_snapshot.rs` transfers complete histogram evidence and checks
+bucket counts, sample sums, extrema membership, exact possible total ranges, and
+an impossible overflow bin; eight cases cover roundtrip and every rejection.
+`telemetry_latency_merge.rs` combines identical bucket schemas transactionally,
+retains exact merged totals/extrema, and rejects schema or counter drift; seven
+cases cover exact/no-op merge and every overflow.
+`telemetry_latency_codec.rs` adds canonical revision-one little-endian histogram
+bytes with exact extrema flags, `u128` totals, bound/count pairs, and repeated
+snapshot validation; nine cases cover roundtrip and framing/semantic drift.
+Rebinning, distributed merge, runtime clock acquisition, automatic policy
+recommendation/publication, async ownership, durable storage, and cross-process
+coordination remain open.
+`application/retry_planner.rs` now consumes an exact `NativeRetry` suspension,
+explicit runtime capability, OS, and ISA. It selects and admits the exact native
+suffix on supported Windows hosts; only a direct `TargetFormat` absence becomes
+a normative handoff. Profile, IR shape, continuity, deoptimization, emission,
+and
+verification failures remain hard stable categories and retain the suspension.
+Four cases cover Windows native routing, Linux fallback before/after interpreter
+progress, hard profile failure, and rejection of caller-yield reason. Adaptive
+artifact/cache selection policy above the existing cached execution path remains
+open.
+`application/retry_policy.rs` now applies one immutable caller-configured
+maximum
+native-attempt count before host planning. Available budget returns the exact
+suspension with a one-based next-attempt number. Exhaustion converts the owner
+to
+a complete or positive-slice interpreter route; zero maximum attempts falls back
+immediately. Caller supplies the completed-attempt count, and non-`NativeRetry`
+reasons fail while retaining ownership. Four cases cover attempts one/two,
+complete fallback, zero-limit sliced fallback, and reason rejection.
+`application/retry_router.rs` now composes the attempt policy with exact host
+planning in one affine request. Exhausted limits bypass host planning; available
+budget selects a one-based native attempt; missing target format applies the
+configured normative fallback without counting an attempt. Policy and hard
+planning failures retain the suspension. Five cases cover Windows native route,
+planner bypass at exhaustion, sliced format fallback, hard profile rejection,
+and caller-yield rejection.
+`application/retry_turn.rs` now executes exactly one routed turn. Interpreter
+routes run their configured scheduler decision without touching native adapters.
+Native routes execute one attempt and immediately rebase success or failure.
+Successful and failed native turns expose attempt evidence plus semantic
+disposition; failed turns separately retain indexed runner/release ownership.
+Rebase failures retain their complete execution owner. Five cases cover
+interpreter completion, native completion, guard fallback, runner failure, and
+semantic completion with cleanup retry.
+`application/retry_cycle.rs` now executes a complete bounded cycle. It loops
+only
+after a successful native guard miss, rescheduling the exact handoff as
+`NativeRetry`; immutable attempt policy guarantees termination through native
+completion or configured normative fallback. Runner/release failure exits on its
+first occurrence with semantic and cleanup owners intact. Seven cases cover
+zero limit, missing-format fallback without native work, repeated guards to
+fallback, guard then native completion, immediate runner failure, cleanup
+failure
+without retry, and hard routing rejection before adapters. Cached execution is
+owned by `cached_retry.rs` and `cached_cycle.rs`; adaptive telemetry, async
+queues,
+and broader product orchestration remain open.
+`ReadyNativeExecutableSequence` now owns every ready mapping for one exact plan.
+All load images are derived before allocation; mappings then load
+transactionally before the first call. A failed later load releases the ready
+prefix in reverse
+order and retains every failed cleanup for aggregate retry. Loaded execution
+validates mapping count and complete image identity before caller buffers can
+change, then reuses the same mappings across repeated cached or uncached runs
+without new memory-adapter operations. Final release attempts every mapping in
+reverse order even after one failure and retains only still-owned mappings for
+retry. The adapter contract now requires unique mapping identities and
+non-overlapping live ranges. Seven deterministic cases prove reuse, cached guard
+resume, partial-load rollback, cleanup retention, all-mapping release, cross-ISA
+prevalidation, and current-step rollback.
+`NativeExecutableSequenceCache` now adds weighted caller-owned reuse across
+exact plans. Its key remains the ordered list of full `NativeArtifactKey`
+values.
+`new()` preserves the positive whole-entry limit, while `with_limits()` adds
+optional positive live-mapping and admitted mapped-byte limits. Every candidate
+loads before accounting so weight comes from exact admitted `mapped_len`
+evidence. A candidate that alone exceeds a mapping or byte limit is fully
+released without changing prior cache authority. Otherwise the cache releases
+as many oldest FIFO entries as required for projected entry, mapping, and byte
+usage to fit. Exact hits preserve insertion age and usage without memory-adapter
+operations. Failed candidate load leaves prior entries untouched. A failed later
+insertion eviction removes that victim and earlier successful victims from cache
+authority, cleans the candidate, and returns every still-owned release for exact
+retry. Exact invalidation and `release_all()` decrement or reset usage before
+cleanup, so failed release never leaves stale cache budgets. Overflow-safe usage
+reports exact entries, mappings, and mapped bytes.
+`reconfigure_limits()` now expands or publishes already-satisfied limits without
+adapter work and shrinks by releasing oldest entries until current usage fits
+all
+requested budgets. The previous limits remain published until every required
+release succeeds. A failed shrink removes authority and usage for the failed
+victim plus earlier successful victims, retains the previous limits, reports all
+removed keys, and returns exact release ownership for retry. Repeating the
+request after cleanup publishes the new limits without repeating completed
+releases. Seventeen deterministic cases cover the original hit/FIFO/cleanup and
+weighted-admission behavior plus no-op expansion, entry/mapping/byte shrink, and
+failure during the second reconfiguration eviction. Transactional limit result,
+diagnostic, and FIFO-shrink authority now lives in
+`executable_cache/reconfiguration.rs`; lookup/admission remain in the parent.
+`NativeExecutableSequenceLeaseCache` now provides cloneable immutable `Arc`
+leases over exact loaded sequences. Active lookup and retired residency are
+separate: invalidation, eviction, or full drain removes lookup authority, while
+live leases keep mappings resident and keep their exact
+entry/mapping/byte weight charged. Lease clone and drop perform no adapter
+operation. Explicit `return_lease()` or `reconcile_retired()` releases only
+residents with no external owners, attempts every releasable entry, and returns
+keyed failures for exact
+retry. A miss can retire leased FIFO victims and release unleased victims; when
+retired resident weight still prevents admission, the candidate cleans itself
+and the failure reports limits, usage, evicted keys, and blocking retired keys.
+`reconfigure_limits()` now publishes expansion or already-satisfied resident
+limits without adapter work. Shrink removes active FIFO authority, releases
+unleased victims, and retires leased victims while preserving their exact
+charged
+weight. Existing retired entries are never reclaimed implicitly. Blockage or
+release failure retains the previous limits and reports exact evicted, retired,
+and blocking keys plus resident usage; final lease return or keyed cleanup retry
+followed by the same request publishes without duplicate releases. Fourteen
+deterministic cases cover the original lease lifecycle plus expansion,
+entry/mapping shrink, live entry/byte blockage, post-return publication, and
+release-failure retry. Explicit reclamation/retry ownership now lives in
+`executable_lease_cache/reconciliation.rs`, while resident-limit transitions
+live in `executable_lease_cache/reconfiguration.rs`; lookup and leasing remain
+in
+the parent. This still does not fuse COFF, jump directly between mappings,
+persist loaded state, or implement the unsafe machine-code call shim.
+`NativeArtifactCache<Value>` now provides caller-owned process-local exact-key
+reuse. Derived bucket digests do not participate in identity equality; equal
+keys
+remain one entry even when their accelerator digests differ, while forced digest
+collisions remain independent across read, replacement, and removal. Cache
+equality compares exact retained key/value mappings rather than bucket layout.
+`VerifiedDirectNativeCache` narrows that store to semantically admitted
+direct artifacts. Cache-aware planning prepares one specialization-bound exact
+key
+for lookup and consumes it during miss emission, avoiding a second IR
+canonicalization while state-applying verifiers retain independent key
+reconstruction. It reports `Inserted`/`Hit`, matches uncached keys/bytes for
+all twelve templates, and shares the same immutable `Arc` allocation on hits.
+Exact invalidation removes one full-equality key from future reuse without
+revoking held
+plans. Exact-program invalidation constructs canonical region identity before
+mutation and removes every host/backend variant while preserving unrelated
+regions; profile-invalid IR fails without changing the cache. Exact-target
+invalidation removes all regions sharing one complete OS/ISA/backend
+revision/native-ABI/features identity while preserving other targets. Requesting
+removed variants again reinserts identical keys/bytes under new allocations.
+Planning performs `002`, `001`, and host-format selection before lookup, so
+rejected/interpreter outcomes do not mutate the artifact cache. Artifact-cache
+persistence and automatic eviction, executable-cache synchronization policy,
+fused-region emission, native-retry orchestration beyond bounded process-local
+cached cycles, async scheduling, the unsafe foreign-call boundary, and broader
+AOT/JIT performance policy remain open.
+
+Current implementation foundation: portable effect IR v3, verifier admission,
+deterministic deoptimization, capacity-consistent canonical native cache
+identity,
+process-local collision-safe reuse storage, cache-aware verified direct
+planning, transactional trace-derived multistep plans with exact resume,
+validated semantic interpreter continuations, budgeted normative checkpoint
+handoff, explicit affine continuation scheduling, relocation-free load images,
+persistent exact-plan executable ownership,
+entry/mapping/mapped-byte weighted exact-sequence FIFO reuse with transactional
+limit reconfiguration, shared immutable executable leases with explicit retired
+reconciliation, and an untrusted cross-ISA bootstrap object boundary are
+implemented. Combined-region native fusion, concrete foreign invocation, durable
+cache serialization/storage, adaptive retry policy, and wider automated tier
+orchestration remain open.

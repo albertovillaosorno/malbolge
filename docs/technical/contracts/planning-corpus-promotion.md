@@ -6,7 +6,7 @@ Proposed
 
 ## Intent
 
-Once ROADMAP and typed TODO coverage are stable, classify every settled planning
+Once typed TODO coverage is stable, classify every settled planning
 choice into its durable owning surface instead of copying TODO prose wholesale.
 Create bounded ADRs for decisions, technical specifications/contracts for
 repository behavior, research records and `.tex` artifacts for investigations,

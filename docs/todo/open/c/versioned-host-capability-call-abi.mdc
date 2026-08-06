@@ -79,3 +79,23 @@ identity,
 execution location, and active instruction text; C line reporting and Malbolge
 cell/instruction reporting must use the same semantic record without influencing
 guest behavior.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Generalize the semantic capability-ID pattern proven by the DOOM corpus into the
+VM ABI. Keep capability identity separate from transport: define versioning,
+argument/result types, pointer/range validation, blocking rules, failure
+semantics, capability discovery, and a deterministic call-frame representation
+without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
+runners may lower the same call frame differently, but guest-visible behavior
+and
+validation must agree. The DOOM source ABI currently exercises version-1
+external capabilities spanning guest-memory provisioning, diagnostics/exit,
+video/input, PCM audio, raw file I/O, UDP transport, monotonic time,
+guest-directed
+mouse capture, and optional language-neutral execution telemetry. Telemetry may
+identify C source lines or Malbolge cells/instructions for host presentation,
+but
+must never alter guest-visible behavior.

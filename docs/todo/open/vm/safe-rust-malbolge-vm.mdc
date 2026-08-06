@@ -70,3 +70,11 @@ defined, reproducible original-interpreter behavior.
   repository-wide `jig validate --root .` command passing at retirement time.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
+
+**Migrated root planning detail.**
+
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+
+Implement the primary modern VM in safe Rust with explicit errors, deterministic
+state transitions, tracing hooks, and instruction-level conformance with defined
+and reproducible original-interpreter behavior.
