@@ -9,36 +9,31 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Cargo composition for the local museum conversion helper.
+//   - Cargo entrypoint selecting the museum conversion frontend.
 // - Must-Not:
-//   - Contain acquisition, licensing, decompilation semantics, or CLI policy.
+//   - Duplicate module topology, renderer semantics, or argument policy.
 // - Allows:
-//   - Inputs: general renderer and museum-specific local conversion policy.
-//   - Outputs: one Cargo auto-discovered helper executable.
-//   - Side effects: delegated local conversion behavior only.
+//   - Inputs: the canonical shared decompiler composition.
+//   - Outputs: one local museum conversion command execution.
+//   - Side effects: delegated frontend behavior only.
 // - Split-When:
-//   - Split when another museum executable needs independent policy.
+//   - Museum conversion gains an independent package lifecycle.
 // - Merge-When:
-//   - Merge when Cargo no longer needs this composition surface.
+//   - Cargo supports executable aliases without another target source.
 // - Summary:
-//   - Thin Cargo entrypoint for local historical-file conversion.
+//   - Selects `museum_convert` from one shared composition topology.
 // - Description:
-//   - Keeps museum conversion policy under the decompiler responsibility.
+//   - Keeps Cargo target identity separate from shared module ownership.
 // - Usage:
-//   - Invoked as the `museum_convert` binary.
+//   - Compiled as the `museum_convert` binary.
 // - Defaults:
-//   - Adds no behavior beyond delegated modules.
+//   - Selects only the frozen historical-profile frontend.
 //
 
-//! Cargo composition root for the museum conversion helper.
+//! Local historical museum conversion executable.
 
-#[path = "../application/render.rs"]
-pub mod decompiler;
-#[path = "museum.rs"]
-pub mod museum_cli;
-
-use std::io::Result as IoResult;
+include!("shared.rs");
 
 fn main() -> IoResult<()> {
-    museum_cli::run()
+    run_selected(MUSEUM_BINARY)
 }

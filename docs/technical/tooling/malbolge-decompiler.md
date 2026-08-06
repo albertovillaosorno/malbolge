@@ -16,8 +16,8 @@ recovered from arbitrary Malbolge.
 ## Scope
 
 - `tools/decompile/`
-- `src/tooling/decompiler/composition/malbolge_decompile.rs`
-- `src/tooling/decompiler/composition/museum_convert.rs`
+- `src/tooling/decompiler/composition/shared.rs`
+- `src/tooling/decompiler/composition/shared.rs`
 - `tests/decompiler.rs`
 - local generated views of `examples/museum/` specimens
 
