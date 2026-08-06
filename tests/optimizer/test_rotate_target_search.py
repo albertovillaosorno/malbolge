@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import override
 from unittest import SkipTest
 
@@ -562,3 +563,43 @@ def test_malformed_optional_cuda_style_search_falls_back_to_cpu() -> None:
     assert record.identity.configured_backend_id == BAD_CAPABILITY.backend_id
     assert record.identity.actual_backend_id == CPU_BACKEND
     assert record.result.proposals == reference.search(request).proposals
+
+
+def test_rotate_problem_requires_exact_immutable_runtime_types() -> None:
+    """Direct rotate problems reject bools, floats, lists, and mutable bytes."""
+    for foreign_word in (True, 1.0):
+        word: object = foreign_word
+        _expect_problem_error(
+            "target must use the exact integer type",
+            lambda word=word: RotateTargetProblem(
+                target=cast("int", word),
+                candidates=(),
+            ).validated(),
+        )
+        _expect_problem_error(
+            "candidate must use the exact integer type",
+            lambda word=word: RotateTargetProblem(
+                target=0,
+                candidates=(cast("int", word),),
+            ).validated(),
+        )
+    mutable_candidates: object = [0]
+    mutable_payload: object = bytearray(
+        RotateTargetProblem(target=0, candidates=()).encode()
+    )
+    _expect_problem_error(
+        "candidates must use an immutable tuple",
+        lambda: RotateTargetProblem(
+            target=0,
+            candidates=cast(
+                "tuple[int, ...]",
+                cast("object", mutable_candidates),
+            ),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "problem must use immutable bytes",
+        lambda: RotateTargetProblem.decode(
+            cast("bytes", cast("object", mutable_payload))
+        ),
+    )

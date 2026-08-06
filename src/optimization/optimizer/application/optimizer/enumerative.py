@@ -72,19 +72,8 @@ class EnumerationProblem:
         Returns:
             This immutable problem after validation succeeds.
 
-        Raises:
-            InvalidEnumerationProblemError: If corpus representation is invalid.
-
         """
-        if len(self.candidates) > _MAX_U32:
-            message = "enumeration candidate count exceeds u32 representation"
-            raise InvalidEnumerationProblemError(message)
-        for candidate in self.candidates:
-            if len(candidate) > _MAX_U32:
-                message = (
-                    "enumeration candidate length exceeds u32 representation"
-                )
-                raise InvalidEnumerationProblemError(message)
+        _validate_candidates(self.candidates)
         return self
 
     def encode(self) -> bytes:
@@ -111,6 +100,7 @@ class EnumerationProblem:
             InvalidEnumerationProblemError: If encoding is malformed.
 
         """
+        _validate_problem_bytes(payload)
         if not payload.startswith(_MAGIC):
             message = "enumeration problem has invalid magic"
             raise InvalidEnumerationProblemError(message)
@@ -141,6 +131,32 @@ def cpu_enumerative_adapter() -> CpuSearchExecutionAdapter:
         ENUMERATIVE_ALGORITHM_ID,
         enumerate_candidates,
     )
+
+
+def _validate_candidates(candidates: tuple[bytes, ...]) -> None:
+    if type(candidates) is not tuple:
+        message = "enumeration candidates must use an immutable tuple"
+        raise InvalidEnumerationProblemError(message)
+    if len(candidates) > _MAX_U32:
+        message = "enumeration candidate count exceeds u32 representation"
+        raise InvalidEnumerationProblemError(message)
+    for candidate in candidates:
+        _validate_candidate(candidate)
+
+
+def _validate_candidate(candidate: bytes) -> None:
+    if type(candidate) is not bytes:
+        message = "enumeration candidate must use immutable bytes"
+        raise InvalidEnumerationProblemError(message)
+    if len(candidate) > _MAX_U32:
+        message = "enumeration candidate length exceeds u32 representation"
+        raise InvalidEnumerationProblemError(message)
+
+
+def _validate_problem_bytes(payload: bytes) -> None:
+    if type(payload) is not bytes:
+        message = "enumeration problem must use immutable bytes"
+        raise InvalidEnumerationProblemError(message)
 
 
 def enumerate_candidates(

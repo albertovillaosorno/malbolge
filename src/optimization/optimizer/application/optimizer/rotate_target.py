@@ -164,16 +164,15 @@ class RotateTargetProblem:
             InvalidRotateTargetProblemError: If count or word domain is invalid.
 
         """
-        if not 0 <= self.target <= MAX_WORD:
-            message = f"rotate target outside classic domain: {self.target}"
+        _validate_problem_word(self.target, "target")
+        if type(self.candidates) is not tuple:
+            message = "rotate target candidates must use an immutable tuple"
             raise InvalidRotateTargetProblemError(message)
         if len(self.candidates) > _MAX_U32:
             message = "rotate target candidate count exceeds u32 representation"
             raise InvalidRotateTargetProblemError(message)
         for value in self.candidates:
-            if not 0 <= value <= MAX_WORD:
-                message = f"rotate candidate outside classic domain: {value}"
-                raise InvalidRotateTargetProblemError(message)
+            _validate_problem_word(value, "candidate")
         return self
 
     def encode(self) -> bytes:
@@ -658,7 +657,19 @@ def _inverse_rotate(target: int) -> int:
     return (quotient * 3) + low_trit
 
 
+def _validate_problem_word(value: int, label: str) -> None:
+    if type(value) is not int:
+        message = f"rotate {label} must use the exact integer type"
+        raise InvalidRotateTargetProblemError(message)
+    if not 0 <= value <= MAX_WORD:
+        message = f"rotate {label} outside classic domain: {value}"
+        raise InvalidRotateTargetProblemError(message)
+
+
 def _decode_header(payload: bytes) -> tuple[int, int, int]:
+    if type(payload) is not bytes:
+        message = "rotate target problem must use immutable bytes"
+        raise InvalidRotateTargetProblemError(message)
     if not payload.startswith(_MAGIC):
         message = "rotate target problem has invalid magic"
         raise InvalidRotateTargetProblemError(message)

@@ -170,6 +170,9 @@ class CrazyTargetProblem:
         """
         _validate_problem_word(self.target, "target")
         _validate_problem_word(self.accumulator, "accumulator")
+        if type(self.candidates) is not tuple:
+            message = "crazy target candidates must use an immutable tuple"
+            raise InvalidCrazyTargetProblemError(message)
         if len(self.candidates) > _MAX_U32:
             message = "crazy target candidate count exceeds u32 representation"
             raise InvalidCrazyTargetProblemError(message)
@@ -720,12 +723,18 @@ def _validate_candidate_word(value: int) -> None:
 
 
 def _validate_problem_word(value: int, label: str) -> None:
+    if type(value) is not int:
+        message = f"crazy {label} must use the exact integer type"
+        raise InvalidCrazyTargetProblemError(message)
     if not 0 <= value <= MAX_WORD:
         message = f"crazy {label} outside classic domain: {value}"
         raise InvalidCrazyTargetProblemError(message)
 
 
 def _decode_header(payload: bytes) -> tuple[int, int, int, int]:
+    if type(payload) is not bytes:
+        message = "crazy target problem must use immutable bytes"
+        raise InvalidCrazyTargetProblemError(message)
     if not payload.startswith(_MAGIC):
         message = "crazy target problem has invalid magic"
         raise InvalidCrazyTargetProblemError(message)

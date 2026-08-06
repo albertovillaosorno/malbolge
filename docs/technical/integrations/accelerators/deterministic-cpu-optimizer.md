@@ -28,8 +28,12 @@ The first concrete CPU search strategy is
 `deterministic-corpus-enumeration-v1` under
 `src/optimization/optimizer/application/optimizer/enumerative.py`. Its
 problem is an explicitly supplied finite corpus with canonical binary encoding.
-The encoded problem preserves the complete supplied corpus, including exact
-duplicates, for replay identity. Before logical candidate IDs are assigned,
+Direct problem objects require immutable tuple/bytes storage, while classic
+rotate/crazy target parameters and candidates require exact integers. Mutable
+containers, boolean or floating-point words, and mutable encoded payloads fail
+before search. The encoded problem preserves the complete supplied corpus,
+including exact duplicates, for replay identity. Before assigning logical
+candidate IDs,
 `src/optimization/optimizer/application/optimizer/pruning.py` partitions
 payloads only by complete byte equality and
 retains each first occurrence. The request seed rotates over those exact

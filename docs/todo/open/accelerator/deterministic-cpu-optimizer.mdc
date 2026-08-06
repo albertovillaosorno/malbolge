@@ -58,7 +58,10 @@ baseline for accelerator implementations.
 - Active foundation: `deterministic-corpus-enumeration-v1` canonically encodes
   an
   explicit finite candidate corpus, preserves duplicate input bytes for replay,
-  prunes only exact byte-identical payloads before logical identity, uses seed
+  and requires immutable tuple/bytes problem storage. Classic rotate/crazy
+  target parameters and candidate words require exact integers before search or
+  encoding. The baseline prunes only exact byte-identical payloads before
+  logical identity, uses seed
   and
   evaluation budget over stable first representatives, and never duplicates
   candidates by wraparound. It executes through the mandatory CPU search adapter

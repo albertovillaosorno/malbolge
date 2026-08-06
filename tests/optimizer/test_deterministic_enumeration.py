@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import final
 from typing import override
 
@@ -242,4 +243,35 @@ def test_enumerative_strategy_uses_generic_search_selection() -> None:
     assert (
         tuple(item.payload for item in record.result.proposals)
         == CANDIDATES[:2]
+    )
+
+
+def test_problem_requires_immutable_exact_runtime_types() -> None:
+    """Direct problem construction and decode preserve immutable identity."""
+    mutable_candidates: object = [b"a"]
+    mutable_candidate: object = bytearray(b"a")
+    mutable_payload: object = bytearray(
+        EnumerationProblem(candidates=(b"a",)).encode()
+    )
+
+    _expect_problem_error(
+        "candidates must use an immutable tuple",
+        lambda: EnumerationProblem(
+            candidates=cast(
+                "tuple[bytes, ...]",
+                cast("object", mutable_candidates),
+            ),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "candidate must use immutable bytes",
+        lambda: EnumerationProblem(
+            candidates=(cast("bytes", cast("object", mutable_candidate)),),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "problem must use immutable bytes",
+        lambda: EnumerationProblem.decode(
+            cast("bytes", cast("object", mutable_payload))
+        ),
     )

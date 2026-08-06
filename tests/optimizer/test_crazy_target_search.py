@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import override
 from unittest import SkipTest
 
@@ -466,4 +467,51 @@ def test_prepared_cpu_state_executes_1024_positions_on_live_cuda() -> None:
     assert (
         admit_search_result(observed, CrazyTargetVerifier(ALL_ONES, 0))
         == observed.proposals
+    )
+
+
+def test_crazy_problem_requires_exact_immutable_runtime_types() -> None:
+    """Direct crazy problems reject bools, floats, lists, and mutable bytes."""
+    for foreign_word in (False, 1.0):
+        word: object = foreign_word
+        _expect_problem_error(
+            "target must use the exact integer type",
+            lambda word=word: CrazyTargetProblem(
+                accumulator=0,
+                target=cast("int", word),
+                candidates=(),
+            ).validated(),
+        )
+        _expect_problem_error(
+            "candidate must use the exact integer type",
+            lambda word=word: CrazyTargetProblem(
+                accumulator=0,
+                target=0,
+                candidates=(cast("int", word),),
+            ).validated(),
+        )
+    mutable_candidates: object = [0]
+    mutable_payload: object = bytearray(
+        CrazyTargetProblem(
+            accumulator=0,
+            target=0,
+            candidates=(),
+        ).encode()
+    )
+    _expect_problem_error(
+        "candidates must use an immutable tuple",
+        lambda: CrazyTargetProblem(
+            accumulator=0,
+            target=0,
+            candidates=cast(
+                "tuple[int, ...]",
+                cast("object", mutable_candidates),
+            ),
+        ).validated(),
+    )
+    _expect_problem_error(
+        "problem must use immutable bytes",
+        lambda: CrazyTargetProblem.decode(
+            cast("bytes", cast("object", mutable_payload))
+        ),
     )
