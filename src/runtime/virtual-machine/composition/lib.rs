@@ -38,6 +38,10 @@ mod annotated;
 mod batch;
 #[path = "../domain/capsule.rs"]
 mod capsule;
+#[path = "../domain/cycle.rs"]
+mod cycle;
+#[path = "../domain/differential.rs"]
+mod differential;
 #[path = "../domain/execution.rs"]
 mod execution;
 #[path = "../domain/execution_ir.rs"]
@@ -87,6 +91,14 @@ pub use batch::{
 };
 pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
+};
+pub use cycle::{
+    CycleDetectionError, DiagnosticCycleDetector, DiagnosticCycleObservation,
+    ExactCycleDetector, ExactCycleObservation,
+};
+pub use differential::{
+    DifferentialCandidate, DifferentialVerificationError,
+    verify_differential_candidates,
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use execution_ir::{

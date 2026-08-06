@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted implementation
 
 ## Purpose
 
@@ -11,12 +11,10 @@ exact results and clearly label probabilistic hash-only diagnostics.
 
 ## Scope
 
-This document governs the following declared TODO scope:
+This document governs the following implemented surface:
 
-- `verifier/`
-- `tests/differential/`
-- `tests/exhaustive/`
-- `tests/fuzz/`
+- `src/runtime/virtual-machine/domain/cycle.rs`
+- `tests/vm/cycle_detection.rs`
 
 ## Current Behavior
 
@@ -29,7 +27,11 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+`ExactCycleDetector` retains complete states in candidate-key buckets and
+requires full `Eq` confirmation before returning `ExactRepeat`.
+`DiagnosticCycleDetector` retains only keys and can return only
+`PossibleRepeat`. Both use a stable checked observation sequence and fail before
+mutation if its index is exhausted.
 
 ## Invariants
 
@@ -46,10 +48,13 @@ never implicit acceptance.
 
 ## Verification
 
-- Expected durable artifact surface: `verifier/`, `tests/differential/`,
-  `tests/exhaustive/`, `tests/fuzz/`.
-- Required evidence: known-valid fixtures, seeded invalid mutations,
-  counterexamples for rejected candidates, and deterministic replay.
+- `tests/vm/cycle_detection.rs` forces two distinct complete classic checkpoints
+  into one candidate-key bucket and proves neither collision becomes a repeat.
+- Re-observing either exact checkpoint returns its own first-seen index.
+- Replaying the same sequence produces byte-for-byte equal classifications.
+- The hash-only detector returns `PossibleRepeat`, never `ExactRepeat`.
+- Seeded register mutation and profile checkpoints remain distinct under a
+  deliberately colliding key until exact state equality is observed.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
 ## References
 

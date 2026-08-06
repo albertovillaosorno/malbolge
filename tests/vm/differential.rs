@@ -34,8 +34,10 @@
 //! Differential semantic fingerprint shared with the independent pure-C VM.
 
 use malbolge::{
+    DifferentialCandidate, DifferentialVerificationError,
     InterpreterUndefinedBehavior, MAX_WORD_VALUE, Machine, MachineError,
     Memory, Registers, RunOutcome, StepOutcome, Termination, Word, load,
+    verify_differential_candidates,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -159,11 +161,48 @@ fn hash_word(hash: u64, value: Word) -> u64 {
 
 #[test]
 fn independent_c_signature_matches_rust_vm() -> TestResult {
-    let observed = rust_semantic_signature()?;
+    let candidates = [
+        DifferentialCandidate::new("rust", rust_semantic_signature()?),
+        DifferentialCandidate::new("independent-c", C_VM_SEMANTIC_SIGNATURE),
+    ];
+    normalize_result(verify_differential_candidates(&candidates))
+}
+
+#[test]
+fn mutated_c_signature_is_rejected_with_backend_identity() -> TestResult {
+    let candidates = [
+        DifferentialCandidate::new("rust", rust_semantic_signature()?),
+        DifferentialCandidate::new(
+            "mutated-independent-c",
+            C_VM_SEMANTIC_SIGNATURE ^ 1,
+        ),
+    ];
+    let Err(error) = verify_differential_candidates(&candidates) else {
+        return Err(String::from("mutated C signature was accepted"));
+    };
     check_equal(
-        &observed,
-        &C_VM_SEMANTIC_SIGNATURE,
-        "Rust VM matches independent C semantic signature",
+        &error,
+        &DifferentialVerificationError::Mismatch {
+            candidate: "mutated-independent-c",
+            reference: "rust",
+        },
+        "mutated C signature diagnostic",
+    )
+}
+
+#[test]
+fn single_candidate_is_rejected_as_unproved() -> TestResult {
+    let candidates = [DifferentialCandidate::new(
+        "rust",
+        rust_semantic_signature()?,
+    )];
+    let Err(error) = verify_differential_candidates(&candidates) else {
+        return Err(String::from("single differential candidate accepted"));
+    };
+    check_equal(
+        &error,
+        &DifferentialVerificationError::InsufficientCandidates { observed: 1 },
+        "single candidate diagnostic",
     )
 }
 

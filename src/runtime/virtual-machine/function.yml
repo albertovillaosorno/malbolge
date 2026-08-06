@@ -157,6 +157,16 @@ parts:
     kind: adapter-outbound
     language: rust
     responsibility: Bind outbound capabilities to external systems.
+  - id: part-0025
+    path: domain/cycle.rs
+    kind: domain
+    language: rust
+    responsibility: Own collision-safe repeated-state classification.
+  - id: part-0026
+    path: domain/differential.rs
+    kind: domain
+    language: rust
+    responsibility: Verify exact agreement across labeled backend observations.
 projects: []
 tests: []
 graph:

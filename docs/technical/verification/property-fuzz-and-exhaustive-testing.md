@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -12,12 +12,15 @@ and crazy operations.
 
 ## Scope
 
-This document governs the following declared TODO scope:
+This document governs the following implemented surface:
 
-- `verifier/`
+- `tests/property_verification.rs`
 - `tests/differential/`
 - `tests/exhaustive/`
 - `tests/fuzz/`
+- `tests/vm/tables.rs`
+- `tests/vm/cycle_detection.rs`
+- `tests/test_historical_interpreter_sanitizer.py`
 
 ## Current Behavior
 
@@ -62,14 +65,21 @@ classic rotate word, every graphical decode position, and both five-trit crazy
 chunk positions are checked against independent scalar formulas. This work is
 referenced rather than duplicated under a second test implementation.
 
-### Remaining scope
+### Sanitizer and verifier boundaries
 
-This slice establishes deterministic replay/shrink and finite VM/loader domains.
-Sanitizer campaigns and verifier-valid-versus-mutated-invalid testing remain
-open
-because the general translation verifier is not yet implemented. Those future
-checks must preserve stable seeds/counterexamples rather than turning this task
-into nondeterministic CI fuzzing.
+The pinned historical-interpreter sanitizer harness verifies immutable source
+identity, clean output, and normalized H-003 AddressSanitizer findings for empty
+and one-word sources without editing the historical C file.
+
+`tests/vm/cycle_detection.rs` provides the required valid-versus-mutated-invalid
+verifier boundary. Exact detection retains complete classic/profile checkpoints,
+rejects a seeded register mutation under a forced key collision, and proves
+deterministic replay. The diagnostic detector retains only keys and can report
+only `PossibleRepeat`.
+
+This repository deliberately uses deterministic seeded generation rather than
+ambient CI fuzz scheduling. New verifier families must add their own stable
+seeds and counterexamples, but they do not reopen this foundational test model.
 
 ## Invariants
 
@@ -93,8 +103,8 @@ never implicit acceptance.
 - `tests/vm/tables.rs` supplies the existing exhaustive rotate/crazy/decode
   table
   equivalence evidence under the full VM integration target.
-- Required future evidence still includes sanitizer campaigns and deliberate
-  valid/invalid verifier mutations once that verifier surface exists.
+- The historical ASan/UBSan harness and exact-cycle valid/invalid mutations
+  close the sanitizer and verifier evidence required by this contract.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`.
 ## References

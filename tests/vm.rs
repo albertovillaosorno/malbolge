@@ -48,6 +48,8 @@ mod cuda_profile_run;
 mod cuda_run;
 #[path = "vm/cuda_step.rs"]
 mod cuda_step;
+#[path = "vm/cycle_detection.rs"]
+mod cycle_detection;
 #[path = "vm/differential.rs"]
 mod differential;
 #[path = "vm/execution.rs"]

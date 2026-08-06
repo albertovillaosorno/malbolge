@@ -41,11 +41,12 @@ use std::process::{Command, Stdio};
 
 use malbolge::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
-    BatchRequest, BatchResult, ExecutionMachine, ExecutionMode,
-    InterpreterUndefinedBehavior, MAX_WORD_VALUE, MEMORY_WORDS, Machine,
-    MachineError, MachineIoState, MachineState, Memory, Registers, RunOutcome,
-    StepOutcome, Termination, Word, execute_batch,
+    BatchRequest, BatchResult, DifferentialCandidate, ExecutionMachine,
+    ExecutionMode, InterpreterUndefinedBehavior, MAX_WORD_VALUE, MEMORY_WORDS,
+    Machine, MachineError, MachineIoState, MachineState, Memory, Registers,
+    RunOutcome, StepOutcome, Termination, Word, execute_batch,
     execute_batch_with_backend_report, historical_profile,
+    verify_differential_candidates,
 };
 
 use crate::{
@@ -412,10 +413,18 @@ fn compare_product_batch(
                     oracle_machine.profile(),
                     &context("profile"),
                 )?;
-                check_equal(
-                    &actual_machine.snapshot_state(),
-                    &oracle_machine.snapshot_state(),
-                    &context("state"),
+                let candidates = [
+                    DifferentialCandidate::new(
+                        "rust",
+                        oracle_machine.snapshot_state(),
+                    ),
+                    DifferentialCandidate::new(
+                        "cuda",
+                        actual_machine.snapshot_state(),
+                    ),
+                ];
+                verify_differential_candidates(&candidates).map_err(
+                    |error| format!("{}: {error}", context("state")),
                 )?;
             },
             (None, None) => {},

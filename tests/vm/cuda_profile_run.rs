@@ -41,12 +41,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use malbolge::{
-    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
-    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
-    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineState, ProfileRegisters, RunOutcome, StepOutcome,
-    Termination, current_profile, execute_profile_batch,
-    execute_profile_batch_with_backend_report,
+    DifferentialCandidate, ProfileBatchBackendCompletion,
+    ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
+    ProfileBatchRequest, ProfileBatchResult, ProfileMachine,
+    ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
+    ProfileRegisters, RunOutcome, StepOutcome, Termination, current_profile,
+    execute_profile_batch, execute_profile_batch_with_backend_report,
+    verify_differential_candidates,
 };
 
 use crate::{
@@ -395,11 +396,21 @@ fn compare_profile_product_batch(
         check_equal(&actual.error(), &oracle.error(), &context("error"))?;
         check_equal(&actual.outcome(), &oracle.outcome(), &context("outcome"))?;
         match (actual.machine(), oracle.machine()) {
-            (Some(actual_machine), Some(oracle_machine)) => check_equal(
-                &actual_machine.snapshot_state(),
-                &oracle_machine.snapshot_state(),
-                &context("state"),
-            )?,
+            (Some(actual_machine), Some(oracle_machine)) => {
+                let candidates = [
+                    DifferentialCandidate::new(
+                        "rust",
+                        oracle_machine.snapshot_state(),
+                    ),
+                    DifferentialCandidate::new(
+                        "cuda",
+                        actual_machine.snapshot_state(),
+                    ),
+                ];
+                verify_differential_candidates(&candidates).map_err(
+                    |error| format!("{}: {error}", context("state")),
+                )?;
+            },
             (None, None) => {},
             _ => return Err(context("machine presence")),
         }
