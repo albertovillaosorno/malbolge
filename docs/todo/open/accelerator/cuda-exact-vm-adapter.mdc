@@ -58,7 +58,14 @@ batches.
   declares registers/counters/input plus at most four keyed memory cells; CUDA
   returns the full `StepTrace`-equivalent projection. Compact, resident classic,
   and scalable-profile request boundaries reject boolean scalars and tuple
-  members before protocol encoding or CUDA work. Rust integration compares
+  members before protocol encoding or CUDA work. Hardware-neutral primitive
+  batches now also require the exact kind enum and immutable tuple arrays.
+  Primitive candidate bridges validate exact kind, adapter call surface, and
+  immutable capability identity during construction. Ordinary and prepared
+  outputs require an exact primitive result record before capability or payload
+  access; tuple results require immutable storage before evidence packing. Rust
+  integration
+  compares
   fourteen instruction/edge fixtures directly with normative
   `Machine::step_traced()`, including atomic rejection and write aliasing.
 - Resident classic bounded execution is active behind

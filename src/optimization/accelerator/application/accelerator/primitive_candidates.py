@@ -40,14 +40,17 @@ from functools import lru_cache
 import sys
 from time import perf_counter_ns
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import final
 from typing import override
 
 from accelerator.cpu.exact_primitives import packed_scalar_reference_words
+from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PackedPrimitiveResult
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import PrimitiveResult
 from accelerator.exact_primitives import prepare_packed_primitive_batch
 from accelerator.exact_primitives import prepare_primitive_batch
 from accelerator.work_ports import CandidateEvaluationAdapter
@@ -58,9 +61,9 @@ from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import PackedCandidateEvidence
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Iterator
 
-    from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.exact_primitives import ExactPrimitiveAdapter
     from accelerator.exact_primitives import PreparedPrimitiveBatch
     from accelerator.exact_primitives import PrimitiveExecutionResult
@@ -179,7 +182,10 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
         kind: PrimitiveKind,
     ) -> None:
         """Bind one exact primitive kind to hardware-neutral candidate work."""
+        _validate_candidate_kind(kind)
+        capability = _validated_primitive_adapter(adapter)
         self._adapter = adapter
+        self._capability = capability
         self._evaluator_id = _evaluator_id(kind)
         self._kind = kind
 
@@ -191,7 +197,7 @@ class PrimitiveCandidateEvaluationAdapter(CandidateEvaluationAdapter):
             Exact capability reported by the wrapped adapter.
 
         """
-        return self._adapter.capability()
+        return self._capability
 
     @override
     def evaluate(
@@ -817,16 +823,27 @@ def _validated_primitive_payloads(
     *,
     validate_domain: bool,
 ) -> bytes:
-    if primitive.capability != capability:
-        message = "primitive backend changed capability identity"
-        raise InvalidAcceleratorResultError(message)
-    if isinstance(primitive, PackedPrimitiveResult):
+    if type(primitive) is PackedPrimitiveResult:
+        _validate_primitive_result_capability(primitive.capability, capability)
         return _validated_packed_payloads(
             batch,
             primitive.words_u32le,
             validate_domain=validate_domain,
         )
+    if type(primitive) is not PrimitiveResult:
+        message = "primitive backend result has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    _validate_primitive_result_capability(primitive.capability, capability)
     return _validated_tuple_payloads(batch, primitive.values)
+
+
+def _validate_primitive_result_capability(
+    observed: AcceleratorCapability,
+    expected: AcceleratorCapability,
+) -> None:
+    if observed != expected:
+        message = "primitive backend changed capability identity"
+        raise InvalidAcceleratorResultError(message)
 
 
 def _validated_packed_payloads(
@@ -850,6 +867,9 @@ def _validated_tuple_payloads(
     batch: CandidateEvaluationBatch,
     values: tuple[int, ...],
 ) -> bytes:
+    if type(values) is not tuple:
+        message = "primitive backend result must use an immutable tuple"
+        raise InvalidAcceleratorResultError(message)
     if len(values) != len(batch.items):
         message = (
             "primitive backend result count does not match candidate batch"
@@ -995,6 +1015,41 @@ def _validate_evidence_word(value: int) -> None:
 
 def _encode_word(value: int) -> bytes:
     return value.to_bytes(_WORD_BYTES, "little")
+
+
+def _validate_candidate_kind(value: PrimitiveKind) -> None:
+    if type(value) is not PrimitiveKind:
+        message = "primitive candidate kind must use the exact enum type"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validated_primitive_adapter(value: object) -> AcceleratorCapability:
+    capability_method = getattr(value, "capability", None)
+    evaluate_method = getattr(value, "evaluate", None)
+    prepared_method = getattr(value, "evaluate_prepared", None)
+    if not all(
+        callable(method)
+        for method in (capability_method, evaluate_method, prepared_method)
+    ):
+        message = "exact primitive adapter has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    capability = cast("Callable[[], object]", capability_method)()
+    if type(capability) is not AcceleratorCapability:
+        message = "exact primitive adapter capability has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    _validate_capability_identity(capability.backend_id, "backend ID")
+    _validate_capability_identity(capability.device_arch, "device architecture")
+    _validate_capability_identity(capability.device_name, "device name")
+    return capability
+
+
+def _validate_capability_identity(value: str, label: str) -> None:
+    if type(value) is not str:
+        message = f"exact primitive adapter {label} must use exact string type"
+        raise InvalidAcceleratorWorkError(message)
+    if not value:
+        message = f"exact primitive adapter {label} must not be empty"
+        raise InvalidAcceleratorWorkError(message)
 
 
 def _evaluator_id(kind: PrimitiveKind) -> str:

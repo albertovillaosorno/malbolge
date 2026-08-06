@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import cast
 from unittest import SkipTest
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ from accelerator.exact_primitives import InvalidPrimitiveBatchError
 from accelerator.exact_primitives import MAX_WORD
 from accelerator.exact_primitives import PrimitiveBatch
 from accelerator.exact_primitives import PrimitiveKind
+from accelerator.exact_primitives import prepare_packed_primitive_batch
 
 CUDA_BACKEND = "cuda"
 EDGE_WORDS = (0, 1, 2, 3, 59_048, 19_683, 39_366, 243, 59_047)
@@ -181,4 +183,61 @@ def test_invalid_batch_fails_before_backend_execution() -> None:
         InvalidPrimitiveBatchError,
         "rotate batch must not carry accumulators",
         lambda: CpuExactPrimitiveAdapter().evaluate(batch),
+    )
+
+
+def test_primitive_batch_requires_exact_immutable_runtime_types() -> None:
+    """Tuple batches and packed preparation reject foreign representations."""
+    mutable_words: object = [1]
+    foreign_kind: object = "rotate"
+    cases = (
+        (
+            PrimitiveBatch(
+                accumulators=(),
+                data=cast(
+                    "tuple[int, ...]",
+                    cast("object", mutable_words),
+                ),
+                kind=PrimitiveKind.ROTATE,
+            ),
+            "primitive data must use an immutable tuple",
+        ),
+        (
+            PrimitiveBatch(
+                accumulators=cast(
+                    "tuple[int, ...]",
+                    cast("object", mutable_words),
+                ),
+                data=(1,),
+                kind=PrimitiveKind.CRAZY,
+            ),
+            "primitive accumulators must use an immutable tuple",
+        ),
+        (
+            PrimitiveBatch(
+                accumulators=(),
+                data=(1,),
+                kind=cast(
+                    "PrimitiveKind",
+                    cast("object", foreign_kind),
+                ),
+            ),
+            "primitive kind must use the exact enum type",
+        ),
+    )
+    for batch, message in cases:
+        _expect_error(
+            InvalidPrimitiveBatchError,
+            message,
+            batch.validated,
+        )
+
+    _expect_error(
+        InvalidPrimitiveBatchError,
+        "primitive kind must use the exact enum type",
+        lambda: prepare_packed_primitive_batch(
+            accumulators_u32le=b"",
+            data_u32le=(1).to_bytes(4, "little"),
+            kind=cast("PrimitiveKind", cast("object", foreign_kind)),
+        ),
     )

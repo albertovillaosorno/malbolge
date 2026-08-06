@@ -108,6 +108,9 @@ class PrimitiveBatch:
             InvalidPrimitiveBatchError: If shape or word domain is invalid.
 
         """
+        _validate_primitive_kind(self.kind)
+        _validate_word_tuple(self.data, "primitive data")
+        _validate_word_tuple(self.accumulators, "primitive accumulators")
         if self.kind is PrimitiveKind.ROTATE and self.accumulators:
             message = "rotate batch must not carry accumulators"
             raise InvalidPrimitiveBatchError(message)
@@ -116,11 +119,23 @@ class PrimitiveBatch:
         ):
             message = "crazy batch arrays must have equal length"
             raise InvalidPrimitiveBatchError(message)
-        for value in (*self.data, *self.accumulators):
-            if type(value) is not int or not 0 <= value <= MAX_WORD:
-                message = f"word outside classic domain: {value!r}"
-                raise InvalidPrimitiveBatchError(message)
         return self
+
+
+def _validate_primitive_kind(kind: PrimitiveKind) -> None:
+    if type(kind) is not PrimitiveKind:
+        message = "primitive kind must use the exact enum type"
+        raise InvalidPrimitiveBatchError(message)
+
+
+def _validate_word_tuple(values: tuple[int, ...], label: str) -> None:
+    if type(values) is not tuple:
+        message = f"{label} must use an immutable tuple"
+        raise InvalidPrimitiveBatchError(message)
+    for value in values:
+        if type(value) is not int or not 0 <= value <= MAX_WORD:
+            message = f"word outside classic domain: {value!r}"
+            raise InvalidPrimitiveBatchError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +240,7 @@ def _validate_packed_prepared_shape(
     data_u32le: bytes,
     kind: PrimitiveKind,
 ) -> None:
+    _validate_primitive_kind(kind)
     if type(data_u32le) is not bytes or type(accumulators_u32le) is not bytes:
         message = "prepared primitive words must use immutable bytes"
         raise InvalidPrimitiveBatchError(message)

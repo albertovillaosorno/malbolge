@@ -35,7 +35,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import cast
 from typing import final
+from typing import override
 
 from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
@@ -46,20 +48,32 @@ from accelerator.evaluated_search import PreparedCandidateProjection
 from accelerator.evaluated_search import PreparedProposalSelection
 from accelerator.evaluated_search import prepare_candidate_projection
 from accelerator.evaluated_search import prepared_membership_index_id
+from accelerator.exact_primitives import AcceleratorCapability
+from accelerator.work_ports import CandidateEvaluationAdapter
 from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import CandidateProposal
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import IndexedCandidateWorkItems
+from accelerator.work_ports import InvalidAcceleratorResultError
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import PreparedCandidateSubset
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import indexed_candidate_items_from_unique_u32
 from accelerator.work_ports import prepare_candidate_subset
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.evaluated_search import SearchBatchBuilder
+    from accelerator.evaluated_search import SearchBatchPreparer
+    from accelerator.evaluated_search import SearchCandidateStateCount
+    from accelerator.evaluated_search import SearchPreparedEvaluator
+    from accelerator.evaluated_search import SearchPreparedProposalSelector
     from accelerator.evaluated_search import SearchProposalSelector
+    from accelerator.evaluated_search import SearchSelectionAwareBatchPreparer
+    from accelerator.evaluated_search import SearchSelectionPreparer
+    from accelerator.evaluated_search import SearchSelectionStateCount
     from accelerator.work_ports import CandidateEvaluationResult
 
 ALGORITHM_ID = "evaluated-search-test-v1"
@@ -882,3 +896,315 @@ def test_budget_rejects_oversized_evaluation_batch_before_execution() -> None:
         "evaluated search batch exceeds declared evaluation budget",
         lambda: _adapter(_two_items, _select_first).search(_request(budget=1)),
     )
+
+
+def test_evaluated_search_identity_requires_exact_string() -> None:
+    """Evaluated search rejects truthy foreign algorithm identities."""
+    foreign_identity: object = 1
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+
+    _expect_error(
+        "search algorithm ID must use the exact string type",
+        lambda: EvaluatedSearchExecutionAdapter(
+            cast("str", cast("object", foreign_identity)),
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+            ),
+        ),
+    )
+
+
+def test_strategy_construction_rejects_foreign_runtime_shape() -> None:
+    """Adapter and strategy records fail before request preparation."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    strategy = EvaluatedSearchStrategy(
+        batch_builder=_one_item,
+        proposal_selector=_select_first,
+    )
+    foreign: object = object()
+
+    _expect_error(
+        "candidate evaluation adapter has wrong type",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            cast("CandidateEvaluationAdapter", foreign),
+            strategy,
+        ),
+    )
+    _expect_error(
+        "evaluated search strategy has wrong type",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            cast("EvaluatedSearchStrategy", foreign),
+        ),
+    )
+    _expect_error(
+        "evaluated search batch builder must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=cast("SearchBatchBuilder", foreign),
+                proposal_selector=_select_first,
+            ),
+        ),
+    )
+    _expect_error(
+        "evaluated search selector must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=cast("SearchProposalSelector", foreign),
+            ),
+        ),
+    )
+
+
+def test_prepared_strategy_records_require_exact_types() -> None:
+    """Foreign prepared records cannot enter strategy identity."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    foreign: object = object()
+
+    _expect_error(
+        "prepared candidate execution has wrong type",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=cast("PreparedCandidateExecution", foreign),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared proposal selection has wrong type",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_selection=cast("PreparedProposalSelection", foreign),
+            ),
+        ),
+    )
+
+
+def test_prepared_strategy_callbacks_must_be_callable() -> None:
+    """Prepared callback fields fail during adapter construction."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    foreign: object = object()
+
+    _expect_error(
+        "prepared candidate batch preparer must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=PreparedCandidateExecution(
+                    batch_preparer=cast("SearchBatchPreparer", foreign),
+                    evaluator=_evaluate_identity_state,
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared candidate selection-aware preparer must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=PreparedCandidateExecution(
+                    batch_preparer=None,
+                    evaluator=_evaluate_identity_state,
+                    selection_aware_preparer=cast(
+                        "SearchSelectionAwareBatchPreparer",
+                        foreign,
+                    ),
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared candidate evaluator must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=PreparedCandidateExecution(
+                    batch_preparer=_prepare_identity_batch,
+                    evaluator=cast("SearchPreparedEvaluator", foreign),
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared candidate state counter must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_execution=PreparedCandidateExecution(
+                    batch_preparer=_prepare_identity_batch,
+                    evaluator=_evaluate_identity_state,
+                    state_count=cast("SearchCandidateStateCount", foreign),
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared selection state preparer must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_selection=PreparedProposalSelection(
+                    state_preparer=cast("SearchSelectionPreparer", foreign),
+                    selector=_select_prepared_first,
+                    state_count=_count_prepared_selection,
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared proposal selector must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_selection=PreparedProposalSelection(
+                    state_preparer=_prepare_first_selection,
+                    selector=cast("SearchPreparedProposalSelector", foreign),
+                    state_count=_count_prepared_selection,
+                ),
+            ),
+        ),
+    )
+    _expect_error(
+        "prepared selection state counter must be callable",
+        lambda: EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            evaluator,
+            EvaluatedSearchStrategy(
+                batch_builder=_one_item,
+                proposal_selector=_select_first,
+                prepared_selection=PreparedProposalSelection(
+                    state_preparer=_prepare_first_selection,
+                    selector=_select_prepared_first,
+                    state_count=cast("SearchSelectionStateCount", foreign),
+                ),
+            ),
+        ),
+    )
+
+
+@final
+class _ForeignCapabilityEvaluator(CandidateEvaluationAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        foreign: object = object()
+        return cast("AcceleratorCapability", foreign)
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        del batch
+        foreign: object = object()
+        return cast("CandidateEvaluationResult", foreign)
+
+
+@final
+class _ForeignResultEvaluator(CandidateEvaluationAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return AcceleratorCapability(
+            backend_id=CPU_BACKEND,
+            device_arch="scalar",
+            device_name="cpu",
+        )
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        del batch
+        foreign: object = object()
+        return cast("CandidateEvaluationResult", foreign)
+
+
+def _foreign_prepared_result(state: object) -> CandidateEvaluationResult:
+    del state
+    foreign: object = object()
+    return cast("CandidateEvaluationResult", foreign)
+
+
+def test_evaluated_search_requires_exact_capability_and_results() -> None:
+    """Foreign evaluator records fail before proposal selection."""
+    strategy = EvaluatedSearchStrategy(
+        batch_builder=_one_item,
+        proposal_selector=_select_first,
+    )
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="evaluated search adapter capability has wrong type",
+    ):
+        _ = EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            _ForeignCapabilityEvaluator(),
+            strategy,
+        ).search(_request(budget=1))
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate backend result has wrong type",
+    ):
+        _ = EvaluatedSearchExecutionAdapter(
+            ALGORITHM_ID,
+            _ForeignResultEvaluator(),
+            strategy,
+        ).search(_request(budget=1))
+
+
+def test_prepared_evaluator_requires_exact_result_record() -> None:
+    """Prepared callbacks cannot publish a foreign evidence object."""
+    evaluator = CpuCandidateEvaluationAdapter(EVALUATOR_ID, _identity)
+    adapter = EvaluatedSearchExecutionAdapter(
+        ALGORITHM_ID,
+        evaluator,
+        EvaluatedSearchStrategy(
+            batch_builder=_one_item,
+            proposal_selector=_select_first,
+            prepared_execution=PreparedCandidateExecution(
+                batch_preparer=_prepare_identity_batch,
+                evaluator=_foreign_prepared_result,
+            ),
+        ),
+    )
+    prepared = adapter.prepare(_request(budget=1))
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate backend result has wrong type",
+    ):
+        _ = adapter.search_prepared(prepared)

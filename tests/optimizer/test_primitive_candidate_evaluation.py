@@ -94,6 +94,7 @@ BAD_MODE_COUNT = "count"
 BAD_MODE_DOMAIN = "domain"
 BAD_MODE_NEGATIVE = "negative"
 BAD_MODE_BOOLEAN = "boolean"
+BAD_MODE_MUTABLE = "mutable"
 BAD_PACKED_MODE_CAPABILITY = "packed-capability"
 BAD_PACKED_MODE_COUNT = "packed-count"
 BAD_PACKED_MODE_DOMAIN = "packed-domain"
@@ -182,23 +183,19 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
     @override
     def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
         count = len(batch.data)
-        capability = BAD_CAPABILITY
-        if self.mode == BAD_MODE_CAPABILITY:
-            capability = AcceleratorCapability(
+        capability = (
+            AcceleratorCapability(
                 backend_id="other",
                 device_arch="bad",
                 device_name="bad",
             )
-            values = (0,) * count
-        elif self.mode == BAD_MODE_COUNT:
-            values = ()
-        elif self.mode == BAD_MODE_NEGATIVE:
-            values = (-1,) * count
-        elif self.mode == BAD_MODE_BOOLEAN:
-            values = (True,) * count
-        else:
-            values = (MAX_WORD + 1,) * count
-        return PrimitiveResult(capability=capability, values=values)
+            if self.mode == BAD_MODE_CAPABILITY
+            else BAD_CAPABILITY
+        )
+        return PrimitiveResult(
+            capability=capability,
+            values=_bad_result_values(self.mode, count),
+        )
 
     @override
     def evaluate_prepared(
@@ -206,6 +203,22 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
         prepared: PreparedPrimitiveBatch,
     ) -> PrimitiveResult:
         return self.evaluate(prepared.validated_batch())
+
+
+def _bad_result_values(mode: str, count: int) -> tuple[int, ...]:
+    fixed = {
+        BAD_MODE_COUNT: (),
+        BAD_MODE_NEGATIVE: (-1,) * count,
+        BAD_MODE_BOOLEAN: (True,) * count,
+        BAD_MODE_CAPABILITY: (0,) * count,
+    }
+    if mode == BAD_MODE_MUTABLE:
+        mutable_values: object = [0] * count
+        return cast(
+            "tuple[int, ...]",
+            cast("object", mutable_values),
+        )
+    return fixed.get(mode, (MAX_WORD + 1,) * count)
 
 
 @dataclass(frozen=True, slots=True)
@@ -685,6 +698,10 @@ def test_malformed_primitive_results_fail_closed() -> None:
         ("domain", "primitive backend result outside classic domain"),
         ("negative", "primitive backend result outside classic domain: -1"),
         ("boolean", "primitive backend result outside classic domain: True"),
+        (
+            BAD_MODE_MUTABLE,
+            "primitive backend result must use an immutable tuple",
+        ),
     )
     for mode, message in cases:
         adapter = PrimitiveCandidateEvaluationAdapter(
@@ -982,3 +999,115 @@ def test_malformed_preferred_primitive_backend_falls_back_to_cpu() -> None:
 
     assert result.capability.backend_id == CPU_BACKEND
     assert tuple(iter_primitive_evidence_values(result)) == (ROTATE_ONE,)
+
+
+@dataclass(frozen=True, slots=True)
+class _MalformedCapabilityPrimitiveAdapter(ExactPrimitiveAdapter):
+    malformed_identity: bool = False
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        if self.malformed_identity:
+            foreign_identity: object = 1
+            return AcceleratorCapability(
+                backend_id=cast("str", cast("object", foreign_identity)),
+                device_arch="test-arch",
+                device_name="test-device",
+            )
+        foreign = object()
+        return cast("AcceleratorCapability", foreign)
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        _ = batch
+        message = "malformed primitive adapter executed"
+        raise AssertionError(message)
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        _ = prepared
+        message = "malformed primitive adapter executed"
+        raise AssertionError(message)
+
+
+def test_primitive_candidate_constructor_validates_runtime_contract() -> None:
+    """Kind, adapter methods, and capability fail before candidate work."""
+    foreign: object = object()
+
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "primitive candidate kind must use the exact enum type",
+        lambda: PrimitiveCandidateEvaluationAdapter(
+            CpuExactPrimitiveAdapter(),
+            cast("PrimitiveKind", foreign),
+        ),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "exact primitive adapter has wrong type",
+        lambda: PrimitiveCandidateEvaluationAdapter(
+            cast("ExactPrimitiveAdapter", foreign),
+            PrimitiveKind.ROTATE,
+        ),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "exact primitive adapter capability has wrong type",
+        lambda: PrimitiveCandidateEvaluationAdapter(
+            _MalformedCapabilityPrimitiveAdapter(),
+            PrimitiveKind.ROTATE,
+        ),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "exact primitive adapter backend ID must use exact string type",
+        lambda: PrimitiveCandidateEvaluationAdapter(
+            _MalformedCapabilityPrimitiveAdapter(malformed_identity=True),
+            PrimitiveKind.ROTATE,
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ForeignPrimitiveResultAdapter(ExactPrimitiveAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return BAD_CAPABILITY
+
+    @override
+    def evaluate(self, batch: PrimitiveBatch) -> PrimitiveResult:
+        del batch
+        foreign: object = object()
+        return cast("PrimitiveResult", foreign)
+
+    @override
+    def evaluate_prepared(
+        self,
+        prepared: PreparedPrimitiveBatch,
+    ) -> PrimitiveResult:
+        del prepared
+        foreign: object = object()
+        return cast("PrimitiveResult", foreign)
+
+
+def test_primitive_bridge_rejects_foreign_result_record() -> None:
+    """Ordinary and prepared primitive results require an exact record type."""
+    batch = _rotate_batch()
+    state = prepare_rotate_candidate_batch(batch)
+    adapter = PrimitiveCandidateEvaluationAdapter(
+        _ForeignPrimitiveResultAdapter(),
+        PrimitiveKind.ROTATE,
+    )
+
+    for action in (
+        lambda: adapter.evaluate(batch),
+        lambda: adapter.evaluate_prepared(state),
+    ):
+        _expect_error(
+            InvalidAcceleratorResultError,
+            "primitive backend result has wrong type",
+            action,
+        )

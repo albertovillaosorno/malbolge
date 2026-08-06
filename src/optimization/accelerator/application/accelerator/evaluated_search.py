@@ -53,6 +53,8 @@ from accelerator.work_ports import IndexedCandidateWorkItems
 from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchResult
+from accelerator.work_ports import validated_accelerator_capability
+from accelerator.work_ports import validated_candidate_evaluation_result
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
@@ -307,6 +309,71 @@ class EvaluatedSearchStrategy:
     prepared_selection: PreparedProposalSelection | None = None
 
 
+def _validated_strategy(value: object) -> EvaluatedSearchStrategy:
+    if type(value) is not EvaluatedSearchStrategy:
+        message = "evaluated search strategy has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    _require_callable(value.batch_builder, "evaluated search batch builder")
+    _require_callable(value.proposal_selector, "evaluated search selector")
+    if value.prepared_execution is not None:
+        _validate_prepared_execution(value.prepared_execution)
+    if value.prepared_selection is not None:
+        _validate_prepared_selection(value.prepared_selection)
+    return value
+
+
+def _validate_prepared_execution(value: object) -> None:
+    if type(value) is not PreparedCandidateExecution:
+        message = "prepared candidate execution has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    _validate_candidate_preparer(value)
+    _require_callable(value.evaluator, "prepared candidate evaluator")
+    if value.state_count is not None:
+        _require_callable(value.state_count, "prepared candidate state counter")
+
+
+def _validate_candidate_preparer(value: PreparedCandidateExecution) -> None:
+    preparer_count = int(value.batch_preparer is not None) + int(
+        value.selection_aware_preparer is not None
+    )
+    if preparer_count != 1:
+        message = "prepared candidate execution requires exactly one preparer"
+        raise InvalidAcceleratorWorkError(message)
+    if value.batch_preparer is not None:
+        _require_callable(
+            value.batch_preparer,
+            "prepared candidate batch preparer",
+        )
+        return
+    _require_callable(
+        value.selection_aware_preparer,
+        "prepared candidate selection-aware preparer",
+    )
+
+
+def _validate_prepared_selection(value: object) -> None:
+    if type(value) is not PreparedProposalSelection:
+        message = "prepared proposal selection has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+    _require_callable(value.state_preparer, "prepared selection state preparer")
+    _require_callable(value.selector, "prepared proposal selector")
+    _require_callable(value.state_count, "prepared selection state counter")
+
+
+def _validate_candidate_adapter(value: object) -> None:
+    capability = getattr(value, "capability", None)
+    evaluate = getattr(value, "evaluate", None)
+    if not callable(capability) or not callable(evaluate):
+        message = "candidate evaluation adapter has wrong type"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _require_callable(value: object, label: str) -> None:
+    if not callable(value):
+        message = f"{label} must be callable"
+        raise InvalidAcceleratorWorkError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedEvaluatedSearch:
     """Validated request/batch state reusable across exact backends."""
@@ -421,64 +488,59 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         """Bind one strategy to one replaceable evidence backend.
 
         Raises:
-            InvalidAcceleratorWorkError: If algorithm identity is empty.
+            InvalidAcceleratorWorkError: If identity, adapter, or strategy is
+                invalid.
 
         """
+        if type(algorithm_id) is not str:
+            message = "search algorithm ID must use the exact string type"
+            raise InvalidAcceleratorWorkError(message)
         if not algorithm_id:
             message = "search algorithm ID must not be empty"
             raise InvalidAcceleratorWorkError(message)
+        _validate_candidate_adapter(adapter)
+        validated_strategy = _validated_strategy(strategy)
+        prepared_execution = validated_strategy.prepared_execution
+        prepared_selection = validated_strategy.prepared_selection
         self._adapter = adapter
         self._algorithm_id = algorithm_id
-        self._batch_builder = strategy.batch_builder
+        self._batch_builder = validated_strategy.batch_builder
         self._batch_preparer = (
             None
-            if strategy.prepared_execution is None
-            else strategy.prepared_execution.batch_preparer
+            if prepared_execution is None
+            else prepared_execution.batch_preparer
         )
         self._prepared_evaluator = (
-            None
-            if strategy.prepared_execution is None
-            else strategy.prepared_execution.evaluator
+            None if prepared_execution is None else prepared_execution.evaluator
         )
         self._selection_aware_batch_preparer = (
             None
-            if strategy.prepared_execution is None
-            else strategy.prepared_execution.selection_aware_preparer
+            if prepared_execution is None
+            else prepared_execution.selection_aware_preparer
         )
         self._candidate_state_count = (
             None
-            if strategy.prepared_execution is None
-            else strategy.prepared_execution.state_count
+            if prepared_execution is None
+            else prepared_execution.state_count
         )
-        if strategy.prepared_execution is not None:
-            preparer_count = int(self._batch_preparer is not None) + int(
-                self._selection_aware_batch_preparer is not None
-            )
-            if preparer_count != 1:
-                message = (
-                    "prepared candidate execution requires exactly one preparer"
-                )
-                raise InvalidAcceleratorWorkError(message)
-        self._proposal_selector = strategy.proposal_selector
+        self._proposal_selector = validated_strategy.proposal_selector
         self._selection_preparer = (
             None
-            if strategy.prepared_selection is None
-            else strategy.prepared_selection.state_preparer
+            if prepared_selection is None
+            else prepared_selection.state_preparer
         )
         self._prepared_proposal_selector = (
-            None
-            if strategy.prepared_selection is None
-            else strategy.prepared_selection.selector
+            None if prepared_selection is None else prepared_selection.selector
         )
         self._selection_state_count = (
             None
-            if strategy.prepared_selection is None
-            else strategy.prepared_selection.state_count
+            if prepared_selection is None
+            else prepared_selection.state_count
         )
         self._strategy_key: SearchStrategyKey = (
             algorithm_id,
-            strategy.batch_builder,
-            strategy.proposal_selector,
+            validated_strategy.batch_builder,
+            validated_strategy.proposal_selector,
             self._batch_preparer,
             self._selection_aware_batch_preparer,
             self._candidate_state_count,
@@ -495,7 +557,10 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
             Exact capability reported by the wrapped evaluator.
 
         """
-        return self._adapter.capability()
+        return validated_accelerator_capability(
+            self._adapter.capability(),
+            "evaluated search adapter capability",
+        )
 
     def prepare(self, request: SearchRequest) -> PreparedEvaluatedSearch:
         """Build and validate immutable search state once for later reuse.
@@ -809,20 +874,20 @@ class EvaluatedSearchExecutionAdapter(SearchExecutionAdapter):
         if self._prepared_evaluator is None:
             message = "prepared candidate state has no evaluator"
             raise InvalidAcceleratorWorkError(message)
-        return self._prepared_evaluator(candidate_state).validated_against(
-            evaluation_batch,
-            capability,
+        result = validated_candidate_evaluation_result(
+            self._prepared_evaluator(candidate_state),
         )
+        return result.validated_against(evaluation_batch, capability)
 
     def _evaluated(
         self,
         batch: CandidateEvaluationBatch,
         capability: AcceleratorCapability,
     ) -> CandidateEvaluationResult:
-        return self._adapter.evaluate(batch).validated_against(
-            batch,
-            capability,
+        result = validated_candidate_evaluation_result(
+            self._adapter.evaluate(batch),
         )
+        return result.validated_against(batch, capability)
 
     def _selected(
         self,

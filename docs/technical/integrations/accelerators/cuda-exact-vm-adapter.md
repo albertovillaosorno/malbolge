@@ -68,7 +68,13 @@ actual memory writes. Missing required cells fail as an invalid compact request;
 there is no implicit read from undeclared guest memory. Compact, resident
 classic, scalable-profile, and hardware-neutral primitive request fields
 accept only exact Python integers; boolean scalars or tuple members fail before
-protocol encoding, preparation, or CUDA work.
+protocol encoding, preparation, or CUDA work. `PrimitiveBatch` additionally
+requires the exact primitive-kind enum and immutable tuple arrays. Primitive
+candidate bridges validate exact kind, adapter call surface, and immutable
+capability identity during construction. Ordinary and prepared backend outputs
+require an exact primitive result record before capability or payload access.
+Packed preparation requires the same enum identity, and tuple backend results
+must use an immutable tuple before candidate evidence packing.
 
 `tests/vm/cuda_step.rs` does not trust a Python CPU clone. It runs the normative
 safe-Rust `Machine::step_traced()` first, projects the resulting `StepTrace` to

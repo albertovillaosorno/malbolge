@@ -33,7 +33,24 @@ and
 opaque problem bytes independently from backend capability.
 `SearchExecutionAdapter` supplies execution capacity only; returned
 `CandidateProposal` values are untrusted until `TrustedCandidateVerifier` admits
-them. `CpuSearchExecutionAdapter` supplies the mandatory portable callback path.
+them. Admission requires a callable verifier and an exact boolean verdict;
+truthy foreign values cannot become acceptance. Neutral requests and ordinary
+records require exact string identities,
+immutable tuple/bytes storage, exact u64 fields, and exact capability metadata.
+Backend evidence, proposals, hints, or packed wrappers with mutable, duck-typed,
+or foreign runtime representation fail before publication or admission.
+Candidate, search, and verification submissions validate exact direct
+batch/request and route state, structural adapter surfaces, and preferred
+capability metadata before creating a ticket or exposing route status.
+Synchronous candidate, search, and optional verification helpers apply the same
+checks before backend work. Exact result records are required
+before structural result validation: invalid preferred records fall back or
+complete empty, while mandatory references fail with cached typed errors. CPU
+candidate/search adapter constructors require exact nonempty identities and
+callable handlers. Direct CPU candidate evidence is validated before return, as
+CPU search proposals already are. Evaluated-search bindings likewise validate
+identities before callback composition.
+`CpuSearchExecutionAdapter` supplies the mandatory portable callback path.
 The same boundary separates candidate-evaluation evidence and optional
 verification hints from candidate acceptance.
 
@@ -51,13 +68,21 @@ backend IDs, so a CPU fallback cannot be mislabeled as accelerated evidence.
 versioned `schema_version = 1` TOML selection
 with independent `algorithm_id`/`backend_id`, fail-closed unknown keys, durable
 configuration-source identity, and explicit caller overrides that never mutate
-the loaded base configuration. The first concrete strategy is
+the loaded base configuration. Direct runtime selection, binding, override, and
+source identities require exact nonempty strings, matching durable TOML
+admission rather than accepting truthy foreign values. Direct execution plans
+validate exact selection, mandatory CPU reference, selected preferred route,
+and capability alignment before request or backend work. The first concrete
+strategy is
 `deterministic-corpus-enumeration-v1`, bound to the mandatory CPU reference
 through the same registry. Candidate evidence can independently feed optional
 verification-assist hints through CPU or CUDA without granting either backend
 acceptance authority. `EvaluatedSearchExecutionAdapter` now binds deterministic
-batch construction and proposal selection to a replaceable candidate evaluator;
-selected proposals must be byte-identical members of the evaluated batch and the
+batch construction and proposal selection to a replaceable candidate evaluator.
+Construction validates exact strategy/prepared records, the adapter call
+surface, and every callback before request preparation. Runtime capability and
+candidate result records are validated before selection. Selected proposals must
+be byte-identical members of the evaluated batch and the
 evaluation count cannot exceed the search budget. The concrete
 `classic-rotate-target-search-v1` strategy runs unchanged through CPU or live
 CUDA
