@@ -30,8 +30,8 @@ themselves. The root Rust composition surface remains thin.
 
 ## Advantages
 
-- Makes the repository responsibility boundaries boundary explicit, reviewable,
-  and stable before implementation depends on it.
+- Makes repository responsibility boundaries explicit, reviewable, and stable
+  before implementation depends on them.
 
 ## Disadvantages
 
@@ -61,6 +61,12 @@ interoperability, verifier, and research ownership ambiguous.
 
 ## Evidence
 
-Top-level directories must correspond to durable responsibilities represented by
-`TODO.md` or accepted documentation. Empty speculative roots should not
-accumulate.
+The implemented source catalog owns ten semantic domains and 15 governed
+functions. Every function has one `function.yml` manifest whose route is
+`src/<domain>/<function>/<kind>/<part>`. Cargo entrypoints resolve inside those
+functions rather than through root `src/lib.rs` or `src/main.rs` files.
+
+`tests/test_repository_scaffold.py` rejects language-only roots, unowned
+functions, invalid Cargo composition paths, missing catalogs or sidecars, and
+empty source directories. Jig supplies complete manifest, graph, part, language,
+and sidecar validation.
