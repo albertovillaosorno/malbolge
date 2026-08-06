@@ -53,7 +53,8 @@ as historical differential evidence.
 - CUDA compact-step and resident classic/current suites compare complete
   observable state against normative Rust, including full memory images.
 - The integrated exact candidate verifier rejects a mutated C signature and a
-  single unproved candidate, and complete CUDA checkpoints use the same boundary.
+  single unproved candidate, and complete CUDA checkpoints use the same
+  boundary.
 
 - Durable evidence includes the exact labeled-candidate verifier, complete
   Rust/C and CUDA observations, generated full-memory cases, seeded mutation,

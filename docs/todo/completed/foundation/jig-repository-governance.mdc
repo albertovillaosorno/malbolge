@@ -68,6 +68,7 @@ without weakening unrelated linter contracts.
   source-linked schema-8 validation now passes with zero current findings.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 - **Completion:** Completed on 2026-08-06 after schema-8 configuration,
-  source-linked repository tooling, commit-message governance, typed TODO policy,
+  source-linked repository tooling, commit-message governance, typed TODO
+  policy,
   repaired historical messages, governance-path tests, and full Jig validation
   passed with zero diagnostics.

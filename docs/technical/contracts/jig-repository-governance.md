@@ -76,8 +76,8 @@ TODO workflow. Jig repaired historical messages transactionally from
 `b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at
 `refs/jig/repair/backups/5f7e10afc710f9c47093d68f853d26657f8854aa`.
 The source-linked schema-8 authority now validates the complete repository with
-zero diagnostics. Later Jig upgrades remain dependency maintenance rather than an
-open governance objective.
+zero diagnostics. Later Jig upgrades remain dependency maintenance rather
+than an open governance objective.
 
 ## References
 

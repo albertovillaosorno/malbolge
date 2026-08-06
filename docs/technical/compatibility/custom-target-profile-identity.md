@@ -164,7 +164,8 @@ mismatch, and rejects unknown IDs without fallback. Portable effect IR v3 and
 its native cache key now retain the exact ID/fingerprint pair plus canonical
 version/features/geometry. Semantically admitted direct COFF objects embed the
 same envelope in a versioned read-only `.mbprof` section that structural
-admission compares with the key. Bootstrap revision-2 compiler objects carry the same metadata. Artifact
+admission compares with the key. Bootstrap revision-2 compiler objects carry
+the same metadata. Artifact
 families that do not yet exist must adopt this contract before admission; their
 future implementation does not reopen the completed identity mechanism.
 
