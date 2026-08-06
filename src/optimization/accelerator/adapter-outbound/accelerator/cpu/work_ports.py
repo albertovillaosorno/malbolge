@@ -62,6 +62,21 @@ type CandidateEvaluationHandler = Callable[[bytes], bytes]
 type SearchHandler = Callable[[SearchRequest], tuple[CandidateProposal, ...]]
 
 
+def _validate_adapter_identity(value: str, label: str) -> None:
+    if type(value) is not str:
+        message = f"{label} must use the exact string type"
+        raise InvalidAcceleratorWorkError(message)
+    if not value:
+        message = f"{label} must not be empty"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validate_handler(value: object, label: str) -> None:
+    if not callable(value):
+        message = f"{label} must be callable"
+        raise InvalidAcceleratorWorkError(message)
+
+
 @final
 class CpuCandidateEvaluationAdapter(CandidateEvaluationAdapter):
     """Mandatory CPU execution capacity for one candidate evaluator."""
@@ -71,15 +86,9 @@ class CpuCandidateEvaluationAdapter(CandidateEvaluationAdapter):
         evaluator_id: str,
         handler: CandidateEvaluationHandler,
     ) -> None:
-        """Bind one evaluator identity to a deterministic CPU callback.
-
-        Raises:
-            InvalidAcceleratorWorkError: If the evaluator identity is empty.
-
-        """
-        if not evaluator_id:
-            message = "candidate evaluator ID must not be empty"
-            raise InvalidAcceleratorWorkError(message)
+        """Bind one evaluator identity to a deterministic CPU callback."""
+        _validate_adapter_identity(evaluator_id, "candidate evaluator ID")
+        _validate_handler(handler, "candidate evaluation handler")
         self._evaluator_id = evaluator_id
         self._handler = handler
 
@@ -117,11 +126,12 @@ class CpuCandidateEvaluationAdapter(CandidateEvaluationAdapter):
             )
             for item in validated.items
         )
-        return CandidateEvaluationResult(
+        result = CandidateEvaluationResult(
             capability=CPU_WORK_CAPABILITY,
             evaluator_id=self._evaluator_id,
             items=items,
         )
+        return result.validated_against(validated, CPU_WORK_CAPABILITY)
 
 
 @final
@@ -129,15 +139,9 @@ class CpuSearchExecutionAdapter(SearchExecutionAdapter):
     """Mandatory CPU execution capacity for one explicit search strategy."""
 
     def __init__(self, algorithm_id: str, handler: SearchHandler) -> None:
-        """Bind one search identity to a deterministic CPU callback.
-
-        Raises:
-            InvalidAcceleratorWorkError: If the algorithm identity is empty.
-
-        """
-        if not algorithm_id:
-            message = "search algorithm ID must not be empty"
-            raise InvalidAcceleratorWorkError(message)
+        """Bind one search identity to a deterministic CPU callback."""
+        _validate_adapter_identity(algorithm_id, "search algorithm ID")
+        _validate_handler(handler, "search handler")
         self._algorithm_id = algorithm_id
         self._handler = handler
 

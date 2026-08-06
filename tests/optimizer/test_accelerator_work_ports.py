@@ -76,6 +76,9 @@ from accelerator.work_ports import request_verification_hints
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from accelerator.cpu.work_ports import CandidateEvaluationHandler
+    from accelerator.cpu.work_ports import SearchHandler
+
 INDEXED_FIRST_LOGICAL_INDEX = 7
 EXPECTED_INDEXED_CANDIDATE_ITEMS_ID = (
     "u32-index-fixed-width-payloads-rotation-v1"
@@ -591,6 +594,58 @@ def test_only_trusted_verifier_admits_search_proposals() -> None:
     assert accepted_bad == result.proposals[1:]
 
 
+@final
+class _ForeignVerdictVerifier(TrustedCandidateVerifier):
+    @override
+    def accepts(
+        self,
+        candidate: CandidateProposal,
+        hint: VerificationHint | None,
+    ) -> bool:
+        del candidate, hint
+        foreign: object = 1
+        return cast("bool", cast("object", foreign))
+
+
+def test_admission_requires_exact_search_result_record() -> None:
+    """Foreign result objects cannot reach trusted acceptance authority."""
+    foreign: object = object()
+
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search backend result has wrong type",
+        lambda: admit_search_result(
+            cast("SearchResult", foreign),
+            _TrustedVerifier(),
+        ),
+    )
+
+
+def test_admission_requires_exact_trusted_verifier_verdict() -> None:
+    """Only an exact boolean from a callable verifier can admit proposals."""
+    result = SearchResult(
+        algorithm_id="verified-search-v1",
+        capability=TEST_CAPABILITY,
+        proposals=(CandidateProposal(logical_id="a", payload=b"A"),),
+        seed=0,
+    )
+    foreign: object = object()
+
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "trusted candidate verifier has wrong type",
+        lambda: admit_search_result(
+            result,
+            cast("TrustedCandidateVerifier", foreign),
+        ),
+    )
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "trusted candidate verifier returned non-boolean verdict",
+        lambda: admit_search_result(result, _ForeignVerdictVerifier()),
+    )
+
+
 def test_admission_rejects_duplicate_proposal_identity() -> None:
     """Trusted admission rejects malformed search identity."""
     result = SearchResult(
@@ -683,3 +738,579 @@ def test_candidate_subset_rejects_forged_and_cross_batch_state() -> None:
         "changed full candidate batch",
         lambda: valid.for_batch(replacement),
     )
+
+
+def test_work_requests_require_exact_immutable_runtime_types() -> None:
+    """Neutral request objects reject mutable storage and foreign members."""
+    mutable_payload: object = bytearray(b"payload")
+    mutable_items: object = [CandidateWorkItem("a", b"payload")]
+    foreign_item: object = object()
+    foreign_identity: object = 1
+
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "search problem must use immutable bytes",
+        lambda: SearchRequest(
+            algorithm_id="algorithm",
+            evaluation_budget=1,
+            problem=cast("bytes", cast("object", mutable_payload)),
+            seed=0,
+        ).validated(),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "candidate payload must use immutable bytes",
+        lambda: CandidateWorkItem(
+            logical_id="a",
+            payload=cast("bytes", cast("object", mutable_payload)),
+        ).validated(),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "candidate items must use an immutable tuple",
+        lambda: CandidateEvaluationBatch(
+            evaluator_id="evaluator",
+            items=cast(
+                "tuple[CandidateWorkItem, ...]",
+                cast("object", mutable_items),
+            ),
+        ).validated(),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "candidate item has wrong type",
+        lambda: CandidateEvaluationBatch(
+            evaluator_id="evaluator",
+            items=(cast("CandidateWorkItem", foreign_item),),
+        ).validated(),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "candidate logical ID must use the exact string type",
+        lambda: CandidateWorkItem(
+            logical_id=cast("str", cast("object", foreign_identity)),
+            payload=b"payload",
+        ).validated(),
+    )
+
+
+def test_candidate_results_require_exact_immutable_runtime_types() -> None:
+    """Candidate evidence rejects lists, duck items, and mutable payloads."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id="evaluator",
+        items=(CandidateWorkItem("a", b"input"),),
+    )
+    mutable_items: object = [CandidateEvidence("a", b"output")]
+    mutable_payload: object = bytearray(b"output")
+    foreign_item: object = object()
+
+    cases = (
+        (
+            CandidateEvaluationResult(
+                capability=TEST_CAPABILITY,
+                evaluator_id="evaluator",
+                items=cast(
+                    "tuple[CandidateEvidence, ...]",
+                    cast("object", mutable_items),
+                ),
+            ),
+            "candidate evidence items must use an immutable tuple",
+        ),
+        (
+            CandidateEvaluationResult(
+                capability=TEST_CAPABILITY,
+                evaluator_id="evaluator",
+                items=(
+                    CandidateEvidence(
+                        logical_id="a",
+                        payload=cast("bytes", cast("object", mutable_payload)),
+                    ),
+                ),
+            ),
+            "candidate evidence payload must use immutable bytes",
+        ),
+        (
+            CandidateEvaluationResult(
+                capability=TEST_CAPABILITY,
+                evaluator_id="evaluator",
+                items=(cast("CandidateEvidence", foreign_item),),
+            ),
+            "candidate evidence item has wrong type",
+        ),
+    )
+    for result, message in cases:
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda result=result: result.validated_against(
+                batch,
+                TEST_CAPABILITY,
+            ),
+        )
+
+
+def test_search_and_hint_results_require_exact_runtime_types() -> None:
+    """Search proposals, hints, seeds, and capabilities fail closed by type."""
+    request = SearchRequest("algorithm", 1, b"problem", 0)
+    assist = VerificationAssistBatch(
+        items=(CandidateWorkItem("a", b"input"),),
+        verifier_id="verifier",
+    )
+    mutable_proposals: object = [CandidateProposal("a", b"payload")]
+    mutable_hints: object = [VerificationHint("a", b"hint")]
+    mutable_payload: object = bytearray(b"payload")
+    foreign_identity: object = 1
+    foreign_seed: object = False
+    malformed_capability = AcceleratorCapability(
+        backend_id=cast("str", cast("object", foreign_identity)),
+        device_arch="arch",
+        device_name="device",
+    )
+
+    search_cases = (
+        (
+            SearchResult(
+                "algorithm",
+                TEST_CAPABILITY,
+                cast(
+                    "tuple[CandidateProposal, ...]",
+                    cast("object", mutable_proposals),
+                ),
+                0,
+            ),
+            "search proposals must use an immutable tuple",
+        ),
+        (
+            SearchResult(
+                "algorithm",
+                TEST_CAPABILITY,
+                (
+                    CandidateProposal(
+                        "a",
+                        cast("bytes", cast("object", mutable_payload)),
+                    ),
+                ),
+                0,
+            ),
+            "search proposal payload must use immutable bytes",
+        ),
+        (
+            SearchResult(
+                "algorithm",
+                TEST_CAPABILITY,
+                (
+                    CandidateProposal(
+                        cast("str", cast("object", foreign_identity)),
+                        b"x",
+                    ),
+                ),
+                0,
+            ),
+            "search candidate logical ID must use the exact string type",
+        ),
+        (
+            SearchResult(
+                "algorithm",
+                TEST_CAPABILITY,
+                (),
+                cast("int", foreign_seed),
+            ),
+            "search seed outside unsigned 64-bit domain",
+        ),
+        (
+            SearchResult("algorithm", malformed_capability, (), 0),
+            "accelerator result capability backend ID must use",
+        ),
+    )
+    for result, message in search_cases:
+        _expect_error(
+            InvalidAcceleratorResultError,
+            message,
+            lambda result=result: result.validated_against(
+                request,
+                TEST_CAPABILITY,
+            ),
+        )
+
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "verification hints must use an immutable tuple",
+        lambda: VerificationAssistResult(
+            capability=TEST_CAPABILITY,
+            hints=cast(
+                "tuple[VerificationHint, ...]",
+                cast("object", mutable_hints),
+            ),
+            verifier_id="verifier",
+        ).validated_against(assist, TEST_CAPABILITY),
+    )
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "verification hint payload must use immutable bytes",
+        lambda: VerificationAssistResult(
+            capability=TEST_CAPABILITY,
+            hints=(
+                VerificationHint(
+                    logical_id="a",
+                    payload=cast("bytes", cast("object", mutable_payload)),
+                ),
+            ),
+            verifier_id="verifier",
+        ).validated_against(assist, TEST_CAPABILITY),
+    )
+
+
+def test_cpu_candidate_handler_output_is_validated_before_return() -> None:
+    """Direct CPU evaluation cannot publish mutable or foreign payloads."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id="candidate-handler-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"input"),),
+    )
+    mutable_payload: object = bytearray(b"output")
+    foreign_payload: object = "output"
+
+    for payload in (mutable_payload, foreign_payload):
+        def malformed_handler(
+            value: bytes,
+            payload: object = payload,
+        ) -> bytes:
+            del value
+            return cast("bytes", payload)
+
+        _expect_error(
+            InvalidAcceleratorResultError,
+            "candidate evidence payload must use immutable bytes",
+            lambda: CpuCandidateEvaluationAdapter(
+                "candidate-handler-v1",
+                malformed_handler,
+            ).evaluate(batch),
+        )
+
+
+def test_cpu_adapter_handlers_must_be_callable() -> None:
+    """Foreign callback objects fail during CPU adapter construction."""
+    foreign: object = object()
+
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "candidate evaluation handler must be callable",
+        lambda: CpuCandidateEvaluationAdapter(
+            "reverse-bytes-v1",
+            cast("CandidateEvaluationHandler", foreign),
+        ),
+    )
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "search handler must be callable",
+        lambda: CpuSearchExecutionAdapter(
+            "deterministic-enumeration-v1",
+            cast("SearchHandler", foreign),
+        ),
+    )
+
+
+def test_cpu_adapter_identities_require_exact_strings() -> None:
+    """CPU callback adapters reject truthy foreign identity values."""
+    for foreign_identity in (1, True):
+        identity: object = foreign_identity
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            "candidate evaluator ID must use the exact string type",
+            lambda identity=identity: CpuCandidateEvaluationAdapter(
+                cast("str", cast("object", identity)),
+                _reverse,
+            ),
+        )
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            "search algorithm ID must use the exact string type",
+            lambda identity=identity: CpuSearchExecutionAdapter(
+                cast("str", cast("object", identity)),
+                _search,
+            ),
+        )
+
+
+@final
+class _MalformedCapabilityCandidateBackend(CandidateEvaluationAdapter):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        _ = batch
+        self.calls += 1
+        message = "malformed candidate backend executed"
+        raise AssertionError(message)
+
+
+@final
+class _MalformedCapabilitySearchBackend(SearchExecutionAdapter):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def search(self, request: SearchRequest) -> SearchResult:
+        _ = request
+        self.calls += 1
+        message = "malformed search backend executed"
+        raise AssertionError(message)
+
+
+@final
+class _MalformedCapabilityHintBackend(VerificationAssistAdapter):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def assist(
+        self,
+        batch: VerificationAssistBatch,
+    ) -> VerificationAssistResult:
+        _ = batch
+        self.calls += 1
+        message = "malformed hint backend executed"
+        raise AssertionError(message)
+
+
+def test_synchronous_preferred_capabilities_fail_before_backend_work() -> None:
+    """Malformed optional metadata cannot execute backend work."""
+    expected_payload = b"cba"
+    batch = CandidateEvaluationBatch(
+        evaluator_id="reverse-bytes-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+    )
+    candidate = _MalformedCapabilityCandidateBackend()
+    candidate_result = evaluate_candidates(
+        batch,
+        CpuCandidateEvaluationAdapter("reverse-bytes-v1", _reverse),
+        candidate,
+    )
+    assert candidate_result.items[0].payload == expected_payload
+    assert candidate.calls == 0
+
+    request = SearchRequest(
+        algorithm_id="deterministic-enumeration-v1",
+        evaluation_budget=2,
+        problem=b"problem",
+        seed=17,
+    )
+    search = _MalformedCapabilitySearchBackend()
+    search_result = execute_search(
+        request,
+        CpuSearchExecutionAdapter(
+            "deterministic-enumeration-v1",
+            _search,
+        ),
+        search,
+    )
+    assert search_result.proposals
+    assert search.calls == 0
+
+    hints = _MalformedCapabilityHintBackend()
+    assist_batch = VerificationAssistBatch(
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+        verifier_id="verification-v1",
+    )
+    assert request_verification_hints(assist_batch, hints) == ()
+    assert hints.calls == 0
+
+
+def test_synchronous_reference_capabilities_fail_before_backend_work() -> None:
+    """Malformed mandatory metadata raises before candidate or search work."""
+    candidate = _MalformedCapabilityCandidateBackend()
+    batch = CandidateEvaluationBatch(
+        evaluator_id="reverse-bytes-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+    )
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "candidate accelerator capability has wrong type",
+        lambda: evaluate_candidates(batch, candidate),
+    )
+    assert candidate.calls == 0
+
+    search = _MalformedCapabilitySearchBackend()
+    request = SearchRequest(
+        algorithm_id="deterministic-enumeration-v1",
+        evaluation_budget=2,
+        problem=b"problem",
+        seed=17,
+    )
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search accelerator capability has wrong type",
+        lambda: execute_search(request, search),
+    )
+    assert search.calls == 0
+
+
+@final
+class _ForeignCandidateResultBackend(CandidateEvaluationAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return TEST_CAPABILITY
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        _ = batch
+        foreign: object = object()
+        return cast("CandidateEvaluationResult", foreign)
+
+
+@final
+class _ForeignSearchResultBackend(SearchExecutionAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return TEST_CAPABILITY
+
+    @override
+    def search(self, request: SearchRequest) -> SearchResult:
+        _ = request
+        foreign: object = object()
+        return cast("SearchResult", foreign)
+
+
+@final
+class _ForeignVerificationResultBackend(VerificationAssistAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return TEST_CAPABILITY
+
+    @override
+    def assist(
+        self,
+        batch: VerificationAssistBatch,
+    ) -> VerificationAssistResult:
+        _ = batch
+        foreign: object = object()
+        return cast("VerificationAssistResult", foreign)
+
+
+def test_synchronous_backends_require_exact_result_records() -> None:
+    """Foreign result objects fallback or fail through stable typed errors."""
+    batch = CandidateEvaluationBatch(
+        evaluator_id="reverse-bytes-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+    )
+    reference = CpuCandidateEvaluationAdapter("reverse-bytes-v1", _reverse)
+    assert evaluate_candidates(
+        batch,
+        reference,
+        _ForeignCandidateResultBackend(),
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "candidate backend result has wrong type",
+        lambda: evaluate_candidates(batch, _ForeignCandidateResultBackend()),
+    )
+
+    request = SearchRequest(
+        algorithm_id="deterministic-enumeration-v1",
+        evaluation_budget=1,
+        problem=b"problem",
+        seed=0,
+    )
+    search_reference = CpuSearchExecutionAdapter(
+        "deterministic-enumeration-v1",
+        _search,
+    )
+    assert execute_search(
+        request,
+        search_reference,
+        _ForeignSearchResultBackend(),
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search backend result has wrong type",
+        lambda: execute_search(request, _ForeignSearchResultBackend()),
+    )
+
+    assist = VerificationAssistBatch(
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+        verifier_id="verification-v1",
+    )
+    assert request_verification_hints(
+        assist,
+        _ForeignVerificationResultBackend(),
+    ) == ()
+
+
+def test_synchronous_adapter_protocol_surfaces_fail_closed() -> None:
+    """Foreign adapters fallback or fail before protocol attribute access."""
+    foreign: object = object()
+    batch = CandidateEvaluationBatch(
+        evaluator_id="reverse-bytes-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+    )
+    candidate_reference = CpuCandidateEvaluationAdapter(
+        "reverse-bytes-v1",
+        _reverse,
+    )
+    assert evaluate_candidates(
+        batch,
+        candidate_reference,
+        cast("CandidateEvaluationAdapter", foreign),
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "candidate evaluation adapter has wrong type",
+        lambda: evaluate_candidates(
+            batch,
+            cast("CandidateEvaluationAdapter", foreign),
+        ),
+    )
+
+    request = SearchRequest(
+        algorithm_id="deterministic-enumeration-v1",
+        evaluation_budget=1,
+        problem=b"problem",
+        seed=0,
+    )
+    search_reference = CpuSearchExecutionAdapter(
+        "deterministic-enumeration-v1",
+        _search,
+    )
+    assert execute_search(
+        request,
+        search_reference,
+        cast("SearchExecutionAdapter", foreign),
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search execution adapter has wrong type",
+        lambda: execute_search(
+            request,
+            cast("SearchExecutionAdapter", foreign),
+        ),
+    )
+
+    assist = VerificationAssistBatch(
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+        verifier_id="verification-v1",
+    )
+    assert request_verification_hints(
+        assist,
+        cast("VerificationAssistAdapter", foreign),
+    ) == ()

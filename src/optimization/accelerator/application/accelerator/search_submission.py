@@ -44,11 +44,14 @@ from typing import final
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.work_ports import InvalidAcceleratorResultError
+from accelerator.work_ports import SearchRequest
+from accelerator.work_ports import validated_accelerator_capability
+from accelerator.work_ports import validated_search_execution_adapter
+from accelerator.work_ports import validated_search_result
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import SearchExecutionAdapter
-    from accelerator.work_ports import SearchRequest
     from accelerator.work_ports import SearchResult
 
 SEARCH_SUBMISSION_ID = "validated-search-submission-v1"
@@ -135,13 +138,16 @@ class SearchExecutionSubmission:
         route: _SearchRoute,
     ) -> None:
         """Bind one exact request to optional and mandatory execution routes."""
+        validated_request = _validated_submission_request(request)
+        admitted_reference = validated_search_execution_adapter(reference)
+        validated_route = _validated_route(route)
         self._actual_capability: AcceleratorCapability | None = None
         self._failure: AcceleratorError | None = None
-        self._fallback = route.fallback
-        self._preferred_capability = route.preferred_capability
-        self._preferred_ticket = route.preferred_ticket
-        self._reference = reference
-        self._request = request
+        self._fallback = validated_route.fallback
+        self._preferred_capability = validated_route.preferred_capability
+        self._preferred_ticket = validated_route.preferred_ticket
+        self._reference = admitted_reference
+        self._request = validated_request
         self._result: SearchResult | None = None
         self._state = SearchSubmissionState.PENDING
 
@@ -239,7 +245,7 @@ class SearchExecutionSubmission:
         if ticket is None or capability is None:
             return None
         try:
-            result = ticket.wait().validated_against(
+            result = validated_search_result(ticket.wait()).validated_against(
                 self._request,
                 capability,
             )
@@ -265,9 +271,14 @@ class SearchExecutionSubmission:
         self._preferred_ticket = None
 
     def _wait_reference(self) -> SearchResult:
-        capability = self._reference.capability()
         try:
-            result = self._reference.search(self._request)
+            capability = validated_accelerator_capability(
+                self._reference.capability(),
+                "reference accelerator capability",
+            )
+            result = validated_search_result(
+                self._reference.search(self._request),
+            )
             validated = result.validated_against(
                 self._request,
                 capability,
@@ -300,8 +311,55 @@ def submit_search(
 
     """
     validated = request.validated()
+    admitted_reference = validated_search_execution_adapter(reference)
     route = _preferred_route(validated, preferred)
-    return SearchExecutionSubmission(validated, reference, route)
+    return SearchExecutionSubmission(validated, admitted_reference, route)
+
+
+def _validated_submission_request(value: object) -> SearchRequest:
+    if type(value) is not SearchRequest:
+        message = "search submission request has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value.validated()
+
+
+def _validated_route(value: object) -> _SearchRoute:
+    if type(value) is not _SearchRoute:
+        message = "search submission route has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    if (
+        value.fallback is not None
+        and type(value.fallback) is not SearchSubmissionFallback
+    ):
+        message = "search submission fallback has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    _validate_route_ticket(
+        value.preferred_capability,
+        value.preferred_ticket,
+        value.fallback,
+    )
+    return value
+
+
+def _validate_route_ticket(
+    capability: AcceleratorCapability | None,
+    ticket: SearchExecutionTicket | None,
+    fallback: SearchSubmissionFallback | None,
+) -> None:
+    if (capability is None) != (ticket is None):
+        message = "search submission route has incomplete preferred state"
+        raise InvalidAcceleratorResultError(message)
+    if capability is not None:
+        _ = validated_accelerator_capability(
+            capability,
+            "search submission route capability",
+        )
+    if ticket is not None and not _valid_ticket(ticket):
+        message = "search submission route has invalid ticket"
+        raise InvalidAcceleratorResultError(message)
+    if ticket is not None and fallback is not None:
+        message = "search submission route mixes ticket and fallback"
+        raise InvalidAcceleratorResultError(message)
 
 
 def _preferred_route(
@@ -311,8 +369,12 @@ def _preferred_route(
     route = _SearchRoute()
     if preferred is not None:
         try:
-            capability = preferred.capability()
-            ticket = preferred.submit(request)
+            admitted = _validated_submission_adapter(preferred)
+            capability = validated_accelerator_capability(
+                admitted.capability(),
+                "preferred accelerator capability",
+            )
+            ticket = admitted.submit(request)
         except InvalidAcceleratorResultError:
             raise
         except AcceleratorError:
@@ -322,6 +384,17 @@ def _preferred_route(
         else:
             route = _ticket_route(capability, ticket)
     return route
+
+
+def _validated_submission_adapter(
+    value: object,
+) -> SearchSubmissionAdapter:
+    capability = getattr(value, "capability", None)
+    submit = getattr(value, "submit", None)
+    if not callable(capability) or not callable(submit):
+        message = "search submission adapter has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return cast("SearchSubmissionAdapter", value)
 
 
 def _ticket_route(

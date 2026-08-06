@@ -46,13 +46,14 @@ from typing import cast
 from typing import overload
 from typing import override
 
+from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Iterator
 
-    from accelerator.exact_primitives import AcceleratorCapability
 
 INDEXED_CANDIDATE_ITEMS_ID = "u32-index-fixed-width-payloads-rotation-v1"
 PREPARED_CANDIDATE_SUBSET_ID = "request-order-position-subset-v1"
@@ -155,6 +156,7 @@ class CandidateWorkItem:
 
         """
         _validate_identity(self.logical_id, "candidate logical ID")
+        _validate_work_payload(self.payload, "candidate payload")
         return self
 
 
@@ -491,15 +493,19 @@ class CandidateEvaluationResult:
 
         """
         _validate_result_capability(self.capability, capability)
+        _validate_result_identity(self.evaluator_id, "candidate evaluator ID")
         if self.evaluator_id != batch.evaluator_id:
             message = "candidate evaluator ID changed during backend execution"
             raise InvalidAcceleratorResultError(message)
+        _validate_result_tuple(self.items, "candidate evidence items")
         if self.packed is not None:
-            if self.items:
-                message = "candidate evidence cannot mix packed and item forms"
-                raise InvalidAcceleratorResultError(message)
-            _ = self.packed.validated_for_count(len(batch.items))
+            _validate_packed_candidate_result(
+                self.items,
+                self.packed,
+                len(batch.items),
+            )
             return self
+        _validate_candidate_evidence(self.items)
         expected = tuple(item.logical_id for item in batch.items)
         observed = tuple(item.logical_id for item in self.items)
         if observed != expected:
@@ -550,6 +556,7 @@ class SearchRequest:
 
         """
         _validate_identity(self.algorithm_id, "search algorithm ID")
+        _validate_work_payload(self.problem, "search problem")
         _validate_u64(self.seed, "search seed")
         if (
             type(self.evaluation_budget) is not int
@@ -592,6 +599,9 @@ class SearchResult:
 
         """
         _validate_result_capability(self.capability, capability)
+        _validate_result_identity(self.algorithm_id, "search algorithm ID")
+        _validate_result_u64(self.seed, "search seed")
+        _validate_result_tuple(self.proposals, "search proposals")
         if (
             self.algorithm_id != request.algorithm_id
             or self.seed != request.seed
@@ -655,6 +665,8 @@ class VerificationAssistResult:
 
         """
         _validate_result_capability(self.capability, capability)
+        _validate_result_identity(self.verifier_id, "verification assist ID")
+        _validate_hints(self.hints)
         if self.verifier_id != batch.verifier_id:
             message = "verification assist ID changed during backend execution"
             raise InvalidAcceleratorResultError(message)
@@ -730,11 +742,12 @@ def evaluate_candidates(
 
     """
     validated = batch.validated()
+    admitted_reference = validated_candidate_evaluation_adapter(reference)
     if preferred is not None:
         result = _try_candidate_backend(validated, preferred)
         if result is not None:
             return result
-    return _candidate_backend(validated, reference)
+    return _candidate_backend(validated, admitted_reference)
 
 
 def execute_search(
@@ -749,11 +762,12 @@ def execute_search(
 
     """
     validated = request.validated()
+    admitted_reference = validated_search_execution_adapter(reference)
     if preferred is not None:
         result = _try_search_backend(validated, preferred)
         if result is not None:
             return result
-    return _search_backend(validated, reference)
+    return _search_backend(validated, admitted_reference)
 
 
 def request_verification_hints(
@@ -770,8 +784,14 @@ def request_verification_hints(
     if preferred is None:
         return ()
     try:
-        result = preferred.assist(validated)
-        capability = preferred.capability()
+        admitted = validated_verification_assist_adapter(preferred)
+        capability = validated_accelerator_capability(
+            admitted.capability(),
+            "verification accelerator capability",
+        )
+        result = validated_verification_assist_result(
+            admitted.assist(validated),
+        )
         return result.validated_against(validated, capability).hints
     except AcceleratorError:
         return ()
@@ -787,13 +807,36 @@ def admit_search_result(
     Returns:
         Candidate proposals independently accepted by ``verifier``.
 
+    Raises:
+        InvalidAcceleratorResultError: If verifier shape or verdict is invalid.
+
     """
-    _validate_proposals(result.proposals)
-    hint_map = _validated_hint_map(result.proposals, hints)
-    return tuple(
-        candidate
-        for candidate in result.proposals
-        if verifier.accepts(candidate, hint_map.get(candidate.logical_id))
+    validated_result = validated_search_result(result)
+    _validate_proposals(validated_result.proposals)
+    hint_map = _validated_hint_map(validated_result.proposals, hints)
+    accepts = _validated_verifier(verifier)
+    admitted: list[CandidateProposal] = []
+    for candidate in validated_result.proposals:
+        verdict = accepts(candidate, hint_map.get(candidate.logical_id))
+        if type(verdict) is not bool:
+            message = "trusted candidate verifier returned non-boolean verdict"
+            raise InvalidAcceleratorResultError(message)
+        if verdict:
+            admitted.append(candidate)
+    return tuple(admitted)
+
+
+def _validated_verifier(
+    verifier: TrustedCandidateVerifier,
+) -> Callable[[CandidateProposal, VerificationHint | None], object]:
+    runtime_verifier = cast("object", verifier)
+    accepts = getattr(runtime_verifier, "accepts", None)
+    if not callable(accepts):
+        message = "trusted candidate verifier has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return cast(
+        "Callable[[CandidateProposal, VerificationHint | None], object]",
+        accepts,
     )
 
 
@@ -801,16 +844,26 @@ def _candidate_backend(
     batch: CandidateEvaluationBatch,
     adapter: CandidateEvaluationAdapter,
 ) -> CandidateEvaluationResult:
-    result = adapter.evaluate(batch)
-    return result.validated_against(batch, adapter.capability())
+    admitted = validated_candidate_evaluation_adapter(adapter)
+    capability = validated_accelerator_capability(
+        admitted.capability(),
+        "candidate accelerator capability",
+    )
+    result = validated_candidate_evaluation_result(admitted.evaluate(batch))
+    return result.validated_against(batch, capability)
 
 
 def _search_backend(
     request: SearchRequest,
     adapter: SearchExecutionAdapter,
 ) -> SearchResult:
-    result = adapter.search(request)
-    return result.validated_against(request, adapter.capability())
+    admitted = validated_search_execution_adapter(adapter)
+    capability = validated_accelerator_capability(
+        admitted.capability(),
+        "search accelerator capability",
+    )
+    result = validated_search_result(admitted.search(request))
+    return result.validated_against(request, capability)
 
 
 def _try_candidate_backend(
@@ -834,10 +887,18 @@ def _try_search_backend(
 
 
 def _validate_candidate_items(items: CandidateWorkItems) -> None:
-    if isinstance(items, IndexedCandidateWorkItems):
+    if type(items) is IndexedCandidateWorkItems:
         _ = items.validated()
         return
-    identities = [item.validated().logical_id for item in items]
+    if type(items) is not tuple:
+        message = "candidate items must use an immutable tuple"
+        raise InvalidAcceleratorWorkError(message)
+    identities: list[str] = []
+    for item in items:
+        if type(item) is not CandidateWorkItem:
+            message = "candidate item has wrong type"
+            raise InvalidAcceleratorWorkError(message)
+        identities.append(item.validated().logical_id)
     _validate_unique(identities, "candidate logical ID")
 
 
@@ -1007,26 +1068,250 @@ def _normalized_item_index(index: int, count: int) -> int:
 
 
 def _validate_identity(value: str, label: str) -> None:
+    if type(value) is not str:
+        message = f"{label} must use the exact string type"
+        raise InvalidAcceleratorWorkError(message)
     if not value:
         message = f"{label} must not be empty"
         raise InvalidAcceleratorWorkError(message)
 
 
-def _validate_proposals(proposals: tuple[CandidateProposal, ...]) -> None:
-    identities = [proposal.logical_id for proposal in proposals]
-    for identity in identities:
-        if not identity:
-            message = "search candidate logical ID must not be empty"
+def _validate_work_payload(value: bytes, label: str) -> None:
+    if type(value) is not bytes:
+        message = f"{label} must use immutable bytes"
+        raise InvalidAcceleratorWorkError(message)
+
+
+def _validate_result_tuple(value: object, label: str) -> None:
+    if type(value) is not tuple:
+        message = f"{label} must use an immutable tuple"
+        raise InvalidAcceleratorResultError(message)
+
+
+def _validate_result_identity(value: str, label: str) -> None:
+    if type(value) is not str:
+        message = f"{label} must use the exact string type"
+        raise InvalidAcceleratorResultError(message)
+    if not value:
+        message = f"{label} must not be empty"
+        raise InvalidAcceleratorResultError(message)
+
+
+def _validate_result_payload(value: bytes, label: str) -> None:
+    if type(value) is not bytes:
+        message = f"{label} must use immutable bytes"
+        raise InvalidAcceleratorResultError(message)
+
+
+def _validate_packed_candidate_result(
+    items: tuple[CandidateEvidence, ...],
+    packed: PackedCandidateEvidence,
+    count: int,
+) -> None:
+    if type(packed) is not PackedCandidateEvidence:
+        message = "packed candidate evidence has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    if items:
+        message = "candidate evidence cannot mix packed and item forms"
+        raise InvalidAcceleratorResultError(message)
+    _ = packed.validated_for_count(count)
+
+
+def _validate_candidate_evidence(
+    items: tuple[CandidateEvidence, ...],
+) -> None:
+    for item in items:
+        if type(item) is not CandidateEvidence:
+            message = "candidate evidence item has wrong type"
             raise InvalidAcceleratorResultError(message)
+        _validate_result_identity(item.logical_id, "candidate logical ID")
+        _validate_result_payload(item.payload, "candidate evidence payload")
+
+
+def _validate_proposals(proposals: tuple[CandidateProposal, ...]) -> None:
+    _validate_result_tuple(proposals, "search proposals")
+    identities: list[str] = []
+    for proposal in proposals:
+        if type(proposal) is not CandidateProposal:
+            message = "search proposal has wrong type"
+            raise InvalidAcceleratorResultError(message)
+        _validate_result_identity(
+            proposal.logical_id,
+            "search candidate logical ID",
+        )
+        _validate_result_payload(proposal.payload, "search proposal payload")
+        identities.append(proposal.logical_id)
     _validate_unique_result(identities, "search candidate logical ID")
+
+
+def _validate_hints(hints: tuple[VerificationHint, ...]) -> None:
+    _validate_result_tuple(hints, "verification hints")
+    for hint in hints:
+        if type(hint) is not VerificationHint:
+            message = "verification hint has wrong type"
+            raise InvalidAcceleratorResultError(message)
+        _validate_result_identity(
+            hint.logical_id,
+            "verification hint logical ID",
+        )
+        _validate_result_payload(hint.payload, "verification hint payload")
 
 
 def _validate_result_capability(
     observed: AcceleratorCapability,
     expected: AcceleratorCapability,
 ) -> None:
+    _ = validated_accelerator_capability(
+        observed,
+        "accelerator result capability",
+    )
+    _ = validated_accelerator_capability(expected, "adapter capability")
     if observed != expected:
         message = "accelerator result capability does not match adapter"
+        raise InvalidAcceleratorResultError(message)
+
+
+def validated_candidate_evaluation_adapter(
+    value: object,
+) -> CandidateEvaluationAdapter:
+    """Return one structural candidate-evaluation adapter.
+
+    Returns:
+        Adapter exposing callable capability and evaluation operations.
+
+    """
+    _validate_adapter_surface(
+        value,
+        ("capability", "evaluate"),
+        "candidate evaluation adapter",
+    )
+    return cast("CandidateEvaluationAdapter", value)
+
+
+def validated_search_execution_adapter(
+    value: object,
+) -> SearchExecutionAdapter:
+    """Return one structural search-execution adapter.
+
+    Returns:
+        Adapter exposing callable capability and search operations.
+
+    """
+    _validate_adapter_surface(
+        value,
+        ("capability", "search"),
+        "search execution adapter",
+    )
+    return cast("SearchExecutionAdapter", value)
+
+
+def validated_verification_assist_adapter(
+    value: object,
+) -> VerificationAssistAdapter:
+    """Return one structural verification-assist adapter.
+
+    Returns:
+        Adapter exposing callable capability and assistance operations.
+
+    """
+    _validate_adapter_surface(
+        value,
+        ("capability", "assist"),
+        "verification assist adapter",
+    )
+    return cast("VerificationAssistAdapter", value)
+
+
+def _validate_adapter_surface(
+    value: object,
+    methods: tuple[str, ...],
+    label: str,
+) -> None:
+    if not all(callable(getattr(value, name, None)) for name in methods):
+        message = f"{label} has wrong type"
+        raise InvalidAcceleratorResultError(message)
+
+
+def validated_candidate_evaluation_result(
+    value: object,
+) -> CandidateEvaluationResult:
+    """Return one exact candidate result before structural validation.
+
+    Returns:
+        The exact candidate result record.
+
+    Raises:
+        InvalidAcceleratorResultError: If the backend returned another type.
+
+    """
+    if type(value) is not CandidateEvaluationResult:
+        message = "candidate backend result has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value
+
+
+def validated_search_result(value: object) -> SearchResult:
+    """Return one exact search result before structural validation.
+
+    Returns:
+        The exact search result record.
+
+    Raises:
+        InvalidAcceleratorResultError: If the backend returned another type.
+
+    """
+    if type(value) is not SearchResult:
+        message = "search backend result has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value
+
+
+def validated_verification_assist_result(
+    value: object,
+) -> VerificationAssistResult:
+    """Return one exact verification result before structural validation.
+
+    Returns:
+        The exact verification-assist result record.
+
+    Raises:
+        InvalidAcceleratorResultError: If the backend returned another type.
+
+    """
+    if type(value) is not VerificationAssistResult:
+        message = "verification backend result has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value
+
+
+def validated_accelerator_capability(
+    value: object,
+    label: str,
+) -> AcceleratorCapability:
+    """Return one exact capability record for status or result publication.
+
+    Returns:
+        The exact immutable capability after validating all identity fields.
+
+    Raises:
+        InvalidAcceleratorResultError: If type or identity fields are invalid.
+
+    """
+    if type(value) is not AcceleratorCapability:
+        message = f"{label} has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    _validate_result_identity(value.backend_id, f"{label} backend ID")
+    _validate_result_identity(
+        value.device_arch,
+        f"{label} device architecture",
+    )
+    _validate_result_identity(value.device_name, f"{label} device name")
+    return value
+
+
+def _validate_result_u64(value: int, label: str) -> None:
+    if type(value) is not int or not 0 <= value <= MAX_U64:
+        message = f"{label} outside unsigned 64-bit domain: {value!r}"
         raise InvalidAcceleratorResultError(message)
 
 
@@ -1052,10 +1337,12 @@ def _validated_hint_map(
     proposals: tuple[CandidateProposal, ...],
     hints: tuple[VerificationHint, ...],
 ) -> dict[str, VerificationHint]:
+    _validate_proposals(proposals)
+    _validate_hints(hints)
     proposal_ids = {proposal.logical_id for proposal in proposals}
     hint_map: dict[str, VerificationHint] = {}
     for hint in hints:
-        if not hint.logical_id or hint.logical_id not in proposal_ids:
+        if hint.logical_id not in proposal_ids:
             message = "verification hint does not name a search proposal"
             raise InvalidAcceleratorResultError(message)
         if hint.logical_id in hint_map:

@@ -44,10 +44,12 @@ from typing import final
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.work_ports import InvalidAcceleratorResultError
+from accelerator.work_ports import VerificationAssistBatch
+from accelerator.work_ports import validated_accelerator_capability
+from accelerator.work_ports import validated_verification_assist_result
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
-    from accelerator.work_ports import VerificationAssistBatch
     from accelerator.work_ports import VerificationAssistResult
     from accelerator.work_ports import VerificationHint
 
@@ -137,13 +139,15 @@ class VerificationAssistSubmission:
         route: _VerificationRoute,
     ) -> None:
         """Bind one exact optional-hint request to one backend route."""
+        validated_batch = _validated_submission_batch(batch)
+        validated_route = _validated_route(route)
         self._actual_capability: AcceleratorCapability | None = None
-        self._batch = batch
+        self._batch = validated_batch
         self._failure: AcceleratorError | None = None
         self._hints: tuple[VerificationHint, ...] = ()
-        self._outcome = route.outcome
-        self._preferred_capability = route.preferred_capability
-        self._preferred_ticket = route.preferred_ticket
+        self._outcome = validated_route.outcome
+        self._preferred_capability = validated_route.preferred_capability
+        self._preferred_ticket = validated_route.preferred_ticket
         self._state = VerificationSubmissionState.PENDING
 
     def close(self) -> None:
@@ -240,7 +244,9 @@ class VerificationAssistSubmission:
             message = "verification ticket has no backend capability"
             raise AcceleratorExecutionError(message)
         try:
-            result = ticket.wait().validated_against(self._batch, capability)
+            result = validated_verification_assist_result(
+                ticket.wait(),
+            ).validated_against(self._batch, capability)
         except InvalidAcceleratorResultError:
             self._outcome = VerificationSubmissionOutcome.RESULT_INVALID
         except AcceleratorError:
@@ -288,6 +294,62 @@ def submit_verification_hints(
     return VerificationAssistSubmission(validated, route)
 
 
+def _validated_submission_batch(value: object) -> VerificationAssistBatch:
+    if type(value) is not VerificationAssistBatch:
+        message = "verification submission batch has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value.validated()
+
+
+def _validated_route(value: object) -> _VerificationRoute:
+    if type(value) is not _VerificationRoute:
+        message = "verification submission route has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    if (
+        value.outcome is not None
+        and type(value.outcome) is not VerificationSubmissionOutcome
+    ):
+        message = "verification submission outcome has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    _validate_route_ticket(
+        value.preferred_capability,
+        value.preferred_ticket,
+        value.outcome,
+    )
+    return value
+
+
+def _validate_route_ticket(
+    capability: AcceleratorCapability | None,
+    ticket: VerificationAssistTicket | None,
+    outcome: VerificationSubmissionOutcome | None,
+) -> None:
+    if (capability is None) != (ticket is None):
+        message = "verification submission route has incomplete preferred state"
+        raise InvalidAcceleratorResultError(message)
+    if capability is not None:
+        _ = validated_accelerator_capability(
+            capability,
+            "verification submission route capability",
+        )
+    _validate_ticket_outcome(ticket, outcome)
+
+
+def _validate_ticket_outcome(
+    ticket: VerificationAssistTicket | None,
+    outcome: VerificationSubmissionOutcome | None,
+) -> None:
+    if ticket is not None and not _valid_ticket(ticket):
+        message = "verification submission route has invalid ticket"
+        raise InvalidAcceleratorResultError(message)
+    if ticket is not None and outcome is not None:
+        message = "verification submission route mixes ticket and outcome"
+        raise InvalidAcceleratorResultError(message)
+    if ticket is None and outcome is None:
+        message = "verification submission route has no outcome"
+        raise InvalidAcceleratorResultError(message)
+
+
 def _preferred_route(
     batch: VerificationAssistBatch,
     preferred: VerificationSubmissionAdapter | None,
@@ -297,8 +359,12 @@ def _preferred_route(
             outcome=VerificationSubmissionOutcome.NO_PREFERRED,
         )
     try:
-        capability = preferred.capability()
-        ticket = preferred.submit(batch)
+        admitted = _validated_submission_adapter(preferred)
+        capability = validated_accelerator_capability(
+            admitted.capability(),
+            "preferred accelerator capability",
+        )
+        ticket = admitted.submit(batch)
     except InvalidAcceleratorResultError:
         raise
     except AcceleratorError:
@@ -306,6 +372,17 @@ def _preferred_route(
             outcome=VerificationSubmissionOutcome.SUBMIT_FAILED,
         )
     return _ticket_route(capability, ticket)
+
+
+def _validated_submission_adapter(
+    value: object,
+) -> VerificationSubmissionAdapter:
+    capability = getattr(value, "capability", None)
+    submit = getattr(value, "submit", None)
+    if not callable(capability) or not callable(submit):
+        message = "verification submission adapter has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return cast("VerificationSubmissionAdapter", value)
 
 
 def _ticket_route(

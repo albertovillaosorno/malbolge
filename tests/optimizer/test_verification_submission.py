@@ -35,12 +35,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
 from typing import override
 
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.verification_submission import VerificationAssistSubmission
 from accelerator.verification_submission import VerificationAssistTicket
 from accelerator.verification_submission import VerificationSubmissionAdapter
 from accelerator.verification_submission import VerificationSubmissionOutcome
@@ -53,6 +55,14 @@ from accelerator.work_ports import VerificationAssistBatch
 from accelerator.work_ports import VerificationAssistResult
 from accelerator.work_ports import VerificationHint
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    type VerificationSubmissionConstructor = Callable[
+        [VerificationAssistBatch, object],
+        VerificationAssistSubmission,
+    ]
 
 EXPECTED_SUBMISSION_ID = "validated-verification-assist-submission-v1"
 REPEATED_WAIT_COUNT = 2
@@ -303,3 +313,96 @@ def test_cleanup_failure_blocks_empty_completion_and_is_cached() -> None:
 
     assert counters == _Counters(closes=1, waits=1)
     assert submission.status().state is VerificationSubmissionState.FAILED
+
+
+@final
+class _MalformedCapabilityAdapter(VerificationSubmissionAdapter):
+    def __init__(self) -> None:
+        self.submits = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def submit(
+        self,
+        batch: VerificationAssistBatch,
+    ) -> VerificationAssistTicket:
+        _ = batch
+        self.submits += 1
+        return cast("VerificationAssistTicket", object())
+
+
+def test_malformed_preferred_capability_fails_before_hint_submit() -> None:
+    """Invalid route metadata cannot create a hint ticket or status."""
+    adapter = _MalformedCapabilityAdapter()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="preferred accelerator capability has wrong type",
+    ):
+        _ = submit_verification_hints(_batch(), adapter)
+
+    assert adapter.submits == 0
+
+
+@final
+class _ForeignResultTicket(_Ticket):
+    @override
+    def wait(self) -> VerificationAssistResult:
+        self._counters.waits += 1
+        foreign: object = object()
+        return cast("VerificationAssistResult", foreign)
+
+
+def test_foreign_verification_result_closes_and_completes_empty() -> None:
+    """A foreign hint result becomes explicit invalid optional assistance."""
+    counters = _Counters()
+    submission = submit_verification_hints(
+        _batch(),
+        _AsyncAdapter(_ForeignResultTicket(counters, None)),
+    )
+
+    assert submission.wait() == ()
+    assert counters == _Counters(closes=1, waits=1)
+    assert (
+        submission.status().outcome
+        is VerificationSubmissionOutcome.RESULT_INVALID
+    )
+    assert submission.status().state is VerificationSubmissionState.COMPLETED
+
+
+def test_submission_requires_structural_verification_adapter() -> None:
+    """A foreign submit adapter fails before capability access."""
+    foreign: object = object()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="verification submission adapter has wrong type",
+    ):
+        _ = submit_verification_hints(
+            _batch(),
+            cast("VerificationSubmissionAdapter", foreign),
+        )
+
+
+def test_direct_verification_submission_validates_input_and_route() -> None:
+    """Direct construction cannot bypass batch or route admission."""
+    foreign: object = object()
+    constructor = cast(
+        "VerificationSubmissionConstructor",
+        cast("object", VerificationAssistSubmission),
+    )
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="verification submission batch has wrong type",
+    ):
+        _ = constructor(cast("VerificationAssistBatch", foreign), foreign)
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="verification submission route has wrong type",
+    ):
+        _ = constructor(_batch(), foreign)

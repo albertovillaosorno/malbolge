@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
 from typing import override
@@ -43,6 +44,7 @@ from accelerator.cpu import CpuSearchExecutionAdapter
 from accelerator.cpu.work_ports import CPU_WORK_CAPABILITY
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.search_submission import SearchExecutionSubmission
 from accelerator.search_submission import SearchExecutionTicket
 from accelerator.search_submission import SearchSubmissionAdapter
 from accelerator.search_submission import SearchSubmissionFallback
@@ -55,6 +57,14 @@ from accelerator.work_ports import SearchExecutionAdapter
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import SearchResult
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    type SearchSubmissionConstructor = Callable[
+        [SearchRequest, SearchExecutionAdapter, object],
+        SearchExecutionSubmission,
+    ]
 
 ALGORITHM_ID = "deterministic-enumeration-v1"
 EXPECTED_SUBMISSION_ID = "validated-search-submission-v1"
@@ -359,3 +369,172 @@ def test_cleanup_failure_blocks_reference_search_fallback() -> None:
 
     assert counters == _Counters(closes=1, waits=1)
     assert submission.status().state is SearchSubmissionState.FAILED
+
+
+@final
+class _MalformedCapabilityAdapter(SearchSubmissionAdapter):
+    def __init__(self) -> None:
+        self.submits = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def submit(self, request: SearchRequest) -> SearchExecutionTicket:
+        _ = request
+        self.submits += 1
+        return cast("SearchExecutionTicket", object())
+
+
+def test_malformed_preferred_capability_fails_before_search_submit() -> None:
+    """Invalid route metadata cannot create a search ticket or status."""
+    adapter = _MalformedCapabilityAdapter()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="preferred accelerator capability has wrong type",
+    ):
+        _ = submit_search(_request(), _reference(_Counters()), adapter)
+
+    assert adapter.submits == 0
+
+
+@final
+class _MalformedCapabilityReference(SearchExecutionAdapter):
+    def __init__(self) -> None:
+        self.searches = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def search(self, request: SearchRequest) -> SearchResult:
+        _ = request
+        self.searches += 1
+        message = "malformed reference executed"
+        raise AssertionError(message)
+
+
+def test_malformed_reference_capability_fails_before_search_work() -> None:
+    """Mandatory search cannot start under invalid capability metadata."""
+    reference = _MalformedCapabilityReference()
+    submission = submit_search(_request(), reference)
+
+    for _ in range(REPEATED_WAIT_COUNT):
+        with pytest.raises(
+            InvalidAcceleratorResultError,
+            match="reference accelerator capability has wrong type",
+        ):
+            _ = submission.wait()
+
+    assert reference.searches == 0
+    assert submission.status().state is SearchSubmissionState.FAILED
+
+
+@final
+class _ForeignResultTicket(_Ticket):
+    @override
+    def wait(self) -> SearchResult:
+        self._counters.waits += 1
+        foreign: object = object()
+        return cast("SearchResult", foreign)
+
+
+@final
+class _ForeignResultReference(SearchExecutionAdapter):
+    def __init__(self, counters: _Counters) -> None:
+        self._counters = counters
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return CPU_WORK_CAPABILITY
+
+    @override
+    def search(self, request: SearchRequest) -> SearchResult:
+        _ = request
+        self._counters.reference_calls += 1
+        foreign: object = object()
+        return cast("SearchResult", foreign)
+
+
+def test_foreign_preferred_result_closes_and_falls_back() -> None:
+    """A foreign ticket result is invalid rather than an attribute failure."""
+    counters = _Counters()
+    submission = submit_search(
+        _request(),
+        _reference(counters),
+        _AsyncAdapter(_ForeignResultTicket(counters, None)),
+    )
+
+    result = submission.wait()
+
+    assert result.capability == CPU_WORK_CAPABILITY
+    assert counters == _Counters(closes=1, reference_calls=1, waits=1)
+    assert (
+        submission.status().fallback
+        is SearchSubmissionFallback.RESULT_INVALID
+    )
+
+
+def test_foreign_reference_result_is_cached_typed_failure() -> None:
+    """Mandatory foreign search result fails once and remains cached."""
+    counters = _Counters()
+    submission = submit_search(_request(), _ForeignResultReference(counters))
+
+    for _ in range(REPEATED_WAIT_COUNT):
+        with pytest.raises(
+            InvalidAcceleratorResultError,
+            match="search backend result has wrong type",
+        ):
+            _ = submission.wait()
+
+    assert counters.reference_calls == 1
+    assert submission.status().state is SearchSubmissionState.FAILED
+
+
+def test_submission_requires_structural_search_adapters() -> None:
+    """Foreign reference and submit adapters fail before capability access."""
+    foreign: object = object()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="search execution adapter has wrong type",
+    ):
+        _ = submit_search(
+            _request(),
+            cast("SearchExecutionAdapter", foreign),
+        )
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="search submission adapter has wrong type",
+    ):
+        _ = submit_search(
+            _request(),
+            _reference(_Counters()),
+            cast("SearchSubmissionAdapter", foreign),
+        )
+
+
+def test_direct_search_submission_validates_input_and_route() -> None:
+    """Direct construction cannot bypass request or route admission."""
+    foreign: object = object()
+    constructor = cast(
+        "SearchSubmissionConstructor",
+        cast("object", SearchExecutionSubmission),
+    )
+    reference = _reference(_Counters())
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="search submission request has wrong type",
+    ):
+        _ = constructor(cast("SearchRequest", foreign), reference, foreign)
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="search submission route has wrong type",
+    ):
+        _ = constructor(_request(), reference, foreign)

@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
 from typing import override
@@ -43,6 +44,7 @@ from accelerator.cpu import CpuCandidateEvaluationAdapter
 from accelerator.cpu.work_ports import CPU_WORK_CAPABILITY
 from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.submission import CandidateEvaluationSubmission
 from accelerator.submission import CandidateEvaluationTicket
 from accelerator.submission import CandidateSubmissionAdapter
 from accelerator.submission import CandidateSubmissionFallback
@@ -56,6 +58,14 @@ from accelerator.work_ports import CandidateEvidence
 from accelerator.work_ports import CandidateWorkItem
 from accelerator.work_ports import InvalidAcceleratorResultError
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    type CandidateSubmissionConstructor = Callable[
+        [CandidateEvaluationBatch, CandidateEvaluationAdapter, object],
+        CandidateEvaluationSubmission,
+    ]
 
 EXPECTED_SUBMISSION_ID = "validated-candidate-submission-v1"
 BATCH_ITEM_COUNT = 2
@@ -374,3 +384,196 @@ def test_cleanup_failure_blocks_reference_fallback() -> None:
 
     assert counters == _Counters(closes=1, waits=1)
     assert submission.status().state is CandidateSubmissionState.FAILED
+
+
+@final
+class _MalformedCapabilityAdapter(CandidateSubmissionAdapter):
+    def __init__(self) -> None:
+        self.submits = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def submit(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationTicket:
+        _ = batch
+        self.submits += 1
+        return cast("CandidateEvaluationTicket", object())
+
+
+def test_malformed_preferred_capability_fails_before_candidate_submit() -> None:
+    """Invalid route metadata cannot create a ticket or reach status."""
+    adapter = _MalformedCapabilityAdapter()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="preferred accelerator capability has wrong type",
+    ):
+        _ = submit_candidate_evaluation(
+            _batch(),
+            _reference(_Counters()),
+            adapter,
+        )
+
+    assert adapter.submits == 0
+
+
+@final
+class _MalformedCapabilityReference(CandidateEvaluationAdapter):
+    def __init__(self) -> None:
+        self.evaluations = 0
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        _ = batch
+        self.evaluations += 1
+        message = "malformed reference executed"
+        raise AssertionError(message)
+
+
+def test_malformed_reference_capability_fails_before_candidate_work() -> None:
+    """Mandatory work cannot start under invalid capability metadata."""
+    reference = _MalformedCapabilityReference()
+    submission = submit_candidate_evaluation(_batch(), reference)
+
+    for _ in range(REPEATED_WAIT_COUNT):
+        with pytest.raises(
+            InvalidAcceleratorResultError,
+            match="reference accelerator capability has wrong type",
+        ):
+            _ = submission.wait()
+
+    assert reference.evaluations == 0
+    assert submission.status().state is CandidateSubmissionState.FAILED
+
+
+@final
+class _ForeignResultTicket(_Ticket):
+    @override
+    def wait(self) -> CandidateEvaluationResult:
+        self._counters.waits += 1
+        foreign: object = object()
+        return cast("CandidateEvaluationResult", foreign)
+
+
+@final
+class _ForeignResultReference(CandidateEvaluationAdapter):
+    def __init__(self, counters: _Counters) -> None:
+        self._counters = counters
+
+    @override
+    def capability(self) -> AcceleratorCapability:
+        return CPU_WORK_CAPABILITY
+
+    @override
+    def evaluate(
+        self,
+        batch: CandidateEvaluationBatch,
+    ) -> CandidateEvaluationResult:
+        _ = batch
+        self._counters.reference_calls += 1
+        foreign: object = object()
+        return cast("CandidateEvaluationResult", foreign)
+
+
+def test_foreign_preferred_result_closes_and_falls_back() -> None:
+    """A foreign ticket result is invalid evidence, not an attribute failure."""
+    counters = _Counters()
+    submission = submit_candidate_evaluation(
+        _batch(),
+        _reference(counters),
+        _AsyncAdapter(_ForeignResultTicket(counters, None)),
+    )
+
+    result = submission.wait()
+
+    assert result.capability == CPU_WORK_CAPABILITY
+    assert counters == _Counters(
+        closes=1,
+        reference_calls=BATCH_ITEM_COUNT,
+        waits=1,
+    )
+    assert (
+        submission.status().fallback
+        is CandidateSubmissionFallback.RESULT_INVALID
+    )
+
+
+def test_foreign_reference_result_is_cached_typed_failure() -> None:
+    """Mandatory foreign result fails once and remains the same failure."""
+    counters = _Counters()
+    submission = submit_candidate_evaluation(
+        _batch(),
+        _ForeignResultReference(counters),
+    )
+
+    for _ in range(REPEATED_WAIT_COUNT):
+        with pytest.raises(
+            InvalidAcceleratorResultError,
+            match="candidate backend result has wrong type",
+        ):
+            _ = submission.wait()
+
+    assert counters.reference_calls == 1
+    assert submission.status().state is CandidateSubmissionState.FAILED
+
+
+def test_submission_requires_structural_candidate_adapters() -> None:
+    """Foreign reference and submit adapters fail before capability access."""
+    foreign: object = object()
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate evaluation adapter has wrong type",
+    ):
+        _ = submit_candidate_evaluation(
+            _batch(),
+            cast("CandidateEvaluationAdapter", foreign),
+        )
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate submission adapter has wrong type",
+    ):
+        _ = submit_candidate_evaluation(
+            _batch(),
+            _reference(_Counters()),
+            cast("CandidateSubmissionAdapter", foreign),
+        )
+
+
+def test_direct_candidate_submission_validates_input_and_route() -> None:
+    """Direct construction cannot bypass batch or route admission."""
+    foreign: object = object()
+    constructor = cast(
+        "CandidateSubmissionConstructor",
+        cast("object", CandidateEvaluationSubmission),
+    )
+    reference = _reference(_Counters())
+
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate submission batch has wrong type",
+    ):
+        _ = constructor(
+            cast("CandidateEvaluationBatch", foreign),
+            reference,
+            foreign,
+        )
+    with pytest.raises(
+        InvalidAcceleratorResultError,
+        match="candidate submission route has wrong type",
+    ):
+        _ = constructor(_batch(), reference, foreign)

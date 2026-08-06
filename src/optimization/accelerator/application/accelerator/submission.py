@@ -43,12 +43,15 @@ from typing import final
 
 from accelerator.exact_primitives import AcceleratorError
 from accelerator.exact_primitives import AcceleratorExecutionError
+from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import InvalidAcceleratorResultError
+from accelerator.work_ports import validated_accelerator_capability
+from accelerator.work_ports import validated_candidate_evaluation_adapter
+from accelerator.work_ports import validated_candidate_evaluation_result
 
 if TYPE_CHECKING:
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import CandidateEvaluationAdapter
-    from accelerator.work_ports import CandidateEvaluationBatch
     from accelerator.work_ports import CandidateEvaluationResult
 
 CANDIDATE_SUBMISSION_ID = "validated-candidate-submission-v1"
@@ -138,13 +141,16 @@ class CandidateEvaluationSubmission:
         route: _SubmissionRoute,
     ) -> None:
         """Bind one exact batch to optional and mandatory execution routes."""
+        validated_batch = _validated_submission_batch(batch)
+        admitted_reference = validated_candidate_evaluation_adapter(reference)
+        validated_route = _validated_route(route)
         self._actual_capability: AcceleratorCapability | None = None
-        self._batch = batch
+        self._batch = validated_batch
         self._failure: AcceleratorError | None = None
-        self._fallback = route.fallback
-        self._preferred_capability = route.preferred_capability
-        self._preferred_ticket = route.preferred_ticket
-        self._reference = reference
+        self._fallback = validated_route.fallback
+        self._preferred_capability = validated_route.preferred_capability
+        self._preferred_ticket = validated_route.preferred_ticket
+        self._reference = admitted_reference
         self._result: CandidateEvaluationResult | None = None
         self._state = CandidateSubmissionState.PENDING
 
@@ -242,7 +248,9 @@ class CandidateEvaluationSubmission:
         if ticket is None or capability is None:
             return None
         try:
-            result = ticket.wait().validated_against(self._batch, capability)
+            result = validated_candidate_evaluation_result(
+                ticket.wait(),
+            ).validated_against(self._batch, capability)
         except InvalidAcceleratorResultError:
             self._fallback = CandidateSubmissionFallback.RESULT_INVALID
         except AcceleratorError:
@@ -265,9 +273,14 @@ class CandidateEvaluationSubmission:
         self._preferred_ticket = None
 
     def _wait_reference(self) -> CandidateEvaluationResult:
-        capability = self._reference.capability()
         try:
-            result = self._reference.evaluate(self._batch)
+            capability = validated_accelerator_capability(
+                self._reference.capability(),
+                "reference accelerator capability",
+            )
+            result = validated_candidate_evaluation_result(
+                self._reference.evaluate(self._batch),
+            )
             validated = result.validated_against(self._batch, capability)
         except AcceleratorError as error:
             self._record_failure(error)
@@ -297,8 +310,55 @@ def submit_candidate_evaluation(
 
     """
     validated = batch.validated()
+    admitted_reference = validated_candidate_evaluation_adapter(reference)
     route = _preferred_route(validated, preferred)
-    return CandidateEvaluationSubmission(validated, reference, route)
+    return CandidateEvaluationSubmission(validated, admitted_reference, route)
+
+
+def _validated_submission_batch(value: object) -> CandidateEvaluationBatch:
+    if type(value) is not CandidateEvaluationBatch:
+        message = "candidate submission batch has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return value.validated()
+
+
+def _validated_route(value: object) -> _SubmissionRoute:
+    if type(value) is not _SubmissionRoute:
+        message = "candidate submission route has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    if (
+        value.fallback is not None
+        and type(value.fallback) is not CandidateSubmissionFallback
+    ):
+        message = "candidate submission fallback has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    _validate_route_ticket(
+        value.preferred_capability,
+        value.preferred_ticket,
+        value.fallback,
+    )
+    return value
+
+
+def _validate_route_ticket(
+    capability: AcceleratorCapability | None,
+    ticket: CandidateEvaluationTicket | None,
+    fallback: CandidateSubmissionFallback | None,
+) -> None:
+    if (capability is None) != (ticket is None):
+        message = "candidate submission route has incomplete preferred state"
+        raise InvalidAcceleratorResultError(message)
+    if capability is not None:
+        _ = validated_accelerator_capability(
+            capability,
+            "candidate submission route capability",
+        )
+    if ticket is not None and not _valid_ticket(ticket):
+        message = "candidate submission route has invalid ticket"
+        raise InvalidAcceleratorResultError(message)
+    if ticket is not None and fallback is not None:
+        message = "candidate submission route mixes ticket and fallback"
+        raise InvalidAcceleratorResultError(message)
 
 
 def _preferred_route(
@@ -308,8 +368,14 @@ def _preferred_route(
     route = _SubmissionRoute()
     if preferred is not None:
         try:
-            capability = preferred.capability()
-            ticket = preferred.submit(batch)
+            admitted = _validated_submission_adapter(preferred)
+            capability = validated_accelerator_capability(
+                admitted.capability(),
+                "preferred accelerator capability",
+            )
+            ticket = admitted.submit(batch)
+        except InvalidAcceleratorResultError:
+            raise
         except AcceleratorError:
             route = _SubmissionRoute(
                 fallback=CandidateSubmissionFallback.SUBMIT_FAILED,
@@ -317,6 +383,17 @@ def _preferred_route(
         else:
             route = _ticket_route(capability, ticket)
     return route
+
+
+def _validated_submission_adapter(
+    value: object,
+) -> CandidateSubmissionAdapter:
+    capability = getattr(value, "capability", None)
+    submit = getattr(value, "submit", None)
+    if not callable(capability) or not callable(submit):
+        message = "candidate submission adapter has wrong type"
+        raise InvalidAcceleratorResultError(message)
+    return cast("CandidateSubmissionAdapter", value)
 
 
 def _ticket_route(
