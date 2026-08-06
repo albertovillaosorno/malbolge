@@ -1,6 +1,6 @@
 ---
 id: "safe-rust-malbolge-vm"
-status: "active"
+status: "completed"
 lane: "5"
 area: "vm"
 task: "TODO - Safe Rust Malbolge VM"
@@ -65,17 +65,10 @@ defined, reproducible original-interpreter behavior.
   memory/register state, while `ProfileMachineState` checkpoints additionally
   preserve input cursor, committed output, and termination through restoration;
   invalid cursor state fails closed. Current max-address execution proves
-  self-encryption precedes pointer wrap. Completion remains gated on the
-  declared
-  repository-wide `jig validate --root .` command passing at retirement time.
+  self-encryption precedes pointer wrap. The declared repository-wide
+  `jig validate --root .` retirement gate now passes.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Implement the primary modern VM in safe Rust with explicit errors, deterministic
-state transitions, tracing hooks, and instruction-level conformance with defined
-and reproducible original-interpreter behavior.
+- **Completion:** Completed on 2026-08-06 after classic/profiled execution,
+  tracing, checkpointing, differential C evidence, full VM tests, Clippy, and
+  repository-wide Jig validation passed.

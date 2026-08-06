@@ -226,23 +226,3 @@ format.
 - Required evidence: exact reconstruction hashes, threshold-boundary fixtures,
   wrong/no-source rejection, behavior-probe fixtures, deterministic generation,
   source-binding negative tests, and `jig validate --root .`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Implement `algorithms/diff/` as a generic deterministic generator that learns a
-source-tree transformation from a local source/oracle pair. Canonical structural
-similarity, distributed stable anchors, behavior/compatibility probes, and
-threshold source binding admit compatible lineage without reducing identity to a
-fragile whole-tree hash. The emitted transformation alone must not be sufficient
-to materialize target-only source; wrong/no-source and behavior-only clones fail
-closed before target publication. Consumer thresholds are calibrated technical
-policy, not legal rules. Generic tests use only repository-owned synthetic
-trees.
-The first two exact consumers are
-`src/research/algorithms/domain/algorithms/doom/generator/quality.py` and
-`src/research/algorithms/domain/algorithms/doom/generator/amalgamate.py`.
-Compatible/fuzzy emission remains open
-as generic research infrastructure.

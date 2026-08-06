@@ -21,7 +21,7 @@ validation:
   # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -q tests/test_bibliography.py"
   # jig-ignore-next-line: exact verification command is indivisible
-  - ".dependencies/python/3.14.6/Scripts/python-jig.cmd src/automation/repository/composition/scripts/validate/bibliography.py"
+  - "PYTHONPATH=src/automation/repository/composition .dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.bibliography"
   - "jig validate --root ."
 ---
 # TODO - Repository bibliography taxonomy and citation provenance
@@ -29,8 +29,9 @@ validation:
 ## Objective
 
 Build `docs/bibliography/` as the repository-wide, non-governing source and
-provenance authority, independent from `docs/research/`. Adopt a SHAR-style
-subject taxonomy for programming languages, compilers/runtimes, Malbolge and
+provenance authority, independent from `docs/research/`. Adopt a
+subject-oriented taxonomy for programming languages, compilers/runtimes,
+Malbolge and
 esolangs, superoptimization/program synthesis, verification/formal methods,
 accelerator computing, protocols/standards, validation tooling, research
 methodology, AI/code generation, and relevant organizations/projects. Populate a
@@ -65,7 +66,7 @@ repository policy merely because they are cited.
 - Expected durable artifact surface: `docs/bibliography/`, including its subject
   taxonomy, indexes/templates, bibliography ADRs where genuinely needed, and
   source records.
-- The active baseline has 24 source/provenance records and a coverage ledger
+- The active baseline has 47 source/provenance records and a coverage ledger
   naming 22 required canonical records across historical Malbolge, languages,
   host architectures, compiler/toolchain, accelerators, superoptimization,
   verification, research methodology, standards/publication metadata, and

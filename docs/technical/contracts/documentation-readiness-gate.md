@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted and implemented
 
 ## Intent
 
@@ -70,7 +70,12 @@ or placeholder decision.
 
 ## Implementation
 
-Not implemented. This proposed contract does not claim executable support yet.
+Implemented. The four documentation families and local ADR roots are
+cataloged, the bibliography validates 47 records and all durable external URLs,
+all typed records resolve to durable contracts, the root TODO is a compact
+priority index, superseded planning prose is preserved or removed under an
+explicit owner, and repository-wide Jig validation completes with zero
+diagnostics.
 
 ## References
 

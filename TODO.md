@@ -16,67 +16,7 @@ record. No per-item field labels belong in this index.
 
 ## P0 — Authority and governance
 
-### TODO - Repository responsibility scaffold
-
-Create the responsibility-oriented topology, mixing implementation languages
-inside components and retaining only the minimal root `src/` surface required by
-Cargo composition.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/foundation/repository-responsibility-scaffold.mdc](docs/todo/open/foundation/repository-responsibility-scaffold.mdc)
-
-### TODO - Reuse SHAR legal and interoperability corpus
-
-Adapt the project-owned MIT legal, interoperability, licensing, provenance, and
-publication-boundary documentation from `C:/Repos/mit/shar` into
-Malbolge-specific contracts.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/research/reuse-shar-legal-and-interoperability-corpus.mdc](docs/todo/open/research/reuse-shar-legal-and-interoperability-corpus.mdc)
-
-### TODO - Jig repository governance
-
-Integrate the evolving Jig validator as repository-local tooling, preserve its
-fail-closed rules, and configure only genuine project-specific differences
-without weakening unrelated linter contracts.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/foundation/jig-repository-governance.mdc](docs/todo/open/foundation/jig-repository-governance.mdc)
-
-### TODO - Canonical Malbolge target profile
-
-Define `malbolge.json` as the single target-profile authority consumed by the
-VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/foundation/canonical-malbolge-target-profile.mdc](docs/todo/open/foundation/canonical-malbolge-target-profile.mdc)
-
-### TODO - Planning corpus promotion to durable documentation
-
-Once typed TODO coverage is stable, classify every settled planning choice into
-its durable owning surface instead of copying TODO prose wholesale.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/documentation/planning-corpus-promotion-to-durable-documentation.mdc](docs/todo/open/documentation/planning-corpus-promotion-to-durable-documentation.mdc)
-
-### TODO - Documentation readiness and implementation gate
-
-Establish the documentation baseline that must pass before normal product
-implementation history begins.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/documentation/documentation-readiness-and-implementation-gate.mdc](docs/todo/open/documentation/documentation-readiness-and-implementation-gate.mdc)
-
 ## P1 — Semantic and language foundations
-
-### TODO - Safe Rust Malbolge VM
-
-Implement the primary modern VM in safe Rust with explicit errors, deterministic
-state transitions, tracing hooks, and instruction-level conformance with
-defined, reproducible original-interpreter behavior.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/safe-rust-malbolge-vm.mdc](docs/todo/open/vm/safe-rust-malbolge-vm.mdc)
 
 ### TODO - LaTeX mathematical specification framework
 
@@ -86,31 +26,6 @@ equivalence relations, and search cost functions.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/mathematics/latex-mathematical-specification-framework.mdc](docs/todo/open/mathematics/latex-mathematical-specification-framework.mdc)
-
-### TODO - Independent pure C Malbolge VM
-
-Implement a small auditable pure-C VM independently from the stabilized
-interpreter-authority contract rather than mechanically translating the Rust
-implementation.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/independent-pure-c-malbolge-vm.mdc](docs/todo/open/vm/independent-pure-c-malbolge-vm.mdc)
-
-### TODO - Custom target profile identity
-
-Allow user-supplied target profiles with canonical hashing and explicit artifact
-identity.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/compatibility/custom-target-profile-identity.mdc](docs/todo/open/compatibility/custom-target-profile-identity.mdc)
-
-### TODO - Compiler algorithm experimentation platform
-
-Make the repository a reproducible laboratory for compiler research, not merely
-an implementation of one fixed C-to-Malbolge pipeline.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/foundation/compiler-algorithm-experimentation-platform.mdc](docs/todo/open/foundation/compiler-algorithm-experimentation-platform.mdc)
 
 ### TODO - Publication-grade paper pipeline
 
@@ -140,57 +55,6 @@ force or stochastic optimization begins.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc](docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc)
 
-### TODO - Scalable Malbolge memory model
-
-Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as an exact historical conformance profile.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/compatibility/scalable-malbolge-memory-model.mdc](docs/todo/open/compatibility/scalable-malbolge-memory-model.mdc)
-
-### TODO - Batch VM execution
-
-Execute many independent programs or inputs efficiently on CPU and accelerator
-backends for fuzzing, exhaustive verification, synthesis, and search workloads.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/batch-vm-execution.mdc](docs/todo/open/vm/batch-vm-execution.mdc)
-
-### TODO - Property, fuzz, and exhaustive testing
-
-Use property testing, fuzzing, sanitizers, regression corpora, and exhaustive
-finite-domain verification for small functions and VM primitives such as rotate
-and crazy operations.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/verification/property-fuzz-and-exhaustive-testing.mdc](docs/todo/open/verification/property-fuzz-and-exhaustive-testing.mdc)
-
-### TODO - CPU VM table optimization
-
-Optimize scalar execution with precomputed rotate tables, position-dependent
-decode tables, efficient crazy-operation decomposition, cheap pointer updates,
-and benchmarked micro-optimizations without semantic drift.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/cpu-vm-table-optimization.mdc](docs/todo/open/vm/cpu-vm-table-optimization.mdc)
-
-### TODO - Deterministic logical concurrency
-
-Define deterministic logical tasks and joins that serialize under Malbolge while
-allowing proven-independent host work to execute concurrently with identical
-observable results.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/deterministic-logical-concurrency.mdc](docs/todo/open/vm/deterministic-logical-concurrency.mdc)
-
-### TODO - Interpreter-authority and specification-comparison modes
-
-Make defined original-interpreter behavior the default and verifier-eligible
-classic semantics.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/vm/specification-and-legacy-interpreter-modes.mdc](docs/todo/open/vm/specification-and-legacy-interpreter-modes.mdc)
-
 ### TODO - Malbolge decompiler and reverse engineering
 
 Build a profile-explicit professional Malbolge reverse-engineering tool that can
@@ -209,15 +73,6 @@ policy for undefined or target-dependent C behavior.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/c/deterministic-c-to-malbolge-abi.mdc](docs/todo/open/c/deterministic-c-to-malbolge-abi.mdc)
 
-### TODO - Differential VM verification
-
-Run specification fixtures through the Rust VM, independent C VM, and
-accelerator VM and compare output, termination, state, mutation, and instruction
-traces.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/verification/differential-vm-verification.mdc](docs/todo/open/verification/differential-vm-verification.mdc)
-
 ### TODO - Emitted Malbolge static analyzer
 
 Analyze generated Malbolge for lexical and address validity, self-modification,
@@ -226,14 +81,6 @@ executable cells, and input-dependent cycles or hangs.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc](docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc)
-
-### TODO - Exact and diagnostic cycle detection
-
-Provide optional repeated-state detection using collision-safe confirmation for
-exact results and clearly label probabilistic hash-only diagnostics.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/verification/exact-and-diagnostic-cycle-detection.mdc](docs/todo/open/verification/exact-and-diagnostic-cycle-detection.mdc)
 
 ### TODO - Human-scale Malbolge search study
 
@@ -244,14 +91,6 @@ claims.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/research/human-scale-malbolge-search-study.mdc](docs/todo/open/research/human-scale-malbolge-search-study.mdc)
-
-### TODO - Replaceable accelerator boundary
-
-Define a hardware-neutral interface for candidate evaluation, batch VM
-execution, search, and verification.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/accelerator/replaceable-accelerator-boundary.mdc](docs/todo/open/accelerator/replaceable-accelerator-boundary.mdc)
 
 ### TODO - Required-profile diagnostics
 

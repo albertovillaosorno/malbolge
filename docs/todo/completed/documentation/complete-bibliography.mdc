@@ -1,0 +1,71 @@
+---
+id: "complete-bibliography"
+status: "completed"
+lane: "1"
+area: "documentation"
+task: "TODO - Complete bibliography"
+contract: "docs/technical/contracts/bibliography-completion.md"
+depends_on:
+adr_paths:
+  - "docs/bibliography/adr/source-taxonomy-and-citation-provenance.md"
+scope:
+  - "docs/bibliography/"
+  - "docs/technical/"
+  - "docs/research/"
+  - "docs/legal/"
+  - "src/automation/repository/composition/scripts/validate/bibliography.py"
+  - "tests/test_bibliography.py"
+validation:
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_bibliography.py"
+  # jig-ignore-next-line: exact verification command is indivisible
+  - "PYTHONPATH=src/automation/repository/composition .dependencies/python/3.14.6/Scripts/python-jig.cmd -m scripts.validate.bibliography"
+  - "jig validate --root ."
+---
+# TODO - Complete bibliography
+
+## Objective
+
+Complete the repository bibliography so every material external claim,
+toolchain,
+platform, language, library, standard, legal authority, and research source has
+one canonical, dated, uncertainty-aware provenance record.
+
+## Acceptance
+
+- Every external source cited by technical, research, legal, and publication
+  documents resolves to one canonical bibliography record.
+- Coverage includes the actual compiler, VM, accelerator, verification,
+  interoperability, packaging, and publication dependencies used by the project.
+- Empty taxonomy categories remain empty unless a real repository dependency or
+  cited authority justifies a record; completeness is not simulated with filler.
+- Duplicate source identities, stale versions, missing retrieval dates, weak
+  secondary sourcing, broken links, and uncataloged material claims are audited
+  and corrected.
+- Primary or authoritative sources are preferred, while uncertainty,
+  contradictions, and unresolved version or licensing questions remain visible.
+- The coverage ledger and validator fail closed when a required record, citation
+  target, source identity, or provenance field disappears.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Final validator output: `bibliography valid: 47 records, 44 baseline records,
+  9 validation packages, 17 durable references`.
+- The audit scans material URLs outside the bibliography and open planning
+  records, normalizes Git transport suffixes, and rejects uncataloged durable
+  references.
+- Stable source identifiers are unique across all records; duplicate identities
+  fail closed.
+- Python 3.14.6 validation packages and standalone uv 0.11.16 are pinned to
+  canonical records, and legacy pip is absent from the managed environment.
+- Tooling schemas, museum-program provenance, host runtimes, compiler/toolchain
+  identities, accelerator sources, standards, publications, and methodology
+  records are represented in the closed taxonomy.
+- Jig validates local links, catalogs, profiles, authored text, and lifecycle
+  state without network access.
+
+**Completion:** Completed on 2026-08-05 after the durable-reference inventory,
+dependency-pin coverage, identity uniqueness checks, bibliography tests, and
+repository-wide Jig validation passed without diagnostics.

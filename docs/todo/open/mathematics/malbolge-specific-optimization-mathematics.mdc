@@ -71,14 +71,3 @@ force or stochastic optimization begins.
   executable correspondence, raw CPU benchmark samples, identical checksums,
   and explicit bounded conclusions. Broader canonical-form/lower-bound/search
   mathematics remains open.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Derive Malbolge-specific optimization mathematics. The active first slice now
-formalizes and machine-links classic/profile crazy chunking, decode phase
-reduction, and classic rotate lookup; versioned CPU evidence shows 10.43x crazy
-and 1.50x rotate median speedups on the recorded host with matching checksums.
-Canonical forms, lower bounds, and search-space reductions remain open.

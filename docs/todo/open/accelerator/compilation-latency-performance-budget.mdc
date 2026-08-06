@@ -65,15 +65,3 @@ target rather than a promised property of Malbolge synthesis.
   `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`,
   `resident-incremental-compiler-and-wal`,
   `empirical-malbolge-synthesis-scaling-law`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Establish measured compile-time budgets for cold compilation, warm resident
-compilation, incremental invalidation, verified block reuse, relinking, and
-novel
-search. Treat "seconds, not hours" as an engineering target rather than a
-promise, and never report a cached or compositional fast path as the complexity
-of raw synthesis.

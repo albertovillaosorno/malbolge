@@ -1,6 +1,6 @@
 ---
 id: "compiler-algorithm-experimentation-platform"
-status: "pending"
+status: "completed"
 lane: "5"
 area: "foundation"
 task: "TODO - Compiler algorithm experimentation platform"
@@ -66,6 +66,12 @@ accepted, rejected, or retired without becoming architecture by accident.
   `algorithm-research-mirror-and-local-output-contract`,
   `reproducible-experiment-identity-and-manifest`,
   `benchmark-and-statistical-evidence-protocol`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Seven non-template algorithm families, 53 experiment manifests, and 45
+  retained benchmark experiment manifests exercise the platform.
+- Lifecycle, mirror, manifest, benchmark-protocol, retained-evidence, and local
+  output validators fail closed.
+- Negative and null accelerator/search results are retained rather than erased
+  by later successful variants.
+- **Completion:** Completed on 2026-08-06 after the mirror, experiment
+  identity, benchmark protocol, seven algorithm families, 53 manifests, 45
+  retained benchmark manifests, lifecycle tests, and Jig validation passed.

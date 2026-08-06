@@ -45,9 +45,10 @@ TODO_PATH = ROOT / "TODO.md"
 OPEN_ROOT = ROOT / "docs/todo/open"
 COMPLETED_ROOT = ROOT / "docs/todo/completed"
 ACTIVE_STATUS = "active"
-EXPECTED_TODO_COUNT = 82
+EXPECTED_TODO_COUNT = 63
 MAX_SUMMARY_SENTENCES = 4
 TODO_TARGET_PATTERN = r"docs/todo/open/.+?\.mdc"
+MIGRATED_ROOT_DETAIL = "**Migrated root planning detail.**"
 FORBIDDEN_SUMMARY_MARKERS = (
     "**Synthesis:**",
     "**Full TODO:**",
@@ -291,3 +292,10 @@ def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
     assert not {
         f"TODO - {record.title}" for record in actual_records
     }.intersection(completed_titles)
+
+
+def test_open_records_do_not_retain_migrated_root_detail() -> None:
+    """Typed planning no longer duplicates the former expanded root index."""
+    for path in OPEN_ROOT.rglob("*.mdc"):
+        text = path.read_text(encoding="utf-8")
+        assert MIGRATED_ROOT_DETAIL not in text

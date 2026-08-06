@@ -67,17 +67,3 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Ask which search strategies find smaller or faster verified Malbolge blocks
-under fixed time and evaluation budgets. Build a rigorous research track
-covering stochastic superoptimization, enumerative synthesis, equality
-saturation where applicable, Monte Carlo and evolutionary search, program-state
-canonicalization, pruning, translation validation, learned guidance, GPU batch
-evaluation, and prior Malbolge code generation techniques. Maintain a
-source-backed bibliography and convert useful results into explicit compiler
-hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.

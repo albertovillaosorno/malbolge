@@ -55,16 +55,3 @@ AOT-only, JIT-only, and fully tiered execution.
   defined and reproducible.
 - Prerequisite completion evidence: `ahead-of-execution-native-translation`,
   `guarded-self-modification-jit`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Expose independent `--no-jit` and `--no-aot` runtime controls plus an
-`--interpreter-only` shorthand equivalent to disabling both native compilation
-tiers and native-code cache reuse. Default execution may use AOT, JIT, graph
-optimization, and interpreter fallback, but interpreter-only mode must execute
-the Malbolge machine directly without generating host machine code. Use these
-modes for differential correctness checks and honest measurements of pure VM,
-AOT-only, JIT-only, and fully tiered execution.

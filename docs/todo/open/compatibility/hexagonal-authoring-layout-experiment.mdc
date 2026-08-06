@@ -57,12 +57,3 @@ execution engine for compatible programs.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Research an optional graph or hexagonal authoring representation that lowers to
-ordinary linear `.malbolge` output and therefore does not require a special
-execution engine for compatible programs.

@@ -9,7 +9,6 @@ depends_on:
   - "doom-quality-and-modernization-pass"
   - "source-bound-diff-generator"
   - "clang-c-frontend-integration"
-  - "reuse-shar-legal-and-interoperability-corpus"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"

@@ -1,6 +1,6 @@
 ---
 id: "jig-repository-governance"
-status: "active"
+status: "completed"
 lane: "2"
 area: "foundation"
 task: "TODO - Jig repository governance"
@@ -64,7 +64,10 @@ without weakening unrelated linter contracts.
   `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
   208 linear unsigned commits while preserving every tree, identity, timestamp,
   and chronological position. The original tip remains under the Jig backup ref.
-- The repaired history has zero `JIG-COMMIT-*` diagnostics. Completion remains
-  blocked only by current repository findings and requires a clean result under
-  the same authority.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics, and the complete
+  source-linked schema-8 validation now passes with zero current findings.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
+- **Completion:** Completed on 2026-08-06 after schema-8 configuration,
+  source-linked repository tooling, commit-message governance, typed TODO policy,
+  repaired historical messages, governance-path tests, and full Jig validation
+  passed with zero diagnostics.

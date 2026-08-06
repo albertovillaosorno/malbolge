@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 

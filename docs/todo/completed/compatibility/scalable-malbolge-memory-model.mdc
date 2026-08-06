@@ -1,6 +1,6 @@
 ---
 id: "scalable-malbolge-memory-model"
-status: "active"
+status: "completed"
 lane: "6"
 area: "compatibility"
 task: "TODO - Scalable Malbolge memory model"
@@ -68,11 +68,9 @@ host architecture.
 - Full 1998 differential fixtures compare every final memory word plus
   registers,
   I/O, EOF, and termination between classic and profile-driven interpreters.
-- Current profile tracing is now profile-driven and records exact profile/EOF
-  plus
-  atomic rejection evidence. Compiler, native tiers, and accelerators remain
-  downstream profile-consumer work rather than
-  memory-model ambiguity.
+- Current tracing, native tiers, CUDA execution, decompiler output, runtime
+  capability checks, and current-profile performance workloads use canonical
+  geometry. Future compiler and integrated verifier work owns later adoption.
 
 ## Acceptance
 
@@ -104,17 +102,8 @@ host architecture.
   current/profile capacity boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Remove the practical 59,049-word ceiling from current Malbolge while retaining
-`malbolge-1998` as exact historical conformance. Schema v2 selects the 14-trit
-`malbolge-2026` geometry with 4,782,969 directly addressed words, and the new
-safe-Rust `ProfileMachine` executes that profile explicitly while the classic
-facade remains ten-trit. Current-profile tracing is also explicit and
-profile-aware; the resident CUDA accelerator now has explicit current-profile
-adoption, while compiler/native consumers and product-level accelerator routing
-still require profile-driven adoption rather than silent fallback.
+- **Completion:** Completed on 2026-08-06 after canonical 14-trit geometry,
+  interpreter-compatible `/` input and `<` output, profile VM/tracing,
+  native and
+  CUDA adoption, workload evidence, profile tests, VM tests, and Jig validation
+  passed. Future larger profiles require new immutable identities.

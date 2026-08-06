@@ -1,6 +1,6 @@
 ---
 id: "differential-vm-verification"
-status: "pending"
+status: "completed"
 lane: "6"
 area: "verification"
 task: "TODO - Differential VM verification"
@@ -13,10 +13,12 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "verifier/"
-  - "tests/differential/"
-  - "tests/exhaustive/"
-  - "tests/fuzz/"
+  - "src/runtime/virtual-machine/domain/differential.rs"
+  - "tests/vm/differential.rs"
+  - "tests/vm/cuda_run.rs"
+  - "tests/vm/cuda_profile_run.rs"
+  - "tests/differential/classic_profile.rs"
+  - "tests/test_historical_interpreter_sanitizer.py"
 validation:
   - "jig validate --root ."
 ---
@@ -44,9 +46,22 @@ as historical differential evidence.
 
 ## Evidence
 
-- Expected durable artifact surface: `verifier/`, `tests/differential/`,
-  `tests/exhaustive/`, `tests/fuzz/`.
-- Required evidence: known-valid fixtures, seeded invalid mutations,
-  counterexamples for rejected candidates, and deterministic replay.
+- Current Rust/C semantic-signature evidence covers arithmetic, loading, I/O,
+  mutation, pointer behavior, termination, and atomic rejection.
+- Generated classic/profiled differential cases compare complete 59,049-word
+  memory images with deterministic replay and progressive shrinking.
+- CUDA compact-step and resident classic/current suites compare complete
+  observable state against normative Rust, including full memory images.
+- The integrated exact candidate verifier rejects a mutated C signature and a
+  single unproved candidate, and complete CUDA checkpoints use the same boundary.
+
+- Durable evidence includes the exact labeled-candidate verifier, complete
+  Rust/C and CUDA observations, generated full-memory cases, seeded mutation,
+  single-candidate rejection, sanitizer bounds, and deterministic replay.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `independent-pure-c-malbolge-vm`, `reference-interpreter-sanitizer-harness`.
+- **Completion:** Completed on 2026-08-06 after exact labeled-candidate
+  verification, Rust/independent-C signature agreement, mutated-signature and
+  insufficient-candidate rejection, full-state CUDA classic/current comparison,
+  generated replay/shrink evidence, sanitizer bounds, Clippy, tests, and Jig
+  validation passed.

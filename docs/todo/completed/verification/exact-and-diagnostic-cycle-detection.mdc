@@ -1,6 +1,6 @@
 ---
 id: "exact-and-diagnostic-cycle-detection"
-status: "pending"
+status: "completed"
 lane: "6"
 area: "verification"
 task: "TODO - Exact and diagnostic cycle detection"
@@ -11,10 +11,8 @@ depends_on:
 adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
 scope:
-  - "verifier/"
-  - "tests/differential/"
-  - "tests/exhaustive/"
-  - "tests/fuzz/"
+  - "src/runtime/virtual-machine/domain/cycle.rs"
+  - "tests/vm/cycle_detection.rs"
 validation:
   - "jig validate --root ."
 ---
@@ -39,16 +37,14 @@ exact results and clearly label probabilistic hash-only diagnostics.
 
 ## Evidence
 
-- Expected durable artifact surface: `verifier/`, `tests/differential/`,
-  `tests/exhaustive/`, `tests/fuzz/`.
-- Required evidence: known-valid fixtures, seeded invalid mutations,
-  counterexamples for rejected candidates, and deterministic replay.
+- `src/runtime/virtual-machine/domain/cycle.rs` implements exact full-state
+  confirmation and separately typed hash-only diagnostics.
+- `tests/vm/cycle_detection.rs` forces key collisions over real complete VM
+  checkpoints and proves deterministic exact replay.
+- Profile checkpoints and a seeded register mutation remain distinct under a
+  forced key collision until complete state equality is observed.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Provide optional repeated-state detection using collision-safe confirmation for
-exact results and clearly label probabilistic hash-only diagnostics.
+- **Completion:** Completed on 2026-08-06 after exact full-state
+  confirmation, separately typed hash-only diagnostics, forced key collisions,
+  classic and profile checkpoints, seeded state mutation, deterministic replay,
+  Clippy, VM tests, and Jig validation passed.

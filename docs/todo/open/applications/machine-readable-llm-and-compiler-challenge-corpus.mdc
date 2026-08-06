@@ -63,16 +63,3 @@ admitted result.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Expose challenge definitions, expected semantics, constraints, oracle behavior,
-inputs, difficulty parameters, and evaluation results in a stable
-machine-readable format so compiler researchers and LLM-based code/algorithm
-agents can generate candidate passes or algorithms and submit them to the same
-verifier and benchmark arena. The corpus must test generated ideas without
-granting an LLM authority over correctness and must support deterministic replay
-of every admitted result.

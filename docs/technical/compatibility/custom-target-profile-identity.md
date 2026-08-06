@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -164,8 +164,9 @@ mismatch, and rejects unknown IDs without fallback. Portable effect IR v3 and
 its native cache key now retain the exact ID/fingerprint pair plus canonical
 version/features/geometry. Semantically admitted direct COFF objects embed the
 same envelope in a versioned read-only `.mbprof` section that structural
-admission compares with the key. Bootstrap
-compiler objects and product-level artifact metadata remain open.
+admission compares with the key. Bootstrap revision-2 compiler objects carry the same metadata. Artifact
+families that do not yet exist must adopt this contract before admission; their
+future implementation does not reopen the completed identity mechanism.
 
 ### Security Boundary
 
@@ -204,9 +205,10 @@ Experiment manifests, `MALBCAP1` capsules, portable effect IR v3, native cache
 keys, and direct COFF objects now carry this fingerprint with the declared
 profile ID. Bootstrap revision-2 C23 candidates render the same canonical
 `.mbprof` envelope and structural admission requires it for that revision;
-historical revision 1 and product-level artifacts do not universally carry it,
-so
-this contract remains active.
+historical revision 1 remains an explicitly versioned compatibility format.
+Every implemented profile-aware artifact family now carries or verifies the
+canonical identity. Future artifact families must adopt the same envelope before
+admission.
 
 ## Verification
 

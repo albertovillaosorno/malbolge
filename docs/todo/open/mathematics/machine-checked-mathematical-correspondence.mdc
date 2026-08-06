@@ -93,15 +93,3 @@ Connect mathematical specifications to executable tests or proof tooling so the
   coverage/domain metadata and executable evidence functions.
 - Closure still requires correspondence for future implementation-relevant
   compiler/research equations; this TODO therefore remains active.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Connect mathematical specifications to executable evidence. The active
-correspondence graph now maps seventeen stable `eq:*` labels from the profile
-model
-to explicit exhaustive, seeded-differential, current-profile, and rejection
-fixtures; graph validation fails on orphan equations or stale test functions.
-Future implementation-relevant compiler/research equations remain open.

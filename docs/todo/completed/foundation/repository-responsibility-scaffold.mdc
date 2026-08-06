@@ -1,0 +1,60 @@
+---
+id: "repository-responsibility-scaffold"
+status: "completed"
+lane: "1"
+area: "foundation"
+task: "TODO - Repository responsibility scaffold"
+contract: "docs/technical/architecture/repository-responsibility-model.md"
+depends_on:
+adr_paths:
+  - "docs/technical/adr/repository-responsibility-boundaries.md"
+scope:
+  - "src/"
+  - "tests/"
+  - "benchmarks/"
+  - "tools/"
+  - "docs/"
+  - "Cargo.toml"
+  - ".jig/taxonomy.json"
+  - "tests/test_repository_scaffold.py"
+validation:
+  # jig-ignore-next-line: exact verification command is indivisible
+  - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_repository_scaffold.py"
+  - "jig validate --root ."
+---
+# TODO - Repository responsibility scaffold
+
+## Objective
+
+Create and enforce the responsibility-oriented repository topology. Mixed
+implementation languages remain inside governed functions, while the root
+`src/` surface contains only its catalog, sidecar, and accepted semantic
+domains.
+
+## Acceptance
+
+- The source catalog declares the exact accepted semantic-domain roots.
+- Every second-level source directory is a governed function with one
+  `function.yml` ownership manifest.
+- Cargo entrypoints resolve inside governed functions rather than root
+  `src/lib.rs` or `src/main.rs` files.
+- Language-only source roots and speculative empty source directories are
+  rejected without forbidding language-specific adapters inside a function.
+- The durable contract, ADR, executable regression, and Jig validation agree.
+- Removing this TODO from the open index loses no unfinished scaffold intent.
+
+## Evidence
+
+**Completion evidence - 2026-08-05.**
+
+- `docs/technical/architecture/repository-responsibility-model.md` records the
+  accepted implementation and exact ten-domain source catalog.
+- `docs/technical/adr/repository-responsibility-boundaries.md` records the
+  accepted responsibility-over-language decision.
+- Fifteen checked-in `function.yml` manifests own every second-level source
+  function through `src/<domain>/<function>/<kind>/<part>` routes.
+- `tests/test_repository_scaffold.py` passes four fail-closed topology tests for
+  domain identity, manifests, mixed-language ownership, Cargo composition, and
+  empty-root rejection.
+- Ruff and BasedPyright accept the regression with zero diagnostics.
+- Jig collection and policy validation are the final repository-wide gate.

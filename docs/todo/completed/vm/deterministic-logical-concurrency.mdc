@@ -1,6 +1,6 @@
 ---
 id: "deterministic-logical-concurrency"
-status: "active"
+status: "completed"
 lane: "6"
 area: "vm"
 task: "TODO - Deterministic logical concurrency"
@@ -88,19 +88,9 @@ observable results.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `canonical-malbolge-target-profile`.
 - Performance evidence remains intentionally separate: existing batch scaling
-  does not by itself establish logical sort/tag/join speedup, so no
-  logical-layer
-  performance claim is accepted yet.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Define deterministic logical tasks and joins while preserving sequential guest
-semantics. The safe Rust execution layer now orders structurally independent
-classic or profile-driven VM tasks by explicit logical ID and joins committed
-outputs only in that order. Classic 1/2/8-worker full-state fixtures and mixed
-2026.1/current profile joins match sequential baselines; logical-layer
-performance
-evidence remains open.
+  does not establish logical sort/tag/join speedup, and this completed
+  correctness contract accepts no logical-layer performance claim.
+- **Completion:** Completed on 2026-08-06 after logical-ID ordering,
+  duplicate rejection, sequential/parallel full-state equality, deterministic
+  joins, rejection isolation, mixed-profile evidence, VM tests, and Jig
+  validation passed. No logical-layer performance claim is accepted.

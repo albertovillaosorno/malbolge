@@ -1,10 +1,30 @@
-# Planning corpus promotion to durable documentation
+---
+id: "planning-corpus-promotion-to-durable-documentation"
+status: "completed"
+lane: "3"
+area: "documentation"
+task: "TODO - Planning corpus promotion to durable documentation"
+contract: "docs/technical/contracts/planning-corpus-promotion.md"
+depends_on:
+  - "documentation-authority-taxonomy"
+  - "repository-bibliography-taxonomy-and-citation-provenance"
+  - "academic-research-methodology-and-evidence-model"
+  - "complete-bibliography"
+adr_paths:
+  - "docs/technical/adr/documentation-authority-taxonomy.md"
+scope:
+  - "TODO.md"
+  - "docs/todo/"
+  - "docs/technical/"
+  - "docs/research/"
+  - "docs/legal/"
+  - "docs/bibliography/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Planning corpus promotion to durable documentation
 
-## Status
-
-Accepted and implemented
-
-## Intent
+## Objective
 
 Once typed TODO coverage is stable, classify every settled planning
 choice into its durable owning surface instead of copying TODO prose wholesale.
@@ -17,17 +37,7 @@ choices remain visibly proposed; implementation details remain in their owning
 technical documents. No global catch-all ADR, duplicate authority, or
 chat-history archive is created during promotion.
 
-## Contract
-
-### Proposed Model
-
-This record defines the contract that implementation must satisfy for
-`planning-corpus-promotion-to-durable-documentation`. The implementation may
-change internal representation or language choices without changing the
-observable behavior, trust boundary, or ownership rules stated by its governing
-decisions.
-
-### Invariants
+## Acceptance
 
 - Every settled planning decision is routed to one owning durable document
   family; unresolved choices remain explicitly proposed rather than being
@@ -41,8 +51,10 @@ decisions.
 - As authorities are created, TODO `contract` and `adr_paths` fields point to
   real existing files with no invented placeholder paths or duplicate
   authorities.
+- No global catch-all ADR tree or parallel chat-history archive survives the
+  promotion.
 
-## Evidence Boundary
+## Evidence
 
 - Expected durable artifact surface: the four documentation families plus
   updated `contract`/`adr_paths` metadata across the active TODO registry.
@@ -52,30 +64,15 @@ decisions.
   `complete-bibliography`.
 - Evidence must include a complete mapping from active TODO intent to owning
   durable documentation or an explicit unresolved decision record.
-
-## Diagnostics
-
-Missing or competing authority blocks promotion rather than creating a duplicate
-or placeholder decision.
-
-## Examples
-
-- No normative example is required at this planning stage unless the contract
-  states one.
-
-## Implementation
-
-Implemented. All 80 open and 15 completed typed records resolve to real
-contracts; ADR paths resolve where declared. The former README status narrative
-is preserved as a dated architecture snapshot, all `Migrated root planning
-detail` tails are removed, stale typed links are corrected, and tests prevent
-root-planning duplication from returning. Unresolved decisions remain in their
-open typed records rather than being presented as accepted authority.
-
-## References
-
-- [Documentation Authority Taxonomy](../adr/documentation-authority-taxonomy.md)
-
-### Governing ADR Paths
-
-- `docs/technical/adr/documentation-authority-taxonomy.md`
+- P0 and P1 typed records no longer retain duplicated `Migrated root planning
+  detail` tails; objective, acceptance, evidence, contracts, and ADRs remain.
+- Durable technical links resolve to the current turnkey-toolchain and reserved
+  ROCm TODO identities rather than retired paths.
+- The former README implementation-status narrative is preserved as the dated
+  durable snapshot
+  `docs/technical/architecture/`
+  `repository-implementation-baseline-2026-08-05.md`.
+- **Completion:** Completed on 2026-08-06 after all typed contracts and
+  declared ADR paths resolved, the README snapshot moved to durable architecture
+  history, migrated root-planning tails reached zero, planning regressions
+  passed, and Jig completed with zero diagnostics.

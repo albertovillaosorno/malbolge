@@ -2,7 +2,7 @@
 
 ## Status
 
-Active; schema 8 is adopted and full repository validation remains open.
+Accepted; schema 8 is adopted and full repository validation is clean.
 
 ## Intent
 
@@ -53,9 +53,8 @@ trust boundary, or ownership rules stated by its governing decisions.
   `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
   208 linear unsigned commits. Every tree, author/committer identity, timestamp,
   and chronological position remained unchanged.
-- The repaired history has zero `JIG-COMMIT-*` diagnostics. Full validation
-  remains fail-closed only on current repository findings outside commit
-  history.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics. Full source-linked
+  validation passes with zero current repository diagnostics.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -76,7 +75,9 @@ TODO workflow. Jig repaired historical messages transactionally from
 `b7686ed1ba2e6369eac124046158fb65ac667747` to
 `b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at
 `refs/jig/repair/backups/5f7e10afc710f9c47093d68f853d26657f8854aa`.
-Completion still requires a clean full-repository result for current findings.
+The source-linked schema-8 authority now validates the complete repository with
+zero diagnostics. Later Jig upgrades remain dependency maintenance rather than an
+open governance objective.
 
 ## References
 

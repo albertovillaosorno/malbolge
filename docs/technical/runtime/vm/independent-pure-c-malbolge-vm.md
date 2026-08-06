@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -54,11 +54,10 @@ integration suite independently recomputes that signature through the Rust
 public
 API and requires an exact match.
 
-The repository does not yet declare an executable C-family Jig validation tool.
-The C harness has been compiled and executed successfully during development,
-but that development compiler path is not a repository toolchain authority. The
-typed TODO therefore remains active until its declared repository-wide
-validation command passes at retirement time.
+The C harness is built and executed through the repository validation stack with
+the pinned Clang toolchain. Repository-wide Jig validation therefore covers the
+independent oracle instead of relying on an undocumented development compiler
+path.
 
 ## Invariants
 

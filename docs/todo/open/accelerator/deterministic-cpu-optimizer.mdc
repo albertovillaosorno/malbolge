@@ -123,20 +123,3 @@ baseline for accelerator implementations.
   measurements remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the declared-profile-conformant CPU
-baseline on both x86-64 and AArch64 hosts for accelerator implementations.
-The active `deterministic-corpus-enumeration-v1` strategy searches an explicit
-canonically encoded finite corpus under deterministic seed/budget control and
-submits every proposal to the trusted verifier. The exact
-`classic-crazy-target-search-v1` strategy additionally proves non-invertible,
-multi-position search with fixed-accumulator digitwise preimage preparation and
-replaceable CPU/CUDA evaluation. Real synthesis generators,
-translation-validation integration, AArch64 evidence, and broader cross-device
-performance measurement remain open.

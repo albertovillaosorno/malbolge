@@ -76,20 +76,3 @@ Keep historical conversion as an explicit profile choice in the general tool.
   three semantic steps.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Build a profile-explicit reverse-engineering tool that turns valid Malbolge into
-readable executable representations without pretending arbitrary self-modifying
-programs preserve their original C source. The first active backend emits C23
-with caller-owned state/I/O and exact profile metadata; profile-declared I/O
-and non-graphical behavior now render explicitly, and `ubO` currently compiles
-warning-clean with pinned Clang 22.1.8 for x86-64 and AArch64, and the x86-64
-artifact executes with the same input/output/register/step result as the
-normative
-VM. The general CLI requires an explicit representation and profile, including
-`malbolge-1998` for historical conversion. A richer reverse-engineering IR and
-control-flow/state annotations remain open.

@@ -58,14 +58,3 @@ engineering work.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
-of turning mature investigations into publication-quality papers with canonical
-bibliography, equations, figures, tables, experiment provenance, limitations,
-and regenerated results without making publication a prerequisite for ordinary
-engineering work.

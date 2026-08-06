@@ -85,14 +85,3 @@ lowering, equivalence relations, and search cost functions.
 - Framework/build evidence is executable and retained in the validator/tests.
   Mathematical correspondence between equations and implementation remains the
   separate downstream `machine-checked-mathematical-correspondence` obligation.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Create a buildable `math/` specification surface with one shared notation
-include. The active framework now covers generic profile-width word/memory,
-rotate/crazy, decode/self-modification, I/O/EOF, loading, execution equivalence,
-lowering, verification, and cost notation; all nine standalone documents compile
-into `.cache/latex/`. Machine-checked correspondence remains a separate task.

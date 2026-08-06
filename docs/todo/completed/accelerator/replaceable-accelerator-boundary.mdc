@@ -1,6 +1,6 @@
 ---
 id: "replaceable-accelerator-boundary"
-status: "active"
+status: "completed"
 lane: "7"
 area: "accelerator"
 task: "TODO - Replaceable accelerator boundary"
@@ -1539,37 +1539,8 @@ timed.
   profiles, other workloads, and broader hardware remain open.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Define a hardware-neutral interface for candidate evaluation, batch VM
-execution, search, and verification. Compiler and verifier code must not depend
-directly on CUDA APIs. The active first slice now provides an immutable exact
-primitive request/result protocol with a mandatory scalar CPU implementation and
-optional CUDA implementation for classic `rotate`/`crazy`; malformed requests
-fail before backend execution. Rust batch APIs now expose replaceable classic
-and
-profile execution ports with deterministic safe-Rust fallback. Reported routes
-now distinguish actual accepted backend completions from safe-Rust fallback and
-admission rejection, and live CUDA tests require real backend acceptance rather
-than inferring acceleration from configuration alone. Hardware-neutral
-candidate-evaluation, search, and verification-assist ports preserve algorithm
-identity, seed/budget identity,
-CPU fallback, and verifier-only acceptance. Exact classic crazy/rotate candidate
-evaluation now exercises the same port through CPU and live CUDA backends. The
-same exact evidence can now traverse a verification-assist adapter on live CUDA;
-hints remain untrusted and malformed optional evidence becomes no hint rather
-than admission. `classic-rotate-target-search-v1` runs the same bounded
-seed/budget strategy through CPU or live CUDA candidate evaluation. The new
-`classic-crazy-target-search-v1` is the first real non-invertible,
-multi-position strategy: shared neutral `CRAZY_TRIT_TABLE` semantics derive
-exact
-fixed-accumulator preimage positions before replaceable evaluation. Over the
-full
-59,049-word domain, accumulator zero and target 29,524 retain full membership
-while projecting exactly 1,024 candidates. Live CUDA matches CPU and independent
-CPU admission remains authoritative. Synthesis, guided/stochastic search, ROCm
-work ports, and ROCm VM execution remain open.
+- **Completion:** Completed on 2026-08-06 after the hardware-neutral primitive,
+  step/run/profile, candidate, search, verification-assist, prepared-state,
+  submission, fallback, admission, and telemetry contracts passed CPU-reference,
+  live CUDA, retained benchmark, optimizer, VM, and Jig validation. Backend and
+  strategy extensions remain in their own typed records.

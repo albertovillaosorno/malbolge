@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -114,8 +114,10 @@ signature covers word operations, the complete loaded `ubO` memory image,
 interpreter-compatible byte I/O and halt, rejected jump atomicity, and
 historical non-graphical non-progress.
 
-The typed TODO remains active until its declared repository-wide validation
-command passes at retirement time.
+The implementation and its independent evidence have passed the declared
+repository-wide validation gate. Future compiler, optimizer, and execution-tier
+work consumes the public VM contracts without reopening this implementation
+objective.
 
 ## Invariants
 

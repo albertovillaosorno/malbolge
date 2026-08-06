@@ -57,15 +57,3 @@ recompile only the semantic invalidation closure of an edit.
 - Prerequisite completion evidence: `state-aware-malbolge-linker`,
   `c-level-source-mapping-and-debugging`, `reusable-block-catalogue`,
   `compiler-algorithm-experimentation-platform`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Build a native long-lived compiler service that keeps parsed source, normalized
-IR, dependency state, verified block identities, layout evidence, and reusable
-artifacts resident in RAM. Persist a deterministic write-ahead log sufficient to
-recover or discard cache state after interruption. Recompile and relink only the
-semantic invalidation closure of an edit; fixed-width or same-position textual
-matches may accelerate lookup but never replace AST/IR dependency evidence.

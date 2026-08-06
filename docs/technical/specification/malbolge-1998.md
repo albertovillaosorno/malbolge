@@ -210,8 +210,6 @@ It does not override interpreter authority for `malbolge-1998`.
   undocumented host behavior.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
 
 ## Failure Behavior
 

@@ -1,6 +1,6 @@
 ---
 id: "specification-and-legacy-interpreter-modes"
-status: "active"
+status: "completed"
 lane: "6"
 area: "vm"
 task: "TODO - Interpreter-authority and specification-comparison modes"
@@ -61,12 +61,7 @@ Negative cases:
   interpreter-compatible implementations.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `historical-undefined-behavior-catalogue`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Make interpreter-compatible execution the default and verifier authority for
-`malbolge-1998`. Retain specification behavior as an explicit comparison mode;
-keep `legacy-ben` only as a backward-compatible parser alias for `interpreter`.
+- **Completion:** Completed on 2026-08-06 after interpreter authority,
+  specification comparison, alias behavior, safe undefined-C boundaries,
+  independent C evidence, CUDA classic equality, VM tests, and Jig validation
+  passed.

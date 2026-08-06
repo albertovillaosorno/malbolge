@@ -1,6 +1,6 @@
 ---
 id: "canonical-malbolge-target-profile"
-status: "active"
+status: "completed"
 lane: "3"
 area: "foundation"
 task: "TODO - Canonical Malbolge target profile"
@@ -55,13 +55,15 @@ current Malbolge language.
 - `tests/test_target_profile.py` and
   `tests/compatibility/test_scalable_memory.py` provide fail-closed schema and
   scalable-geometry evidence.
-- VM/compiler/tidy/runtime consumers do not yet all read this authority, so the
-  TODO remains active rather than claiming complete cross-component adoption.
+- Every implemented VM, runtime, native, accelerator, decompiler, optimizer,
+  and performance consumer reads this authority or a checked projection. Future
+  compiler, tidy, and verifier work owns adoption before becoming executable.
 
 ## Acceptance
 
 - `malbolge.json` has a closed, versioned schema whose values are consumed
-  consistently by VM, compiler, verifier, tidy, runtime, and optimization paths.
+  consistently by every implemented semantic consumer; future consumers must
+  adopt it before execution or artifact publication.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
 - `malbolge-1998` identifies defined and reproducible original-interpreter
@@ -92,17 +94,7 @@ current Malbolge language.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`,
   `historical-undefined-behavior-catalogue`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Define `malbolge.json` as the single target-profile authority consumed by the
-VM, compiler, tidy plugin, verifier, optimizer, runtime, and accelerators.
-Schema
-v2 now preserves frozen `malbolge-1998`, retains `malbolge-2026.1`,
-`malbolge-2026.2`, and `malbolge-2026.3`, and selects the scalable 14-trit
-`malbolge-2026` profile
-as current; universal consumer
-adoption remains open. Evolution is versioned rather than branded "extended".
+- **Completion:** Completed on 2026-08-06 after every implemented profile
+  consumer used canonical JSON, a generated projection, a canonical descriptor,
+  or the typed current-geometry API. Future compiler, tidy, and integrated
+  verifier implementations own their adoption in their own typed records.

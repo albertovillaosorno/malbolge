@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -30,11 +30,14 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-The first scalar-table optimization slice is executable. Build-time generation
-produces exact rotate, crazy-chunk, positional-decode, and code-phase tables.
-The runtime consumes those tables without dynamic initialization, and exhaustive
-independent tests cover the finite table domains. A custom release benchmark
-emits raw scalar/table timing samples with matching deterministic checksums.
+The scalar-table optimization is executable. Build-time generation produces
+exact classic rotate and five-trit crazy-chunk tables. Position-dependent decode
+and post-step encryption use the normative 94-entry translation constants in
+`domain/instruction.rs`, avoiding generated composition-owned instruction
+semantics. Runtime paths require no dynamic table initialization, and exhaustive
+independent tests cover every finite table and translation domain. A custom
+release benchmark emits raw scalar/table timing samples with matching
+deterministic checksums.
 
 Post-commit measurements on `888b492` retain 15 raw samples per
 implementation. On the recorded benchmark host, crazy improved from a

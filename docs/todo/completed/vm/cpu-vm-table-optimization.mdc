@@ -1,6 +1,6 @@
 ---
 id: "cpu-vm-table-optimization"
-status: "active"
+status: "completed"
 lane: "6"
 area: "vm"
 task: "TODO - CPU VM table optimization"
@@ -30,9 +30,11 @@ and benchmarked micro-optimizations without semantic drift.
 **Current implementation.**
 
 - `src/runtime/virtual-machine/composition/build.rs` deterministically generates
-  finite classic-profile rotate,
-  five-trit crazy, positional-decode, and code-phase tables into Cargo-owned
+  finite classic-profile rotate and five-trit crazy tables into Cargo-owned
   `OUT_DIR`; runtime initialization is not required.
+- Position-dependent decode and post-step encryption use the normative 94-entry
+  translation constants in `domain/instruction.rs`, keeping semantic tables out
+  of the composition root.
 - `Word::crazy` decomposes each ten-trit word into two five-trit chunks and uses
   one exact 243 by 243 table for each chunk position.
 - `Word::rotate` uses a complete 59,049-entry table.
@@ -76,3 +78,8 @@ and benchmarked micro-optimizations without semantic drift.
   retains raw samples, exact workload repetitions, checksums, commit identity,
   toolchain versions, host class, medians, dispersion summary, and scoped
   cleanliness at measurement time.
+- **Completion:** Completed on 2026-08-06 after generated rotate/crazy tables,
+  direct normative decode/encryption tables, exhaustive scalar equality,
+  retained
+  raw benchmark samples and checksums, VM tests, Clippy, and Jig validation
+  passed.

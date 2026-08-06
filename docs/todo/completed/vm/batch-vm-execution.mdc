@@ -1,6 +1,6 @@
 ---
 id: "batch-vm-execution"
-status: "active"
+status: "completed"
 lane: "6"
 area: "vm"
 task: "TODO - Batch VM execution"
@@ -101,21 +101,7 @@ backends for fuzzing, exhaustive verification, synthesis, and search workloads.
   raw samples, checksums, exact commit/toolchain/host identity, workload size,
   step budget, and benchmark-scope cleanliness.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`.
-
-**Migrated root planning detail.**
-
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
-typed record is now its sole planning owner.
-
-Execute many independent programs or inputs efficiently on CPU and accelerator
-backends for fuzzing, exhaustive verification, synthesis, and search workloads.
-The CPU baseline now has deterministic sequential and explicit host-parallel
-execution for classic and profile-driven machines through one scheduler.
-Retained
-worker-scaling evidence applies to the classic CPU workload only. Retained
-current-profile CUDA evidence now covers complete snapshots and persistent
-resident segments. Product backend routes additionally expose input-ordered
-execution-origin reports distinguishing accepted backend completions, safe-Rust
-fallback, and pre-backend admission rejection; live classic/current CUDA tests
-require at least one accepted backend completion. Additional hardware adapters
-remain separate accelerator work.
+- **Completion:** Completed on 2026-08-06 after deterministic sequential and
+  host-parallel classic/profile batches, per-item failures, product backend
+  origin reports, complete CUDA differential state, retained CPU/GPU evidence,
+  VM tests, and Jig validation passed.

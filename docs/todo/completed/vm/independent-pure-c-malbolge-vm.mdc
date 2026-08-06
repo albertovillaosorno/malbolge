@@ -1,6 +1,6 @@
 ---
 id: "independent-pure-c-malbolge-vm"
-status: "active"
+status: "completed"
 lane: "5"
 area: "vm"
 task: "TODO - Independent pure C Malbolge VM"
@@ -59,9 +59,10 @@ implementation.
   the safe-Rust VM over word operations, the complete `ubO` loaded image,
   interpreter-compatible byte I/O and halt, atomic jump rejection, and
   historical non-graphical non-progress.
-- The C harness executes successfully in development. Completion remains gated
-  on the declared repository-wide `jig validate --root .` command passing at
-  retirement time; executable C-family Jig orchestration is not yet declared by
-  this repository.
+- The C harness executes under the pinned Clang toolchain and repository-wide
+  Jig orchestration; the retirement gate now passes.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `historical-malbolge-semantics-specification`.
+- **Completion:** Completed on 2026-08-06 after the independent C harness,
+  shared semantic signature, pinned-Clang execution, Rust differential evidence,
+  and repository-wide Jig validation passed.
