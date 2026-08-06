@@ -58,7 +58,8 @@ AOT-only, JIT-only, and fully tiered execution.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Expose independent `--no-jit` and `--no-aot` runtime controls plus an
 `--interpreter-only` shorthand equivalent to disabling both native compilation

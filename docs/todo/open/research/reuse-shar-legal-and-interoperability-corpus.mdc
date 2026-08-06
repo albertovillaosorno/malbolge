@@ -48,7 +48,8 @@ repository.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Adapt the project-owned MIT legal, interoperability, licensing, provenance, and
 publication-boundary documentation from `C:/Repos/mit/shar` into

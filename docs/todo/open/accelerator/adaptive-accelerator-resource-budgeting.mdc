@@ -1183,7 +1183,8 @@ example probe points, not supported-range endpoints.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Discover available memory and compute resources at runtime and choose batch
 size, state layout, caches, and search breadth accordingly. The first active

@@ -62,7 +62,8 @@ code-size explosion or compilation cost.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Evaluate a VM-inside-Malbolge strategy where large programs are represented as
 compact internal bytecode interpreted by a reusable Malbolge runtime when that

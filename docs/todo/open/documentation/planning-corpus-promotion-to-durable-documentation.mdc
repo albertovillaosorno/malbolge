@@ -67,7 +67,9 @@ chat-history archive is created during promotion.
 
 **Migrated README project-status snapshot.**
 
-The exact former README status narrative moved here on 2026-08-05. Durable technical records remain authoritative; this snapshot prevents planning history from being lost during README simplification.
+The exact former README status narrative moved here on 2026-08-05. Durable
+technical records remain authoritative; this snapshot prevents planning history
+from being lost during README simplification.
 
 The repository now contains an executable and tested foundation rather than
 only a design skeleton. Durable work includes interpreter-authority 1998

@@ -47,7 +47,8 @@ provider, and AST frontend instead of building another C parser.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Use Clang as the build-time C parser, type system, constant evaluator,
 source-location provider, and AST frontend instead of building another C parser.

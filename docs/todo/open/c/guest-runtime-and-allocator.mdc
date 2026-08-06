@@ -55,7 +55,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Implement startup, calling convention, frames, allocation, streams, integer
 helpers, strings, deterministic math helpers, scheduling primitives, and other

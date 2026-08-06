@@ -227,7 +227,10 @@ def _parse_todo_entry(
     assert summary_lines
     summary = " ".join(summary_lines)
     assert index + 1 < len(lines)
-    record = _parse_link(lines[index + 1])
+    link_index = index + 1
+    if lines[link_index].startswith("<!-- jig-ignore-next-line:"):
+        link_index += 1
+    record = _parse_link(lines[link_index])
     assert title == record.title
     assert summary == record.summary
     assert not any(
@@ -236,7 +239,7 @@ def _parse_todo_entry(
     assert not summary.startswith(("Active,", "Pending,"))
     sentences = tuple(SENTENCE.findall(summary))
     assert 1 <= len(sentences) <= MAX_SUMMARY_SENTENCES
-    return index + 2, record
+    return link_index + 1, record
 
 
 def _parse_sections(text: str) -> tuple[ParsedSection, ...]:

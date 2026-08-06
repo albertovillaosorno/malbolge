@@ -47,7 +47,8 @@ exact results and clearly label probabilistic hash-only diagnostics.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Provide optional repeated-state detection using collision-safe confirmation for
 exact results and clearly label probabilistic hash-only diagnostics.

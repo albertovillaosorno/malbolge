@@ -81,7 +81,8 @@ and crazy operations.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Use deterministic property, fuzz/replay, sanitizer, regression, and exhaustive
 verification. The active Rust harness now has seed+ordinal replay/shrink, 24

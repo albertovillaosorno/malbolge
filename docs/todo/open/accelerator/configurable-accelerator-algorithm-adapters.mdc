@@ -444,7 +444,8 @@ prepared, and 1.270x one-shot CUDA-ticket improvements over ordinary routes.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Separate optimization/search strategy from accelerator hardware. Define common
 algorithm ports for enumerative, stochastic, Monte Carlo, evolutionary, learned,

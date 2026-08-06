@@ -38,7 +38,8 @@ validation:
 
 Deliver the final supported workflow: bootstrap every public project dependency
 except Jig, accept an explicitly named C source file, and emit one verified
-`.malbolge` artifact through a single documented command on supported Windows and
+`.malbolge` artifact through a single documented command on supported Windows
+and
 Linux hosts. CPU compilation remains universally available; NVIDIA CUDA is an
 optional accelerator on Windows and Linux and never changes semantic acceptance.
 

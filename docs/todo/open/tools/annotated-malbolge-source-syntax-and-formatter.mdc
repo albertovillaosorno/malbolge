@@ -75,7 +75,8 @@ by the selected profile loader.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Define a non-canonical annotated source form for readable Malbolge without
 changing executable byte semantics. Canonical `.malbolge` remains the exact

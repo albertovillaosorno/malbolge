@@ -68,7 +68,8 @@ target rather than a promised property of Malbolge synthesis.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Establish measured compile-time budgets for cold compilation, warm resident
 compilation, incremental invalidation, verified block reuse, relinking, and

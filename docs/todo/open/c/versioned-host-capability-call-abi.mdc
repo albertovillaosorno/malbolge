@@ -82,7 +82,8 @@ guest behavior.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Generalize the semantic capability-ID pattern proven by the DOOM corpus into the
 VM ABI. Keep capability identity separate from transport: define versioning,

@@ -70,7 +70,8 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Ask which search strategies find smaller or faster verified Malbolge blocks
 under fixed time and evaluation budgets. Build a rigorous research track

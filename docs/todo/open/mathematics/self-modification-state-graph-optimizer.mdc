@@ -204,7 +204,8 @@ VM evidence.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Model self-modifying execution as verified state graphs. The active first slice
 now provides a collision-safe exact classic-state baseline and the first proved

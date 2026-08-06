@@ -103,7 +103,8 @@ that reverse engineering can be made cryptographically impossible.
 
 **Migrated root planning detail.**
 
-This detail moved from the former expanded `TODO.md` index on 2026-08-05; the typed record is now its sole planning owner.
+This detail moved from the former expanded `TODO.md` index on 2026-08-05; the
+typed record is now its sole planning owner.
 
 Allow user-supplied target profiles with canonical hashing and explicit artifact
 identity. `malbolge-profile-v1` fingerprints and the verification CLI now detect
