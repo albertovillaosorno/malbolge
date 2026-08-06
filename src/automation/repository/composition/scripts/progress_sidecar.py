@@ -358,10 +358,14 @@ def _optional_string(value: JsonValue, context: str) -> str | None:
     return _string(value, context)
 
 
-def _integer(value: JsonValue, context: str) -> int:
+def _nonnegative_integer(value: object, context: str) -> int:
     if type(value) is not int or value < 0:
         _fail(f"{context} must be a non-negative integer")
     return value
+
+
+def _integer(value: JsonValue, context: str) -> int:
+    return _nonnegative_integer(value, context)
 
 
 def _optional_integer(value: JsonValue, context: str) -> int | None:
@@ -534,6 +538,29 @@ def _validate_paths(sidecar: ProgressSidecar) -> None:
     _validate_partial_path(sidecar)
 
 
+def _validate_numeric_domain(sidecar: ProgressSidecar) -> None:
+    required = (
+        (sidecar.active_elapsed_ns, "active_elapsed_ns"),
+        (sidecar.checkpoint_elapsed_ns, "checkpoint_elapsed_ns"),
+        (sidecar.checkpoint_sequence, "checkpoint_sequence"),
+        (sidecar.paused_elapsed_ns, "paused_elapsed_ns"),
+        (sidecar.serialization_elapsed_ns, "serialization_elapsed_ns"),
+        (sidecar.units_completed, "units_completed"),
+        (sidecar.verification_elapsed_ns, "verification_elapsed_ns"),
+        (sidecar.wall_elapsed_ns, "wall_elapsed_ns"),
+    )
+    optional = (
+        (sidecar.partial_bytes, "partial_bytes"),
+        (sidecar.seed, "seed"),
+        (sidecar.units_total, "units_total"),
+    )
+    for value, context in required:
+        _ = _nonnegative_integer(value, context)
+    for value, context in optional:
+        if value is not None:
+            _ = _nonnegative_integer(value, context)
+
+
 def _validate_units(sidecar: ProgressSidecar) -> None:
     if (
         sidecar.units_total is not None
@@ -543,20 +570,15 @@ def _validate_units(sidecar: ProgressSidecar) -> None:
 
 
 def _validate_elapsed_times(sidecar: ProgressSidecar) -> None:
-    if sidecar.active_elapsed_ns > sidecar.wall_elapsed_ns:
-        _fail("active_elapsed_ns exceeds wall_elapsed_ns")
-    if sidecar.paused_elapsed_ns > sidecar.wall_elapsed_ns:
-        _fail("paused_elapsed_ns exceeds wall_elapsed_ns")
-    accounted = sidecar.active_elapsed_ns + sidecar.paused_elapsed_ns
-    if accounted > sidecar.wall_elapsed_ns:
-        _fail("active plus paused elapsed time exceeds wall time")
     phases = (
+        sidecar.active_elapsed_ns,
         sidecar.checkpoint_elapsed_ns,
+        sidecar.paused_elapsed_ns,
         sidecar.serialization_elapsed_ns,
         sidecar.verification_elapsed_ns,
     )
-    if any(value > sidecar.wall_elapsed_ns for value in phases):
-        _fail("phase elapsed time exceeds wall_elapsed_ns")
+    if sum(phases) != sidecar.wall_elapsed_ns:
+        _fail("elapsed phases do not exactly partition wall_elapsed_ns")
 
 
 def _validate_timestamps(sidecar: ProgressSidecar) -> None:
@@ -643,6 +665,7 @@ def validate(sidecar: ProgressSidecar) -> ProgressSidecar:
     """
     if sidecar.schema != SCHEMA_ID:
         _fail(f"unsupported progress schema: {sidecar.schema}")
+    _validate_numeric_domain(sidecar)
     _validate_identity(sidecar)
     _validate_paths(sidecar)
     _validate_timing(sidecar)
@@ -874,7 +897,24 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     return destination
 
 
-def _write_immutable(destination: Path, payload: bytes) -> Path:
+def _publish_no_replace(
+    temporary: Path,
+    destination: Path,
+    *,
+    platform: str = os.name,
+) -> None:
+    if platform == WINDOWS_PLATFORM:
+        _ = temporary.rename(destination)
+    else:
+        os.link(temporary, destination)
+
+
+def _write_immutable(
+    destination: Path,
+    payload: bytes,
+    *,
+    platform: str = os.name,
+) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
@@ -888,7 +928,7 @@ def _write_immutable(destination: Path, payload: bytes) -> Path:
             stream.flush()
             os.fsync(stream.fileno())
         try:
-            os.link(temporary, destination)
+            _publish_no_replace(temporary, destination, platform=platform)
         except FileExistsError:
             if destination.read_bytes() != payload:
                 _fail(

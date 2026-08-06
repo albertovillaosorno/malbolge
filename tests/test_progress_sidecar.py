@@ -40,7 +40,12 @@ from dataclasses import dataclass
 from dataclasses import replace
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
+from typing import Protocol
+from typing import cast
 
 import pytest
 from scripts import progress_sidecar as progress
@@ -62,17 +67,88 @@ SUMMARY_FIELDS = (
     "stage=candidate-search",
     "units=14/unknown",
     "active_ns=700",
-    "wall_ns=1200",
+    "wall_ns=870",
     "paused_ns=100",
     "verification_ns=30",
     "serialization_ns=10",
     "checkpoint_ns=30",
 )
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
+WINDOWS_PAYLOAD = b"windows-payload"
+POSIX_PAYLOAD = b"posix-payload"
+CRASH_EXIT = 73
+AFTER_CHECKPOINT = "after-checkpoint"
+BEFORE_SIDECAR = "before-sidecar"
+CRASH_BOUNDARIES = (AFTER_CHECKPOINT, BEFORE_SIDECAR)
+CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
+PARTIAL_BEFORE_CRASH = b"partial-before-crash"
+CHECKPOINT_AFTER_CRASH = b"checkpoint-after-crash"
+PARTIAL_AFTER_CRASH = b"partial-after-crash"
+CRASH_SCRIPT = """
+from pathlib import Path
+import os
+import sys
+from scripts import progress_sidecar as progress
+
+sidecar = progress.read(Path(sys.argv[1]))
+checkpoint = Path(sys.argv[2]).read_bytes()
+partial = Path(sys.argv[3]).read_bytes()
+exit_code = int(sys.argv[4])
+boundary = sys.argv[5]
+original_write_immutable = progress._write_immutable
+publication_count = 0
+
+def write_then_maybe_crash(destination, payload):
+    global publication_count
+    result = original_write_immutable(destination, payload)
+    publication_count += 1
+    if boundary == "after-checkpoint" and publication_count == 1:
+        os._exit(exit_code)
+    return result
+
+def crash_before_sidecar(_sidecar):
+    os._exit(exit_code)
+
+progress._write_immutable = write_then_maybe_crash
+if boundary == "before-sidecar":
+    progress.write_atomic = crash_before_sidecar
+progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+raise AssertionError("configured crash boundary was not reached")
+""".strip()
 
 
 def _digest(payload: bytes) -> str:
     return "sha256:" + sha256(payload).hexdigest()
+
+
+class ImmutableWriter(Protocol):
+    """Typed view of the internal immutable publication primitive."""
+
+    def __call__(
+        self,
+        destination: Path,
+        payload: bytes,
+        *,
+        platform: str,
+    ) -> Path:
+        """Publish one immutable payload without replacement."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class CrashFixture:
+    """Two committed generations plus child-process input artifacts."""
+
+    checkpoint_input: Path
+    checkpoint_one: bytes
+    checkpoint_two: bytes
+    destination: Path
+    first: progress.ProgressSidecar
+    partial_input: Path
+    partial_one: bytes
+    partial_two: bytes
+    second: progress.ProgressSidecar
+    sidecar_input: Path
 
 
 @dataclass(slots=True)
@@ -157,7 +233,7 @@ def _sidecar(
         units_total=None,
         updated_at=UPDATED,
         verification_elapsed_ns=30,
-        wall_elapsed_ns=1_000,
+        wall_elapsed_ns=760,
     )
 
 
@@ -187,7 +263,7 @@ def _checkpointed(
         status=progress.ProgressStatus.CHECKPOINTED,
         units_completed=sidecar.units_completed + 1,
         updated_at="2026-08-06T14:00:02Z",
-        wall_elapsed_ns=sidecar.wall_elapsed_ns + 200,
+        wall_elapsed_ns=sidecar.wall_elapsed_ns + 110,
     )
 
 
@@ -230,7 +306,7 @@ def test_canonical_roundtrip_and_atomic_replace(tmp_path: Path) -> None:
         active_elapsed_ns=700,
         updated_at="2026-08-06T14:00:03Z",
         units_completed=21,
-        wall_elapsed_ns=1_200,
+        wall_elapsed_ns=860,
     )
     assert progress.write_atomic(updated) == destination
     assert progress.read(destination) == updated
@@ -266,18 +342,36 @@ def test_impossible_timing_and_units_fail(tmp_path: Path) -> None:
         _ = progress.validate(
             replace(sidecar, units_completed=2, units_total=1)
         )
-    with pytest.raises(ERROR, match="active plus paused"):
-        _ = progress.validate(
-            replace(
-                sidecar,
-                active_elapsed_ns=800,
-                paused_elapsed_ns=300,
-            )
-        )
+    with pytest.raises(ERROR, match="exactly partition"):
+        _ = progress.validate(replace(sidecar, active_elapsed_ns=601))
     with pytest.raises(ERROR, match="precedes"):
         _ = progress.validate(
             replace(sidecar, updated_at="2026-08-06T13:59:59Z")
         )
+
+
+def test_direct_records_reject_negative_or_boolean_numbers(
+    tmp_path: Path,
+) -> None:
+    """In-memory construction has the same numeric domain as JSON parsing."""
+    sidecar = _sidecar(tmp_path)
+    for field_name in (
+        "active_elapsed_ns",
+        "checkpoint_elapsed_ns",
+        "checkpoint_sequence",
+        "partial_bytes",
+        "paused_elapsed_ns",
+        "seed",
+        "serialization_elapsed_ns",
+        "units_completed",
+        "units_total",
+        "verification_elapsed_ns",
+        "wall_elapsed_ns",
+    ):
+        with pytest.raises(ERROR, match="non-negative integer"):
+            _ = progress.validate(replace(sidecar, **{field_name: -1}))
+    with pytest.raises(ERROR, match="non-negative integer"):
+        _ = progress.validate(replace(sidecar, units_completed=True))
 
 
 def test_resume_identity_mismatch_fails(tmp_path: Path) -> None:
@@ -343,9 +437,10 @@ def test_transition_validation_rejects_stale_or_skipped_state(
 
     resumed = replace(
         checkpointed,
+        active_elapsed_ns=checkpointed.active_elapsed_ns + 100,
         status=progress.ProgressStatus.RUNNING,
         updated_at="2026-08-06T14:00:03Z",
-        wall_elapsed_ns=1_300,
+        wall_elapsed_ns=checkpointed.wall_elapsed_ns + 100,
     )
     assert progress.validate_transition(checkpointed, resumed) == resumed
 
@@ -381,6 +476,41 @@ def test_transition_validation_rejects_stale_or_skipped_state(
     assert progress.validate_transition(resumed, completed) == completed
     with pytest.raises(ERROR, match="invalid progress transition"):
         _ = progress.validate_transition(completed, completed)
+
+
+def test_immutable_publication_selects_platform_no_replace_primitive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows rename and POSIX link publication both preserve exact bytes."""
+    writer = cast(
+        "ImmutableWriter",
+        vars(progress)["_write_immutable"],
+    )
+    windows_destination = tmp_path / "windows-generation"
+    _ = writer(
+        windows_destination,
+        WINDOWS_PAYLOAD,
+        platform=progress.WINDOWS_PLATFORM,
+    )
+    assert windows_destination.read_bytes() == WINDOWS_PAYLOAD
+
+    link_calls: list[tuple[Path, Path]] = []
+    original_link = os.link
+
+    def record_link(source: Path, destination: Path) -> None:
+        link_calls.append((source, destination))
+        original_link(source, destination)
+
+    monkeypatch.setattr(os, "link", record_link)
+    posix_destination = tmp_path / "posix-generation"
+    _ = writer(
+        posix_destination,
+        POSIX_PAYLOAD,
+        platform="posix",
+    )
+    assert posix_destination.read_bytes() == POSIX_PAYLOAD
+    assert len(link_calls) == 1
 
 
 def test_checkpoint_generation_publishes_payloads_before_pointer(
@@ -444,6 +574,7 @@ def test_write_atomic_preserves_previous_state_after_rejected_transition(
         original,
         active_elapsed_ns=original.active_elapsed_ns - 1,
         updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=original.wall_elapsed_ns - 1,
     )
     with pytest.raises(ERROR, match="active_elapsed_ns moved backward"):
         _ = progress.write_atomic(stale)
@@ -493,6 +624,7 @@ def test_transition_validation_is_monotonic_and_terminal(
         running,
         active_elapsed_ns=599,
         updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=759,
     )
     with pytest.raises(ERROR, match="active_elapsed_ns moved backward"):
         _ = progress.validate_transition(running, backward)
@@ -512,7 +644,6 @@ def test_transition_validation_is_monotonic_and_terminal(
         completed_at=None,
         status=progress.ProgressStatus.RUNNING,
         updated_at="2026-08-06T14:00:03Z",
-        wall_elapsed_ns=1_100,
     )
     with pytest.raises(ERROR, match="invalid progress transition"):
         _ = progress.validate_transition(completed, reopened)
@@ -565,6 +696,104 @@ def test_generation_publication_preserves_last_committed_resume(
     assert progress.read(destination) == second
     assert Path(first.checkpoint_path or "").is_file()
     assert Path(first.partial_path or "").is_file()
+
+
+def _subprocess_environment() -> dict[str, str]:
+    module_file = progress.__file__
+    assert module_file is not None
+    composition_root = Path(module_file).resolve().parents[1]
+    environment = dict(os.environ)
+    existing = environment.get("PYTHONPATH")
+    paths = [str(composition_root)]
+    if existing:
+        paths.append(existing)
+    environment["PYTHONPATH"] = os.pathsep.join(paths)
+    return environment
+
+
+def _crash_fixture(tmp_path: Path) -> CrashFixture:
+    first = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=CHECKPOINT_BEFORE_CRASH,
+        partial=PARTIAL_BEFORE_CRASH,
+    )
+    destination = progress.write_checkpoint_generation(
+        first,
+        CHECKPOINT_BEFORE_CRASH,
+        PARTIAL_BEFORE_CRASH,
+    )
+    second = _checkpointed(
+        first,
+        sequence=2,
+        checkpoint=CHECKPOINT_AFTER_CRASH,
+        partial=PARTIAL_AFTER_CRASH,
+    )
+    sidecar_input = tmp_path / "pending-sidecar.json"
+    checkpoint_input = tmp_path / "pending-checkpoint.bin"
+    partial_input = tmp_path / "pending-partial.bin"
+    _ = sidecar_input.write_bytes(progress.encode(second))
+    _ = checkpoint_input.write_bytes(CHECKPOINT_AFTER_CRASH)
+    _ = partial_input.write_bytes(PARTIAL_AFTER_CRASH)
+    return CrashFixture(
+        checkpoint_input=checkpoint_input,
+        checkpoint_one=CHECKPOINT_BEFORE_CRASH,
+        checkpoint_two=CHECKPOINT_AFTER_CRASH,
+        destination=destination,
+        first=first,
+        partial_input=partial_input,
+        partial_one=PARTIAL_BEFORE_CRASH,
+        partial_two=PARTIAL_AFTER_CRASH,
+        second=second,
+        sidecar_input=sidecar_input,
+    )
+
+
+@pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
+def test_process_crash_preserves_last_committed_generation(
+    tmp_path: Path,
+    boundary: str,
+) -> None:
+    """A child-process crash cannot publish or corrupt the next pointer."""
+    fixture = _crash_fixture(tmp_path)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-c",
+            CRASH_SCRIPT,
+            str(fixture.sidecar_input),
+            str(fixture.checkpoint_input),
+            str(fixture.partial_input),
+            str(CRASH_EXIT),
+            boundary,
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
+        errors="replace"
+    )
+    assert progress.read(fixture.destination) == fixture.first
+    assert progress.read_checkpoint_generation(fixture.first) == (
+        fixture.checkpoint_one,
+        fixture.partial_one,
+    )
+    checkpoint_path = Path(fixture.second.checkpoint_path or "")
+    partial_path = Path(fixture.second.partial_path or "")
+    assert checkpoint_path.read_bytes() == fixture.checkpoint_two
+    if boundary == AFTER_CHECKPOINT:
+        assert not partial_path.exists()
+    else:
+        assert partial_path.read_bytes() == fixture.partial_two
+
+    _ = progress.write_checkpoint_generation(
+        fixture.second,
+        fixture.checkpoint_two,
+        fixture.partial_two,
+    )
+    assert progress.read(fixture.destination) == fixture.second
 
 
 def test_generation_payloads_fail_closed_before_pointer_update(

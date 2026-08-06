@@ -44,8 +44,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   serialization, and checkpoint overhead remain separately measurable.
 - Unknown work totals remain unknown rather than producing a fabricated
   percentage.
-- Checkpoints and sidecars are atomically replaced and reject incompatible or
-  corrupted resume attempts.
+- Checkpoint generations are atomically published without replacement, and
+  sidecars are atomically replaced; incompatible or corrupted resume attempts
+  fail closed.
 - CPU and accelerator jobs can resume from backend-neutral durable state and
   produce the same independently verified artifact as uninterrupted execution.
 - The requested final `.malbolge` path appears only after complete verification;
@@ -66,11 +67,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   publication, and an injected monotonic phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation
-  payloads, source/repository identity mismatches, a simulated crash before the
-  next sidecar pointer is published, and exact operator-facing elapsed-time
-  summaries.
-- Product CLI, compiler-state serialization, crash injection, and CPU/CUDA
-  resume equivalence remain open; this TODO is therefore still active.
+  payloads, source/repository identity mismatches, child-process crashes after
+  checkpoint publication and before the next sidecar pointer, and exact
+  operator-facing elapsed-time summaries.
+- Product CLI, compiler-state serialization, broader power-loss injection,
+  and CPU/CUDA resume equivalence remain open; this TODO is therefore active.
 - Required durable artifacts: versioned JSON schema, atomic writer, checkpoint
   compatibility fingerprint, CLI/service integration, injected-clock tests,
   crash fixtures, CPU/CUDA resume differential evidence, and timing reports.
