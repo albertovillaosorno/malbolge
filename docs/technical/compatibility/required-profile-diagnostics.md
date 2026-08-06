@@ -85,7 +85,10 @@ selected profile's own capacity before runtime capacity, preserves exact
 `malbolge-1998`, `malbolge-2026`, `malbolge-2026.1`, `malbolge-2026.2`, and
 `malbolge-2026.3` identities, rejects
 unknown IDs without fallback, and emits byte-identical `MALBOLGE-PROFILE-001`
-and `MALBOLGE-PROFILE-002` text for the shared reference cases.
+and `MALBOLGE-PROFILE-002` text for the shared reference cases. Direct public
+error construction validates the exact error enum, immutable canonical missing
+dimensions, a real rejected requirement/runtime pair, and profile-capacity
+precedence before rendering diagnostic text.
 
 The current `malbolge-2026` profile therefore fails preflight when explicitly
 sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by

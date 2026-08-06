@@ -65,7 +65,9 @@ historical-profile constraint.
   immutable profile requirements and explicit runtime envelopes derived from the
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
-  before runtime capacity and missing dimensions kept in stable order.
+  before runtime capacity and missing dimensions kept in stable order. Direct
+  public error construction now admits only the exact enum, canonical immutable
+  dimensions, and a real rejected preflight pair with the same precedence.
 - Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now
   carry exact profile ID/fingerprint plus published version, ordered semantic
   features, word trits, profile capacity, and derived `u64` region memory.

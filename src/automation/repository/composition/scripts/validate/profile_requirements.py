@@ -118,10 +118,16 @@ class ProfileRequirementError(ValueError):
         missing_dimensions: tuple[str, ...],
     ) -> None:
         """Build one stable rejection without consulting host state."""
-        self.kind: ProfileRequirementErrorKind = kind
-        self.requirement: ProfileRequirement = requirement
-        self.runtime: RuntimeCapability = runtime
-        self.missing_dimensions: tuple[str, ...] = missing_dimensions
+        validated = _validated_error_contract(
+            kind,
+            requirement,
+            runtime,
+            missing_dimensions=missing_dimensions,
+        )
+        self.kind: ProfileRequirementErrorKind = validated[0]
+        self.requirement: ProfileRequirement = validated[1]
+        self.runtime: RuntimeCapability = validated[2]
+        self.missing_dimensions: tuple[str, ...] = validated[3]
         super().__init__(_diagnostic_text(self))
 
     @property
@@ -264,6 +270,89 @@ def preflight_profile_requirement(
             validated_runtime,
             missing_dimensions=missing,
         )
+
+
+def _validated_error_contract(
+    kind: ProfileRequirementErrorKind,
+    requirement: ProfileRequirement,
+    runtime: RuntimeCapability,
+    *,
+    missing_dimensions: tuple[str, ...],
+) -> tuple[
+    ProfileRequirementErrorKind,
+    ProfileRequirement,
+    RuntimeCapability,
+    tuple[str, ...],
+]:
+    validated_kind = _validated_error_kind(kind)
+    validated_requirement = _validated_requirement(requirement)
+    validated_runtime = _validated_runtime(runtime)
+    validated_dimensions = _validated_error_dimensions(missing_dimensions)
+    expected_kind, expected_dimensions = _expected_error_contract(
+        validated_requirement,
+        validated_runtime,
+    )
+    _validate_error_match(
+        validated_kind,
+        validated_dimensions,
+        expected_kind=expected_kind,
+        expected_dimensions=expected_dimensions,
+    )
+    return (
+        validated_kind,
+        validated_requirement,
+        validated_runtime,
+        validated_dimensions,
+    )
+
+
+def _validated_error_kind(
+    value: ProfileRequirementErrorKind,
+) -> ProfileRequirementErrorKind:
+    if type(value) is not ProfileRequirementErrorKind:
+        _raise_validation("diagnostic kind must use the exact enum type")
+    return value
+
+
+def _validated_error_dimensions(
+    value: tuple[str, ...],
+) -> tuple[str, ...]:
+    if type(value) is not tuple:
+        _raise_validation(
+            "diagnostic missing dimensions must use the exact immutable tuple"
+        )
+    return value
+
+
+def _validate_error_match(
+    kind: ProfileRequirementErrorKind,
+    dimensions: tuple[str, ...],
+    *,
+    expected_kind: ProfileRequirementErrorKind | None,
+    expected_dimensions: tuple[str, ...],
+) -> None:
+    if expected_kind is None:
+        _raise_validation("diagnostic requires a rejected profile preflight")
+    if kind is not expected_kind:
+        _raise_validation(
+            "diagnostic kind does not match the preflight rejection"
+        )
+    if dimensions != expected_dimensions:
+        _raise_validation(
+            "diagnostic missing dimensions do not match the preflight rejection"
+        )
+
+
+def _expected_error_contract(
+    requirement: ProfileRequirement,
+    runtime: RuntimeCapability,
+) -> tuple[ProfileRequirementErrorKind | None, tuple[str, ...]]:
+    if requirement.required_memory_words > requirement.memory_words:
+        return ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED, ()
+    missing = _missing_dimensions(requirement, runtime)
+    if missing:
+        return ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING, missing
+    return None, ()
 
 
 def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:

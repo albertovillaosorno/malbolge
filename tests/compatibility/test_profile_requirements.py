@@ -515,3 +515,93 @@ def test_error_retains_exact_requirement_and_runtime() -> None:
 
     assert caught.value.requirement is requirement
     assert caught.value.runtime is runtime
+
+
+def test_direct_error_construction_requires_exact_canonical_contract() -> None:
+    requirement = _requirement()
+    runtime = requirements.safe_rust_classic_capability()
+    foreign_kind: object = "runtime-capability-missing"
+    mutable_dimensions: object = ["word-trits", "memory-words"]
+    runtime_missing_kind = (
+        requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING
+    )
+
+    cases = (
+        (
+            lambda: requirements.ProfileRequirementError(
+                cast(
+                    "requirements.ProfileRequirementErrorKind",
+                    cast("object", foreign_kind),
+                ),
+                requirement,
+                runtime,
+                missing_dimensions=("word-trits", "memory-words"),
+            ),
+            "diagnostic kind must use the exact enum type",
+        ),
+        (
+            lambda: requirements.ProfileRequirementError(
+                runtime_missing_kind,
+                requirement,
+                runtime,
+                missing_dimensions=cast(
+                    "tuple[str, ...]",
+                    cast("object", mutable_dimensions),
+                ),
+            ),
+            "missing dimensions must use the exact immutable tuple",
+        ),
+        (
+            lambda: requirements.ProfileRequirementError(
+                runtime_missing_kind,
+                requirement,
+                runtime,
+                missing_dimensions=("memory-words", "word-trits"),
+            ),
+            "missing dimensions do not match the preflight rejection",
+        ),
+        (
+            lambda: requirements.ProfileRequirementError(
+                runtime_missing_kind,
+                requirement,
+                runtime,
+                missing_dimensions=("unknown",),
+            ),
+            "missing dimensions do not match the preflight rejection",
+        ),
+    )
+    for construct, message in cases:
+        with pytest.raises(
+            requirements.ProfileRequirementValidationError,
+            match=message,
+        ):
+            _ = construct()
+
+
+def test_direct_error_construction_rejects_admitted_pair() -> None:
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="requires a rejected profile preflight",
+    ):
+        _ = requirements.ProfileRequirementError(
+            requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+            _requirement(),
+            requirements.safe_rust_profiled_capability(),
+            missing_dimensions=(),
+        )
+
+
+def test_direct_error_preserves_profile_capacity_precedence() -> None:
+    requirement = _requirement(required_memory_words=CURRENT_WORDS + 1)
+    runtime = _runtime(max_memory_words=1, max_word_trits=1)
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="kind does not match the preflight rejection",
+    ):
+        _ = requirements.ProfileRequirementError(
+            requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+            requirement,
+            runtime,
+            missing_dimensions=("word-trits", "memory-words"),
+        )
