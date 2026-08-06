@@ -225,11 +225,12 @@ def safe_rust_profiled_capability() -> RuntimeCapability:
         Fourteen-trit, 4,782,969-word normative runtime capability.
 
     """
+    geometry = target_profile.current_profile_geometry()
     return build_runtime_capability(
         capability_id=SAFE_RUST_PROFILED_CAPABILITY_ID,
         features=NORMATIVE_PROFILE_FEATURES,
-        max_memory_words=4_782_969,
-        max_word_trits=14,
+        max_memory_words=geometry.memory_words,
+        max_word_trits=geometry.word_trits,
     )
 
 

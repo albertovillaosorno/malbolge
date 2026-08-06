@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -62,14 +62,13 @@ self-modifying semantic core across schema-v2 profiles, and an exact
 one-to-one assignment of `<` and `/` to versioned input/output roles.
 
 Cross-component consumption is not complete. The classic safe Rust `Machine`
-still implements `malbolge-1998` constants directly and must not silently
-execute
-a `malbolge-2026` artifact. The separate `ProfileMachine` now consumes the
-canonical descriptor and executes schema-v2 profiles through 14 trits under
-explicit `safe-rust-profiled` capability. Profile-driven trace evidence now
-carries the same canonical identity. Compiler, tidy, verifier, native, and
-accelerator consumers are not yet universally
-profile-driven, so this contract remains active.
+remains deliberately bound to `malbolge-1998` and cannot silently execute a
+`malbolge-2026` artifact. `ProfileMachine`, native execution, CUDA geometry,
+decompiler output, runtime capability checks, and current-profile performance
+workloads consume canonical descriptors, generated projections, or the typed
+`current_profile_geometry()` view. Compiler, tidy, and integrated verifier
+consumers remain future implementations and must adopt this authority within
+their own typed work before they execute or publish profile-bound artifacts.
 
 Published profile identity is additionally bound by `malbolge-profile-v1`
 fingerprints. The fingerprint includes profile ID/version, target schema,

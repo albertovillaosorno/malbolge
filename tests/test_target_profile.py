@@ -78,6 +78,18 @@ def test_current_profile_identity_is_distinct() -> None:
     assert document["current_profile"] != validator.HISTORICAL_PROFILE
 
 
+def test_current_profile_geometry_view_matches_canonical_document() -> None:
+    """Implemented consumers receive exact selected geometry from one API."""
+    geometry = validator.current_profile_geometry()
+    assert geometry.profile_id == CURRENT_PROFILE
+    assert geometry.word_trits == CURRENT_TRITS
+    assert geometry.word_modulus == CURRENT_WORDS
+    assert geometry.memory_words == CURRENT_WORDS
+    assert geometry.eof_word == CURRENT_EOF
+    assert geometry.input_instruction == INTERPRETER_INPUT
+    assert geometry.output_instruction == INTERPRETER_OUTPUT
+
+
 def test_duplicate_json_keys_fail_closed() -> None:
     """Duplicate object keys are rejected before semantic validation."""
     _expect_invalid('{"schema_version":2,"schema_version":2}')

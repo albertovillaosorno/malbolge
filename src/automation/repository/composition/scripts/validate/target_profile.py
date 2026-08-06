@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -114,6 +115,19 @@ SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {
 type JsonScalar = bool | int | float | str | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 type JsonObject = dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetProfileGeometry:
+    """Canonical execution geometry for one target-profile identity."""
+
+    eof_word: int
+    input_instruction: str
+    memory_words: int
+    output_instruction: str
+    profile_id: str
+    word_modulus: int
+    word_trits: int
 
 
 class ProfileValidationError(ValueError):
@@ -420,6 +434,77 @@ def validate_document(document: JsonObject) -> None:
         validated[profile_id] = _validate_profile(profile_id, profile_value)
 
     _validate_profile_identities(current_profile, validated)
+
+
+def profile_geometry(
+    document: JsonObject,
+    profile_id: str,
+) -> TargetProfileGeometry:
+    """Return validated canonical geometry for one named profile.
+
+    Returns:
+        Exact word, memory, EOF, and I/O geometry owned by the profile.
+
+    """
+    validate_document(document)
+    profiles = _expect_mapping(document["profiles"], "profiles")
+    profile = _expect_mapping(
+        profiles.get(profile_id),
+        f"profiles.{profile_id}",
+    )
+    word = _expect_mapping(profile["word"], f"profiles.{profile_id}.word")
+    memory = _expect_mapping(
+        profile["memory"],
+        f"profiles.{profile_id}.memory",
+    )
+    semantics = _expect_mapping(
+        profile["semantics"],
+        f"profiles.{profile_id}.semantics",
+    )
+    return TargetProfileGeometry(
+        eof_word=_expect_int(
+            semantics["eof_word"],
+            f"profiles.{profile_id}.semantics.eof_word",
+        ),
+        input_instruction=_expect_string(
+            semantics["input_instruction"],
+            f"profiles.{profile_id}.semantics.input_instruction",
+        ),
+        memory_words=_expect_int(
+            memory["words"],
+            f"profiles.{profile_id}.memory.words",
+        ),
+        output_instruction=_expect_string(
+            semantics["output_instruction"],
+            f"profiles.{profile_id}.semantics.output_instruction",
+        ),
+        profile_id=profile_id,
+        word_modulus=_expect_int(
+            word["modulus"],
+            f"profiles.{profile_id}.word.modulus",
+        ),
+        word_trits=_expect_int(
+            word["trits"],
+            f"profiles.{profile_id}.word.trits",
+        ),
+    )
+
+
+def current_profile_geometry(
+    document: JsonObject | None = None,
+) -> TargetProfileGeometry:
+    """Return geometry for the selected annual profile.
+
+    Returns:
+        Exact canonical geometry selected by `current_profile`.
+
+    """
+    canonical = load_document(DEFAULT_PROFILE) if document is None else document
+    current_profile = _expect_string(
+        canonical["current_profile"],
+        "current_profile",
+    )
+    return profile_geometry(canonical, current_profile)
 
 
 def _profile_definition(profile: JsonObject, context: str) -> JsonObject:

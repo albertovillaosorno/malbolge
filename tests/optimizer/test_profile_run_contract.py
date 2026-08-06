@@ -45,6 +45,8 @@ from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import validate_profile_run_requests
+from benchmarks.accelerator.profile_workload import GEOMETRY as CURRENT_GEOMETRY
+from scripts.validate import target_profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,6 +69,21 @@ GEOMETRY = ProfileRunGeometry(
     word_modulus=SMALL_WORDS,
     word_trits=SMALL_TRITS,
 )
+
+
+def test_current_benchmark_geometry_uses_canonical_profile() -> None:
+    """Current CUDA evidence cannot reconstruct annual geometry by hand."""
+    geometry = target_profile.current_profile_geometry()
+    assert CURRENT_GEOMETRY.eof_word == geometry.eof_word
+    assert CURRENT_GEOMETRY.input_instruction == ord(
+        geometry.input_instruction
+    )
+    assert CURRENT_GEOMETRY.memory_words == geometry.memory_words
+    assert CURRENT_GEOMETRY.output_instruction == ord(
+        geometry.output_instruction
+    )
+    assert CURRENT_GEOMETRY.word_modulus == geometry.word_modulus
+    assert CURRENT_GEOMETRY.word_trits == geometry.word_trits
 
 
 def test_profile_geometry_accepts_exact_ternary_modulus() -> None:

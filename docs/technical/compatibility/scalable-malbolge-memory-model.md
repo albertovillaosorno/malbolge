@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -64,7 +64,7 @@ make larger memory easier to implement.
 
 ### Input, Output, and EOF
 
-`<` remains byte input and `/` remains output. Output is still `A mod 256`.
+`/` remains byte input and `<` remains output. Output is still `A mod 256`.
 
 EOF is the maximum profile word, preserving the historical all-two-trit
 sentinel:
@@ -139,9 +139,10 @@ implicit fifteenth trit can enter the result.
 surface.
 They still reject `malbolge-2026` through `safe-rust-classic` preflight rather
 than silently changing classic types or loader behavior. `ProfileMachine` is the
-explicit runtime surface for current scalable execution. Compiler, native tiers,
-and accelerators are not yet universally
-profile-driven and remain downstream adoption work.
+explicit runtime surface for current scalable execution. Native tiers, CUDA
+resident execution, decompiler output, runtime capability checks, and benchmark
+workloads consume canonical profile geometry. Future compiler and integrated
+verifier implementations own their adoption before becoming executable.
 
 ## Invariants
 

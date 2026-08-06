@@ -40,14 +40,17 @@ import json
 import sys
 from typing import Final
 
+from accelerator.classic_run import MEMORY_WORDS
 from accelerator.cuda.runtime import CudaRuntime
 from accelerator.resource_budget import AcceleratorResources
 from accelerator.resource_budget import plan_resident_batches
 
+from benchmarks.accelerator.profile_workload import PROFILE_WORDS
+
 MIB: Final = 1024 * 1024
 GIB: Final = 1024 * MIB
-CURRENT_STATE_BYTES: Final = (4_782_969 * 4) + 64
-CLASSIC_STATE_BYTES: Final = (59_049 * 4) + 64
+CURRENT_STATE_BYTES: Final = (PROFILE_WORDS * 4) + 64
+CLASSIC_STATE_BYTES: Final = (MEMORY_WORDS * 4) + 64
 SCENARIO_ITEMS: Final = 10_000
 HUGE_GIB: Final = 100_000
 HUGE_ITEMS: Final = 100_000

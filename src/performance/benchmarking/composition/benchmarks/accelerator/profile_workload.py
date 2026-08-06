@@ -46,26 +46,28 @@ from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import validate_profile_run_requests
+from scripts.validate import target_profile
 
 if TYPE_CHECKING:
     from accelerator.profile_run import ProfileRunResult
 
 NOOP_DECODED: Final = ord("+")
-PROFILE_TRITS: Final = 14
-PROFILE_WORDS: Final = 3**PROFILE_TRITS
+_CURRENT_PROFILE: Final = target_profile.current_profile_geometry()
+PROFILE_TRITS: Final = _CURRENT_PROFILE.word_trits
+PROFILE_WORDS: Final = _CURRENT_PROFILE.memory_words
 STEP_BUDGET: Final = 64
 WORD_BYTES: Final = 4
 WORKLOAD_DESCRIPTION: Final = (
-    "64 committed no-op transitions per 14-trit profile VM"
+    f"64 committed no-op transitions per {PROFILE_TRITS}-trit profile VM"
 )
 GEOMETRY: Final = ProfileRunGeometry(
-    eof_word=PROFILE_WORDS - 1,
-    input_instruction=ord("/"),
-    memory_words=PROFILE_WORDS,
-    output_instruction=ord("<"),
-    word_modulus=PROFILE_WORDS,
-    word_trits=PROFILE_TRITS,
-)
+    eof_word=_CURRENT_PROFILE.eof_word,
+    input_instruction=ord(_CURRENT_PROFILE.input_instruction),
+    memory_words=_CURRENT_PROFILE.memory_words,
+    output_instruction=ord(_CURRENT_PROFILE.output_instruction),
+    word_modulus=_CURRENT_PROFILE.word_modulus,
+    word_trits=_CURRENT_PROFILE.word_trits,
+).validated()
 
 
 def profile_noop_request(
