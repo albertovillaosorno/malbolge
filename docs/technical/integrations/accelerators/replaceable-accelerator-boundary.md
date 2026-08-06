@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Accepted implementation
 
 ## Purpose
 
@@ -1511,6 +1511,16 @@ remain
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, event-instrumentation controls, additional
 admission profiles, and other kernel/callback workloads remain open.
+
+### Completion Boundary
+
+The hardware-neutral port, mandatory CPU reference, optional CUDA adapter,
+profiled VM routes, candidate/search/verification-assist protocols, prepared
+state, submission lifetimes, fallback behavior, admission evidence, and retained
+benchmark methodology are implemented. Additional CUDA kernels, ROCm support,
+long-running services, new search strategies, and broader hardware evidence are
+extensions owned by their own typed work; they do not reopen this base
+substitution contract.
 
 ## Invariants
 

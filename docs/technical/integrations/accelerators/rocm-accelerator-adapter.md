@@ -56,4 +56,4 @@ future implementation requires a new reviewed TODO and live-device evidence.
 - `docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md`
 - `docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md`
 - `docs/technical/adr/verification-trust-boundary.md`
-- `docs/todo/open/accelerator/rocm-accelerator-adapter.mdc`
+- `docs/todo/open/accelerator/portable-amd-hip-rocm-accelerator-adapter.mdc`

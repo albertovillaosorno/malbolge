@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted methodology and implemented platform
 
 ## Research Question
 
@@ -22,7 +22,7 @@ semantic code, record exact configuration/seeds/inputs, compare against common
 correctness oracles, and emit reproducible evidence so a new algorithm can be
 accepted, rejected, or retired without becoming architecture by accident.
 
-- Status: Proposed
+- Status: Accepted and implemented
 - Record type: Methodology
 - Planning identity: `compiler-algorithm-experimentation-platform`
 - Last reviewed: 2026-07-26
@@ -54,28 +54,36 @@ results. Source claims resolve through `docs/bibliography/`.
 
 ## Evidence
 
-- Expected durable artifact surface: `algorithms/`, `docs/research/`,
-  `benchmarks/`, `tests/`.
-- Required evidence: reviewed authority text plus deterministic
-  parser/schema/governance tests for the declared boundary.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Seven non-template algorithm families use the mirrored research taxonomy.
+- Fifty-three experiment manifests and 45 retained benchmark experiment
+  manifests record stable identity, inputs, configuration, hypotheses, and
+  evidence ownership.
+- Repository validators enforce algorithm lifecycle, mirror identity,
+  experiment-manifest schema, benchmark protocol, retained evidence, and local
+  output boundaries.
+- Negative and null results remain retained beside promoted optimizations; the
+  accelerator evidence explicitly preserves routes that were slower or failed
+  their overlap hypotheses.
 
 ## Results
 
-No completed research result or implementation claim is made by this proposed
-record.
+The platform supports adding, validating, comparing, retaining, and retiring
+experimental algorithms without editing VM semantic authority. Product
+algorithms remain within their owning functions, while executable research uses
+stable mirrored identities and explicit experiment manifests.
 
 ## Threats to Validity
 
-The record is proposed; implementation bias, workload selection, hardware
-effects, and incomplete replication remain threats until measured.
+The platform does not make every experiment reproducible on every host. Hardware
+availability, external toolchains, workload selection, measurement noise, and
+retained-environment drift remain experiment-specific threats that each result
+must state independently.
 
 ## Conclusion
 
-Open. No technique is promoted to product architecture until the declared
-evidence supports it.
+Accepted. The repository has a reusable compiler-algorithm experimentation
+platform. Individual techniques remain untrusted until their own evidence and
+promotion gates pass.
 
 ## References
 
