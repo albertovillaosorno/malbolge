@@ -56,7 +56,9 @@ batches.
   only.
 - Compact classic one-step VM execution is now active. A fixed-width request
   declares registers/counters/input plus at most four keyed memory cells; CUDA
-  returns the full `StepTrace`-equivalent projection. Rust integration compares
+  returns the full `StepTrace`-equivalent projection. Compact, resident classic,
+  and scalable-profile request boundaries reject boolean scalars and tuple
+  members before protocol encoding or CUDA work. Rust integration compares
   fourteen instruction/edge fixtures directly with normative
   `Machine::step_traced()`, including atomic rejection and write aliasing.
 - Resident classic bounded execution is active behind

@@ -93,6 +93,7 @@ BAD_MODE_CAPABILITY = "capability"
 BAD_MODE_COUNT = "count"
 BAD_MODE_DOMAIN = "domain"
 BAD_MODE_NEGATIVE = "negative"
+BAD_MODE_BOOLEAN = "boolean"
 BAD_PACKED_MODE_CAPABILITY = "packed-capability"
 BAD_PACKED_MODE_COUNT = "packed-count"
 BAD_PACKED_MODE_DOMAIN = "packed-domain"
@@ -193,6 +194,8 @@ class _BadResultAdapter(ExactPrimitiveAdapter):
             values = ()
         elif self.mode == BAD_MODE_NEGATIVE:
             values = (-1,) * count
+        elif self.mode == BAD_MODE_BOOLEAN:
+            values = (True,) * count
         else:
             values = (MAX_WORD + 1,) * count
         return PrimitiveResult(capability=capability, values=values)
@@ -681,6 +684,7 @@ def test_malformed_primitive_results_fail_closed() -> None:
         ),
         ("domain", "primitive backend result outside classic domain"),
         ("negative", "primitive backend result outside classic domain: -1"),
+        ("boolean", "primitive backend result outside classic domain: True"),
     )
     for mode, message in cases:
         adapter = PrimitiveCandidateEvaluationAdapter(

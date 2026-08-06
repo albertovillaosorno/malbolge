@@ -148,6 +148,28 @@ def test_cuda_rotate_matches_cpu_reference() -> None:
     assert cuda.capability.device_name
 
 
+def test_primitive_batch_rejects_boolean_words() -> None:
+    """Boolean tuple members never become exact classic primitive words."""
+    cases = (
+        PrimitiveBatch(
+            accumulators=(),
+            data=(True,),
+            kind=PrimitiveKind.ROTATE,
+        ),
+        PrimitiveBatch(
+            accumulators=(False,),
+            data=(0,),
+            kind=PrimitiveKind.CRAZY,
+        ),
+    )
+    for batch in cases:
+        _expect_error(
+            InvalidPrimitiveBatchError,
+            "word outside classic domain",
+            batch.validated,
+        )
+
+
 def test_invalid_batch_fails_before_backend_execution() -> None:
     """Reject malformed requests before backend execution."""
     batch = PrimitiveBatch(

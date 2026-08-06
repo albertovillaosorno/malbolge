@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -54,6 +55,9 @@ from accelerator.exact_primitives import InvalidPrimitiveBatchError
 DUPLICATE_MEMORY = "duplicate compact memory address"
 MISSING_CODE_CELL = "missing its code-pointer cell"
 INVALID_TERMINATION = "invalid compact termination"
+WORD_ERROR = "outside classic word domain"
+U32_ERROR = "outside unsigned 32-bit domain"
+INPUT_BYTE_ERROR = "input byte outside byte domain"
 
 
 def _invalid(action: Callable[[], object]) -> str:
@@ -80,6 +84,30 @@ def test_compact_step_request_is_fixed_width_and_zero_padded() -> None:
     assert words[:8] == (7, 0, 1, 3, 5, 0, 1, 65)
     assert words[8:14] == (1, 0, 99, 1, 1, 39)
     assert words[14:] == (0, 0, 0, 0, 0, 0)
+
+
+def test_compact_step_request_rejects_boolean_numeric_fields() -> None:
+    """Boolean values cannot become words, counters, or input bytes."""
+    base = ClassicStepRequest(
+        accumulator=0,
+        code_pointer=0,
+        data_pointer=1,
+        input_byte=None,
+        input_consumed=0,
+        memory=(StepMemoryCell(0, 39),),
+        output_len=0,
+    )
+    cases = (
+        (replace(base, accumulator=True), WORD_ERROR),
+        (replace(base, input_consumed=False), U32_ERROR),
+        (replace(base, input_byte=True), INPUT_BYTE_ERROR),
+        (
+            replace(base, memory=(StepMemoryCell(address=True, value=39),)),
+            WORD_ERROR,
+        ),
+    )
+    for request, message in cases:
+        assert message in _invalid(request.validated)
 
 
 def test_compact_step_request_rejects_invalid_termination_type() -> None:

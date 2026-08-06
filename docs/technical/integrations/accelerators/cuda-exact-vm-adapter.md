@@ -65,7 +65,10 @@ and at most four explicitly keyed memory cells. One CUDA thread evaluates one
 specification-mode classic transition and returns status/termination/error,
 fetched/decoded bytes, committed I/O, final registers/counters, and at most two
 actual memory writes. Missing required cells fail as an invalid compact request;
-there is no implicit read from undeclared guest memory.
+there is no implicit read from undeclared guest memory. Compact, resident
+classic, scalable-profile, and hardware-neutral primitive request fields
+accept only exact Python integers; boolean scalars or tuple members fail before
+protocol encoding, preparation, or CUDA work.
 
 `tests/vm/cuda_step.rs` does not trust a Python CPU clone. It runs the normative
 safe-Rust `Machine::step_traced()` first, projects the resulting `StepTrace` to

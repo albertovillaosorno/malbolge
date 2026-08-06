@@ -950,9 +950,19 @@ def _iter_u32le_words(payloads: bytes) -> Iterator[int]:
         )
 
 
+def _validate_exact_primitive_values(values: tuple[int, ...]) -> None:
+    for value in values:
+        if type(value) is not int:
+            message = (
+                f"primitive backend result outside classic domain: {value!r}"
+            )
+            raise InvalidAcceleratorResultError(message)
+
+
 def _validate_primitive_values(values: tuple[int, ...]) -> None:
     if not values:
         return
+    _validate_exact_primitive_values(values)
     minimum = min(values)
     maximum = max(values)
     if minimum < 0:

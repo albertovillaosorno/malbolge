@@ -117,8 +117,8 @@ class PrimitiveBatch:
             message = "crazy batch arrays must have equal length"
             raise InvalidPrimitiveBatchError(message)
         for value in (*self.data, *self.accumulators):
-            if not 0 <= value <= MAX_WORD:
-                message = f"word outside classic domain: {value}"
+            if type(value) is not int or not 0 <= value <= MAX_WORD:
+                message = f"word outside classic domain: {value!r}"
                 raise InvalidPrimitiveBatchError(message)
         return self
 

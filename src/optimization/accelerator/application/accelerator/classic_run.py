@@ -165,7 +165,8 @@ def _validate_request_metadata(request: ClassicRunRequest) -> None:
     _validate_termination(request.termination)
     _validate_bytes(request.input_bytes, "input")
     _validate_bytes(request.output_bytes, "output")
-    if not 0 <= request.input_consumed <= len(request.input_bytes):
+    _check_u32(request.input_consumed, "input consumed")
+    if request.input_consumed > len(request.input_bytes):
         message = (
             "input consumed exceeds resident input length: "
             f"{request.input_consumed} > {len(request.input_bytes)}"
@@ -180,20 +181,32 @@ def _validate_request_metadata(request: ClassicRunRequest) -> None:
 
 
 def _check_u32(value: int, label: str) -> None:
-    if not 0 <= value <= MAX_U32:
+    if type(value) is not int or not 0 <= value <= MAX_U32:
         message = f"{label} outside unsigned 32-bit domain: {value}"
         raise InvalidPrimitiveBatchError(message)
 
 
 def _check_word(value: int, label: str) -> None:
-    if not 0 <= value <= MAX_WORD:
+    if type(value) is not int or not 0 <= value <= MAX_WORD:
         message = f"{label} outside classic word domain: {value}"
         raise InvalidPrimitiveBatchError(message)
+
+
+def _validate_exact_values(
+    values: tuple[int, ...],
+    label: str,
+    domain: str,
+) -> None:
+    for value in values:
+        if type(value) is not int:
+            message = f"{label} outside {domain}: {value!r}"
+            raise InvalidPrimitiveBatchError(message)
 
 
 def _validate_bytes(values: tuple[int, ...], label: str) -> None:
     if not values:
         return
+    _validate_exact_values(values, f"{label} byte", "byte domain")
     minimum = min(values)
     maximum = max(values)
     if minimum < 0:
@@ -205,6 +218,7 @@ def _validate_bytes(values: tuple[int, ...], label: str) -> None:
 
 
 def _validate_words(values: tuple[int, ...], label: str) -> None:
+    _validate_exact_values(values, label, "classic word domain")
     minimum = min(values)
     maximum = max(values)
     if minimum < 0:

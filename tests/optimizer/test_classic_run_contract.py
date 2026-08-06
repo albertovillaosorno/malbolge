@@ -55,6 +55,7 @@ INPUT_BYTE_ERROR = "input byte outside byte domain"
 OUTPUT_BYTE_ERROR = "output byte outside byte domain"
 INPUT_CURSOR_ERROR = "input consumed exceeds"
 TERMINATION_ERROR = "invalid resident termination"
+U32_ERROR = "outside unsigned 32-bit domain"
 
 
 def test_resident_request_accepts_complete_resumable_state() -> None:
@@ -115,6 +116,21 @@ def test_batch_validation_rejects_shared_invalid_memory() -> None:
     assert MEMORY_WORD_ERROR in _invalid(
         lambda: validate_classic_run_requests(requests)
     )
+
+
+def test_resident_request_rejects_boolean_numeric_fields() -> None:
+    """Boolean scalars and tuple members never become VM integers."""
+    cases = (
+        (replace(_base_request(), step_budget=True), U32_ERROR),
+        (replace(_base_request(), input_consumed=False), U32_ERROR),
+        (replace(_base_request(), input_bytes=(True,)), INPUT_BYTE_ERROR),
+        (
+            replace(_base_request(), memory=(True, *ZERO_MEMORY[1:])),
+            MEMORY_WORD_ERROR,
+        ),
+    )
+    for request, message in cases:
+        assert message in _invalid(request.validated)
 
 
 def test_resident_request_rejects_invalid_io_and_cursor() -> None:

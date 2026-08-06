@@ -38,6 +38,7 @@ from array import array
 from dataclasses import replace
 from typing import Final
 from typing import TYPE_CHECKING
+from typing import cast
 
 from accelerator.classic_step import StepTermination
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
@@ -46,6 +47,7 @@ from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import validate_profile_run_requests
 from benchmarks.accelerator.profile_workload import GEOMETRY as CURRENT_GEOMETRY
+import pytest
 from scripts.validate import target_profile
 
 if TYPE_CHECKING:
@@ -61,6 +63,10 @@ REGISTER_ERROR: Final = "code pointer outside"
 TERMINATION_ERROR: Final = "invalid resident termination"
 IMAGE_GEOMETRY_ERROR: Final = "memory image geometry mismatch"
 IO_ASSIGNMENT_ERROR: Final = "assign '<' and '/' exactly once"
+EXACT_INTEGER_ERROR: Final = "exact integer"
+BYTE_ERROR: Final = "byte outside byte domain"
+U32_ERROR: Final = "unsigned 32-bit domain"
+NONNEGATIVE_INTEGER_ERROR: Final = "nonnegative integer"
 GEOMETRY = ProfileRunGeometry(
     eof_word=SMALL_WORDS - 1,
     input_instruction=ord("/"),
@@ -75,9 +81,7 @@ def test_current_benchmark_geometry_uses_canonical_profile() -> None:
     """Current CUDA evidence cannot reconstruct annual geometry by hand."""
     geometry = target_profile.current_profile_geometry()
     assert CURRENT_GEOMETRY.eof_word == geometry.eof_word
-    assert CURRENT_GEOMETRY.input_instruction == ord(
-        geometry.input_instruction
-    )
+    assert CURRENT_GEOMETRY.input_instruction == ord(geometry.input_instruction)
     assert CURRENT_GEOMETRY.memory_words == geometry.memory_words
     assert CURRENT_GEOMETRY.output_instruction == ord(
         geometry.output_instruction
@@ -86,9 +90,23 @@ def test_current_benchmark_geometry_uses_canonical_profile() -> None:
     assert CURRENT_GEOMETRY.word_trits == geometry.word_trits
 
 
+def test_profile_memory_repeat_rejects_boolean_count() -> None:
+    """Boolean repetition counts never become one copied memory image."""
+    image = ProfileMemoryImage(GEOMETRY, array("I", [0]) * SMALL_WORDS)
+    invalid_count = cast("int", cast("object", bool(1)))
+    with pytest.raises(ValueError, match=NONNEGATIVE_INTEGER_ERROR):
+        _ = image.repeat_words(invalid_count)
+
+
 def test_profile_geometry_accepts_exact_ternary_modulus() -> None:
     """Exact single-word-modular ternary geometry is admitted."""
     assert GEOMETRY.validated() is GEOMETRY
+
+
+def test_profile_geometry_rejects_boolean_fields() -> None:
+    """Boolean geometry values never acquire integer profile semantics."""
+    invalid = replace(GEOMETRY, memory_words=True)
+    assert EXACT_INTEGER_ERROR in _invalid(invalid.validated)
 
 
 def test_profile_geometry_rejects_nonternary_modulus() -> None:
@@ -171,6 +189,23 @@ def test_profile_request_rejects_memory_and_register_drift() -> None:
     assert REGISTER_ERROR in _invalid(
         lambda: validate_profile_run_requests(GEOMETRY, (bad_register,))
     )
+
+
+def test_profile_request_rejects_boolean_numeric_fields() -> None:
+    """Boolean state, I/O, and budgets fail before resident execution."""
+    cases = (
+        (replace(_request(), accumulator=True), "word domain"),
+        (replace(_request(), step_budget=True), U32_ERROR),
+        (replace(_request(), input_consumed=False), EXACT_INTEGER_ERROR),
+        (replace(_request(), input_bytes=(True,)), BYTE_ERROR),
+    )
+    for request, message in cases:
+        assert message in _invalid(
+            lambda request=request: validate_profile_run_requests(
+                GEOMETRY,
+                (request,),
+            )
+        )
 
 
 def test_profile_request_rejects_raw_termination_integer() -> None:

@@ -253,19 +253,21 @@ class ClassicStepResult:
 
 
 def _check_u32(value: int, label: str) -> None:
-    if not 0 <= value <= MAX_U32:
+    if type(value) is not int or not 0 <= value <= MAX_U32:
         message = f"{label} outside unsigned 32-bit domain: {value}"
         raise InvalidPrimitiveBatchError(message)
 
 
 def _check_word(value: int, label: str) -> None:
-    if not 0 <= value <= MAX_WORD:
+    if type(value) is not int or not 0 <= value <= MAX_WORD:
         message = f"{label} outside classic word domain: {value}"
         raise InvalidPrimitiveBatchError(message)
 
 
 def _validate_input(input_byte: int | None) -> None:
-    if input_byte is not None and not 0 <= input_byte <= MAX_BYTE:
+    if input_byte is not None and (
+        type(input_byte) is not int or not 0 <= input_byte <= MAX_BYTE
+    ):
         message = f"input byte outside byte domain: {input_byte}"
         raise InvalidPrimitiveBatchError(message)
 

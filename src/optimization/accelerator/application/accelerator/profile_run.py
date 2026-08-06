@@ -127,12 +127,13 @@ class ProfileMemoryImage:
             Fresh compact repeated words with no alias to this image.
 
         Raises:
-            ValueError: If `count` is negative.
+            ValueError: If `count` is not a nonnegative integer.
 
         """
-        if count < 0:
+        if type(count) is not int or count < 0:
             message = (
-                f"profile memory repeat count must be nonnegative: {count}"
+                "profile memory repeat count must be a nonnegative integer: "
+                f"{count!r}"
             )
             raise ValueError(message)
         return self.__storage * count
@@ -225,7 +226,7 @@ def validate_profile_run_requests(
 
 
 def _validated_ternary_modulus(word_trits: int) -> int:
-    if not 1 <= word_trits <= MAX_PROFILE_TRITS:
+    if type(word_trits) is not int or not 1 <= word_trits <= MAX_PROFILE_TRITS:
         message = (
             f"resident profile trits outside supported domain: {word_trits}"
         )
@@ -247,10 +248,24 @@ def _validated_ternary_modulus(word_trits: int) -> int:
     return expected
 
 
+def _validate_geometry_integers(geometry: ProfileRunGeometry) -> None:
+    for value, label in (
+        (geometry.eof_word, "resident profile EOF"),
+        (geometry.input_instruction, "resident profile input instruction"),
+        (geometry.memory_words, "resident profile memory words"),
+        (geometry.output_instruction, "resident profile output instruction"),
+        (geometry.word_modulus, "resident profile modulus"),
+    ):
+        if type(value) is not int:
+            message = f"{label} must be an exact integer: {value!r}"
+            raise InvalidPrimitiveBatchError(message)
+
+
 def _validate_geometry_shape(
     geometry: ProfileRunGeometry,
     expected_modulus: int,
 ) -> None:
+    _validate_geometry_integers(geometry)
     if geometry.word_modulus != expected_modulus:
         message = (
             f"resident profile modulus {geometry.word_modulus} != "
@@ -273,9 +288,10 @@ def _validate_geometry_shape(
 
 
 def _validate_io_instructions(geometry: ProfileRunGeometry) -> None:
-    observed = frozenset(
-        (geometry.input_instruction, geometry.output_instruction)
-    )
+    observed = frozenset((
+        geometry.input_instruction,
+        geometry.output_instruction,
+    ))
     if observed != PROFILE_IO_INSTRUCTIONS:
         message = (
             "resident profile I/O instructions must assign '<' and '/' "
@@ -293,13 +309,16 @@ def _validate_registers(
         (request.code_pointer, "code pointer"),
         (request.data_pointer, "data pointer"),
     ):
-        if not 0 <= value < geometry.word_modulus:
+        if type(value) is not int or not 0 <= value < geometry.word_modulus:
             message = f"{label} outside profile word domain: {value}"
             raise InvalidPrimitiveBatchError(message)
 
 
 def _validate_step_metadata(request: ProfileRunRequest) -> None:
-    if not 0 <= request.step_budget <= MAX_U32:
+    if (
+        type(request.step_budget) is not int
+        or not 0 <= request.step_budget <= MAX_U32
+    ):
         message = (
             f"step budget outside unsigned 32-bit domain: {request.step_budget}"
         )
@@ -312,6 +331,12 @@ def _validate_step_metadata(request: ProfileRunRequest) -> None:
 def _validate_io_metadata(request: ProfileRunRequest) -> None:
     _validate_bytes(request.input_bytes, "input")
     _validate_bytes(request.output_bytes, "output")
+    if type(request.input_consumed) is not int:
+        message = (
+            "input consumed must be an exact integer: "
+            f"{request.input_consumed!r}"
+        )
+        raise InvalidPrimitiveBatchError(message)
     if not 0 <= request.input_consumed <= len(request.input_bytes):
         message = (
             "input consumed exceeds resident input length: "
@@ -378,6 +403,10 @@ def _validate_request_metadata(
 def _validate_bytes(values: tuple[int, ...], label: str) -> None:
     if not values:
         return
+    for value in values:
+        if type(value) is not int:
+            message = f"{label} byte outside byte domain: {value!r}"
+            raise InvalidPrimitiveBatchError(message)
     minimum = min(values)
     maximum = max(values)
     if minimum < 0 or maximum > MAX_BYTE:
