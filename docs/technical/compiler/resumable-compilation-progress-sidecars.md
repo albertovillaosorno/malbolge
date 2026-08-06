@@ -2,7 +2,7 @@
 
 ## Status
 
-Active contract; implementation pending
+Active contract and durable generation reference
 
 ## Purpose
 
@@ -21,23 +21,29 @@ that advertises resumability or crosses the configured checkpoint interval must
 maintain the sidecar.
 
 For an intended output named `program.malbolge`, the canonical progress path is
-`program.malbolge.progress.json`. Optional durable state uses
-`program.malbolge.checkpoint` or a versioned directory referenced by the
-sidecar. An incomplete executable artifact may use
-`program.malbolge.partial`; the final requested path is never replaced until the
-artifact is complete and independently verified.
+`program.malbolge.progress.json`. Durable generations use immutable paths such
+as `program.malbolge.checkpoint.00000000000000000001` and
+`program.malbolge.partial.00000000000000000001`. The sidecar is the only mutable
+pointer to the latest committed generation. The final requested path is never
+replaced until the artifact is complete and independently verified.
 
 ## Current Behavior
 
 The repository now exposes a reference `malbolge-progress-v1` validator and
-atomic writer in `scripts/progress_sidecar.py`. It defines canonical paths,
-backend-neutral resume identity, exact timing/lifecycle invariants,
-duplicate-key rejection, canonical JSON, and atomic sidecar replacement.
+durable generation writer in `scripts/progress_sidecar.py`. It defines canonical
+sequence-addressed paths, backend-neutral resume identity, exact timing and
+lifecycle invariants, monotonic transition validation, duplicate-key rejection,
+canonical JSON, immutable checkpoint/partial persistence, and atomic sidecar
+replacement after generation payloads are durable.
 
-Product CLI/compiler integration, portable compiler-state serialization,
-crash injection, and CPU/CUDA resume equivalence remain unimplemented. The
-reference schema therefore establishes the boundary without claiming complete
-resumability.
+A crash after writing a later generation but before replacing the sidecar leaves
+the previously referenced generation intact and resumable. Unreferenced newer
+generations are ignored until a valid sidecar publishes them. `ProgressTimer`
+uses an injectable monotonic nanosecond clock and exclusive active, paused,
+verification, serialization, and checkpoint phases to construct the exact timing
+fields without UTC arithmetic. Product CLI/compiler integration, portable
+compiler-state serialization, injected process crashes, and CPU/CUDA resume
+equivalence remain unimplemented.
 
 ### Sidecar Schema
 
@@ -48,8 +54,8 @@ object must contain at least:
 - requested output path and canonical sidecar/checkpoint paths;
 - source path plus cryptographic source identity;
 - target profile ID and fingerprint;
-- repository revision, toolchain identity, algorithm ID/version, and seed when
-  applicable;
+- exact lowercase 40-hex Git `repository_revision`, toolchain fingerprint,
+  algorithm ID/version, and seed when applicable;
 - backend kind plus device identity when an accelerator is used;
 - current pipeline stage, checkpoint sequence, completed units, and total units
   when the total is knowable;
@@ -64,15 +70,35 @@ Percent completion is emitted only when the denominator is stable and known.
 Unknown totals remain `null`; the tool reports counters and stage identity
 instead of inventing a percentage.
 
+### Operator inspection
+
+The reference inspector prints one exact key/value summary without rounding
+scientific timing:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  src/automation/repository/composition/scripts/progress_sidecar.py `
+  output.malbolge.progress.json
+```
+
+The summary includes status, stage, completed/total units, active/wall/paused
+nanoseconds, verification/serialization/checkpoint nanoseconds, and canonical
+progress/checkpoint/partial paths. The JSON sidecar remains the machine-readable
+authority; this line is an operator view over the same validated record.
+
 ## Invariants
 
-- Sidecar and checkpoint updates use write-to-temporary, flush, and atomic
-  rename within the destination filesystem.
+- Checkpoint and partial generations are immutable and sequence-addressed.
+- Generation payloads use write-to-temporary, flush, and atomic no-replace
+  publication before the canonical sidecar pointer is replaced.
+- A rejected transition or payload mismatch never replaces the last valid
+  sidecar.
 - The final `.malbolge` path is published atomically only after independent
   verification succeeds.
-- Resume rejects source, target profile, compiler revision, algorithm version,
-  seed, or checkpoint-format mismatches unless an explicit reviewed migration
-  exists.
+- Resume compatibility binds source identity, target profile, exact repository
+  revision, toolchain fingerprint, algorithm version, seed, and checkpoint
+  schema.
+  Any mismatch is rejected unless an explicit reviewed migration exists.
 - Device-local memory is never the only copy of resumable state. GPU jobs emit a
   backend-neutral durable checkpoint sufficient for CPU inspection and exact
   compatibility checks.
@@ -89,9 +115,10 @@ instead of inventing a percentage.
 ## Failure Behavior
 
 On orderly cancellation or a handled failure, the job writes one final sidecar
-state and preserves the most recent valid checkpoint. On abrupt process or host
-failure, restart reads only the last atomically committed sidecar/checkpoint
-pair. A torn, missing, stale, or incompatible pair is rejected with a stable
+state and preserves the most recent valid generation. On abrupt process or host
+failure, restart follows only the last atomically committed sidecar pointer.
+Later unreferenced generation files cannot invalidate that pointer. Missing,
+stale, overwritten, or incompatible generation data is rejected with a stable
 diagnostic and never guessed into validity.
 
 If checkpoint persistence fails, the job may continue only when the caller
@@ -102,15 +129,16 @@ jobs that requested resumability.
 
 - Schema tests validate every required field, status transition, and unknown-
   total representation.
-- Crash fixtures terminate jobs between temporary write, flush, rename, and
-  checkpoint publication boundaries.
-- Resume tests cover unchanged jobs, source/profile/toolchain mismatch,
-  corrupted checkpoints, cancellation, and completed-job idempotence.
+- Crash fixtures leave a later immutable generation unpublished and prove the
+  previous sidecar/checkpoint remains readable and resumable.
+- Resume tests cover unchanged jobs, monotonic transitions, exact repository
+  revision and source/profile/toolchain mismatch, overwritten or missing
+  generations, cancellation, and terminal-job reopening.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
-- Timing tests use injected monotonic and UTC clocks and prove that active,
-  paused, wall, verification, serialization, and checkpoint durations are not
-  conflated.
+- Timing tests use an injected monotonic clock, exercise every exclusive
+  phase, reject backward/negative samples, and prove active, paused, wall,
+  verification, serialization, and checkpoint durations are not conflated.
 - End-to-end CLI tests prove that the final artifact is atomic while the sidecar
   remains continuously inspectable.
 

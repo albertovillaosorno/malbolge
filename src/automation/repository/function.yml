@@ -150,7 +150,7 @@ parts:
     path: composition/scripts/progress_sidecar.py
     kind: composition
     language: python
-    responsibility: Validate and atomically persist progress sidecars.
+    responsibility: Validate, inspect, and durably persist progress sidecars.
 projects: []
 tests: []
 graph:
