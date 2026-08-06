@@ -34,7 +34,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
+from typing import cast
 
 from accelerator.resource_budget import AcceleratorResources
 from accelerator.resource_budget import MINIMUM_RESERVE_BYTES
@@ -155,6 +157,49 @@ def test_invalid_resource_snapshot_fails_closed() -> None:
         lambda: plan_resident_batches((CLASSIC_STATE_BYTES,), resources)
     )
     assert TOTAL_MEMORY_ERROR in error
+
+
+def test_resource_snapshot_rejects_noninteger_measurements() -> None:
+    """Booleans and floats cannot become measured device capacity."""
+    resources = _resources(128 * MIB, multiprocessors=2, threads=256)
+    cases = (
+        ("free_memory_bytes", False, "free accelerator memory"),
+        ("max_threads_per_block", True, "max threads per block"),
+        ("multiprocessor_count", 2.0, "multiprocessor count"),
+        ("total_memory_bytes", True, "total accelerator memory"),
+    )
+    for field_name, value, message in cases:
+        invalid = replace(resources, **{field_name: value})
+        assert message in _resource_error(invalid.validated)
+
+
+def test_batch_plan_rejects_noninteger_layout_limits() -> None:
+    """Layout byte counts and protocol limits remain exact integers."""
+    resources = _resources(128 * MIB, multiprocessors=2, threads=256)
+    cases = (
+        (
+            lambda: plan_resident_batches(
+                (CLASSIC_STATE_BYTES,),
+                resources,
+                fixed_chunk_bytes=False,
+            ),
+            "fixed chunk bytes",
+        ),
+        (
+            lambda: plan_resident_batches((True,), resources),
+            "resident item bytes",
+        ),
+        (
+            lambda: plan_resident_batches(
+                (CLASSIC_STATE_BYTES,),
+                resources,
+                max_items_per_chunk=cast("int", 1.0),
+            ),
+            "maximum items per chunk",
+        ),
+    )
+    for action, message in cases:
+        assert message in _resource_error(action)
 
 
 def _resources(

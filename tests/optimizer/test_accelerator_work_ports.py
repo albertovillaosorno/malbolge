@@ -472,6 +472,28 @@ def test_candidate_request_rejects_duplicate_identity_before_execution() -> (
     )
 
 
+def test_search_request_rejects_boolean_u64_fields() -> None:
+    """Boolean values never masquerade as exact search identity integers."""
+    for field_name, value, message in (
+        ("evaluation_budget", True, "positive u64"),
+        ("seed", False, "outside unsigned 64-bit domain"),
+    ):
+        request = SearchRequest(
+            algorithm_id="deterministic-enumeration-v1",
+            evaluation_budget=1,
+            problem=b"problem",
+            seed=0,
+        )
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            message,
+            lambda request=request, field_name=field_name, value=value: replace(
+                request,
+                **{field_name: value},
+            ).validated(),
+        )
+
+
 def test_search_fallback_preserves_algorithm_seed_and_budget() -> None:
     """Search hardware failure changes capacity rather than search identity."""
     request = SearchRequest(

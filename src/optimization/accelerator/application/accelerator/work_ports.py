@@ -551,7 +551,10 @@ class SearchRequest:
         """
         _validate_identity(self.algorithm_id, "search algorithm ID")
         _validate_u64(self.seed, "search seed")
-        if not 1 <= self.evaluation_budget <= MAX_U64:
+        if (
+            type(self.evaluation_budget) is not int
+            or not 1 <= self.evaluation_budget <= MAX_U64
+        ):
             message = "search evaluation budget must be a positive u64"
             raise InvalidAcceleratorWorkError(message)
         return self
@@ -1028,7 +1031,7 @@ def _validate_result_capability(
 
 
 def _validate_u64(value: int, label: str) -> None:
-    if not 0 <= value <= MAX_U64:
+    if type(value) is not int or not 0 <= value <= MAX_U64:
         message = f"{label} outside unsigned 64-bit domain: {value}"
         raise InvalidAcceleratorWorkError(message)
 

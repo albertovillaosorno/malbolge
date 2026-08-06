@@ -28,9 +28,9 @@ validation:
 ## Objective
 
 Discover available memory and compute resources at runtime and choose batch
-size, state layout, caches, and search breadth accordingly. Tiny devices around
-Small-memory devices must remain usable while additional addressable
-resources on arbitrarily larger devices must increase available work rather than
+size, state layout, caches, and search breadth accordingly. Small-memory
+devices must remain usable while additional addressable resources on arbitrarily
+larger devices must increase available work rather than
 hitting a fixed artificial VRAM ceiling. The 128 MiB and 80 GiB values are only
 example probe points, not supported-range endpoints.
 
@@ -65,10 +65,10 @@ example probe points, not supported-range endpoints.
   `reproducible-experiment-identity-and-manifest`.
 - Active correctness slice:
   `src/optimization/accelerator/application/accelerator/resource_budget.py`
-  validates measured
-  resources and greedily partitions exact resident item bytes below a
-  deterministic
-  reserve. Classic CUDA reads memory through `cuMemGetInfo_v2`, reads compute
+  validates measured resources as exact integers and greedily partitions exact
+  resident item bytes below a deterministic reserve. Boolean or floating-point
+  capacity values fail before planning. Classic CUDA reads memory through
+  `cuMemGetInfo_v2`, reads compute
   capacity through `cuDeviceGetAttribute`, and uses the resulting plan before
   allocation. Oversized single items fail before `cuMemAlloc`.
 - Synthetic boundary evidence is explicitly labeled: the declared current-state

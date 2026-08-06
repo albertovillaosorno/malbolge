@@ -66,6 +66,12 @@ class TicketRouteRejection(StrEnum):
     NO_PAIRED_MAJORITY = "no-paired-majority"
 
 
+def _validate_identity(value: object, label: str) -> None:
+    if type(value) is not str or not value:
+        message = f"ticket {label} identity must be a non-empty string"
+        raise TicketAdmissionError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class TicketAdmissionRequest:
     """Exact workload and device context for one pending ticket queue."""
@@ -87,14 +93,12 @@ class TicketAdmissionRequest:
 
         """
         for label, value in (
-            ("backend", self.backend_id),
-            ("device architecture", self.device_arch),
-            ("device name", self.device_name),
-            ("workload", self.workload_id),
+            ("admission backend", self.backend_id),
+            ("admission device architecture", self.device_arch),
+            ("admission device name", self.device_name),
+            ("admission workload", self.workload_id),
         ):
-            if not value:
-                message = f"ticket admission {label} identity must not be empty"
-                raise TicketAdmissionError(message)
+            _validate_identity(value, label)
         if type(self.ticket_count) is not int or self.ticket_count < 0:
             message = "ticket admission count must be a non-negative integer"
             raise TicketAdmissionError(message)
@@ -147,15 +151,16 @@ class TicketRouteCandidate:
 
 def _validate_candidate_identities(candidate: TicketRouteCandidate) -> None:
     for label, value in (
-        ("backend", candidate.backend_id),
-        ("benchmark", candidate.benchmark_id),
-        ("device architecture", candidate.device_arch),
-        ("device name", candidate.device_name),
-        ("workload", candidate.workload_id),
+        ("candidate backend", candidate.backend_id),
+        ("candidate benchmark", candidate.benchmark_id),
+        ("candidate device architecture", candidate.device_arch),
+        ("candidate device name", candidate.device_name),
+        ("candidate workload", candidate.workload_id),
     ):
-        if not value:
-            message = f"ticket candidate {label} identity must not be empty"
-            raise TicketAdmissionError(message)
+        _validate_identity(value, label)
+    if type(candidate.mode) is not TicketSubmissionMode:
+        message = "ticket candidate submission mode must use the exact enum"
+        raise TicketAdmissionError(message)
 
 
 def _validate_candidate_counts(candidate: TicketRouteCandidate) -> None:
@@ -174,8 +179,12 @@ def _validate_candidate_counts(candidate: TicketRouteCandidate) -> None:
 
 
 def _validate_candidate_measurements(candidate: TicketRouteCandidate) -> None:
-    if candidate.candidate_median_ns <= 0 or candidate.reference_median_ns <= 0:
-        message = "ticket candidate medians must be positive"
+    medians = (
+        candidate.candidate_median_ns,
+        candidate.reference_median_ns,
+    )
+    if any(type(value) is not int or value <= 0 for value in medians):
+        message = "ticket candidate medians must be positive integers"
         raise TicketAdmissionError(message)
     if type(candidate.exact_results) is not bool:
         message = "ticket candidate exact-result flag must be boolean"

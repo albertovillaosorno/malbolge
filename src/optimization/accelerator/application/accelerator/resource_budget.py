@@ -64,17 +64,29 @@ class AcceleratorResources:
             ResourceBudgetError: If a measured value is contradictory.
 
         """
-        if self.total_memory_bytes <= 0:
-            message = "total accelerator memory must be positive"
+        if (
+            type(self.total_memory_bytes) is not int
+            or self.total_memory_bytes <= 0
+        ):
+            message = "total accelerator memory must be positive integer"
             raise ResourceBudgetError(message)
-        if not 0 <= self.free_memory_bytes <= self.total_memory_bytes:
-            message = "free accelerator memory is inconsistent"
+        if (
+            type(self.free_memory_bytes) is not int
+            or not 0 <= self.free_memory_bytes <= self.total_memory_bytes
+        ):
+            message = "free accelerator memory is not a consistent integer"
             raise ResourceBudgetError(message)
-        if self.max_threads_per_block <= 0:
-            message = "max threads per block must be positive"
+        if (
+            type(self.max_threads_per_block) is not int
+            or self.max_threads_per_block <= 0
+        ):
+            message = "max threads per block must be a positive integer"
             raise ResourceBudgetError(message)
-        if self.multiprocessor_count <= 0:
-            message = "multiprocessor count must be positive"
+        if (
+            type(self.multiprocessor_count) is not int
+            or self.multiprocessor_count <= 0
+        ):
+            message = "multiprocessor count must be a positive integer"
             raise ResourceBudgetError(message)
         return self
 
@@ -123,14 +135,16 @@ def plan_resident_batches(
 
     """
     snapshot = resources.validated()
-    if fixed_chunk_bytes < 0:
-        message = "fixed chunk bytes cannot be negative"
+    if type(fixed_chunk_bytes) is not int or fixed_chunk_bytes < 0:
+        message = "fixed chunk bytes must be a non-negative integer"
         raise ResourceBudgetError(message)
-    if any(value <= 0 for value in item_bytes):
-        message = "resident item bytes must all be positive"
+    if any(type(value) is not int or value <= 0 for value in item_bytes):
+        message = "resident item bytes must all be positive integers"
         raise ResourceBudgetError(message)
-    if max_items_per_chunk is not None and max_items_per_chunk <= 0:
-        message = "maximum items per chunk must be positive when declared"
+    if max_items_per_chunk is not None and (
+        type(max_items_per_chunk) is not int or max_items_per_chunk <= 0
+    ):
+        message = "maximum items per chunk must be a positive integer"
         raise ResourceBudgetError(message)
     reserve = max(
         MINIMUM_RESERVE_BYTES,

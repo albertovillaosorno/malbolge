@@ -506,6 +506,52 @@ def test_opt_in_report_rejects_duplicate_matching_evidence() -> None:
         )
 
 
+def test_ticket_identity_and_mode_types_fail_closed() -> None:
+    """Foreign identity and mode values never escape as downstream errors."""
+    malformed_request = replace(
+        _request(1),
+        backend_id=cast("str", cast("object", 1)),
+    )
+    with pytest.raises(TicketAdmissionError, match="non-empty string"):
+        _ = malformed_request.validated()
+
+    malformed_candidate = _candidate(
+        cast(
+            "TicketSubmissionMode",
+            cast("object", TicketSubmissionMode.SYNCHRONOUS.value),
+        ),
+        1,
+        candidate_ns=80,
+        reference_ns=180,
+        paired_wins=15,
+    )
+    with pytest.raises(TicketAdmissionError, match="exact enum"):
+        _ = malformed_candidate.validated()
+
+
+def test_malformed_ticket_medians_fail_closed() -> None:
+    """Boolean or floating evidence cannot become retained nanoseconds."""
+    cases = (
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            2,
+            candidate_ns=True,
+            reference_ns=180,
+            paired_wins=15,
+        ),
+        _candidate(
+            TicketSubmissionMode.SYNCHRONOUS,
+            2,
+            candidate_ns=80,
+            reference_ns=cast("int", 180.5),
+            paired_wins=15,
+        ),
+    )
+    for candidate in cases:
+        with pytest.raises(TicketAdmissionError, match="positive integers"):
+            _ = candidate.validated()
+
+
 def test_malformed_paired_counts_fail_closed() -> None:
     """Impossible paired-win evidence is rejected before planning."""
     malformed = _candidate(

@@ -13,9 +13,9 @@ problem without weakening semantic correctness?
 ## Background
 
 Discover available memory and compute resources at runtime and choose batch
-size, state layout, caches, and search breadth accordingly. Tiny devices around
-Small-memory devices must remain usable while additional addressable
-resources on arbitrarily larger devices must increase available work rather than
+size, state layout, caches, and search breadth accordingly. Small-memory
+devices must remain usable while additional addressable resources on arbitrarily
+larger devices must increase available work rather than
 hitting a fixed artificial VRAM ceiling. The 128 MiB and 80 GiB values are only
 example probe points, not supported-range endpoints.
 
@@ -84,7 +84,8 @@ verifier accepts the candidate under the declared target profile.
 ## Results
 
 The first correctness slice is active. `AcceleratorResources` validates measured
-free/total memory, maximum threads per block, and multiprocessor count.
+free/total memory, maximum threads per block, and multiprocessor count as exact
+integers; booleans and floating-point approximations fail before planning.
 `plan_resident_batches` reserves the larger of 8 MiB or one sixteenth of total
 memory, then constructs maximal contiguous input-order chunks whose exact
 resident byte requirement fits the remaining free-memory budget. An item that
@@ -164,8 +165,10 @@ Ticket queue admission now extends the budgeting work without introducing online
 learning.
 `src/optimization/accelerator/application/accelerator/ticket_admission.py`
 accepts only exact, same-context
-route evidence with lower median and a strict paired-win majority, fails closed
-for malformed or duplicate records, and chooses a deterministic input-order
+route evidence with exact string/enum identity, positive integer nanosecond
+medians, and a strict paired-win majority. It fails closed for malformed or
+duplicate records and chooses a
+deterministic input-order
 partition. The first retained CUDA profile is limited to the RTX 4060 `sm_89`
 full-domain CRAZY evidence from 2026-07-29. It admits synchronous groups 2/4/8,
 rejects every measured streamed route, and leaves the ordinary synchronous path
