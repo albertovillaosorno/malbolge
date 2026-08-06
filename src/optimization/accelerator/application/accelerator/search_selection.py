@@ -36,7 +36,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 
+from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.work_ports import execute_search
 
 if TYPE_CHECKING:
@@ -87,8 +89,7 @@ class SearchAdapterBinding:
 
         """
         _require_identity(self.algorithm_id, "search algorithm ID")
-        backend_id = self.adapter.capability().backend_id
-        _require_identity(backend_id, "search backend ID")
+        backend_id = _adapter_backend_id(self.adapter, "search adapter")
         return (self.algorithm_id, backend_id)
 
 
@@ -121,6 +122,30 @@ class SearchExecutionPlan:
     reference: SearchExecutionAdapter
     selection: SearchSelection
 
+    def validated(self) -> SearchExecutionPlan:
+        """Validate one direct or registry-resolved execution plan.
+
+        Returns:
+            This immutable plan after selection and route validation.
+
+        Raises:
+            SearchSelectionError: If selection or route shape is invalid.
+
+        """
+        if type(self.selection) is not SearchSelection:
+            message = "search execution selection has wrong type"
+            raise SearchSelectionError(message)
+        selection = self.selection.validated()
+        reference_backend = _adapter_backend_id(
+            self.reference,
+            "search execution reference",
+        )
+        if reference_backend != CPU_REFERENCE_BACKEND:
+            message = "search execution reference must use cpu-reference"
+            raise SearchSelectionError(message)
+        _validate_preferred_route(selection, self.preferred)
+        return self
+
     def run(self, request: SearchRequest) -> SearchExecutionRecord:
         """Execute one request through this resolved selection.
 
@@ -128,18 +153,19 @@ class SearchExecutionPlan:
             Untrusted proposals plus exact configured/actual execution identity.
 
         Raises:
-            SearchSelectionError: If request and plan algorithm IDs differ.
+            SearchSelectionError: If plan or request selection is invalid.
 
         """
+        plan = self.validated()
         validated = request.validated()
-        if validated.algorithm_id != self.selection.algorithm_id:
+        if validated.algorithm_id != plan.selection.algorithm_id:
             message = (
                 "search request algorithm does not match resolved selection"
             )
             raise SearchSelectionError(message)
-        result = execute_search(validated, self.reference, self.preferred)
+        result = execute_search(validated, plan.reference, plan.preferred)
         return SearchExecutionRecord(
-            identity=_run_identity(self.selection, validated, result),
+            identity=_run_identity(plan.selection, validated, result),
             result=result,
         )
 
@@ -232,7 +258,56 @@ def _required_binding(
     return adapter
 
 
+def _adapter_backend_id(
+    adapter: SearchExecutionAdapter,
+    label: str,
+) -> str:
+    runtime_adapter = cast("object", adapter)
+    capability_method = getattr(runtime_adapter, "capability", None)
+    search_method = getattr(runtime_adapter, "search", None)
+    if not callable(capability_method) or not callable(search_method):
+        message = f"{label} has wrong type"
+        raise SearchSelectionError(message)
+    capability = capability_method()
+    if type(capability) is not AcceleratorCapability:
+        message = f"{label} capability has wrong type"
+        raise SearchSelectionError(message)
+    _require_identity(capability.backend_id, "search backend ID")
+    _require_identity(
+        capability.device_arch,
+        "search device architecture",
+    )
+    _require_identity(capability.device_name, "search device name")
+    return capability.backend_id
+
+
+def _validate_preferred_route(
+    selection: SearchSelection,
+    preferred: SearchExecutionAdapter | None,
+) -> None:
+    if selection.backend_id == CPU_REFERENCE_BACKEND:
+        if preferred is not None:
+            message = (
+                "cpu-reference search plan cannot include a preferred route"
+            )
+            raise SearchSelectionError(message)
+        return
+    if preferred is None:
+        message = "search execution plan requires the selected preferred route"
+        raise SearchSelectionError(message)
+    preferred_backend = _adapter_backend_id(
+        preferred,
+        "search execution preferred route",
+    )
+    if preferred_backend != selection.backend_id:
+        message = "search execution preferred route does not match selection"
+        raise SearchSelectionError(message)
+
+
 def _require_identity(value: str, label: str) -> None:
+    if type(value) is not str:
+        message = f"{label} must use the exact string type"
+        raise SearchSelectionError(message)
     if not value:
         message = f"{label} must not be empty"
         raise SearchSelectionError(message)

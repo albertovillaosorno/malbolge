@@ -59,6 +59,28 @@ class SearchConfiguration:
     selection: SearchSelection
     source: str
 
+    def validated(self) -> SearchConfiguration:
+        """Return one exact direct or parsed configuration record.
+
+        Returns:
+            Configuration with validated selection and source identities.
+
+        Raises:
+            SearchConfigurationError: If direct construction bypassed admission.
+
+        """
+        if type(self.selection) is not SearchSelection:
+            message = "search configuration selection has wrong type"
+            raise SearchConfigurationError(message)
+        try:
+            selection = self.selection.validated()
+        except SearchSelectionError as error:
+            raise SearchConfigurationError(str(error)) from error
+        return SearchConfiguration(
+            selection=selection,
+            source=_validated_source(self.source),
+        )
+
     def resolved(
         self,
         *,
@@ -74,13 +96,14 @@ class SearchConfiguration:
             SearchConfigurationError: If an override is explicitly empty.
 
         """
+        configuration = self.validated()
         algorithm_id = _override(
-            self.selection.algorithm_id,
+            configuration.selection.algorithm_id,
             algorithm_override,
             "search algorithm override",
         )
         backend_id = _override(
-            self.selection.backend_id,
+            configuration.selection.backend_id,
             backend_override,
             "search backend override",
         )
@@ -146,10 +169,20 @@ def parse_search_configuration(
         ).validated()
     except SearchSelectionError as error:
         raise SearchConfigurationError(str(error)) from error
-    if not source:
+    return SearchConfiguration(
+        selection=selection,
+        source=source,
+    ).validated()
+
+
+def _validated_source(value: str) -> str:
+    if type(value) is not str:
+        message = "search configuration source must use the exact string type"
+        raise SearchConfigurationError(message)
+    if not value:
         message = "search configuration source must not be empty"
         raise SearchConfigurationError(message)
-    return SearchConfiguration(selection=selection, source=source)
+    return value
 
 
 def _mapping(value: object, context: str) -> dict[str, object]:
@@ -169,6 +202,9 @@ def _mapping(value: object, context: str) -> dict[str, object]:
 def _override(base: str, value: str | None, label: str) -> str:
     if value is None:
         return base
+    if type(value) is not str:
+        message = f"{label} must use the exact string type"
+        raise SearchConfigurationError(message)
     if not value:
         message = f"{label} must not be empty"
         raise SearchConfigurationError(message)

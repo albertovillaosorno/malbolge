@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from typing import cast
 from typing import final
 from typing import override
 
@@ -42,6 +43,7 @@ from accelerator.exact_primitives import AcceleratorCapability
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.search_selection import CPU_REFERENCE_BACKEND
 from accelerator.search_selection import SearchAdapterBinding
+from accelerator.search_selection import SearchExecutionPlan
 from accelerator.search_selection import SearchSelection
 from accelerator.search_selection import SearchSelectionError
 from accelerator.search_selection import resolve_search_execution
@@ -270,4 +272,162 @@ def test_empty_override_fails_instead_of_reusing_default() -> None:
             ),
             backend_override="",
         ),
+    )
+
+
+def test_selection_identities_require_exact_strings() -> None:
+    """Direct runtime selection rejects truthy foreign identity values."""
+    for value in (1, True):
+        _expect_selection_error(
+            "search algorithm ID must use the exact string type",
+            lambda value=value: SearchSelection(
+                algorithm_id=cast("str", cast("object", value)),
+                backend_id=CPU_REFERENCE_BACKEND,
+            ).validated(),
+        )
+
+
+def test_binding_identity_requires_exact_string() -> None:
+    """Registry bindings reject non-string algorithm identity keys."""
+    foreign_identity = True
+    binding = SearchAdapterBinding(
+        adapter=CpuSearchExecutionAdapter(ALPHA_ALGORITHM, _alpha_search),
+        algorithm_id=cast("str", cast("object", foreign_identity)),
+    )
+
+    _expect_selection_error(
+        "search algorithm ID must use the exact string type",
+        binding.key,
+    )
+
+
+@final
+class _MalformedCapabilitySearchAdapter(SearchExecutionAdapter):
+    @override
+    def capability(self) -> AcceleratorCapability:
+        malformed: object = object()
+        return cast("AcceleratorCapability", malformed)
+
+    @override
+    def search(self, request: SearchRequest) -> SearchResult:
+        _ = request
+        message = "malformed registry adapter executed"
+        raise AssertionError(message)
+
+
+def test_binding_validates_adapter_and_capability_types() -> None:
+    """Registry construction rejects foreign adapters and capability records."""
+    malformed = SearchAdapterBinding(
+        adapter=_MalformedCapabilitySearchAdapter(),
+        algorithm_id=ALPHA_ALGORITHM,
+    )
+    _expect_selection_error(
+        "search adapter capability has wrong type",
+        malformed.key,
+    )
+
+    foreign_adapter: object = object()
+    foreign = SearchAdapterBinding(
+        adapter=cast("SearchExecutionAdapter", foreign_adapter),
+        algorithm_id=ALPHA_ALGORITHM,
+    )
+    _expect_selection_error(
+        "search adapter has wrong type",
+        foreign.key,
+    )
+
+
+def test_direct_execution_plan_validates_route_shape() -> None:
+    """Direct plans preserve the same route shape as registry resolution."""
+    reference = CpuSearchExecutionAdapter(ALPHA_ALGORITHM, _alpha_search)
+    selection = SearchSelection(ALPHA_ALGORITHM, GPU_BACKEND)
+    plan = SearchExecutionPlan(
+        preferred=_GpuSearchAdapter(),
+        reference=reference,
+        selection=selection,
+    )
+
+    assert plan.validated() is plan
+    assert plan.run(_request(ALPHA_ALGORITHM)).result.proposals
+
+    _expect_selection_error(
+        "search execution plan requires the selected preferred route",
+        lambda: SearchExecutionPlan(
+            preferred=None,
+            reference=reference,
+            selection=selection,
+        ).validated(),
+    )
+    _expect_selection_error(
+        "cpu-reference search plan cannot include a preferred route",
+        lambda: SearchExecutionPlan(
+            preferred=_GpuSearchAdapter(),
+            reference=reference,
+            selection=SearchSelection(
+                ALPHA_ALGORITHM,
+                CPU_REFERENCE_BACKEND,
+            ),
+        ).validated(),
+    )
+
+
+def test_direct_execution_plan_rejects_foreign_components() -> None:
+    """Plan admission reports stable errors for foreign runtime objects."""
+    reference = CpuSearchExecutionAdapter(ALPHA_ALGORITHM, _alpha_search)
+    foreign: object = object()
+
+    _expect_selection_error(
+        "search execution selection has wrong type",
+        lambda: SearchExecutionPlan(
+            preferred=None,
+            reference=reference,
+            selection=cast("SearchSelection", foreign),
+        ).validated(),
+    )
+    _expect_selection_error(
+        "search execution reference has wrong type",
+        lambda: SearchExecutionPlan(
+            preferred=None,
+            reference=cast("SearchExecutionAdapter", foreign),
+            selection=SearchSelection(
+                ALPHA_ALGORITHM,
+                CPU_REFERENCE_BACKEND,
+            ),
+        ).validated(),
+    )
+    _expect_selection_error(
+        "search algorithm ID must use the exact string type",
+        lambda: SearchExecutionPlan(
+            preferred=None,
+            reference=reference,
+            selection=SearchSelection(
+                cast("str", foreign),
+                CPU_REFERENCE_BACKEND,
+            ),
+        ).validated(),
+    )
+
+
+def test_direct_execution_plan_rejects_backend_mismatch() -> None:
+    """Reference and preferred capabilities must match their route roles."""
+    reference = CpuSearchExecutionAdapter(ALPHA_ALGORITHM, _alpha_search)
+
+    _expect_selection_error(
+        "search execution reference must use cpu-reference",
+        lambda: SearchExecutionPlan(
+            preferred=None,
+            reference=_GpuSearchAdapter(),
+            selection=SearchSelection(
+                ALPHA_ALGORITHM,
+                CPU_REFERENCE_BACKEND,
+            ),
+        ).validated(),
+    )
+    _expect_selection_error(
+        "search execution preferred route does not match selection",
+        lambda: SearchExecutionPlan(
+            preferred=reference,
+            reference=reference,
+            selection=SearchSelection(ALPHA_ALGORITHM, GPU_BACKEND),
+        ).validated(),
     )
