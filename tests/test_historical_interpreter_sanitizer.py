@@ -35,9 +35,13 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from typing import TYPE_CHECKING
 
 import pytest
 from scripts.validate import historical_interpreter_sanitizer as harness
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 EXPECTED_CASES = (
     "clean-interpreter-roundtrip",
@@ -55,6 +59,25 @@ def test_sanitizer_manifest_and_source_identity_are_exact() -> None:
     evidence = harness.load_evidence()
     assert evidence["schema_version"] == harness.SCHEMA_VERSION
     assert evidence["source_sha256"] == harness.SOURCE_SHA256
+
+
+def test_sanitizer_evidence_rejects_duplicate_json_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reviewed sanitizer evidence rejects ambiguous JSON identities."""
+    evidence = tmp_path / "evidence.json"
+    _ = evidence.write_text(
+        '{"schema_version":1,"schema_version":1}',
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(harness, "EVIDENCE", evidence)
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="duplicate sanitizer JSON key: schema_version",
+    ):
+        _ = harness.load_evidence()
 
 
 def test_sanitizer_harness_reproduces_reviewed_findings() -> None:

@@ -39,6 +39,7 @@ import json
 import os
 import stat
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 from scripts.bootstrap import project
@@ -71,11 +72,11 @@ WINDOWS_UV_ASSET = "uv-x86_64-pc-windows-msvc.zip"
 
 
 def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
-    directory = root / "accelerator" / "cuda"
-    directory.mkdir(parents=True)
-    manifest = directory / "toolchain.json"
+    manifest = root / project.CUDA_TOOLCHAIN_MANIFEST
+    manifest.parent.mkdir(parents=True)
     _ = manifest.write_text(
         json.dumps({
+            "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
             "platform": platform_id,
             "toolkit_root": CUDA_VERSION_ROOT,
         }),
@@ -126,6 +127,118 @@ def test_uv_manifest_pins_exact_windows_artifact(tmp_path: Path) -> None:
     assert executable == (
         tmp_path / ".dependencies/uv/0.11.16/bin/uv.exe"
     )
+
+
+def test_uv_manifest_rejects_unknown_schema(tmp_path: Path) -> None:
+    """Uv provisioning rejects manifests from an unknown schema revision."""
+    manifest = tmp_path / "uv.json"
+    parsed = cast(
+        "object",
+        json.loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    document["schema_version"] = 2
+    _ = manifest.write_text(
+        json.dumps(document), encoding="utf-8", newline="\n"
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="unsupported uv toolchain manifest schema",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_binds_release_url_to_version(tmp_path: Path) -> None:
+    """Uv release URL cannot drift independently from its pinned version."""
+    manifest = tmp_path / "uv.json"
+    parsed = cast(
+        "object",
+        json.loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    document["base_url"] = (
+        "https://github.com/astral-sh/uv/releases/download/0.11.17/"
+    )
+    _ = manifest.write_text(
+        json.dumps(document), encoding="utf-8", newline="\n"
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="base_url must match the pinned release version",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_redirecting_asset_name(tmp_path: Path) -> None:
+    """Uv archive asset cannot add URL path, query, or fragment authority."""
+    manifest = tmp_path / "uv.json"
+    parsed = cast(
+        "object",
+        json.loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    artifacts_value = document.get("artifacts")
+    assert isinstance(artifacts_value, dict)
+    artifacts = cast("dict[str, object]", artifacts_value)
+    windows_value = artifacts.get(WINDOWS_PLATFORM)
+    assert isinstance(windows_value, dict)
+    windows = cast("dict[str, object]", windows_value)
+    windows["asset"] = "uv.zip?source=other"
+    _ = manifest.write_text(
+        json.dumps(document), encoding="utf-8", newline="\n"
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="asset must be one URL path segment",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    """Pinned uv identity never uses last-value-wins JSON semantics."""
+    manifest = tmp_path / "uv.json"
+    _ = manifest.write_text(
+        concat := (
+            '{"version":"0.11.16",'
+            '"version":"0.11.17",'
+            '"base_url":"https://github.com/astral-sh/uv/'
+            'releases/download/0.11.16/",'
+            '"artifacts":{}}'
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert concat
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="duplicate uv manifest JSON key: version",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_escaping_version_path(tmp_path: Path) -> None:
+    """Pinned uv version cannot redirect repository-local provisioning."""
+    manifest = tmp_path / "uv.json"
+    parsed = cast(
+        "object",
+        json.loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    document["version"] = "../escape"
+    _ = manifest.write_text(
+        json.dumps(document),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="version must be one repository-local path segment",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
 
 
 def test_uv_archive_hash_verification_fails_closed() -> None:
@@ -232,6 +345,77 @@ def test_cuda_inspection_requires_matching_platform_and_bundle(
     assert ready.path == toolkit
 
 
+def test_cuda_inspection_uses_tracked_manifest_path(tmp_path: Path) -> None:
+    """CUDA inspection reads the manifest from its tracked source boundary."""
+    manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    status = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    assert manifest == tmp_path / project.CUDA_TOOLCHAIN_MANIFEST
+    assert status.state is project.ComponentState.MISSING
+    assert status.path == tmp_path / CUDA_VERSION_ROOT
+
+
+def test_cuda_inspection_rejects_unknown_schema(tmp_path: Path) -> None:
+    """CUDA readiness rejects manifests from an unknown schema revision."""
+    manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    document = {
+        "schema_version": 2,
+        "platform": LINUX_PLATFORM,
+        "toolkit_root": CUDA_VERSION_ROOT,
+    }
+    _ = manifest.write_text(
+        json.dumps(document), encoding="utf-8", newline="\n"
+    )
+    with pytest.raises(
+        project.InitializationError,
+        match="unsupported CUDA toolchain manifest schema",
+    ):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_cuda_inspection_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    """CUDA platform identity never uses last-value-wins JSON semantics."""
+    manifest = tmp_path / project.CUDA_TOOLCHAIN_MANIFEST
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text(
+        concat := (
+            '{"schema_version":1,'
+            '"platform":"linux-x86_64",'
+            '"platform":"windows-x86_64",'
+            f'"toolkit_root":"{CUDA_VERSION_ROOT}"}}'
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert concat
+    with pytest.raises(
+        project.InitializationError,
+        match="duplicate bootstrap JSON key: platform",
+    ):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_cuda_inspection_rejects_escaping_toolkit_root(
+    tmp_path: Path,
+) -> None:
+    """CUDA manifest cannot make an external directory repository-ready."""
+    manifest = tmp_path / project.CUDA_TOOLCHAIN_MANIFEST
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text(
+        json.dumps({
+            "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
+            "platform": LINUX_PLATFORM,
+            "toolkit_root": "../escape",
+        }),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(
+        project.InitializationError,
+        match="toolkit_root must stay within the repository",
+    ):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
 def test_cuda_inspection_rejects_windows_manifest_on_linux(
     tmp_path: Path,
 ) -> None:
@@ -243,6 +427,16 @@ def test_cuda_inspection_rejects_windows_manifest_on_linux(
     assert status.state is project.ComponentState.UNSUPPORTED
     assert WINDOWS_PLATFORM in status.detail
     assert LINUX_PLATFORM in status.detail
+
+
+def test_rust_inspection_rejects_escaping_channel(tmp_path: Path) -> None:
+    """Pinned Rust channel cannot redirect repository-local Cargo lookup."""
+    _ = _write_rust_manifest(tmp_path, "../escape")
+    with pytest.raises(
+        project.InitializationError,
+        match="channel must be one repository-local path segment",
+    ):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
 def test_rust_inspection_rejects_windows_channel_on_linux(

@@ -19,10 +19,12 @@ to its complete typed record under `docs/todo/open/`.
 
 The repository bootstrap creates ignored local state, provisions the exact
 Python 3.14.6 validation environment with pinned standalone uv 0.11.16, and
-reports the readiness of pinned Rust, Jig, and CUDA components. The bootstrap
-creates the virtual environment without pip, verifies the uv archive SHA-256,
-and synchronizes the complete package set. Run it from the repository root with
-an exact Python 3.14.6 host interpreter:
+reports the readiness of pinned Rust, Jig, and CUDA components. Manifest
+admission rejects duplicate JSON keys, unknown schemas, release-identity drift,
+and paths that escape repository-local tool roots. The bootstrap creates the
+virtual environment without pip, verifies the uv archive SHA-256, and
+synchronizes the complete package set. Run it from the repository root with an
+exact Python 3.14.6 host interpreter:
 
 ```powershell
 py -3.14 -m scripts.bootstrap.project

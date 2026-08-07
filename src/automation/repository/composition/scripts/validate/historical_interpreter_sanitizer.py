@@ -148,11 +148,23 @@ def _array(value: object, context: str) -> list[object]:
     return cast("list[object]", value)
 
 
+def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
+    document: JsonObject = {}
+    for key, value in pairs:
+        if key in document:
+            _fail(f"duplicate sanitizer JSON key: {key}")
+        document[key] = value
+    return document
+
+
 def _load_object(path: Path) -> JsonObject:
     try:
         parsed = cast(
             "object",
-            json.loads(path.read_text(encoding="utf-8")),
+            json.loads(
+                path.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_pairs,
+            ),
         )
     except (OSError, json.JSONDecodeError) as error:
         _fail(f"cannot load {path}: {error}")

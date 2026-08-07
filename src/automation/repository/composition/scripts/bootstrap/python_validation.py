@@ -80,9 +80,13 @@ MACHINE_NAMES: Final = {
 }
 SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
+PARENT_SEGMENT: Final = ".."
+PATH_SEPARATORS: Final = frozenset(("/", "\\"))
 UV_RELEASE_BASE: Final = (
     "https://github.com/astral-sh/uv/releases/download/"
 )
+UV_SCHEMA_VERSION: Final = 1
+URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,11 +152,48 @@ def _required_string(
     return value
 
 
+def _required_path_segment(
+    document: dict[str, object],
+    key: str,
+    label: str,
+) -> str:
+    value = _required_string(document, key, label)
+    if value in {".", PARENT_SEGMENT} or any(
+        separator in value for separator in PATH_SEPARATORS
+    ):
+        _fail(f"{label}.{key} must be one repository-local path segment")
+    return value
+
+
+def _required_url_asset(
+    document: dict[str, object],
+    platform_id: str,
+) -> str:
+    value = _required_path_segment(document, "asset", platform_id)
+    if any(marker in value for marker in URL_SUFFIX_MARKERS):
+        _fail(f"{platform_id}.asset must be one URL path segment")
+    return value
+
+
+def _reject_duplicate_pairs(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, value in pairs:
+        if key in document:
+            _fail(f"duplicate uv manifest JSON key: {key}")
+        document[key] = value
+    return document
+
+
 def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
     try:
         parsed = cast(
             "object",
-            json.loads(manifest_path.read_text(encoding="utf-8")),
+            json.loads(
+                manifest_path.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_pairs,
+            ),
         )
     except (json.JSONDecodeError, OSError) as error:
         _fail(f"cannot read uv toolchain manifest: {error}")
@@ -204,13 +245,17 @@ def uv_artifact(
 
     """
     document = _uv_manifest_document(manifest_path)
-    version = _required_string(document, "version", "uv manifest")
+    schema_version = document.get("schema_version")
+    if type(schema_version) is not int or schema_version != UV_SCHEMA_VERSION:
+        _fail("unsupported uv toolchain manifest schema")
+    version = _required_path_segment(document, "version", "uv manifest")
     base_url = _required_string(document, "base_url", "uv manifest")
-    if not base_url.startswith(UV_RELEASE_BASE):
-        _fail("uv manifest.base_url must use the official HTTPS release root")
+    expected_base_url = f"{UV_RELEASE_BASE}{version}/"
+    if base_url != expected_base_url:
+        _fail("uv manifest.base_url must match the pinned release version")
     artifact = _uv_artifact_document(document, platform_id)
     return UvArtifact(
-        asset=_required_string(artifact, "asset", platform_id),
+        asset=_required_url_asset(artifact, platform_id),
         base_url=base_url,
         member=_required_string(artifact, "member", platform_id),
         platform_id=platform_id,

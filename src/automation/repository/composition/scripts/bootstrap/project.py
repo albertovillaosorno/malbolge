@@ -65,6 +65,18 @@ X86_64_MACHINES: Final = frozenset(("amd64", "x86_64"))
 AARCH64_MACHINES: Final = frozenset(("aarch64", "arm64"))
 WINDOWS_CHANNEL_MARKER: Final = "windows"
 UNKNOWN_PLATFORM: Final = "unknown"
+PARENT_SEGMENT: Final = ".."
+PATH_SEPARATORS: Final = frozenset(("/", "\\"))
+CUDA_TOOLCHAIN_MANIFEST: Final = (
+    Path("src")
+    / "optimization"
+    / "accelerator"
+    / "adapter-outbound"
+    / "accelerator"
+    / "cuda"
+    / "toolchain.json"
+)
+CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 SYSTEM_NAMES: Final = {
     WINDOWS_SYSTEM: WINDOWS_SYSTEM,
     LINUX_SYSTEM: LINUX_SYSTEM,
@@ -174,9 +186,41 @@ def host_platform_id(
     return f"{operating_system}-{architecture}"
 
 
+def _path_segment(value: str, label: str) -> str:
+    if value in {".", PARENT_SEGMENT} or any(
+        separator in value for separator in PATH_SEPARATORS
+    ):
+        _fail(f"{label} must be one repository-local path segment")
+    return value
+
+
+def _repository_relative_path(value: str, label: str) -> Path:
+    path = Path(value)
+    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+        _fail(f"{label} must stay within the repository")
+    return path
+
+
+def _reject_duplicate_pairs(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, value in pairs:
+        if key in document:
+            _fail(f"duplicate bootstrap JSON key: {key}")
+        document[key] = value
+    return document
+
+
 def _json_document(path: Path, label: str) -> dict[str, object]:
     try:
-        parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
+        parsed = cast(
+            "object",
+            json.loads(
+                path.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_pairs,
+            ),
+        )
     except (json.JSONDecodeError, OSError) as error:
         _fail(f"cannot read {label}: {error}")
     return _mapping(parsed, label)
@@ -197,13 +241,19 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
         Ready, missing, or unsupported CUDA bundle status.
 
     """
-    manifest_path = root / "accelerator" / "cuda" / "toolchain.json"
+    manifest_path = root / CUDA_TOOLCHAIN_MANIFEST
     path: Path | None = manifest_path
     if not manifest_path.is_file():
         detail = "tracked CUDA toolchain manifest is absent"
         state = ComponentState.MISSING
     else:
         document = _json_document(manifest_path, "CUDA toolchain manifest")
+        schema_version = document.get("schema_version")
+        if (
+            type(schema_version) is not int
+            or schema_version != CUDA_TOOLCHAIN_SCHEMA_VERSION
+        ):
+            _fail("unsupported CUDA toolchain manifest schema")
         manifest_platform = _required_string(
             document,
             "platform",
@@ -214,7 +264,10 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
             "toolkit_root",
             "CUDA manifest",
         )
-        path = root / Path(toolkit_root)
+        path = root / _repository_relative_path(
+            toolkit_root,
+            "CUDA manifest.toolkit_root",
+        )
         if manifest_platform != platform_id:
             detail = (
                 f"manifest targets {manifest_platform}; host is {platform_id}"
@@ -265,7 +318,10 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     toolchain_path = root / ".jig/version/rust-toolchain.toml"
     document = _toml_document(toolchain_path, "Rust toolchain manifest")
     toolchain = _mapping(document.get("toolchain"), "rust-toolchain.toolchain")
-    channel = _required_string(toolchain, "channel", "rust-toolchain.toolchain")
+    channel = _path_segment(
+        _required_string(toolchain, "channel", "rust-toolchain.toolchain"),
+        "rust-toolchain.toolchain.channel",
+    )
     path: Path | None = toolchain_path
     if WINDOWS_CHANNEL_MARKER in channel and not platform_id.startswith(
         WINDOWS_SYSTEM
