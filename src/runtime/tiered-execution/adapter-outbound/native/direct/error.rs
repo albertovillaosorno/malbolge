@@ -47,7 +47,7 @@ pub enum DirectDeoptError {
     TargetBackend,
     /// Direct deopt v4 has no target-specific feature specializations.
     TargetFeatures,
-    /// Direct deopt v3 emits Windows COFF only.
+    /// Direct deopt v4 emits Windows COFF only.
     TargetFormat,
 }
 
@@ -101,7 +101,7 @@ pub enum DirectHaltRegistersError {
     TargetBackend,
     /// Register-halt v5 has no target-specific feature specializations.
     TargetFeatures,
-    /// Register-halt v3 emits Windows COFF only.
+    /// Register-halt v5 emits Windows COFF only.
     TargetFormat,
 }
 
@@ -158,7 +158,7 @@ pub enum DirectHaltFetchError {
     ProgramShape,
     /// Target backend/revision/native ABI is not this contract.
     TargetBackend,
-    /// Halt-fetch v1 has no target-specific feature specializations.
+    /// Halt-fetch v2 has no target-specific feature specializations.
     TargetFeatures,
     /// Direct halt-fetch currently emits Windows COFF only.
     TargetFormat,
@@ -217,7 +217,7 @@ pub enum DirectNonGraphicalError {
     ProgramShape,
     /// Target backend/revision/native ABI is not this contract.
     TargetBackend,
-    /// Non-graphical v1 has no target-specific feature specializations.
+    /// Non-graphical v2 has no target-specific feature specializations.
     TargetFeatures,
     /// Direct non-graphical currently emits Windows COFF only.
     TargetFormat,
@@ -606,7 +606,7 @@ pub enum DirectNoOperationError {
     ProgramShape,
     /// Target backend/revision/native ABI is not this contract.
     TargetBackend,
-    /// No-operation v1 has no target-specific feature specializations.
+    /// No-operation v2 has no target-specific feature specializations.
     TargetFeatures,
     /// Direct no-operation currently emits Windows COFF only.
     TargetFormat,
@@ -667,7 +667,7 @@ pub enum DirectInitialHaltError {
     TargetBackend,
     /// Direct initial-halt v4 has no target-specific feature specializations.
     TargetFeatures,
-    /// Direct initial-halt v3 emits Windows COFF only.
+    /// Direct initial-halt v4 emits Windows COFF only.
     TargetFormat,
 }
 
