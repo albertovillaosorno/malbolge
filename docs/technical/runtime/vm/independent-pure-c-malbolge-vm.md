@@ -32,9 +32,17 @@ The implementation lives in
 `src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.c` with public
 interface
 `src/runtime/virtual-machine/adapter-outbound/c/malbolge_vm.h`. It uses fixed
-59049-word storage, caller-owned input and
-output buffers, no heap allocation, a table-driven ternary crazy operation,
-explicit byte semantics, and optional step traces.
+59049-word storage, caller-owned input and output buffers, no library-owned heap
+allocation, a table-driven ternary crazy operation, explicit byte semantics,
+and optional step traces.
+
+`MalbolgeMachine.memory` alone occupies 118098 bytes because the public word
+type is `uint16_t`; the complete machine is larger once registers, pointers, and
+length fields are included. Callers must not assume that an automatic local
+`MalbolgeMachine` fits a thread or embedded stack. Stack-constrained hosts
+should use static-duration storage, a caller-owned arena, or caller-managed heap
+storage. The C VM keeps allocation policy with the caller and does not allocate
+or free the machine object itself.
 
 Source loading validates the complete admitted source before initializing the
 machine. Non-halting execution computes instruction effects and validates the

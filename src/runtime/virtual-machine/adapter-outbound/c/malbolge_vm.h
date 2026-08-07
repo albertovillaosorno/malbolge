@@ -114,6 +114,12 @@ typedef struct MalbolgeTrace {
     uint8_t has_output_byte;
 } MalbolgeTrace;
 
+/*
+ * Storage note: memory[] alone occupies 118098 bytes because MalbolgeWord is
+ * uint16_t. The complete machine is therefore unsuitable for automatic local
+ * storage on stack-constrained threads or embedded targets. Prefer static
+ * storage, a caller-owned arena, or caller-managed heap storage.
+ */
 typedef struct MalbolgeMachine {
     MalbolgeWord memory[MALBOLGE_MEMORY_WORDS];
     MalbolgeRegisters registers;
