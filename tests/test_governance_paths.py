@@ -66,6 +66,8 @@ EXCLUDED_DIRECTORIES = frozenset({
     "node_modules",
     "target",
 })
+ASCII_CONTROL_LIMIT = 32
+ALLOWED_TEXT_CONTROL_BYTES = frozenset({9, 10, 13})
 TEXT_SUFFIXES = frozenset({
     ".c",
     ".cmd",
@@ -96,6 +98,19 @@ def _authored_text_paths() -> tuple[Path, ...]:
             if Path(name).suffix.lower() in TEXT_SUFFIXES
         )
     return tuple(paths)
+
+
+def test_authored_text_has_no_binary_control_bytes() -> None:
+    """Authored text uses escapes instead of embedded binary controls."""
+    violations = [
+        f"{path.relative_to(ROOT).as_posix()}:{offset}:0x{byte:02x}"
+        for path in _authored_text_paths()
+        for offset, byte in enumerate(path.read_bytes())
+        if byte < ASCII_CONTROL_LIMIT and byte not in ALLOWED_TEXT_CONTROL_BYTES
+    ]
+    assert not violations, "binary controls in authored text:\n" + "\n".join(
+        violations
+    )
 
 
 def test_authored_text_has_no_nested_jig_root_paths() -> None:
