@@ -40,6 +40,7 @@ import io
 import json
 import os
 from pathlib import Path
+from pathlib import PureWindowsPath
 import platform
 import stat
 
@@ -158,9 +159,11 @@ def _required_path_segment(
     label: str,
 ) -> str:
     value = _required_string(document, key, label)
-    if value in {".", PARENT_SEGMENT} or any(
-        separator in value for separator in PATH_SEPARATORS
-    ):
+    windows_path = PureWindowsPath(value)
+    reserved = value in {".", PARENT_SEGMENT}
+    has_separator = any(separator in value for separator in PATH_SEPARATORS)
+    windows_anchored = bool(windows_path.drive or windows_path.root)
+    if reserved or has_separator or windows_anchored:
         _fail(f"{label}.{key} must be one repository-local path segment")
     return value
 

@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import json
 from pathlib import Path
+from pathlib import PureWindowsPath
 import platform
 import sys
 import tomllib
@@ -187,16 +188,27 @@ def host_platform_id(
 
 
 def _path_segment(value: str, label: str) -> str:
-    if value in {".", PARENT_SEGMENT} or any(
-        separator in value for separator in PATH_SEPARATORS
-    ):
+    windows_path = PureWindowsPath(value)
+    reserved = value in {".", PARENT_SEGMENT}
+    has_separator = any(separator in value for separator in PATH_SEPARATORS)
+    windows_anchored = bool(windows_path.drive or windows_path.root)
+    if reserved or has_separator or windows_anchored:
         _fail(f"{label} must be one repository-local path segment")
     return value
 
 
 def _repository_relative_path(value: str, label: str) -> Path:
     path = Path(value)
-    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+    windows_path = PureWindowsPath(value)
+    native_relative = (
+        not path.is_absolute() and PARENT_SEGMENT not in path.parts
+    )
+    windows_relative = (
+        not windows_path.drive
+        and not windows_path.root
+        and PARENT_SEGMENT not in windows_path.parts
+    )
+    if not native_relative or not windows_relative:
         _fail(f"{label} must stay within the repository")
     return path
 

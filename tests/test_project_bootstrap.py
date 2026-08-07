@@ -241,6 +241,30 @@ def test_uv_manifest_rejects_escaping_version_path(tmp_path: Path) -> None:
         _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
 
 
+def test_uv_manifest_rejects_drive_relative_version_path(
+    tmp_path: Path,
+) -> None:
+    """Pinned uv version cannot select Windows drive-relative state."""
+    manifest = tmp_path / "uv.json"
+    parsed = cast(
+        "object",
+        json.loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    document["version"] = "D:escape"
+    _ = manifest.write_text(
+        json.dumps(document),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="version must be one repository-local path segment",
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
 def test_uv_archive_hash_verification_fails_closed() -> None:
     """Standalone uv bytes must match the tracked digest."""
     payload = b"reviewed uv archive"
@@ -416,6 +440,28 @@ def test_cuda_inspection_rejects_escaping_toolkit_root(
         _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
+def test_cuda_inspection_rejects_drive_relative_toolkit_root(
+    tmp_path: Path,
+) -> None:
+    """CUDA toolkit identity cannot select Windows drive-relative state."""
+    manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    document = {
+        "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
+        "platform": LINUX_PLATFORM,
+        "toolkit_root": "D:escape",
+    }
+    _ = manifest.write_text(
+        json.dumps(document),
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises(
+        project.InitializationError,
+        match="toolkit_root must stay within the repository",
+    ):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
 def test_cuda_inspection_rejects_windows_manifest_on_linux(
     tmp_path: Path,
 ) -> None:
@@ -432,6 +478,18 @@ def test_cuda_inspection_rejects_windows_manifest_on_linux(
 def test_rust_inspection_rejects_escaping_channel(tmp_path: Path) -> None:
     """Pinned Rust channel cannot redirect repository-local Cargo lookup."""
     _ = _write_rust_manifest(tmp_path, "../escape")
+    with pytest.raises(
+        project.InitializationError,
+        match="channel must be one repository-local path segment",
+    ):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_rust_inspection_rejects_drive_relative_channel(
+    tmp_path: Path,
+) -> None:
+    """Pinned Rust channel cannot select Windows drive-relative state."""
+    _ = _write_rust_manifest(tmp_path, "D:escape")
     with pytest.raises(
         project.InitializationError,
         match="channel must be one repository-local path segment",
