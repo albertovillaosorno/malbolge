@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from scripts.validate import benchmark_protocol as validator
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +75,17 @@ def _expect_failure(text: str, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_protocol_file_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Protocol file encoding failure remains a typed validation error."""
+    path = tmp_path / "invalid.benchmark.toml"
+    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    with pytest.raises(
+        validator.BenchmarkProtocolError,
+        match="invalid benchmark protocol UTF-8",
+    ):
+        _ = validator.validate_example(path)
+
+
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:
     """Deterministic and stochastic fixtures satisfy the complete protocol."""
     records = validator.validate_repository_examples()
@@ -81,6 +93,15 @@ def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:
         "deterministic",
         "stochastic",
     )
+
+
+def test_protocol_rejects_windows_drive_relative_path() -> None:
+    """Drive-relative Windows syntax is not repository-relative authority."""
+    text = _text(DETERMINISTIC).replace(
+        'path = "benchmarks/research/protocol/examples/deterministic-raw.csv"',
+        'path = "D:escape"',
+    )
+    _expect_failure(text, "must be repository-relative")
 
 
 def test_comparison_rejects_unequal_workload() -> None:

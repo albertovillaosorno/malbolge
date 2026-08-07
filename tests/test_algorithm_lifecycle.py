@@ -34,7 +34,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import pytest
 from scripts.validate import algorithm_lifecycle as validator
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 DECISION_DATE = "2026-07-27"
 SUCCESSOR = "successor-v2"
@@ -103,11 +109,31 @@ def _expect_failure(text: str, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_lifecycle_file_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Lifecycle file encoding failure remains a typed validation error."""
+    path = tmp_path / "lifecycle.toml"
+    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    with pytest.raises(
+        validator.AlgorithmLifecycleError,
+        match="invalid algorithm lifecycle UTF-8",
+    ):
+        _ = validator.validate_repository_lifecycle(path)
+
+
 def test_every_research_mirror_has_explicit_experimental_lifecycle() -> None:
     """All current research mirrors declare lifecycle state explicitly."""
     records = validator.validate_repository()
     assert tuple(record.identifier for record in records) == EXPECTED_IDS
     assert {record.state for record in records} == {validator.EXPERIMENTAL}
+
+
+def test_lifecycle_rejects_windows_drive_relative_path() -> None:
+    """Drive-relative Windows syntax cannot redirect lifecycle evidence."""
+    text = _base(validator.EXPERIMENTAL).replace(
+        f'research_record = "{RESEARCH}"',
+        'research_record = "D:escape"',
+    )
+    _expect_failure(text, "must be repository-relative")
 
 
 def test_promotion_candidate_requires_all_five_evidence_gates() -> None:

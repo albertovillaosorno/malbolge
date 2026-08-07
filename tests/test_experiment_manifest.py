@@ -34,7 +34,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import pytest
 from scripts.validate import experiment_manifest as validator
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 EXPECTED_IDS = (
     "adaptive-accelerator-resource-budgeting",
@@ -117,10 +123,33 @@ def _expect_failure(text: str, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_manifest_file_rejects_invalid_utf8(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Manifest file encoding failure remains a typed validation error."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    path = tmp_path / "experiment.toml"
+    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    with pytest.raises(
+        validator.ExperimentManifestError,
+        match="invalid experiment manifest UTF-8",
+    ):
+        _ = validator.validate_repository_manifest(path)
+
+
 def test_repository_experiment_manifests_are_schema_valid() -> None:
     """Every mirrored algorithm carries one valid version-one plan manifest."""
     manifests = validator.validate_repository()
     assert tuple(item.identifier for item in manifests) == EXPECTED_IDS
+
+
+def test_manifest_rejects_windows_drive_relative_path() -> None:
+    """Drive-relative Windows syntax cannot redirect retained run output."""
+    _expect_failure(
+        _run_manifest(raw_output="D:escape"),
+        "must be repository-relative",
+    )
 
 
 def test_recorded_run_requires_exact_commit_and_workload_hash() -> None:

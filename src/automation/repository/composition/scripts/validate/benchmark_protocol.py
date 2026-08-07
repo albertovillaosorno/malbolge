@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PureWindowsPath
 import sys
 import tomllib
 from typing import Never
@@ -218,7 +219,16 @@ def _enum(value: str, allowed: frozenset[str], context: str) -> str:
 
 def _relative_path(value: str, context: str) -> str:
     path = Path(value)
-    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+    windows_path = PureWindowsPath(value)
+    native_relative = (
+        not path.is_absolute() and PARENT_SEGMENT not in path.parts
+    )
+    windows_relative = (
+        not windows_path.drive
+        and not windows_path.root
+        and PARENT_SEGMENT not in windows_path.parts
+    )
+    if not native_relative or not windows_relative:
         _fail(f"{context} must be repository-relative: {value}")
     return path.as_posix()
 
@@ -422,6 +432,13 @@ def parse_protocol(text: str) -> BenchmarkProtocolRecord:
     )
 
 
+def _read_utf8(path: Path, context: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid {context} UTF-8: {error}")
+
+
 def validate_example(path: Path) -> BenchmarkProtocolRecord:
     """Validate one protocol example and its linked run/raw evidence.
 
@@ -431,7 +448,7 @@ def validate_example(path: Path) -> BenchmarkProtocolRecord:
     """
     if not path.is_file():
         _fail(f"benchmark protocol example not found: {path}")
-    record = parse_protocol(path.read_text(encoding="utf-8"))
+    record = parse_protocol(_read_utf8(path, "benchmark protocol"))
     run = _linked_run(record)
     _validate_linked_identity(record, run)
     raw_path = ROOT / record.raw_path
@@ -449,7 +466,7 @@ def _linked_run(
             f"benchmark experiment run not found: {record.experiment_manifest}"
         )
     manifest = experiment_manifest.parse_manifest(
-        path.read_text(encoding="utf-8")
+        _read_utf8(path, "benchmark experiment manifest")
     )
     if manifest.record_kind != experiment_manifest.RUN_RECORD_KIND:
         _fail("benchmark protocol must reference record_kind = run")

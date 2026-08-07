@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PureWindowsPath
 import re
 import sys
 import tomllib
@@ -195,7 +196,16 @@ def _boolean(table: dict[str, object], name: str, context: str) -> bool:
 
 def _relative_path(value: str, context: str) -> str:
     path = Path(value)
-    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+    windows_path = PureWindowsPath(value)
+    native_relative = (
+        not path.is_absolute() and PARENT_SEGMENT not in path.parts
+    )
+    windows_relative = (
+        not windows_path.drive
+        and not windows_path.root
+        and PARENT_SEGMENT not in windows_path.parts
+    )
+    if not native_relative or not windows_relative:
         _fail(f"{context} must be repository-relative: {value}")
     return path.as_posix()
 
@@ -441,6 +451,13 @@ def _validate_repository_identity(
         _fail(f"manifest provenance output mismatch: {manifest.output}")
 
 
+def _read_utf8(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid experiment manifest UTF-8: {error}")
+
+
 def validate_repository_manifest(path: Path) -> ExperimentManifest:
     """Validate one checked-in manifest against repository identity.
 
@@ -451,7 +468,7 @@ def validate_repository_manifest(path: Path) -> ExperimentManifest:
     relative = _repository_relative(path)
     if not path.is_file():
         _fail(f"experiment manifest not found: {relative.as_posix()}")
-    manifest = parse_manifest(path.read_text(encoding="utf-8"))
+    manifest = parse_manifest(_read_utf8(path))
     _validate_repository_identity(manifest, path)
     return manifest
 

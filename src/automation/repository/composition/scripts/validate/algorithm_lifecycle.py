@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from pathlib import PureWindowsPath
 import sys
 import tomllib
 from typing import Never
@@ -162,7 +163,16 @@ def _optional_string(
 
 def _relative_path(value: str, context: str) -> str:
     path = Path(value)
-    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+    windows_path = PureWindowsPath(value)
+    native_relative = (
+        not path.is_absolute() and PARENT_SEGMENT not in path.parts
+    )
+    windows_relative = (
+        not windows_path.drive
+        and not windows_path.root
+        and PARENT_SEGMENT not in windows_path.parts
+    )
+    if not native_relative or not windows_relative:
         _fail(f"{context} must be repository-relative: {value}")
     return path.as_posix()
 
@@ -327,6 +337,13 @@ def _validate_evidence_paths(record: AlgorithmLifecycle) -> None:
             )
 
 
+def _read_utf8(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid algorithm lifecycle UTF-8: {error}")
+
+
 def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
     """Validate one checked-in lifecycle record against mirror identity.
 
@@ -336,7 +353,7 @@ def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
     """
     if not path.is_file():
         _fail(f"algorithm lifecycle manifest not found: {path}")
-    record = parse_lifecycle(path.read_text(encoding="utf-8"))
+    record = parse_lifecycle(_read_utf8(path))
     directory_ids = {
         directory: identifier
         for identifier, directory in research_algorithm_directories(ROOT)
