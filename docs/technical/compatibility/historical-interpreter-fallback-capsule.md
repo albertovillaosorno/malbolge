@@ -125,10 +125,12 @@ explicitly.
 `build_capsule()` emits the fixed fallback plus a deterministic sideband for one
 canonical `ProfileDescriptor` and arbitrary payload bytes.
 
-`parse_capsule()` returns `Ok(None)` for ordinary source. Once exact magic is
-recognized, it validates framing, lengths, checksum, canonical profile lookup,
-and exact profile fingerprint before returning payload bytes and the selected
-canonical descriptor.
+`parse_capsule()` returns `Ok(None)` for ordinary source. Recognition inspects
+the 64 space/tab symbols that encode the exact magic before classifying the
+remaining suffix. Once exact magic is recognized, any non-space/tab symbol in
+later framing fails `MALBOLGE-CAPSULE-001`; the parser then validates lengths,
+checksum, canonical profile lookup, and exact profile fingerprint before
+returning payload bytes and the selected canonical descriptor.
 
 The annual-current fixture selects `malbolge-2026` and carries `ubO` plus LF
 as its small payload. The preserved `malbolge-2026.3` fixture carries the same
@@ -194,8 +196,9 @@ through the modern capsule path.
 
 - `tests/vm/capsule.rs` locks the Rust builder against the annual-current
   fixture, parses and executes the preserved `malbolge-2026.3` vector, validates
-  checksum tampering, exact shared fingerprint mismatch, and unknown-profile
-  rejection without fallback; proves ordinary-source non-recognition, verifies
+  checksum tampering, post-magic non-sideband rejection, exact shared
+  fingerprint mismatch, and unknown-profile rejection without fallback; proves
+  ordinary-source non-recognition, verifies
   the historical visible bytes, runs the fixed fallback under
   `ExecutionMode::Interpreter`, and proves current-profile execution reaches
   capability preflight before payload loading.

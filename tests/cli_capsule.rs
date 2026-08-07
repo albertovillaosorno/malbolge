@@ -122,6 +122,35 @@ fn assert_capsule_dispatch(label: &str, source: &str) -> Result<(), String> {
 }
 
 #[test]
+fn malformed_capsule_fails_before_classic_fallback() -> Result<(), String> {
+    let mut bytes = decode_hex(ANNUAL_CAPSULE_HEX)?;
+    let symbol = bytes.get_mut(7 + 64).ok_or_else(|| {
+        String::from("annual capsule lacks post-magic framing")
+    })?;
+    *symbol = b'X';
+    let capsule = TemporaryCapsule::from_bytes("malformed-symbol", &bytes)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&capsule.path)
+        .output()
+        .map_err(|error| format!("run malformed capsule CLI: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains("MALBOLGE-CAPSULE-001")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "malformed capsule fell through: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
+        ))
+    }
+}
+
+#[test]
 fn published_capsules_dispatch_before_classic_fallback() -> Result<(), String> {
     assert_capsule_dispatch("annual", ANNUAL_CAPSULE_HEX)?;
     assert_capsule_dispatch("2026-3", VERSIONED_CAPSULE_HEX)

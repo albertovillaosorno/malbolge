@@ -338,6 +338,26 @@ fn ordinary_classic_source_is_not_capsule() -> TestResult {
 }
 
 #[test]
+fn malformed_symbol_after_magic_fails_closed() -> TestResult {
+    let mut malformed = capsule_fixture()?;
+    let symbol = malformed
+        .get_mut(FALLBACK.len() + 64)
+        .ok_or_else(|| String::from("capsule lacks post-magic framing"))?;
+    *symbol = b'X';
+
+    let Err(error) = parse_capsule(&malformed) else {
+        return Err(String::from(
+            "post-magic non-sideband symbol was not rejected",
+        ));
+    };
+    check_equal(
+        &error,
+        &CapsuleError::Malformed,
+        "post-magic malformed sideband category",
+    )
+}
+
+#[test]
 fn parsed_fixture_binds_current_profile_and_payload() -> TestResult {
     let parsed = normalize_result(parse_capsule(&capsule_fixture()?))?
         .ok_or_else(|| String::from("current fixture was not recognized"))?;

@@ -268,9 +268,9 @@ pub fn build_capsule(
 /// Recognizes and validates one version-one historical-fallback capsule.
 ///
 /// Ordinary source, including the fallback with ordinary trailing whitespace,
-/// returns `Ok(None)` unless the exact version-one magic is present in a pure
-/// space/tab suffix. Once that marker is recognized, all malformed data fails
-/// closed.
+/// returns `Ok(None)` unless the first 64 sideband symbols decode to the exact
+/// version-one magic. Once that marker is recognized, all malformed later data
+/// fails closed.
 ///
 /// # Errors
 ///
@@ -289,14 +289,16 @@ fn capsule_sideband(source: &[u8]) -> Option<&[u8]> {
         return None;
     }
     let sideband = source.get(FALLBACK_SOURCE.len()..)?;
-    if sideband.len() < MAGIC_SYMBOLS
-        || sideband
-            .iter()
-            .any(|symbol| !matches!(*symbol, SPACE | TAB))
-    {
+    if sideband.len() < MAGIC_SYMBOLS {
         return None;
     }
     let magic_symbols = sideband.get(..MAGIC_SYMBOLS)?;
+    if magic_symbols
+        .iter()
+        .any(|symbol| !matches!(*symbol, SPACE | TAB))
+    {
+        return None;
+    }
     let decoded_magic = decode_sideband(magic_symbols).ok()?;
     if decoded_magic.as_slice() != CAPSULE_MAGIC {
         return None;
