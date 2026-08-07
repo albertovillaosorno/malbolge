@@ -226,16 +226,21 @@ impl NativeExecutableSequenceCacheUsage {
         &mut self,
         weight: NativeExecutableSequenceWeight,
     ) -> Result<(), NativeExecutableSequenceCacheCapacityError> {
-        self.entries = self.entries.checked_add(1).ok_or(
+        let entries = self.entries.checked_add(1).ok_or(
             NativeExecutableSequenceCacheCapacityError::WeightOverflow,
         )?;
-        self.mappings = self.mappings.checked_add(weight.mappings).ok_or(
+        let mappings = self.mappings.checked_add(weight.mappings).ok_or(
             NativeExecutableSequenceCacheCapacityError::WeightOverflow,
         )?;
-        self.mapped_bytes =
+        let mapped_bytes =
             self.mapped_bytes.checked_add(weight.mapped_bytes).ok_or(
                 NativeExecutableSequenceCacheCapacityError::WeightOverflow,
             )?;
+        *self = Self {
+            entries,
+            mapped_bytes,
+            mappings,
+        };
         Ok(())
     }
 

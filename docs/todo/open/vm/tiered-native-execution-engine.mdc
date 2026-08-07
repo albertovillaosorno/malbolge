@@ -97,8 +97,10 @@ baseline; native tiers are accelerators of identical observable behavior.
 - `src/runtime/tiered-execution/adapter-outbound/native/main.rs` now lowers
   structurally consistent effect IR to
   deterministic freestanding C23 under an exact `NativeArtifactKey`. All local
-  entry/memory/input/output guards precede a collapsed final commit. Pinned
-  Clang 22.1.8 emits real untrusted Windows COFF object candidates for both
+  entry/memory/input/output guards precede a collapsed final commit. Checked
+  counter increments reject input/output observation overflow instead of
+  saturating into an apparently valid transition. Pinned Clang 22.1.8 emits
+  real untrusted Windows COFF object candidates for both
   x86-64 and AArch64. Safe-Rust structural admission checks ISA, `.text`, entry
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` now
@@ -466,9 +468,11 @@ baseline; native tiers are accelerators of identical observable behavior.
   Candidate weight comes from ready mapping reports. Hits preserve FIFO age and
   usage without adapter work. Oversized candidates clean themselves without
   changing prior entries; candidates that fit alone evict repeatedly until all
-  projected limits fit and report every evicted key. Failed later insertion
-  eviction removes cache authority for that victim and earlier successful
-  victims, cleans the candidate, and retains failed ownership for retry.
+  projected limits fit and report every evicted key. Usage publication is
+  transactional: a late mapped-byte overflow leaves all retained counters
+  unchanged. Failed later insertion eviction removes cache authority for that
+  victim and earlier successful victims, cleans the candidate, and retains
+  failed ownership for retry.
   Invalidation and full drain update usage before cleanup.
   `reconfigure_limits()` publishes expansion or already-satisfied requests
   without adapter operations. Shrink requests release oldest entries until

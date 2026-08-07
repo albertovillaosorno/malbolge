@@ -729,7 +729,10 @@ const fn validate_input_transition(
     let expected = match input {
         None | Some(TraceInput::EndOfInput) => before.input_consumed,
         Some(TraceInput::Byte(_byte)) => {
-            before.input_consumed.saturating_add(1)
+            let Some(expected) = before.input_consumed.checked_add(1) else {
+                return Err(NativeArtifactError::InputTransition);
+            };
+            expected
         },
     };
     if after.input_consumed == expected {
@@ -739,14 +742,20 @@ const fn validate_input_transition(
     }
 }
 
-fn validate_output_transition(
+const fn validate_output_transition(
     before: ProfileMachineObservation,
     after: ProfileMachineObservation,
     output: Option<u8>,
 ) -> Result<(), NativeArtifactError> {
-    let expected = output.map_or(before.output_len, |_byte| {
-        before.output_len.saturating_add(1)
-    });
+    let expected = match output {
+        None => before.output_len,
+        Some(_byte) => {
+            let Some(expected) = before.output_len.checked_add(1) else {
+                return Err(NativeArtifactError::OutputTransition);
+            };
+            expected
+        },
+    };
     if after.output_len == expected {
         Ok(())
     } else {

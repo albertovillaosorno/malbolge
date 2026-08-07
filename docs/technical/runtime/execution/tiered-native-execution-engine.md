@@ -89,8 +89,11 @@ bootstrap backend lowers one structurally consistent `RegionEffectProgram` into
 deterministic freestanding C23 and binds the candidate to the exact
 `NativeArtifactKey`. Generated code performs all entry-observation, memory,
 input/EOF, pointer, and output-capacity checks before any guest-visible commit.
-Repeated writes to one address collapse to its first required value and final
-committed value, so a guard miss cannot leave an intermediate region state.
+Bootstrap validation uses checked input/output counter increments, so an
+observation at `usize::MAX` fails closed instead of saturating into an
+apparently valid transition. Repeated writes to one address collapse to their
+first required value and final committed value, so a guard miss cannot leave an
+intermediate region state.
 
 Pinned Clang 22.1.8 materializes the same bootstrap representation as real
 Windows COFF objects for both x86-64 and AArch64 under strict warning-clean C23
@@ -629,10 +632,12 @@ completely before accounting so candidate weight comes from admitted mapping
 reports rather than object estimates. Candidates that exceed a mapping or byte
 limit alone are fully released without changing existing authority. Otherwise
 oldest entries are released repeatedly until projected entries, mappings, and
-bytes all fit; insertion evidence retains every evicted key in order. Failed
-later insertion eviction removes that victim and prior successful victims from
-cache authority, attempts candidate cleanup, and returns still-owned releases
-for retry. Exact invalidation and full drain update usage before cleanup,
+bytes all fit; insertion evidence retains every evicted key in order. Usage
+publication is transactional: a late mapped-byte overflow leaves entry, mapping,
+and byte counters unchanged. Failed later insertion eviction removes that victim
+and prior successful victims from cache authority, attempts candidate cleanup,
+and returns still-owned releases for retry. Exact invalidation and full drain
+update usage before cleanup,
 preventing stale budget retention after release failure. Rust borrowing still
 prevents mutation while a returned chain is in use.
 `reconfigure_limits()` stages weighted-limit publication against current usage.

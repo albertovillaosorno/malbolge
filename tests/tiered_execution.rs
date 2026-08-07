@@ -306,6 +306,7 @@ struct FakeNativeExecutableAdapter {
     drift: Option<FakeNativeAdapterDrift>,
     failure: Option<FakeNativeAdapterOperation>,
     failure_at: Option<(FakeNativeAdapterOperation, usize)>,
+    mapped_len_overrides: Vec<usize>,
     mapping_id: NativeExecutableMappingId,
     operations: Vec<FakeNativeAdapterOperation>,
     release_attempts: usize,
@@ -482,6 +483,7 @@ impl FakeNativeExecutableAdapter {
             drift: None,
             failure: None,
             failure_at: None,
+            mapped_len_overrides: Vec::new(),
             mapping_id,
             operations: Vec::new(),
             release_attempts: 0,
@@ -511,6 +513,14 @@ impl FakeNativeExecutableAdapter {
         attempt: usize,
     ) -> Self {
         self.failure_at = Some((failure, attempt));
+        self
+    }
+
+    fn with_mapped_len_overrides(
+        mut self,
+        mapped_len_overrides: Vec<usize>,
+    ) -> Self {
+        self.mapped_len_overrides = mapped_len_overrides;
         self
     }
 
@@ -560,7 +570,10 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
             if self.drift == Some(FakeNativeAdapterDrift::AllocationCapacity) {
                 request.byte_len().saturating_sub(1)
             } else {
-                request.byte_len()
+                self.mapped_len_overrides
+                    .get(allocation_index)
+                    .copied()
+                    .unwrap_or_else(|| request.byte_len())
             };
         let permissions = if self.drift
             == Some(FakeNativeAdapterDrift::AllocationPermission)
@@ -5248,6 +5261,39 @@ fn native_bootstrap_rejects_structural_and_target_mismatches()
 }
 
 #[test]
+fn native_bootstrap_rejects_observation_counter_overflow() -> Result<(), String>
+{
+    let target = native_target(HostIsa::X86_64);
+    let mut input_overflow = native_program();
+    for effect in &mut input_overflow.effects {
+        effect.before.input_consumed = usize::MAX;
+        effect.after.input_consumed = usize::MAX;
+    }
+    if lower_clang_c23(&input_overflow, target.clone())
+        != Err(NativeArtifactError::InputTransition)
+    {
+        return Err(String::from(
+            "bootstrap admitted overflowing input transition",
+        ));
+    }
+
+    let mut output_overflow = native_program();
+    for effect in &mut output_overflow.effects {
+        effect.before.output_len = usize::MAX;
+        effect.after.output_len = usize::MAX;
+    }
+    if lower_clang_c23(&output_overflow, target)
+        == Err(NativeArtifactError::OutputTransition)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "bootstrap admitted overflowing output transition",
+        ))
+    }
+}
+
+#[test]
 fn native_bootstrap_compiles_real_x86_64_and_aarch64_coff_objects()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -9130,6 +9176,56 @@ fn executable_sequence_cache_tracks_weighted_usage() -> Result<(), String> {
         return Err(String::from("weighted invalidation accounting drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn executable_sequence_cache_usage_overflow_is_transactional()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let first = selected_sequence_prefix(&fixture, HostIsa::X86_64, 1)?;
+    let second = selected_sequence_prefix(&fixture, HostIsa::AArch64, 1)?;
+    let base_value = 0x98_000usize;
+    let first_mapped_len = usize::MAX
+        .checked_sub(base_value)
+        .ok_or_else(|| String::from("first mapped length underflowed"))?;
+    let second_mapped_len = base_value
+        .checked_add(1)
+        .ok_or_else(|| String::from("second mapped length overflowed"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(9061)?,
+        native_executable_address(base_value)?,
+    )
+    .with_mapped_len_overrides(vec![first_mapped_len, second_mapped_len]);
+    let capacity = nonzero_test_limit(2, "entry limit")?;
+    let mut cache = NativeExecutableSequenceCache::new(capacity);
+    ensure_executable_cache_plan(&mut cache, &mut adapter, &first)?;
+    let retained_usage = cache.usage();
+
+    let Err(error) = cache.ensure_plan(&mut adapter, &second) else {
+        return Err(String::from("cache usage overflow was admitted"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::WeightOverflow)
+        || error.candidate_cleanup_failure().is_some()
+        || !error.evicted_keys().is_empty()
+        || cache.usage() != retained_usage
+        || cache.len() != 1
+        || !cache.contains_plan(&first)
+        || cache.contains_plan(&second)
+        || adapter.release_requests.len() != 1
+    {
+        return Err(String::from(
+            "cache usage overflow mutated retained authority",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map_err(|failure| failure.to_string())?;
+    if adapter.release_requests.len() == 2 {
+        Ok(())
+    } else {
+        Err(String::from("cache usage overflow cleanup drifted"))
+    }
 }
 
 #[test]
@@ -16141,7 +16237,7 @@ fn cached_retry_telemetry_codec_roundtrips_canonical_bytes()
     let prefix = bytes
         .get(..12)
         .ok_or_else(|| String::from("codec prefix was truncated"))?;
-    let expected_prefix = b"MBTELM01   ";
+    let expected_prefix = b"MBTELM01\x01\x00\x00\x00";
     let decoded = decode_cached_retry_telemetry_snapshot(&bytes)
         .map_err(|error| error.to_string())?;
     let reencoded = encode_cached_retry_telemetry_snapshot(&decoded)
