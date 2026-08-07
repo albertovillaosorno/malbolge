@@ -932,7 +932,7 @@ This is not yet a cross-platform runtime. `runtime.py` currently uses
 `ctypes.WinDLL`, `nvcuda.dll`, a versioned NVRTC `.dll`, and a literal 13.3.1
 repository path. The pending [CUDA Linux runtime and hermetic toolchain
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-contract](../../docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md)
+contract](../../../../../../docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md)
 requires `ctypes.CDLL` plus reviewed `.so` identities on Linux and moves CUDA
 release/path selection into per-platform manifests. The project initializer
 reports a non-Windows CUDA manifest mismatch as unsupported rather than claiming
