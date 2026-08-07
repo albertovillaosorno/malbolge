@@ -45,6 +45,7 @@ _ROLLING_MODULUS = 1 << _ROLLING_BITS
 _ROLLING_MASK = _ROLLING_MODULUS - 1
 _ZERO = 0
 _ONE = 1
+_SHA256_BYTES = hashlib.sha256().digest_size
 
 
 class FingerprintPolicyError(ValueError):
@@ -65,8 +66,16 @@ class AnchorPolicy:
             FingerprintPolicyError: A configured integer is not positive.
 
         """
+        if (
+            type(self.window_bytes) is not int
+            or type(self.selection_modulus) is not int
+        ):
+            message = "anchor window and selection modulus must be integers"
+            raise FingerprintPolicyError(message)
         if self.window_bytes < _ONE or self.selection_modulus < _ONE:
-            message = "anchor window and selection modulus must be positive"
+            message = (
+                "anchor window and selection modulus must be positive integers"
+            )
             raise FingerprintPolicyError(message)
 
 
@@ -79,6 +88,20 @@ class StableAnchor:
 
     digest: bytes
     offset: int
+
+    def __post_init__(self) -> None:
+        """Require one exact SHA-256 digest and non-negative byte offset.
+
+        Raises:
+            FingerprintPolicyError: Digest or offset metadata is invalid.
+
+        """
+        if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
+            message = "stable anchor digest must be exactly 32 bytes"
+            raise FingerprintPolicyError(message)
+        if type(self.offset) is not int or self.offset < _ZERO:
+            message = "stable anchor offset must be a non-negative integer"
+            raise FingerprintPolicyError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +196,16 @@ def stable_anchors(
     Returns:
         Unique selected SHA-256 digests ordered by authoring offset.
 
+    Raises:
+        FingerprintPolicyError: Input bytes or policy metadata is invalid.
+
     """
+    if type(data) is not bytes:
+        message = "stable anchor input must use exact bytes"
+        raise FingerprintPolicyError(message)
+    if type(policy) is not AnchorPolicy:
+        message = "stable anchor policy must use the exact AnchorPolicy type"
+        raise FingerprintPolicyError(message)
     if len(data) < policy.window_bytes:
         return _small_input_anchor(data)
     selected, fallback_offset = _scan_anchor_windows(data, policy)
@@ -192,7 +224,18 @@ def anchor_coverage(
     Returns:
         Matched count, reference count, and matched/reference ratio.
 
+    Raises:
+        FingerprintPolicyError: Anchor collections contain foreign records.
+
     """
+    if type(reference) is not tuple or type(candidate) is not tuple:
+        message = "anchor coverage inputs must use exact immutable tuples"
+        raise FingerprintPolicyError(message)
+    if any(
+        type(anchor) is not StableAnchor for anchor in (*reference, *candidate)
+    ):
+        message = "anchor coverage inputs contain a foreign anchor record"
+        raise FingerprintPolicyError(message)
     reference_digests = {anchor.digest for anchor in reference}
     candidate_digests = {anchor.digest for anchor in candidate}
     total = len(reference_digests)

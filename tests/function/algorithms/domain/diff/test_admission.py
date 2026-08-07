@@ -34,17 +34,17 @@
 
 import hashlib
 import math
-from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import AdmissionError
 from algorithms.diff.admission import AdmissionPolicy
+from algorithms.diff.admission import AdmissionPolicyError
+from algorithms.diff.admission import IdentityFile
+from algorithms.diff.admission import IdentityTree
 from algorithms.diff.admission import evaluate_admission
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.admission import require_admission
 import pytest
-
-if TYPE_CHECKING:
-    from algorithms.diff.admission import IdentityTree
 
 _FILE_COUNT = 4
 _BLOCKS_PER_FILE = 128
@@ -232,3 +232,68 @@ def test_opaque_asset_size_cannot_dominate_explicit_identity_view() -> None:
         baseline == with_asset, "candidate-only asset changed source evidence"
     )
     _expect(len(with_asset.files) == _FILE_COUNT, "asset changed identity size")
+
+
+def test_admission_policy_rejects_boolean_numeric_fields() -> None:
+    """Boolean aliases cannot weaken lineage thresholds or evidence counts."""
+    with pytest.raises(AdmissionPolicyError, match="finite numeric fraction"):
+        _ = AdmissionPolicy(
+            minimum_source_similarity=True,
+            minimum_anchor_coverage=0.66,
+            minimum_anchor_files=3,
+            minimum_anchors_per_file=2,
+        )
+    with pytest.raises(AdmissionPolicyError, match="positive integer"):
+        _ = AdmissionPolicy(
+            minimum_source_similarity=0.50,
+            minimum_anchor_coverage=0.66,
+            minimum_anchor_files=True,
+            minimum_anchors_per_file=2,
+        )
+
+
+def test_identity_records_reject_foreign_runtime_types() -> None:
+    """Identity construction accepts canonical strings and bytes only."""
+    with pytest.raises(AdmissionPolicyError, match="exact string"):
+        _ = IdentityFile(path=cast("str", object()), canonical=b"source")
+    with pytest.raises(AdmissionPolicyError, match="exact bytes"):
+        _ = IdentityFile(
+            path="source.c",
+            canonical=cast("bytes", cast("object", bytearray(b"source"))),
+        )
+    with pytest.raises(AdmissionPolicyError, match="immutable tuple"):
+        _ = IdentityTree(
+            files=cast("tuple[IdentityFile, ...]", cast("object", []))
+        )
+    with pytest.raises(AdmissionPolicyError, match="foreign file"):
+        _ = IdentityTree(files=(cast("IdentityFile", object()),))
+    with pytest.raises(AdmissionPolicyError, match="exact dictionary"):
+        _ = identity_tree(cast("dict[str, bytes]", object()))
+    with pytest.raises(AdmissionPolicyError, match="exact bytes"):
+        _ = identity_tree({
+            "source.c": cast("bytes", cast("object", bytearray(b"source")))
+        })
+
+
+def test_admission_rejects_foreign_tree_and_policy_objects() -> None:
+    """Lineage evaluation fails typed before dereferencing foreign objects."""
+    reference = identity_tree(_reference_files())
+    policy = _policy()
+    with pytest.raises(AdmissionPolicyError, match="exact IdentityTree"):
+        _ = evaluate_admission(
+            cast("IdentityTree", object()),
+            reference,
+            policy,
+        )
+    with pytest.raises(AdmissionPolicyError, match="exact IdentityTree"):
+        _ = evaluate_admission(
+            reference,
+            cast("IdentityTree", object()),
+            policy,
+        )
+    with pytest.raises(AdmissionPolicyError, match="exact AdmissionPolicy"):
+        _ = evaluate_admission(
+            reference,
+            reference,
+            cast("AdmissionPolicy", object()),
+        )

@@ -37,7 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import math
+from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.domain import load_diff_domain
@@ -47,9 +49,9 @@ from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.source_binding import SourceBindingPolicy
 
-if TYPE_CHECKING:
-    from pathlib import Path
+_MAX_SHARES = 255
 
+if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
 
 
@@ -85,26 +87,47 @@ class DiffGeneratorUnavailableError(RuntimeError):
     """Raised when a requested transform mode is not implemented yet."""
 
 
-def _validate_fraction(name: str, value: float) -> None:
-    if not math.isfinite(value) or value < 0.0 or value > 1.0:
+def _validate_fraction(name: str, value: object) -> None:
+    if type(value) is int:
+        number = float(value)
+    elif type(value) is float:
+        number = value
+    else:
+        message = f"{name} must be a finite numeric fraction in [0, 1]"
+        raise TypeError(message)
+    if not math.isfinite(number) or number < 0.0 or number > 1.0:
         message = f"{name} must be a finite fraction in [0, 1], got {value}"
         raise ValueError(message)
+
+
+def _validate_binding_count(
+    name: str, value: object, maximum: int | None
+) -> int:
+    if type(value) is not int:
+        message = f"{name} must use the exact integer type"
+        raise TypeError(message)
+    if value < 1 or (maximum is not None and value > maximum):
+        limit = "positive" if maximum is None else f"in [1, {maximum}]"
+        message = f"{name} must be {limit}"
+        raise ValueError(message)
+    return value
 
 
 def _validate_binding_policy(recipe: DiffRecipe) -> None:
     if recipe.source_binding_threshold <= 0.0:
         message = "source_binding_threshold must be greater than zero"
         raise ValueError(message)
-    if recipe.source_binding_maximum_anchors < 1:
-        message = "source_binding_maximum_anchors must be positive"
-        raise ValueError(message)
-    if recipe.source_binding_minimum_files < 1:
-        message = "source_binding_minimum_files must be positive"
-        raise ValueError(message)
-    if (
-        recipe.source_binding_minimum_files
-        > recipe.source_binding_maximum_anchors
-    ):
+    maximum = _validate_binding_count(
+        "source_binding_maximum_anchors",
+        recipe.source_binding_maximum_anchors,
+        _MAX_SHARES,
+    )
+    minimum = _validate_binding_count(
+        "source_binding_minimum_files",
+        recipe.source_binding_minimum_files,
+        None,
+    )
+    if minimum > maximum:
         message = (
             "source_binding_minimum_files cannot exceed "
             "source_binding_maximum_anchors"
@@ -112,19 +135,78 @@ def _validate_binding_policy(recipe: DiffRecipe) -> None:
         raise ValueError(message)
 
 
+def _validate_path(value: object, name: str) -> None:
+    if not isinstance(value, Path):
+        message = f"{name} must be a pathlib Path"
+        raise TypeError(message)
+
+
+def _validate_recipe_paths(recipe: DiffRecipe) -> None:
+    for value, name in (
+        (recipe.source_root, "source_root"),
+        (recipe.oracle_root, "oracle_root"),
+        (recipe.output_algorithm, "output_algorithm"),
+    ):
+        _validate_path(value, name)
+    if recipe.domain_module is not None:
+        _validate_path(recipe.domain_module, "domain_module")
+
+
+def _validate_recipe_identity(recipe: DiffRecipe) -> None:
+    if type(recipe.profile) is not str:
+        message = "profile must use the exact string type"
+        raise TypeError(message)
+    if not recipe.profile:
+        message = "profile must be non-empty"
+        raise ValueError(message)
+    if type(recipe.mode) is not TransformMode:
+        message = "mode must use the exact TransformMode type"
+        raise TypeError(message)
+
+
+def _validate_passthrough_roots(value: object) -> None:
+    if type(value) is not tuple:
+        message = "passthrough_roots must use the exact immutable tuple type"
+        raise TypeError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(root) is not str for root in items):
+        message = "passthrough_roots entries must use the exact string type"
+        raise TypeError(message)
+    roots = cast("tuple[str, ...]", value)
+    if any(not root for root in roots):
+        message = "passthrough_roots entries must be non-empty"
+        raise ValueError(message)
+
+
+def _validate_identity_flags(recipe: DiffRecipe) -> None:
+    for name, value in (
+        ("ignore_comments_for_identity", recipe.ignore_comments_for_identity),
+        (
+            "ignore_formatting_for_identity",
+            recipe.ignore_formatting_for_identity,
+        ),
+    ):
+        if type(value) is not bool:
+            message = f"{name} must be an exact boolean"
+            raise TypeError(message)
+
+
 def _validate_recipe(recipe: DiffRecipe) -> None:
-    fractions = (
+    if type(recipe) is not DiffRecipe:
+        message = "diff recipe must use the exact DiffRecipe type"
+        raise TypeError(message)
+    _validate_recipe_paths(recipe)
+    _validate_recipe_identity(recipe)
+    _validate_passthrough_roots(recipe.passthrough_roots)
+    _validate_identity_flags(recipe)
+    for name, value in (
         ("minimum_source_similarity", recipe.minimum_source_similarity),
         ("minimum_anchor_coverage", recipe.minimum_anchor_coverage),
         ("minimum_behavior_similarity", recipe.minimum_behavior_similarity),
         ("source_binding_threshold", recipe.source_binding_threshold),
-    )
-    for name, value in fractions:
+    ):
         _validate_fraction(name, value)
     _validate_binding_policy(recipe)
-    if not recipe.profile:
-        message = "profile must be non-empty"
-        raise ValueError(message)
 
 
 def _raw_exact_identity(

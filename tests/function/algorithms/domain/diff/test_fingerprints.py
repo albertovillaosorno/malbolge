@@ -33,10 +33,14 @@
 """Tests for deterministic content-defined stable anchors."""
 
 import hashlib
+from typing import cast
 
 from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.fingerprints import FingerprintPolicyError
+from algorithms.diff.fingerprints import StableAnchor
 from algorithms.diff.fingerprints import anchor_coverage
 from algorithms.diff.fingerprints import stable_anchors
+import pytest
 
 _BLOCK_COUNT = 256
 _INSERTION = b"target-only insertion that shifts all later offsets"
@@ -100,3 +104,39 @@ def test_anchor_policy_controls_sampling_density() -> None:
     dense = stable_anchors(source, AnchorPolicy(selection_modulus=16))
     sparse = stable_anchors(source, AnchorPolicy(selection_modulus=128))
     _expect(len(dense) >= len(sparse), "denser policy yielded fewer anchors")
+
+
+def test_anchor_policy_rejects_boolean_dimensions() -> None:
+    """Boolean values cannot alias one-byte anchor policy dimensions."""
+    with pytest.raises(FingerprintPolicyError, match="must be integers"):
+        _ = AnchorPolicy(window_bytes=True)
+    with pytest.raises(FingerprintPolicyError, match="must be integers"):
+        _ = AnchorPolicy(selection_modulus=True)
+
+
+def test_anchor_functions_reject_foreign_runtime_types() -> None:
+    """Anchor extraction and coverage never accept foreign evidence records."""
+    with pytest.raises(FingerprintPolicyError, match="exact bytes"):
+        _ = stable_anchors(cast("bytes", cast("object", bytearray(b"source"))))
+    with pytest.raises(FingerprintPolicyError, match="exact AnchorPolicy"):
+        _ = stable_anchors(
+            b"source",
+            cast("AnchorPolicy", object()),
+        )
+    with pytest.raises(FingerprintPolicyError, match="immutable tuples"):
+        _ = anchor_coverage(
+            cast("tuple[StableAnchor, ...]", cast("object", [])),
+            (),
+        )
+    with pytest.raises(FingerprintPolicyError, match="foreign anchor"):
+        _ = anchor_coverage((cast("StableAnchor", object()),), ())
+
+
+def test_stable_anchor_rejects_malformed_digest_and_offset() -> None:
+    """Direct anchor records require exact SHA-256 bytes and integer offsets."""
+    with pytest.raises(FingerprintPolicyError, match="exactly 32 bytes"):
+        _ = StableAnchor(digest=b"short", offset=0)
+    with pytest.raises(FingerprintPolicyError, match="non-negative integer"):
+        _ = StableAnchor(digest=b"x" * 32, offset=True)
+    with pytest.raises(FingerprintPolicyError, match="non-negative integer"):
+        _ = StableAnchor(digest=b"x" * 32, offset=-1)

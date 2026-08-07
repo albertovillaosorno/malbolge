@@ -77,6 +77,12 @@ class IdentityFile:
             AdmissionPolicyError: The identity path is unsafe or non-canonical.
 
         """
+        if type(self.path) is not str:
+            message = "identity path must use the exact string type"
+            raise AdmissionPolicyError(message)
+        if type(self.canonical) is not bytes:
+            message = "identity canonical content must use exact bytes"
+            raise AdmissionPolicyError(message)
         candidate = PurePosixPath(self.path)
         unsafe = (
             not self.path
@@ -103,6 +109,12 @@ class IdentityTree:
             AdmissionPolicyError: Files are duplicated or out of order.
 
         """
+        if type(self.files) is not tuple:
+            message = "identity tree files must use the exact immutable tuple"
+            raise AdmissionPolicyError(message)
+        if any(type(item) is not IdentityFile for item in self.files):
+            message = "identity tree contains a foreign file record"
+            raise AdmissionPolicyError(message)
         paths = tuple(item.path for item in self.files)
         if paths != tuple(sorted(set(paths))):
             message = "identity tree paths must be unique and sorted"
@@ -133,11 +145,23 @@ class AdmissionPolicy:
         _validate_fraction(
             "minimum_anchor_coverage", self.minimum_anchor_coverage
         )
-        if self.minimum_anchor_files < _ONE:
-            message = "minimum_anchor_files must be positive"
+        if (
+            type(self.minimum_anchor_files) is not int
+            or self.minimum_anchor_files < _ONE
+        ):
+            message = "minimum_anchor_files must be a positive integer"
             raise AdmissionPolicyError(message)
-        if self.minimum_anchors_per_file < _ONE:
-            message = "minimum_anchors_per_file must be positive"
+        if (
+            type(self.minimum_anchors_per_file) is not int
+            or self.minimum_anchors_per_file < _ONE
+        ):
+            message = "minimum_anchors_per_file must be a positive integer"
+            raise AdmissionPolicyError(message)
+        if type(self.structural_policy) is not AnchorPolicy:
+            message = "structural_policy must use the exact AnchorPolicy type"
+            raise AdmissionPolicyError(message)
+        if type(self.anchor_policy) is not AnchorPolicy:
+            message = "anchor_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
 
 
@@ -180,7 +204,20 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
     Returns:
         A deterministic identity tree.
 
+    Raises:
+        AdmissionPolicyError: The mapping or any path/content value is invalid.
+
     """
+    if type(files) is not dict:
+        message = "identity source files must use the exact dictionary type"
+        raise AdmissionPolicyError(message)
+    for path, canonical in files.items():
+        if type(path) is not str:
+            message = "identity source path must use the exact string type"
+            raise AdmissionPolicyError(message)
+        if type(canonical) is not bytes:
+            message = "identity source content must use exact bytes"
+            raise AdmissionPolicyError(message)
     records = tuple(
         IdentityFile(path=path, canonical=canonical)
         for path, canonical in sorted(files.items())
@@ -188,8 +225,15 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
     return IdentityTree(files=records)
 
 
-def _validate_fraction(name: str, value: float) -> None:
-    if not math.isfinite(value) or value < _ZERO or value > _ONE:
+def _validate_fraction(name: str, value: object) -> None:
+    if type(value) is int:
+        number = float(value)
+    elif type(value) is float:
+        number = value
+    else:
+        message = f"{name} must be a finite numeric fraction in [0, 1]"
+        raise AdmissionPolicyError(message)
+    if not math.isfinite(number) or number < _ZERO or number > _ONE:
         message = f"{name} must be a finite fraction in [0, 1], got {value}"
         raise AdmissionPolicyError(message)
 
@@ -286,9 +330,21 @@ def evaluate_admission(
         Deterministic per-file and aggregate admission evidence.
 
     Raises:
+        AdmissionPolicyError: Input trees or policy use foreign runtime types.
         AdmissionError: The reference identity tree is empty.
 
     """
+    if (
+        type(reference) is not IdentityTree
+        or type(candidate) is not IdentityTree
+    ):
+        message = (
+            "admission identity inputs must use the exact IdentityTree type"
+        )
+        raise AdmissionPolicyError(message)
+    if type(policy) is not AdmissionPolicy:
+        message = "admission policy must use the exact AdmissionPolicy type"
+        raise AdmissionPolicyError(message)
     if not reference.files:
         message = "reference identity tree contains no source evidence"
         raise AdmissionError(message)

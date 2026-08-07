@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
@@ -213,3 +214,67 @@ def test_exact_mode_runs_domain_preflight_with_passthrough(
         recipe.output_algorithm.is_file(),
         "domain-aware exact mode wrote nothing",
     )
+
+
+def test_generator_rejects_foreign_recipe_fields_before_output(
+    tmp_path: Path,
+) -> None:
+    """Every public recipe field is admitted before preflight or generation."""
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    malformed = (
+        replace(recipe, source_root=cast("Path", object())),
+        replace(recipe, oracle_root=cast("Path", object())),
+        replace(recipe, output_algorithm=cast("Path", object())),
+        replace(recipe, profile=cast("str", object())),
+        replace(recipe, mode=cast("TransformMode", object())),
+        replace(recipe, domain_module=cast("Path", object())),
+        replace(
+            recipe,
+            passthrough_roots=cast(
+                "tuple[str, ...]",
+                cast("object", ["external"]),
+            ),
+        ),
+        replace(recipe, minimum_source_similarity=True),
+        replace(recipe, minimum_anchor_coverage=True),
+        replace(recipe, minimum_behavior_similarity=True),
+        replace(recipe, source_binding_threshold=True),
+        replace(recipe, source_binding_maximum_anchors=True),
+        replace(recipe, source_binding_minimum_files=True),
+        replace(
+            recipe,
+            ignore_comments_for_identity=cast("bool", object()),
+        ),
+        replace(
+            recipe,
+            ignore_formatting_for_identity=cast("bool", object()),
+        ),
+    )
+    for candidate in malformed:
+        with pytest.raises(TypeError, match="must"):
+            write_algorithm(candidate)
+        _expect(
+            not recipe.output_algorithm.exists(),
+            "invalid recipe field wrote output",
+        )
+    with pytest.raises(TypeError, match="exact DiffRecipe"):
+        write_algorithm(cast("DiffRecipe", object()))
+
+
+def test_generator_rejects_out_of_range_binding_counts(
+    tmp_path: Path,
+) -> None:
+    """Source-binding count bounds fail before exact generation."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    for candidate in (
+        replace(recipe, source_binding_maximum_anchors=0),
+        replace(recipe, source_binding_maximum_anchors=256),
+        replace(recipe, source_binding_minimum_files=0),
+        replace(recipe, source_binding_minimum_files=9),
+    ):
+        with pytest.raises(ValueError, match=r"must|cannot"):
+            write_algorithm(candidate)
+        _expect(
+            not recipe.output_algorithm.exists(),
+            "invalid binding count wrote output",
+        )
