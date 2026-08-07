@@ -78,13 +78,14 @@ historical-profile constraint.
 - `RegionEffectProgram::required_memory_words()` derives exact `u64` region
   footprint from C/D observations, live-ins, and writes. Combined portable
   preflight emits byte-identical `MALBOLGE-PROFILE-002` before checking `001`.
-- Direct-template selection invokes that combined preflight before host/backend
-  selection; neither profile error is converted to deopt fallback. The
-  preflighted tier planner maps only unsupported direct host format to
-  interpreter.
-  Its verified-direct cache-aware form performs `002`, `001`, and explicit host
-  selection before lookup; rejected/interpreter outcomes leave cache size
-  unchanged.
+- Direct-template selection first requires the transported requirement envelope
+  to exactly match the canonical version, ordered features, word width, and
+  memory capacity of its declared profile ID. Forged or unknown envelopes fail
+  as `DirectSelectionError::ProfileRequirement` before geometry can influence
+  template selection. Combined `002` then `001` preflight still precedes
+  host/backend selection; none of these profile failures becomes deopt or
+  interpreter fallback. The cache-aware form repeats all gates before lookup,
+  and rejected/interpreter outcomes leave cache size unchanged.
 - Raw IR remains transportable for verifier rejection, while cache/native
   identity
   rejects profile-capacity-inconsistent addressing before bootstrap or direct

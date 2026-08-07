@@ -315,16 +315,18 @@ foreign-call
 shim.
 
 `select_preflighted_execution_tier()` adds the first product-neutral planning
-boundary above direct selection. A supported Windows direct object returns
-`PreflightedExecutionTier::Direct`; Linux/macOS format absence returns
-`Interpreter` only after the same program/profile/runtime preflight. `002`,
-`001`,
+boundary above direct selection. It first requires the transported profile
+requirement to exactly match the canonical envelope for its declared profile ID.
+A supported Windows direct object returns `PreflightedExecutionTier::Direct`;
+Linux/macOS format absence returns `Interpreter` only after the same canonical
+profile/program/runtime preflight. Noncanonical profile envelopes, `002`, `001`,
 and all post-selection emission/admission errors remain errors. The planner does
 not perform cache lookup, executable-memory allocation, linking, or execution.
 
 `select_cached_preflighted_execution_tier()` composes the same boundary with a
-caller-owned `VerifiedDirectNativeCache`. Profile capacity/runtime and explicit
-`DirectHost` format selection happen before lookup. A private
+caller-owned `VerifiedDirectNativeCache`. Canonical profile-envelope admission,
+profile capacity/runtime, and explicit `DirectHost` format selection happen
+before lookup. A private
 `PreparedDirectTarget` binds the selected specialization to one exact
 `NativeArtifactKey`; that same key drives lookup and, on a miss, is consumed by
 object emission before the admitted artifact key is inserted. Emission therefore

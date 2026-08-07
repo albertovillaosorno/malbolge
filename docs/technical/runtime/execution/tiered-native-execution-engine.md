@@ -67,7 +67,7 @@ fixture. Raw canonical transport may preserve a profile-capacity-inconsistent
 untrusted envelope for deterministic rejection, but `RegionEffectIdentity` and
 `NativeArtifactKey` return typed `NativeIdentityError::ProfileCapacity` before
 hashing or artifact construction. Native keys retain the exact profile
-ID/fingerprint plus the canonical requirement envelope and additionally bind
+ID/fingerprint plus the transported requirement envelope and additionally bind
 host
 OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and
 sorted
@@ -356,15 +356,18 @@ All memory-backed direct templates compare ABI `memory_words` with the exact
 and executable guards therefore bind the same output-reachable memory domain.
 
 `select_verified_direct_native()` now removes direct-backend identity selection
-from callers and requires one explicit `RuntimeCapability`. It derives the exact
-region memory footprint from the IR and checks profile capacity before runtime
-capability, host validation, or backend construction. Out-of-profile addressing
-returns typed `MALBOLGE-PROFILE-002`; otherwise current-profile IR under
+from callers and requires one explicit `RuntimeCapability`. Before using any IR
+geometry for capacity or template selection, it requires the transported
+`TargetProfileRequirement` to exactly match the canonical version, ordered
+features, word width, and memory capacity of the declared profile ID. A forged
+or unknown envelope returns `DirectSelectionError::ProfileRequirement`. Exact
+region memory is then checked against profile capacity before runtime
+capability,
+host validation, or backend construction. Out-of-profile addressing returns
+typed `MALBOLGE-PROFILE-002`; otherwise current-profile IR under
 `safe-rust-classic` returns the byte-identical `MALBOLGE-PROFILE-001`
-diagnostic.
-Even when the host format is also unsupported, no native object or deopt
-fallback
-is constructed.
+diagnostic. Even when the host format is also unsupported, no native object,
+deopt fallback, or interpreter fallback is constructed.
 
 After program/profile/runtime admission, it classifies IR from narrowest to
 broadest:
@@ -684,8 +687,9 @@ publication remain in the parent module.
 direct
 selection. It maps only top-level direct `TargetFormat` absence to the normative
 interpreter after profile preflight. Windows returns the exact verified direct
-artifact; `MALBOLGE-PROFILE-002`, `MALBOLGE-PROFILE-001`, and any backend,
-emission, or admission failure remain errors. This boundary performs no cache
+artifact; noncanonical profile envelopes, `MALBOLGE-PROFILE-002`,
+`MALBOLGE-PROFILE-001`, and any backend, emission, or admission failure remain
+errors. This boundary performs no cache
 lookup, executable-memory policy, linking, or invocation.
 
 `select_cached_preflighted_execution_tier()` adds exact process-local reuse
@@ -705,9 +709,9 @@ all twelve current templates match uncached selection byte-for-byte and reuse
 the
 same immutable `Arc` allocation rather than cloning verified object bytes. A
 populated
-cache cannot bypass `002`, `001`, or non-Windows interpreter selection, and
-those
-outcomes leave cache cardinality unchanged. Exact-key invalidation removes one
+cache cannot bypass canonical-envelope admission, `002`, `001`, or non-Windows
+interpreter selection, and those outcomes leave cache cardinality unchanged.
+Exact-key invalidation removes one
 future lookup, while exact-program invalidation first constructs
 `RegionEffectIdentity` and then removes all host/backend variants of that
 region.

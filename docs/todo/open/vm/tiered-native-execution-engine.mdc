@@ -70,11 +70,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   preflight under `safe-rust-classic`, is admitted by `safe-rust-profiled`, and
   rejects unknown feature IDs explicitly.
 - `select_verified_direct_native()` now requires that explicit runtime
-  capability,
-  derives exact region memory from the IR, and applies program/profile capacity
-  before runtime capability, host validation, or backend construction. `002`
-  then
-  `001` precedence is explicit and neither degrades to direct deopt.
+  capability and first admits the exact canonical requirement envelope for the
+  declared profile ID. Unknown or forged version/features/geometry fail before
+  they can influence direct shape selection. It then derives exact region memory
+  and applies program/profile capacity before runtime capability, host
+  validation, or backend construction. `002` then `001` precedence remains
+  explicit, and no profile admission failure degrades to direct deopt or
+  interpreter fallback.
 - State-applying emitters/verifiers repeat the declared-profile capacity check,
   so bypassing selection cannot promote profile-invalid initial/register halt
   IR.
