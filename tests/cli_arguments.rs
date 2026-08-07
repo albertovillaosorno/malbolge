@@ -45,7 +45,9 @@ fn help_is_accepted_only_as_the_sole_argument() -> Result<(), String> {
             .map_err(|error| format!("run standalone help: {error}"))?;
         if !output.status.success()
             || !String::from_utf8_lossy(&output.stdout)
-                .contains("Usage: malbolge <program.c|program.malbolge>")
+                .contains("Usage: malbolge <program.malbolge>")
+            || !String::from_utf8_lossy(&output.stdout)
+                .contains("malbolge <program.c> [program args...]")
             || !output.stderr.is_empty()
         {
             return Err(format!(

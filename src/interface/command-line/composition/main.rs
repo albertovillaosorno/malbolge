@@ -554,7 +554,8 @@ fn write_diagnostic(message: &str) {
 
 fn write_usage() -> Result<(), String> {
     let usage = concat!(
-        "Usage: malbolge <program.c|program.malbolge> [program args...]\n",
+        "Usage: malbolge <program.malbolge>\n",
+        "       malbolge <program.c> [program args...]\n",
         "\n",
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
         "  .c         Debug-run C directly on the host via a ",
