@@ -34,9 +34,11 @@
 
 from __future__ import annotations
 
+import pytest
 from scripts.validate import math_correspondence as validator
 
 EXPECTED_EQUATIONS = 40
+REPOSITORY_RELATIVE_ERROR = "must be repository-relative"
 
 
 def _expect_invalid(text: str) -> None:
@@ -52,6 +54,20 @@ def test_repository_correspondence_graph_is_closed() -> None:
     """Every normative equation label maps to existing executable evidence."""
     entries = validator.validate_repository()
     assert len(entries) == EXPECTED_EQUATIONS
+
+
+def test_drive_relative_equation_path_is_not_repository_relative() -> None:
+    """Windows drive-relative syntax cannot escape equation-source authority."""
+    text = validator.MANIFEST.read_text(encoding="utf-8")
+    marker = next(
+        line for line in text.splitlines() if line.startswith("tex = ")
+    )
+    changed = text.replace(marker, 'tex = "D:escape"', 1)
+    with pytest.raises(
+        validator.CorrespondenceError,
+        match=REPOSITORY_RELATIVE_ERROR,
+    ):
+        _ = validator.validate_text(changed)
 
 
 def test_unknown_manifest_label_leaves_equation_unmapped() -> None:

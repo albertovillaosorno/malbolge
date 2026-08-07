@@ -27,7 +27,10 @@ claimed domain/coverage class, and one or more executable test functions.
 
 `src/automation/repository/composition/scripts/validate/math_correspondence.py`
 validates the graph fail-closed. It
-requires unique manifest IDs/labels, repository-relative sources, evidence under
+requires unique manifest IDs/labels, repository-relative sources that reject
+absolute, Windows drive/root, and parent-traversal forms on every validator
+host,
+evidence under
 repository `tests/` or an algorithm mirror's `algorithms/<id>/tests/`, exact
 existence of every referenced `fn`/`def`, and exact set
 equality between all `eq:*` labels under

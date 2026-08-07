@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PureWindowsPath
 import re
 import sys
 import tomllib
@@ -144,7 +145,16 @@ def _exact_keys(
 
 def _repository_path(raw: str, context: str) -> Path:
     relative = Path(raw)
-    if relative.is_absolute() or PARENT_SEGMENT in relative.parts:
+    windows_relative = PureWindowsPath(raw)
+    native_admitted = (
+        not relative.is_absolute() and PARENT_SEGMENT not in relative.parts
+    )
+    windows_admitted = (
+        not windows_relative.drive
+        and not windows_relative.root
+        and PARENT_SEGMENT not in windows_relative.parts
+    )
+    if not native_admitted or not windows_admitted:
         _fail(f"{context} must be repository-relative: {raw}")
     resolved = ROOT / relative
     if not resolved.is_file():
