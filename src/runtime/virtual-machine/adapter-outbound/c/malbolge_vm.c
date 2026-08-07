@@ -169,8 +169,7 @@ MalbolgeWord malbolge_rotate(MalbolgeWord value)
 }
 
 static MalbolgeDiagnostic validate_source(const uint8_t *source,
-                                          size_t source_length,
-                                          size_t *admitted_length)
+                                          size_t source_length)
 {
     size_t loaded_position = 0U;
     size_t offset = 0U;
@@ -204,14 +203,12 @@ static MalbolgeDiagnostic validate_source(const uint8_t *source,
             MALBOLGE_DIAGNOSTIC_INSUFFICIENT_RECURRENCE_BASE,
             loaded_position, 0U);
     }
-    *admitted_length = loaded_position;
     return diagnostic(MALBOLGE_DIAGNOSTIC_NONE, 0U, 0U);
 }
 
 static void load_validated(MalbolgeMachine *machine,
                            const uint8_t *source,
-                           size_t source_length,
-                           size_t admitted_length)
+                           size_t source_length)
 {
     size_t source_offset = 0U;
     size_t memory_index = 0U;
@@ -229,7 +226,6 @@ static void load_validated(MalbolgeMachine *machine,
             machine->memory[memory_index - 1U]);
         ++memory_index;
     }
-    (void)admitted_length;
 }
 
 void malbolge_machine_init_state(MalbolgeMachine *machine,
@@ -263,15 +259,13 @@ MalbolgeDiagnostic malbolge_machine_init(MalbolgeMachine *machine,
                                          uint8_t *output,
                                          size_t output_capacity)
 {
-    size_t admitted_length = 0U;
-    const MalbolgeDiagnostic result =
-        validate_source(source, source_length, &admitted_length);
+    const MalbolgeDiagnostic result = validate_source(source, source_length);
     if (result.code != MALBOLGE_DIAGNOSTIC_NONE) {
         return result;
     }
     malbolge_machine_init_state(machine, 0U, input, input_length, output,
                                 output_capacity);
-    load_validated(machine, source, source_length, admitted_length);
+    load_validated(machine, source, source_length);
     return result;
 }
 
