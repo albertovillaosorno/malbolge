@@ -41,6 +41,8 @@ The executable runner is
 `historical_interpreter_sanitizer.py`. Cases are declared in
 `benchmarks/interpreter/sanitizer-cases.json`; reviewed results live in
 `benchmarks/interpreter/evidence/windows-x86_64-sanitizer-findings.json`.
+Both JSON authorities reject duplicate keys and invalid UTF-8 through the stable
+sanitizer-harness error boundary before evidence comparison.
 
 ## Invariants
 
