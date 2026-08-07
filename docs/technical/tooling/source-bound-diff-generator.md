@@ -54,6 +54,15 @@ source plus source-bound transformation material.
 Possession of the generated transform alone must be insufficient to materialize
 the local oracle.
 
+All implemented public metadata boundaries now admit exact runtime types before
+using them as evidence or touching output. Numeric thresholds and counts reject
+boolean aliases. Identity trees, anchors, behavior observations, probe programs,
+provenance pins, mapped and semantic edits, exact and relocatable plans, and
+source-bound shares require immutable exact records. Cryptographic key, nonce,
+plaintext, AAD, and payload fields require exact bytes. Invalid direct Python
+construction fails through the owning domain error rather than relying on
+coercion or leaking `TypeError`, `AttributeError`, or `OverflowError`.
+
 ### Exact Authoring Baseline
 
 The implemented exact layer snapshots regular files by normalized relative path,
@@ -233,6 +242,11 @@ unchanged. Compile-then-run programs are possible because one command may create
 a
 scratch executable consumed by a later command.
 
+The executor validates the complete process description before snapshotting,
+copying, or launching anything: roots/enums, executable records, argv tuples,
+stdin bytes, exit codes, timeout/output limits, digest flags, program batches,
+tool bindings, and source-immutability flags all use exact admitted types.
+
 Behavior authoring runs identity programs on the original source. Bug programs
 run
 on both original source and the local corrected oracle; their selected-stdout
@@ -313,6 +327,13 @@ rejection,
 metadata tampering, deterministic generation, multi-file distribution, and
 source
 insertions that shift anchor offsets.
+
+Recovery also admits the distributable binding structure before inspecting the
+candidate source: threshold/minimum-file counts are positive exact integers,
+share coordinates and source-anchor identities are unique, paths are canonical,
+and digest/share lengths are exact. Malformed metadata cannot lower a threshold
+(for example via a negative or boolean value) or be ignored merely because
+enough other shares survive.
 
 The authenticated-encryption primitive itself is now implemented separately
 using
@@ -426,7 +447,9 @@ must locate canonical units and map them back to candidate byte spans.
 Target-only
 literals remain local authoring material until compatible protection/emission
 wraps
-this layer.
+this layer. Exact and relocatable plan records now reject boolean range aliases,
+mutable segment collections, foreign plan/instruction records, and non-Path
+filesystem roots before placement begins.
 
 ### Mapped Semantic Compatible Placement
 
@@ -464,7 +487,10 @@ processed
 existing
 canonicalizer. This proves identity-equivalent mapping, not final
 compatible-tree
-correctness.
+correctness. Mapped units now require exact byte streams, integer coordinates,
+and immutable unit records; semantic locators/edits/plans require exact SHA-256
+digests and immutable records, and build/apply validate views, context width,
+plan, and mapper before placement.
 
 `compatible.py` now composes admission, behavior evidence, file topology,
 semantic

@@ -36,6 +36,11 @@ format.
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
   remains fail-closed before output.
+- Public recipe, identity, anchor, behavior, probe, provenance, payload,
+  source-binding, exact/relocatable, and mapped/semantic metadata now validates
+  exact runtime types before becoming evidence or touching output. Boolean
+  numeric aliases, mutable collection substitutes, and foreign records fail
+  through the owning domain boundary.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full
@@ -93,6 +98,10 @@ format.
   recovery are implemented; compatible in-memory placement now exists while
   protected
   compatible serialization/runtime emission remains unfinished.
+- Source-binding recovery validates its entire threshold/share envelope before
+  candidate inspection, including positive counts, canonical paths, exact digest
+  and share lengths, and unique coordinates/source anchors; malformed metadata
+  cannot lower the reconstruction threshold or be ignored as surplus evidence.
 - The initial DOOM recipe records exploratory 0.50/0.66/0.80 thresholds.
   Synthetic
   threshold tests exist, and a local source-to-normalized-descendant stress
