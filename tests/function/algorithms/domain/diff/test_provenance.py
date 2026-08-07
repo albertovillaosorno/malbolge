@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.provenance import SourcePin
 from algorithms.diff.provenance import SourcePinError
@@ -118,3 +119,45 @@ def test_missing_or_symlinked_selected_root_fails_closed(
 
     with pytest.raises(SourcePinError, match="missing pinned source root"):
         _ = require_source_pin(tmp_path, pin)
+
+
+def test_source_pin_rejects_foreign_runtime_metadata() -> None:
+    """Pins admit exact strings, immutable roots, and integer file counts."""
+    with pytest.raises(SourcePinError, match="non-empty string"):
+        _ = SourcePin(cast("str", object()), _COMMIT, ("src",), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="40 lowercase"):
+        _ = SourcePin("repo", cast("str", object()), ("src",), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="positive integer"):
+        _ = SourcePin(
+            repository="repo",
+            commit=_COMMIT,
+            roots=("src",),
+            file_count=True,
+            snapshot_sha256="0" * 64,
+        )
+    with pytest.raises(SourcePinError, match="immutable tuple"):
+        _ = SourcePin(
+            "repo",
+            _COMMIT,
+            cast("tuple[str, ...]", cast("object", ["src"])),
+            1,
+            "0" * 64,
+        )
+    with pytest.raises(SourcePinError, match="lowercase SHA-256"):
+        _ = SourcePin("repo", _COMMIT, ("src",), 1, cast("str", object()))
+
+
+def test_snapshot_and_pin_public_inputs_fail_typed(tmp_path: Path) -> None:
+    """Snapshot APIs validate roots and pins before filesystem dereference."""
+    _write(tmp_path, "src/a.c", b"int a;" + bytes((10,)))
+    with pytest.raises(SourcePinError, match="pathlib Path"):
+        _ = source_snapshot_evidence(cast("Path", object()), ("src",))
+    with pytest.raises(SourcePinError, match="immutable tuple"):
+        _ = source_snapshot_evidence(
+            tmp_path,
+            cast("tuple[str, ...]", cast("object", ["src"])),
+        )
+    with pytest.raises(SourcePinError, match="unique and sorted"):
+        _ = source_snapshot_evidence(tmp_path, ())
+    with pytest.raises(SourcePinError, match="exact SourcePin"):
+        _ = require_source_pin(tmp_path, cast("SourcePin", object()))

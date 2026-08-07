@@ -33,9 +33,11 @@
 """Synthetic tests for generic behavior-probe admission semantics."""
 
 import math
+from typing import cast
 
 from algorithms.diff.behavior import BehaviorAdmissionError
 from algorithms.diff.behavior import BehaviorObservations
+from algorithms.diff.behavior import BehaviorPolicyError
 from algorithms.diff.behavior import BehaviorProfile
 from algorithms.diff.behavior import BugObservation
 from algorithms.diff.behavior import BugProbe
@@ -177,5 +179,83 @@ def test_unknown_bug_state_fails_closed() -> None:
         _ = require_behavior(
             _profile(),
             _observations(bug_state=BugState.UNKNOWN),
+            _MINIMUM_BEHAVIOR_SIMILARITY,
+        )
+
+
+def test_behavior_metadata_rejects_foreign_runtime_types() -> None:
+    """Probe and observation records admit only exact canonical metadata."""
+    with pytest.raises(BehaviorPolicyError, match="non-empty string"):
+        _ = IdentityProbe(cast("str", object()), b"digest")
+    with pytest.raises(BehaviorPolicyError, match="exact bytes"):
+        _ = IdentityProbe(
+            "identity",
+            cast("bytes", cast("object", bytearray(b"digest"))),
+        )
+    with pytest.raises(BehaviorPolicyError, match="non-empty string"):
+        _ = BugProbe("bug", cast("str", object()))
+    with pytest.raises(BehaviorPolicyError, match="bool or None"):
+        _ = CompatibilityObservation(
+            "compat",
+            cast("bool | None", cast("object", 1)),
+        )
+    with pytest.raises(BehaviorPolicyError, match="exact BugState"):
+        _ = BugObservation("bug", cast("BugState", object()))
+
+
+def test_behavior_containers_require_exact_records() -> None:
+    """Profiles and observations reject mutable or foreign collections."""
+    profile = _profile()
+    observations = _observations()
+    with pytest.raises(BehaviorPolicyError, match="immutable tuple"):
+        _ = BehaviorProfile(
+            identity=cast(
+                "tuple[IdentityProbe, ...]",
+                cast("object", list(profile.identity)),
+            ),
+            compatibility=profile.compatibility,
+            bugs=profile.bugs,
+        )
+    with pytest.raises(BehaviorPolicyError, match="foreign probe"):
+        _ = BehaviorProfile(
+            identity=(cast("IdentityProbe", object()),),
+            compatibility=profile.compatibility,
+            bugs=profile.bugs,
+        )
+    with pytest.raises(BehaviorPolicyError, match="immutable tuple"):
+        _ = BehaviorObservations(
+            identity=cast(
+                "tuple[IdentityObservation, ...]",
+                cast("object", list(observations.identity)),
+            ),
+            compatibility=observations.compatibility,
+            bugs=observations.bugs,
+        )
+    with pytest.raises(BehaviorPolicyError, match="foreign observation"):
+        _ = BehaviorObservations(
+            identity=(cast("IdentityObservation", object()),),
+            compatibility=observations.compatibility,
+            bugs=observations.bugs,
+        )
+
+
+def test_behavior_evaluation_rejects_boolean_threshold_and_foreign_inputs() -> (
+    None
+):
+    """Behavior authority fails typed before dereferencing untrusted inputs."""
+    with pytest.raises(BehaviorPolicyError, match="finite numeric fraction"):
+        _ = evaluate_behavior(
+            _profile(), _observations(), minimum_similarity=True
+        )
+    with pytest.raises(BehaviorPolicyError, match="exact BehaviorProfile"):
+        _ = evaluate_behavior(
+            cast("BehaviorProfile", object()),
+            _observations(),
+            _MINIMUM_BEHAVIOR_SIMILARITY,
+        )
+    with pytest.raises(BehaviorPolicyError, match="exact BehaviorObservations"):
+        _ = evaluate_behavior(
+            _profile(),
+            cast("BehaviorObservations", object()),
             _MINIMUM_BEHAVIOR_SIMILARITY,
         )

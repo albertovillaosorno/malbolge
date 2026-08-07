@@ -36,11 +36,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from pathlib import Path
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from typing import cast
 
 _ZERO = 0
 _ONE = 1
@@ -77,9 +75,9 @@ class SourcePin:
         _validate_roots(self.roots)
 
 
-def _validate_repository(repository: str) -> None:
-    if not repository:
-        message = "source pin repository must be non-empty"
+def _validate_repository(repository: object) -> None:
+    if type(repository) is not str or not repository:
+        message = "source pin repository must be a non-empty string"
         raise SourcePinError(message)
 
 
@@ -87,31 +85,41 @@ def _is_lower_hex(value: str, length: int) -> bool:
     return len(value) == length and all(char in _LOWER_HEX for char in value)
 
 
-def _validate_commit(commit: str) -> None:
-    if not _is_lower_hex(commit, _COMMIT_HEX_LENGTH):
+def _validate_commit(commit: object) -> None:
+    if type(commit) is not str or not _is_lower_hex(commit, _COMMIT_HEX_LENGTH):
         message = (
             "source pin commit must be 40 lowercase hexadecimal characters"
         )
         raise SourcePinError(message)
 
 
-def _validate_file_count(file_count: int) -> None:
-    if file_count < _ONE:
-        message = "source pin file_count must be positive"
+def _validate_file_count(file_count: object) -> None:
+    if type(file_count) is not int or file_count < _ONE:
+        message = "source pin file_count must be a positive integer"
         raise SourcePinError(message)
 
 
-def _validate_snapshot_sha256(snapshot_sha256: str) -> None:
-    if not _is_lower_hex(snapshot_sha256, _SHA256_HEX_LENGTH):
+def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
+    if type(snapshot_sha256) is not str or not _is_lower_hex(
+        snapshot_sha256, _SHA256_HEX_LENGTH
+    ):
         message = "source pin snapshot_sha256 must be lowercase SHA-256"
         raise SourcePinError(message)
 
 
-def _validate_roots(roots: tuple[str, ...]) -> None:
-    if not roots or roots != tuple(sorted(set(roots))):
+def _validate_roots(roots: object) -> None:
+    if type(roots) is not tuple:
+        message = "source pin roots must use the exact immutable tuple type"
+        raise SourcePinError(message)
+    items = cast("tuple[object, ...]", roots)
+    if any(type(root) is not str for root in items):
+        message = "source pin roots must contain exact string paths"
+        raise SourcePinError(message)
+    string_roots = cast("tuple[str, ...]", roots)
+    if not string_roots or string_roots != tuple(sorted(set(string_roots))):
         message = "source pin roots must be unique and sorted"
         raise SourcePinError(message)
-    for root in roots:
+    for root in string_roots:
         _ = _validate_relative_path(root)
 
 
@@ -131,7 +139,10 @@ def _frame(value: bytes) -> bytes:
     return _u64(len(value)) + value
 
 
-def _validate_relative_path(relative_path: str) -> str:
+def _validate_relative_path(relative_path: object) -> str:
+    if type(relative_path) is not str:
+        message = "pinned source path must use the exact string type"
+        raise SourcePinError(message)
     candidate = PurePosixPath(relative_path)
     unsafe = (
         not relative_path
@@ -197,6 +208,12 @@ def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
     )
 
 
+def _validate_root_path(root: object) -> None:
+    if not isinstance(root, Path):
+        message = "pinned source root must use a pathlib Path value"
+        raise SourcePinError(message)
+
+
 def source_snapshot_evidence(
     root: Path, roots: tuple[str, ...]
 ) -> SourcePinEvidence:
@@ -206,6 +223,8 @@ def source_snapshot_evidence(
         Deterministic count and SHA-256 snapshot evidence.
 
     """
+    _validate_root_path(root)
+    _validate_roots(roots)
     digest = hashlib.sha256()
     digest.update(_DOMAIN)
     resolved_root = root.resolve()
@@ -232,6 +251,9 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
         SourcePinError: File count or snapshot digest differs from the pin.
 
     """
+    if type(pin) is not SourcePin:
+        message = "source pin must use the exact SourcePin type"
+        raise SourcePinError(message)
     observed = source_snapshot_evidence(root, pin.roots)
     if observed.file_count != pin.file_count:
         message = (

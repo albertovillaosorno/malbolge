@@ -34,16 +34,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
 import shutil
 import sys
+from typing import cast
 
 from algorithms.diff.probe_exec import PathArgument
 from algorithms.diff.probe_exec import ProbeCommand
 from algorithms.diff.probe_exec import ProbeExecutionError
 from algorithms.diff.probe_exec import ProbeProgram
+from algorithms.diff.probe_exec import ProbeProgramError
 from algorithms.diff.probe_exec import ProbeRoot
 from algorithms.diff.probe_exec import ProbeRunContext
 from algorithms.diff.probe_exec import RootedExecutable
@@ -293,3 +296,86 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
         target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
         "source was mutated",
     )
+
+
+def test_probe_records_reject_foreign_runtime_metadata() -> None:
+    """Probe roots, paths, tool IDs, and executable records use exact types."""
+    with pytest.raises(ProbeProgramError, match="exact ProbeRoot"):
+        _ = PathArgument(cast("ProbeRoot", object()), "input.c")
+    with pytest.raises(ProbeProgramError, match="exact string"):
+        _ = PathArgument(ProbeRoot.SOURCE, cast("str", object()))
+    with pytest.raises(ProbeProgramError, match="non-empty string"):
+        _ = ToolExecutable(cast("str", object()))
+    with pytest.raises(ProbeProgramError, match="exact ProbeRoot"):
+        _ = RootedExecutable(cast("ProbeRoot", object()), "tool.exe")
+
+
+def test_probe_command_rejects_boolean_aliases_and_mutable_inputs() -> None:
+    """Process limits and selectors cannot rely on Python coercions."""
+    base = ProbeCommand(executable=ToolExecutable(_PYTHON_TOOL))
+    invalid = (
+        lambda: replace(base, executable=cast("ToolExecutable", object())),
+        lambda: replace(
+            base,
+            arguments=cast(
+                "tuple[str | PathArgument, ...]",
+                cast("object", ["-V"]),
+            ),
+        ),
+        lambda: replace(base, arguments=(cast("str", object()),)),
+        lambda: replace(base, stdin=cast("bytes", cast("object", bytearray()))),
+        lambda: replace(base, expected_exit_code=True),
+        lambda: replace(base, timeout_ms=True),
+        lambda: replace(base, max_stdout_bytes=True),
+        lambda: replace(base, max_stderr_bytes=True),
+        lambda: replace(base, digest_stdout=cast("bool", cast("object", 1))),
+        lambda: replace(base, digest_exit_code=cast("bool", cast("object", 1))),
+    )
+    for build in invalid:
+        with pytest.raises(ProbeProgramError, match="probe"):
+            _ = build()
+
+
+def test_probe_program_and_context_require_immutable_exact_records(
+    tmp_path: Path,
+) -> None:
+    """Batch metadata is validated before filesystem or process work."""
+    command = ProbeCommand(executable=ToolExecutable(_PYTHON_TOOL))
+    with pytest.raises(ProbeProgramError, match="immutable tuple"):
+        _ = ProbeProgram(
+            "probe",
+            cast("tuple[ProbeCommand, ...]", cast("object", [command])),
+        )
+    with pytest.raises(ProbeProgramError, match="foreign command"):
+        _ = ProbeProgram("probe", (cast("ProbeCommand", object()),))
+
+    source = tmp_path / "source"
+    source.mkdir()
+    with pytest.raises(ProbeProgramError, match="immutable tuple"):
+        _ = ProbeRunContext(
+            source,
+            tmp_path,
+            cast(
+                "tuple[tuple[str, Path], ...]",
+                cast("object", [(_PYTHON_TOOL, Path(sys.executable))]),
+            ),
+        )
+    with pytest.raises(ProbeProgramError, match="exact boolean"):
+        _ = ProbeRunContext(
+            source,
+            tmp_path,
+            ((_PYTHON_TOOL, Path(sys.executable)),),
+            enforce_source_immutable=cast("bool", cast("object", 1)),
+        )
+
+    context = _context(source, tmp_path)
+    program = ProbeProgram("probe", (command,))
+    with pytest.raises(ProbeProgramError, match="immutable tuple"):
+        _ = run_probe_programs(
+            cast("tuple[ProbeProgram, ...]", cast("object", [program])),
+            context,
+        )
+    with pytest.raises(ProbeProgramError, match="foreign program"):
+        _ = run_probe_programs((cast("ProbeProgram", object()),), context)
+    with pytest.raises(ProbeProgramError, match="exact ProbeRunContext"):
+        _ = run_probe_programs((program,), cast("ProbeRunContext", object()))

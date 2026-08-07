@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import math
+from typing import cast
 
 _ZERO = 0
 _ONE = 1
@@ -58,12 +59,31 @@ class BugState(StrEnum):
     UNKNOWN = "unknown"
 
 
+def _require_identifier(value: object, context: str) -> str:
+    if type(value) is not str or not value:
+        message = f"{context} must be a non-empty string"
+        raise BehaviorPolicyError(message)
+    return value
+
+
+def _require_digest(value: object, context: str) -> bytes:
+    if type(value) is not bytes or not value:
+        message = f"{context} must be non-empty exact bytes"
+        raise BehaviorPolicyError(message)
+    return value
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class IdentityProbe:
     """Stable historical behavior fingerprint expected from source lineage."""
 
     probe_id: str
     expected_digest: bytes
+
+    def __post_init__(self) -> None:
+        """Require canonical probe identity and exact fingerprint bytes."""
+        _ = _require_identifier(self.probe_id, "identity probe ID")
+        _ = _require_digest(self.expected_digest, "identity probe digest")
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -72,6 +92,10 @@ class CompatibilityProbe:
 
     probe_id: str
 
+    def __post_init__(self) -> None:
+        """Require one canonical compatibility probe identity."""
+        _ = _require_identifier(self.probe_id, "compatibility probe ID")
+
 
 @dataclass(frozen=True, slots=True, order=True)
 class BugProbe:
@@ -79,6 +103,11 @@ class BugProbe:
 
     probe_id: str
     correction_id: str
+
+    def __post_init__(self) -> None:
+        """Require canonical bug and correction identities."""
+        _ = _require_identifier(self.probe_id, "bug probe ID")
+        _ = _require_identifier(self.correction_id, "bug correction ID")
 
 
 def _probe_ids(
@@ -111,6 +140,20 @@ def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
     )
 
 
+def _require_probe_tuple(
+    value: object,
+    item_type: type[IdentityProbe | CompatibilityProbe | BugProbe],
+    context: str,
+) -> None:
+    if type(value) is not tuple:
+        message = f"{context} must use the exact immutable tuple type"
+        raise BehaviorPolicyError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not item_type for item in items):
+        message = f"{context} contains a foreign probe record"
+        raise BehaviorPolicyError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class BehaviorProfile:
     """Behavior expectations generated from the authoring source."""
@@ -126,6 +169,13 @@ class BehaviorProfile:
             BehaviorPolicyError: Probe identifiers violate profile policy.
 
         """
+        _require_probe_tuple(self.identity, IdentityProbe, "identity probes")
+        _require_probe_tuple(
+            self.compatibility,
+            CompatibilityProbe,
+            "compatibility probes",
+        )
+        _require_probe_tuple(self.bugs, BugProbe, "bug probes")
         if not self.identity:
             message = "behavior profile requires at least one identity probe"
             raise BehaviorPolicyError(message)
@@ -148,6 +198,12 @@ class IdentityObservation:
     probe_id: str
     digest: bytes | None
 
+    def __post_init__(self) -> None:
+        """Require canonical identity evidence or explicit unavailability."""
+        _ = _require_identifier(self.probe_id, "identity observation ID")
+        if self.digest is not None:
+            _ = _require_digest(self.digest, "identity observation digest")
+
 
 @dataclass(frozen=True, slots=True, order=True)
 class CompatibilityObservation:
@@ -155,6 +211,18 @@ class CompatibilityObservation:
 
     probe_id: str
     compatible: bool | None
+
+    def __post_init__(self) -> None:
+        """Require canonical identity and exact tri-state compatibility.
+
+        Raises:
+            BehaviorPolicyError: Identity or compatibility metadata is invalid.
+
+        """
+        _ = _require_identifier(self.probe_id, "compatibility observation ID")
+        if self.compatible is not None and type(self.compatible) is not bool:
+            message = "compatibility observation must be bool or None"
+            raise BehaviorPolicyError(message)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -164,6 +232,34 @@ class BugObservation:
     probe_id: str
     state: BugState
 
+    def __post_init__(self) -> None:
+        """Require canonical identity and exact bug-state enum metadata.
+
+        Raises:
+            BehaviorPolicyError: Identity or bug-state metadata is invalid.
+
+        """
+        _ = _require_identifier(self.probe_id, "bug observation ID")
+        if type(self.state) is not BugState:
+            message = "bug observation state must use the exact BugState type"
+            raise BehaviorPolicyError(message)
+
+
+def _require_observation_tuple(
+    value: object,
+    item_type: (
+        type[IdentityObservation | CompatibilityObservation | BugObservation]
+    ),
+    context: str,
+) -> None:
+    if type(value) is not tuple:
+        message = f"{context} must use the exact immutable tuple type"
+        raise BehaviorPolicyError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not item_type for item in items):
+        message = f"{context} contains a foreign observation record"
+        raise BehaviorPolicyError(message)
+
 
 @dataclass(frozen=True, slots=True)
 class BehaviorObservations:
@@ -172,6 +268,20 @@ class BehaviorObservations:
     identity: tuple[IdentityObservation, ...]
     compatibility: tuple[CompatibilityObservation, ...]
     bugs: tuple[BugObservation, ...]
+
+    def __post_init__(self) -> None:
+        """Require immutable exact observation records for every category."""
+        _require_observation_tuple(
+            self.identity, IdentityObservation, "identity observations"
+        )
+        _require_observation_tuple(
+            self.compatibility,
+            CompatibilityObservation,
+            "compatibility observations",
+        )
+        _require_observation_tuple(
+            self.bugs, BugObservation, "bug observations"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,10 +306,18 @@ class BehaviorEvidence:
         return not self.reasons
 
 
-def _validate_fraction(name: str, value: float) -> None:
-    if not math.isfinite(value) or value < _ZERO or value > _ONE:
+def _validate_fraction(name: str, value: object) -> float:
+    if type(value) is int:
+        number = float(value)
+    elif type(value) is float:
+        number = value
+    else:
+        message = f"{name} must be a finite numeric fraction in [0, 1]"
+        raise BehaviorPolicyError(message)
+    if not math.isfinite(number) or number < _ZERO or number > _ONE:
         message = f"{name} must be a finite fraction in [0, 1], got {value}"
         raise BehaviorPolicyError(message)
+    return number
 
 
 def _observation_map(
@@ -308,13 +426,26 @@ def evaluate_behavior(
     Returns:
         Behavior evidence and deterministic correction-routing decisions.
 
+    Raises:
+        BehaviorPolicyError: Profile, observations, or threshold is invalid.
+
     """
-    _validate_fraction("minimum_similarity", minimum_similarity)
+    if type(profile) is not BehaviorProfile:
+        message = "behavior profile must use the exact BehaviorProfile type"
+        raise BehaviorPolicyError(message)
+    if type(observations) is not BehaviorObservations:
+        message = (
+            "behavior observations must use the exact BehaviorObservations type"
+        )
+        raise BehaviorPolicyError(message)
+    validated_minimum = _validate_fraction(
+        "minimum_similarity", minimum_similarity
+    )
     matched, identity_reasons = _identity_evidence(profile, observations)
     total = len(profile.identity)
     similarity = matched / total
     reasons = list(identity_reasons)
-    if similarity < minimum_similarity:
+    if similarity < validated_minimum:
         reasons.append("insufficient behavior identity similarity")
     reasons.extend(_compatibility_reasons(profile, observations))
     apply, skip, bug_reasons = _bug_routing(profile, observations)
