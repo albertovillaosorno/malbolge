@@ -267,6 +267,56 @@ def _checkpointed(
     )
 
 
+def test_resume_fingerprint_rejects_invalid_direct_identity() -> None:
+    """Fingerprinting validates resume identity before hashing."""
+    identity = progress.ResumeIdentity(
+        algorithm_id="search.enumerative",
+        algorithm_version="1",
+        repository_revision=REPOSITORY_REVISION,
+        schema=progress.SCHEMA_ID,
+        seed=7,
+        source_sha256=SOURCE_HASH,
+        target_profile_fingerprint=PROFILE_HASH,
+        target_profile_id="malbolge-2026",
+        toolchain_fingerprint=TOOLCHAIN_HASH,
+    )
+    boolean_alias = bool(1)
+    invalid = (
+        replace(identity, algorithm_id=cast("str", object())),
+        replace(identity, repository_revision="not-a-revision"),
+        replace(identity, schema="malbolge-progress-v2"),
+        replace(identity, seed=cast("int", cast("object", boolean_alias))),
+        replace(identity, source_sha256="sha256:bad"),
+        replace(identity, target_profile_fingerprint="bad-profile"),
+    )
+    for candidate in invalid:
+        with pytest.raises(ERROR):
+            _ = progress.resume_compatibility_fingerprint(candidate)
+    with pytest.raises(ERROR, match="exact immutable type"):
+        _ = progress.resume_compatibility_fingerprint(
+            cast("progress.ResumeIdentity", object())
+        )
+
+
+def test_direct_sidecar_foreign_fields_fail_typed(tmp_path: Path) -> None:
+    """Direct dataclass misuse never leaks Python type exceptions."""
+    sidecar = _sidecar(tmp_path)
+    for field_name in (
+        "algorithm_id",
+        "compatibility_fingerprint",
+        "diagnostic_message",
+        "repository_revision",
+        "started_at",
+        "status",
+        "target_profile_fingerprint",
+    ):
+        candidate = replace(sidecar, **{field_name: object()})
+        with pytest.raises(ERROR):
+            _ = progress.validate(candidate)
+    with pytest.raises(ERROR, match="exact immutable type"):
+        _ = progress.validate(cast("progress.ProgressSidecar", object()))
+
+
 def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
     """Generation paths are predictable and devices are not resume identity."""
     sidecar = _sidecar(tmp_path)
@@ -274,10 +324,14 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
     assert progress.progress_path(output).name == PROGRESS_NAME
     assert progress.checkpoint_path(output, 1).name == CHECKPOINT_NAME
     assert progress.partial_path(output, 1).name == PARTIAL_NAME
-    with pytest.raises(ERROR, match="sequence must be positive"):
+    with pytest.raises(ERROR, match="positive integer"):
         _ = progress.checkpoint_path(output, 0)
-    with pytest.raises(ERROR, match="sequence must be positive"):
+    with pytest.raises(ERROR, match="positive integer"):
         _ = progress.partial_path(output, -1)
+    with pytest.raises(ERROR, match="positive integer"):
+        _ = progress.checkpoint_path(output, sequence=True)
+    with pytest.raises(ERROR, match="positive integer"):
+        _ = progress.partial_path(output, sequence=True)
     assert sidecar.compatibility_fingerprint == (
         progress.resume_compatibility_fingerprint(
             progress.ResumeIdentity(
@@ -347,6 +401,10 @@ def test_impossible_timing_and_units_fail(tmp_path: Path) -> None:
     with pytest.raises(ERROR, match="precedes"):
         _ = progress.validate(
             replace(sidecar, updated_at="2026-08-06T13:59:59Z")
+        )
+    with pytest.raises(ERROR, match="valid UTC timestamp"):
+        _ = progress.validate(
+            replace(sidecar, updated_at="2026-02-30T14:00:01Z")
         )
 
 
@@ -536,6 +594,40 @@ def test_immutable_publication_wraps_disappearing_collision(
     destination = tmp_path / "raced-generation"
     with pytest.raises(ERROR, match="publication failed"):
         _ = writer(destination, b"payload", platform="posix")
+
+
+def test_write_atomic_rejects_unavailable_or_corrupt_generation(
+    tmp_path: Path,
+) -> None:
+    """Direct pointer publication cannot reference missing or corrupt bytes."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    destination = Path(sidecar.progress_path)
+    with pytest.raises(ERROR, match="checkpoint payload is unavailable"):
+        _ = progress.write_atomic(sidecar)
+    assert not destination.exists()
+
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    _ = checkpoint_path.write_bytes(b"corrupt-checkpoint")
+    with pytest.raises(ERROR, match="checkpoint bytes do not match"):
+        _ = progress.write_atomic(sidecar)
+    assert not destination.exists()
+
+    _ = checkpoint_path.write_bytes(checkpoint)
+    partial_path = Path(sidecar.partial_path or "")
+    _ = partial_path.write_bytes(b"corrupt-partial")
+    with pytest.raises(ERROR, match="partial bytes do not match"):
+        _ = progress.write_atomic(sidecar)
+    assert not destination.exists()
+
+    _ = partial_path.write_bytes(partial)
+    assert progress.write_atomic(sidecar) == destination
+    assert progress.read(destination) == sidecar
 
 
 def test_checkpoint_generation_publishes_payloads_before_pointer(
@@ -892,7 +984,7 @@ def test_inspector_rejects_invalid_utf8_as_stable_failure(
 ) -> None:
     """Malformed sidecar encoding never escapes the inspector boundary."""
     path = tmp_path / "invalid-utf8.progress.json"
-    _ = path.write_bytes(bytes((0x7b, 0xff, 0x7d)))
+    _ = path.write_bytes(bytes((0x7B, 0xFF, 0x7D)))
     assert progress.main([str(path)]) == 1
     captured = capsys.readouterr()
     assert not captured.out
@@ -920,11 +1012,21 @@ def test_monotonic_timer_separates_every_scientific_phase() -> None:
     )
 
 
-def test_monotonic_timer_rejects_backward_or_negative_clocks() -> None:
-    """Invalid clock sources fail before corrupting elapsed-time evidence."""
-    with pytest.raises(ERROR, match="negative"):
+def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
+    """Invalid phases or clocks fail before corrupting elapsed-time evidence."""
+    with pytest.raises(ERROR, match="exact enum type"):
+        _ = progress.ProgressTimer.start(
+            phase=cast("progress.TimingPhase", cast("object", "active"))
+        )
+    with pytest.raises(ERROR, match="non-negative integer"):
         _ = progress.ProgressTimer.start(clock=SequenceClock([-1]))
+    with pytest.raises(ERROR, match="non-negative integer"):
+        _ = progress.ProgressTimer.start(
+            clock=cast("SequenceClock", lambda: True)
+        )
 
     timer = progress.ProgressTimer.start(clock=SequenceClock([100, 99]))
+    with pytest.raises(ERROR, match="exact enum type"):
+        _ = timer.switch(cast("progress.TimingPhase", cast("object", "paused")))
     with pytest.raises(ERROR, match="moved backward"):
         _ = timer.snapshot()

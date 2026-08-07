@@ -36,6 +36,19 @@ lifecycle invariants, monotonic transition validation, duplicate-key rejection,
 canonical JSON, immutable checkpoint/partial persistence, and atomic sidecar
 replacement after generation payloads are durable.
 
+Direct API admission is fail-closed as well as JSON admission. Runtime callers
+must supply exact sidecar/resume-identity enums, strings, integers, and
+immutable records. Booleans cannot alias counters or sequence numbers, foreign
+objects do not leak decoder/type exceptions, and impossible UTC calendar
+timestamps are reported through the stable sidecar error boundary.
+`ProgressTimer` validates every phase and monotonic-clock sample before mutating
+timing evidence.
+
+`write_atomic()` also validates every referenced checkpoint and partial payload
+before moving the mutable pointer: the files must exist, hashes must match, and
+partial byte counts must agree. A caller therefore cannot publish a
+syntactically valid sidecar that points at absent or corrupted generation bytes.
+
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer
 generations are ignored until a valid sidecar publishes them. `ProgressTimer`
@@ -99,8 +112,8 @@ missing storage rather than escaping as a decoder exception.
   prove byte identity; if that destination disappears or becomes unreadable
   during the collision check, publication fails with the stable sidecar error
   rather than leaking a raw filesystem exception.
-- A rejected transition or payload mismatch never replaces the last valid
-  sidecar.
+- A rejected transition, malformed direct API value, missing generation, or
+  payload/hash/length mismatch never replaces the last valid sidecar.
 - The final `.malbolge` path is published atomically only after independent
   verification succeeds.
 - Resume compatibility binds source identity, target profile, exact repository
@@ -147,8 +160,12 @@ jobs that requested resumability.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
-  phase, reject backward/negative samples, and prove active, paused, wall,
-  verification, serialization, and checkpoint durations are not conflated.
+  phase, reject foreign phases plus boolean/negative/backward samples, and prove
+  active, paused, wall, verification, serialization, and checkpoint durations
+  are not conflated.
+- Direct-construction tests mutate resume identity and sidecar fields, reject
+  boolean sequence aliases and impossible UTC dates, and prove pointer
+  publication validates the referenced checkpoint/partial generation first.
 - End-to-end CLI tests prove that the final artifact is atomic while the sidecar
   remains continuously inspectable.
 

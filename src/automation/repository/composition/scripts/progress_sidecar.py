@@ -100,6 +100,17 @@ class TimingPhase(Enum):
     VERIFICATION = "verification"
 
 
+def _validate_timing_phase(value: TimingPhase) -> None:
+    if type(value) is not TimingPhase:
+        _fail("timing phase must use the exact enum type")
+
+
+def _monotonic_sample(value: object) -> int:
+    if type(value) is not int or value < 0:
+        _fail("monotonic clock must return a non-negative integer")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ProgressTiming:
     """One exact snapshot of accumulated monotonic durations."""
@@ -138,9 +149,8 @@ class ProgressTimer:
             Timer whose first segment begins at the sampled clock value.
 
         """
-        now = clock()
-        if now < 0:
-            _fail("monotonic clock returned a negative value")
+        _validate_timing_phase(phase)
+        now = _monotonic_sample(clock())
         return cls(
             _clock=clock,
             _phase=phase,
@@ -154,7 +164,7 @@ class ProgressTimer:
         return self._phase
 
     def _sample(self) -> int:
-        now = self._clock()
+        now = _monotonic_sample(self._clock())
         if now < self._segment_started_ns:
             _fail("monotonic clock moved backward")
         return now
@@ -201,6 +211,7 @@ class ProgressTimer:
             Exact timing snapshot at the phase boundary.
 
         """
+        _validate_timing_phase(phase)
         now = self._sample()
         timing = self._snapshot_at(now)
         self._active_elapsed_ns = timing.active_elapsed_ns
@@ -292,8 +303,8 @@ def checkpoint_path(output: str | Path, sequence: int) -> Path:
         `<output>.checkpoint.<sequence>` beside the requested artifact.
 
     """
-    if sequence <= 0:
-        _fail("checkpoint sequence must be positive")
+    if type(sequence) is not int or sequence <= 0:
+        _fail("checkpoint sequence must be a positive integer")
     return Path(f"{output}.checkpoint.{sequence:020d}")
 
 
@@ -304,8 +315,8 @@ def partial_path(output: str | Path, sequence: int) -> Path:
         `<output>.partial.<sequence>` beside the requested artifact.
 
     """
-    if sequence <= 0:
-        _fail("partial sequence must be positive")
+    if type(sequence) is not int or sequence <= 0:
+        _fail("partial sequence must be a positive integer")
     return Path(f"{output}.partial.{sequence:020d}")
 
 
@@ -316,8 +327,9 @@ def resume_compatibility_fingerprint(identity: ResumeIdentity) -> str:
         Stable versioned SHA-256 compatibility fingerprint.
 
     """
+    validated = _validate_resume_identity(identity)
     encoded = json.dumps(
-        asdict(identity),
+        asdict(validated),
         ensure_ascii=True,
         separators=(",", ":"),
         sort_keys=True,
@@ -346,13 +358,13 @@ def _mapping(value: object, context: str) -> JsonObject:
     return result
 
 
-def _string(value: JsonValue, context: str) -> str:
+def _string(value: object, context: str) -> str:
     if type(value) is not str or not value:
         _fail(f"{context} must be a non-empty string")
     return value
 
 
-def _optional_string(value: JsonValue, context: str) -> str | None:
+def _optional_string(value: object, context: str) -> str | None:
     if value is None:
         return None
     return _string(value, context)
@@ -374,23 +386,61 @@ def _optional_integer(value: JsonValue, context: str) -> int | None:
     return _integer(value, context)
 
 
-def _identifier(value: str, context: str) -> None:
-    if _IDENTIFIER.fullmatch(value) is None:
+def _identifier(value: object, context: str) -> None:
+    text = _string(value, context)
+    if _IDENTIFIER.fullmatch(text) is None:
         _fail(f"{context} is not a stable identifier")
 
 
-def _digest(value: str, context: str) -> None:
-    if _DIGEST.fullmatch(value) is None:
+def _digest(value: object, context: str) -> None:
+    text = _string(value, context)
+    if _DIGEST.fullmatch(text) is None:
         _fail(f"{context} must use sha256 plus 64 lowercase hex digits")
 
 
-def _timestamp(value: str, context: str) -> datetime:
-    if _UTC.fullmatch(value) is None:
+def _timestamp(value: object, context: str) -> datetime:
+    text = _string(value, context)
+    if _UTC.fullmatch(text) is None:
         _fail(f"{context} must be an ISO-8601 UTC timestamp ending in Z")
-    parsed = datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text.removesuffix("Z") + "+00:00")
+    except ValueError as error:
+        _fail(f"{context} is not a valid UTC timestamp: {error}")
     if parsed.tzinfo != UTC:
         _fail(f"{context} must be UTC")
     return parsed
+
+
+def _validate_revision(value: object) -> None:
+    text = _string(value, "repository_revision")
+    if _REVISION.fullmatch(text) is None:
+        _fail("repository_revision must be a lowercase 40-hex Git commit")
+
+
+def _validate_profile_fingerprint(value: object) -> None:
+    text = _string(value, "target_profile_fingerprint")
+    if _PROFILE.fullmatch(text) is None:
+        _fail("target_profile_fingerprint is invalid")
+
+
+def _validate_resume_identity(identity: ResumeIdentity) -> ResumeIdentity:
+    if type(identity) is not ResumeIdentity:
+        _fail("resume identity must use the exact immutable type")
+    for value, context in (
+        (identity.algorithm_id, "algorithm_id"),
+        (identity.algorithm_version, "algorithm_version"),
+        (identity.target_profile_id, "target_profile_id"),
+    ):
+        _identifier(value, context)
+    if identity.schema != SCHEMA_ID:
+        _fail(f"unsupported progress schema: {identity.schema}")
+    if identity.seed is not None:
+        _ = _nonnegative_integer(identity.seed, "seed")
+    _digest(identity.source_sha256, "source_sha256")
+    _digest(identity.toolchain_fingerprint, "toolchain_fingerprint")
+    _validate_revision(identity.repository_revision)
+    _validate_profile_fingerprint(identity.target_profile_fingerprint)
+    return identity
 
 
 def _status(value: JsonValue) -> ProgressStatus:
@@ -471,22 +521,18 @@ def _from_document(document: JsonObject) -> ProgressSidecar:
 
 
 def _validate_identity_formats(sidecar: ProgressSidecar) -> None:
+    _ = _validate_resume_identity(_resume_identity(sidecar))
     for value, context in (
         (sidecar.operation_id, "operation_id"),
-        (sidecar.algorithm_id, "algorithm_id"),
-        (sidecar.algorithm_version, "algorithm_version"),
         (sidecar.backend, "backend"),
         (sidecar.stage, "stage"),
-        (sidecar.target_profile_id, "target_profile_id"),
     ):
         _identifier(value, context)
-    _digest(sidecar.source_sha256, "source_sha256")
-    _digest(sidecar.toolchain_fingerprint, "toolchain_fingerprint")
-    if _REVISION.fullmatch(sidecar.repository_revision) is None:
-        _fail("repository_revision must be a lowercase 40-hex Git commit")
-    if _PROFILE.fullmatch(sidecar.target_profile_fingerprint) is None:
-        _fail("target_profile_fingerprint is invalid")
-    if _COMPATIBILITY.fullmatch(sidecar.compatibility_fingerprint) is None:
+    compatibility = _string(
+        sidecar.compatibility_fingerprint,
+        "compatibility_fingerprint",
+    )
+    if _COMPATIBILITY.fullmatch(compatibility) is None:
         _fail("compatibility_fingerprint is invalid")
 
 
@@ -656,6 +702,43 @@ def _validate_diagnostic(sidecar: ProgressSidecar) -> None:
         _identifier(sidecar.diagnostic_code, "diagnostic_code")
 
 
+def _validate_direct_text_fields(sidecar: ProgressSidecar) -> None:
+    required = (
+        (sidecar.algorithm_id, "algorithm_id"),
+        (sidecar.algorithm_version, "algorithm_version"),
+        (sidecar.backend, "backend"),
+        (sidecar.compatibility_fingerprint, "compatibility_fingerprint"),
+        (sidecar.operation_id, "operation_id"),
+        (sidecar.output_path, "output_path"),
+        (sidecar.progress_path, "progress_path"),
+        (sidecar.repository_revision, "repository_revision"),
+        (sidecar.schema, "schema"),
+        (sidecar.source_path, "source_path"),
+        (sidecar.source_sha256, "source_sha256"),
+        (sidecar.stage, "stage"),
+        (sidecar.started_at, "started_at"),
+        (sidecar.target_profile_fingerprint, "target_profile_fingerprint"),
+        (sidecar.target_profile_id, "target_profile_id"),
+        (sidecar.toolchain_fingerprint, "toolchain_fingerprint"),
+        (sidecar.updated_at, "updated_at"),
+    )
+    optional = (
+        (sidecar.checkpoint_path, "checkpoint_path"),
+        (sidecar.checkpoint_sha256, "checkpoint_sha256"),
+        (sidecar.completed_at, "completed_at"),
+        (sidecar.device, "device"),
+        (sidecar.diagnostic_code, "diagnostic_code"),
+        (sidecar.diagnostic_message, "diagnostic_message"),
+        (sidecar.partial_path, "partial_path"),
+        (sidecar.partial_sha256, "partial_sha256"),
+    )
+    for value, context in required:
+        _ = _string(value, context)
+    for value, context in optional:
+        if value is not None:
+            _ = _string(value, context)
+
+
 def validate(sidecar: ProgressSidecar) -> ProgressSidecar:
     """Validate one complete sidecar fail-closed.
 
@@ -663,6 +746,11 @@ def validate(sidecar: ProgressSidecar) -> ProgressSidecar:
         The same immutable sidecar after all invariants pass.
 
     """
+    if type(sidecar) is not ProgressSidecar:
+        _fail("sidecar must use the exact immutable type")
+    _validate_direct_text_fields(sidecar)
+    if type(sidecar.status) is not ProgressStatus:
+        _fail("status must use the exact enum type")
     if sidecar.schema != SCHEMA_ID:
         _fail(f"unsupported progress schema: {sidecar.schema}")
     _validate_numeric_domain(sidecar)
@@ -937,9 +1025,7 @@ def _write_immutable(
             try:
                 existing = destination.read_bytes()
             except OSError as error:
-                _fail(
-                    f"immutable progress payload publication failed: {error}"
-                )
+                _fail(f"immutable progress payload publication failed: {error}")
             if existing != payload:
                 _fail(
                     f"immutable progress payload already differs: {destination}"
@@ -992,17 +1078,46 @@ def _read_payload(path: Path, context: str) -> bytes:
         _fail(f"{context} payload is unavailable: {error}")
 
 
+def _validate_referenced_generation(sidecar: ProgressSidecar) -> None:
+    if sidecar.checkpoint_path is None:
+        return
+    checkpoint = _read_payload(Path(sidecar.checkpoint_path), "checkpoint")
+    _ = _validate_payload(
+        checkpoint,
+        _PayloadReference(
+            byte_count=None,
+            context="checkpoint",
+            path=sidecar.checkpoint_path,
+            sha256=sidecar.checkpoint_sha256,
+        ),
+    )
+    if sidecar.partial_path is None:
+        return
+    partial = _read_payload(Path(sidecar.partial_path), "partial")
+    _ = _validate_payload(
+        partial,
+        _PayloadReference(
+            byte_count=sidecar.partial_bytes,
+            context="partial",
+            path=sidecar.partial_path,
+            sha256=sidecar.partial_sha256,
+        ),
+    )
+
+
 def write_atomic(sidecar: ProgressSidecar) -> Path:
-    """Atomically replace one sidecar after transition validation.
+    """Atomically replace one sidecar after transition and payload validation.
 
     Returns:
         Canonical progress path after flush and atomic replacement.
 
     """
-    destination = Path(sidecar.progress_path)
+    validated = validate(sidecar)
+    destination = Path(validated.progress_path)
     if destination.exists():
-        _ = validate_transition(read(destination), sidecar)
-    return _write_atomic_bytes(destination, encode(sidecar))
+        _ = validate_transition(read(destination), validated)
+    _validate_referenced_generation(validated)
+    return _write_atomic_bytes(destination, encode(validated))
 
 
 def write_checkpoint_generation(
