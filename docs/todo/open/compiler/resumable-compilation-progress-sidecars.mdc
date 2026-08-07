@@ -64,10 +64,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   duplicate-key rejection, exact lifecycle/timing validation, monotonic
   transitions, immutable
   sequence-addressed checkpoint/partial generations, sidecar-last atomic
-  publication, and an injected monotonic phase timer.
+  publication, typed fail-closed collision rechecks when an immutable target
+  races away, and an injected monotonic phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation
-  payloads, source/repository identity mismatches, child-process crashes after
+  payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
+  input, source/repository identity mismatches, child-process crashes after
   checkpoint publication and before the next sidecar pointer, and exact
   operator-facing elapsed-time summaries.
 - Product CLI, compiler-state serialization, broader power-loss injection,

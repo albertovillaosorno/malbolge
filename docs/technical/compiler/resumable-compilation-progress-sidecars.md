@@ -85,7 +85,9 @@ scientific timing:
 The summary includes status, stage, completed/total units, active/wall/paused
 nanoseconds, verification/serialization/checkpoint nanoseconds, and canonical
 progress/checkpoint/partial paths. The JSON sidecar remains the machine-readable
-authority; this line is an operator view over the same validated record.
+authority; this line is an operator view over the same validated record. Invalid
+UTF-8 is converted to the same stable inspection failure as malformed schema or
+missing storage rather than escaping as a decoder exception.
 
 ## Invariants
 
@@ -93,7 +95,10 @@ authority; this line is an operator view over the same validated record.
 - Generation payloads use write-to-temporary, flush, and atomic no-replace
   publication before the canonical sidecar pointer is replaced. Windows uses a
   same-directory no-replace rename instead of requiring hard-link support;
-  POSIX uses a same-filesystem hard link.
+  POSIX uses a same-filesystem hard link. A collided destination is re-read to
+  prove byte identity; if that destination disappears or becomes unreadable
+  during the collision check, publication fails with the stable sidecar error
+  rather than leaking a raw filesystem exception.
 - A rejected transition or payload mismatch never replaces the last valid
   sidecar.
 - The final `.malbolge` path is published atomically only after independent
