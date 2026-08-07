@@ -604,6 +604,12 @@ fn preflight_direct_selection<'requirement>(
     program: &'requirement RegionEffectProgram,
     runtime: &'static RuntimeCapability,
 ) -> Result<(), DirectSelectionError<'requirement>> {
+    if !program
+        .profile_requirement
+        .is_canonical_for(&program.profile_id)
+    {
+        return Err(DirectSelectionError::ProfileRequirement);
+    }
     preflight_portable_profile_requirement(
         &program.profile_id,
         &program.profile_requirement,

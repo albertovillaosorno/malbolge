@@ -303,7 +303,8 @@ const fn classify_selection_error(
         DirectSelectionError::Output(_) => {
             Some(NativeContinuationRetryStepPlanningError::Output)
         },
-        DirectSelectionError::Profile(_) => {
+        DirectSelectionError::Profile(_)
+        | DirectSelectionError::ProfileRequirement => {
             Some(NativeContinuationRetryStepPlanningError::Profile)
         },
         DirectSelectionError::Rotate(_) => {

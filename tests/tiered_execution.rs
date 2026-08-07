@@ -2443,6 +2443,32 @@ fn assert_cached_runtime_preflight(
     }
 }
 
+fn assert_cached_requirement_admission(
+    program: &RegionEffectProgram,
+    cache: &mut VerifiedDirectNativeCache,
+) -> Result<(), String> {
+    let mut forged = program.clone();
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    let Err(error) = select_cached_preflighted_execution_tier(
+        &forged,
+        safe_rust_classic_capability(),
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64),
+        cache,
+    ) else {
+        return Err(String::from(
+            "cache hit bypassed profile requirement admission",
+        ));
+    };
+    if error == DirectSelectionError::ProfileRequirement && cache.len() == 1 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "cached path lost profile requirement admission",
+        ))
+    }
+}
+
 fn assert_cached_host_selection(
     program: &RegionEffectProgram,
     cache: &mut VerifiedDirectNativeCache,
@@ -2710,6 +2736,7 @@ fn cached_tier_planner_preflights_before_lookup() -> Result<(), String> {
     let program = direct_initial_halt_program();
     let mut cache = VerifiedDirectNativeCache::default();
     seed_verified_direct_cache(&program, &mut cache)?;
+    assert_cached_requirement_admission(&program, &mut cache)?;
     assert_cached_runtime_preflight(&program, &mut cache)?;
     assert_cached_host_selection(&program, &mut cache)?;
     assert_cached_capacity_preflight(&program, &mut cache)
@@ -2746,10 +2773,32 @@ fn tier_planner_uses_interpreter_only_for_missing_direct_format()
     Ok(())
 }
 
+fn assert_tier_planner_rejects_forged_requirement(
+    current: &RegionEffectProgram,
+) -> Result<(), String> {
+    let mut forged = current.clone();
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    if select_preflighted_execution_tier(
+        &forged,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    ) == Err(DirectSelectionError::ProfileRequirement)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "profile requirement mismatch degraded to interpreter",
+        ))
+    }
+}
+
 #[test]
 fn tier_planner_preserves_profile_errors_before_fallback() -> Result<(), String>
 {
     let current = direct_initial_halt_program();
+    assert_tier_planner_rejects_forged_requirement(&current)?;
     let Err(runtime_error) = select_preflighted_execution_tier(
         &current,
         safe_rust_classic_capability(),
@@ -2953,6 +3002,27 @@ fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("program capacity diagnostic: {profile_error}"))
+    }
+}
+
+#[test]
+fn direct_selector_rejects_forged_profile_requirement() -> Result<(), String> {
+    let mut program = direct_initial_halt_program();
+    program.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+
+    if select_verified_direct_native(
+        &program,
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    ) == Err(DirectSelectionError::ProfileRequirement)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "forged profile requirement bypassed direct admission",
+        ))
     }
 }
 

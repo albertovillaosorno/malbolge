@@ -737,6 +737,8 @@ pub enum DirectSelectionError<'requirement> {
     Output(Box<DirectOutputError>),
     /// Selected runtime cannot implement the admitted profile requirement.
     Profile(Box<PortableProfileRequirementError<'requirement>>),
+    /// Portable profile envelope is not canonical for its declared identity.
+    ProfileRequirement,
     /// Rotate artifact emission or admission failed.
     Rotate(Box<DirectRotateError>),
     /// Direct native templates currently emit Windows COFF only.
@@ -758,6 +760,9 @@ impl Display for DirectSelectionError<'_> {
             Self::NoOperation(error) => Display::fmt(error, f),
             Self::Output(error) => Display::fmt(error, f),
             Self::Profile(error) => Display::fmt(error, f),
+            Self::ProfileRequirement => {
+                f.write_str("portable IR profile requirement is not canonical")
+            },
             Self::Rotate(error) => Display::fmt(error, f),
             Self::TargetFormat => f.write_str(
                 "direct native selection currently requires Windows",

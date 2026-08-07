@@ -302,6 +302,23 @@ impl TargetProfileRequirement {
             word_trits: profile.word_trits(),
         }
     }
+
+    /// Reports whether this envelope exactly matches one canonical profile.
+    #[must_use]
+    pub fn is_canonical_for(&self, profile_id: &str) -> bool {
+        let Some(profile) = target_profile(profile_id) else {
+            return false;
+        };
+        self.memory_words == profile.memory_words()
+            && self.version == profile.version()
+            && self.word_trits == profile.word_trits()
+            && self.features.len() == REQUIRED_FEATURES.len()
+            && self
+                .features
+                .iter()
+                .zip(REQUIRED_FEATURES)
+                .all(|(observed, required)| observed == required.stable_id())
+    }
 }
 
 /// One explicit execution-runtime capability envelope.

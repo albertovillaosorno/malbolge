@@ -126,6 +126,45 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
 }
 
 #[test]
+fn portable_requirement_canonical_admission_is_exact() -> TestResult {
+    let current = current_profile();
+    let canonical = TargetProfileRequirement::from_descriptor(current);
+    check_equal(
+        &canonical.is_canonical_for(current.id()),
+        &true,
+        "canonical portable envelope",
+    )?;
+    check_equal(
+        &canonical.is_canonical_for("malbolge-2026-alias"),
+        &false,
+        "unknown profile identity",
+    )?;
+
+    let mut feature_drift = canonical.clone();
+    let _removed = feature_drift.features.pop();
+    let mut memory_drift = canonical.clone();
+    memory_drift.memory_words = memory_drift.memory_words.saturating_sub(1);
+    let mut version_drift = canonical.clone();
+    version_drift.version.push_str("-drift");
+    let mut width_drift = canonical;
+    width_drift.word_trits = width_drift.word_trits.saturating_sub(1);
+
+    for (label, requirement) in [
+        ("feature drift", feature_drift),
+        ("memory drift", memory_drift),
+        ("version drift", version_drift),
+        ("word-width drift", width_drift),
+    ] {
+        check_equal(
+            &requirement.is_canonical_for(current.id()),
+            &false,
+            label,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn portable_requirement_matches_canonical_runtime_diagnostic() -> TestResult {
     let current = current_profile();
     let requirement = TargetProfileRequirement::from_descriptor(current);
