@@ -47,6 +47,8 @@ Prior-work claims must resolve through canonical records under
 
 Benchmark evidence protocol v1 is validated by
 `src/automation/repository/composition/scripts/validate/benchmark_protocol.py`.
+Protocol files and their linked experiment manifests reject invalid UTF-8
+through the stable benchmark-protocol error boundary before TOML admission.
 A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
 toolchain, run outcome, and canonical target-profile fingerprint where
@@ -65,7 +67,9 @@ Every comparison additionally fixes:
 - an explicit center statistic, dispersion statistic, and uncertainty method;
 - one or more named objectives plus the time/quality tradeoff policy;
 - host, accelerator, and positive memory budget; and
-- a retained repository-relative raw-sample file.
+- a retained repository-relative raw-sample file; drive-relative, rooted
+  Windows, absolute, and parent-traversal path forms are rejected independent of
+  the validator host.
 
 Deterministic studies declare zero stochastic trials, zero failures, and no seed
 list. Stochastic studies declare a positive trial count, one unique non-negative

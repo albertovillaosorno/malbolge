@@ -45,8 +45,9 @@ that explains the decision.
 
 Every executable research mirror with `experiment.toml` also carries
 `lifecycle.toml`. Schema v1 is validated by
-`src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`
-and binds the stable algorithm ID to its
+`src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`.
+Lifecycle file loading rejects invalid UTF-8 through the stable lifecycle error
+boundary before TOML admission and binds the stable algorithm ID to its
 research record and experiment manifest.
 
 ### States
@@ -115,8 +116,10 @@ lifecycle state.
 - `tests/test_algorithm_lifecycle.py` verifies all five promotion gates,
   promoted-decision requirements, retained negative evidence for rejection,
   successor identity for retirement, and fail-closed experimental metadata.
-- The lifecycle validator requires repository-relative evidence references and,
-  for checked-in records, verifies that linked evidence paths exist.
+- The lifecycle validator requires repository-relative evidence references,
+  rejects drive-relative/rooted Windows syntax and parent traversal independent
+  of validator host, and for checked-in records verifies that linked evidence
+  paths exist.
 - `tests/test_research_mirror.py` keeps the two-sided mirror identity and
   ignored
   output contract intact while lifecycle metadata becomes mandatory.
