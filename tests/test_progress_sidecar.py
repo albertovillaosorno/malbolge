@@ -513,6 +513,31 @@ def test_immutable_publication_selects_platform_no_replace_primitive(
     assert len(link_calls) == 1
 
 
+def test_immutable_publication_wraps_disappearing_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raced-away immutable destination remains a typed sidecar failure."""
+    writer = cast(
+        "ImmutableWriter",
+        vars(progress)["_write_immutable"],
+    )
+
+    def collide_then_disappear(
+        _temporary: Path,
+        _destination: Path,
+        *,
+        platform: str = os.name,
+    ) -> None:
+        del _temporary, _destination, platform
+        raise FileExistsError
+
+    monkeypatch.setattr(progress, "_publish_no_replace", collide_then_disappear)
+    destination = tmp_path / "raced-generation"
+    with pytest.raises(ERROR, match="publication failed"):
+        _ = writer(destination, b"payload", platform="posix")
+
+
 def test_checkpoint_generation_publishes_payloads_before_pointer(
     tmp_path: Path,
 ) -> None:
@@ -856,6 +881,19 @@ def test_inspector_cli_prints_summary_and_fails_closed(
 
     missing = tmp_path / "missing.progress.json"
     assert progress.main([str(missing)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert INSPECTION_FAILED_PREFIX in captured.err
+
+
+def test_inspector_rejects_invalid_utf8_as_stable_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Malformed sidecar encoding never escapes the inspector boundary."""
+    path = tmp_path / "invalid-utf8.progress.json"
+    _ = path.write_bytes(bytes((0x7b, 0xff, 0x7d)))
+    assert progress.main([str(path)]) == 1
     captured = capsys.readouterr()
     assert not captured.out
     assert INSPECTION_FAILED_PREFIX in captured.err

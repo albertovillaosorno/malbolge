@@ -864,7 +864,11 @@ def read(path: Path) -> ProgressSidecar:
         Immutable validated progress sidecar.
 
     """
-    return loads(path.read_text(encoding="utf-8-sig"))
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid progress UTF-8: {error}")
+    return loads(text)
 
 
 def _flush_parent(path: Path, *, platform: str = os.name) -> None:
@@ -930,7 +934,13 @@ def _write_immutable(
         try:
             _publish_no_replace(temporary, destination, platform=platform)
         except FileExistsError:
-            if destination.read_bytes() != payload:
+            try:
+                existing = destination.read_bytes()
+            except OSError as error:
+                _fail(
+                    f"immutable progress payload publication failed: {error}"
+                )
+            if existing != payload:
                 _fail(
                     f"immutable progress payload already differs: {destination}"
                 )
