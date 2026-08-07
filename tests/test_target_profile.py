@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +89,17 @@ def test_current_profile_geometry_view_matches_canonical_document() -> None:
     assert geometry.eof_word == CURRENT_EOF
     assert geometry.input_instruction == INTERPRETER_INPUT
     assert geometry.output_instruction == INTERPRETER_OUTPUT
+
+
+def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Profile file encoding failure remains a typed validation error."""
+    path = tmp_path / "profile.json"
+    _ = path.write_bytes(bytes((0x7b, 0xff, 0x7d)))
+    with pytest.raises(
+        validator.ProfileValidationError,
+        match="invalid target-profile UTF-8",
+    ):
+        _ = validator.load_document(path)
 
 
 def test_duplicate_json_keys_fail_closed() -> None:

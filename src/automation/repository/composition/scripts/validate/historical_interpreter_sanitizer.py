@@ -166,7 +166,7 @@ def _load_object(path: Path) -> JsonObject:
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         _fail(f"cannot load {path}: {error}")
     return _mapping(parsed, str(path))
 

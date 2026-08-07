@@ -61,6 +61,18 @@ def test_sanitizer_manifest_and_source_identity_are_exact() -> None:
     assert evidence["source_sha256"] == harness.SOURCE_SHA256
 
 
+def test_sanitizer_evidence_rejects_invalid_utf8(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reviewed evidence encoding failure remains a typed harness error."""
+    evidence = tmp_path / "evidence.json"
+    _ = evidence.write_bytes(bytes((0x7b, 0xff, 0x7d)))
+    monkeypatch.setattr(harness, "EVIDENCE", evidence)
+    with pytest.raises(harness.SanitizerHarnessError, match="cannot load"):
+        _ = harness.load_evidence()
+
+
 def test_sanitizer_evidence_rejects_duplicate_json_keys(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

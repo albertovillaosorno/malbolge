@@ -221,7 +221,11 @@ def load_document(path: Path) -> JsonObject:
         The parsed top-level target-profile object.
 
     """
-    return loads_document(path.read_text(encoding="utf-8-sig"))
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid target-profile UTF-8: {error}")
+    return loads_document(text)
 
 
 def _validate_memory(value: JsonValue, context: str) -> int:
