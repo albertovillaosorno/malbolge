@@ -36,12 +36,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 
 _ZERO = 0
+_SHA256_HEX_LENGTH = 64
+_HEX_DIGITS = frozenset("0123456789abcdef")
 
 
 class TreeModelError(ValueError):
     """Raised when a tree or transformation violates the model contract."""
+
+
+def _validate_sha256_hex(value: object, context: str) -> None:
+    if type(value) is not str or len(value) != _SHA256_HEX_LENGTH:
+        message = f"{context} must be 64 lowercase hex digits"
+        raise TreeModelError(message)
+    if any(char not in _HEX_DIGITS for char in value):
+        message = f"{context} must be 64 lowercase hex digits"
+        raise TreeModelError(message)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -52,12 +64,47 @@ class FileRecord:
     sha256: str
     size: int
 
+    def __post_init__(self) -> None:
+        """Require exact immutable snapshot metadata types.
+
+        Raises:
+            TreeModelError: Snapshot metadata uses an invalid runtime value.
+
+        """
+        if type(self.path) is not str or not self.path:
+            message = "file record path must be a non-empty string"
+            raise TreeModelError(message)
+        _validate_sha256_hex(self.sha256, "file record sha256")
+        if type(self.size) is not int or self.size < _ZERO:
+            message = "file record size must be a non-negative integer"
+            raise TreeModelError(message)
+
 
 @dataclass(frozen=True, slots=True)
 class TreeSnapshot:
     """Sorted regular-file snapshot used for deterministic verification."""
 
     files: tuple[FileRecord, ...]
+
+    def __post_init__(self) -> None:
+        """Require immutable exact records in deterministic path order.
+
+        Raises:
+            TreeModelError: File records are mutable, foreign, or unordered.
+
+        """
+        if type(self.files) is not tuple:
+            message = (
+                "tree snapshot files must use the exact immutable tuple type"
+            )
+            raise TreeModelError(message)
+        if any(type(item) is not FileRecord for item in self.files):
+            message = "tree snapshot contains a foreign file record"
+            raise TreeModelError(message)
+        paths = tuple(item.path for item in self.files)
+        if paths != tuple(sorted(set(paths))):
+            message = "tree snapshot paths must be unique and sorted"
+            raise TreeModelError(message)
 
 
 class ExactInstructionKind(StrEnum):
@@ -82,6 +129,9 @@ class SourceSlice:
             TreeModelError: The range is negative or empty.
 
         """
+        if type(self.offset) is not int or type(self.length) is not int:
+            message = "source slice coordinates must use exact integers"
+            raise TreeModelError(message)
         if self.offset < _ZERO or self.length <= _ZERO:
             message = (
                 "source slices require a non-negative offset and positive "
@@ -96,8 +146,56 @@ class OracleLiteral:
 
     data: bytes
 
+    def __post_init__(self) -> None:
+        """Require exact immutable target bytes.
+
+        Raises:
+            TreeModelError: Target literal is not exact bytes.
+
+        """
+        if type(self.data) is not bytes:
+            message = "oracle literal must use exact bytes"
+            raise TreeModelError(message)
+
 
 ExactSegment = SourceSlice | OracleLiteral
+
+
+def _validate_exact_segments(value: object) -> None:
+    if type(value) is not tuple:
+        message = "exact instruction segments must use an immutable tuple"
+        raise TreeModelError(message)
+    segments = cast("tuple[object, ...]", value)
+    if any(
+        type(segment) not in {SourceSlice, OracleLiteral}
+        for segment in segments
+    ):
+        message = "exact instruction contains a foreign segment record"
+        raise TreeModelError(message)
+
+
+def _validate_exact_instruction_metadata(instruction: ExactInstruction) -> None:
+    if type(instruction.output_path) is not str or not instruction.output_path:
+        message = "exact instruction output path must be a non-empty string"
+        raise TreeModelError(message)
+    if type(instruction.kind) is not ExactInstructionKind:
+        message = "exact instruction kind must use the exact enum type"
+        raise TreeModelError(message)
+    _validate_sha256_hex(
+        instruction.expected_sha256, "exact instruction sha256"
+    )
+    if instruction.source_path is not None and (
+        type(instruction.source_path) is not str or not instruction.source_path
+    ):
+        message = "exact instruction source path must be non-empty or None"
+        raise TreeModelError(message)
+    if (
+        instruction.literal is not None
+        and type(instruction.literal) is not bytes
+    ):
+        message = "exact instruction literal must use exact bytes or None"
+        raise TreeModelError(message)
+    _validate_exact_segments(instruction.segments)
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +221,7 @@ class ExactInstruction:
             TreeModelError: The instruction payload does not match its kind.
 
         """
+        _validate_exact_instruction_metadata(self)
         if self.kind is ExactInstructionKind.COPY_SOURCE:
             self._validate_copy()
             return
@@ -171,3 +270,30 @@ class ExactAuthoringPlan:
     target: TreeSnapshot
     instructions: tuple[ExactInstruction, ...]
     passthrough_roots: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Require exact snapshots and immutable plan metadata.
+
+        Raises:
+            TreeModelError: Plan metadata is mutable, foreign, or malformed.
+
+        """
+        if (
+            type(self.source) is not TreeSnapshot
+            or type(self.target) is not TreeSnapshot
+        ):
+            message = "exact plan snapshots must use exact TreeSnapshot records"
+            raise TreeModelError(message)
+        if type(self.instructions) is not tuple or any(
+            type(item) is not ExactInstruction for item in self.instructions
+        ):
+            message = "exact plan instructions must be exact immutable records"
+            raise TreeModelError(message)
+        if type(self.passthrough_roots) is not tuple:
+            message = "exact plan passthrough roots must use an immutable tuple"
+            raise TreeModelError(message)
+        if any(
+            type(root) is not str or not root for root in self.passthrough_roots
+        ):
+            message = "exact plan passthrough roots must be non-empty strings"
+            raise TreeModelError(message)

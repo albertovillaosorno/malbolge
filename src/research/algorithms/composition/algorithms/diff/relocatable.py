@@ -43,17 +43,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 from typing import TYPE_CHECKING
 
+from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.model import ExactInstruction
     from algorithms.diff.model import ExactSegment
     from algorithms.diff.model import SourceSlice
@@ -87,20 +86,27 @@ class RangeLocator:
             RelocationError: Locator widths or digests are invalid.
 
         """
-        if self.source_length <= _ZERO:
-            message = "relocatable source ranges must be non-empty"
-            raise RelocationError(message)
-        if self.window_bytes <= _ZERO or self.window_bytes > self.source_length:
-            message = "relocatable boundary width exceeds source range"
-            raise RelocationError(message)
-        if len(self.start_digest) != hashlib.sha256().digest_size:
-            message = "relocatable start digest must be SHA-256"
+        if type(self.source_length) is not int or self.source_length <= _ZERO:
+            message = "relocatable source length must be a positive integer"
             raise RelocationError(message)
         if (
-            self.end_digest is not None
-            and len(self.end_digest) != hashlib.sha256().digest_size
+            type(self.window_bytes) is not int
+            or self.window_bytes <= _ZERO
+            or self.window_bytes > self.source_length
         ):
-            message = "relocatable end digest must be SHA-256"
+            message = "relocatable boundary width must be a valid integer"
+            raise RelocationError(message)
+        if (
+            type(self.start_digest) is not bytes
+            or len(self.start_digest) != hashlib.sha256().digest_size
+        ):
+            message = "relocatable start digest must be exact SHA-256 bytes"
+            raise RelocationError(message)
+        if self.end_digest is not None and (
+            type(self.end_digest) is not bytes
+            or len(self.end_digest) != hashlib.sha256().digest_size
+        ):
+            message = "relocatable end digest must be exact SHA-256 bytes"
             raise RelocationError(message)
 
 
@@ -110,8 +116,71 @@ class RelocatableSourceRange:
 
     locator: RangeLocator
 
+    def __post_init__(self) -> None:
+        """Require one exact admitted range locator.
+
+        Raises:
+            RelocationError: Locator metadata is foreign.
+
+        """
+        if type(self.locator) is not RangeLocator:
+            message = "relocatable source range must use the exact locator type"
+            raise RelocationError(message)
+
 
 RelocatableSegment = RelocatableSourceRange | OracleLiteral
+
+
+def _validate_relocatable_paths(instruction: RelocatableInstruction) -> None:
+    _ = _validate_relative_path(instruction.output_path)
+    if instruction.source_path is not None:
+        _ = _validate_relative_path(instruction.source_path)
+
+
+def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
+    if type(instruction.copy_candidate_file) is not bool:
+        message = "relocatable copy flag must use the exact boolean type"
+        raise RelocationError(message)
+    if (
+        instruction.literal is not None
+        and type(instruction.literal) is not bytes
+    ):
+        message = "relocatable literal must use exact bytes or None"
+        raise RelocationError(message)
+    if type(instruction.segments) is not tuple:
+        message = "relocatable segments must use the immutable tuple type"
+        raise RelocationError(message)
+    if any(
+        type(segment) not in {RelocatableSourceRange, OracleLiteral}
+        for segment in instruction.segments
+    ):
+        message = "relocatable instruction contains a foreign segment"
+        raise RelocationError(message)
+
+
+def _validate_relocatable_shape(instruction: RelocatableInstruction) -> None:
+    _validate_relocatable_paths(instruction)
+    _validate_relocatable_payload(instruction)
+
+
+def _validate_relocatable_form(instruction: RelocatableInstruction) -> None:
+    forms = sum((
+        instruction.copy_candidate_file,
+        instruction.literal is not None,
+        bool(instruction.segments),
+    ))
+    if forms != _ONE:
+        message = "relocatable instruction requires exactly one payload form"
+        raise RelocationError(message)
+    if instruction.copy_candidate_file and instruction.source_path is None:
+        message = "candidate-file copy requires a source path"
+        raise RelocationError(message)
+    if instruction.segments and instruction.source_path is None:
+        message = "relocatable segments require a source path"
+        raise RelocationError(message)
+    if instruction.literal is not None and instruction.source_path is not None:
+        message = "literal relocatable instruction cannot require source"
+        raise RelocationError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,31 +194,9 @@ class RelocatableInstruction:
     segments: tuple[RelocatableSegment, ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject ambiguous instruction forms.
-
-        Raises:
-            RelocationError: More than one payload form is configured.
-
-        """
-        forms = sum((
-            self.copy_candidate_file,
-            self.literal is not None,
-            bool(self.segments),
-        ))
-        if forms != _ONE:
-            message = (
-                "relocatable instruction requires exactly one payload form"
-            )
-            raise RelocationError(message)
-        if self.copy_candidate_file and self.source_path is None:
-            message = "candidate-file copy requires a source path"
-            raise RelocationError(message)
-        if self.segments and self.source_path is None:
-            message = "relocatable segments require a source path"
-            raise RelocationError(message)
-        if self.literal is not None and self.source_path is not None:
-            message = "literal relocatable instruction cannot require source"
-            raise RelocationError(message)
+        """Reject ambiguous instruction forms."""
+        _validate_relocatable_shape(self)
+        _validate_relocatable_form(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +204,25 @@ class RelocatableAuthoringPlan:
     """Non-distributable placement plan derived from an exact baseline."""
 
     instructions: tuple[RelocatableInstruction, ...]
+
+    def __post_init__(self) -> None:
+        """Require immutable exact relocation instructions.
+
+        Raises:
+            RelocationError: Plan records are mutable or foreign.
+
+        """
+        if type(self.instructions) is not tuple:
+            message = (
+                "relocatable plan instructions must use an immutable tuple"
+            )
+            raise RelocationError(message)
+        if any(
+            type(instruction) is not RelocatableInstruction
+            for instruction in self.instructions
+        ):
+            message = "relocatable plan contains a foreign instruction record"
+            raise RelocationError(message)
 
 
 def _sha256(data: bytes) -> bytes:
@@ -226,6 +292,12 @@ def _instruction(
     )
 
 
+def _validate_path(value: object, context: str) -> None:
+    if not isinstance(value, Path):
+        message = f"{context} must use a pathlib Path value"
+        raise RelocationError(message)
+
+
 def build_relocatable_plan(
     source_root: Path,
     exact_plan: ExactAuthoringPlan,
@@ -235,7 +307,16 @@ def build_relocatable_plan(
     Returns:
         Non-distributable compatible-placement authoring plan.
 
+    Raises:
+        RelocationError: Source root or exact plan metadata is invalid.
+
     """
+    _validate_path(source_root, "relocatable source root")
+    if type(exact_plan) is not ExactAuthoringPlan:
+        message = (
+            "relocatable source plan must use the exact authoring-plan type"
+        )
+        raise RelocationError(message)
     return RelocatableAuthoringPlan(
         instructions=tuple(
             _instruction(source_root, instruction)
@@ -244,7 +325,10 @@ def build_relocatable_plan(
     )
 
 
-def _validate_relative_path(relative_path: str) -> str:
+def _validate_relative_path(relative_path: object) -> str:
+    if type(relative_path) is not str:
+        message = "relocatable path must use the exact string type"
+        raise RelocationError(message)
     candidate = PurePosixPath(relative_path)
     unsafe = (
         not relative_path
@@ -364,7 +448,16 @@ def materialize_relocatable_plan(
     This function intentionally performs placement only. Admission, protected
     literals, behavior routing, and output postconditions must wrap it before it
     can become a public compatible transform.
+
+    Raises:
+        RelocationError: Roots, plan metadata, or placement is invalid.
+
     """
+    _validate_path(candidate_root, "relocatable candidate root")
+    _validate_path(output_root, "relocatable output root")
+    if type(plan) is not RelocatableAuthoringPlan:
+        message = "relocatable materialization requires the exact plan type"
+        raise RelocationError(message)
     staging = _prepare_staging(output_root)
     try:
         for instruction in plan.instructions:

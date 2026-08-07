@@ -36,8 +36,15 @@ from __future__ import annotations
 
 import hashlib
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import SourceSlice
+from algorithms.diff.model import TreeModelError
+from algorithms.diff.relocatable import RangeLocator
+from algorithms.diff.relocatable import RelocatableInstruction
+from algorithms.diff.relocatable import RelocatableSourceRange
 from algorithms.diff.relocatable import RelocationError
 from algorithms.diff.relocatable import build_relocatable_plan
 from algorithms.diff.relocatable import materialize_relocatable_plan
@@ -45,6 +52,9 @@ import pytest
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from algorithms.diff.model import ExactAuthoringPlan
+    from algorithms.diff.relocatable import RelocatableAuthoringPlan
 
 _BLOCKS = 64
 _INSERTION = b"candidate-insertion-preserved"
@@ -176,3 +186,73 @@ def test_relocatable_plan_is_deterministic(tmp_path: Path) -> None:
     second = build_relocatable_plan(source, exact)
 
     _expect(first == second, "relocatable authoring changed across runs")
+
+
+def test_exact_model_rejects_boolean_and_foreign_segment_metadata() -> None:
+    """Exact source ranges and literals require exact immutable value types."""
+    with pytest.raises(TreeModelError, match="exact integers"):
+        _ = SourceSlice(offset=True, length=1)
+    with pytest.raises(TreeModelError, match="exact integers"):
+        _ = SourceSlice(offset=0, length=True)
+    with pytest.raises(TreeModelError, match="exact bytes"):
+        _ = OracleLiteral(cast("bytes", cast("object", bytearray(b"x"))))
+
+
+def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
+    """Range locators and instructions cannot rely on Python coercions."""
+    digest = b"x" * 32
+    with pytest.raises(RelocationError, match="positive integer"):
+        _ = RangeLocator(
+            source_length=True, window_bytes=1, start_digest=digest
+        )
+    with pytest.raises(RelocationError, match="valid integer"):
+        _ = RangeLocator(
+            source_length=1, window_bytes=True, start_digest=digest
+        )
+    with pytest.raises(RelocationError, match="exact SHA-256 bytes"):
+        _ = RangeLocator(1, 1, cast("bytes", object()))
+    locator = RangeLocator(1, 1, digest)
+    with pytest.raises(RelocationError, match="exact locator"):
+        _ = RelocatableSourceRange(cast("RangeLocator", object()))
+    with pytest.raises(RelocationError, match="exact boolean"):
+        _ = RelocatableInstruction(
+            "out", "src", cast("bool", cast("object", 1))
+        )
+    with pytest.raises(RelocationError, match="immutable tuple"):
+        _ = RelocatableInstruction(
+            "out",
+            "src",
+            copy_candidate_file=False,
+            segments=cast(
+                "tuple[RelocatableSourceRange | OracleLiteral, ...]",
+                cast("object", [RelocatableSourceRange(locator)]),
+            ),
+        )
+    with pytest.raises(RelocationError, match="foreign segment"):
+        _ = RelocatableInstruction(
+            "out",
+            "src",
+            copy_candidate_file=False,
+            segments=(cast("RelocatableSourceRange", object()),),
+        )
+
+
+def test_relocatable_public_boundaries_reject_foreign_inputs(
+    tmp_path: Path,
+) -> None:
+    """Build/materialize validate roots and plans before filesystem work."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    with pytest.raises(RelocationError, match="pathlib Path"):
+        _ = build_relocatable_plan(cast("Path", object()), exact)
+    with pytest.raises(RelocationError, match="exact authoring-plan"):
+        _ = build_relocatable_plan(source, cast("ExactAuthoringPlan", object()))
+    plan = build_relocatable_plan(source, exact)
+    output = tmp_path / "invalid-out"
+    with pytest.raises(RelocationError, match="pathlib Path"):
+        materialize_relocatable_plan(cast("Path", object()), plan, output)
+    with pytest.raises(RelocationError, match="exact plan type"):
+        materialize_relocatable_plan(
+            source, cast("RelocatableAuthoringPlan", object()), output
+        )
+    _expect(not output.exists(), "invalid public input published output")

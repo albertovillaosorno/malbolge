@@ -32,6 +32,8 @@
 
 """Synthetic invariants for canonical units mapped to raw source spans."""
 
+from typing import cast
+
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
 from algorithms.diff.mapped import MappedViewError
@@ -93,3 +95,26 @@ def test_overlapping_or_escaping_units_fail_closed() -> None:
             raw=b"abc",
             units=(MappedUnit(canonical=b"A", raw_start=0, raw_end=4),),
         )
+
+
+def test_mapped_records_reject_foreign_runtime_metadata() -> None:
+    """Mapped bytes, coordinates, and unit collections require exact types."""
+    with pytest.raises(MappedViewError, match="exact bytes"):
+        _ = MappedUnit(cast("bytes", cast("object", bytearray(b"A"))), 0, 1)
+    with pytest.raises(MappedViewError, match="exact integers"):
+        _ = MappedUnit(canonical=b"A", raw_start=True, raw_end=1)
+    with pytest.raises(MappedViewError, match="exact bytes"):
+        _ = MappedView(
+            cast("bytes", cast("object", bytearray(b"a"))),
+            (MappedUnit(b"A", 0, 1),),
+        )
+    with pytest.raises(MappedViewError, match="immutable tuple"):
+        _ = MappedView(
+            b"a",
+            cast(
+                "tuple[MappedUnit, ...]",
+                cast("object", [MappedUnit(b"A", 0, 1)]),
+            ),
+        )
+    with pytest.raises(MappedViewError, match="foreign unit"):
+        _ = MappedView(b"a", (cast("MappedUnit", object()),))

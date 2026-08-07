@@ -38,14 +38,16 @@ from bisect import bisect_left
 from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING
+from typing import cast
+
+from algorithms.diff.mapped import MappedView
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from algorithms.diff.mapped import MappedView
-
 _ZERO = 0
 _ONE = 1
+_SHA256_BYTES = hashlib.sha256().digest_size
 _DEFAULT_CONTEXT_UNITS = 4
 _UNIT_DOMAIN = b"semantic-placement-unit-v1\0"
 _ANCHOR_WIDTHS = (8, 4, 2, 1)
@@ -70,9 +72,23 @@ class SemanticLocator:
             SemanticPlacementError: Locator has no semantic evidence.
 
         """
-        if not (
-            self.source_digests or self.before_digests or self.after_digests
-        ):
+        groups = (
+            self.source_digests,
+            self.before_digests,
+            self.after_digests,
+        )
+        for group in groups:
+            if type(group) is not tuple:
+                message = "semantic locator digests must use immutable tuples"
+                raise SemanticPlacementError(message)
+            items = cast("tuple[object, ...]", group)
+            if any(
+                type(digest) is not bytes or len(digest) != _SHA256_BYTES
+                for digest in items
+            ):
+                message = "semantic locator digests must be exact SHA-256 bytes"
+                raise SemanticPlacementError(message)
+        if not any(groups):
             message = "semantic locator requires source or context evidence"
             raise SemanticPlacementError(message)
 
@@ -85,12 +101,50 @@ class SemanticEdit:
     replacement: bytes
     replacement_digests: tuple[bytes, ...]
 
+    def __post_init__(self) -> None:
+        """Require exact locator, replacement, and target digest metadata.
+
+        Raises:
+            SemanticPlacementError: Edit metadata is malformed.
+
+        """
+        if type(self.locator) is not SemanticLocator:
+            message = "semantic edit locator must use the exact locator type"
+            raise SemanticPlacementError(message)
+        if type(self.replacement) is not bytes:
+            message = "semantic replacement must use exact bytes"
+            raise SemanticPlacementError(message)
+        if type(self.replacement_digests) is not tuple:
+            message = "semantic replacement digests must use an immutable tuple"
+            raise SemanticPlacementError(message)
+        items = cast("tuple[object, ...]", self.replacement_digests)
+        if any(
+            type(digest) is not bytes or len(digest) != _SHA256_BYTES
+            for digest in items
+        ):
+            message = "semantic replacement digests must be exact SHA-256 bytes"
+            raise SemanticPlacementError(message)
+
 
 @dataclass(frozen=True, slots=True)
 class SemanticAuthoringPlan:
     """Non-distributable semantic edit plan for one mapped source file."""
 
     edits: tuple[SemanticEdit, ...]
+
+    def __post_init__(self) -> None:
+        """Require one immutable sequence of exact semantic edits.
+
+        Raises:
+            SemanticPlacementError: Plan records are mutable or foreign.
+
+        """
+        if type(self.edits) is not tuple:
+            message = "semantic edits must use the exact immutable tuple type"
+            raise SemanticPlacementError(message)
+        if any(type(edit) is not SemanticEdit for edit in self.edits):
+            message = "semantic plan contains a foreign edit record"
+            raise SemanticPlacementError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,8 +567,11 @@ def build_semantic_plan(
         unlocatable by construction.
 
     """
-    if context_units < _ONE:
-        message = "semantic placement context_units must be positive"
+    if type(source) is not MappedView or type(target) is not MappedView:
+        message = "semantic build inputs must use exact MappedView records"
+        raise SemanticPlacementError(message)
+    if type(context_units) is not int or context_units < _ONE:
+        message = "semantic placement context_units must be a positive integer"
         raise SemanticPlacementError(message)
     source_digests = _view_digests(source)
     target_digests = _view_digests(target)
@@ -671,6 +728,12 @@ def _expected_digests(
     return tuple(expected)
 
 
+def _validate_mapper(value: object) -> None:
+    if not callable(value):
+        message = "semantic mapper must be callable"
+        raise SemanticPlacementError(message)
+
+
 def apply_semantic_plan(
     candidate: MappedView,
     plan: SemanticAuthoringPlan,
@@ -686,6 +749,13 @@ def apply_semantic_plan(
         or re-tokenization does not match the intended canonical unit sequence.
 
     """
+    if type(candidate) is not MappedView:
+        message = "semantic candidate must use the exact MappedView type"
+        raise SemanticPlacementError(message)
+    if type(plan) is not SemanticAuthoringPlan:
+        message = "semantic plan must use the exact authoring-plan type"
+        raise SemanticPlacementError(message)
+    _validate_mapper(mapper)
     if not plan.edits:
         return candidate.raw
     located = _locate_edits(candidate, plan)

@@ -58,12 +58,27 @@ class MappedUnit:
             MappedViewError: Canonical bytes or raw coordinates are invalid.
 
         """
-        if not self.canonical:
-            message = "mapped canonical unit must be non-empty"
+        if type(self.canonical) is not bytes or not self.canonical:
+            message = "mapped canonical unit must be non-empty exact bytes"
+            raise MappedViewError(message)
+        if type(self.raw_start) is not int or type(self.raw_end) is not int:
+            message = "mapped raw coordinates must use exact integers"
             raise MappedViewError(message)
         if self.raw_start < _ZERO or self.raw_end < self.raw_start:
             message = "mapped raw span is invalid"
             raise MappedViewError(message)
+
+
+def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
+    previous_end = _ZERO
+    for unit in units:
+        if unit.raw_end > len(raw):
+            message = "mapped unit escapes raw source bytes"
+            raise MappedViewError(message)
+        if unit.raw_start < previous_end:
+            message = "mapped units overlap or reorder raw source spans"
+            raise MappedViewError(message)
+        previous_end = max(previous_end, unit.raw_end)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,15 +95,16 @@ class MappedView:
             MappedViewError: A unit escapes raw bytes or overlaps a prior unit.
 
         """
-        previous_end = _ZERO
-        for unit in self.units:
-            if unit.raw_end > len(self.raw):
-                message = "mapped unit escapes raw source bytes"
-                raise MappedViewError(message)
-            if unit.raw_start < previous_end:
-                message = "mapped units overlap or reorder raw source spans"
-                raise MappedViewError(message)
-            previous_end = max(previous_end, unit.raw_end)
+        if type(self.raw) is not bytes:
+            message = "mapped raw source must use exact bytes"
+            raise MappedViewError(message)
+        if type(self.units) is not tuple:
+            message = "mapped units must use the exact immutable tuple type"
+            raise MappedViewError(message)
+        if any(type(unit) is not MappedUnit for unit in self.units):
+            message = "mapped view contains a foreign unit record"
+            raise MappedViewError(message)
+        _validate_view_units(self.raw, self.units)
 
     @property
     def canonical(self) -> bytes:

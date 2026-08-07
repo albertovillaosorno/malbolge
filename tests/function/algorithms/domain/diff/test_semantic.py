@@ -35,13 +35,21 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
+from algorithms.diff.semantic import SemanticAuthoringPlan
+from algorithms.diff.semantic import SemanticEdit
+from algorithms.diff.semantic import SemanticLocator
 from algorithms.diff.semantic import SemanticPlacementError
 from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _REPLACED = b"extra ; alpha   = new ; omega tail"
@@ -173,3 +181,56 @@ def test_large_repetitive_sequence_authors_local_edit() -> None:
         plan.edits[0].replacement == _LARGE_REPLACEMENT,
         "large local replacement changed",
     )
+
+
+def test_semantic_metadata_requires_exact_digest_records() -> None:
+    """Locators, edits, and plans reject mutable or malformed metadata."""
+    digest = b"x" * 32
+    with pytest.raises(SemanticPlacementError, match="immutable tuples"):
+        _ = SemanticLocator(
+            cast("tuple[bytes, ...]", cast("object", [digest])), (), ()
+        )
+    with pytest.raises(SemanticPlacementError, match="exact SHA-256 bytes"):
+        _ = SemanticLocator((b"short",), (), ())
+    locator = SemanticLocator((digest,), (), ())
+    with pytest.raises(SemanticPlacementError, match="exact locator"):
+        _ = SemanticEdit(cast("SemanticLocator", object()), b"x", (digest,))
+    with pytest.raises(SemanticPlacementError, match="exact bytes"):
+        _ = SemanticEdit(
+            locator, cast("bytes", cast("object", bytearray(b"x"))), (digest,)
+        )
+    with pytest.raises(SemanticPlacementError, match="immutable tuple"):
+        _ = SemanticEdit(
+            locator,
+            b"x",
+            cast("tuple[bytes, ...]", cast("object", [digest])),
+        )
+    edit = SemanticEdit(locator, b"x", (digest,))
+    with pytest.raises(SemanticPlacementError, match="immutable tuple"):
+        _ = SemanticAuthoringPlan(
+            cast("tuple[SemanticEdit, ...]", cast("object", [edit]))
+        )
+    with pytest.raises(SemanticPlacementError, match="foreign edit"):
+        _ = SemanticAuthoringPlan((cast("SemanticEdit", object()),))
+
+
+def test_semantic_public_boundaries_reject_boolean_and_foreign_inputs() -> None:
+    """Build/apply validate views, context width, plan, and mapper first."""
+    view = _map(b"alpha")
+    with pytest.raises(SemanticPlacementError, match="exact MappedView"):
+        _ = build_semantic_plan(cast("MappedView", object()), view)
+    with pytest.raises(SemanticPlacementError, match="positive integer"):
+        _ = build_semantic_plan(view, view, context_units=True)
+    empty = SemanticAuthoringPlan(())
+    with pytest.raises(SemanticPlacementError, match="exact MappedView"):
+        _ = apply_semantic_plan(cast("MappedView", object()), empty, _map)
+    with pytest.raises(SemanticPlacementError, match="exact authoring-plan"):
+        _ = apply_semantic_plan(
+            view, cast("SemanticAuthoringPlan", object()), _map
+        )
+    with pytest.raises(SemanticPlacementError, match="callable"):
+        _ = apply_semantic_plan(
+            view,
+            empty,
+            cast("Callable[[bytes], MappedView]", object()),
+        )
