@@ -33,6 +33,7 @@
 """RFC and synthetic tests for authenticated literal payload primitives."""
 
 from dataclasses import replace
+from typing import cast
 
 from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.payload import PayloadCryptoError
@@ -143,3 +144,68 @@ def test_key_nonce_and_tag_widths_fail_closed() -> None:
         _ = chacha20_poly1305_encrypt(bytes(32), b"short", b"")
     with pytest.raises(PayloadCryptoError, match="tag must be 16 bytes"):
         _ = AuthenticatedPayload(ciphertext=b"", tag=b"short")
+
+
+def test_payload_api_rejects_non_bytes_without_crypto_work() -> None:
+    """AEAD public inputs require exact bytes, not bytes-like coercions."""
+    key = bytes(32)
+    nonce = bytes(12)
+    foreign = cast("bytes", cast("object", bytearray(b"x")))
+    with pytest.raises(PayloadCryptoError, match="key must use exact bytes"):
+        _ = chacha20_poly1305_encrypt(
+            cast("bytes", cast("object", bytearray(key))), nonce, b"payload"
+        )
+    with pytest.raises(PayloadCryptoError, match="nonce must use exact bytes"):
+        _ = chacha20_poly1305_encrypt(
+            key, cast("bytes", cast("object", bytearray(nonce))), b"payload"
+        )
+    with pytest.raises(
+        PayloadCryptoError, match="plaintext must use exact bytes"
+    ):
+        _ = chacha20_poly1305_encrypt(
+            key, nonce, cast("bytes", cast("object", ""))
+        )
+    with pytest.raises(
+        PayloadCryptoError, match="plaintext must use exact bytes"
+    ):
+        _ = chacha20_poly1305_encrypt(key, nonce, foreign)
+    with pytest.raises(
+        PayloadCryptoError, match="associated data must use exact bytes"
+    ):
+        _ = chacha20_poly1305_encrypt(key, nonce, b"payload", aad=foreign)
+
+
+def test_authenticated_payload_rejects_foreign_ciphertext_and_tag() -> None:
+    """Detached payload metadata cannot carry mutable or foreign byte values."""
+    with pytest.raises(
+        PayloadCryptoError, match="ciphertext must use exact bytes"
+    ):
+        _ = AuthenticatedPayload(
+            ciphertext=cast("bytes", cast("object", bytearray(b"x"))),
+            tag=bytes(16),
+        )
+    with pytest.raises(PayloadCryptoError, match="tag must use exact bytes"):
+        _ = AuthenticatedPayload(
+            ciphertext=b"x",
+            tag=cast("bytes", cast("object", bytearray(16))),
+        )
+
+
+def test_decrypt_rejects_foreign_payload_before_field_access() -> None:
+    """Decrypt validates payload and AAD types before authentication."""
+    key = bytes(32)
+    nonce = bytes(12)
+    payload = chacha20_poly1305_encrypt(key, nonce, b"payload")
+    with pytest.raises(PayloadCryptoError, match="exact authenticated type"):
+        _ = chacha20_poly1305_decrypt(
+            key, nonce, cast("AuthenticatedPayload", object())
+        )
+    with pytest.raises(
+        PayloadCryptoError, match="associated data must use exact bytes"
+    ):
+        _ = chacha20_poly1305_decrypt(
+            key,
+            nonce,
+            payload,
+            aad=cast("bytes", cast("object", bytearray())),
+        )

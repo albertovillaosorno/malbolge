@@ -36,11 +36,13 @@ from dataclasses import replace
 import hashlib
 import itertools
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.source_binding import SourceBindingError
 from algorithms.diff.source_binding import SourceBindingPolicy
+from algorithms.diff.source_binding import SourceBindingPolicyError
 from algorithms.diff.source_binding import bind_secret
 from algorithms.diff.source_binding import hkdf_expand_sha256
 from algorithms.diff.source_binding import hkdf_extract_sha256
@@ -49,6 +51,7 @@ import pytest
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
+    from algorithms.diff.source_binding import BoundShare
 
 _SECRET = hashlib.sha256(b"synthetic high-entropy payload key").digest()
 _CONTEXT = b"synthetic-source-binding-v1"
@@ -284,3 +287,142 @@ def test_stricter_fraction_changes_threshold_fail_closed() -> None:
         binding.threshold == _STRICT_THRESHOLD,
         "threshold fraction did not round up",
     )
+
+
+def test_source_binding_policy_rejects_boolean_numeric_fields() -> None:
+    """Boolean aliases cannot become thresholds, counts, or HKDF lengths."""
+    with pytest.raises(SourceBindingPolicyError, match="finite value"):
+        _ = SourceBindingPolicy(threshold_fraction=True)
+    with pytest.raises(SourceBindingPolicyError, match="positive integer"):
+        _ = SourceBindingPolicy(threshold_fraction=0.66, maximum_anchors=True)
+    with pytest.raises(SourceBindingPolicyError, match="positive integer"):
+        _ = SourceBindingPolicy(
+            threshold_fraction=0.66,
+            minimum_anchor_files=True,
+        )
+    with pytest.raises(SourceBindingPolicyError, match="integer within"):
+        _ = hkdf_expand_sha256(b"key", b"info", length=True)
+
+
+def test_public_source_binding_inputs_fail_closed() -> None:
+    """Public binding and HKDF APIs reject foreign runtime input types."""
+    reference = _reference()
+    policy = _policy()
+    with pytest.raises(SourceBindingPolicyError, match="exact IdentityTree"):
+        _ = bind_secret(
+            cast("IdentityTree", object()),
+            _SECRET,
+            policy=policy,
+            context=_CONTEXT,
+        )
+    with pytest.raises(SourceBindingPolicyError, match="non-empty exact bytes"):
+        _ = bind_secret(
+            reference,
+            cast("bytes", cast("object", bytearray(_SECRET))),
+            policy=policy,
+            context=_CONTEXT,
+        )
+    with pytest.raises(
+        SourceBindingPolicyError, match="exact SourceBindingPolicy"
+    ):
+        _ = bind_secret(
+            reference,
+            _SECRET,
+            policy=cast("SourceBindingPolicy", object()),
+            context=_CONTEXT,
+        )
+    with pytest.raises(SourceBindingPolicyError, match="non-empty exact bytes"):
+        _ = bind_secret(
+            reference,
+            _SECRET,
+            policy=policy,
+            context=cast("bytes", cast("object", bytearray(_CONTEXT))),
+        )
+    with pytest.raises(SourceBindingPolicyError, match="extract inputs"):
+        _ = hkdf_extract_sha256(
+            cast("bytes", cast("object", bytearray())), _SECRET
+        )
+    with pytest.raises(SourceBindingPolicyError, match="expand inputs"):
+        _ = hkdf_expand_sha256(
+            _SECRET, cast("bytes", cast("object", bytearray(b"info"))), 1
+        )
+
+
+def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
+    """Distributable binding metadata is admitted before source inspection."""
+    reference = _reference()
+    binding = bind_secret(
+        reference,
+        _SECRET,
+        policy=_policy(),
+        context=_CONTEXT,
+    )
+    malformed = (
+        replace(
+            binding,
+            context=cast("bytes", cast("object", bytearray(binding.context))),
+        ),
+        replace(binding, threshold=True),
+        replace(binding, threshold=-1),
+        replace(binding, minimum_anchor_files=True),
+        replace(binding, minimum_anchor_files=-1),
+        replace(binding, secret_length=True),
+        replace(binding, secret_length=0),
+        replace(binding, secret_commitment=b"short"),
+        replace(binding, anchor_policy=cast("AnchorPolicy", object())),
+        replace(
+            binding,
+            shares=cast(
+                "tuple[BoundShare, ...]", cast("object", list(binding.shares))
+            ),
+        ),
+        replace(binding, threshold=len(binding.shares) + 1),
+        replace(binding, minimum_anchor_files=len(binding.shares) + 1),
+    )
+    for candidate in malformed:
+        with pytest.raises(SourceBindingError, match="source"):
+            _ = recover_secret(candidate, cast("IdentityTree", object()))
+
+
+def test_recovery_rejects_malformed_share_metadata() -> None:
+    """Every serialized share is canonical even when enough peers remain."""
+    reference = _reference()
+    binding = bind_secret(
+        reference,
+        _SECRET,
+        policy=_policy(),
+        context=_CONTEXT,
+    )
+    first = binding.shares[0]
+    second = binding.shares[1]
+    malformed_shares = (
+        replace(first, source_path="../escape.c"),
+        replace(first, anchor_digest=b"short"),
+        replace(first, x=True),
+        replace(first, x=0),
+        replace(first, x=256),
+        replace(first, masked_share=b"short"),
+    )
+    for share in malformed_shares:
+        malformed = replace(binding, shares=(share, *binding.shares[1:]))
+        with pytest.raises(SourceBindingError, match="source"):
+            _ = recover_secret(malformed, reference)
+
+    duplicate_x = replace(second, x=first.x)
+    with pytest.raises(SourceBindingError, match="coordinates must be unique"):
+        _ = recover_secret(
+            replace(binding, shares=(first, duplicate_x, *binding.shares[2:])),
+            reference,
+        )
+    duplicate_anchor = replace(
+        second,
+        source_path=first.source_path,
+        anchor_digest=first.anchor_digest,
+    )
+    with pytest.raises(SourceBindingError, match="anchors must be unique"):
+        _ = recover_secret(
+            replace(
+                binding, shares=(first, duplicate_anchor, *binding.shares[2:])
+            ),
+            reference,
+        )

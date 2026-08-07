@@ -66,6 +66,13 @@ class PayloadCryptoError(ValueError):
     """Raised when authenticated payload inputs or tags are invalid."""
 
 
+def _require_bytes(value: object, context: str) -> bytes:
+    if type(value) is not bytes:
+        message = f"{context} must use exact bytes"
+        raise PayloadCryptoError(message)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class AuthenticatedPayload:
     """ChaCha20-Poly1305 ciphertext and detached 128-bit authentication tag."""
@@ -80,16 +87,20 @@ class AuthenticatedPayload:
             PayloadCryptoError: The authentication tag has the wrong width.
 
         """
-        if len(self.tag) != _TAG_BYTES:
+        _ = _require_bytes(self.ciphertext, "ChaCha20-Poly1305 ciphertext")
+        tag = _require_bytes(self.tag, "ChaCha20-Poly1305 tag")
+        if len(tag) != _TAG_BYTES:
             message = "ChaCha20-Poly1305 tag must be 16 bytes"
             raise PayloadCryptoError(message)
 
 
-def _require_key_nonce(key: bytes, nonce: bytes) -> None:
-    if len(key) != _KEY_BYTES:
+def _require_key_nonce(key: object, nonce: object) -> None:
+    key_bytes = _require_bytes(key, "ChaCha20-Poly1305 key")
+    nonce_bytes = _require_bytes(nonce, "ChaCha20-Poly1305 nonce")
+    if len(key_bytes) != _KEY_BYTES:
         message = "ChaCha20-Poly1305 key must be 32 bytes"
         raise PayloadCryptoError(message)
-    if len(nonce) != _NONCE_BYTES:
+    if len(nonce_bytes) != _NONCE_BYTES:
         message = "ChaCha20-Poly1305 nonce must be 12 bytes"
         raise PayloadCryptoError(message)
 
@@ -231,6 +242,8 @@ def chacha20_poly1305_encrypt(
 
     """
     _require_key_nonce(key, nonce)
+    _ = _require_bytes(plaintext, "ChaCha20-Poly1305 plaintext")
+    _ = _require_bytes(aad, "ChaCha20-Poly1305 associated data")
     one_time_key = _chacha20_block(key, nonce, _ZERO)[:_KEY_BYTES]
     ciphertext = _chacha20_xor(
         key,
@@ -259,6 +272,14 @@ def chacha20_poly1305_decrypt(
 
     """
     _require_key_nonce(key, nonce)
+    if type(payload) is not AuthenticatedPayload:
+        message = (
+            "ChaCha20-Poly1305 payload must use the exact authenticated type"
+        )
+        raise PayloadCryptoError(message)
+    _ = _require_bytes(payload.ciphertext, "ChaCha20-Poly1305 ciphertext")
+    _ = _require_bytes(payload.tag, "ChaCha20-Poly1305 tag")
+    _ = _require_bytes(aad, "ChaCha20-Poly1305 associated data")
     one_time_key = _chacha20_block(key, nonce, _ZERO)[:_KEY_BYTES]
     expected = _poly1305_mac(
         _mac_data(aad, payload.ciphertext),
