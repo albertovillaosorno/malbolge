@@ -1,6 +1,6 @@
 ---
 id: "tools-tidy-clang-tidy-plugin"
-status: "active"
+status: "completed"
 lane: "7"
 area: "c"
 task: "TODO - tools/tidy clang-tidy plugin"
@@ -58,3 +58,15 @@ existing clang-tidy baseline.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`,
   `jig-repository-governance`.
+- Completion evidence on 2026-08-08: the exact LLVM 22.1.8 development
+  artifact is tracked by size and SHA-256, the Windows project host and DLL
+  build reproducibly, and the DLL registers only the five documented
+  `malbolge-*` ABI checks.
+- Completion evidence on 2026-08-08: Python native-analysis and ABI regression
+  coverage passed 41 tests; the optional Rust live-plugin suite passed 3 tests;
+  Ruff, basedpyright, Clippy, clang-format, and the native build were clean.
+- Completion evidence on 2026-08-08: exhaustive `jig validate --root .`
+  completed with `status: clean` and zero diagnostics before retirement.
+- Remaining full language/runtime/determinism/resource lowerability proof stays
+  owned by the later `tools-tidy-lowerability-contract` TODO rather than this
+  lane-7 plugin bootstrap.

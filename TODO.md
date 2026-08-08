@@ -52,14 +52,6 @@ required memory or address capacity, and missing runtime capability.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/compatibility/required-profile-diagnostics.mdc](docs/todo/open/compatibility/required-profile-diagnostics.mdc)
 
-### TODO - tools/tidy clang-tidy plugin
-
-Build `tools/tidy/` as an out-of-tree clang-tidy plugin compiled against the
-pinned LLVM version.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/c/tools-tidy-clang-tidy-plugin.mdc](docs/todo/open/c/tools-tidy-clang-tidy-plugin.mdc)
-
 ### TODO - Parametric compiler challenge generator
 
 Build deterministic workload generators whose difficulty can grow continuously
