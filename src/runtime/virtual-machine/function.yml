@@ -212,6 +212,46 @@ parts:
     kind: adapter-outbound
     language: c
     responsibility: Bind outbound capabilities to external systems.
+  - id: part-0036
+    path: port-outbound/host_capability.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define transport-neutral semantic host capability effects.
+  - id: part-0037
+    path: application/host_capability_dispatch.rs
+    kind: application
+    language: rust
+    responsibility: Validate and atomically commit host capability calls.
+  - id: part-0038
+    path: contract/host_capability_time.rs
+    kind: contract
+    language: rust
+    responsibility: Define monotonic-time and relative-sleep capability schemas.
+  - id: part-0039
+    path: adapter-outbound/c/malbolge_host_capability_time.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind timing capability schemas for independent C runners.
+  - id: part-0040
+    path: adapter-outbound/c/malbolge_host_capability_time.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Declare timing capability schemas for independent C runners.
+  - id: part-0041
+    path: adapter-outbound/host_capability_time.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind timing capabilities to standard-library host effects.
+  - id: part-0042
+    path: adapter-outbound/c/malbolge_host_capability_builtin.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Construct the canonical built-in capability registry in C.
+  - id: part-0043
+    path: adapter-outbound/c/malbolge_host_capability_builtin.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Declare typed built-in capability registry assembly for C.
 projects: []
 tests: []
 graph:

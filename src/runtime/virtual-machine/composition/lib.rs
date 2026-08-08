@@ -48,10 +48,18 @@ mod execution;
 mod execution_ir;
 #[path = "../contract/host_capability.rs"]
 mod host_capability;
+#[path = "../application/host_capability_dispatch.rs"]
+mod host_capability_dispatch;
 #[path = "../contract/host_capability_mouse.rs"]
 mod host_capability_mouse;
+#[path = "../port-outbound/host_capability.rs"]
+mod host_capability_port;
 #[path = "../contract/host_capability_telemetry.rs"]
 mod host_capability_telemetry;
+#[path = "../contract/host_capability_time.rs"]
+mod host_capability_time;
+#[path = "../adapter-outbound/host_capability_time.rs"]
+mod host_capability_time_adapter;
 #[path = "../domain/instruction.rs"]
 pub(crate) mod instruction;
 #[path = "../domain/loader.rs"]
@@ -122,6 +130,12 @@ pub use host_capability::{
     discover_host_capability_wire, validate_host_capability_registry,
     validate_host_capability_response, validate_host_capability_wire_registry,
 };
+pub use host_capability_dispatch::{
+    HOST_BUILTIN_CAPABILITY_COUNT, HostBuiltinCapabilityAvailability,
+    HostCapabilityAvailability, HostCapabilityDispatchError,
+    HostCapabilityDispatchResult, dispatch_builtin_host_capability,
+    dispatch_host_capability, host_builtin_capability_registry,
+};
 pub use host_capability_mouse::{
     HOST_RELATIVE_MOUSE_CAPTURE_CAPABILITY_ID,
     HOST_RELATIVE_MOUSE_CAPTURE_V1_OPERATION,
@@ -132,6 +146,10 @@ pub use host_capability_mouse::{
     host_relative_mouse_capture_v1_descriptor,
     validate_host_relative_mouse_capture_v1_call,
 };
+pub use host_capability_port::{
+    HostCapabilityInvocation, HostCapabilityTransport,
+    HostCapabilityTransportResponse,
+};
 pub use host_capability_telemetry::{
     HOST_EXECUTION_TELEMETRY_CAPABILITY_ID,
     HOST_EXECUTION_TELEMETRY_V1_HEADER_SIZE,
@@ -139,6 +157,20 @@ pub use host_capability_telemetry::{
     HostExecutionTelemetryV1, decode_host_execution_telemetry_v1,
     encode_host_execution_telemetry_v1, host_execution_telemetry_v1_descriptor,
     validate_host_execution_telemetry_v1_call,
+};
+pub use host_capability_time::{
+    HOST_MONOTONIC_TIME_CAPABILITY_ID, HOST_MONOTONIC_TIME_V1_OPERATION,
+    HOST_MONOTONIC_TIME_V1_RESULT_SIZE, HOST_MONOTONIC_TIME_V1_VERSION,
+    HOST_SLEEP_CAPABILITY_ID, HOST_SLEEP_V1_OPERATION,
+    HOST_SLEEP_V1_REQUEST_SIZE, HOST_SLEEP_V1_VERSION,
+    decode_host_monotonic_time_v1_result, decode_host_sleep_v1_request,
+    encode_host_monotonic_time_v1_result, encode_host_sleep_v1_request,
+    host_monotonic_time_v1_descriptor, host_sleep_v1_descriptor,
+    validate_host_monotonic_time_v1_call,
+    validate_host_monotonic_time_v1_result, validate_host_sleep_v1_call,
+};
+pub use host_capability_time_adapter::{
+    SystemTimingHostCapabilityTransport, SystemTimingTransportError,
 };
 pub use instruction::decode_instruction;
 pub use loader::{LoadError, is_source_whitespace, load};
