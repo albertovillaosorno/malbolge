@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "abi_id": "malbolge-c32-v1",
+  "target_profile": "malbolge-2026",
+  "frontend_projection": {
+    "clang_target": "wasm32-unknown-unknown",
+    "llvm_data_layout": [
+      "e-m:e-p:32:32-p10:8:8-p20:8:8-",
+      "i64:64-i128:128-n32:64-S128-ni:1:10:20"
+    ]
+  },
+  "byte": {
+    "bits": 8,
+    "endianness": "little"
+  },
+  "integer": {
+    "signed_representation": "twos-complement",
+    "plain_char_signed": true,
+    "bool": {
+      "size": 1,
+      "alignment": 1
+    },
+    "char": {
+      "size": 1,
+      "alignment": 1
+    },
+    "short": {
+      "size": 2,
+      "alignment": 2
+    },
+    "int": {
+      "size": 4,
+      "alignment": 4
+    },
+    "long": {
+      "size": 4,
+      "alignment": 4
+    },
+    "long_long": {
+      "size": 8,
+      "alignment": 8
+    },
+    "wchar_t": {
+      "size": 4,
+      "alignment": 4,
+      "signed": true
+    },
+    "unsigned_arithmetic": "modulo-2-to-width",
+    "negative_right_shift": "arithmetic",
+    "enum": {
+      "default_underlying": "int32-if-representable-else-uint32",
+      "fixed_underlying": "declared-canonical-integer-type"
+    }
+  },
+  "floating": {
+    "radix": 2,
+    "float": {
+      "size": 4,
+      "alignment": 4,
+      "format": "binary32",
+      "mantissa_bits": 24,
+      "max_exponent": 128
+    },
+    "double": {
+      "size": 8,
+      "alignment": 8,
+      "format": "binary64",
+      "mantissa_bits": 53,
+      "max_exponent": 1024
+    },
+    "long_double": {
+      "size": 16,
+      "alignment": 16,
+      "format": "binary128",
+      "mantissa_bits": 113,
+      "max_exponent": 16384
+    },
+    "rounding": "nearest-ties-to-even",
+    "subnormals": "preserve",
+    "excess_precision": "none",
+    "nan_result": "canonical-quiet-payload-zero"
+  },
+  "pointer": {
+    "bits": 32,
+    "size": 4,
+    "alignment": 4,
+    "null": 0,
+    "object_encoding": "linear-byte-address-plus-one",
+    "function_encoding": "function-table-index-plus-one",
+    "size_t": "unsigned long",
+    "ptrdiff_t": "long",
+    "intptr_t": "long",
+    "uintptr_t": "unsigned long",
+    "address_spaces": "default-only"
+  },
+  "aggregate": {
+    "max_alignment": 16,
+    "array_stride": "round-up-size-to-element-alignment",
+    "struct_layout": "declaration-order-natural-alignment",
+    "union_layout": "offset-zero-max-size",
+    "padding": "zero-filled",
+    "bit_fields": "unsupported-v1",
+    "packed_layout": "unsupported-v1",
+    "extended_alignment": "unsupported-above-16",
+    "bit_precise_integers": "unsupported-v1"
+  },
+  "call": {
+    "stack_alignment": 16,
+    "stack_direction": "down",
+    "argument_order": "source-order-natural-alignment",
+    "variadic_rule": "default-promotions-natural-alignment",
+    "result_rule": "caller-owned-storage",
+    "frame_header_bytes": 32,
+    "frame_fields": [
+      {
+        "offset": 0,
+        "name": "previous_frame",
+        "type": "u32"
+      },
+      {
+        "offset": 4,
+        "name": "continuation_id",
+        "type": "u32"
+      },
+      {
+        "offset": 8,
+        "name": "function_id",
+        "type": "u32"
+      },
+      {
+        "offset": 12,
+        "name": "frame_extent",
+        "type": "u32"
+      },
+      {
+        "offset": 16,
+        "name": "argument_block",
+        "type": "object_pointer"
+      },
+      {
+        "offset": 20,
+        "name": "result_block",
+        "type": "object_pointer"
+      },
+      {
+        "offset": 24,
+        "name": "variadic_begin",
+        "type": "object_pointer"
+      },
+      {
+        "offset": 28,
+        "name": "flags",
+        "type": "u32-zero-v1"
+      }
+    ]
+  },
+  "io": {
+    "read_result": "int32-byte-or-minus-one-eof",
+    "write_input": "low-eight-bits",
+    "eof_value": -1
+  },
+  "failure": {
+    "signed_overflow": "undefined-source-rejected-or-proven-unreachable",
+    "invalid_pointer": "undefined-source-rejected-or-runtime-fail-closed",
+    "stack_exhaustion": "deterministic-runtime-failure",
+    "unknown_abi": "fail-closed"
+  }
+}

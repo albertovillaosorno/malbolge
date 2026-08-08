@@ -28,7 +28,8 @@ UseColor: false
 FormatStyle: none
 
 # These flags describe the source language accepted by the bootstrap checker;
-# they do not define the complete Malbolge ABI or lowerability contract.
+# they do not define the Malbolge ABI or lowerability contract. The manual
+# validator supplies the canonical frontend target and ABI preflight separately.
 ExtraArgs:
   - '-x'
   - 'c'

@@ -43,7 +43,13 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed executab
 import sys
 from typing import Never
 
+if __package__ in {None, ""}:
+    composition_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(composition_root))
+
 from scripts.repository_root import repository_root
+from scripts.validate import c_abi
+from scripts.validate import c_abi_source
 
 ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = (
@@ -52,6 +58,7 @@ DEFAULT_PROFILE = (
 PINNED_LLVM = ROOT / ".dependencies" / "llvm" / "22.1.8" / "bin"
 DOOM_DIRECTORY = "doom"
 C_SUFFIX = ".c"
+PINNED_LLVM_VERSION = c_abi_source.PINNED_LLVM_VERSION
 CONFIGURATION_ERROR = 2
 
 
@@ -63,6 +70,7 @@ class _Arguments(argparse.Namespace):
     files: list[str]
     profile: Path
     clang_tidy: Path
+    clang: Path
     plugin: Path | None
 
     def __init__(self) -> None:
@@ -71,11 +79,14 @@ class _Arguments(argparse.Namespace):
         self.files = []
         self.profile = DEFAULT_PROFILE
         self.clang_tidy = _default_clang_tidy()
+        self.clang = c_abi_source.PINNED_CLANG
         self.plugin = None
 
 
 @dataclass(frozen=True, slots=True)
 class _Configuration:
+    abi: c_abi.CAbiProjection
+    clang: Path
     clang_tidy: Path
     files: tuple[Path, ...]
     plugin: Path | None
@@ -121,6 +132,15 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=_default_clang_tidy(),
         help="clang-tidy executable (default: pinned LLVM 22.1.8)",
+    )
+    _ = parser.add_argument(
+        "--clang",
+        type=Path,
+        default=c_abi_source.PINNED_CLANG,
+        help=(
+            "Clang executable for ABI AST preflight "
+            "(default: pinned LLVM 22.1.8)"
+        ),
     )
     _ = parser.add_argument(
         "--plugin",
@@ -183,17 +203,52 @@ def _require_file(path: Path, label: str) -> None:
         _fail(f"{label} not found: {path}")
 
 
+def _tool_version_output(path: Path, label: str) -> str:
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [str(path), "--version"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            shell=False,
+        )
+    except OSError as error:
+        _fail(f"failed to execute {label} version query {path}: {error}")
+    if completed.returncode != 0:
+        _fail(f"{label} version query failed: {path}")
+    return completed.stdout + chr(10) + completed.stderr
+
+
+def _require_llvm_version(path: Path, label: str) -> None:
+    expected = f"version {PINNED_LLVM_VERSION}"
+    if expected not in _tool_version_output(path, label):
+        _fail(f"{label} must report LLVM {PINNED_LLVM_VERSION}: {path}")
+
+
 def _configuration(arguments: _Arguments) -> _Configuration:
     clang_tidy = arguments.clang_tidy.resolve()
+    clang = arguments.clang.resolve()
     profile = arguments.profile.resolve()
     plugin = (
         arguments.plugin.resolve() if arguments.plugin is not None else None
     )
     _require_file(clang_tidy, "clang-tidy")
+    _require_file(clang, "Clang")
+    _require_llvm_version(clang_tidy, "clang-tidy")
+    _require_llvm_version(clang, "Clang")
     _require_file(profile, "Malbolge guest profile")
     if plugin is not None:
         _require_file(plugin, "clang-tidy plugin")
+    try:
+        abi = c_abi.canonical_projection()
+    except ValueError as error:
+        _fail(f"invalid canonical C ABI: {error}")
     return _Configuration(
+        abi=abi,
+        clang=clang,
         clang_tidy=clang_tidy,
         files=_validated_files(arguments.files),
         plugin=plugin,
@@ -202,13 +257,16 @@ def _configuration(arguments: _Arguments) -> _Configuration:
 
 
 def _run(command: list[str]) -> int:
-    # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - no shell; argv is explicit.
-        command,
-        cwd=ROOT,
-        check=False,
-        shell=False,
-    )
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - no shell; argv is explicit.
+            command,
+            cwd=ROOT,
+            check=False,
+            shell=False,
+        )
+    except OSError as error:
+        _fail(f"failed to execute validation tool {command[0]}: {error}")
     return completed.returncode
 
 
@@ -238,12 +296,25 @@ def _source_command(
         "--",
         "-x",
         "c",
+        f"--target={configuration.abi.clang_target}",
     ]
 
 
 def _validate_sources(configuration: _Configuration) -> int:
     status = 0
     for source in configuration.files:
+        try:
+            abi_clean = c_abi_source.validate_source(
+                source,
+                clang=configuration.clang,
+                projection=configuration.abi,
+            )
+        except c_abi_source.SourceAnalysisError as error:
+            _write_error(error)
+            return CONFIGURATION_ERROR
+        if not abi_clean:
+            status = 1
+            continue
         result = _run(_source_command(configuration, source))
         if result != 0:
             status = result
@@ -263,13 +334,13 @@ def main() -> int:
     """
     try:
         configuration = _configuration(_parse_arguments())
+        if not _verify_profile(configuration):
+            _write_error("Malbolge clang-tidy profile failed self-verification")
+            return CONFIGURATION_ERROR
+        return _validate_sources(configuration)
     except InputError as error:
         _write_error(error)
         return CONFIGURATION_ERROR
-    if not _verify_profile(configuration):
-        _write_error("Malbolge clang-tidy profile failed self-verification")
-        return CONFIGURATION_ERROR
-    return _validate_sources(configuration)
 
 
 if __name__ == "__main__":
