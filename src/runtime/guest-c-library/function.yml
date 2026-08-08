@@ -1,0 +1,96 @@
+schema: jig-function/v3
+identity:
+  id: guest-c-library
+  node: function:guest-c-library
+  path: src/runtime/guest-c-library
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-runtime/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: runtime
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: guest-c-library.jig
+parts:
+  - id: part-0001
+    path: contract/include/math.h
+    kind: contract
+    language: c
+    responsibility: Declare contracted deterministic binary64 math routines.
+  - id: part-0002
+    path: contract/include/stdio.h
+    kind: contract
+    language: c
+    responsibility: Declare contracted byte-stream and formatting routines.
+  - id: part-0003
+    path: contract/include/stdlib.h
+    kind: contract
+    language: c
+    responsibility: Declare contracted guest allocation routines.
+  - id: part-0004
+    path: contract/include/string.h
+    kind: contract
+    language: c
+    responsibility: Declare the executable v1 memory and string surface.
+  - id: part-0005
+    path: domain/memory.c
+    kind: domain
+    language: c
+    responsibility: Implement deterministic guest byte-memory primitives.
+  - id: part-0006
+    path: domain/string.c
+    kind: domain
+    language: c
+    responsibility: Implement deterministic guest narrow-string primitives.
+projects: []
+tests: []
+graph:
+  node: function:guest-c-library
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:runtime
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:guest-c-library
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

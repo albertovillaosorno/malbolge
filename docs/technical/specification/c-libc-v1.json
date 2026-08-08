@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "libc_id": "malbolge-libc-v1",
+  "abi_id": "malbolge-c32-v1",
+  "target_profile": "malbolge-2026",
+  "compiler_headers": [
+    "float.h",
+    "iso646.h",
+    "limits.h",
+    "stdalign.h",
+    "stdarg.h",
+    "stdbool.h",
+    "stdckdint.h",
+    "stddef.h",
+    "stdint.h",
+    "stdnoreturn.h"
+  ],
+  "guest_headers": [
+    "math.h",
+    "stdio.h",
+    "stdlib.h",
+    "string.h"
+  ],
+  "unavailable_headers": [
+    "stdbit.h"
+  ],
+  "available_routines": [
+    {
+      "name": "memcpy",
+      "header": "string.h",
+      "signature": "void *memcpy(void *restrict, const void *restrict, size_t)",
+      "implementation": "guest-c",
+      "semantics": "c23-copy-count-bytes-nonoverlap"
+    },
+    {
+      "name": "memmove",
+      "header": "string.h",
+      "signature": "void *memmove(void *, const void *, size_t)",
+      "implementation": "guest-c",
+      "semantics": "c23-copy-count-bytes-overlap-safe"
+    },
+    {
+      "name": "memset",
+      "header": "string.h",
+      "signature": "void *memset(void *, int, size_t)",
+      "implementation": "guest-c",
+      "semantics": "c23-fill-count-bytes-unsigned-char-conversion"
+    },
+    {
+      "name": "memcmp",
+      "header": "string.h",
+      "signature": "int memcmp(const void *, const void *, size_t)",
+      "implementation": "guest-c",
+      "semantics": "c23-unsigned-byte-lexicographic-sign"
+    },
+    {
+      "name": "strlen",
+      "header": "string.h",
+      "signature": "size_t strlen(const char *)",
+      "implementation": "guest-c",
+      "semantics": "c23-bytes-before-first-null"
+    },
+    {
+      "name": "strcmp",
+      "header": "string.h",
+      "signature": "int strcmp(const char *, const char *)",
+      "implementation": "guest-c",
+      "semantics": "c23-unsigned-byte-lexicographic-sign"
+    },
+    {
+      "name": "strcpy",
+      "header": "string.h",
+      "signature": "char *strcpy(char *restrict, const char *restrict)",
+      "implementation": "guest-c",
+      "semantics": "c23-copy-through-null"
+    },
+    {
+      "name": "strncpy",
+      "header": "string.h",
+      "signature": "char *strncpy(char *restrict,const char *restrict,size_t)",
+      "implementation": "guest-c",
+      "semantics": "c23-count-bounded-copy-and-null-padding"
+    },
+    {
+      "name": "strcat",
+      "header": "string.h",
+      "signature": "char *strcat(char *restrict, const char *restrict)",
+      "implementation": "guest-c",
+      "semantics": "c23-append-through-null"
+    }
+  ],
+  "contracted_unavailable": [
+    {
+      "name": "malloc",
+      "header": "stdlib.h",
+      "signature": "void *malloc(size_t)",
+      "semantics": "guest-heap-allocation-or-null",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "calloc",
+      "header": "stdlib.h",
+      "signature": "void *calloc(size_t, size_t)",
+      "semantics": "guest-heap-zero-allocation-or-null",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "realloc",
+      "header": "stdlib.h",
+      "signature": "void *realloc(void *, size_t)",
+      "semantics": "guest-heap-resize-with-c23-copy-semantics",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "free",
+      "header": "stdlib.h",
+      "signature": "void free(void *)",
+      "semantics": "guest-heap-release",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "getchar",
+      "header": "stdio.h",
+      "signature": "int getchar(void)",
+      "semantics": "guest-byte-input-or-minus-one-eof",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "putchar",
+      "header": "stdio.h",
+      "signature": "int putchar(int)",
+      "semantics": "guest-low-eight-bit-output-or-minus-one-failure",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "snprintf",
+      "header": "stdio.h",
+      "signature": "int snprintf(char *,size_t,const char *,...)",
+      "semantics": "locale-free-canonical-formatting",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "vsnprintf",
+      "header": "stdio.h",
+      "signature": "int vsnprintf(char *,size_t,const char *,va_list)",
+      "semantics": "locale-free-canonical-formatting-va-list",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "fabs",
+      "header": "math.h",
+      "signature": "double fabs(double)",
+      "semantics": "binary64-absolute-value-canonical-nan",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "sqrt",
+      "header": "math.h",
+      "signature": "double sqrt(double)",
+      "semantics": "binary64-nearest-ties-even-canonical-nan",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "floor",
+      "header": "math.h",
+      "signature": "double floor(double)",
+      "semantics": "binary64-toward-negative-infinity",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "ceil",
+      "header": "math.h",
+      "signature": "double ceil(double)",
+      "semantics": "binary64-toward-positive-infinity",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "trunc",
+      "header": "math.h",
+      "signature": "double trunc(double)",
+      "semantics": "binary64-toward-zero",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "sin",
+      "header": "math.h",
+      "signature": "double sin(double)",
+      "semantics": "binary64-correctly-rounded-canonical-nan",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "cos",
+      "header": "math.h",
+      "signature": "double cos(double)",
+      "semantics": "binary64-correctly-rounded-canonical-nan",
+      "owner": "guest-runtime-and-allocator"
+    },
+    {
+      "name": "atan2",
+      "header": "math.h",
+      "signature": "double atan2(double, double)",
+      "semantics": "binary64-correctly-rounded-canonical-nan",
+      "owner": "guest-runtime-and-allocator"
+    }
+  ],
+  "forbidden_routines": [
+    {
+      "name": "system",
+      "reason": "host-process-control"
+    },
+    {
+      "name": "getenv",
+      "reason": "ambient-host-environment"
+    },
+    {
+      "name": "setlocale",
+      "reason": "ambient-host-locale"
+    },
+    {
+      "name": "fopen",
+      "reason": "host-file-handle-abi"
+    },
+    {
+      "name": "tmpfile",
+      "reason": "ambient-host-filesystem"
+    },
+    {
+      "name": "time",
+      "reason": "ambient-host-clock"
+    },
+    {
+      "name": "signal",
+      "reason": "host-signal-model"
+    }
+  ],
+  "failure": {
+    "unavailable_routine": "source-diagnostic-before-lowering",
+    "forbidden_routine": "source-diagnostic-before-lowering",
+    "unknown_guest_header": "not-admitted-by-libc-contract",
+    "host_library_fallback": "forbidden"
+  }
+}

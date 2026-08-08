@@ -53,6 +53,9 @@ from scripts.validate import c_abi
 ROOT = repository_root(Path(__file__))
 PINNED_LLVM_VERSION = "22.1.8"
 PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
+GUEST_LIBC_INCLUDE = (
+    ROOT / "src/runtime/guest-c-library/contract/include"
+)
 DIAGNOSTIC_BIT_FIELD = "MALBOLGE-ABI-001"
 DIAGNOSTIC_PACKED = "MALBOLGE-ABI-002"
 DIAGNOSTIC_PRAGMA_PACK = "MALBOLGE-ABI-003"
@@ -163,6 +166,7 @@ def _ast_command(source: Path, clang: Path, target: str) -> list[str]:
         "-Werror=int-conversion",
         "-Werror=return-type",
         "-Werror=uninitialized",
+        f"-I{GUEST_LIBC_INCLUDE}",
         "-fsyntax-only",
         "-Xclang",
         "-ast-dump=json",
@@ -276,6 +280,18 @@ def _candidate_path(
     return inherited.path if inherited is not None else context.source
 
 
+def _invalid_source_offset(
+    context: _AnalysisContext,
+    path: Path,
+    offset: int | None,
+) -> bool:
+    return (
+        path == context.source
+        and offset is not None
+        and (offset < 0 or offset > len(context.source_bytes))
+    )
+
+
 def _candidate_line_column(
     candidate: JsonObject,
     context: _AnalysisContext,
@@ -287,6 +303,8 @@ def _candidate_line_column(
     line = _optional_int(candidate.get("line"))
     column = _optional_int(candidate.get("col"))
     derived_column: int | None = None
+    if _invalid_source_offset(context, path, offset):
+        return None, None, offset
     if line is None and offset is not None and path == context.source:
         line, derived_column = _line_column_from_offset(
             context.source_bytes, offset
@@ -321,11 +339,12 @@ def _node_location(
     context: _AnalysisContext,
     inherited: _Location | None,
 ) -> _Location | None:
-    for candidate in _location_candidates(node):
+    candidates = _location_candidates(node)
+    for candidate in candidates:
         location = _candidate_location(candidate, context, inherited)
         if location is not None:
             return location
-    return inherited
+    return inherited if not candidates else None
 
 
 def _decimal_value(node: JsonObject) -> int | None:

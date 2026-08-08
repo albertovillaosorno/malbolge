@@ -50,6 +50,8 @@ if __package__ in {None, ""}:
 from scripts.repository_root import repository_root
 from scripts.validate import c_abi
 from scripts.validate import c_abi_source
+from scripts.validate import c_libc
+from scripts.validate import c_libc_source
 from scripts.validate import tidy_toolchain
 
 ROOT = repository_root(Path(__file__))
@@ -103,6 +105,7 @@ class _Arguments(argparse.Namespace):
 class _Configuration:
     abi: c_abi.CAbiProjection
     clang: Path
+    libc: c_libc.CLibcProjection
     clang_tidy: Path
     files: tuple[Path, ...]
     plugin: Path | None
@@ -313,11 +316,13 @@ def _configuration(arguments: _Arguments) -> _Configuration:
         _require_plugin_registration(clang_tidy, plugin)
     try:
         abi = c_abi.canonical_projection()
+        libc = c_libc.canonical_projection()
     except ValueError as error:
-        _fail(f"invalid canonical C ABI: {error}")
+        _fail(f"invalid canonical guest-C contract: {error}")
     return _Configuration(
         abi=abi,
         clang=clang,
+        libc=libc,
         clang_tidy=clang_tidy,
         files=_validated_files(arguments.files),
         plugin=plugin,
@@ -371,28 +376,53 @@ def _source_command(
         str(source),
         "--",
         f"-resource-dir={PINNED_CLANG_RESOURCE}",
+        f"-I{configuration.libc.include_root}",
         "-x",
         "c",
         f"--target={configuration.abi.clang_target}",
     ]
 
 
+def _preflight_source(
+    configuration: _Configuration,
+    source: Path,
+) -> bool:
+    abi_clean = c_abi_source.validate_source(
+        source,
+        clang=configuration.clang,
+        projection=configuration.abi,
+    )
+    return abi_clean and c_libc_source.validate_source(
+        source,
+        clang=configuration.clang,
+        abi=configuration.abi,
+        libc=configuration.libc,
+    )
+
+
+def _validate_source(
+    configuration: _Configuration,
+    source: Path,
+) -> int:
+    result = 0
+    try:
+        clean = _preflight_source(configuration, source)
+        result = _run(_source_command(configuration, source)) if clean else 1
+    except (
+        c_abi_source.SourceAnalysisError,
+        c_libc_source.LibcSourceError,
+    ) as error:
+        _write_error(error)
+        result = CONFIGURATION_ERROR
+    return result
+
+
 def _validate_sources(configuration: _Configuration) -> int:
     status = 0
     for source in configuration.files:
-        try:
-            abi_clean = c_abi_source.validate_source(
-                source,
-                clang=configuration.clang,
-                projection=configuration.abi,
-            )
-        except c_abi_source.SourceAnalysisError as error:
-            _write_error(error)
-            return CONFIGURATION_ERROR
-        if not abi_clean:
-            status = 1
-            continue
-        result = _run(_source_command(configuration, source))
+        result = _validate_source(configuration, source)
+        if result == CONFIGURATION_ERROR:
+            return result
         if result != 0:
             status = result
     return status
