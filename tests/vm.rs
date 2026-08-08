@@ -56,10 +56,16 @@ mod differential;
 mod execution;
 #[path = "vm/host_capability.rs"]
 mod host_capability;
+#[path = "vm/host_capability_dispatch.rs"]
+mod host_capability_dispatch;
 #[path = "vm/host_capability_mouse.rs"]
 mod host_capability_mouse;
 #[path = "vm/host_capability_telemetry.rs"]
 mod host_capability_telemetry;
+#[path = "vm/host_capability_time.rs"]
+mod host_capability_time;
+#[path = "vm/host_capability_time_transport.rs"]
+mod host_capability_time_transport;
 #[path = "vm/instructions.rs"]
 mod instructions;
 #[path = "vm/logical.rs"]

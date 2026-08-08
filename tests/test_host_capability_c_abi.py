@@ -47,8 +47,12 @@ CAPABILITY_ROOT = ROOT / "src/runtime/virtual-machine/adapter-outbound/c"
 GENERIC_SOURCE = CAPABILITY_ROOT / "malbolge_host_capability.c"
 MOUSE_SOURCE = CAPABILITY_ROOT / "malbolge_host_capability_mouse.c"
 TELEMETRY_SOURCE = CAPABILITY_ROOT / "malbolge_host_capability_telemetry.c"
+TIME_SOURCE = CAPABILITY_ROOT / "malbolge_host_capability_time.c"
+BUILTIN_SOURCE = CAPABILITY_ROOT / "malbolge_host_capability_builtin.c"
 GENERIC_HARNESS = ROOT / "tests/vm/host_capability_conformance.c"
 BUILTIN_HARNESS = ROOT / "tests/vm/host_capability_builtin_conformance.c"
+TIME_HARNESS = ROOT / "tests/vm/host_capability_time_conformance.c"
+REGISTRY_HARNESS = ROOT / "tests/vm/host_capability_registry_conformance.c"
 INCLUDE = CAPABILITY_ROOT
 NATIVE_HARNESSES = (
     ((GENERIC_SOURCE,), GENERIC_HARNESS, "host-capability-conformance.exe"),
@@ -56,6 +60,22 @@ NATIVE_HARNESSES = (
         (GENERIC_SOURCE, MOUSE_SOURCE, TELEMETRY_SOURCE),
         BUILTIN_HARNESS,
         "host-capability-builtins.exe",
+    ),
+    (
+        (GENERIC_SOURCE, TIME_SOURCE),
+        TIME_HARNESS,
+        "host-capability-time.exe",
+    ),
+    (
+        (
+            GENERIC_SOURCE,
+            BUILTIN_SOURCE,
+            MOUSE_SOURCE,
+            TELEMETRY_SOURCE,
+            TIME_SOURCE,
+        ),
+        REGISTRY_HARNESS,
+        "host-capability-registry.exe",
     ),
 )
 WINDOWS_OS_NAME = "nt"
