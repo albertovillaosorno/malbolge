@@ -1,0 +1,143 @@
+---
+id: "versioned-host-capability-call-abi"
+status: "completed"
+lane: "7"
+area: "c"
+task: "TODO - Versioned host-capability call ABI"
+# jig-ignore-next-line: canonical front matter value is indivisible
+contract: "docs/technical/runtime/execution/versioned-host-capability-call-abi.md"
+depends_on:
+  - "deterministic-c-to-malbolge-abi"
+  - "canonical-malbolge-target-profile"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/tiered-native-execution.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "runtime/"
+  - "execution/"
+  - "vm/"
+  - "tools/tidy/"
+  - "tests/vm/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Versioned host-capability call ABI
+
+## Objective
+
+Generalize the semantic capability-ID pattern proven by the DOOM corpus into the
+VM ABI. Keep capability identity separate from transport: define versioning,
+argument/result types, pointer/range validation, blocking rules, failure
+semantics, capability discovery, and a deterministic call-frame representation
+without requiring a literal new Malbolge opcode. Interpreters, JITs, and AOT
+runners may lower the same call frame differently, but guest-visible behavior
+and
+validation must agree. The DOOM source ABI currently exercises version-1
+external-effect categories spanning guest-memory provisioning, diagnostics/exit,
+video/input, PCM audio, raw file I/O, UDP transport, and monotonic time; those
+application-local capabilities are design evidence, not yet the generic VM ABI.
+
+## Acceptance
+
+- One versioned semantic capability registry and deterministic call-frame format
+  define capability identity independently from transport/backend selection.
+- Argument/result widths, byte order, guest pointers/ranges, discovery,
+  blocking/partial-progress behavior, failures, and unsupported-version behavior
+  are explicit and fail closed.
+- Guest ranges are validated before host effects, and no host pointer, host libc
+  calling convention, platform handle, or multimedia ABI leaks into guest state.
+- Independent interpreter-, JIT-, and AOT-style semantic transport fixtures
+  pass the same ordered capability vectors with equivalent guest-visible memory,
+  results, diagnostics, and effect ordering. Production generated-artifact
+  runners consume this unchanged ABI under the downstream runner contract.
+- The lowering contract does not require a new Malbolge opcode; any eventual
+  encoding mechanism remains separate from semantic capability identity.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `runtime/`, `execution/`, `vm/`,
+  `tools/tidy/`, and `tests/vm/`.
+- Required evidence: canonical frame vectors, accepted/rejected range fixtures,
+  discovery/version failures, host-error vectors, blocking/partial-progress
+  fixtures, and cross-tier differential results.
+- Implemented foundation evidence: independent safe-Rust and pure-C version-one
+  codecs use the same 72-byte frame, 16-byte descriptor, and 16-byte
+  payload-relative span vectors, with fail-closed registry, range, status,
+  response-identity validation, and atomic staged-result publication.
+- Implemented schema evidence: `0x0400` defines monotonic nanosecond
+  observation, `0x0401` defines relative-duration sleep, `0x0600` defines
+  optional canonical UTF-8 execution telemetry, and `0x0601` defines
+  guest-directed relative-mouse capture. All are version 1, operation 0, with
+  independent safe-Rust and pure-C conformance vectors.
+- Implemented dispatch evidence: a safe-Rust outbound transport port and
+  application dispatcher validate requests before effects, expose immutable
+  request bytes only, validate staged responses before atomic guest-memory
+  publication, and keep transport failures distinct from ABI failures.
+- Implemented registry evidence: one canonical built-in registry orders
+  monotonic time `0x0400`, sleep `0x0401`, telemetry `0x0600`, then relative
+  mouse `0x0601`; typed availability never changes semantic identity, behavior
+  flags, or ordering. Rust and independent C constructors encode the same exact
+  64-byte registry vector; C rejects invalid availability/extent before writes.
+  Schema-aware dispatch rejects unknown IDs before effects and malformed clock
+  results before guest-memory publication.
+- Implemented timing evidence: monotonic time returns exactly one little-endian
+  `u64` nanosecond observation; sleep consumes one little-endian `u64` relative
+  duration, declares `MAY_BLOCK`, and admits `WOULD_BLOCK` only for a
+  `NONBLOCKING` request. Rust and independent C vectors agree.
+- Implemented transport evidence: a standard-library safe-Rust timing transport
+  uses one private monotonic origin, never exposes wall-clock identity, maps
+  clock failures to `HOST_ERROR`, completes zero sleeps, performs positive
+  blocking sleeps, and returns `WOULD_BLOCK` for positive nonblocking sleeps.
+- Implemented tier-neutral evidence: three distinct transport strategies use
+  direct semantic frames, canonical wire round trips, and field reconstruction;
+  two-call vectors agree on responses, guest memory, and effect order.
+- Downstream ownership evidence: generated-artifact capability lowering and the
+  six-platform production runner matrix are explicitly owned by
+  `cross-platform-native-capability-runners`, which depends on this ABI and must
+  reuse its identities and vectors unchanged.
+- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi` and
+  `canonical-malbolge-target-profile`.
+
+**DOOM execution telemetry extension.**
+
+The two requested extension schemas are now specified and executable at the
+contract layer. Telemetry carries a language identifier, source identity,
+execution location, and active instruction text; C line reporting and Malbolge
+cell/instruction reporting use the same semantic record without influencing
+guest
+behavior. Monotonic-time and sleep schemas add deterministic wire shapes for
+external timing effects. Production generated-artifact lowering and platform
+runner integration continue under the downstream runner TODO rather than being
+duplicated as a prerequisite of this semantic ABI.
+
+- Completion evidence on 2026-08-08: safe Rust and independent pure C agree on
+  the version-one 72-byte frame, 16-byte descriptor, 16-byte span, and exact
+  64-byte four-family built-in registry vector.
+- Completion evidence on 2026-08-08: schema-aware dispatch validates requests
+  before effects and staged responses before atomic guest-memory publication;
+  invalid/unknown/range/identity/status paths fail closed.
+- Completion evidence on 2026-08-08: monotonic-time `0x0400`, relative sleep
+  `0x0401`, telemetry `0x0600`, and relative mouse `0x0601` have versioned
+  deterministic wire schemas with independent Rust/C conformance vectors.
+- Completion evidence on 2026-08-08: three distinct interpreter/JIT/AOT-style
+  test transports use direct frames, wire round trips, and field reconstruction;
+  ordered two-call vectors agree on responses, guest memory, and effect order.
+- Completion evidence on 2026-08-08: the standard-library timing transport uses
+  a private monotonic origin, maps clock failure to `HOST_ERROR`, implements
+  blocking sleep, and returns `WOULD_BLOCK` for positive nonblocking sleep.
+- Scope boundary evidence on 2026-08-08: generated-artifact capability lowering
+  and the six-platform runner matrix remain explicitly owned by
+  `cross-platform-native-capability-runners`, which depends on this completed
+  semantic ABI and must consume its identities and vectors unchanged.
+- **Completion:** Completed on 2026-08-08 after the versioned registry/frame,
+  range and response validation, blocking/failure rules, independent Rust/C
+  vectors, tier-neutral differential ordering, production timing transport, and
+  exhaustive repository validation all passed. Platform runner lowering remains
+  downstream work rather than a prerequisite duplicated here.

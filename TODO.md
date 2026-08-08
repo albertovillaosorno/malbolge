@@ -68,14 +68,6 @@ provider, and AST frontend instead of building another C parser.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/compiler/clang-c-frontend-integration.mdc](docs/todo/open/compiler/clang-c-frontend-integration.mdc)
 
-### TODO - Versioned host-capability call ABI
-
-Generalize the semantic capability-ID pattern proven by the DOOM corpus into the
-VM ABI.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/c/versioned-host-capability-call-abi.mdc](docs/todo/open/c/versioned-host-capability-call-abi.mdc)
-
 ## P2 — Compiler, runtime, and accelerator core
 
 ### TODO - Self-modification state-graph optimizer
