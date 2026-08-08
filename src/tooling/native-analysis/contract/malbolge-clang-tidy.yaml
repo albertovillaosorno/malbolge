@@ -8,9 +8,9 @@
 # translation unit that is intended to be lowered to Malbolge.
 #
 # This is the executable bootstrap envelope built from stock LLVM 22.1.8
-# diagnostics. The out-of-tree tools/tidy plugin will add the authoritative
-# malbolge-* language, ABI, runtime, determinism, and resource checks that stock
-# clang-tidy cannot express.
+# diagnostics. When canonical tools/tidy host/plugin outputs are available,
+# the validator appends the reviewed malbolge-* checks without removing these
+# stock checks. Full lowerability remains a separate downstream contract.
 InheritParentConfig: false
 
 Checks: >

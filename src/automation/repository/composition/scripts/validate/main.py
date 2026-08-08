@@ -50,12 +50,28 @@ if __package__ in {None, ""}:
 from scripts.repository_root import repository_root
 from scripts.validate import c_abi
 from scripts.validate import c_abi_source
+from scripts.validate import tidy_toolchain
 
 ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = (
     ROOT / "src/tooling/native-analysis/contract" / "malbolge-clang-tidy.yaml"
 )
 PINNED_LLVM = ROOT / ".dependencies" / "llvm" / "22.1.8" / "bin"
+PINNED_CLANG_RESOURCE = (
+    PINNED_LLVM.parent / "lib" / "clang" / "22"
+)
+PLUGIN_HOST = (
+    ROOT
+    / ".dependencies"
+    / "tools-tidy"
+    / tidy_toolchain.LLVM_VERSION
+    / "bin"
+    / "malbolge-clang-tidy.exe"
+)
+PLUGIN_LIBRARY = (
+    PLUGIN_HOST.parent / "malbolge-tidy.dll"
+)
+PLUGIN_CHECKS = tidy_toolchain.PLUGIN_CHECKS
 DOOM_DIRECTORY = "doom"
 C_SUFFIX = ".c"
 PINNED_LLVM_VERSION = c_abi_source.PINNED_LLVM_VERSION
@@ -98,11 +114,30 @@ def _fail(message: str) -> Never:
 
 
 def _default_clang_tidy() -> Path:
+    if PLUGIN_HOST.is_file() and PLUGIN_LIBRARY.is_file():
+        return PLUGIN_HOST
     for name in ("clang-tidy.exe", "clang-tidy"):
         candidate = PINNED_LLVM / name
         if candidate.is_file():
             return candidate
     return PINNED_LLVM / "clang-tidy"
+
+
+def _default_plugin(clang_tidy: Path) -> Path | None:
+    """Pair the canonical project host with its reviewed plugin by default.
+
+    Returns:
+        Canonical plugin path for the project host, otherwise ``None``.
+
+    """
+    try:
+        canonical_host = PLUGIN_HOST.resolve()
+        selected_host = clang_tidy.resolve()
+    except OSError:
+        return None
+    if selected_host != canonical_host or not PLUGIN_LIBRARY.is_file():
+        return None
+    return PLUGIN_LIBRARY.resolve()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -228,12 +263,45 @@ def _require_llvm_version(path: Path, label: str) -> None:
         _fail(f"{label} must report LLVM {PINNED_LLVM_VERSION}: {path}")
 
 
+def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [
+                str(clang_tidy),
+                f"--load={plugin}",
+                "--checks=-*,malbolge-*",
+                "--list-checks",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            shell=False,
+        )
+    except OSError as error:
+        _fail(f"failed to probe clang-tidy plugin registration: {error}")
+    observed = tuple(
+        line.strip()
+        for line in completed.stdout.splitlines()
+        if line.strip().startswith("malbolge-")
+    )
+    if completed.returncode != 0 or set(observed) != set(PLUGIN_CHECKS):
+        expected = ", ".join(sorted(PLUGIN_CHECKS))
+        actual = ", ".join(sorted(observed)) if observed else "none"
+        prefix = "clang-tidy plugin registration mismatch: expected "
+        _fail(f"{prefix}{expected}; observed {actual}")
+
+
 def _configuration(arguments: _Arguments) -> _Configuration:
     clang_tidy = arguments.clang_tidy.resolve()
     clang = arguments.clang.resolve()
     profile = arguments.profile.resolve()
     plugin = (
-        arguments.plugin.resolve() if arguments.plugin is not None else None
+        arguments.plugin.resolve()
+        if arguments.plugin is not None
+        else _default_plugin(clang_tidy)
     )
     _require_file(clang_tidy, "clang-tidy")
     _require_file(clang, "Clang")
@@ -242,6 +310,7 @@ def _configuration(arguments: _Arguments) -> _Configuration:
     _require_file(profile, "Malbolge guest profile")
     if plugin is not None:
         _require_file(plugin, "clang-tidy plugin")
+        _require_plugin_registration(clang_tidy, plugin)
     try:
         abi = c_abi.canonical_projection()
     except ValueError as error:
@@ -270,9 +339,21 @@ def _run(command: list[str]) -> int:
     return completed.returncode
 
 
+def _plugin_arguments(configuration: _Configuration) -> list[str]:
+    if configuration.plugin is None:
+        return []
+    checks = ",".join(PLUGIN_CHECKS)
+    return [
+        f"--load={configuration.plugin}",
+        f"--checks={checks}",
+        f"--warnings-as-errors={checks}",
+    ]
+
+
 def _verify_profile(configuration: _Configuration) -> bool:
     command = [
         str(configuration.clang_tidy),
+        *_plugin_arguments(configuration),
         "--verify-config",
         f"--config-file={configuration.profile}",
     ]
@@ -283,17 +364,13 @@ def _source_command(
     configuration: _Configuration,
     source: Path,
 ) -> list[str]:
-    plugin = (
-        []
-        if configuration.plugin is None
-        else [f"--load={configuration.plugin}"]
-    )
     return [
         str(configuration.clang_tidy),
         f"--config-file={configuration.profile}",
-        *plugin,
+        *_plugin_arguments(configuration),
         str(source),
         "--",
+        f"-resource-dir={PINNED_CLANG_RESOURCE}",
         "-x",
         "c",
         f"--target={configuration.abi.clang_target}",

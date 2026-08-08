@@ -502,6 +502,22 @@ def _node_diagnostics(
     return result
 
 
+def _walk_ast_items(
+    values: list[JsonValue],
+    context: _AnalysisContext,
+    *,
+    inherited: _Location | None,
+    diagnostics: list[AbiDiagnostic],
+) -> None:
+    for item in values:
+        _walk_ast(
+            item,
+            context,
+            inherited=inherited,
+            diagnostics=diagnostics,
+        )
+
+
 def _walk_ast(
     value: JsonValue,
     context: _AnalysisContext,
@@ -510,18 +526,18 @@ def _walk_ast(
     diagnostics: list[AbiDiagnostic],
 ) -> None:
     if isinstance(value, list):
-        for item in value:
-            _walk_ast(
-                item,
-                context,
-                inherited=inherited,
-                diagnostics=diagnostics,
-            )
+        _walk_ast_items(
+            value,
+            context,
+            inherited=inherited,
+            diagnostics=diagnostics,
+        )
         return
     if not isinstance(value, dict):
         return
     location = _node_location(value, context, inherited)
-    diagnostics.extend(_node_diagnostics(value, location, context.source))
+    if location is not None and location.path == context.source:
+        diagnostics.extend(_node_diagnostics(value, location, context.source))
     inner = value.get("inner")
     if isinstance(inner, (dict, list)):
         _walk_ast(

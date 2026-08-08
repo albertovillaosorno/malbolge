@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "llvm_version": "22.1.8",
+  "release_tag": "llvmorg-22.1.8",
+  "platform": "windows-x86_64",
+  "development_asset": {
+    "name": "clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz",
+    "size_bytes": 862053924,
+    "sha256": [
+      "d96c2cc1736f4eb7fa43cb9bbdf56d93",
+      "551a9ae0a9aadb9c99c3c3b2b712a234"
+    ]
+  },
+  "runtime_root": ".dependencies/llvm/22.1.8",
+  "development_root": ".dependencies/llvm-dev/22.1.8",
+  "required_runtime_files": [
+    "bin/clang.exe",
+    "bin/clang++.exe",
+    "bin/clang-cl.exe",
+    "bin/clang-tidy.exe",
+    "bin/llvm-readobj.exe",
+    "lib/clang/22/include/limits.h"
+  ],
+  "required_development_files": [
+    "bin/llvm-tblgen.exe",
+    "include/clang-tidy/ClangTidyCheck.h",
+    "include/clang-tidy/ClangTidyModule.h",
+    "include/clang-tidy/tool/ClangTidyMain.h",
+    "include/llvm/Support/Registry.h",
+    "lib/clangAST.lib",
+    "lib/clangASTMatchers.lib",
+    "lib/clangBasic.lib",
+    "lib/clangTidy.lib",
+    "lib/clangTidyMain.lib",
+    "lib/cmake/clang/ClangConfig.cmake",
+    "lib/cmake/llvm/LLVMConfig.cmake"
+  ],
+  "plugin_output_root": ".dependencies/tools-tidy/22.1.8",
+  "windows_plugin_strategy": "project-host-registry-bridge-v1",
+  "registry_bridge_export": "malbolge_tidy_register_node",
+  "plugin_checks": [
+    "malbolge-abi-bit-field",
+    "malbolge-abi-packed-layout",
+    "malbolge-abi-pragma-pack",
+    "malbolge-abi-over-alignment",
+    "malbolge-abi-type-surface"
+  ]
+}

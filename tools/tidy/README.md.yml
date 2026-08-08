@@ -1,0 +1,78 @@
+schema: jig-graph-node/v2
+identity:
+  id: artifact:boundary:tools:tidy
+  kind: artifact
+  name: README.md
+  path: tools/tidy/README.md
+  role: tools-function-boundary
+contracts:
+  universal: graph-node/v2
+  location: tools-boundary/v1
+  domain: domain-tooling/v1
+  role: boundary-readme/v1
+classification:
+  repository: malbolge
+  location: tools
+  domain: tooling
+  lifecycle: documentation
+  confidentiality: public
+ownership:
+  primary: function:tidy
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: documentation
+  primary_predecessor: function:tidy
+  required_successor: function:tidy
+content:
+  format: markdown
+  template: boundary-readme/v1
+  sections:
+    - Purpose
+    - Ownership
+    - Prohibitions
+    - Navigation
+graph:
+  node: artifact:boundary:tools:tidy
+  labels:
+    - artifact
+    - documentation
+    - boundary
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:tools
+    - hub:domain:tooling
+    - hub:role:tools-function-boundary
+    - hub:lifecycle:documentation
+  edges:
+    - id: edge:repository
+      relation: belongs-to-repository
+      target: repository:malbolge
+      inverse: contains
+      purpose: canonical repository ownership
+      lifecycle: none
+      cardinality:
+        minimum: 1
+        maximum: 1
+    - id: edge:boundary-owner
+      relation: projects-to
+      target: function:tidy
+      inverse: projected-from
+      purpose: semantic boundary projection
+      lifecycle: none
+      cardinality:
+        minimum: 1
+        maximum: 1
+provenance:
+  authority: tools/tidy/function.yml
+  origin: authored
+validation:
+  mode: active
+  section_order: exact
+  unknown_sections: fatal
+  edge_targets: required
+  orphan_policy: fatal
+  markdown: malbolge
+  line_length: 80
+  paragraph_sentences_minimum: 1
+  paragraph_sentences_maximum: 4
+  language: en
