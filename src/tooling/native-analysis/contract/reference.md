@@ -38,17 +38,35 @@ deliberate whole-program compatibility workload; it does not turn directory
 discovery into general repository policy. Selection therefore remains an
 explicit caller decision and cannot contaminate unrelated C/C++ validation.
 
-`src/automation/repository/composition/scripts/validate/main.py` uses the repository-pinned LLVM 22.1.8 clang-tidy and
-`src/tooling/native-analysis/contract/malbolge-clang-tidy.yaml`. Once the out-of-tree plugin exists, pass
-its built shared library with `--plugin`; the durable CLI may later hide that
-implementation detail.
+`src/automation/repository/composition/scripts/validate/main.py` first validates
+the canonical `malbolge-c32-v1` authority, then runs the ABI-only source
+preflight with repository-pinned Clang 22.1.8 and the canonical
+`wasm32-unknown-unknown` frontend projection. Only ABI-admitted sources proceed
+to the repository-pinned LLVM 22.1.8 clang-tidy bootstrap and
+`src/tooling/native-analysis/contract/malbolge-clang-tidy.yaml`. Once the
+out-of-tree plugin exists, pass its built shared library with `--plugin`; the
+durable CLI may later hide that implementation detail.
+
+The wasm target is a checked parsing/data-layout projection, not the guest
+backend. Native triples, native pointer widths, and non-default Clang address
+spaces are not guest ABI authority.
+Both the ABI Clang parser and the clang-tidy executable must report the pinned
+LLVM 22.1.8 version. Alternate executable paths are useful for controlled
+testing only when they preserve that version boundary; an arbitrary host LLVM
+installation is rejected before source validation.
 
 ## What the profile means
 
-A clean final `tools/tidy` verdict means that the selected translation unit is
-inside the declared deterministic guest-C profile and the compiler promises to
-lower it for that target profile. This is a stronger statement than ordinary
-code quality.
+A clean **current manual bootstrap** verdict means the selected translation
+unit passed the canonical ABI preflight plus the declared stock Clang syntax
+and analyzer envelope. It does **not** yet promise complete Malbolge
+lowerability.
+
+Once the project-owned plugin and compiler contract are complete, a clean final
+`tools/tidy` verdict means that the selected translation unit is inside the
+declared deterministic guest-C profile and the compiler promises to lower it
+for that target profile. That final statement is intentionally stronger than
+ordinary code quality.
 
 The final plugin partitions compatibility diagnostics into these families:
 
@@ -67,12 +85,13 @@ cannot be given the target's sequential deterministic semantics. Exact
 restrictions belong to the versioned target profile and the `malbolge-*` plugin
 checks rather than ad-hoc source annotations.
 
-`malbolge-clang-tidy.yaml` is currently the executable bootstrap envelope. It
-uses stock Clang diagnostics, the static analyzer, bug-prone/CERT/portability
-checks, freestanding C23 parsing, and hard warnings. Stock clang-tidy cannot by
-itself prove the complete C-to-Malbolge contract; recursion policy, supported
-function-pointer forms, the exact guest libc, target ABI, and similar rules need
-project-owned `malbolge-*` checks.
+`malbolge-clang-tidy.yaml` is currently the stock executable bootstrap
+envelope. It uses selected Clang diagnostics and analyzer checks, freestanding
+C23 parsing, and hard warnings. The wrapper now owns the closed target ABI and
+source-located `MALBOLGE-ABI-*` preflight, but stock clang-tidy still cannot
+prove the complete C-to-Malbolge contract. Semantic lowerability, exact guest
+libc/runtime availability, determinism, and resource proofs remain
+project-owned `malbolge-*` plugin work.
 
 ## Role of Rust tests
 

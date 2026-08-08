@@ -15,6 +15,7 @@ External source authority, research conclusions, legal analysis, or TODO state.
 ## Contents
 
 - `mathematics/`
+- `c-abi-v1.json`
 - `historical-undefined-behavior.md`
 - `malbolge-1998.md`
 - `target-profile.md`
