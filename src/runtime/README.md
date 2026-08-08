@@ -14,6 +14,7 @@ It must not collapse independent function or kind boundaries.
 
 ## Navigation
 
+- [`guest-c-library/`](guest-c-library/): governed function `guest-c-library`.
 - [`tiered-execution/`](tiered-execution/): governed function
   `tiered-execution`.
 - [`virtual-machine/`](virtual-machine/): governed function `virtual-machine`.

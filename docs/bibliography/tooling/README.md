@@ -16,6 +16,7 @@ Repository policy, legal conclusions, or research conclusions.
 
 - `basedpyright.md`
 - `cspell.md`
+- `clang.md`
 - `clang-tidy.md`
 - `git.md`
 - `latex.md`

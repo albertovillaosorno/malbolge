@@ -41,7 +41,7 @@ from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 47
+EXPECTED_RECORDS = 48
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
 EXPECTED_DURABLE_REFERENCES = 19
@@ -116,6 +116,7 @@ def test_source_record_rejects_unverified_template_status() -> None:
 def test_source_record_requires_dated_provenance() -> None:
     """External evidence must retain a review or access date."""
     text = _c_record().replace("2026-07-26", "undated")
+    text = text.replace("2026-08-08", "undated")
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
@@ -126,6 +127,9 @@ def test_source_record_requires_nonempty_sources() -> None:
         "accessed 2026-07-26.",
         1,
     )
+    wg14_source = "- <https://www9.open-std.org/"
+    wg14_source += "JTC1/SC22/WG14/issues/c23/log.html> - accessed"
+    text = text.replace(wg14_source, "accessed", 1)
     _expect_failure(text, "Sources section contains no source entries")
 
 

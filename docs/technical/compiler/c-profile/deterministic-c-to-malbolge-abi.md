@@ -29,7 +29,7 @@ This contract governs the ABI surface consumed by:
 
 - `tools/tidy/` and its transitional ABI preflight;
 - the deterministic C compiler frontend and lowering pipeline;
-- `libc/` guest declarations and runtime shims;
+- `src/runtime/guest-c-library/` declarations and guest runtime code;
 - runtime stack, memory, and I/O adapters;
 - `tests/tidy/` compatibility fixtures; and
 - `docs/technical/specification/` machine-readable authorities.
@@ -310,9 +310,9 @@ The current ABI-only preflight provides these durable diagnostics:
 | `MALBOLGE-ABI-007` | compiler vector type |
 | `MALBOLGE-ABI-008` | non-default address space |
 
-This preflight is intentionally narrower than the future clang-tidy plugin. It
-owns ABI exclusions only and must not be cited as proof that arbitrary C has a
-complete Malbolge lowering.
+This preflight is intentionally narrower than the clang-tidy plugin and libc
+preflight. It owns ABI exclusions only and must not be cited as proof that
+arbitrary C has a complete Malbolge lowering.
 
 ## Verification
 
@@ -336,8 +336,8 @@ Validate the canonical authority directly:
 python src/automation/repository/composition/scripts/validate/c_abi.py
 ```
 
-Validate explicit guest C files through ABI preflight and the current manual
-tidy path:
+Validate explicit guest C files through ABI/libc preflights and the current
+manual tidy path:
 
 ```text
 python src/automation/repository/composition/scripts/validate/main.py file.c

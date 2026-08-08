@@ -46,12 +46,18 @@ terms into the repository MIT license.
   restrictions for C programs.
 - The Malbolge project still needs a narrower deterministic profile for its
   lowering contract.
+- WG14 C23 issue 1040 remains open and records unresolved freestanding-library
+  wording, including the apparent omission of `<stdckdint.h>` from one header
+  list.
 
 ### Unresolved
 
-The exact C feature subset accepted by `tools/tidy` is a repository contract,
-not something the ISO standard defines.
+The exact C feature and library subset accepted by `tools/tidy` is a repository
+contract, not something the ISO standard defines. Open WG14 issue 1040 is one
+reason the guest library surface is independently versioned.
 
 ## Sources
 
 - <https://www.iso.org/standard/82075.html> - accessed 2026-07-26.
+- <https://www9.open-std.org/JTC1/SC22/WG14/issues/c23/log.html> - accessed
+  2026-08-08.
