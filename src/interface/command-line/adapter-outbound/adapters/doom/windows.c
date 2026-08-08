@@ -15,8 +15,8 @@
 // - Allows:
 //   - Inputs: portable DOOM capability calls and host window/input/audio state.
 //   - Outputs: Win32 presentation, input, files, timing, and process services.
-//   - Side effects: one debug window, audio device I/O, and caller-requested
-//     files.
+//   - Side effects: one debug window, retained host frame storage, audio device
+//     I/O, and caller-requested files.
 // - Split-When:
 //   - Split when networking or another capability requires an independent
 //     owner.
@@ -48,6 +48,9 @@ typedef uintptr_t WPARAM;
 typedef intptr_t LPARAM;
 typedef intptr_t LRESULT;
 typedef void *HANDLE;
+typedef struct HMENU__ *HMENU;
+typedef struct _SECURITY_ATTRIBUTES *LPSECURITY_ATTRIBUTES;
+typedef struct _OVERLAPPED *LPOVERLAPPED;
 typedef HANDLE HWND;
 typedef HANDLE HINSTANCE;
 typedef HANDLE HICON;
@@ -57,7 +60,7 @@ typedef HANDLE HDC;
 typedef HANDLE HWAVEOUT;
 typedef char *LPSTR;
 typedef const char *LPCSTR;
-typedef LRESULT (*WNDPROC)(HWND, UINT, WPARAM, LPARAM);
+typedef LRESULT (__stdcall *WNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
 typedef struct { LONG x; LONG y; } POINT;
 typedef struct { LONG left; LONG top; LONG right; LONG bottom; } RECT;
@@ -68,7 +71,6 @@ typedef struct {
     LPARAM lParam;
     DWORD time;
     POINT pt;
-    DWORD lPrivate;
 } MSG;
 typedef struct {
     UINT cbSize;
@@ -110,6 +112,14 @@ typedef struct {
 typedef struct { BYTE rgbBlue; BYTE rgbGreen; BYTE rgbRed; BYTE rgbReserved; } RGBQUAD;
 typedef struct { BITMAPINFOHEADER bmiHeader; RGBQUAD bmiColors[1]; } BITMAPINFO;
 typedef struct {
+    BITMAPINFOHEADER bmiHeader;
+    RGBQUAD bmiColors[256];
+} BITMAPINFO256;
+_Static_assert(
+    offsetof(BITMAPINFO256, bmiColors) == offsetof(BITMAPINFO, bmiColors),
+               "extended bitmap palette must preserve BITMAPINFO layout");
+#pragma pack(push, 1)
+typedef struct {
     WORD wFormatTag;
     WORD nChannels;
     DWORD nSamplesPerSec;
@@ -118,6 +128,7 @@ typedef struct {
     WORD wBitsPerSample;
     WORD cbSize;
 } WAVEFORMATEX;
+#pragma pack(pop)
 typedef struct wavehdr_tag {
     LPSTR lpData;
     DWORD dwBufferLength;
@@ -128,13 +139,56 @@ typedef struct wavehdr_tag {
     struct wavehdr_tag *lpNext;
     DWORD_PTR reserved;
 } WAVEHDR;
+_Static_assert(sizeof(void *) == 8U,
+               "DOOM Windows adapter requires a 64-bit pointer ABI");
+_Static_assert(sizeof(BOOL) == 4U && sizeof(LONG) == 4U &&
+                   sizeof(DWORD) == 4U && sizeof(UINT) == 4U &&
+                   sizeof(WPARAM) == 8U && sizeof(LPARAM) == 8U &&
+                   sizeof(LRESULT) == 8U,
+               "Win32 scalar ABI width mismatch");
+_Static_assert(sizeof(POINT) == 8U, "Win32 POINT layout mismatch");
+_Static_assert(sizeof(RECT) == 16U, "Win32 RECT layout mismatch");
+_Static_assert(sizeof(MSG) == 48U && offsetof(MSG, wParam) == 16U &&
+                   offsetof(MSG, lParam) == 24U &&
+                   offsetof(MSG, pt) == 36U,
+               "Win32 MSG layout mismatch");
+_Static_assert(sizeof(LARGE_INTEGER) == 8U,
+               "Win32 LARGE_INTEGER layout mismatch");
+_Static_assert(sizeof(BITMAPINFOHEADER) == 40U,
+               "Win32 BITMAPINFOHEADER layout mismatch");
+_Static_assert(sizeof(RGBQUAD) == 4U, "Win32 RGBQUAD layout mismatch");
+_Static_assert(sizeof(BITMAPINFO256) == 1064U,
+               "extended bitmap palette layout mismatch");
+_Static_assert(sizeof(WAVEFORMATEX) == 18U,
+               "Win32 WAVEFORMATEX layout mismatch");
+_Static_assert(sizeof(WAVEHDR) == 48U, "Win32 WAVEHDR layout mismatch");
+_Static_assert(sizeof(WNDCLASSEXA) == 80U,
+               "Win32 WNDCLASSEXA layout mismatch");
+_Static_assert(sizeof(PAINTSTRUCT) == 72U,
+               "Win32 PAINTSTRUCT layout mismatch");
+_Static_assert(offsetof(WAVEFORMATEX, nSamplesPerSec) == 4U &&
+                   offsetof(WAVEFORMATEX, cbSize) == 16U,
+               "Win32 WAVEFORMATEX field offsets mismatch");
+_Static_assert(offsetof(WAVEHDR, dwUser) == 16U &&
+                   offsetof(WAVEHDR, lpNext) == 32U &&
+                   offsetof(WAVEHDR, reserved) == 40U,
+               "Win32 WAVEHDR field offsets mismatch");
+_Static_assert(offsetof(WNDCLASSEXA, lpfnWndProc) == 8U &&
+                   offsetof(WNDCLASSEXA, hInstance) == 24U &&
+                   offsetof(WNDCLASSEXA, lpszClassName) == 64U,
+               "Win32 WNDCLASSEXA field offsets mismatch");
+_Static_assert(offsetof(PAINTSTRUCT, rcPaint) == 12U &&
+                   offsetof(PAINTSTRUCT, rgbReserved) == 36U,
+               "Win32 PAINTSTRUCT field offsets mismatch");
 __declspec(dllimport) HINSTANCE __stdcall GetModuleHandleA(LPCSTR);
 __declspec(dllimport) ATOM __stdcall RegisterClassExA(const WNDCLASSEXA *);
+__declspec(dllimport) BOOL __stdcall GetClassInfoExA(
+    HINSTANCE, LPCSTR, WNDCLASSEXA *);
 __declspec(dllimport) DWORD __stdcall GetLastError(void);
 __declspec(dllimport) BOOL __stdcall AdjustWindowRect(RECT *, DWORD, BOOL);
 // jig-ignore-next-line: indivisible reviewed identifier
 __declspec(dllimport) HWND __stdcall CreateWindowExA(DWORD, LPCSTR, LPCSTR, DWORD,
-    int, int, int, int, HWND, HANDLE, HINSTANCE, void *);
+    int, int, int, int, HWND, HMENU, HINSTANCE, void *);
 __declspec(dllimport) BOOL __stdcall ShowWindow(HWND, int);
 __declspec(dllimport) BOOL __stdcall UpdateWindow(HWND);
 __declspec(dllimport) BOOL __stdcall SetForegroundWindow(HWND);
@@ -169,15 +223,61 @@ __declspec(dllimport) int __stdcall StretchDIBits(HDC, int, int, int, int, int, 
 __declspec(dllimport) int __stdcall MessageBoxA(HWND, LPCSTR, LPCSTR, UINT);
 __declspec(dllimport) BOOL __stdcall QueryPerformanceFrequency(LARGE_INTEGER *);
 __declspec(dllimport) BOOL __stdcall QueryPerformanceCounter(LARGE_INTEGER *);
+__declspec(dllimport) void *__stdcall VirtualAlloc(
+    void *address, size_t size, DWORD allocation_type, DWORD protection);
+__declspec(dllimport) BOOL __stdcall VirtualFree(
+    void *address, size_t size, DWORD free_type);
 __declspec(dllimport) void __stdcall Sleep(DWORD);
+
+#ifdef MALBOLGE_DOOM_ADAPTER_TESTING
+BOOL __stdcall MalbolgeDoomTestQueryPerformanceFrequency(LARGE_INTEGER *);
+BOOL __stdcall MalbolgeDoomTestQueryPerformanceCounter(LARGE_INTEGER *);
+BOOL __stdcall MalbolgeDoomTestDestroyWindow(HWND window);
+BOOL __stdcall MalbolgeDoomTestCloseHandle(HANDLE handle);
+BOOL __stdcall MalbolgeDoomTestCloseTransientHandle(HANDLE handle);
+DWORD __stdcall MalbolgeDoomTestGetEnvironmentVariable(
+    LPCSTR name, LPSTR buffer, DWORD size);
+BOOL __stdcall MalbolgeDoomTestWriteFile(
+    HANDLE file, const void *data, DWORD length, DWORD *written,
+    LPOVERLAPPED overlapped);
+void *__stdcall MalbolgeDoomTestVirtualAlloc(
+    void *address, size_t size, DWORD allocation_type, DWORD protection);
+BOOL __stdcall MalbolgeDoomTestVirtualFree(
+    void *address, size_t size, DWORD free_type);
+UINT __stdcall MalbolgeDoomTestWaveOutClose(HWAVEOUT output);
+void __stdcall MalbolgeDoomTestSleep(DWORD);
+#define HostCloseHandle MalbolgeDoomTestCloseHandle
+#define HostCloseTransientHandle MalbolgeDoomTestCloseTransientHandle
+#define HostDestroyWindow MalbolgeDoomTestDestroyWindow
+#define HostGetEnvironmentVariable MalbolgeDoomTestGetEnvironmentVariable
+#define HostQueryPerformanceFrequency MalbolgeDoomTestQueryPerformanceFrequency
+#define HostQueryPerformanceCounter MalbolgeDoomTestQueryPerformanceCounter
+#define HostSleep MalbolgeDoomTestSleep
+#define HostVirtualAlloc MalbolgeDoomTestVirtualAlloc
+#define HostVirtualFree MalbolgeDoomTestVirtualFree
+#define HostWaveOutClose MalbolgeDoomTestWaveOutClose
+#define HostWriteFile MalbolgeDoomTestWriteFile
+#else
+#define HostCloseHandle CloseHandle
+#define HostCloseTransientHandle CloseHandle
+#define HostDestroyWindow DestroyWindow
+#define HostGetEnvironmentVariable GetEnvironmentVariableA
+#define HostQueryPerformanceFrequency QueryPerformanceFrequency
+#define HostQueryPerformanceCounter QueryPerformanceCounter
+#define HostSleep Sleep
+#define HostVirtualAlloc VirtualAlloc
+#define HostVirtualFree VirtualFree
+#define HostWaveOutClose waveOutClose
+#define HostWriteFile WriteFile
+#endif
 __declspec(dllimport) void __stdcall ExitProcess(UINT);
-// jig-ignore-next-line: indivisible reviewed identifier
-__declspec(dllimport) HANDLE __stdcall CreateFileA(LPCSTR, DWORD, DWORD, void *, DWORD, DWORD, HANDLE);
+__declspec(dllimport) HANDLE __stdcall CreateFileA(
+    LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 __declspec(dllimport) BOOL __stdcall CloseHandle(HANDLE);
-// jig-ignore-next-line: indivisible reviewed identifier
-__declspec(dllimport) BOOL __stdcall ReadFile(HANDLE, void *, DWORD, DWORD *, void *);
-// jig-ignore-next-line: indivisible reviewed identifier
-__declspec(dllimport) BOOL __stdcall WriteFile(HANDLE, const void *, DWORD, DWORD *, void *);
+__declspec(dllimport) BOOL __stdcall ReadFile(
+    HANDLE, void *, DWORD, DWORD *, LPOVERLAPPED);
+__declspec(dllimport) BOOL __stdcall WriteFile(
+    HANDLE, const void *, DWORD, DWORD *, LPOVERLAPPED);
 __declspec(dllimport) BOOL __stdcall GetFileSizeEx(HANDLE, LARGE_INTEGER *);
 // jig-ignore-next-line: indivisible reviewed identifier
 __declspec(dllimport) BOOL __stdcall SetFilePointerEx(HANDLE, LARGE_INTEGER, LARGE_INTEGER *, DWORD);
@@ -193,8 +293,13 @@ __declspec(dllimport) UINT __stdcall waveOutClose(HWAVEOUT);
 
 #define FALSE 0
 #define TRUE 1
+#define MEM_COMMIT 0x00001000U
+#define MEM_RESERVE 0x00002000U
+#define MEM_RELEASE 0x00008000U
+#define PAGE_READWRITE 0x04U
 #define CS_OWNDC 0x0020U
 #define WS_OVERLAPPEDWINDOW 0x00CF0000UL
+#define WS_POPUP 0x80000000UL
 #define SW_SHOW 5
 #define SW_MAXIMIZE 3
 #define SM_CXSCREEN 0
@@ -307,6 +412,7 @@ int DoomGuestMain(int argc, char **argv);
 #define GUEST_MEMORY_BYTES (64 * 1024 * 1024)
 #define HOST_FILE_CAPACITY 64
 #define EVENT_QUEUE_CAPACITY 256
+#define HOST_KEY_STATE_CAPACITY 512
 #define AUDIO_BLOCK_COUNT 8
 #define AUDIO_FRAMES_PER_BLOCK 512
 #define AUDIO_CHANNELS 2
@@ -352,13 +458,17 @@ static HWND window_handle;
 static HINSTANCE instance_handle;
 static HCURSOR arrow_cursor;
 static doom_host_video_config_t video_config;
-static BITMAPINFO *bitmap_info;
-// jig-ignore-next-line: indivisible reviewed identifier
-static unsigned char bitmap_info_storage[sizeof(BITMAPINFOHEADER) + 256U * sizeof(RGBQUAD)];
+static BITMAPINFO256 *bitmap_info;
+static BITMAPINFO256 bitmap_info_storage;
 static doom_host_event_t event_queue[EVENT_QUEUE_CAPACITY];
 static unsigned int event_read;
 static unsigned int event_write;
+static boolean key_down[HOST_KEY_STATE_CAPACITY];
+static boolean key_press_pending[HOST_KEY_STATE_CAPACITY];
+static boolean key_release_pending[HOST_KEY_STATE_CAPACITY];
+static boolean quit_pending;
 static int mouse_buttons;
+static boolean mouse_buttons_pending;
 static boolean relative_mouse;
 static boolean mouse_capture_requested;
 static boolean mouse_centering;
@@ -366,16 +476,73 @@ static boolean mouse_captured;
 static boolean window_has_focus;
 static LARGE_INTEGER performance_frequency;
 
-#define HOST_FRAME_MAX_WIDTH 1280
-#define HOST_FRAME_MAX_HEIGHT 600
-static byte last_frame[HOST_FRAME_MAX_WIDTH * HOST_FRAME_MAX_HEIGHT];
+static byte *last_frame;
+static size_t last_frame_capacity;
+static size_t last_frame_stride;
+
+static size_t FrameStride(int width)
+{
+    return ((size_t)width + 3U) & ~(size_t)3U;
+}
+
+static boolean FrameStorageBytes(int width, int height, size_t *stride,
+                                 size_t *byte_count)
+{
+    size_t candidate_stride;
+
+    if (width <= 0 || height <= 0 || stride == NULL || byte_count == NULL)
+        return false;
+    candidate_stride = FrameStride(width);
+    if (candidate_stride > SIZE_MAX / (size_t)height)
+        return false;
+    *stride = candidate_stride;
+    *byte_count = candidate_stride * (size_t)height;
+    return true;
+}
+
+static byte *AllocateFrameStorage(int width, int height, size_t *stride,
+                                  size_t *capacity)
+{
+    size_t candidate_stride;
+    size_t candidate_capacity;
+    void *storage;
+
+    if (stride == NULL || capacity == NULL ||
+        !FrameStorageBytes(width, height, &candidate_stride,
+                           &candidate_capacity))
+        return NULL;
+    storage = HostVirtualAlloc(NULL, candidate_capacity,
+                               MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (storage == NULL)
+        return NULL;
+    *stride = candidate_stride;
+    *capacity = candidate_capacity;
+    return (byte *)storage;
+}
+
+static boolean ReleaseFrameStorage(byte *storage)
+{
+    return storage == NULL ||
+           HostVirtualFree(storage, 0U, MEM_RELEASE) != FALSE;
+}
+
+static boolean PositiveRectSpan(LONG low, LONG high, int *span)
+{
+    const int64_t difference = (int64_t)high - (int64_t)low;
+    if (span == NULL || difference <= 0 || difference > INT32_MAX)
+        return false;
+    *span = (int)difference;
+    return true;
+}
+
 static int last_frame_width;
 static int last_frame_height;
 static boolean last_frame_valid;
 static LARGE_INTEGER performance_origin;
+static LARGE_INTEGER performance_last_counter;
 static uint64_t last_present_ns;
 static uint64_t fps_window_start_ns;
-static int fps_window_frames;
+static uint32_t fps_window_frames;
 static int displayed_fps;
 static char execution_source_override[64];
 static char trace_language[24] = "HOST";
@@ -392,6 +559,7 @@ static boolean audio_busy[AUDIO_BLOCK_COUNT];
 static boolean audio_initialized;
 
 static void *file_handles[HOST_FILE_CAPACITY];
+static HANDLE pending_write_handle;
 
 static const char *SkipJsonSpace(const char *cursor)
 {
@@ -401,49 +569,363 @@ static const char *SkipJsonSpace(const char *cursor)
     return cursor;
 }
 
-static const char *FindJsonValue(const char *json, const char *key)
+static boolean IsJsonHexDigit(char value)
 {
-    const char *cursor = json;
-    int key_length = 0;
+    return (value >= '0' && value <= '9') ||
+           (value >= 'a' && value <= 'f') ||
+           (value >= 'A' && value <= 'F');
+}
 
-    while (key[key_length] != '\0')
-        ++key_length;
-    while (*cursor != '\0')
+static const char *SkipJsonQuoted(const char *cursor)
+{
+    if (cursor == NULL || *cursor != (char)0x22)
+        return NULL;
+    ++cursor;
+    while (*cursor != 0)
     {
-        if (*cursor == '"')
+        if ((unsigned char)*cursor < 0x20U)
+            return NULL;
+        if (*cursor == (char)0x5C)
         {
-            const char *name = cursor + 1;
-            int index = 0;
-            while (index < key_length && name[index] == key[index])
-                ++index;
-            if (index == key_length && name[index] == '"')
+            ++cursor;
+            if (*cursor == 'u')
             {
-                cursor = SkipJsonSpace(name + index + 1);
-                if (*cursor != ':')
-                    return NULL;
-                return SkipJsonSpace(cursor + 1);
+                ++cursor;
+                for (int index = 0; index < 4; ++index)
+                {
+                    if (*cursor == 0 || !IsJsonHexDigit(*cursor))
+                        return NULL;
+                    ++cursor;
+                }
+                continue;
             }
+            if (*cursor != (char)0x22 && *cursor != (char)0x5C &&
+                *cursor != '/' && *cursor != 'b' && *cursor != 'f' &&
+                *cursor != 'n' && *cursor != 'r' && *cursor != 't')
+                return NULL;
+            ++cursor;
+            continue;
         }
+        if (*cursor == (char)0x22)
+            return cursor + 1;
         ++cursor;
     }
     return NULL;
+}
+
+static int JsonHexValue(char value)
+{
+    if (value >= '0' && value <= '9')
+        return value - '0';
+    if (value >= 'a' && value <= 'f')
+        return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F')
+        return value - 'A' + 10;
+    return -1;
+}
+
+static boolean JsonKeyEquals(const char *start, const char *end,
+                             const char *key)
+{
+    if (start == NULL || end == NULL || key == NULL || start > end)
+        return false;
+    while (start < end && *key != 0)
+    {
+        unsigned int decoded = (unsigned char)*start++;
+        if (decoded == 0x5CU)
+        {
+            if (start >= end)
+                return false;
+            switch (*start++)
+            {
+                case (char)0x22:
+                    decoded = 0x22U;
+                    break;
+                case (char)0x5C:
+                    decoded = 0x5CU;
+                    break;
+                case '/':
+                    decoded = (unsigned int)'/';
+                    break;
+                case 'b':
+                    decoded = 0x08U;
+                    break;
+                case 'f':
+                    decoded = 0x0CU;
+                    break;
+                case 'n':
+                    decoded = 0x0AU;
+                    break;
+                case 'r':
+                    decoded = 0x0DU;
+                    break;
+                case 't':
+                    decoded = 0x09U;
+                    break;
+                case 'u':
+                {
+                    unsigned int codepoint = 0U;
+                    for (int index = 0; index < 4; ++index)
+                    {
+                        const int digit = start < end
+                            ? JsonHexValue(*start++)
+                            : -1;
+                        if (digit < 0)
+                            return false;
+                        codepoint = codepoint * 16U + (unsigned int)digit;
+                    }
+                    if (codepoint > 0x7FU)
+                        return false;
+                    decoded = codepoint;
+                    break;
+                }
+                default:
+                    return false;
+            }
+        }
+        if (decoded != (unsigned int)(unsigned char)*key)
+            return false;
+        ++key;
+    }
+    return start == end && *key == 0;
+}
+
+static const char *SkipJsonValueDepth(const char *cursor, int depth);
+
+static const char *SkipJsonArray(const char *cursor, int depth)
+{
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == ']')
+        return cursor + 1;
+    for (;;)
+    {
+        cursor = SkipJsonValueDepth(cursor, depth + 1);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == ']')
+            return cursor + 1;
+        if (*cursor != ',')
+            return NULL;
+        cursor = SkipJsonSpace(cursor + 1);
+        if (*cursor == ']')
+            return NULL;
+    }
+}
+
+static const char *SkipJsonObject(const char *cursor, int depth)
+{
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == '}')
+        return cursor + 1;
+    for (;;)
+    {
+        if (*cursor != (char)0x22)
+            return NULL;
+        cursor = SkipJsonQuoted(cursor);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor != ':')
+            return NULL;
+        cursor = SkipJsonValueDepth(cursor + 1, depth + 1);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == '}')
+            return cursor + 1;
+        if (*cursor != ',')
+            return NULL;
+        cursor = SkipJsonSpace(cursor + 1);
+        if (*cursor == '}')
+            return NULL;
+    }
+}
+
+static boolean IsJsonNumberDelimiter(char value)
+{
+    return value == 0 || value == ' ' || value == '\t' || value == '\r' ||
+           value == '\n' || value == ',' || value == ']' || value == '}';
+}
+
+static const char *SkipJsonNumber(const char *cursor)
+{
+    if (*cursor == '-')
+        ++cursor;
+    if (*cursor == '0')
+        ++cursor;
+    else
+    {
+        if (*cursor < '1' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        } while (*cursor >= '0' && *cursor <= '9');
+    }
+    if (*cursor == '.')
+    {
+        ++cursor;
+        if (*cursor < '0' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        } while (*cursor >= '0' && *cursor <= '9');
+    }
+    if (*cursor == 'e' || *cursor == 'E')
+    {
+        ++cursor;
+        if (*cursor == '+' || *cursor == '-')
+            ++cursor;
+        if (*cursor < '0' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        } while (*cursor >= '0' && *cursor <= '9');
+    }
+    return IsJsonNumberDelimiter(*cursor) ? cursor : NULL;
+}
+
+static const char *SkipJsonLiteralValue(const char *cursor,
+                                        const char *literal)
+{
+    while (*literal != 0)
+    {
+        if (*cursor != *literal)
+            return NULL;
+        ++cursor;
+        ++literal;
+    }
+    return IsJsonNumberDelimiter(*cursor) ? cursor : NULL;
+}
+
+static const char *SkipJsonValueDepth(const char *cursor, int depth)
+{
+    if (cursor == NULL || depth > 64)
+        return NULL;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == (char)0x22)
+        return SkipJsonQuoted(cursor);
+    if (*cursor == '{')
+        return SkipJsonObject(cursor, depth);
+    if (*cursor == '[')
+        return SkipJsonArray(cursor, depth);
+    if (*cursor == 't')
+        return SkipJsonLiteralValue(cursor, "true");
+    if (*cursor == 'f')
+        return SkipJsonLiteralValue(cursor, "false");
+    if (*cursor == 'n')
+        return SkipJsonLiteralValue(cursor, "null");
+    return SkipJsonNumber(cursor);
+}
+
+static const char *SkipJsonValue(const char *cursor)
+{
+    return SkipJsonValueDepth(cursor, 0);
+}
+
+static const char *FindJsonValue(const char *json, const char *key)
+{
+    const char *cursor;
+    const char *found = NULL;
+
+    if (json == NULL || key == NULL || *key == 0)
+        return NULL;
+    cursor = SkipJsonSpace(json);
+    if (*cursor != '{')
+        return NULL;
+    ++cursor;
+
+    for (;;)
+    {
+        const char *name_start;
+        const char *name_end;
+        const char *value;
+        const char *after_value;
+        boolean matches;
+
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == '}')
+        {
+            cursor = SkipJsonSpace(cursor + 1);
+            return *cursor == 0 ? found : NULL;
+        }
+        if (*cursor != (char)0x22)
+            return NULL;
+        name_start = cursor + 1;
+        name_end = SkipJsonQuoted(cursor);
+        if (name_end == NULL)
+            return NULL;
+        matches = JsonKeyEquals(name_start, name_end - 1, key);
+        cursor = SkipJsonSpace(name_end);
+        if (*cursor != ':')
+            return NULL;
+        value = SkipJsonSpace(cursor + 1);
+        if (matches)
+        {
+            if (found != NULL)
+                return NULL;
+            found = value;
+        }
+        after_value = SkipJsonValue(value);
+        if (after_value == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(after_value);
+        if (*cursor == ',')
+        {
+            cursor = SkipJsonSpace(cursor + 1);
+            if (*cursor == '}')
+                return NULL;
+            continue;
+        }
+        if (*cursor != '}')
+            return NULL;
+    }
+}
+
+static boolean IsJsonTokenTerminator(char value)
+{
+    return value == '\0' || value == ' ' || value == '\t' ||
+           value == '\r' || value == '\n' || value == ',' ||
+           value == '}' || value == ']';
+}
+
+static boolean MatchJsonLiteral(const char *cursor, const char *literal,
+                                const char **end)
+{
+    if (cursor == NULL || literal == NULL || end == NULL)
+        return false;
+    while (*literal != '\0')
+    {
+        if (*cursor == '\0' || *cursor != *literal)
+            return false;
+        ++cursor;
+        ++literal;
+    }
+    if (!IsJsonTokenTerminator(*cursor))
+        return false;
+    *end = cursor;
+    return true;
 }
 
 // jig-ignore-next-line: indivisible reviewed identifier
 static boolean ParseJsonBoolean(const char *json, const char *key, boolean *value)
 {
     const char *cursor = FindJsonValue(json, key);
+    const char *end = NULL;
 
-    if (cursor == NULL)
+    if (cursor == NULL || value == NULL)
         return false;
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (cursor[0] == 't' && cursor[1] == 'r' && cursor[2] == 'u' && cursor[3] == 'e')
+    if (MatchJsonLiteral(cursor, "true", &end))
     {
         *value = true;
         return true;
     }
-    if (cursor[0] == 'f' && cursor[1] == 'a' && cursor[2] == 'l' &&
-        cursor[3] == 's' && cursor[4] == 'e')
+    if (MatchJsonLiteral(cursor, "false", &end))
     {
         *value = false;
         return true;
@@ -489,38 +971,60 @@ static boolean ParseJsonResolution(const char *json, int *width, int *height)
     if (!ParsePositiveInt(&cursor, height))
         return false;
     cursor = SkipJsonSpace(cursor);
-    return *cursor == ']';
+    if (*cursor != ']')
+        return false;
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    return IsJsonTokenTerminator(*cursor);
 }
 
 static boolean ParseJsonStringValue(const char **cursor_ptr, char *output,
                                     int capacity)
 {
-    const char *cursor = SkipJsonSpace(*cursor_ptr);
+    const char *cursor;
+    const char *scan;
     int length = 0;
 
-    if (*cursor != '"' || capacity <= 0)
+    if (cursor_ptr == NULL || output == NULL || capacity <= 0)
+        return false;
+    cursor = SkipJsonSpace(*cursor_ptr);
+    if (*cursor != (char)0x22)
         return false;
     ++cursor;
-    while (*cursor != '\0' && *cursor != '"')
+    scan = cursor;
+    while (*scan != 0 && *scan != (char)0x22)
+    {
+        char value = *scan++;
+        if (value == (char)0x5C)
+        {
+            const char escaped = *scan++;
+            if (escaped != (char)0x5C && escaped != (char)0x22 &&
+                escaped != (char)0x2F)
+                return false;
+            value = escaped;
+        }
+        if ((unsigned char)value < 0x20U || length + 1 >= capacity)
+            return false;
+        ++length;
+    }
+    if (*scan != (char)0x22)
+        return false;
+    {
+        const char *after = SkipJsonSpace(scan + 1);
+        if (!IsJsonTokenTerminator(*after))
+            return false;
+    }
+
+    length = 0;
+    while (cursor < scan)
     {
         char value = *cursor++;
-        if (value == '\\')
-        {
-            const char escaped = *cursor++;
-            if (escaped == '\\' || escaped == '"' || escaped == '/')
-                value = escaped;
-            else
-                return false;
-        }
-        if (length + 1 >= capacity)
-            return false;
+        if (value == (char)0x5C)
+            value = *cursor++;
         output[length++] = value;
     }
-    if (*cursor != '"')
-        return false;
-    ++cursor;
-    output[length] = '\0';
-    *cursor_ptr = cursor;
+    output[length] = 0;
+    *cursor_ptr = scan + 1;
     return true;
 }
 
@@ -559,31 +1063,51 @@ static int ParseJsonStringArray(const char *json, const char *key,
         if (*cursor != ',')
             return -1;
         ++cursor;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == ']')
+            return -1;
     }
 }
 
 static void LoadDebugSettings(void)
 {
     HANDLE file;
+    LARGE_INTEGER file_size;
     DWORD bytes_read = 0;
     int width;
     int height;
-    const DWORD source_length = GetEnvironmentVariableA(
+    const DWORD source_length = HostGetEnvironmentVariable(
         "MALBOLGE_DOOM_EXECUTION_SOURCE", execution_source_override,
         (DWORD)sizeof(execution_source_override));
 
-    if (source_length >= (DWORD)sizeof(execution_source_override))
+    if (source_length == 0 ||
+        source_length >= (DWORD)sizeof(execution_source_override))
         execution_source_override[0] = '\0';
 
     file = CreateFileA("settings.json", GENERIC_READ, FILE_SHARE_READ, NULL,
                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE)
         return;
-    if (!ReadFile(file, settings_json, (DWORD)(sizeof(settings_json) - 1U),
-                  &bytes_read, NULL))
+    if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart < 0 ||
+        (uint64_t)file_size.QuadPart >= (uint64_t)sizeof(settings_json))
     {
         (void)CloseHandle(file);
         return;
+    }
+    if (!ReadFile(file, settings_json, (DWORD)file_size.QuadPart,
+                  &bytes_read, NULL) ||
+        bytes_read != (DWORD)file_size.QuadPart)
+    {
+        (void)CloseHandle(file);
+        return;
+    }
+    for (DWORD index = 0U; index < bytes_read; ++index)
+    {
+        if (settings_json[index] == '\0')
+        {
+            (void)CloseHandle(file);
+            return;
+        }
     }
     (void)CloseHandle(file);
     settings_json[bytes_read] = '\0';
@@ -635,7 +1159,8 @@ static boolean HasArgument(int argc, char **argv, const char *name)
 
 static boolean AppendDebugArgument(int *count, char *value)
 {
-    if (*count < 0 || *count >= MAX_DEBUG_ARGUMENTS)
+    if (count == NULL || value == NULL || *count < 0 ||
+        *count >= MAX_DEBUG_ARGUMENTS - 1)
         return false;
     debug_arguments[*count] = value;
     ++*count;
@@ -648,9 +1173,18 @@ static int BuildDebugArguments(int argc, char **argv)
     static char arg_file[] = "-file";
     static char arg_language[] = "-default-language";
     int count = 0;
-    const boolean has_iwad = HasArgument(argc, argv, arg_iwad);
-    const boolean has_file = HasArgument(argc, argv, arg_file);
-    const boolean has_language = HasArgument(argc, argv, arg_language);
+    boolean has_iwad;
+    boolean has_file;
+    boolean has_language;
+
+    if (argc < 0 || (argc > 0 && argv == NULL))
+        return -1;
+    for (int index = 0; index < argc; ++index)
+        if (argv[index] == NULL)
+            return -1;
+    has_iwad = HasArgument(argc, argv, arg_iwad);
+    has_file = HasArgument(argc, argv, arg_file);
+    has_language = HasArgument(argc, argv, arg_language);
 
     for (int index = 0; index < argc; ++index)
         if (!AppendDebugArgument(&count, argv[index]))
@@ -669,7 +1203,7 @@ static int BuildDebugArguments(int argc, char **argv)
             iwad = debug_settings.iwad;
         else
         {
-            const DWORD length = GetEnvironmentVariableA(
+            const DWORD length = HostGetEnvironmentVariable(
                 "MALBOLGE_DOOM_FALLBACK_IWAD", fallback_iwad,
                 (DWORD)sizeof(fallback_iwad));
             if (length > 0 && length < (DWORD)sizeof(fallback_iwad))
@@ -688,9 +1222,11 @@ static int BuildDebugArguments(int argc, char **argv)
             if (!AppendDebugArgument(&count, debug_settings.wads[index]))
                 return -1;
     }
+    debug_arguments[count] = NULL;
     return count;
 }
 
+#ifndef MALBOLGE_DOOM_ADAPTER_NO_MAIN
 int main(int argc, char **argv)
 {
     int debug_argc;
@@ -705,6 +1241,7 @@ int main(int argc, char **argv)
     }
     return DoomGuestMain(debug_argc, debug_arguments);
 }
+#endif
 
 static void AppendText(char *output, int *length, int capacity,
                        const char *text)
@@ -718,20 +1255,23 @@ static void AppendText(char *output, int *length, int capacity,
 static void AppendDecimal(char *text, int *length, int capacity, int value)
 {
     char reversed[16];
+    uint32_t magnitude;
     int count = 0;
 
     if (value < 0)
     {
         if (*length + 1 < capacity)
             text[(*length)++] = '-';
-        value = -value;
+        magnitude = (uint32_t)(-(int64_t)value);
     }
-    if (value == 0)
+    else
+        magnitude = (uint32_t)value;
+    if (magnitude == 0U)
         reversed[count++] = '0';
-    while (value > 0 && count < (int)sizeof(reversed))
+    while (magnitude > 0U && count < (int)sizeof(reversed))
     {
-        reversed[count++] = (char)('0' + value % 10);
-        value /= 10;
+        reversed[count++] = (char)('0' + magnitude % UINT32_C(10));
+        magnitude /= UINT32_C(10);
     }
     while (count > 0 && *length + 1 < capacity)
         text[(*length)++] = reversed[--count];
@@ -825,21 +1365,116 @@ void DoomHost_DebugExecutionActivity(const char *language,
                  : SourceBasename(source));
     CopyText(trace_instruction, (int)sizeof(trace_instruction), instruction);
     trace_location = location;
-    if (trace_title_update_ns == 0 ||
-        now - trace_title_update_ns >= UINT64_C(100000000))
+    if (trace_title_update_ns == 0)
+    {
+        if (now != 0)
+            trace_title_update_ns = now;
+        UpdateFpsTitle();
+    }
+    else if (now != 0 && now >= trace_title_update_ns &&
+             now - trace_title_update_ns >= UINT64_C(100000000))
     {
         trace_title_update_ns = now;
         UpdateFpsTitle();
     }
 }
 
-static void QueueEvent(const doom_host_event_t *event)
+static boolean QueueEvent(const doom_host_event_t *event)
 {
     const unsigned int next = (event_write + 1U) % EVENT_QUEUE_CAPACITY;
     if (event == NULL || next == event_read)
-        return;
+        return false;
     event_queue[event_write] = *event;
     event_write = next;
+    return true;
+}
+
+static boolean ValidTrackedKey(int key)
+{
+    return key > DOOM_HOST_KEY_NONE && key < HOST_KEY_STATE_CAPACITY;
+}
+
+static void QueueQuitEvent(void)
+{
+    doom_host_event_t event = {0};
+    event.type = DOOM_HOST_EVENT_QUIT;
+    quit_pending = !QueueEvent(&event);
+}
+
+static void RetryPendingQuitEvent(void)
+{
+    if (quit_pending)
+        QueueQuitEvent();
+}
+
+static void RetryPendingInputEvents(void)
+{
+    doom_host_event_t event = {0};
+
+    event.type = DOOM_HOST_EVENT_KEY_UP;
+    for (int key = 1; key < HOST_KEY_STATE_CAPACITY; ++key)
+    {
+        if (!key_release_pending[key])
+            continue;
+        event.key = key;
+        if (!QueueEvent(&event))
+            return;
+        key_release_pending[key] = false;
+        key_down[key] = false;
+    }
+    event.type = DOOM_HOST_EVENT_KEY_DOWN;
+    for (int key = 1; key < HOST_KEY_STATE_CAPACITY; ++key)
+    {
+        if (!key_press_pending[key] || key_release_pending[key])
+            continue;
+        event.key = key;
+        if (!QueueEvent(&event))
+            return;
+        key_press_pending[key] = false;
+        key_down[key] = true;
+    }
+    if (mouse_buttons_pending)
+    {
+        event = (doom_host_event_t){0};
+        event.type = DOOM_HOST_EVENT_MOUSE;
+        event.mouse_buttons = mouse_buttons;
+        if (QueueEvent(&event))
+            mouse_buttons_pending = false;
+    }
+}
+
+static void QueueMouseStateEvent(const doom_host_event_t *event)
+{
+    if (QueueEvent(event))
+        mouse_buttons_pending = false;
+    else
+        mouse_buttons_pending = true;
+}
+
+static void ReleaseMouseButtonsEvent(void)
+{
+    doom_host_event_t event = {0};
+
+    if (mouse_buttons == 0 && !mouse_buttons_pending)
+        return;
+    mouse_buttons = 0;
+    event.type = DOOM_HOST_EVENT_MOUSE;
+    if (QueueEvent(&event))
+        mouse_buttons_pending = false;
+    else
+        mouse_buttons_pending = true;
+}
+
+static void ReleaseHeldInputEvents(void)
+{
+    for (int key = 1; key < HOST_KEY_STATE_CAPACITY; ++key)
+    {
+        key_press_pending[key] = false;
+        if (key_down[key])
+            key_release_pending[key] = true;
+    }
+    ReleaseMouseButtonsEvent();
+    RetryPendingInputEvents();
 }
 
 static int TranslateVirtualKey(WPARAM key)
@@ -904,23 +1539,27 @@ static void CenterMouse(void)
 {
     RECT client;
     POINT center;
+    int client_width;
+    int client_height;
 
     if (window_handle == NULL || !mouse_captured ||
         GetForegroundWindow() != window_handle)
         return;
-    if (!GetClientRect(window_handle, &client))
+    if (!GetClientRect(window_handle, &client) ||
+        !PositiveRectSpan(client.left, client.right, &client_width) ||
+        !PositiveRectSpan(client.top, client.bottom, &client_height))
         return;
-    center.x = (client.right - client.left) / 2;
-    center.y = (client.bottom - client.top) / 2;
+    center.x = (LONG)(client_width / 2);
+    center.y = (LONG)(client_height / 2);
     if (!ClientToScreen(window_handle, &center))
         return;
-    mouse_centering = true;
-    (void)SetCursorPos(center.x, center.y);
+    mouse_centering = SetCursorPos(center.x, center.y) != FALSE;
 }
 
 static void UpdateCursorVisibility(void)
 {
-    (void)SetCursor(mouse_captured ? NULL : arrow_cursor);
+    if (window_handle != NULL)
+        (void)SetCursor(mouse_captured ? NULL : arrow_cursor);
 }
 
 static void SetMouseCaptured(boolean capture)
@@ -936,13 +1575,25 @@ static void SetMouseCaptured(boolean capture)
     if (capture)
     {
         (void)SetCapture(window_handle);
+        if (GetCapture() != window_handle)
+        {
+            mouse_captured = false;
+            UpdateCursorVisibility();
+            return;
+        }
         UpdateCursorVisibility();
         CenterMouse();
     }
     else
     {
-        if (GetCapture() == window_handle)
-            (void)ReleaseCapture();
+        ReleaseMouseButtonsEvent();
+        if (window_handle != NULL && GetCapture() == window_handle &&
+            !ReleaseCapture())
+        {
+            mouse_captured = true;
+            UpdateCursorVisibility();
+            return;
+        }
         UpdateCursorVisibility();
     }
 }
@@ -954,6 +1605,8 @@ static void UpdateMouseCapture(void)
 
 void DoomHost_SetRelativeMouseCapture(boolean capture)
 {
+    if (window_handle == NULL)
+        return;
     mouse_capture_requested = capture;
     UpdateMouseCapture();
 }
@@ -966,8 +1619,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
     switch (message)
     {
         case WM_CLOSE:
-            event.type = DOOM_HOST_EVENT_QUIT;
-            QueueEvent(&event);
+            QueueQuitEvent();
             return 0;
 
         case WM_ACTIVATEAPP:
@@ -975,7 +1627,10 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
             if (window_has_focus)
                 UpdateMouseCapture();
             else
+            {
+                ReleaseHeldInputEvents();
                 SetMouseCaptured(false);
+            }
             return 0;
 
         case WM_SETFOCUS:
@@ -985,6 +1640,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
 
         case WM_KILLFOCUS:
             window_has_focus = false;
+            ReleaseHeldInputEvents();
             SetMouseCaptured(false);
             return 0;
 
@@ -997,6 +1653,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
             {
                 mouse_captured = false;
                 mouse_centering = false;
+                ReleaseMouseButtonsEvent();
                 UpdateCursorVisibility();
             }
             return 0;
@@ -1013,8 +1670,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
             if (message == WM_SYSKEYDOWN && wparam == VK_F4 &&
                 (lparam & (LPARAM)(1UL << 29U)) != 0)
             {
-                event.type = DOOM_HOST_EVENT_QUIT;
-                QueueEvent(&event);
+                QueueQuitEvent();
                 return 0;
             }
             if ((lparam & (LPARAM)(1UL << 30U)) == 0)
@@ -1022,7 +1678,22 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
                 event.type = DOOM_HOST_EVENT_KEY_DOWN;
                 event.key = TranslateVirtualKey(wparam);
                 if (event.key != DOOM_HOST_KEY_NONE)
-                    QueueEvent(&event);
+                {
+                    if (ValidTrackedKey(event.key))
+                    {
+                        RetryPendingInputEvents();
+                        if (key_release_pending[event.key] ||
+                            !QueueEvent(&event))
+                            key_press_pending[event.key] = true;
+                        else
+                        {
+                            key_press_pending[event.key] = false;
+                            key_down[event.key] = true;
+                        }
+                    }
+                    else
+                        (void)QueueEvent(&event);
+                }
             }
             return 0;
 
@@ -1031,7 +1702,19 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
             event.type = DOOM_HOST_EVENT_KEY_UP;
             event.key = TranslateVirtualKey(wparam);
             if (event.key != DOOM_HOST_KEY_NONE)
-                QueueEvent(&event);
+            {
+                if (ValidTrackedKey(event.key))
+                {
+                    key_press_pending[event.key] = false;
+                    if (key_down[event.key])
+                    {
+                        key_release_pending[event.key] = true;
+                        RetryPendingInputEvents();
+                    }
+                }
+                else
+                    (void)QueueEvent(&event);
+            }
             return 0;
 
         case WM_LBUTTONDOWN: mouse_buttons |= 1; break;
@@ -1049,11 +1732,17 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
                 const int y = MouseY(lparam);
                 int center_x;
                 int center_y;
+                int client_width;
+                int client_height;
 
-                if (!GetClientRect(window, &client))
+                if (!GetClientRect(window, &client) ||
+                    !PositiveRectSpan(client.left, client.right,
+                                      &client_width) ||
+                    !PositiveRectSpan(client.top, client.bottom,
+                                      &client_height))
                     return 0;
-                center_x = (client.right - client.left) / 2;
-                center_y = (client.bottom - client.top) / 2;
+                center_x = client_width / 2;
+                center_y = client_height / 2;
                 if (mouse_centering && x == center_x && y == center_y)
                 {
                     mouse_centering = false;
@@ -1065,7 +1754,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
                     event.mouse_buttons = mouse_buttons;
                     event.mouse_dx = x - center_x;
                     event.mouse_dy = y - center_y;
-                    QueueEvent(&event);
+                    QueueMouseStateEvent(&event);
                     CenterMouse();
                 }
             }
@@ -1090,7 +1779,7 @@ static LRESULT __stdcall DoomWindowProc(HWND window, UINT message, WPARAM wparam
 
     event.type = DOOM_HOST_EVENT_MOUSE;
     event.mouse_buttons = mouse_buttons;
-    QueueEvent(&event);
+    QueueMouseStateEvent(&event);
     return 0;
 }
 
@@ -1123,67 +1812,174 @@ void DoomHost_ReportError(const char *text, int length)
     for (;;) {}
 }
 
+static void ResetVideoSessionState(void)
+{
+    bitmap_info = NULL;
+    video_config = (doom_host_video_config_t){0};
+    last_frame = NULL;
+    last_frame_capacity = 0U;
+    last_frame_stride = 0U;
+    last_frame_width = 0;
+    last_frame_height = 0;
+    last_frame_valid = false;
+    event_read = 0U;
+    event_write = 0U;
+    quit_pending = false;
+    for (int key = 0; key < HOST_KEY_STATE_CAPACITY; ++key)
+    {
+        key_down[key] = false;
+        key_press_pending[key] = false;
+        key_release_pending[key] = false;
+    }
+    mouse_buttons = 0;
+    mouse_buttons_pending = false;
+    relative_mouse = false;
+    mouse_capture_requested = false;
+    mouse_captured = false;
+    mouse_centering = false;
+    window_has_focus = false;
+    last_present_ns = 0U;
+    fps_window_start_ns = 0U;
+    fps_window_frames = 0;
+    displayed_fps = 0;
+    trace_title_update_ns = 0U;
+}
+
+static boolean ValidVideoConfig(const doom_host_video_config_t *config)
+{
+    return config != NULL && config->logical_width > 0 &&
+           config->logical_height > 0 &&
+           config->display_aspect_width > 0 &&
+           config->display_aspect_height > 0 &&
+           config->minimum_present_hz >= 0;
+}
+
+static DWORD VideoWindowStyle(const doom_host_video_config_t *config)
+{
+    return config != NULL && config->borderless
+        ? WS_POPUP
+        : WS_OVERLAPPEDWINDOW;
+}
+
+static boolean ValidVideoBootstrap(HINSTANCE instance, HCURSOR cursor)
+{
+    return instance != NULL && cursor != NULL;
+}
+
+static boolean MatchingWindowClass(const WNDCLASSEXA *expected,
+                                   const WNDCLASSEXA *actual)
+{
+    return expected != NULL && actual != NULL &&
+           actual->style == expected->style &&
+           actual->lpfnWndProc == expected->lpfnWndProc &&
+           actual->cbClsExtra == expected->cbClsExtra &&
+           actual->cbWndExtra == expected->cbWndExtra &&
+           actual->hInstance == expected->hInstance &&
+           actual->hIcon == expected->hIcon &&
+           actual->hCursor == expected->hCursor &&
+           actual->hbrBackground == expected->hbrBackground &&
+           actual->lpszMenuName == expected->lpszMenuName &&
+           actual->hIconSm == expected->hIconSm;
+}
+
 boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config)
 {
     WNDCLASSEXA window_class = {0};
     RECT rectangle = {0, 0, debug_settings.window_width,
                       debug_settings.window_height};
-    DWORD style = WS_OVERLAPPEDWINDOW;
+    BITMAPINFO256 *candidate_bitmap_info = &bitmap_info_storage;
+    HINSTANCE candidate_instance;
+    HCURSOR candidate_arrow;
+    HWND candidate_window;
+    byte *candidate_frame;
+    size_t candidate_frame_capacity;
+    size_t candidate_frame_stride;
+    const DWORD style = VideoWindowStyle(config);
     int window_width;
     int window_height;
+    int screen_width;
+    int screen_height;
     int window_x;
     int window_y;
 
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (config == NULL || config->logical_width <= 0 || config->logical_height <= 0 ||
-        config->display_aspect_width <= 0 || config->display_aspect_height <= 0)
+    if (!ValidVideoConfig(config) || window_handle != NULL ||
+        last_frame != NULL)
         return false;
 
-    video_config = *config;
-    relative_mouse = config->relative_mouse;
-    bitmap_info = (BITMAPINFO *)(void *)bitmap_info_storage;
-    for (unsigned int i = 0; i < sizeof(bitmap_info_storage); ++i)
-        bitmap_info_storage[i] = 0;
-    bitmap_info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bitmap_info->bmiHeader.biWidth = config->logical_width;
-    bitmap_info->bmiHeader.biHeight = -config->logical_height;
-    bitmap_info->bmiHeader.biPlanes = 1;
-    bitmap_info->bmiHeader.biBitCount = 8;
-    bitmap_info->bmiHeader.biCompression = BI_RGB;
-    bitmap_info->bmiHeader.biClrUsed = 256;
-    bitmap_info->bmiHeader.biClrImportant = 256;
+    bitmap_info_storage = (BITMAPINFO256){0};
+    candidate_bitmap_info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    candidate_bitmap_info->bmiHeader.biWidth = config->logical_width;
+    candidate_bitmap_info->bmiHeader.biHeight = -config->logical_height;
+    candidate_bitmap_info->bmiHeader.biPlanes = 1;
+    candidate_bitmap_info->bmiHeader.biBitCount = 8;
+    candidate_bitmap_info->bmiHeader.biCompression = BI_RGB;
+    candidate_bitmap_info->bmiHeader.biSizeImage = 0U;
+    candidate_bitmap_info->bmiHeader.biClrUsed = 256;
+    candidate_bitmap_info->bmiHeader.biClrImportant = 256;
 
-    instance_handle = GetModuleHandleA(NULL);
+    candidate_instance = GetModuleHandleA(NULL);
+    candidate_arrow = LoadCursorA(NULL, IDC_ARROW);
+    if (!ValidVideoBootstrap(candidate_instance, candidate_arrow))
+        return false;
     window_class.cbSize = sizeof(window_class);
     window_class.style = CS_OWNDC;
     window_class.lpfnWndProc = DoomWindowProc;
-    arrow_cursor = LoadCursorA(NULL, IDC_ARROW);
-    window_class.hInstance = instance_handle;
+    window_class.hInstance = candidate_instance;
     window_class.hCursor = NULL;
     window_class.lpszClassName = "MalbolgeDoomWindow";
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (!RegisterClassExA(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-        return false;
+    if (!RegisterClassExA(&window_class))
+    {
+        WNDCLASSEXA existing_class = {0};
+        existing_class.cbSize = sizeof(existing_class);
+        if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS ||
+            !GetClassInfoExA(candidate_instance, window_class.lpszClassName,
+                             &existing_class) ||
+            !MatchingWindowClass(&window_class, &existing_class))
+            return false;
+    }
 
-    if (!AdjustWindowRect(&rectangle, style, FALSE))
+    if (!AdjustWindowRect(&rectangle, style, FALSE) ||
+        !PositiveRectSpan(rectangle.left, rectangle.right, &window_width) ||
+        !PositiveRectSpan(rectangle.top, rectangle.bottom, &window_height))
         return false;
-    window_width = rectangle.right - rectangle.left;
-    window_height = rectangle.bottom - rectangle.top;
-    window_x = (GetSystemMetrics(SM_CXSCREEN) - window_width) / 2;
-    window_y = (GetSystemMetrics(SM_CYSCREEN) - window_height) / 2;
-    if (window_x < 0)
-        window_x = 0;
-    if (window_y < 0)
-        window_y = 0;
-    window_handle = CreateWindowExA(0, window_class.lpszClassName,
-// jig-ignore-next-line: indivisible reviewed identifier
-                                    config->title != NULL ? config->title : "DOOM",
-                                    style, window_x, window_y, window_width,
-// jig-ignore-next-line: indivisible reviewed identifier
-                                    window_height, NULL, NULL, instance_handle, NULL);
-    if (window_handle == NULL)
+    screen_width = GetSystemMetrics(SM_CXSCREEN);
+    screen_height = GetSystemMetrics(SM_CYSCREEN);
+    window_x = screen_width > window_width
+        ? (screen_width - window_width) / 2
+        : 0;
+    window_y = screen_height > window_height
+        ? (screen_height - window_height) / 2
+        : 0;
+    candidate_frame = AllocateFrameStorage(
+        config->logical_width, config->logical_height, &candidate_frame_stride,
+        &candidate_frame_capacity);
+    if (candidate_frame == NULL)
         return false;
+    candidate_window = CreateWindowExA(
+        0, window_class.lpszClassName,
+        config->title != NULL ? config->title : "DOOM", style, window_x,
+        window_y, window_width, window_height, NULL, NULL, candidate_instance,
+        NULL);
+    if (candidate_window == NULL)
+    {
+        if (!ReleaseFrameStorage(candidate_frame))
+        {
+            last_frame = candidate_frame;
+            last_frame_capacity = candidate_frame_capacity;
+            last_frame_stride = candidate_frame_stride;
+        }
+        return false;
+    }
 
+    video_config = *config;
+    relative_mouse = config->relative_mouse;
+    bitmap_info = candidate_bitmap_info;
+    last_frame = candidate_frame;
+    last_frame_capacity = candidate_frame_capacity;
+    last_frame_stride = candidate_frame_stride;
+    instance_handle = candidate_instance;
+    arrow_cursor = candidate_arrow;
+    window_handle = candidate_window;
     ShowWindow(window_handle, debug_settings.maximized ? SW_MAXIMIZE : SW_SHOW);
     (void)UpdateWindow(window_handle);
     UpdateCursorVisibility();
@@ -1194,31 +1990,44 @@ boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config)
     return true;
 }
 
+static boolean DestroyVideoWindow(void)
+{
+    if (window_handle != NULL && !HostDestroyWindow(window_handle))
+        return false;
+    window_handle = NULL;
+    instance_handle = NULL;
+    arrow_cursor = NULL;
+    if (!ReleaseFrameStorage(last_frame))
+        return false;
+    ResetVideoSessionState();
+    return true;
+}
+
 void DoomHost_VideoShutdown(void)
 {
     SetMouseCaptured(false);
-    if (window_handle != NULL)
-    {
-        (void)DestroyWindow(window_handle);
-        window_handle = NULL;
-    }
+    (void)DestroyVideoWindow();
 }
 
 boolean DoomHost_PollEvent(doom_host_event_t *event)
 {
     MSG message;
-    if (event == NULL)
+    if (event == NULL || window_handle == NULL)
         return false;
 
+    RetryPendingQuitEvent();
+    RetryPendingInputEvents();
+    if (!window_has_focus)
+        ReleaseHeldInputEvents();
+    else if (!mouse_captured)
+        ReleaseMouseButtonsEvent();
     UpdateMouseCapture();
     // jig-ignore-next-line: indivisible reviewed identifier
     while (event_read == event_write && PeekMessageA(&message, NULL, 0, 0, PM_REMOVE))
     {
         if (message.message == WM_QUIT)
         {
-            doom_host_event_t quit = {0};
-            quit.type = DOOM_HOST_EVENT_QUIT;
-            QueueEvent(&quit);
+            QueueQuitEvent();
             break;
         }
         (void)DispatchMessageA(&message);
@@ -1258,11 +2067,11 @@ static void RenderLastFrame(HDC dc)
     int draw_y;
 
     if (dc == NULL || !last_frame_valid || bitmap_info == NULL ||
-        !GetClientRect(window_handle, &client))
+        !GetClientRect(window_handle, &client) ||
+        !PositiveRectSpan(client.left, client.right, &client_width) ||
+        !PositiveRectSpan(client.top, client.bottom, &client_height))
         return;
 
-    client_width = client.right - client.left;
-    client_height = client.bottom - client.top;
     if ((int64_t)client_width * video_config.display_aspect_height <=
         (int64_t)client_height * video_config.display_aspect_width)
     {
@@ -1298,7 +2107,72 @@ static void RenderLastFrame(HDC dc)
     (void)SetStretchBltMode(dc, COLORONCOLOR);
     (void)StretchDIBits(dc, draw_x, draw_y, draw_width, draw_height,
                         0, 0, last_frame_width, last_frame_height, last_frame,
-                        bitmap_info, DIB_RGB_COLORS, SRCCOPY);
+                        (const BITMAPINFO *)(const void *)bitmap_info,
+                        DIB_RGB_COLORS, SRCCOPY);
+}
+
+static boolean ValidFrameGeometry(int width, int height, int pitch)
+{
+    return width == video_config.logical_width &&
+           height == video_config.logical_height && pitch >= width;
+}
+
+static boolean StoreIndexedFrame(const byte *pixels, int width, int height,
+                                 int pitch)
+{
+    const size_t destination_stride = FrameStride(width);
+
+    if (pixels == NULL || !ValidFrameGeometry(width, height, pitch) ||
+        last_frame == NULL || destination_stride != last_frame_stride ||
+        destination_stride > last_frame_capacity / (size_t)height)
+        return false;
+    for (int y = 0; y < height; ++y)
+    {
+        const byte *source = pixels + (size_t)y * (size_t)pitch;
+        byte *destination = last_frame + (size_t)y * destination_stride;
+        int x;
+        for (x = 0; x < width; ++x)
+            destination[x] = source[x];
+        while ((size_t)x < destination_stride)
+            destination[x++] = 0U;
+    }
+    last_frame_width = width;
+    last_frame_height = height;
+    last_frame_valid = true;
+    return true;
+}
+
+static boolean ShouldPaceAt60Hz(void)
+{
+    return debug_settings.paced_60hz &&
+           video_config.minimum_present_hz <= 60;
+}
+
+static void UpdateFpsWindow(uint64_t now)
+{
+    if (fps_window_start_ns == 0U || now < fps_window_start_ns)
+    {
+        fps_window_start_ns = now;
+        fps_window_frames = 0U;
+    }
+    if (fps_window_frames < (uint32_t)INT32_MAX)
+        ++fps_window_frames;
+    if (now - fps_window_start_ns >= UINT64_C(500000000))
+    {
+        const uint64_t duration = now - fps_window_start_ns;
+        const uint64_t scaled_frames =
+            (uint64_t)fps_window_frames * UINT64_C(1000000000);
+        const uint64_t half_duration = duration / 2U;
+        const uint64_t rate = scaled_frames <= UINT64_MAX - half_duration
+            ? (scaled_frames + half_duration) / duration
+            : scaled_frames / duration;
+        displayed_fps = rate > (uint64_t)INT32_MAX
+            ? INT32_MAX
+            : (int)rate;
+        fps_window_start_ns = now;
+        fps_window_frames = 0U;
+        UpdateFpsTitle();
+    }
 }
 
 // jig-ignore-next-line: indivisible reviewed identifier
@@ -1306,53 +2180,38 @@ void DoomHost_PresentIndexed8(const byte *pixels, int width, int height, int pit
 {
     HDC dc;
 
-    if (window_handle == NULL || pixels == NULL || width <= 0 || height <= 0 ||
-        pitch < width || width > HOST_FRAME_MAX_WIDTH ||
-        height > HOST_FRAME_MAX_HEIGHT)
+    if (window_handle == NULL || bitmap_info == NULL ||
+        !StoreIndexedFrame(pixels, width, height, pitch))
         return;
-
-    for (int y = 0; y < height; ++y)
-    {
-        const byte *source = pixels + (size_t)y * (size_t)pitch;
-        byte *destination = last_frame + (size_t)y * (size_t)width;
-        for (int x = 0; x < width; ++x)
-            destination[x] = source[x];
-    }
-    last_frame_width = width;
-    last_frame_height = height;
-    last_frame_valid = true;
 
     {
         uint64_t now = DoomHost_MonotonicNanoseconds();
-        if (debug_settings.paced_60hz && last_present_ns != 0)
+        if (now != 0 && (last_present_ns == 0 || now >= last_present_ns))
         {
-            const uint64_t target_ns = UINT64_C(16666667);
-            const uint64_t elapsed = now - last_present_ns;
-            if (elapsed < target_ns)
+            if (ShouldPaceAt60Hz() && last_present_ns != 0)
             {
-                const uint64_t remaining = target_ns - elapsed;
-                if (remaining >= UINT64_C(2000000))
-                    // jig-ignore-next-line: indivisible reviewed identifier
-                    Sleep((DWORD)((remaining - UINT64_C(1000000)) / UINT64_C(1000000)));
-                do
+                const uint64_t target_ns = UINT64_C(16666667);
+                const uint64_t elapsed = now - last_present_ns;
+                if (elapsed < target_ns)
                 {
-                    now = DoomHost_MonotonicNanoseconds();
-                } while (now - last_present_ns < target_ns);
+                    const uint64_t remaining = target_ns - elapsed;
+                    if (remaining >= UINT64_C(2000000))
+                        HostSleep((DWORD)(
+                            (remaining - UINT64_C(1000000)) /
+                            UINT64_C(1000000)));
+                    do
+                    {
+                        now = DoomHost_MonotonicNanoseconds();
+                        if (now == 0 || now < last_present_ns)
+                            break;
+                    } while (now - last_present_ns < target_ns);
+                }
             }
-        }
-        last_present_ns = now;
-        if (fps_window_start_ns == 0)
-            fps_window_start_ns = now;
-        ++fps_window_frames;
-        if (now - fps_window_start_ns >= UINT64_C(500000000))
-        {
-            const uint64_t duration = now - fps_window_start_ns;
-            // jig-ignore-next-line: indivisible reviewed identifier
-            displayed_fps = (int)(((uint64_t)fps_window_frames * UINT64_C(1000000000) +
-                                  duration / 2U) / duration);
-            fps_window_start_ns = now;
-            fps_window_frames = 0;
-            UpdateFpsTitle();
+            if (now != 0 && (last_present_ns == 0 || now >= last_present_ns))
+            {
+                last_present_ns = now;
+                UpdateFpsWindow(now);
+            }
         }
     }
 
@@ -1367,8 +2226,10 @@ void DoomHost_PresentIndexed8(const byte *pixels, int width, int height, int pit
 boolean DoomHost_AudioInitialize(const doom_host_audio_config_t *config)
 {
     WAVEFORMATEX format = {0};
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (config == NULL || config->sample_rate != 44100 || config->channel_count != 2 ||
+    HWAVEOUT candidate_output = NULL;
+    if (audio_output != NULL || config == NULL ||
+        config->sample_rate != 44100 ||
+        config->channel_count != 2 ||
         config->frames_per_buffer != AUDIO_FRAMES_PER_BLOCK)
         return false;
 
@@ -1378,9 +2239,10 @@ boolean DoomHost_AudioInitialize(const doom_host_audio_config_t *config)
     format.wBitsPerSample = 16;
     format.nBlockAlign = (WORD)(AUDIO_CHANNELS * sizeof(int16_t));
     format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (waveOutOpen(&audio_output, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR)
+    if (waveOutOpen(&candidate_output, WAVE_MAPPER, &format, 0, 0,
+                    CALLBACK_NULL) != MMSYSERR_NOERROR)
         return false;
+    audio_output = candidate_output;
 
     for (int block = 0; block < AUDIO_BLOCK_COUNT; ++block)
     {
@@ -1397,8 +2259,8 @@ boolean DoomHost_AudioInitialize(const doom_host_audio_config_t *config)
                 // jig-ignore-next-line: indivisible reviewed identifier
                 (void)waveOutUnprepareHeader(audio_output, &audio_headers[prepared],
                                              sizeof(audio_headers[prepared]));
-            (void)waveOutClose(audio_output);
-            audio_output = NULL;
+            if (HostWaveOutClose(audio_output) == MMSYSERR_NOERROR)
+                audio_output = NULL;
             return false;
         }
         audio_busy[block] = false;
@@ -1407,17 +2269,32 @@ boolean DoomHost_AudioInitialize(const doom_host_audio_config_t *config)
     return true;
 }
 
+static boolean CloseAudioOutput(void)
+{
+    audio_initialized = false;
+    if (audio_output == NULL)
+        return true;
+    if (HostWaveOutClose(audio_output) != MMSYSERR_NOERROR)
+        return false;
+    audio_output = NULL;
+    for (int block = 0; block < AUDIO_BLOCK_COUNT; ++block)
+        audio_busy[block] = false;
+    return true;
+}
+
 void DoomHost_AudioShutdown(void)
 {
-    if (!audio_initialized)
+    if (audio_output == NULL)
+    {
+        audio_initialized = false;
         return;
+    }
+    audio_initialized = false;
     (void)waveOutReset(audio_output);
     for (int block = 0; block < AUDIO_BLOCK_COUNT; ++block)
         (void)waveOutUnprepareHeader(audio_output, &audio_headers[block],
                                      sizeof(audio_headers[block]));
-    (void)waveOutClose(audio_output);
-    audio_output = NULL;
-    audio_initialized = false;
+    (void)CloseAudioOutput();
 }
 
 static void ReclaimAudioBlocks(void)
@@ -1477,7 +2354,10 @@ boolean DoomHost_FileOpenRead(const char *path, doom_host_file_t *file)
 {
     HANDLE handle;
     int index;
-    if (path == NULL || file == NULL)
+    if (file == NULL)
+        return false;
+    *file = 0U;
+    if (path == NULL)
         return false;
     for (index = 1; index < HOST_FILE_CAPACITY; ++index)
         if (file_handles[index] == NULL)
@@ -1499,8 +2379,8 @@ void DoomHost_FileClose(doom_host_file_t file)
 {
     if (!ValidFile(file))
         return;
-    (void)CloseHandle((HANDLE)file_handles[file]);
-    file_handles[file] = NULL;
+    if (HostCloseHandle((HANDLE)file_handles[file]))
+        file_handles[file] = NULL;
 }
 
 int DoomHost_FileSize(doom_host_file_t file)
@@ -1519,8 +2399,11 @@ int DoomHost_FileSize(doom_host_file_t file)
 int DoomHost_FileReadAt(doom_host_file_t file, int offset, byte *data, int length)
 {
     DWORD read_count = 0;
-    if (!ValidFile(file) || offset < 0 || data == NULL || length < 0)
+    if (!ValidFile(file) || offset < 0 || length < 0 ||
+        (length > 0 && data == NULL))
         return -1;
+    if (length == 0)
+        return 0;
     {
         LARGE_INTEGER position;
         position.QuadPart = offset;
@@ -1534,23 +2417,47 @@ int DoomHost_FileReadAt(doom_host_file_t file, int offset, byte *data, int lengt
     return (int)read_count;
 }
 
+static boolean RetryPendingWriteHandle(void)
+{
+    if (pending_write_handle == NULL)
+        return true;
+    if (!HostCloseTransientHandle(pending_write_handle))
+        return false;
+    pending_write_handle = NULL;
+    return true;
+}
+
 boolean DoomHost_FileWriteAll(const char *path, const byte *data, int length)
 {
     HANDLE handle;
-    DWORD written = 0;
-    if (path == NULL || data == NULL || length < 0)
+    int offset = 0;
+
+    if (path == NULL || length < 0 || (length > 0 && data == NULL) ||
+        !RetryPendingWriteHandle())
         return false;
     handle = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                          FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle == INVALID_HANDLE_VALUE)
         return false;
-    if (!WriteFile(handle, data, (DWORD)length, &written, NULL) ||
-        written != (DWORD)length)
+    while (offset < length)
     {
-        (void)CloseHandle(handle);
+        const DWORD requested = (DWORD)(length - offset);
+        DWORD written = 0;
+        if (!HostWriteFile(handle, data + (size_t)offset, requested, &written,
+                           NULL) ||
+            written == 0U || written > requested)
+        {
+            if (!HostCloseTransientHandle(handle))
+                pending_write_handle = handle;
+            return false;
+        }
+        offset += (int)written;
+    }
+    if (!HostCloseTransientHandle(handle))
+    {
+        pending_write_handle = handle;
         return false;
     }
-    (void)CloseHandle(handle);
     return true;
 }
 
@@ -1559,7 +2466,11 @@ void DoomHost_NetClose(void) {}
 // jig-ignore-next-line: indivisible reviewed identifier
 boolean DoomHost_NetResolve(const char *host, int port, doom_host_net_endpoint_t *endpoint)
 {
-    (void)host; (void)port; (void)endpoint; return false;
+    (void)host;
+    (void)port;
+    if (endpoint != NULL)
+        *endpoint = 0U;
+    return false;
 }
 // jig-ignore-next-line: indivisible reviewed identifier
 boolean DoomHost_NetSend(doom_host_net_endpoint_t endpoint, const byte *data, int length)
@@ -1569,34 +2480,73 @@ boolean DoomHost_NetSend(doom_host_net_endpoint_t endpoint, const byte *data, in
 // jig-ignore-next-line: indivisible reviewed identifier
 int DoomHost_NetReceive(byte *data, int capacity, doom_host_net_endpoint_t *source)
 {
-    (void)data; (void)capacity; (void)source; return -1;
+    (void)data;
+    (void)capacity;
+    if (source != NULL)
+        *source = 0U;
+    return -1;
 }
 
 uint64_t DoomHost_MonotonicNanoseconds(void)
 {
+    static const uint64_t NANOSECONDS_PER_SECOND = UINT64_C(1000000000);
     LARGE_INTEGER now;
+    uint64_t frequency;
     uint64_t ticks;
+    uint64_t seconds;
+    uint64_t remainder;
+    uint64_t fraction;
+
     if (performance_frequency.QuadPart <= 0)
     {
-        if (!QueryPerformanceFrequency(&performance_frequency) ||
-            !QueryPerformanceCounter(&performance_origin))
+        LARGE_INTEGER candidate_frequency;
+        LARGE_INTEGER candidate_origin;
+        if (!HostQueryPerformanceFrequency(&candidate_frequency) ||
+            candidate_frequency.QuadPart <= 0 ||
+            (uint64_t)candidate_frequency.QuadPart >
+                UINT64_MAX / NANOSECONDS_PER_SECOND ||
+            !HostQueryPerformanceCounter(&candidate_origin) ||
+            candidate_origin.QuadPart < 0)
             return 0;
+        performance_frequency = candidate_frequency;
+        performance_origin = candidate_origin;
+        performance_last_counter = candidate_origin;
     }
-    // jig-ignore-next-line: indivisible reviewed identifier
-    if (!QueryPerformanceCounter(&now) || now.QuadPart < performance_origin.QuadPart)
+    if (!HostQueryPerformanceCounter(&now) || now.QuadPart < 0 ||
+        now.QuadPart < performance_origin.QuadPart ||
+        now.QuadPart < performance_last_counter.QuadPart)
         return 0;
-    ticks = (uint64_t)(now.QuadPart - performance_origin.QuadPart);
-    // jig-ignore-next-line: indivisible reviewed identifier
-    return ticks / (uint64_t)performance_frequency.QuadPart * UINT64_C(1000000000) +
-           // jig-ignore-next-line: indivisible reviewed identifier
-           ticks % (uint64_t)performance_frequency.QuadPart * UINT64_C(1000000000) /
-               (uint64_t)performance_frequency.QuadPart;
+    frequency = (uint64_t)performance_frequency.QuadPart;
+    ticks = (uint64_t)now.QuadPart - (uint64_t)performance_origin.QuadPart;
+    seconds = ticks / frequency;
+    remainder = ticks % frequency;
+    if (seconds > UINT64_MAX / NANOSECONDS_PER_SECOND)
+        return 0;
+    fraction = remainder * NANOSECONDS_PER_SECOND / frequency;
+    {
+        const uint64_t whole = seconds * NANOSECONDS_PER_SECOND;
+        if (fraction > UINT64_MAX - whole)
+            return 0;
+        performance_last_counter = now;
+        return whole + fraction;
+    }
 }
 
 void DoomHost_SleepNanoseconds(uint64_t nanoseconds)
 {
-    // jig-ignore-next-line: indivisible reviewed identifier
-    DWORD milliseconds = (DWORD)((nanoseconds + UINT64_C(999999)) / UINT64_C(1000000));
-    if (milliseconds > 0)
-        Sleep(milliseconds);
+    static const uint64_t NANOSECONDS_PER_MILLISECOND = UINT64_C(1000000);
+    static const uint64_t MAX_FINITE_SLEEP_MILLISECONDS =
+        UINT64_C(0xFFFFFFFE);
+    uint64_t milliseconds = nanoseconds / NANOSECONDS_PER_MILLISECOND;
+
+    if (nanoseconds % NANOSECONDS_PER_MILLISECOND != 0U)
+        ++milliseconds;
+    while (milliseconds != 0U)
+    {
+        const DWORD chunk = milliseconds > MAX_FINITE_SLEEP_MILLISECONDS
+            ? (DWORD)MAX_FINITE_SLEEP_MILLISECONDS
+            : (DWORD)milliseconds;
+        HostSleep(chunk);
+        milliseconds -= (uint64_t)chunk;
+    }
 }
