@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This boundary is reserved for future standalone tool functions.
+This boundary owns repository-local build entrypoints for standalone tools.
 
 ## Ownership
 
@@ -14,4 +14,4 @@ Tracked implementation code must remain under `src/<domain>/<function>/<kind>`.
 
 ## Navigation
 
-- No standalone tool functions are currently declared.
+- `tidy/`: build entrypoint for the governed native-analysis clang-tidy tool.
