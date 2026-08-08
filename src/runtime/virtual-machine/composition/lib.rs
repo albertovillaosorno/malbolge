@@ -46,6 +46,12 @@ mod differential;
 mod execution;
 #[path = "../domain/execution_ir.rs"]
 mod execution_ir;
+#[path = "../contract/host_capability.rs"]
+mod host_capability;
+#[path = "../contract/host_capability_mouse.rs"]
+mod host_capability_mouse;
+#[path = "../contract/host_capability_telemetry.rs"]
+mod host_capability_telemetry;
 #[path = "../domain/instruction.rs"]
 pub(crate) mod instruction;
 #[path = "../domain/loader.rs"]
@@ -104,6 +110,35 @@ pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use execution_ir::{
     EFFECT_IR_VERSION, EffectOp, IrEncodingError, MemoryLiveIn,
     RegionEffectProgram, StepProgramProjectionError,
+};
+pub use host_capability::{
+    HOST_CALL_FLAG_NONBLOCKING, HOST_CAPABILITY_ABI_VERSION,
+    HOST_CAPABILITY_DESCRIPTOR_WIRE_SIZE, HOST_CAPABILITY_FLAG_AVAILABLE,
+    HOST_CAPABILITY_FLAG_MAY_BLOCK, HOST_CAPABILITY_FLAG_PARTIAL_PROGRESS,
+    HOST_CAPABILITY_FRAME_WIRE_SIZE, HOST_CAPABILITY_SPAN_WIRE_SIZE,
+    HostCapabilityDescriptor, HostCapabilityError, HostCapabilityFrame,
+    HostCapabilityResponseBuffers, HostCapabilitySpan, HostCapabilityStatus,
+    commit_host_capability_response, discover_host_capability,
+    discover_host_capability_wire, validate_host_capability_registry,
+    validate_host_capability_response, validate_host_capability_wire_registry,
+};
+pub use host_capability_mouse::{
+    HOST_RELATIVE_MOUSE_CAPTURE_CAPABILITY_ID,
+    HOST_RELATIVE_MOUSE_CAPTURE_V1_OPERATION,
+    HOST_RELATIVE_MOUSE_CAPTURE_V1_REQUEST_SIZE,
+    HOST_RELATIVE_MOUSE_CAPTURE_V1_VERSION, HostRelativeMouseCaptureV1,
+    decode_host_relative_mouse_capture_v1,
+    encode_host_relative_mouse_capture_v1,
+    host_relative_mouse_capture_v1_descriptor,
+    validate_host_relative_mouse_capture_v1_call,
+};
+pub use host_capability_telemetry::{
+    HOST_EXECUTION_TELEMETRY_CAPABILITY_ID,
+    HOST_EXECUTION_TELEMETRY_V1_HEADER_SIZE,
+    HOST_EXECUTION_TELEMETRY_V1_OPERATION, HOST_EXECUTION_TELEMETRY_V1_VERSION,
+    HostExecutionTelemetryV1, decode_host_execution_telemetry_v1,
+    encode_host_execution_telemetry_v1, host_execution_telemetry_v1_descriptor,
+    validate_host_execution_telemetry_v1_call,
 };
 pub use instruction::decode_instruction;
 pub use loader::{LoadError, is_source_whitespace, load};

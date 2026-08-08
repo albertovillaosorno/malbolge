@@ -54,6 +54,12 @@ mod cycle_detection;
 mod differential;
 #[path = "vm/execution.rs"]
 mod execution;
+#[path = "vm/host_capability.rs"]
+mod host_capability;
+#[path = "vm/host_capability_mouse.rs"]
+mod host_capability_mouse;
+#[path = "vm/host_capability_telemetry.rs"]
+mod host_capability_telemetry;
 #[path = "vm/instructions.rs"]
 mod instructions;
 #[path = "vm/logical.rs"]

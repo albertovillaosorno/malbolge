@@ -167,6 +167,51 @@ parts:
     kind: domain
     language: rust
     responsibility: Verify exact agreement across labeled backend observations.
+  - id: part-0027
+    path: contract/host_capability.rs
+    kind: contract
+    language: rust
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0028
+    path: adapter-outbound/c/malbolge_host_capability.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0029
+    path: adapter-outbound/c/malbolge_host_capability.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0030
+    path: contract/host_capability_mouse.rs
+    kind: contract
+    language: rust
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0031
+    path: contract/host_capability_telemetry.rs
+    kind: contract
+    language: rust
+    responsibility: Define serialized and cross-boundary representations.
+  - id: part-0032
+    path: adapter-outbound/c/malbolge_host_capability_mouse.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0033
+    path: adapter-outbound/c/malbolge_host_capability_mouse.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0034
+    path: adapter-outbound/c/malbolge_host_capability_telemetry.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0035
+    path: adapter-outbound/c/malbolge_host_capability_telemetry.h
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind outbound capabilities to external systems.
 projects: []
 tests: []
 graph:
