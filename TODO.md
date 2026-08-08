@@ -35,15 +35,6 @@ force or stochastic optimization begins.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc](docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc)
 
-### TODO - Deterministic C-to-Malbolge ABI
-
-Specify fixed integer widths, signed behavior, endianness, pointers, alignment,
-object representation, stack rules, recursion policy, I/O, and a fail-closed
-policy for undefined or target-dependent C behavior.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/c/deterministic-c-to-malbolge-abi.mdc](docs/todo/open/c/deterministic-c-to-malbolge-abi.mdc)
-
 ### TODO - Emitted Malbolge static analyzer
 
 Analyze generated Malbolge for lexical and address validity, self-modification,

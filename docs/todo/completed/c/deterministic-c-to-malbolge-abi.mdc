@@ -1,6 +1,6 @@
 ---
 id: "deterministic-c-to-malbolge-abi"
-status: "pending"
+status: "completed"
 lane: "6"
 area: "c"
 task: "TODO - Deterministic C-to-Malbolge ABI"
@@ -56,3 +56,28 @@ policy for undefined or target-dependent C behavior.
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `latex-mathematical-specification-framework`.
+- `docs/technical/specification/c-abi-v1.json` is the closed machine-readable
+  `malbolge-c32-v1` authority for scalar representation, byte order, logical
+  pointers, aggregate layout, call frames, I/O, and fail-closed behavior.
+- `src/automation/repository/composition/scripts/validate/c_abi.py` rejects
+  duplicate/unknown/drifted ABI fields and binds the authority to canonical
+  target profile `malbolge-2026`.
+- `src/automation/repository/composition/scripts/validate/c_abi_source.py` emits
+  source-located `MALBOLGE-ABI-001` through `MALBOLGE-ABI-008` diagnostics for
+  v1 layout exclusions and requires pinned Clang 22.1.8.
+- `tests/tidy/accepted/` proves canonical layout plus recursion, function
+  pointers, variadics, VLAs, flexible arrays, enums, and admitted alignment;
+  `tests/tidy/rejected/` independently exercises every ABI diagnostic family.
+- `tests/test_c_abi.py` locks closed-schema behavior, exact Clang target/data
+  layout, tool-version pinning, source locations, invalid UTF-8 rejection, and
+  manual-validator ABI ordering.
+- Focused evidence on 2026-08-08: strict Ruff and basedpyright passed, and the
+  ABI/target-profile/host-capability focused Python set passed 30 tests before
+  the final version-pin additions; the final ABI-only suite passes 11 tests.
+- Repository-wide exhaustive Jig validation completed cleanly on 2026-08-08
+  with `diagnostics_total: 0` after strict Python, fixture, text-policy, Cargo,
+  and documentation/governance checks.
+- **Completion:** Completed on 2026-08-08 after the closed ABI authority, exact
+  pinned-Clang projection, source-located ABI diagnostics, positive/negative C
+  fixtures, manual-validator integration, strict Ruff/basedpyright, focused
+  tests, and exhaustive Jig validation all passed.
