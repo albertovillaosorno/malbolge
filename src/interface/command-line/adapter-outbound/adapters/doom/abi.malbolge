@@ -16,10 +16,18 @@
 # runtime linker to load this module automatically. Ordinary Malbolge programs
 # must not receive DOOM capabilities implicitly.
 #
-# Debug telemetry capability 0x0600 accepts language, source identity, execution
-# location, and the active instruction text. A Malbolge executor reports
-# language=MALBOLGE, source=<artifact>, location=<cell/address>, and the current
-# graphical instruction byte so the host title can display real execution.
+# Debug telemetry capability 0x0600 version 1 operation 0 accepts canonical
+# length-delimited UTF-8 language, source identity, execution location, and
+# active
+# instruction text. A Malbolge executor reports language=MALBOLGE,
+# source=<artifact>, location=<cell/address>, and the current graphical
+# instruction byte so the host title can display real execution. Telemetry is
+# optional observation and is omitted when capability discovery is unavailable.
+#
+# Relative mouse capture capability 0x0601 version 1 operation 0 carries one
+# canonical byte boolean plus seven zero reserved bytes. Capture records desired
+# relative-input state; focus may temporarily release native capture without
+# changing the guest request.
 #
 # Blocked by: versioned-host-capability-call-abi, state-aware-malbolge-linker,
 # cross-platform-native-capability-runners, and C-to-Malbolge code generation.

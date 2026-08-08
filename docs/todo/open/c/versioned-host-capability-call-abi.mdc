@@ -67,15 +67,26 @@ application-local capabilities are design evidence, not yet the generic VM ABI.
 - Required evidence: canonical frame vectors, accepted/rejected range fixtures,
   discovery/version failures, host-error vectors, blocking/partial-progress
   fixtures, and cross-tier differential results.
+- Implemented foundation evidence: independent safe-Rust and pure-C version-one
+  codecs use the same 72-byte frame, 16-byte descriptor, and 16-byte
+  payload-relative span vectors, with fail-closed registry, range, status,
+  response-identity validation, and atomic staged-result publication.
+- Implemented extension evidence: opaque capability `0x0600` defines optional
+  canonical UTF-8 execution telemetry and `0x0601` defines guest-directed
+  relative-mouse capture. Both are version 1, operation 0, synchronous,
+  result-free, and independently exercised in safe Rust and pure C.
+- Remaining completion evidence: production capability IDs and schemas,
+  interpreter/JIT/AOT lowering, runner transports, cross-tier effect-ordering
+  equivalence, and completion of `deterministic-c-to-malbolge-abi`.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi` and
   `canonical-malbolge-target-profile`.
 
 **DOOM execution telemetry extension.**
 
-Specify guest-directed relative-mouse capture and optional execution telemetry
-as
-versioned capabilities. Telemetry carries a language identifier, source
-identity,
+The two requested extension schemas are now specified and executable at the
+contract layer. Telemetry carries a language identifier, source identity,
 execution location, and active instruction text; C line reporting and Malbolge
-cell/instruction reporting must use the same semantic record without influencing
-guest behavior.
+cell/instruction reporting use the same semantic record without influencing
+guest
+behavior. Remaining work is runner/lowering integration and cross-tier ordering
+evidence, not payload-shape definition.

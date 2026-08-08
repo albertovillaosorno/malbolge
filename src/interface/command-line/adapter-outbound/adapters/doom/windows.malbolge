@@ -16,7 +16,8 @@
 # doom.host.v1.abi. The same doom.malbolge payload must select Linux/macOS host
 # adapters without changing guest bytes.
 #
-# Mouse capture is guest-directed: gameplay requests centered relative capture;
+# Capability 0x0601 mouse capture is guest-directed: gameplay requests centered
+# relative capture;
 # jig-ignore-next-line: indivisible reviewed identifier
 # pause, menus, automap, demos, and focus loss release it. Execution telemetry is
 # language-neutral, so the title may show either C source lines during native
