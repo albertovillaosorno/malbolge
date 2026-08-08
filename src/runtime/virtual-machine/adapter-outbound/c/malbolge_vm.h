@@ -77,6 +77,7 @@ typedef enum MalbolgeDiagnosticCode {
     MALBOLGE_DIAGNOSTIC_INVALID_ENCRYPTION_TARGET,
     MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
     MALBOLGE_DIAGNOSTIC_OUTPUT_CAPACITY,
+    MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT,
 } MalbolgeDiagnosticCode;
 
 typedef struct MalbolgeDiagnostic {
@@ -135,6 +136,15 @@ typedef struct MalbolgeMachine {
 MalbolgeWord malbolge_crazy(MalbolgeWord data, MalbolgeWord accumulator);
 MalbolgeWord malbolge_rotate(MalbolgeWord value);
 
+/*
+ * Pointer/length pairs admit NULL only when their corresponding length or
+ * capacity is zero. Source, input, and writable output ranges must not overlap
+ * the destination machine object, and non-empty input/output ranges must not
+ * overlap each other. Checked entry points reject malformed arguments without
+ * dereferencing them. malbolge_machine_init_state() is a
+ * void construction helper and leaves the destination untouched when its
+ * arguments are invalid.
+ */
 MalbolgeDiagnostic malbolge_machine_init(MalbolgeMachine *machine,
                                          const uint8_t *source,
                                          size_t source_length,
@@ -150,9 +160,19 @@ void malbolge_machine_init_state(MalbolgeMachine *machine,
                                  uint8_t *output,
                                  size_t output_capacity);
 
+/*
+ * Trace and run-metadata outputs are writable auxiliary storage. When a machine
+ * is supplied, those ranges must be disjoint from the machine and its declared
+ * input/output ranges; the two run-metadata outputs must also be disjoint from
+ * each other. Rejected auxiliary-storage aliases are left untouched.
+ */
 MalbolgeStepOutcome malbolge_step(MalbolgeMachine *machine,
                                   MalbolgeTrace *trace);
 
+/*
+ * steps_executed counts committed or terminating semantic steps. A rejected
+ * transition is reported diagnostically but does not increment that count.
+ */
 MalbolgeStepOutcome malbolge_run(MalbolgeMachine *machine,
                                  size_t step_budget,
                                  size_t *steps_executed,

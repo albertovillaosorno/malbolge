@@ -76,8 +76,79 @@ static bool is_classic_word(MalbolgeWord value)
     return value <= (MalbolgeWord)MALBOLGE_MAX_WORD;
 }
 
-static MalbolgeDiagnostic validate_registers(const MalbolgeMachine *machine)
+static bool is_valid_termination(MalbolgeTermination termination)
 {
+    return termination == MALBOLGE_TERMINATION_NONE ||
+           termination == MALBOLGE_TERMINATION_HALT ||
+           termination == MALBOLGE_TERMINATION_NON_GRAPHICAL;
+}
+
+static bool ranges_overlap(const void *left, size_t left_length,
+                           const void *right, size_t right_length)
+{
+    uintptr_t left_start;
+    uintptr_t left_end;
+    uintptr_t right_start;
+    uintptr_t right_end;
+
+    if (left == NULL || right == NULL || left_length == 0U ||
+        right_length == 0U) {
+        return false;
+    }
+    left_start = (uintptr_t)left;
+    right_start = (uintptr_t)right;
+    if (left_length > UINTPTR_MAX - left_start ||
+        right_length > UINTPTR_MAX - right_start) {
+        return true;
+    }
+    left_end = left_start + left_length;
+    right_end = right_start + right_length;
+    return left_start < right_end && right_start < left_end;
+}
+
+static bool range_overlaps_machine(const MalbolgeMachine *machine,
+                                   const void *storage,
+                                   size_t storage_length)
+{
+    return ranges_overlap(machine, sizeof(*machine), storage, storage_length);
+}
+
+static bool auxiliary_range_overlaps_machine(
+    const MalbolgeMachine *machine, const void *storage, size_t storage_length)
+{
+    return range_overlaps_machine(machine, storage, storage_length) ||
+           ranges_overlap(machine->input, machine->input_length, storage,
+                          storage_length) ||
+           ranges_overlap(machine->output, machine->output_capacity, storage,
+                          storage_length);
+}
+
+static bool invalid_run_output_aliases(
+    const MalbolgeMachine *machine, const size_t *steps_executed,
+    const MalbolgeDiagnostic *result)
+{
+    if (steps_executed != NULL && result != NULL &&
+        ranges_overlap(steps_executed, sizeof(*steps_executed), result,
+                       sizeof(*result))) {
+        return true;
+    }
+    if (machine == NULL) {
+        return false;
+    }
+    return (steps_executed != NULL &&
+            auxiliary_range_overlaps_machine(
+                machine, steps_executed, sizeof(*steps_executed))) ||
+           (result != NULL &&
+            auxiliary_range_overlaps_machine(machine, result,
+                                             sizeof(*result)));
+}
+
+static MalbolgeDiagnostic validate_machine_state(const MalbolgeMachine *machine)
+{
+    if (!is_valid_termination(machine->termination)) {
+        return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
+                          5U, 0U);
+    }
     if (!is_classic_word(machine->registers.accumulator)) {
         return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
                           0U, machine->registers.accumulator);
@@ -89,6 +160,22 @@ static MalbolgeDiagnostic validate_registers(const MalbolgeMachine *machine)
     if (!is_classic_word(machine->registers.data_pointer)) {
         return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
                           2U, machine->registers.data_pointer);
+    }
+    if (machine->input_cursor > machine->input_length ||
+        (machine->input_length != 0U && machine->input == NULL) ||
+        range_overlaps_machine(machine, machine->input,
+                               machine->input_length)) {
+        return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
+                          3U, 0U);
+    }
+    if (machine->output_length > machine->output_capacity ||
+        (machine->output_capacity != 0U && machine->output == NULL) ||
+        range_overlaps_machine(machine, machine->output,
+                               machine->output_capacity) ||
+        ranges_overlap(machine->input, machine->input_length, machine->output,
+                       machine->output_capacity)) {
+        return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
+                          4U, 0U);
     }
     return diagnostic(MALBOLGE_DIAGNOSTIC_NONE, 0U, 0U);
 }
@@ -236,6 +323,14 @@ void malbolge_machine_init_state(MalbolgeMachine *machine,
                                  size_t output_capacity)
 {
     size_t index = 0U;
+    if (machine == NULL || !is_classic_word(fill) ||
+        (input_length != 0U && input == NULL) ||
+        (output_capacity != 0U && output == NULL) ||
+        range_overlaps_machine(machine, input, input_length) ||
+        range_overlaps_machine(machine, output, output_capacity) ||
+        ranges_overlap(input, input_length, output, output_capacity)) {
+        return;
+    }
     for (index = 0U; index < (size_t)MALBOLGE_MEMORY_WORDS; ++index) {
         machine->memory[index] = fill;
     }
@@ -259,7 +354,18 @@ MalbolgeDiagnostic malbolge_machine_init(MalbolgeMachine *machine,
                                          uint8_t *output,
                                          size_t output_capacity)
 {
-    const MalbolgeDiagnostic result = validate_source(source, source_length);
+    MalbolgeDiagnostic result;
+    if (machine == NULL ||
+        (source_length != 0U && source == NULL) ||
+        (input_length != 0U && input == NULL) ||
+        (output_capacity != 0U && output == NULL) ||
+        range_overlaps_machine(machine, source, source_length) ||
+        range_overlaps_machine(machine, input, input_length) ||
+        range_overlaps_machine(machine, output, output_capacity) ||
+        ranges_overlap(input, input_length, output, output_capacity)) {
+        return diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT, 0U, 0U);
+    }
+    result = validate_source(source, source_length);
     if (result.code != MALBOLGE_DIAGNOSTIC_NONE) {
         return result;
     }
@@ -440,18 +546,37 @@ MalbolgeStepOutcome malbolge_step(MalbolgeMachine *machine,
     Transition next;
     MalbolgeDiagnostic result;
 
+    if (machine == NULL) {
+        if (trace != NULL) {
+            *trace = (MalbolgeTrace){0};
+            trace->outcome = MALBOLGE_STEP_REJECTED;
+            trace->diagnostic =
+                diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT, 0U, 0U);
+        }
+        return MALBOLGE_STEP_REJECTED;
+    }
+    if (trace != NULL &&
+        auxiliary_range_overlaps_machine(machine, trace, sizeof(*trace))) {
+        return MALBOLGE_STEP_REJECTED;
+    }
     trace_begin(trace, machine);
+    result = validate_machine_state(machine);
+    if (result.code != MALBOLGE_DIAGNOSTIC_NONE) {
+        trace_finish(trace, machine, MALBOLGE_STEP_REJECTED, result);
+        return MALBOLGE_STEP_REJECTED;
+    }
     if (machine->termination != MALBOLGE_TERMINATION_NONE) {
         trace_finish(trace, machine, MALBOLGE_STEP_TERMINATED,
                      diagnostic(MALBOLGE_DIAGNOSTIC_NONE, 0U, 0U));
         return MALBOLGE_STEP_TERMINATED;
     }
-    result = validate_registers(machine);
-    if (result.code != MALBOLGE_DIAGNOSTIC_NONE) {
+    cell = machine->memory[machine->registers.code_pointer];
+    if (!is_classic_word(cell)) {
+        result = diagnostic(MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE,
+                            (size_t)machine->registers.code_pointer, cell);
         trace_finish(trace, machine, MALBOLGE_STEP_REJECTED, result);
         return MALBOLGE_STEP_REJECTED;
     }
-    cell = machine->memory[machine->registers.code_pointer];
     if (trace != NULL) {
         trace->has_fetched_cell = 1U;
         trace->fetched_cell = cell;
@@ -510,15 +635,37 @@ MalbolgeStepOutcome malbolge_run(MalbolgeMachine *machine,
     MalbolgeStepOutcome outcome = MALBOLGE_STEP_CONTINUED;
     MalbolgeTrace trace;
 
-    *result = diagnostic(MALBOLGE_DIAGNOSTIC_NONE, 0U, 0U);
+    if (invalid_run_output_aliases(machine, steps_executed, result)) {
+        return MALBOLGE_STEP_REJECTED;
+    }
+    if (machine == NULL || steps_executed == NULL || result == NULL) {
+        if (steps_executed != NULL) {
+            *steps_executed = 0U;
+        }
+        if (result != NULL) {
+            *result = diagnostic(
+                MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT, 0U, 0U);
+        }
+        return MALBOLGE_STEP_REJECTED;
+    }
+    *result = validate_machine_state(machine);
+    if (result->code != MALBOLGE_DIAGNOSTIC_NONE) {
+        *steps_executed = 0U;
+        return MALBOLGE_STEP_REJECTED;
+    }
     if (machine->termination != MALBOLGE_TERMINATION_NONE) {
         *steps_executed = 0U;
         return MALBOLGE_STEP_TERMINATED;
     }
     while (steps < step_budget) {
         outcome = malbolge_step(machine, &trace);
+        if (outcome == MALBOLGE_STEP_REJECTED) {
+            *steps_executed = steps;
+            *result = trace.diagnostic;
+            return outcome;
+        }
         ++steps;
-        if (outcome != MALBOLGE_STEP_CONTINUED) {
+        if (outcome == MALBOLGE_STEP_TERMINATED) {
             *steps_executed = steps;
             *result = trace.diagnostic;
             return outcome;
