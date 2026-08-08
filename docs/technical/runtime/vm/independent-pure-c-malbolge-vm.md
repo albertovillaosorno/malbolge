@@ -56,11 +56,36 @@ the machine object, I/O capacity is supplied by the caller, and the ternary
 operation is table-driven. The two VMs share only the written specification and
 versioned test expectations.
 
+Public pointer/length pairs fail closed. Non-zero source/input lengths require a
+non-null pointer, non-zero output capacity requires non-null output storage, and
+source/input/output ranges may not overlap the destination machine object.
+Non-empty input and output storage must also be disjoint so guest output cannot
+overwrite unread immutable input. These rules prevent initialization from
+overwriting bytes that it still needs to consume or from installing
+self-referential I/O storage. Checked entry points reject a null machine or
+required result pointer with `MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT`. The void
+`malbolge_machine_init_state` helper performs no mutation when its machine,
+stream pairing, output pairing, machine-aliasing storage, or fill word is
+invalid.
+
+Stepping validates caller-visible state before execution. Registers and fetched
+words must remain in the classic `0..=59048` domain; the termination tag must be
+one of the declared enum values; input cursor/length and output length/capacity
+must be ordered; non-empty stream storage must have a non-null pointer; and the
+caller-visible stream ranges must preserve the same machine-disjoint and
+input/output-disjoint alias rules enforced at construction. A violation returns
+`MALBOLGE_DIAGNOSTIC_INVALID_MACHINE_STATE` before guest state or host I/O is
+mutated. Optional trace storage and bounded-run metadata outputs are writable
+auxiliary ranges, so they must not alias the machine or its declared streams;
+the two bounded-run metadata outputs must also be disjoint. Alias rejection
+leaves those auxiliary outputs untouched. Bounded runs count only committed or
+terminating semantic steps; a rejected transition returns its diagnostic without
+increasing `steps_executed`.
+
 `tests/vm/c_conformance.c` is an executable C harness with a normal `main` entry
 point. It also computes semantic signature `0xa9dabd8fc51d13c9`. The Rust
 integration suite independently recomputes that signature through the Rust
-public
-API and requires an exact match.
+public API and requires an exact match.
 
 The C harness is built and executed through the repository validation stack with
 the pinned Clang toolchain. Repository-wide Jig validation therefore covers the
@@ -83,19 +108,23 @@ path.
 
 ## Failure Behavior
 
-Invalid source bytes, invalid source instructions, insufficient recurrence
-input,
-source overflow, invalid self-encryption targets, and exhausted caller output
-capacity return deterministic diagnostic categories. Rejected execution
-transitions do not silently commit partial guest-visible effects.
+Invalid public arguments, invalid source bytes, invalid source instructions,
+insufficient recurrence input, source overflow, invalid caller-visible machine
+state, invalid self-encryption targets, and exhausted caller output capacity
+return deterministic diagnostic categories. Rejected execution transitions do
+not silently commit partial guest-visible effects.
 
 ## Verification
 
-- `tests/vm/c_conformance.c` covers word primitives, loader boundaries, the
-  normative `ubO` byte-I/O roundtrip fixture, non-graphical non-progress,
-  low-byte output,
-  EOF, code jumps, post-jump encryption, atomic rejection, rotate, crazy, and
-  pointer wrap.
+- `tests/vm/c_conformance.c` covers public null/pointer-pair rejection, machine
+  and input/output range alias rejection (plus adjacent-range acceptance),
+  trace/run-metadata alias rejection without auxiliary-output mutation, invalid
+  caller-visible stream/termination/word state, rejected-run step
+  accounting, word primitives, atomic invalid-source admission, loader
+  boundaries, the normative `ubO` byte-I/O
+  roundtrip fixture, non-graphical non-progress, low-byte output, EOF, code
+  jumps, post-jump encryption, atomic rejection, rotate, crazy, and pointer
+  wrap.
 - The C harness asserts semantic signature `0xa9dabd8fc51d13c9` over every
   classic word's rotate result, a deterministic 59049-pair crazy sample, the
   complete loaded `ubO` image, and representative execution boundaries.

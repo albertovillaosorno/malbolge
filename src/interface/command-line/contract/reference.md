@@ -73,8 +73,89 @@ Without either, the CLI checks `MALBOLGE_DOOM_IWAD`, compatible filenames beside
 directory. WAD files remain external user-provided assets.
 
 The Windows adapter reads `iwad`, `wads`, `language`, `maximized`, `resolution`,
-`vsync`, and `show_fps` from `settings.json`. Gameplay uses centered relative
-mouse capture; pause, menus, automap, demos, and focus loss release the cursor.
+`vsync`, and `show_fps` from `settings.json`. The settings file must fit wholly
+inside the fixed 65536-byte parser buffer; oversized files, short reads,
+embedded NUL bytes, truncated top-level structure, malformed JSON values,
+invalid escapes, and malformed requested values are ignored rather than parsed
+from a prefix. Key
+lookup inspects only top-level object members, skips syntactically valid
+quoted/nested decoys, rejects malformed unknown members before a requested key,
+and rejects duplicate instances of the requested key, including equivalent JSON
+escape spellings, rather than selecting one implicitly. A missing, empty, or
+oversized execution-source environment value clears the adapter's provenance
+override rather than retaining stale process state. Rebuilt debug argument
+vectors reserve and write the required null
+sentinel after `argv[argc]`; malformed or over-capacity vectors fail before the
+guest entry point is called. Gameplay uses centered relative mouse capture;
+pause, menus, automap, demos, and focus loss release the cursor. Native
+capture ownership is verified before the adapter hides/centers the cursor, and
+a failed cursor warp does not leave a synthetic-centering event armed. A failed
+capture release likewise keeps the adapter marked captured so a later update can
+retry instead of diverging from Win32 state. Focus loss also emits releases for
+tracked held keys and mouse buttons so an unfocused button-up
+cannot leave guest input latched on the next activation. Losing relative mouse
+capture independently releases any held mouse buttons for the same reason. If
+the bounded input queue is full, pending key presses/releases and the latest
+mouse-button state remain tracked and are retried during later polling instead
+of being forgotten, including ordinary focused key/button transitions. A
+physical key-up cancels an undelivered pending press, while a re-press waits
+behind its older pending release so guest event order remains coherent.
+Close/quit requests use the same fail-closed retry principle rather than
+disappearing when
+the ring is full. Polling and capture requests after video shutdown are inert,
+so they cannot consume unrelated thread messages or leak capture intent into a
+later video session.
+
+Indexed presentation admits only the logical dimensions established at video
+initialization. The retained 8-bit frame is allocated to that exact logical
+geometry with checked stride/size arithmetic, so documented high-resolution
+rasters such as 2304-by-1080 are not rejected by an obsolete fixed backing-store
+ceiling. Each row is copied with DWORD-aligned DIB stride and zero padding before
+GDI sees the frame. Uncompressed `BI_RGB` publishes `biSizeImage = 0`, as allowed
+by GDI, rather than narrowing a host-size byte count to `DWORD`. DIB metadata
+owns a real 256-entry palette object whose header/palette layout is asserted
+compatible with the `BITMAPINFO` prefix passed to GDI, so
+palette access does not depend on over-indexing a one-element C array. The
+hand-declared Win32 structures are compile-time checked against the supported
+64-bit ABI sizes, including the SDK-compatible packed 18-byte `WAVEFORMATEX`.
+Native client/window rectangle spans are widened and validated before subtraction
+so malformed host geometry cannot trigger signed overflow. The
+video ABI's borderless request selects a popup window style. Negative minimum
+presentation rates are rejected at admission. Optional launcher-side 60 Hz
+pacing is disabled when the guest requires a higher minimum presentation rate,
+so the launcher does not deliberately throttle below that request. Repeated
+video or audio initialization is rejected while the matching host resource is
+already live, so re-entry cannot overwrite an owned native handle. Video startup
+also requires both the process module handle and system arrow cursor before
+class/window creation. A pre-existing same-name window class is reused only when
+its registered procedure and relevant class ownership fields match the adapter's
+expected class, so an unrelated registration cannot silently capture messages.
+Video and audio initialization publish newly acquired
+native handles only after their open operations succeed. Video shutdown
+invalidates the old frame, queued input, pacing counters, and the trace-title
+refresh timer before a later video session can use them.
+Guest trace text remains owned by the running guest across window re-init. A
+failed native window destroy, retained-frame release, or audio close retains
+the corresponding owned resource, disables further use as needed, and blocks
+re-initialization until a later teardown succeeds. File-handle slots likewise
+remain occupied when native close fails, preventing a still-live handle from
+being silently recycled.
+Failed file-open and currently unsupported network resolve/receive calls clear
+their caller-visible handle/endpoint outputs rather than leaving stale tokens
+behind.
+Zero-length file reads/writes admit null data storage as no-op payloads; a
+zero-length random read returns without changing the native file pointer.
+`FileWriteAll` continues across positive partial native writes and rejects a
+zero-progress success rather than reporting a truncated file as complete. If a
+write-all handle cannot close, the adapter retains it and blocks later writes
+until cleanup succeeds instead of losing ownership of a live native handle. The
+debug clock publishes its frequency/origin only after both queries succeed and
+rejects impossible or unrepresentable timing samples without publishing
+regressive state. FPS window accounting saturates before signed or scaled
+arithmetic can overflow even if a nonzero host clock stalls. Sleep requests
+round up to milliseconds without unsigned overflow and split long finite waits
+so the Win32 `INFINITE` sentinel is never introduced by conversion.
+
 When `show_fps` is enabled, language-neutral execution telemetry drives titles
 such as `FPS 232 - C doom.c:258 R_RenderPlayerView(...)` and, for the future
 capability-linked artifact, `FPS 60 - MALBOLGE doom.malbolge@4782969 [j]`.
