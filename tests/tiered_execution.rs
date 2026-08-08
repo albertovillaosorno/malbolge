@@ -64,7 +64,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::fs::{create_dir_all, read, remove_dir_all, write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, id as process_id};
 use std::str::from_utf8;
 use std::sync::Arc;
 use std::thread;
@@ -5503,7 +5503,8 @@ fn check_rejected_coff_mutations(
 }
 
 fn native_test_directory(root: &Path) -> PathBuf {
-    root.join(".temp/native-bootstrap-tests")
+    root.join(".temp")
+        .join(format!("native-bootstrap-tests-{}", process_id()))
 }
 
 fn compile_native_object(
