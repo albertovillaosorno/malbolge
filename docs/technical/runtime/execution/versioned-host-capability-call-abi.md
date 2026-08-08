@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+Implemented version-one semantic ABI. Generated-artifact lowering and the
+cross-platform production runner matrix remain downstream work owned by
+`cross-platform-native-capability-runners`.
 
 ## Purpose
 
@@ -35,10 +37,10 @@ changing its guest-visible contract.
 The DOOM interoperability work supplies design evidence for a narrow external-
 effect boundary and a version-1 capability-ID pattern. The broader DOOM host
 surface remains application-local evidence rather than a standardized VM ABI.
-This contract promotes only the historically reserved execution-telemetry family
-and the guest-directed relative-mouse request described below; it does not
-freeze
-other `DoomHost_*` spellings or require a new Malbolge opcode.
+This contract promotes four opaque version-one families: monotonic time,
+relative-duration sleep, the historically reserved execution-telemetry family,
+and guest-directed relative mouse capture. It does not freeze other
+`DoomHost_*` spellings or require a new Malbolge opcode.
 
 ### Implementation Status
 
@@ -47,24 +49,74 @@ safe Rust and independent pure C. It defines the canonical frame, registry
 metadata, discovery categories, range admission, and response-state validation.
 The two implementations share fixed byte vectors, but neither calls the other.
 
-This foundation does not complete the TODO. Two narrow capability-specific
-schemas are admitted as executable contract evidence, but no general C lowering,
-interpreter/JIT/AOT dispatch path, runner transport, or complete production
-registry exists yet. The pending `deterministic-c-to-malbolge-abi` prerequisite
-also prevents completion.
+The version-one semantic ABI is implemented. Four capability-specific schemas,
+one transport-neutral safe-Rust dispatch coordinator, independent Rust/C wire
+contracts, and one production standard-library timing transport are executable.
+The deterministic C ABI prerequisite is complete.
+
+This contract deliberately stops before generated-artifact capability lowering
+and the supported Windows/macOS/Linux runner matrix. That work is owned by the
+downstream `cross-platform-native-capability-runners` contract, which depends on
+this semantic ABI and must consume its identities and vectors unchanged.
 
 The implementation surfaces are:
 
 - `src/runtime/virtual-machine/contract/host_capability.rs` for generic safe-
   Rust framing and payload-span primitives;
-- `src/runtime/virtual-machine/contract/host_capability_mouse.rs` and
-  `host_capability_telemetry.rs` for the two safe-Rust built-in schemas;
+- `src/runtime/virtual-machine/contract/host_capability_mouse.rs`,
+  `host_capability_telemetry.rs`, and `host_capability_time.rs` for safe-Rust
+  built-in schemas;
+- `src/runtime/virtual-machine/port-outbound/host_capability.rs` for the
+  transport-neutral effect port;
+- `src/runtime/virtual-machine/application/host_capability_dispatch.rs` for
+  validate-effect-commit orchestration and the sorted built-in registry;
+- `src/runtime/virtual-machine/adapter-outbound/host_capability_time.rs` for a
+  production standard-library monotonic-time/sleep transport;
 - `src/runtime/virtual-machine/adapter-outbound/c/malbolge_host_capability*.h`
-  and matching `.c` files for independent pure-C codecs and validators;
+  and matching `.c` files for independent pure-C codecs, validators, and
+  canonical built-in registry assembly;
 - `tests/vm/host_capability*.rs` for safe-Rust vectors; and
 - `tests/vm/host_capability*_conformance.c` plus
   `tests/test_host_capability_c_abi.py` for independent C vectors on reviewed
   Windows ABI targets.
+
+### Transport-neutral dispatch
+
+The safe-Rust VM now exposes one synchronous application dispatcher shared by
+all future runner adapters. It validates the request and guest ranges before the
+outbound transport can observe the call. The transport receives only immutable
+request payload bytes plus the admitted frame; it never receives mutable guest
+memory or a host pointer.
+
+A transport returns a response frame and host-owned staged result bytes. The
+dispatcher validates response identity, status, blocking/partial-progress rules,
+and staged-result length before atomically copying any result into guest memory.
+An invalid response or transport failure leaves guest memory unchanged.
+
+`host_builtin_capability_registry()` returns the currently implemented built-in
+descriptors in canonical semantic-ID order: monotonic time `0x00000400`, sleep
+`0x00000401`, execution telemetry `0x00000600`, then relative mouse capture
+`0x00000601`. Typed availability state is transport policy and does not change
+identity, version ranges, behavior flags, or ordering. Pure C exposes the
+same typed-availability registry constructor and rejects invalid enum values or
+wrong registry extent before writing descriptors. Additional production families
+may be added only through explicit versioned schema work.
+
+Three independent test transports model interpreter-, JIT-, and AOT-style
+adapter strategies through this same dispatcher. One uses the semantic frame
+directly, one performs a canonical wire encode/decode round trip, and one
+reconstructs the response field by field. Two-call vectors prove identical
+response bytes, guest memory, and effect ordering across those distinct paths.
+These are tier-neutral semantic-ABI fixtures, not claims that production native
+runners are already implemented.
+
+The standard-library timing transport is a concrete production implementation
+of the same port. It creates one private `Instant` origin per transport, returns
+nondecreasing nanosecond observations, maps unrepresentable/regressing clock
+state to `HOST_ERROR`, uses host thread sleep only for positive blocking
+requests, returns `WOULD_BLOCK` for positive `NONBLOCKING` sleeps, and completes
+a zero-duration sleep without waiting. It exposes no wall-clock epoch or native
+timer handle.
 
 ### Version-one call frame
 
@@ -155,9 +207,46 @@ than creating two encodings for identical behavior.
 
 ### Built-in version-one extension schemas
 
-The following two IDs are promoted from the DOOM interoperability evidence as
-opaque VM capability identities. Their adjacent numbers carry no family or
-category semantics, and no other DOOM capability number is standardized here.
+The following four IDs are opaque VM capability identities. Numeric adjacency
+carries no family or category semantics. The timing families generalize timing
+needs already present at the DOOM boundary; telemetry and mouse retain their
+historically reserved identities.
+
+#### Monotonic time `0x00000400`
+
+Version `1`, operation `0`, observes a runner monotonic clock. The request is
+empty and reserves exactly eight result bytes. `COMPLETE` returns one
+little-endian `u64` nanosecond count. The clock origin is intentionally
+unspecified and inaccessible: the value is not Unix time, local time, a calendar
+clock, or evidence about a host wall-clock epoch.
+
+Within one production runner execution context, successful observations must not
+decrease. A host counter failure, regression that the adapter cannot safely
+normalize, or conversion that cannot be represented as `u64` fails with
+`HOST_ERROR` instead of publishing a wrapped or wall-clock-derived value. The
+schema codec itself does not maintain clock history; that monotonicity
+obligation
+belongs to the production runner adapter.
+
+Monotonic-time observations are explicit external inputs, not deterministic
+pure-computation results. Differential or replay validation therefore supplies
+the same recorded response sequence to each compared tier. Tier equivalence is
+agreement for the same capability responses, not an assertion that two live
+clock reads must return equal numbers.
+
+#### Relative-duration sleep `0x00000401`
+
+Version `1`, operation `0`, requests one little-endian `u64` duration in
+nanoseconds and reserves no result bytes. Its descriptor declares `MAY_BLOCK`.
+A zero duration may complete immediately. A blocking request uses flags zero;
+a production adapter may report `COMPLETE` only after the requested duration has
+elapsed according to its monotonic timing source, subject to later scheduling.
+
+A request with `NONBLOCKING` asks the adapter not to wait. If the requested wait
+cannot complete without blocking, `WOULD_BLOCK` is the canonical response and
+carries no result bytes. `PARTIAL` is never valid for version one. Host timer
+failure and cancellation use the generic `HOST_ERROR` and `CANCELLED` statuses.
+No sleep request exposes a native timer handle or host scheduler identity.
 
 #### Execution telemetry `0x00000600`
 
@@ -275,12 +364,25 @@ semantics to keep execution moving.
 - Required fixtures cover canonical frame encoding, every argument/result type,
   pointer/range boundaries, capability discovery, unsupported versions,
   malformed frames, host failures, and blocking/partial-progress rules.
-- The same frame vectors are executed through interpreter and every admitted
-  native tier and compared for guest memory, returned values, diagnostics, and
-  externally observable ordering.
-- Cross-platform runner tests prove that capability identity does not change
-  when
-  the host adapter changes.
+- `tests/vm/host_capability_dispatch.rs` proves pre-effect rejection, atomic
+  response publication, schema-aware clock result admission, canonical built-in
+  registry order, and equal observations across three independently labeled
+  recording transports.
+- `tests/vm/host_capability_time.rs` and the independent pure-C timing harness
+  prove identical little-endian clock/sleep vectors, descriptor behavior,
+  exact clock result width, and blocking/nonblocking sleep status rules.
+- Rust and independent C registry fixtures encode the same exact 64-byte
+  four-family descriptor vector; the C constructor also proves invalid
+  availability/extent rejection occurs before descriptor publication.
+- `tests/vm/host_capability_time_transport.rs` exercises the production
+  standard-library timing transport through schema-aware dispatch without
+  wall-clock assertions or positive blocking sleeps in the test process.
+- Three distinct interpreter/JIT/AOT-style transport fixtures execute the same
+  ordered call vectors and compare complete responses, guest memory, and effect
+  order at the semantic ABI boundary.
+- Downstream cross-platform runner tests must reuse these identities and vectors
+  when generated-artifact lowering and platform adapters are implemented; that
+  runner matrix is not duplicated in this prerequisite contract.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi` and
   `canonical-malbolge-target-profile`.
 
@@ -292,3 +394,7 @@ semantics to keep execution moving.
   Runtime](../../adr/compiler-pipeline-and-guest-runtime.md)
 - [Tiered Native Execution](../../adr/tiered-native-execution.md)
 - [Verification Trust Boundary](../../adr/verification-trust-boundary.md)
+- [Rust Toolchain 1.97.1](
+  ../../../bibliography/platforms-and-runtimes/rust-toolchain-1-97-1.md)
+- [Cross-platform Native Capability Runners](
+  cross-platform-native-capability-runners.md)

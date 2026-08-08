@@ -44,6 +44,10 @@ using the toolchain does not relicense repository source or generated artifacts.
 - The point release fixes a reported LLVM optimization miscompilation.
 - `Cargo.toml` requires Rust 1.97.1.
 - `.jig/version/rust-toolchain.toml` pins the Windows GNU stable channel.
+- Rust 1.97.1 documents `Instant` as an opaque monotonically nondecreasing
+  clock suitable for elapsed-time measurement rather than wall-clock identity.
+- Rust 1.97.1 documents `thread::sleep` as blocking for at least the requested
+  duration, with platform-specific rounding or interrupted-sleep retries.
 
 ### Unresolved
 
@@ -55,4 +59,8 @@ dated nightly tools require installation-manifest evidence for each host.
 - <https://blog.rust-lang.org/2026/07/16/Rust-1.97.1/> - accessed
   2026-08-05.
 - <https://doc.rust-lang.org/1.97.1/> - accessed 2026-08-05.
+- <https://doc.rust-lang.org/1.97.1/std/time/struct.Instant.html> - accessed
+  2026-08-08.
+- <https://doc.rust-lang.org/1.97.1/std/thread/fn.sleep.html> - accessed
+  2026-08-08.
 - <https://www.rust-lang.org/policies/licenses> - accessed 2026-08-05.
