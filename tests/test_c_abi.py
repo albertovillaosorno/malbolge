@@ -61,6 +61,7 @@ EXPECTED_REJECTIONS = {
     "abi_extended_alignment.c": c_abi_source.DIAGNOSTIC_ALIGNMENT,
     "abi_int128_extension.c": c_abi_source.DIAGNOSTIC_INT128,
     "abi_packed_attribute.c": c_abi_source.DIAGNOSTIC_PACKED,
+    "abi_packed_field.c": c_abi_source.DIAGNOSTIC_PACKED,
     "abi_pragma_pack.c": c_abi_source.DIAGNOSTIC_PRAGMA_PACK,
     "abi_vector_extension.c": c_abi_source.DIAGNOSTIC_VECTOR,
 }
@@ -198,6 +199,27 @@ def test_rejected_abi_fixtures_have_source_located_codes() -> None:
         )
         assert all(diagnostic.line > 0 for diagnostic in diagnostics)
         assert all(diagnostic.column > 0 for diagnostic in diagnostics)
+
+
+def test_imported_forbidden_alias_is_diagnosed_at_source_use() -> None:
+    """Included forbidden types are reported at the selected source use."""
+    _require_llvm()
+    source = (
+        ROOT
+        / "tests"
+        / "tidy"
+        / "plugin-rejected"
+        / "abi_imported_forbidden_alias.c"
+    )
+
+    diagnostics = c_abi_source.analyze_source(source)
+
+    assert diagnostics
+    assert {diagnostic.code for diagnostic in diagnostics} == {
+        c_abi_source.DIAGNOSTIC_INT128
+    }
+    expected_path = source.resolve()
+    assert all(diagnostic.path == expected_path for diagnostic in diagnostics)
 
 
 def test_manual_guest_validator_uses_abi_preflight() -> None:
