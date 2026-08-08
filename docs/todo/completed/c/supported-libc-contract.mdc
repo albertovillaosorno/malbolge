@@ -1,6 +1,6 @@
 ---
 id: "supported-libc-contract"
-status: "pending"
+status: "completed"
 lane: "7"
 area: "c"
 task: "TODO - Supported libc contract"
@@ -53,3 +53,27 @@ routines without hidden host shortcuts.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
 - Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
+
+- Completion evidence on 2026-08-08: `c-libc-v1.json` defines closed
+  `malbolge-libc-v1` header and routine policy bound to `malbolge-c32-v1` and
+  target profile `malbolge-2026`.
+- Completion evidence on 2026-08-08: nine memory/narrow-string routines are
+  repository-owned freestanding guest C; strict wasm32 C23 compilation passes,
+  a Windows `/nodefaultlib` harness executes all nine successfully, and the two
+  runtime objects have no undefined symbols.
+- Completion evidence on 2026-08-08: declaration-only guest `stdlib.h`,
+  `stdio.h`, and `math.h` reserve deterministic future signatures while source
+  preflight emits `MALBOLGE-LIBC-001` for unavailable calls and
+  `MALBOLGE-LIBC-002` for forbidden ambient-host semantics.
+- Completion evidence on 2026-08-08: source-defined functions that reuse a
+  forbidden library spelling are admitted by declaration identity rather than
+  name-only matching. Focused ABI/libc/plugin regression coverage passed 54
+  tests, including 13 libc tests, and bibliography coverage passed 11 tests.
+- Completion evidence on 2026-08-08: repository-wide Ruff and basedpyright were
+  clean, and exhaustive `jig validate --root .` completed with `status: clean`
+  and `diagnostics_total: 0` before retirement.
+- **Completion:** Completed on 2026-08-08 after the versioned guest library
+  authority, executable memory/string subset, future declaration contracts,
+  source-located availability diagnostics, native no-CRT dependency evidence,
+  and exhaustive repository validation all passed. Executable heap, stream,
+  formatting, and `libm` bodies remain owned by `guest-runtime-and-allocator`.

@@ -60,15 +60,6 @@ instead of saturating at one application-specific threshold.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/applications/parametric-compiler-challenge-generator.mdc](docs/todo/open/applications/parametric-compiler-challenge-generator.mdc)
 
-### TODO - Supported libc contract
-
-Define the guest C library surface: fixed-width integers, memory primitives,
-byte streams, strings, allocation, formatting, `libm`, and later higher-level
-routines without hidden host shortcuts.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/c/supported-libc-contract.mdc](docs/todo/open/c/supported-libc-contract.mdc)
-
 ### TODO - Clang C frontend integration
 
 Use Clang as the C parser, type system, constant evaluator, source-location
