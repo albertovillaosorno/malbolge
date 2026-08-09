@@ -62,28 +62,47 @@ OUTPUT_MODULUS = 256
 INPUT_INSTRUCTION = "/"
 OUTPUT_INSTRUCTION = "<"
 INPUT_DECLARATION = "uint32_t malbolge_guest_intrinsic_input_word(void);"
-OUTPUT_DECLARATION = (
-    "void malbolge_guest_intrinsic_output_byte(uint8_t value);"
-)
+OUTPUT_DECLARATION = "void malbolge_guest_intrinsic_output_byte(uint8_t value);"
 INTRINSIC_SOURCE_NAME = "guest_intrinsics.c"
 FORMAT_KERNEL_VISIBILITY = "internal-typed-kernel-not-public-snprintf"
+FORMAT_PARSER = "c23-narrow-tokenizer-implemented"
+FORMAT_PARSER_BINARY = "b-and-uppercase-B-supported"
+FORMAT_PARSER_DYNAMIC_FIELDS = "width-and-precision-asterisk-preserved"
+FORMAT_PARSER_SPECIFIC_WIDTH = "wN-and-wfN-positive-u32-no-leading-zero"
+FORMAT_PARSER_SEMANTIC_VALIDATION = "c23-directive-admission-implemented"
+FORMAT_SPECIFIC_WIDTH_BITS = [8, 16, 32, 64]
+FORMAT_VARIADIC_DECODER = "canonical-promoted-block-cursor-implemented"
+FORMAT_VARIADIC_ADDRESS = "decoded-object-pointer-zero-based-offset"
+FORMAT_VARIADIC_MAX_OFFSET = 0xFFFFFFFE
+FORMAT_VARIADIC_KINDS = [
+    "i32",
+    "u32",
+    "i64",
+    "u64",
+    "f64-bits",
+    "f128-bits",
+    "pointer32",
+]
+FORMAT_VA_LIST_BRIDGE = "compiler-lowering-required"
+FORMAT_ARGUMENT_RESOLUTION = "atomic-dynamic-fields-and-promoted-conversion"
+FORMAT_SCALAR_EXECUTION = "d-i-u-o-x-X-b-B-c-percent-implemented"
+FORMAT_WIDE_CHARACTER = "wint-t-not-defined-v1-fail-closed"
+FORMAT_POINTER_EXECUTION = "not-implemented"
 FORMAT_NOT_IMPLEMENTED = "not-implemented"
 FORMAT_BASES = [2, 8, 10, 16]
 FORMAT_PUBLIC_ROUTINES = ["snprintf", "vsnprintf"]
 FORMAT_PRECISION_POLICY = "u32-0xffffffff-means-omitted"
 
-GATED_ROUTINES = frozenset(
-    {
-        "malloc",
-        "calloc",
-        "realloc",
-        "free",
-        "getchar",
-        "putchar",
-        "snprintf",
-        "vsnprintf",
-    }
-)
+GATED_ROUTINES = frozenset({
+    "malloc",
+    "calloc",
+    "realloc",
+    "free",
+    "getchar",
+    "putchar",
+    "snprintf",
+    "vsnprintf",
+})
 
 STATUS_PATTERN = re.compile(
     r"^  MALBOLGE_GUEST_RUNTIME_(?P<name>[A-Z_]+) = (?P<value>[0-9]+)[,]?$",
@@ -93,21 +112,19 @@ HEAP_OFFSET_PATTERN = re.compile(
     r"^#define OFFSET_(?P<name>[A-Z_]+) UINT32_C\((?P<value>[0-9]+)\)$",
     re.MULTILINE,
 )
-RUNTIME_TOP_LEVEL_KEYS = frozenset(
-    {
-        "schema_version",
-        "runtime_id",
-        "abi_id",
-        "target_profile",
-        "status",
-        "heap",
-        "startup",
-        "frame",
-        "byte_io",
-        "formatting_kernel",
-        "host_fallback",
-    }
-)
+RUNTIME_TOP_LEVEL_KEYS = frozenset({
+    "schema_version",
+    "runtime_id",
+    "abi_id",
+    "target_profile",
+    "status",
+    "heap",
+    "startup",
+    "frame",
+    "byte_io",
+    "formatting_kernel",
+    "host_fallback",
+})
 
 MACRO_PATTERN = re.compile(
     r"^#define (?P<name>[A-Z0-9_]+) UINT32_C\((?P<value>[0-9]+)\)$",
@@ -219,8 +236,40 @@ def test_formatting_kernel_stays_private_and_gated() -> None:
     assert formatting["visibility"] == FORMAT_KERNEL_VISIBILITY
     assert formatting["integer_bases"] == FORMAT_BASES
     assert formatting["precision"] == FORMAT_PRECISION_POLICY
-    assert formatting["format_parser"] == FORMAT_NOT_IMPLEMENTED
-    assert formatting["variadic_decoder"] == FORMAT_NOT_IMPLEMENTED
+    assert formatting["format_parser"] == FORMAT_PARSER
+    assert formatting["format_parser_binary"] == FORMAT_PARSER_BINARY
+    assert (
+        formatting["format_parser_dynamic_fields"]
+        == FORMAT_PARSER_DYNAMIC_FIELDS
+    )
+    assert (
+        formatting["format_parser_specific_width"]
+        == FORMAT_PARSER_SPECIFIC_WIDTH
+    )
+    assert (
+        formatting["format_parser_semantic_validation"]
+        == FORMAT_PARSER_SEMANTIC_VALIDATION
+    )
+    assert (
+        formatting["format_specific_width_supported_bits"]
+        == FORMAT_SPECIFIC_WIDTH_BITS
+    )
+    assert formatting["variadic_decoder"] == FORMAT_VARIADIC_DECODER
+    assert formatting["variadic_cursor_address"] == FORMAT_VARIADIC_ADDRESS
+    assert (
+        formatting["variadic_cursor_maximum_byte_offset"]
+        == FORMAT_VARIADIC_MAX_OFFSET
+    )
+    assert formatting["variadic_kinds"] == FORMAT_VARIADIC_KINDS
+    assert formatting["source_va_list_bridge"] == FORMAT_VA_LIST_BRIDGE
+    assert (
+        formatting["format_argument_resolution"] == FORMAT_ARGUMENT_RESOLUTION
+    )
+    assert formatting["scalar_conversion_execution"] == FORMAT_SCALAR_EXECUTION
+    assert formatting["wide_character_argument"] == FORMAT_WIDE_CHARACTER
+    assert (
+        formatting["pointer_conversion_execution"] == FORMAT_POINTER_EXECUTION
+    )
     assert formatting["floating_formatting"] == FORMAT_NOT_IMPLEMENTED
     assert formatting["public_routines"] == FORMAT_PUBLIC_ROUTINES
     assert formatting["public_routines_available"] is False
@@ -239,8 +288,7 @@ def test_runtime_constants_match_abi_and_current_profile() -> None:
     semantics = cast("dict[str, object]", current["semantics"])
 
     assert (
-        macros["MALBOLGE_GUEST_FRAME_HEADER_SIZE"]
-        == call["frame_header_bytes"]
+        macros["MALBOLGE_GUEST_FRAME_HEADER_SIZE"] == call["frame_header_bytes"]
     )
     assert macros["MALBOLGE_GUEST_HEAP_ALIGNMENT"] == call["stack_alignment"]
     assert macros["MALBOLGE_GUEST_PROFILE_EOF_WORD"] == semantics["eof_word"]

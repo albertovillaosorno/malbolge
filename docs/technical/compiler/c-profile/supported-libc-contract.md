@@ -2,10 +2,11 @@
 
 ## Status
 
-Implemented for `malbolge-libc-v1`. Memory, narrow-string, and exact binary64
-`fabs`/`floor`/`ceil`/`trunc` routines are executable guest C today. Allocation,
-byte streams, formatting, and correctly-rounded inexact math remain versioned
-but unavailable until their runtime/integration gates complete.
+Implemented for `malbolge-libc-v1`. Memory, narrow-string, exact binary64
+`fabs`/`floor`/`ceil`/`trunc`, and canonical nearest-ties-even `sqrt` are
+executable guest C today. Allocation, byte streams, formatting, and the
+remaining transcendental math stay versioned but unavailable until their
+runtime/integration gates complete.
 
 ## Purpose
 
@@ -29,8 +30,8 @@ This contract governs:
   fixtures.
 
 This contract lane does not own heap/stream integration, formatting, or the
-remaining correctly-rounded inexact `libm` algorithms. Those facilities remain
-owned by `guest-runtime-and-allocator`.
+remaining correctly-rounded transcendental `libm` algorithms. Those facilities
+remain owned by `guest-runtime-and-allocator`.
 
 ## Current Behavior
 
@@ -76,8 +77,8 @@ The guest library owns four version-one headers:
 - `<string.h>` declares the executable memory and narrow-string subset;
 - `<stdlib.h>` declares only the contracted allocation subset;
 - `<stdio.h>` declares only byte I/O and bounded formatting;
-- `<math.h>` declares the executable exact and contracted inexact binary64
-  subset.
+- `<math.h>` declares the executable exact/`sqrt` subset and contracted
+  transcendental binary64 subset.
 
 Guest headers intentionally retain stable declarations for both executable and
 unavailable routines. A source may include them in any build configuration, but
@@ -87,15 +88,17 @@ exposed.
 
 ### Executable routines
 
-Thirteen routines are executable ordinary guest C today:
+Fourteen routines are executable ordinary guest C today:
 
 - `memcpy`, `memmove`, `memset`, and `memcmp`;
 - `strlen`, `strcmp`, `strcpy`, `strncpy`, and `strcat`; and
-- `fabs`, `floor`, `ceil`, and `trunc` for exact binary64 operations.
+- `fabs`, `floor`, `ceil`, and `trunc` for exact binary64 operations; and
+- `sqrt` with ABI-fixed nearest-ties-even rounding and canonical NaN.
 
 Memory/string declarations live in `contract/include/string.h`; implementations
-live in `domain/memory.c` and `domain/string.c`. Exact math declarations live in
-`contract/include/math.h` with implementation in `domain/math_exact.c`. The
+live in `domain/memory.c` and `domain/string.c`. Math declarations live in
+`contract/include/math.h`; exact operations use `domain/math_exact.c` and the
+proved square-root algorithm uses `domain/math_sqrt.c`. The
 memory/string implementations are freestanding byte loops. `memmove` uses
 the version-one guest `uintptr_t` pointer encoding to choose copy direction;
 `memcmp` and `strcmp` compare unsigned byte values and return a deterministic
@@ -117,7 +120,7 @@ emit `MALBOLGE-LIBC-001` until lane 8 supplies executable guest implementations:
 - allocation: `malloc`, `calloc`, `realloc`, and `free`;
 - byte streams: `getchar` and `putchar`;
 - bounded formatting: `snprintf` and `vsnprintf`;
-- inexact binary64 math: `sqrt`, `sin`, `cos`, and `atan2`.
+- transcendental binary64 math: `sin`, `cos`, and `atan2`.
 
 Allocation is specified as guest-heap behavior rather than a host allocation
 service. Byte streams use the deterministic byte-I/O semantics already owned by
@@ -197,17 +200,18 @@ while still preventing accidental execution through host libraries.
 - strict C23 wasm32 frontend compilation of both executable guest modules and
   the accepted source fixture;
 - exact source-located diagnostics for unavailable allocation, unavailable
-  inexact `libm`, and forbidden host-process control;
+  transcendental `libm`, and forbidden host-process control;
 - source-defined forbidden-name spellings are not false positives;
 - declaration-only headers do not imply routine availability;
 - the manual validator runs libc preflight before clang-tidy;
-- on Windows, a pinned-Clang no-CRT executable exercises all 13 available
+- on Windows, a pinned-Clang no-CRT executable exercises all 14 available
   routines and exits successfully;
-- an independent 274-pattern rational differential locks exact binary64 math
-  across fixed edge encodings and deterministic pseudo-random inputs;
-- memory/string objects have no undefined symbols; the Windows math object has
-  only the MSVC `_fltused` marker supplied by the test harness, while the wasm32
-  math object has only target stack machinery and no library dependency.
+- an independent 274-pattern rational differential locks exact binary64 math,
+  while a separate 532-pattern arbitrary-precision integer-square-root
+  differential locks canonical `sqrt`;
+- memory/string objects have no undefined symbols; Windows math objects expose
+  only the expected MSVC float marker, while wasm32 math objects expose only
+  target stack machinery and no callable library dependency.
 
 The no-CRT native harness is dependency evidence, not a claim that native
 execution is guest execution. The routines are admitted because their actual

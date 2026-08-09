@@ -115,6 +115,13 @@
       "signature": "double trunc(double)",
       "implementation": "guest-c",
       "semantics": "binary64-toward-zero"
+    },
+    {
+      "name": "sqrt",
+      "header": "math.h",
+      "signature": "double sqrt(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-nearest-ties-even-canonical-nan"
     }
   ],
   "contracted_unavailable": [
@@ -172,13 +179,6 @@
       "header": "stdio.h",
       "signature": "int vsnprintf(char *,size_t,const char *,va_list)",
       "semantics": "locale-free-canonical-formatting-va-list",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "sqrt",
-      "header": "math.h",
-      "signature": "double sqrt(double)",
-      "semantics": "binary64-nearest-ties-even-canonical-nan",
       "owner": "guest-runtime-and-allocator"
     },
     {

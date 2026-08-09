@@ -83,6 +83,11 @@ parts:
     kind: domain
     language: c
     responsibility: Implement exact deterministic binary64 math routines.
+  - id: part-0010
+    path: domain/math_sqrt.c
+    kind: domain
+    language: c
+    responsibility: Implement correctly rounded deterministic binary64 sqrt.
 projects: []
 tests: []
 graph:

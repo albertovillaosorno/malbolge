@@ -127,6 +127,34 @@ static int test_exact_math(void) {
   return 0;
 }
 
+static int test_sqrt(void) {
+  const uint64_t positive_zero = UINT64_C(0x0000000000000000);
+  const uint64_t negative_zero = UINT64_C(0x8000000000000000);
+  const uint64_t min_subnormal = UINT64_C(0x0000000000000001);
+  const uint64_t min_subnormal_root = UINT64_C(0x1e60000000000000);
+  const uint64_t positive_two = UINT64_C(0x4000000000000000);
+  const uint64_t sqrt_two = UINT64_C(0x3ff6a09e667f3bcd);
+  const uint64_t positive_four = UINT64_C(0x4010000000000000);
+  const uint64_t positive_infinity = UINT64_C(0x7ff0000000000000);
+  const uint64_t negative_one = UINT64_C(0xbff0000000000000);
+  const uint64_t signaling_nan = UINT64_C(0x7ff0000000000001);
+  const uint64_t canonical_nan = UINT64_C(0x7ff8000000000000);
+
+  if (double_bits(sqrt(double_from_bits(positive_zero))) != positive_zero ||
+      double_bits(sqrt(double_from_bits(negative_zero))) != negative_zero ||
+      double_bits(sqrt(double_from_bits(min_subnormal))) !=
+          min_subnormal_root ||
+      double_bits(sqrt(double_from_bits(positive_two))) != sqrt_two ||
+      double_bits(sqrt(double_from_bits(positive_four))) != positive_two ||
+      double_bits(sqrt(double_from_bits(positive_infinity))) !=
+          positive_infinity ||
+      double_bits(sqrt(double_from_bits(negative_one))) != canonical_nan ||
+      double_bits(sqrt(double_from_bits(signaling_nan))) != canonical_nan) {
+    return 1;
+  }
+  return 0;
+}
+
 static int same_bytes(const unsigned char *left, const unsigned char *right,
                       size_t count) {
   return memcmp(left, right, count) == 0;
@@ -171,6 +199,12 @@ int probe_entry(void) {
     const int math_result = test_exact_math();
     if (math_result != 0) {
       return 10 + math_result;
+    }
+  }
+  {
+    const int sqrt_result = test_sqrt();
+    if (sqrt_result != 0) {
+      return 20 + sqrt_result;
     }
   }
   return 0;

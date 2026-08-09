@@ -21,13 +21,13 @@
 // - Merge-When:
 //   - Merge when another fixture owns this exact libm rejection.
 // - Summary:
-//   - Contracted-unavailable sqrt fixture.
+//   - Contracted-unavailable sin fixture.
 // - Description:
 //   - Proves exact future math signatures do not imply executable support.
 // - Usage:
 //   - Consumed by guest-libc source preflight regression tests.
 // - Defaults:
-//   - Rejection occurs at the sqrt reference in this source file.
+//   - Rejection occurs at the sin reference in this source file.
 //
 
 //! Deterministic binary64 math is contracted now and implemented later.
@@ -36,5 +36,5 @@
 
 double libc_math_probe(void)
 {
-    return sqrt(4.0);
+    return sin(4.0);
 }

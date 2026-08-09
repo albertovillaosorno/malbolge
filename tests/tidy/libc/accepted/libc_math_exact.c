@@ -11,7 +11,7 @@
 // - Owns:
 //   - Positive source-preflight evidence for exact available guest math.
 // - Must-Not:
-//   - Reference unavailable sqrt/trigonometric routines or host libm state.
+//   - Reference unavailable trigonometric routines or host libm state.
 // - Allows:
 //   - Inputs: fixed binary64 values and exact math calls.
 //   - Outputs: one deterministic arithmetic combination.

@@ -105,21 +105,36 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   prove byte, EOF, impossible-input, low-eight-bit, and return-value behavior.
   The routines remain unavailable until `ternary-machine-lowering` realizes the
   intrinsic symbols as selected-profile `/` and `<` operations.
-- Implemented formatting-kernel evidence: `guest_format.h`/`format.c` provide a
+- Implemented formatting evidence: `guest_format.h`/`format.c` provide a
   private typed substrate for integer bases 2/8/10/16, strings, characters,
   width/precision/sign/prefix rules, bounded writes, and would-have-written
-  counting. Independent vectors cover truncation and overflow; cross-ABI object
-  checks show no Windows helper dependencies and only wasm target stack
-  machinery. Public `snprintf`/`vsnprintf` remain unavailable because format
-  parsing, guest `va_list`, floating conversions, and the full C23 grammar are
-  intentionally not implemented yet.
+  counting. `guest_format_parse.h`/`format_parse.c` add a separate C23 narrow
+  tokenizer for literals, flags, literal/dynamic width and precision, classic
+  plus `wN`/`wfN` length modifiers, `%b`/`%B`, floating tags, pointer/count tags,
+  and fail-closed decimal overflow/incomplete directives without partial token
+  publication. Directive admission additionally enforces conversion/length/
+  precision/flag relationships and guest specific-width support at 8/16/32/64
+  bits. The canonical promoted-block cursor decodes 32/64/128-bit scalar and
+  pointer representations with guest natural alignment; transactional resolution
+  consumes dynamic fields plus the main promoted argument with rollback on late
+  failure. Scalar execution covers `d/i/u/o/x/X/b/B/c/%`, including explicit
+  post-promotion narrowing. `%lc` fails closed pending `wint_t` authority, while
+  `%s/%p/%n` remain pointer-backed execution work. Cross-ABI checks show no
+  callable host formatting dependency. Public `snprintf`/`vsnprintf` remain
+  unavailable because compiler lowering has not yet bridged source `va_list`
+  state into the canonical cursor, pointer execution is incomplete, and floating
+  conversion execution is intentionally not implemented yet.
 - Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
   ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero
   and infinity semantics, map every NaN to the canonical quiet payload-zero NaN,
   and execute in the no-CRT harness. A fixed-seed 274-pattern rational
-  differential independently verifies exact result bits. `sqrt`, `sin`, `cos`,
-  and `atan2` remain unavailable because their correctly-rounded algorithms are
-  not yet proven.
+  differential independently verifies exact result bits. Canonical `sqrt` now
+  uses a representation-only restoring integer algorithm with ABI-fixed
+  nearest-ties-even rounding; a separate 532-pattern arbitrary-precision
+  `isqrt` differential, no-CRT execution, and cross-ABI symbol checks prove its
+  result bits and lack of host/compiler helper fallback. `sin`, `cos`, and
+  `atan2` remain unavailable because their correctly-rounded transcendental
+  algorithms are not yet proven.
 - Resolved integer/scheduling boundary: version one introduces no separate
   guest helper ABI for ordinary integer arithmetic or scheduling. Integer
   operations are explicit typed-IR semantics consumed by lane 9; the selected
@@ -130,9 +145,11 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: complete public printf parsing, guest
-  `va_list` decoding, floating formatting, and correctly-rounded `sqrt`, `sin`,
-  `cos`, and `atan2`. These routines remain source-unavailable, so their absence
+- Remaining lane-8 algorithm work: pointer-backed `%s/%p/%n` formatting,
+  floating formatting, and correctly-rounded `sin`, `cos`, and `atan2`. Source
+  `va_list` bridging remains downstream
+  compiler-lowering integration work over the implemented canonical cursor.
+  These routines remain source-unavailable, so their absence
   does not invalidate currently accepted C; expanding availability must preserve
   that lowerability invariant.
 - Implemented source-gate evidence: dedicated `malloc`, `calloc`, `realloc`,

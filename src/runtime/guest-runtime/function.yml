@@ -82,6 +82,46 @@ parts:
     kind: domain
     language: c
     responsibility: Implement typed integer, string, and character formatting.
+  - id: part-0010
+    path: contract/guest_format_parse.h
+    kind: contract
+    language: c
+    responsibility: Define stable C23 format-parser token semantics.
+  - id: part-0011
+    path: domain/format_parse.c
+    kind: domain
+    language: c
+    responsibility: Tokenize C23 printf grammar without consuming varargs.
+  - id: part-0012
+    path: contract/guest_varargs.h
+    kind: contract
+    language: c
+    responsibility: Define canonical promoted guest variadic cursor semantics.
+  - id: part-0013
+    path: domain/varargs.c
+    kind: domain
+    language: c
+    responsibility: Decode naturally aligned promoted guest variadic bytes.
+  - id: part-0014
+    path: contract/guest_format_args.h
+    kind: contract
+    language: c
+    responsibility: Define atomic guest format-argument resolution semantics.
+  - id: part-0015
+    path: domain/format_args.c
+    kind: domain
+    language: c
+    responsibility: Resolve dynamic fields and promoted arguments atomically.
+  - id: part-0016
+    path: contract/guest_format_scalar.h
+    kind: contract
+    language: c
+    responsibility: Define resolved scalar printf execution semantics.
+  - id: part-0017
+    path: domain/format_scalar.c
+    kind: domain
+    language: c
+    responsibility: Execute promotion-aware integer, character, and percent output.
 projects: []
 tests: []
 graph:

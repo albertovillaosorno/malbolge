@@ -82,6 +82,7 @@ AVAILABLE_ROUTINES = (
     "strcpy",
     "strlen",
     "strncpy",
+    "sqrt",
     "trunc",
 )
 UNAVAILABLE_ROUTINES = (
@@ -95,7 +96,6 @@ UNAVAILABLE_ROUTINES = (
     "realloc",
     "sin",
     "snprintf",
-    "sqrt",
     "vsnprintf",
 )
 FORBIDDEN_ROUTINES = (

@@ -115,20 +115,42 @@ would-have-written `u32` count. Large discarded width/precision is accounted in
 constant work per emitted segment rather than by looping over bytes that cannot
 fit the destination.
 
-The kernel deliberately does not parse a format string, consume `va_list`, or
-format floating values. The C23 `snprintf`/`vsnprintf` contract covers the full
-formatted-output grammar and requires the same would-have-written result even
-under truncation. Therefore this kernel is implementation substrate only;
-`snprintf` and `vsnprintf` remain contracted-unavailable until parser, guest
-variadic decoding, all admitted conversions, and floating formatting are
-complete.
+The typed kernel deliberately does not consume `va_list` or format floating
+values. `guest_format_parse.h` and `format_parse.c` now own a separate C23 narrow
+format tokenizer. Literal spans, escaped percent, flags, literal/dynamic width
+and precision, classic and `wN`/`wfN` length modifiers, and closed conversion
+tags are preserved without consuming arguments. Decimal overflow, incomplete
+directives, and unknown specifiers fail before token publication. A separate
+directive-admission step then enforces C23 conversion/length/precision/flag
+relationships and limits guest `wN`/`wfN` support to 8, 16, 32, and 64 bits.
+
+The canonical promoted-block vararg cursor and transactional argument resolver
+consume dynamic width/precision plus the main promoted value without partial
+cursor advancement. A scalar executor now completes `d/i/u/o/x/X/b/B/c/%`
+through the typed kernel, including post-promotion `hh`/`h`/`wN` narrowing by
+explicit bits. `%lc` fails closed because version one defines `wchar_t` but has
+no `wint_t` authority. Pointer-backed `%s/%p/%n` execution remains separate from
+the scalar core because it needs guest-memory policy.
+
+The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
+semantics, including the same would-have-written result under truncation. These
+formatting layers are implementation substrate only; public routines remain
+contracted-unavailable until compiler lowering bridges source `va_list` state
+into the canonical promoted-block cursor, pointer-backed execution is defined,
+and floating formatting is complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
 string precision, character fields, truncation, null-capacity behavior,
-count-overflow rejection, and corrupted-sink rejection. Windows i686/x64/ARM64
-objects have no undefined symbols; wasm32 exposes only target stack machinery.
-The same vectors pass pinned ASan/UBSan and path-sensitive Clang analysis.
+count-overflow rejection, and corrupted-sink rejection. Parser vectors cover
+literal/conversion streaming, `%b`/`%B`, dynamic fields, classic and specific-
+width modifiers, decimal-overflow rejection, malformed directives, and error
+non-publication. Vararg/resolution vectors cover natural guest alignment,
+32/64/128-bit promoted values, negative dynamic fields, rollback on late
+failure, and promotion-aware scalar narrowing. Windows i686/x64/ARM64 syntax
+checks, native execution, and wasm32 symbol inspection keep the formatting
+layers independent of host formatting. The typed vectors also pass pinned
+ASan/UBSan and path-sensitive Clang analysis.
 
 ### Exact binary64 math
 
@@ -149,16 +171,28 @@ compiler's `_fltused` marker; the test harness supplies that marker without
 adding a host `libm` implementation.
 
 `fabs`, `floor`, `ceil`, and `trunc` are therefore executable in
-`malbolge-libc-v1`. `sqrt`, `sin`, `cos`, and `atan2` remain unavailable until
-correctly-rounded guest algorithms satisfy their stronger contracts.
+`malbolge-libc-v1`. Canonical `sqrt` is executable as well: `math_sqrt.c`
+normalizes the binary64 significand, streams the conceptual 106-bit scaled
+radicand through a restoring integer square-root recurrence, and rounds the
+53-bit result to the ABI-fixed nearest-ties-even policy without floating
+arithmetic. It preserves signed zero, passes positive infinity, rejects negative
+nonzero values as canonical NaN, and canonicalizes every NaN input.
+
+A separate 532-pattern differential derives expected `sqrt` bits with Python
+arbitrary-precision `isqrt`, including subnormal and exponent-boundary cases.
+Cross-ABI object inspection proves the implementation adds no callable host or
+compiler helper beyond the same target float/stack markers already allowed for
+ordinary guest math. `sin`, `cos`, and `atan2` remain unavailable until their
+correctly-rounded guest algorithms satisfy the stronger transcendental contracts.
 
 Version one needs no separate guest scheduler or ordinary-integer-helper API:
 integer operations are explicit typed-IR semantics for lane-9 lowering, and the
 selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
-work over the stable identities defined here. Remaining lane-8 algorithm work
-is the complete public printf parser/guest-varargs/floating formatter plus
-correctly-rounded `sqrt`, `sin`, `cos`, and `atan2`.
+work over the stable identities defined here. The canonical promoted-block
+varargs cursor is now implemented; source `va_list` bridging remains lane-9
+compiler-lowering work. Remaining lane-8 algorithm work is floating
+formatting and correctly-rounded `sin`, `cos`, and `atan2`.
 
 ## Invariants
 

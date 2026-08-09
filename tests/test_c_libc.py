@@ -55,8 +55,10 @@ INCLUDE = LIBC_ROOT / "contract/include"
 MEMORY = LIBC_ROOT / "domain/memory.c"
 STRING = LIBC_ROOT / "domain/string.c"
 MATH_EXACT = LIBC_ROOT / "domain/math_exact.c"
+MATH_SQRT = LIBC_ROOT / "domain/math_sqrt.c"
 ACCEPTED = ROOT / "tests/tidy/libc/accepted/libc_memory_string.c"
 ACCEPTED_MATH = ROOT / "tests/tidy/libc/accepted/libc_math_exact.c"
+ACCEPTED_SQRT = ROOT / "tests/tidy/libc/accepted/libc_math_sqrt.c"
 REJECTED = ROOT / "tests/tidy/libc-rejected"
 HARNESS = ROOT / "tests/tidy/libc/guest_libc_harness.c"
 CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -69,7 +71,7 @@ WINDOWS_OS_NAME = "nt"
 EXPECTED_DIAGNOSTIC_LINE = 39
 EXPECTED_DIAGNOSTIC_COLUMN = 12
 MALLOC_ROUTINE = "malloc"
-MATH_OBJECT_STEM = "math_exact"
+MATH_OBJECT_STEMS = frozenset({"math_exact", "math_sqrt"})
 MSVC_FLOAT_MARKER = frozenset({"_fltused"})
 WINDOWS_ABI_TARGETS = (
     ("i686-pc-windows-msvc", frozenset({"__fltused"})),
@@ -90,6 +92,7 @@ EXPECTED_AVAILABLE = frozenset({
     "strcpy",
     "strlen",
     "strncpy",
+    "sqrt",
     "trunc",
 })
 EXPECTED_UNAVAILABLE = frozenset({
@@ -103,7 +106,6 @@ EXPECTED_UNAVAILABLE = frozenset({
     "realloc",
     "sin",
     "snprintf",
-    "sqrt",
     "vsnprintf",
 })
 EXPECTED_FORBIDDEN = frozenset({
@@ -159,7 +161,7 @@ SOURCE_REJECTIONS = (
     (
         "libc_math_unavailable.c",
         c_libc_source.DIAGNOSTIC_UNAVAILABLE,
-        "sqrt",
+        "sin",
     ),
     (
         "libc_system_forbidden.c",
@@ -261,7 +263,15 @@ def test_guest_headers_are_repository_owned() -> None:
 def test_executable_guest_libc_compiles_for_frontend_target() -> None:
     """Available guest routines and their positive fixture are strict C23."""
     _require_clang()
-    for source in (MEMORY, STRING, MATH_EXACT, ACCEPTED, ACCEPTED_MATH):
+    for source in (
+        MEMORY,
+        STRING,
+        MATH_EXACT,
+        MATH_SQRT,
+        ACCEPTED,
+        ACCEPTED_MATH,
+        ACCEPTED_SQRT,
+    ):
         completed = _run(
             [
                 str(CLANG),
@@ -337,32 +347,33 @@ def _undefined_symbols(object_file: Path) -> frozenset[str]:
 
 
 def _assert_native_guest_object_dependencies(objects: list[Path]) -> None:
-    for runtime_object in objects[:3]:
+    for runtime_object in objects[:4]:
         expected = (
             MSVC_FLOAT_MARKER
-            if runtime_object.stem == MATH_OBJECT_STEM
+            if runtime_object.stem in MATH_OBJECT_STEMS
             else frozenset[str]()
         )
         assert _undefined_symbols(runtime_object) == expected
 
 
 def _assert_wasm_math_dependencies(tmp_path: Path) -> None:
-    wasm_math = tmp_path / "math-exact-wasm.o"
-    wasm_compiled = _run(
-        [
-            str(CLANG),
-            "--target=wasm32-unknown-unknown",
-            *STRICT_C,
-            f"-I{INCLUDE}",
-            "-c",
-            str(MATH_EXACT),
-            "-o",
-            str(wasm_math),
-        ],
-        ROOT,
-    )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stderr
-    assert _undefined_symbols(wasm_math) == WASM_TARGET_MACHINERY
+    for source in (MATH_EXACT, MATH_SQRT):
+        wasm_math = tmp_path / f"{source.stem}-wasm.o"
+        wasm_compiled = _run(
+            [
+                str(CLANG),
+                "--target=wasm32-unknown-unknown",
+                *STRICT_C,
+                f"-I{INCLUDE}",
+                "-c",
+                str(source),
+                "-o",
+                str(wasm_math),
+            ],
+            ROOT,
+        )
+        assert wasm_compiled.returncode == 0, wasm_compiled.stderr
+        assert _undefined_symbols(wasm_math) == WASM_TARGET_MACHINERY
 
 
 @pytest.mark.skipif(
@@ -401,7 +412,7 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
             pytest.skip(f"repository-pinned tool is unavailable: {tool.name}")
 
     objects: list[Path] = []
-    for source in (MEMORY, STRING, MATH_EXACT, HARNESS):
+    for source in (MEMORY, STRING, MATH_EXACT, MATH_SQRT, HARNESS):
         output = tmp_path / f"{source.stem}.obj"
         compiled = _run(
             [
@@ -445,7 +456,7 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
 def test_manual_validator_runs_libc_preflight_before_tidy() -> None:
     """Admit available routines and reject unavailable allocation calls."""
     _require_clang()
-    for accepted_source in (ACCEPTED, ACCEPTED_MATH):
+    for accepted_source in (ACCEPTED, ACCEPTED_MATH, ACCEPTED_SQRT):
         accepted = _run(
             [sys.executable, str(VALIDATOR), str(accepted_source)],
             ROOT,

@@ -9,12 +9,12 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact declarations for the deterministic guest binary64 math set.
+//   - Exact declarations for the deterministic guest binary64 math surface.
 // - Must-Not:
 //   - Resolve through host libm or claim unimplemented rounding behavior.
 // - Allows:
 //   - Inputs: guest binary64 values admitted by malbolge-c32-v1.
-//   - Outputs: exact routine declarations with per-routine availability.
+//   - Outputs: fixed routine declarations with per-routine availability.
 //   - Side effects: none.
 // - Split-When:
 //   - Split when float or long-double math gains independent support status.
@@ -23,7 +23,8 @@
 // - Summary:
 //   - Version-one deterministic binary64 math contract.
 // - Description:
-//   - Exact routines execute as guest C; harder routines remain gated.
+//   - Proved exact/sqrt routines execute as guest C; transcendental work is
+//   gated.
 // - Usage:
 //   - Included by guest source; unavailable calls still fail preflight.
 // - Defaults:
