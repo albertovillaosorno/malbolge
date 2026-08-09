@@ -1,0 +1,160 @@
+schema: jig-function/v3
+identity:
+  id: typed-ir
+  node: function:typed-ir
+  path: src/compiler/typed-ir
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: typed-ir.jig
+parts:
+  - id: part-0001
+    path: contract/typed-ir-v1.json
+    kind: contract
+    responsibility: Define the closed version-one typed compiler IR grammar.
+  - id: part-0002
+    path: domain/ids.rs
+    kind: domain
+    language: rust
+    responsibility: Define explicit portable typed-IR identity namespaces.
+  - id: part-0003
+    path: domain/source.rs
+    kind: domain
+    language: rust
+    responsibility: Preserve normalized logical-source byte provenance.
+  - id: part-0004
+    path: domain/types.rs
+    kind: domain
+    language: rust
+    responsibility: Define the closed portable typed-IR type vocabulary.
+  - id: part-0005
+    path: domain/instruction.rs
+    kind: domain
+    language: rust
+    responsibility: Define typed SSA instructions and exact integer constants.
+  - id: part-0006
+    path: domain/control.rs
+    kind: domain
+    language: rust
+    responsibility: Define basic blocks, phi merges, and explicit terminators.
+  - id: part-0007
+    path: domain/module.rs
+    kind: domain
+    language: rust
+    responsibility: Aggregate functions, globals, proofs, and module identity.
+  - id: part-0008
+    path: application/error.rs
+    kind: application
+    language: rust
+    responsibility: Define stable fail-closed IR admission categories.
+  - id: part-0009
+    path: application/types.rs
+    kind: application
+    language: rust
+    responsibility: Validate the type table and portable type categories.
+  - id: part-0010
+    path: application/values.rs
+    kind: application
+    language: rust
+    responsibility: Collect dense typed SSA definitions and definition sites.
+  - id: part-0011
+    path: application/cfg.rs
+    kind: application
+    language: rust
+    responsibility: Validate CFG, phi predecessors, reachability, and dominance.
+  - id: part-0012
+    path: application/instructions.rs
+    kind: application
+    language: rust
+    responsibility: Validate typed operands, calls, memory, and terminators.
+  - id: part-0013
+    path: application/proofs.rs
+    kind: application
+    language: rust
+    responsibility: Validate retained verifier-visible proof obligations.
+  - id: part-0014
+    path: application/validate.rs
+    kind: application
+    language: rust
+    responsibility: Order complete fail-closed typed-IR module admission.
+  - id: part-0015
+    path: application/encode.rs
+    kind: application
+    language: rust
+    responsibility: Emit validation-gated canonical bytes and debug identity.
+  - id: part-0016
+    path: application/layout.rs
+    kind: application
+    language: rust
+    responsibility: Compute finite canonical guest object layout.
+  - id: part-0017
+    path: application/lower_frontend.rs
+    kind: application
+    language: rust
+    responsibility: Lower supported normalized frontend semantics into typed IR.
+  - id: part-0018
+    path: domain/frontend.rs
+    kind: domain
+    language: rust
+    responsibility: Define the typed normalized-frontend semantic projection.
+  - id: part-0019
+    path: composition/lib.rs
+    kind: composition
+    language: rust
+    responsibility: Declare the canonical typed-IR module topology.
+projects: []
+tests: []
+graph:
+  node: function:typed-ir
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:typed-ir
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "artifact_id": "malbolge-c-frontend-v1",
+  "clang": {
+    "version": "22.1.8",
+    "target": "wasm32-unknown-unknown",
+    "language": "c23"
+  },
+  "profile": {
+    "abi_id": "malbolge-c32-v1",
+    "target_profile": "malbolge-2026"
+  },
+  "source": {
+    "id": "fixtures/ir-return.c",
+    "sha256": "1e88054415f34e800039677eeba7ca71e082dbcce6e0dbe28def3eb3c1de87f8"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "parent": 0,
+      "kind": "function-declaration",
+      "span": {
+        "begin": {
+          "byte": 1208,
+          "line": 35,
+          "column": 1
+        },
+        "end": {
+          "byte": 1236,
+          "line": 35,
+          "column": 29
+        }
+      },
+      "name": "main",
+      "type": "fn()->i32",
+      "definition": "definition",
+      "inline_specified": false,
+      "linkage": "external",
+      "storage_class": "none"
+    },
+    {
+      "id": 2,
+      "parent": 1,
+      "kind": "compound-statement",
+      "span": {
+        "begin": {
+          "byte": 1223,
+          "line": 35,
+          "column": 16
+        },
+        "end": {
+          "byte": 1236,
+          "line": 35,
+          "column": 29
+        }
+      }
+    },
+    {
+      "id": 3,
+      "parent": 2,
+      "kind": "return-statement",
+      "span": {
+        "begin": {
+          "byte": 1225,
+          "line": 35,
+          "column": 18
+        },
+        "end": {
+          "byte": 1233,
+          "line": 35,
+          "column": 26
+        }
+      }
+    },
+    {
+      "id": 4,
+      "parent": 3,
+      "kind": "integer-literal",
+      "span": {
+        "begin": {
+          "byte": 1232,
+          "line": 35,
+          "column": 25
+        },
+        "end": {
+          "byte": 1233,
+          "line": 35,
+          "column": 26
+        }
+      },
+      "type": "i32",
+      "constant_integer": "7",
+      "literal": "7"
+    }
+  ]
+}

@@ -49,12 +49,14 @@ from scripts.validate import c_frontend_build
 ROOT: Final = repository_root(Path(__file__))
 FIXTURES: Final = ROOT / "tests" / "compiler" / "c-frontend"
 BASIC: Final = FIXTURES / "accepted" / "basic_semantics.c"
+IR_RETURN: Final = FIXTURES / "accepted" / "ir_return_constant.c"
 HEADER: Final = FIXTURES / "accepted" / "header_reference.c"
 DECLARATIONS: Final = FIXTURES / "accepted" / "declaration_semantics.c"
 BIT_INT: Final = FIXTURES / "rejected" / "unsupported_bit_int.c"
 ENUM_TOO_WIDE: Final = FIXTURES / "rejected" / "enum_domain_too_wide.c"
 MALFORMED: Final = FIXTURES / "rejected" / "malformed.c"
 GOLDEN: Final = FIXTURES / "golden" / "basic_semantics.json"
+IR_RETURN_GOLDEN: Final = FIXTURES / "golden" / "ir_return_constant.json"
 CONTRACT: Final = (
     ROOT
     / "src"
@@ -76,6 +78,7 @@ CLANG_TARGET: Final = "wasm32-unknown-unknown"
 ABI_ID: Final = "malbolge-c32-v1"
 TARGET_PROFILE: Final = "malbolge-2026"
 BASIC_SOURCE_ID: Final = "fixtures/basic.c"
+IR_RETURN_SOURCE_ID: Final = "fixtures/ir-return.c"
 HEADER_SOURCE_ID: Final = "fixtures/header.c"
 DECLARATION_SOURCE_ID: Final = "fixtures/declarations.c"
 UNSUPPORTED_SOURCE_ID: Final = "fixtures/unsupported.c"
@@ -84,6 +87,8 @@ MALFORMED_SOURCE_ID: Final = "fixtures/malformed.c"
 INVALID_SOURCE_ID: Final = "../escape.c"
 COUNT_NAME: Final = "COUNT"
 COUNT_VALUE: Final = "7"
+IR_RETURN_VALUE: Final = "7"
+IR_RETURN_TYPE: Final = "i32"
 SIZEOF_OPERATION: Final = "sizeof"
 WORD_SIZE: Final = "4"
 PAIR_TYPE: Final = "struct(Pair)"
@@ -314,6 +319,26 @@ def test_basic_semantics_match_exact_golden() -> None:
     ]
     assert len(enum_nodes) == 1
     assert enum_nodes[0].get("enum_underlying") == DEFAULT_ENUM_UNDERLYING
+
+
+def test_ir_return_constant_matches_exact_frontend_golden() -> None:
+    """Typed-IR lowering fixture is anchored to exact pinned frontend output."""
+    completed = _run_frontend(IR_RETURN, IR_RETURN_SOURCE_ID)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == IR_RETURN_GOLDEN.read_text(encoding="utf-8")
+    artifact = _artifact(completed)
+    source = cast("dict[str, object]", artifact["source"])
+    expected_hash = hashlib.sha256(IR_RETURN.read_bytes()).hexdigest()
+    assert source == {"id": IR_RETURN_SOURCE_ID, "sha256": expected_hash}
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    assert [node.get("kind") for node in nodes] == [
+        "function-declaration",
+        "compound-statement",
+        "return-statement",
+        "integer-literal",
+    ]
+    assert nodes[-1].get("type") == IR_RETURN_TYPE
+    assert nodes[-1].get("constant_integer") == IR_RETURN_VALUE
 
 
 def test_physical_source_relocation_does_not_change_artifact(

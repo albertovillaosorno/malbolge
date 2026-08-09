@@ -15,3 +15,4 @@ It must not collapse frontend, portable IR, lowering, or runtime ownership.
 ## Navigation
 
 - [`c-frontend/`](c-frontend/): governed function `c-frontend`.
+- [`typed-ir/`](typed-ir/): governed portable IR implementation.

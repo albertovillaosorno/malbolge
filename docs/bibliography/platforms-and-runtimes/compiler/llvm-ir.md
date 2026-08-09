@@ -20,7 +20,7 @@ in-memory, serialized, and human-readable IR forms.
 ## Provenance
 
 The official LLVM documentation is the primary source. The accessed live manual
-identifies itself as LLVM 24.0.0git documentation; this record does not imply
+is used only for current semantic design evidence; this record does not imply
 that Malbolge adopts LLVM IR as its compiler IR.
 
 ## Identity And Version
@@ -43,6 +43,16 @@ terms into the repository MIT license.
 - The same code representation has in-memory, bitcode, and human-readable forms.
 - The IR is intended to support compiler transformation and analysis across
   compilation phases.
+- Every basic block ends in a terminator instruction.
+- The entry block has no predecessors and therefore cannot contain phi nodes.
+- Phi nodes carry value/predecessor pairs for predecessor control-flow edges.
+- LLVM defines `poison` and `undef` value semantics; they are LLVM behavior, not
+  implicit semantics of the repository-owned Malbolge typed IR.
+- LLVM call/invoke semantics permit a function-pointer value as the invoked
+  target, supporting the design need for an explicit indirect-call operand.
+- LLVM models automatic addressable storage with an explicit allocation
+  instruction and optional runtime element count; Malbolge keeps its own simpler
+  ABI-owned allocation semantics rather than importing LLVM stack/data layout.
 
 ### Unresolved
 
@@ -52,4 +62,4 @@ this source.
 
 ## Sources
 
-- <https://llvm.org/docs/LangRef.html> - accessed 2026-07-26.
+- <https://llvm.org/docs/LangRef.html> - accessed 2026-08-08.

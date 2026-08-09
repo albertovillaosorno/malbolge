@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "artifact_id": "malbolge-typed-ir-v1",
+  "source_frontend": "malbolge-c-frontend-v1",
+  "abi_id": "malbolge-c32-v1",
+  "target_profile": "malbolge-2026",
+  "form": "typed-ssa-basic-blocks",
+  "identity_rule": "dense-explicit-numeric-ids",
+  "identity_namespaces": [
+    "type",
+    "global",
+    "function",
+    "block-per-function",
+    "ssa-value-per-function"
+  ],
+  "source_provenance": {
+    "source_identity": "portable-logical-id",
+    "source_digest": "sha256-exact-source-bytes",
+    "coordinate_unit": "zero-based-byte-one-based-line-column",
+    "located_values": [
+      "global",
+      "function",
+      "basic-block",
+      "phi",
+      "instruction",
+      "terminator"
+    ]
+  },
+  "serialization": {
+    "magic": "MCTI",
+    "version_field": "u16-little-endian",
+    "integer_encoding": "little-endian-fixed-width",
+    "variable_length": "u32-little-endian",
+    "enum_tags": "explicit-versioned-u8",
+    "debug_text": "malbolge-typed-ir-v1: plus lowercase canonical-byte hex",
+    "publication_rule": "validate-complete-module-before-serialization"
+  },
+  "types": [
+    "void",
+    "bool",
+    "char",
+    "i8",
+    "u8",
+    "i16",
+    "u16",
+    "i32",
+    "u32",
+    "i64",
+    "u64",
+    "f32",
+    "f64",
+    "f128",
+    "pointer",
+    "array",
+    "struct",
+    "union",
+    "function"
+  ],
+  "instructions": [
+    "address-offset",
+    "automatic-allocate",
+    "binary",
+    "byte-input",
+    "byte-output",
+    "call",
+    "cast",
+    "compare",
+    "constant-integer",
+    "function-address",
+    "load",
+    "store"
+  ],
+  "binary_operations": [
+    "add",
+    "and",
+    "divide-float",
+    "divide-signed",
+    "divide-unsigned",
+    "multiply",
+    "or",
+    "remainder-signed",
+    "remainder-unsigned",
+    "shift-left",
+    "shift-right-arithmetic",
+    "shift-right-logical",
+    "subtract",
+    "xor"
+  ],
+  "cast_operations": [
+    "bitcast-within-object-or-function-pointer-namespace",
+    "bool-to-signed",
+    "float-to-bool",
+    "float-to-float",
+    "float-to-signed",
+    "float-to-unsigned",
+    "integer-bitcast-equal-width",
+    "integer-to-bool",
+    "integer-to-object-pointer",
+    "pointer-to-bool",
+    "object-pointer-to-integer",
+    "sign-extend",
+    "signed-to-float",
+    "truncate",
+    "unsigned-to-float",
+    "zero-extend"
+  ],
+  "compare_operations": [
+    "equal",
+    "float-less",
+    "float-less-equal",
+    "less-signed",
+    "less-signed-equal",
+    "less-unsigned",
+    "less-unsigned-equal",
+    "not-equal"
+  ],
+  "terminators": [
+    "branch",
+    "jump",
+    "return",
+    "switch"
+  ],
+  "proof_obligations": [
+    "aligned",
+    "in-bounds",
+    "no-signed-overflow",
+    "nonzero",
+    "profile-capability"
+  ],
+  "validation": [
+    "closed-version-abi-profile",
+    "portable-source-identity-and-spans",
+    "dense-type-global-function-block-and-ssa-ids",
+    "closed-type-references",
+    "single-definition-ssa-values",
+    "ssa-definition-dominates-every-use",
+    "reachable-basic-blocks",
+    "phi-predecessor-exactness-and-edge-dominance",
+    "entry-block-has-no-phi-nodes",
+    "operand-result-type-consistency",
+    "call-signature-consistency",
+    "memory-pointee-and-alignment-consistency",
+    "terminator-type-and-target-consistency",
+    "proof-reference-type-consistency",
+    "ssa-and-global-values-are-object-types",
+    "indirect-call-pointer-matches-function-signature",
+    "automatic-allocation-u32-size-and-object-pointer",
+    "explicit-bool-conversion-semantics",
+    "boolean-arithmetic-rejected",
+    "memory-proofs-require-object-pointers",
+    "finite-canonical-object-layout",
+    "initialized-global-exact-object-extent",
+    "plain-char-uses-signed-8-bit-abi-category",
+    "object-and-function-pointer-namespaces-remain-distinct",
+    "void-pointer-remains-in-object-pointer-namespace",
+    "integer-pointer-conversion-is-object-pointer-only",
+    "c-integer-promotions-explicit-before-integer-operations",
+    "default-argument-promotions-explicit-before-variadic-call",
+    "function-signatures-use-adjusted-non-array-value-types",
+    "switch-selector-is-integer-promoted",
+    "no-signed-overflow-proof-names-overflow-relevant-binary-result",
+    "object-pointer-integer-conversion-preserves-exact-32-bit-encoding"
+  ],
+  "call_targets": [
+    "direct-module-function-id",
+    "indirect-ssa-function-pointer"
+  ],
+  "automatic_allocation": {
+    "lifetime": "active-function-frame",
+    "byte_count_type": "u32",
+    "result": "guest-object-pointer",
+    "alignment": "positive-power-of-two-at-most-16"
+  },
+  "frontend_lowering": {
+    "input": "typed-semantic-projection-of-malbolge-c-frontend-v1",
+    "producer": {
+      "clang_version": "22.1.8",
+      "clang_target": "wasm32-unknown-unknown",
+      "language": "c23"
+    },
+    "initial_supported_semantics": {
+      "definition": "definition",
+      "linkage": "external",
+      "inline_specified": false,
+      "storage_class": "none",
+      "signature": "fn()->i32",
+      "body": "return-i32-integer-constant"
+    },
+    "provenance": [
+      "source-id",
+      "source-sha256",
+      "function-span",
+      "body-span",
+      "return-span",
+      "value-span"
+    ],
+    "publication_rule": "run-complete-typed-ir-admission-before-return",
+    "unsupported_rule": "fail-closed-no-semantic-approximation"
+  },
+  "object_layout": {
+    "scalar_sizes_alignments": {
+      "bool-char-i8-u8": "1/1",
+      "i16-u16": "2/2",
+      "i32-u32-f32-pointer": "4/4",
+      "i64-u64-f64": "8/8",
+      "f128": "16/16"
+    },
+    "array": "aligned-element-stride-times-count",
+    "struct": "ordered-fields-natural-alignment-rounded-to-max",
+    "union": "max-member-extent-rounded-to-max-alignment",
+    "recursive_by_value": "rejected",
+    "size_domain": "u32-logical-bytes"
+  },
+  "integer_categories": {
+    "signed": [
+      "char",
+      "i8",
+      "i16",
+      "i32",
+      "i64"
+    ],
+    "unsigned": [
+      "u8",
+      "u16",
+      "u32",
+      "u64"
+    ],
+    "boolean": "bool-is-distinct-from-arithmetic-integer-categories"
+  },
+  "byte_io": {
+    "input": "u8-successful-byte-effect",
+    "output": "u8-byte-effect",
+    "c-eof-mapping-owner": "guest-runtime-and-allocator"
+  },
+  "function_signatures": {
+    "parameters": "c-adjusted-non-array-value-types",
+    "results": "non-array-value-type-or-void",
+    "variadic_arguments": "default-promotions-already-applied"
+  },
+  "object_pointer_integer_conversion": {
+    "width_bits": 32,
+    "namespace": "object-pointer-only",
+    "widening_or_narrowing": "separate-explicit-integer-cast"
+  }
+}
