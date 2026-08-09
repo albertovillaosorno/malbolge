@@ -60,14 +60,6 @@ instead of saturating at one application-specific threshold.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/applications/parametric-compiler-challenge-generator.mdc](docs/todo/open/applications/parametric-compiler-challenge-generator.mdc)
 
-### TODO - Clang C frontend integration
-
-Use Clang as the C parser, type system, constant evaluator, source-location
-provider, and AST frontend instead of building another C parser.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/compiler/clang-c-frontend-integration.mdc](docs/todo/open/compiler/clang-c-frontend-integration.mdc)
-
 ## P2 — Compiler, runtime, and accelerator core
 
 ### TODO - Self-modification state-graph optimizer
@@ -102,15 +94,6 @@ metadata that the original loader ignores.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc](docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc)
-
-### TODO - Typed compiler IR
-
-Define a small deterministic IR representing control flow, arithmetic, memory,
-calls, byte I/O, target-profile requirements, and proof obligations without
-inheriting unnecessary LLVM complexity.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/compiler/typed-compiler-ir.mdc](docs/todo/open/compiler/typed-compiler-ir.mdc)
 
 ### TODO - Guest runtime and allocator
 

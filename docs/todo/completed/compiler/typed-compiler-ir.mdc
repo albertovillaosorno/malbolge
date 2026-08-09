@@ -1,0 +1,110 @@
+---
+id: "typed-compiler-ir"
+status: "completed"
+lane: "8"
+area: "compiler"
+task: "TODO - Typed compiler IR"
+contract: "docs/technical/compiler/typed-compiler-ir.md"
+depends_on:
+  - "clang-c-frontend-integration"
+  - "deterministic-c-to-malbolge-abi"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "compiler/"
+  - "src/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Typed compiler IR
+
+## Objective
+
+Define a small deterministic IR representing control flow, arithmetic, memory,
+calls, byte I/O, target-profile requirements, and proof obligations without
+inheriting unnecessary LLVM complexity.
+
+## Acceptance
+
+- The IR has a documented closed grammar/type system for control flow,
+  arithmetic, memory, calls, byte I/O, profile requirements, and proof
+  obligations plus deterministic serialization/debug printing.
+- The stage has deterministic input/output form, rejects malformed or
+  unsupported input explicitly, and preserves source/profile provenance needed
+  downstream.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
+- Required evidence: golden/round-trip or normalized stage fixtures,
+  deterministic hashes where promised, and end-to-end lowering regression cases.
+- Implemented model evidence: governed `src/compiler/typed-ir/` now owns the
+  safe Rust `malbolge-typed-ir-v1` model for explicit dense IDs, portable types,
+  typed SSA/basic blocks, automatic storage, direct/indirect calls, byte I/O,
+  terminators, source spans, and verifier-visible proof obligations.
+- Implemented admission evidence: the application boundary validates closed
+  version/ABI/profile identity, type references, unique/dense symbols and SSA,
+  complete reachability, entry-block phi prohibition, exact phi predecessors,
+  SSA dominance including phi edges, owner-contained provenance spans,
+  operand/result types, calls, memory
+  alignment/pointee relationships,
+  control-flow types, exact constants, explicit bool/integer promotions,
+  adjusted function signatures, default-promoted variadic arguments,
+  automatic-allocation shape, direct/indirect call targets,
+  object-only SSA/globals, object-pointer memory proofs, generic `void *`
+  membership in the object-pointer namespace, exact 32-bit
+  object-pointer/integer
+  conversions, and proof references including structural
+  no-signed-overflow result association.
+- Implemented identity evidence: canonicalization validates first, emits `MCTI`
+  version-one bytes with explicit little-endian fields, checked `u32` lengths,
+  and repository-owned enum tags, then derives deterministic lowercase-hex
+  debug identity. A tracked golden locks the accepted diamond-CFG artifact.
+- Implemented regression evidence: `tests/compiler_ir.rs` currently covers 68
+  accepted/rejected cases including duplicate SSA, use-before-definition,
+  unreachable CFG, phi predecessor/edge dominance, direct/indirect calls,
+  automatic allocation, object-type, proof/type/provenance, branch/constant,
+  invalid load alignment, normalized frontend lowering, explicit bool casts,
+  function-pointer memory proofs, finite aggregate layout, and global
+  initializer extent failures, source-span containment violations, and the
+  ABI-defined signed plain-`char` category, strict object/function pointer
+  separation, C integer/default-argument promotions, adjusted array signatures,
+  proof-result association, and exact pointer/integer encoding width.
+- Implemented layout evidence: application admission computes canonical ABI
+  scalar/array/struct/union extent with checked 32-bit arithmetic, rejects
+  by-value recursive aggregates, and requires explicit global initializer bytes
+  to match the exact declared object extent.
+- Implemented frontend-lowering evidence: a typed inbound semantic projection
+  carries exact `malbolge-c-frontend-v1` producer identity, declaration facts,
+  source hash, and normalized spans. The initial lowerer accepts only a defined
+  external non-inline `fn()->i32` integer-constant return, preserves provenance,
+  runs complete IR admission, and has a tracked canonical typed-IR golden.
+- Real-frontend fixture evidence: pinned Clang 22.1.8 normalizes tracked
+  `ir_return_constant.c` into an exact checked-in frontend JSON golden; the Rust
+  lowering projection uses that golden's exact source digest/spans/semantics.
+- Implemented quality evidence: the typed-IR implementation passes the full
+  workspace nightly Clippy policy with warnings denied and uses no broad lint
+  suppression to admit the new compiler surface.
+- Boundary evidence: LLVM IR remains design prior art only; Clang AST identity,
+  LLVM poison/undef/metadata, native data layout, and Malbolge target encoding
+  are excluded from portable typed-IR authority.
+- Completion boundary evidence: the typed-IR objective permits explicit
+  unsupported-input failures. Broader normalized C coverage (linkable external
+  symbols, aggregates, VLAs, addressable objects, and other accepted constructs)
+  is transferred to `tools-tidy-lowerability-contract`, which cannot complete
+  until every linter-clean accepted translation unit lowers through this stage.
+  Ternary and target lowering remain owned by their dependent compiler stages.
+- Prerequisite completion evidence: `clang-c-frontend-integration`,
+  `deterministic-c-to-malbolge-abi`.
+- Completion evidence: closed grammar/type system, validation-gated canonical
+  identity, real normalized-frontend-to-IR golden, explicit unsupported-input
+  failures, source/profile provenance, and exhaustive repository validation are
+  sufficient to retire this objective without losing deferred compiler coverage.

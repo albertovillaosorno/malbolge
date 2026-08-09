@@ -35,6 +35,9 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 - Every IR operation lowers to explicit ternary/runtime operations with defined
   pre/postconditions and no direct host implementation of guest computation.
+- Guest-runtime semantic identities supplied by `guest-runtime-and-allocator`
+  lower to executable ternary/Malbolge-oriented operations without host callback
+  substitution.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.
@@ -49,6 +52,9 @@ profile requirements fail closed before emitting accepted target code.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
+- Runtime realization evidence: consume guest-runtime semantic identities
+  unchanged and prove their executable ternary/Malbolge lowering, including the
+  one-time heap startup bind and declaration-only byte-I/O intrinsic symbols.
 - Prerequisite completion evidence: `typed-compiler-ir`,
   `guest-runtime-and-allocator`, `malbolge-specific-optimization-mathematics`.
 ## References

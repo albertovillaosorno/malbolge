@@ -8,6 +8,8 @@ task: "TODO - tools/tidy lowerability contract"
 contract: "docs/technical/compiler/c-profile/tools-tidy-lowerability-contract.md"
 depends_on:
   - "tools-tidy-clang-tidy-plugin"
+  - "clang-c-frontend-integration"
+  - "typed-compiler-ir"
   - "malbolge-layout-and-encoding-backend"
   - "supported-libc-contract"
   - "documentation-readiness-and-implementation-gate"
@@ -16,6 +18,8 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
+  - "src/compiler/"
+  - "tests/compiler/"
   - "scripts/validate/"
   - "libc/"
   - "runtime/"
@@ -36,7 +40,9 @@ compiler for its declared target profile.
 
 - Every accepted fixture compiles successfully for its declared profile, and
   every compiler rejection of a linter-clean supported program is treated as a
-  regression in the compiler/linter contract.
+  regression in the compiler/linter contract. This includes closing any
+  remaining normalized-frontend-to-typed-IR semantic coverage gaps rather than
+  weakening the accepted C surface.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust tests are conformance/regression evidence for creating the profile; they
@@ -51,10 +57,14 @@ compiler for its declared target profile.
 ## Evidence
 
 - Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`,
-  `libc/`,
-  `runtime/`,
+  `src/compiler/`, `tests/compiler/`, `libc/`, `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
+- Transferred compiler-coverage obligation: typed IR deliberately fails closed
+  on normalized C semantic shapes not yet lowered. Before this contract can be
+  completed, all linter-clean accepted C fixtures must lower through the
+  frontend and typed IR without widening host-dependent semantics.
 - Prerequisite completion evidence: `tools-tidy-clang-tidy-plugin`,
+  `clang-c-frontend-integration`, `typed-compiler-ir`,
   `malbolge-layout-and-encoding-backend`, `supported-libc-contract`.

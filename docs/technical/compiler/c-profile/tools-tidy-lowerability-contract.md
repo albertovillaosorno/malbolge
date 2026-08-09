@@ -16,6 +16,8 @@ This document governs the following declared TODO scope:
 
 - `tools/tidy/`
 - `scripts/validate/`
+- `src/compiler/`
+- `tests/compiler/`
 - `libc/`
 - `runtime/`
 - `docs/technical/specification/`
@@ -38,7 +40,9 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 - Every accepted fixture compiles successfully for its declared profile, and
   every compiler rejection of a linter-clean supported program is treated as a
-  regression in the compiler/linter contract.
+  regression in the compiler/linter contract. Remaining normalized
+  frontend-to-typed-IR coverage gaps must be closed here rather than by
+  weakening the accepted C surface.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust tests are conformance/regression evidence for creating the profile; they
@@ -54,12 +58,15 @@ lowered through host-dependent behavior.
 ## Verification
 
 - Expected durable artifact surface: `tools/tidy/`, `scripts/validate/`,
-  `libc/`,
-  `runtime/`,
+  `src/compiler/`, `tests/compiler/`, `libc/`, `runtime/`,
   `docs/technical/specification/`, `tests/tidy/`.
 - Required evidence: accepted/rejected source fixtures, source-located
   diagnostics, and compiler/linter contract regression tests.
+- Compiler-coverage obligation inherited from typed IR: unsupported normalized
+  C shapes may fail closed today, but every linter-clean accepted fixture must
+  lower through the frontend and typed IR before this contract completes.
 - Prerequisite completion evidence: `tools-tidy-clang-tidy-plugin`,
+  `clang-c-frontend-integration`, `typed-compiler-ir`,
   `malbolge-layout-and-encoding-backend`, `supported-libc-contract`.
 ## References
 

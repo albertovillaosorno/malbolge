@@ -1,0 +1,96 @@
+---
+id: "clang-c-frontend-integration"
+status: "completed"
+lane: "7"
+area: "compiler"
+task: "TODO - Clang C frontend integration"
+contract: "docs/technical/compiler/clang-c-frontend-integration.md"
+depends_on:
+  - "deterministic-c-to-malbolge-abi"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+scope:
+  - "compiler/"
+  - "src/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Clang C frontend integration
+
+## Objective
+
+Use Clang as the C parser, type system, constant evaluator, source-location
+provider, and AST frontend instead of building another C parser.
+
+## Acceptance
+
+- Pinned Clang parsing/type information is normalized deterministically and
+  host-only frontend details do not leak into the portable compiler IR or target
+  semantics.
+- The stage has deterministic input/output form, rejects malformed or
+  unsupported input explicitly, and preserves source/profile provenance needed
+  downstream.
+- The declared scope contains no unresolved placeholder implementation or
+  undocumented workaround required for this objective to function.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
+- Required evidence: golden normalized-stage fixtures, deterministic hashes,
+  physical-path relocation equality, exact source/profile provenance,
+  and
+  accepted/rejected semantic normalization cases. Portable IR/lowering evidence
+  remains downstream because `typed-compiler-ir` depends on this task.
+- Implemented product evidence: governed `src/compiler/c-frontend/` owns a
+  host-neutral frontend port, exact Clang 22.1.8 LibTooling adapter, closed
+  `malbolge-c-frontend-v1` artifact contract, and `/W4 /WX` native composition.
+- Implemented determinism evidence: the checked-in semantic golden records exact
+  source SHA-256, logical source identity, source-byte spans, normalized types,
+  operations, constant evaluation, references, and declaration semantics.
+- Implemented relocation evidence: identical source bytes under distinct
+  physical paths produce byte-identical normalized artifacts for one logical
+  source ID;
+  private LLVM/repository paths do not enter output.
+- Implemented ABI evidence: ordinary enum representation follows
+  `malbolge-c32-v1` (`i32` when representable, otherwise `u32`) rather than
+  Clang's wasm default choice; fixed C23 underlying types are retained and a
+  value domain outside both ABI choices fails closed.
+- Implemented declaration evidence: storage class/duration, linkage,
+  declaration/tentative-definition/definition state, explicit `inline`, and
+  parameter `register` state are preserved for downstream typed IR.
+- Implemented failure evidence: unsupported `_BitInt`, impossible default enum
+  domain, malformed C, and escaping logical source identity fail before partial
+  artifact publication with `MALBOLGE-FRONTEND-001` through `004` families.
+- Prerequisite completion evidence: `deterministic-c-to-malbolge-abi`.
+
+- Completion evidence on 2026-08-08: the governed `src/compiler/c-frontend/`
+  function builds against exact LLVM/Clang 22.1.8 with C++20, `/W4 /WX`, and
+  `/Brepro` and identifies itself as `malbolge-c-frontend 1 LLVM 22.1.8`.
+- Completion evidence on 2026-08-08: `malbolge-c-frontend-v1` is a closed
+  repository-owned normalized artifact; raw AST dumps, Clang object addresses,
+  physical source/include paths, and native layout identity never enter output.
+- Completion evidence on 2026-08-08: the checked-in golden preserves logical
+  source ID/SHA-256, source-byte spans, canonical types, constants, operations,
+  references, storage/linkage/definition semantics, and exact declaration order.
+- Completion evidence on 2026-08-08: relocation tests prove identical bytes at
+  two physical paths normalize byte-identically, while included `memcpy` is
+  represented as semantic `external:memcpy` without repository/LLVM path leaks.
+- Completion evidence on 2026-08-08: ordinary enum representation follows
+  `malbolge-c32-v1` rather than Clang's wasm default; fixed C23 enum types are
+  retained and a value domain outside both ABI `i32`/`u32` choices fails closed.
+- Completion evidence on 2026-08-08: unsupported `_BitInt`, malformed C, and
+  escaping logical source identity fail before partial artifact publication with
+  stable `MALBOLGE-FRONTEND-001` through `004` failure families.
+- Scope boundary evidence on 2026-08-08: portable control-flow/type IR and
+  end-to-end target lowering remain owned by downstream `typed-compiler-ir` and
+  lowering TODOs that depend on this completed frontend contract.
+- **Completion:** Completed on 2026-08-08 after exact native build, golden and
+  relocation evidence, source/profile provenance, ABI-owned enum normalization,
+  declaration-semantics regressions, strict Python/C++ checks, and exhaustive
+  Jig
+  validation completed with zero diagnostics.
