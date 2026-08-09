@@ -1,0 +1,47 @@
+schema: jig-graph-node/v2
+identity:
+  id: artifact:boundary:src:compiler:c-frontend:README.md
+  kind: artifact
+  name: README.md
+  path: src/compiler/c-frontend/README.md
+  role: boundary-document
+contracts:
+  universal: graph-node/v2
+  location: boundary-document/v1
+  domain: domain-compiler/v1
+  role: boundary-document/v1
+classification:
+  repository: malbolge
+  location: src/compiler/c-frontend
+  domain: compiler
+  lifecycle: none
+  confidentiality: public
+ownership:
+  primary: function:c-frontend
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: none
+content:
+  format: markdown
+  generated: false
+graph:
+  node: artifact:boundary:src:compiler:c-frontend:README.md
+  labels:
+    - artifact
+    - boundary
+    - markdown
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src/compiler/c-frontend
+    - hub:role:boundary-document
+    - hub:lifecycle:none
+    - hub:domain:compiler
+    - hub:function:c-frontend
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  path_manifest_match: required
+  unknown_fields: fatal
+  line_length: 80

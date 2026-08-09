@@ -15,6 +15,7 @@ It must not contain implementation parts outside a function and kind.
 ## Navigation
 
 - [`automation/`](automation/): governed semantic domain.
+- [`compiler/`](compiler/): governed semantic domain.
 - [`examples/`](examples/): governed semantic domain.
 - [`interface/`](interface/): governed semantic domain.
 - [`interoperability/`](interoperability/): governed semantic domain.

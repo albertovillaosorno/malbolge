@@ -1,0 +1,89 @@
+schema: jig-function/v3
+identity:
+  id: c-frontend
+  node: function:c-frontend
+  path: src/compiler/c-frontend
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: one complete governed capability
+    must_not: cross undeclared kind or function boundaries
+    split_when: another capability needs independent policy
+    merge_when: separate ownership has no independent meaning
+language_manifest: c-frontend.jig
+parts:
+  - id: part-0001
+    path: contract/frontend-v1.json
+    kind: contract
+    responsibility: Define the version-one normalized C frontend artifact.
+  - id: part-0002
+    path: port-inbound/frontend.hpp
+    kind: port-inbound
+    language: cpp
+    responsibility: Define host-neutral C frontend normalization requests.
+  - id: part-0003
+    path: adapter-inbound/clang_frontend.cpp
+    kind: adapter-inbound
+    language: cpp
+    responsibility: Normalize exact Clang AST semantics into frontend v1.
+  - id: part-0004
+    path: composition/CMakeLists.txt
+    kind: composition
+    responsibility: Build the exact native C frontend projection.
+  - id: part-0005
+    path: composition/malbolge_c_frontend.cpp
+    kind: composition
+    language: cpp
+    responsibility: Wire source input into normalized frontend output.
+projects: []
+tests: []
+graph:
+  node: function:c-frontend
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:c-frontend
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

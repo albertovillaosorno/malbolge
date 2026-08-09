@@ -151,6 +151,11 @@ parts:
     kind: composition
     language: python
     responsibility: Validate, inspect, and durably persist progress sidecars.
+  - id: part-0024
+    path: composition/scripts/validate/c_frontend_build.py
+    kind: composition
+    language: python
+    responsibility: Build and verify the exact normalized Clang C frontend.
 projects: []
 tests: []
 graph:
