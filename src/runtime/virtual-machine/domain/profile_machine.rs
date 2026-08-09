@@ -39,7 +39,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
 use crate::instruction::{decode_profile_value, encrypt_profile_value};
-use crate::loader::is_source_whitespace;
+use crate::loader::{is_source_whitespace, source_word_requirement};
 use crate::machine::{RunOutcome, StepOutcome, Termination};
 use crate::profile::{
     ProfileDescriptor, ProfileKind, ProfileRequirementError, preflight_profile,
@@ -159,7 +159,7 @@ impl ProfileMachineState {
     ) -> Result<Self, ProfileMachineError> {
         preflight_profile(
             profile,
-            profile.memory_words(),
+            u64::from(profile.memory_words()),
             safe_rust_profiled_capability(),
         )?;
         validate_state_memory(profile, &memory)?;
@@ -510,7 +510,7 @@ impl ProfileMachine {
     ) -> Result<Self, ProfileMachineError> {
         preflight_profile(
             profile,
-            profile.memory_words(),
+            source_word_requirement(source),
             safe_rust_profiled_capability(),
         )?;
         let memory = load_profile(profile, source)?;

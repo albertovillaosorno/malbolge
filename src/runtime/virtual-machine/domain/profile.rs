@@ -364,7 +364,7 @@ pub enum ProfileRequirementErrorKind {
 pub struct ProfileRequirementError {
     kind: ProfileRequirementErrorKind,
     profile: &'static ProfileDescriptor,
-    required_memory_words: u32,
+    required_memory_words: u64,
     runtime: &'static RuntimeCapability,
 }
 
@@ -482,7 +482,7 @@ impl ProfileRequirementError {
 
     /// Returns the minimum guest memory requested by the program/profile.
     #[must_use]
-    pub const fn required_memory_words(self) -> u32 {
+    pub const fn required_memory_words(self) -> u64 {
         self.required_memory_words
     }
 
@@ -659,12 +659,12 @@ pub fn preflight_runtime_requirement<'requirement>(
 /// Returns a deterministic profile-capacity diagnostic when the program asks
 /// for more memory than the selected profile defines, or a runtime-capability
 /// diagnostic when the runtime cannot implement the profile exactly.
-pub const fn preflight_profile(
+pub fn preflight_profile(
     profile: &'static ProfileDescriptor,
-    required_memory_words: u32,
+    required_memory_words: u64,
     runtime: &'static RuntimeCapability,
 ) -> Result<(), ProfileRequirementError> {
-    if required_memory_words > profile.memory_words {
+    if required_memory_words > u64::from(profile.memory_words) {
         return Err(ProfileRequirementError {
             kind: ProfileRequirementErrorKind::ProfileCapacityExceeded,
             profile,
@@ -683,7 +683,7 @@ pub const fn preflight_profile(
         return Err(ProfileRequirementError {
             kind: ProfileRequirementErrorKind::RuntimeCapabilityMissing,
             profile,
-            required_memory_words: profile.memory_words,
+            required_memory_words: u64::from(profile.memory_words),
             runtime,
         });
     }
@@ -755,7 +755,7 @@ fn write_capacity_error(
         constraint,
         profile_id: profile.id,
         profile_memory_words: profile.memory_words,
-        required_memory_words: u64::from(error.required_memory_words),
+        required_memory_words: error.required_memory_words,
         version: profile.version,
     })
 }

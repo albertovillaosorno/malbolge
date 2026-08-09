@@ -31,7 +31,11 @@ This document currently governs:
 - `src/runtime/virtual-machine/domain/profile_generated.rs`
 - `src/runtime/virtual-machine/domain/execution.rs`
 - `src/runtime/virtual-machine/domain/execution_ir.rs`
+- `src/runtime/virtual-machine/domain/loader.rs`
+- `src/runtime/virtual-machine/domain/profile_machine.rs`
+- `src/interface/command-line/composition/main.rs`
 - `tests/test_target_profile.py`
+- `tests/cli_malbolge.rs`
 - `tests/vm/profile_requirements.rs`
 - `tests/tiered_execution.rs`
 - `tests/compatibility/test_profile_requirements.py`
@@ -102,10 +106,18 @@ profile identity.
 constructor and binds the resulting machine to `malbolge-1998`.
 
 `ExecutionMachine::from_source_for_profile()` requires an explicit canonical
-profile descriptor. It performs runtime preflight before invoking the classic
-loader. A capability failure therefore has precedence over source-format errors;
-an unsupported scalable target cannot reach a loader that only understands the
-classic machine.
+profile descriptor. Before lexical or instruction admission, the loader-owned
+source counter derives the exact number of non-whitespace program words using
+the same six C-locale whitespace bytes as source loading. Canonical profile
+preflight then checks program capacity first and runtime capability second. A
+source that needs 59,050 words under `malbolge-1998` therefore emits
+`MALBOLGE-PROFILE-002` even when a later source byte would also be invalid;
+whitespace does not consume profile memory.
+
+`ProfileMachine::from_source()` uses the same source-word requirement before its
+profile-width loader. The raw `.malbolge` CLI now constructs its historical
+interpreter through `ExecutionMachine`, so the product path preserves the same
+capacity diagnostic instead of exposing a generic classic-loader overflow.
 
 Every constructed `ExecutionMachine` retains its exact target-profile identity
 through `ExecutionMachine::profile()`.
@@ -180,6 +192,8 @@ a valid profile may still be unsupported by a particular runtime.
 - Runtime capability is explicit data, never inferred from host pointer width,
   allocator behavior, or accidental integer size.
 - Profile-capacity validation happens before runtime-capability validation.
+- Source program-capacity validation happens before runtime-capability
+  validation, lexical admission, or execution.
 - Runtime-capability validation happens before source loading or execution.
 - `malbolge-1998` retains its exact ten-trit/59,049-word historical machine.
 - `malbolge-2026`, `malbolge-2026.1`, `malbolge-2026.2`, and
@@ -230,11 +244,11 @@ explicit
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality.
 Other artifact families do not yet universally expose an equivalent program
-requirement, and bootstrap compiler artifacts, durable-cache/AOT/JIT execution,
-and product paths do not yet universally invoke combined portable preflight.
-This
-contract therefore remains active
-rather than claiming repository-wide profile diagnostic completion.
+requirement. Raw `.malbolge` product invocation now uses canonical source
+preflight, but bootstrap compiler artifacts, durable-cache/AOT/JIT execution,
+and remaining product/artifact paths do not yet universally invoke combined
+portable preflight. This contract therefore remains active rather than claiming
+repository-wide profile diagnostic completion.
 
 ## Verification
 
@@ -246,10 +260,15 @@ rather than claiming repository-wide profile diagnostic completion.
   malformed-input rejection, stable missing-dimension order, and byte-exact Rust
   diagnostic parity for current/classic and historical-capacity failures.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
-  classic facade before loading, transition-profile acceptance, classic default
-  identity, exact historical-ceiling diagnostics, portable/canonical `001` and
-  `002` parity, explicit profiled-runtime acceptance, unknown-feature rejection,
-  and no-fallback lookup.
+  classic facade before loading, exact source-word capacity before loader
+  errors, canonical whitespace non-consumption, profiled-source parity,
+  transition-profile acceptance, classic default identity, exact
+  historical-ceiling diagnostics, portable/canonical `001` and `002` parity,
+  explicit profiled-runtime acceptance, unknown-feature rejection, and
+  no-fallback lookup.
+- `tests/cli_malbolge.rs` proves an oversized raw historical source surfaces
+  `MALBOLGE-PROFILE-002` with `historical-profile-ceiling` while normal raw
+  interpreter-authority output remains unchanged.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence

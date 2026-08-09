@@ -37,7 +37,7 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::annotated::{AnnotatedLoadError, canonicalize_annotated_source};
-use crate::loader::LoadError;
+use crate::loader::{LoadError, source_word_requirement};
 use crate::machine::{
     Machine, MachineError, MachineState, Registers, RunOutcome, StepOutcome,
     Termination,
@@ -178,7 +178,7 @@ impl ExecutionMachine {
     ) -> Result<Self, ExecutionError> {
         preflight_profile(
             profile,
-            profile.memory_words(),
+            u64::from(profile.memory_words()),
             safe_rust_classic_capability(),
         )
         .map_err(|error| ExecutionError::profile(mode, error))?;
@@ -216,7 +216,7 @@ impl ExecutionMachine {
     ) -> Result<Self, ExecutionError> {
         preflight_profile(
             profile,
-            profile.memory_words(),
+            source_word_requirement(source),
             safe_rust_classic_capability(),
         )
         .map_err(|error| ExecutionError::profile(mode, error))?;

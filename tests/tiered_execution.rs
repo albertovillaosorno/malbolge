@@ -1287,7 +1287,7 @@ fn portable_ir_uses_shared_runtime_diagnostic() -> Result<(), String> {
         .ok_or_else(|| String::from("fixture profile is missing"))?;
     let Err(canonical) = preflight_profile(
         fixture,
-        fixture.memory_words(),
+        u64::from(fixture.memory_words()),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from(
@@ -3048,7 +3048,7 @@ fn direct_selector_prioritizes_profile_preflight() -> Result<(), String> {
         .ok_or_else(|| String::from("fixture profile is missing"))?;
     let Err(canonical) = preflight_profile(
         fixture,
-        fixture.memory_words(),
+        u64::from(fixture.memory_words()),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from("fixture profile was admitted"));

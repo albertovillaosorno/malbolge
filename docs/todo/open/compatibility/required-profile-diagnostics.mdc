@@ -50,8 +50,11 @@ historical-profile constraint.
   plus the explicit
   `safe-rust-classic` runtime envelope: ten trits, 59,049 words, and all
   normative schema-v2 semantic features.
-- `ExecutionMachine::from_source_for_profile()` runs profile/runtime preflight
-  before the classic loader and retains the exact accepted profile identity.
+- `ExecutionMachine::from_source_for_profile()` and
+  `ProfileMachine::from_source()` count exact non-whitespace source words and
+  run profile-capacity/runtime preflight before their loaders. A 59,050-word
+  historical source emits `MALBOLGE-PROFILE-002` before later loader errors,
+  while canonical whitespace consumes no profile memory.
 - `malbolge-2026` fails before loading with `MALBOLGE-PROFILE-001`, naming its
   required 14 trits/4,782,969 words and the classic runtime's missing
   `word-trits,memory-words` dimensions.
@@ -91,9 +94,12 @@ historical-profile constraint.
   rejects profile-capacity-inconsistent addressing before bootstrap or direct
   artifact construction. Direct structural admission also rejects same-profile
   object/key footprint mismatch through `MBPF` v3.
-- Equivalent program-memory requirements for non-IR artifact families, bootstrap
-  compiler artifacts, durable-cache/AOT/JIT/runtime orchestration, and universal
-  product invocation remain open, so repository-wide completion is not claimed.
+- Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
+  reaches the same historical-ceiling diagnostic without changing normal
+  interpreter output. Equivalent program-memory requirements for non-IR artifact
+  families, bootstrap compiler artifacts, durable-cache/AOT/JIT/runtime
+  orchestration, and remaining product invocation paths remain open, so
+  repository-wide completion is not claimed.
 
 ## Acceptance
 
@@ -116,8 +122,8 @@ historical-profile constraint.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `src/automation/repository/composition/scripts/validate/profile_requirements.py`,
   `tests/compatibility/test_profile_requirements.py`,
-  `tests/vm/profile_requirements.rs`, and the remaining compatibility/profile
-  Python suites.
+  `tests/vm/profile_requirements.rs`, `tests/cli_malbolge.rs`, and the remaining
+  compatibility/profile Python suites.
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,

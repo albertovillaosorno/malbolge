@@ -105,6 +105,17 @@ pub const fn is_source_whitespace(byte: u8) -> bool {
     matches!(byte, 0x09 | 0x0a | 0x0b | 0x0c | 0x0d | 0x20)
 }
 
+/// Counts exact non-whitespace source words for profile-capacity preflight.
+///
+/// Counting precedes lexical and instruction admission so profile capacity has
+/// deterministic precedence over later loader diagnostics.
+pub(crate) fn source_word_requirement(source: &[u8]) -> u64 {
+    source
+        .iter()
+        .filter(|byte| !is_source_whitespace(**byte))
+        .fold(0u64, |count, _byte| count.saturating_add(1))
+}
+
 /// Loads validated classic source and fills the complete memory recurrence.
 ///
 /// # Errors

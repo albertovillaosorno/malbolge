@@ -35,8 +35,8 @@
 //! Exhaustive classic loader byte and positional-decode admission checks.
 
 use malbolge::{
-    LoadError, MEMORY_WORDS, ProfileLoadError, ProfileMachine,
-    ProfileMachineError, Word, decode_instruction, historical_profile,
+    LoadError, MEMORY_WORDS, ProfileMachine, ProfileMachineError,
+    ProfileRequirementErrorKind, Word, decode_instruction, historical_profile,
     is_source_whitespace, load,
 };
 
@@ -177,11 +177,19 @@ fn recurrence_and_capacity_boundaries_fail_closed() -> Result<(), String> {
     ) else {
         return Err(String::from("profiled oversized source was admitted"));
     };
-    let expected_profiled =
-        ProfileMachineError::Load(ProfileLoadError::SourceTooLong);
-    if profiled_oversized != expected_profiled {
+    let ProfileMachineError::Profile(requirement) = profiled_oversized else {
         return Err(format!(
-            "profiled oversized source mismatch: {profiled_oversized:?}"
+            "profiled oversized source lost profile precedence: {profiled_oversized:?}"
+        ));
+    };
+    if requirement.kind() != ProfileRequirementErrorKind::ProfileCapacityExceeded
+        || requirement.profile().id() != historical_profile().id()
+        || requirement.required_memory_words()
+            != u64::try_from(MEMORY_WORDS.saturating_add(1))
+                .map_err(|error| format!("required memory conversion failed: {error}"))?
+    {
+        return Err(format!(
+            "profiled oversized source requirement mismatch: {requirement:?}"
         ));
     }
     Ok(())

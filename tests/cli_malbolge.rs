@@ -32,12 +32,36 @@
 
 //! End-to-end raw Malbolge CLI authority evidence.
 
-use std::path::Path;
-use std::process::Command;
+use std::env::temp_dir;
+use std::fs::{remove_file, write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, id};
 
 use malbolge as _;
 
 const EXPECTED_EOF_OUTPUT: &[u8] = &[0xa8];
+
+struct TemporarySource {
+    path: PathBuf,
+}
+
+impl TemporarySource {
+    fn oversized() -> Result<Self, String> {
+        let path = temp_dir().join(format!(
+            "malbolge-cli-oversized-{}.malbolge",
+            id(),
+        ));
+        write(&path, vec![b'!'; 59_050])
+            .map_err(|error| format!("write oversized source: {error}"))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TemporarySource {
+    fn drop(&mut self) {
+        let _ignored = remove_file(&self.path);
+    }
+}
 
 #[test]
 fn raw_source_uses_interpreter_authority() -> Result<(), String> {
@@ -64,6 +88,31 @@ fn raw_source_uses_interpreter_authority() -> Result<(), String> {
             output.status,
             output.stdout,
             String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_source_capacity_uses_profile_diagnostic() -> Result<(), String> {
+    let source = TemporarySource::oversized()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&source.path)
+        .output()
+        .map_err(|error| format!("run oversized raw Malbolge CLI: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !stderr.contains("MALBOLGE-PROFILE-002")
+        || !stderr.contains("constraint=historical-profile-ceiling")
+        || !stderr.contains("required_memory_words=59050")
+    {
+        return Err(format!(
+            concat!(
+                "raw source capacity diagnostic mismatch: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
         ));
     }
     Ok(())

@@ -220,7 +220,7 @@ fn profiled_historical_matches_classic_roundtrip_and_eof() -> TestResult {
 fn profiled_runtime_capability_accepts_current_profile() -> TestResult {
     normalize_result(preflight_profile(
         current_profile(),
-        current_profile().memory_words(),
+        u64::from(current_profile().memory_words()),
         safe_rust_profiled_capability(),
     ))
 }

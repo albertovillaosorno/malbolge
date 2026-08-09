@@ -35,7 +35,8 @@
 
 use malbolge::{
     ExecutionErrorKind, ExecutionMachine, ExecutionMode, ProfileKind,
-    ProfileRequirementErrorKind, RuntimeProfileRequirementError,
+    ProfileMachine, ProfileMachineError, ProfileRequirementErrorKind,
+    RuntimeProfileRequirementError,
     TargetProfileRequirement, current_profile, historical_profile,
     preflight_portable_profile_requirement, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
@@ -126,6 +127,78 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
 }
 
 #[test]
+fn source_capacity_preflight_precedes_loader_errors() -> TestResult {
+    let historical = historical_profile();
+    let source = vec![b'!'; 59_050];
+
+    let Err(classic_error) = ExecutionMachine::from_source_for_profile(
+        &source,
+        Vec::new(),
+        ExecutionMode::Interpreter,
+        historical,
+    ) else {
+        return Err(String::from("oversized classic source was accepted"));
+    };
+    let ExecutionErrorKind::Profile(classic_requirement) = classic_error.kind()
+    else {
+        return Err(format!(
+            "classic source capacity lost profile precedence: {classic_error}"
+        ));
+    };
+    check_equal(
+        &classic_requirement.kind(),
+        &ProfileRequirementErrorKind::ProfileCapacityExceeded,
+        "classic source capacity category",
+    )?;
+    check_equal(
+        &classic_requirement.required_memory_words(),
+        &59_050,
+        "classic source required memory",
+    )?;
+
+    let Err(profile_error) = ProfileMachine::from_source(
+        historical,
+        &source,
+        Vec::new(),
+    ) else {
+        return Err(String::from("oversized profiled source was accepted"));
+    };
+    let ProfileMachineError::Profile(profile_requirement) = profile_error else {
+        return Err(format!(
+            "profiled source capacity lost profile precedence: {profile_error}"
+        ));
+    };
+    check_equal(
+        &profile_requirement.kind(),
+        &ProfileRequirementErrorKind::ProfileCapacityExceeded,
+        "profiled source capacity category",
+    )?;
+    check_equal(
+        &profile_requirement.required_memory_words(),
+        &59_050,
+        "profiled source required memory",
+    )?;
+
+    let mut whitespace_padded = vec![b' '; 128];
+    whitespace_padded.extend(std::iter::repeat_n(b'!', 59_049));
+    let Err(loader_error) = ExecutionMachine::from_source_for_profile(
+        &whitespace_padded,
+        Vec::new(),
+        ExecutionMode::Interpreter,
+        historical,
+    ) else {
+        return Err(String::from("invalid boundary source was accepted"));
+    };
+    if matches!(loader_error.kind(), ExecutionErrorKind::Load(_)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "canonical whitespace consumed profile capacity: {loader_error}"
+        ))
+    }
+}
+
+#[test]
 fn portable_requirement_canonical_admission_is_exact() -> TestResult {
     let current = current_profile();
     let canonical = TargetProfileRequirement::from_descriptor(current);
@@ -170,7 +243,7 @@ fn portable_requirement_matches_canonical_runtime_diagnostic() -> TestResult {
     let requirement = TargetProfileRequirement::from_descriptor(current);
     let Err(canonical) = preflight_profile(
         current,
-        current.memory_words(),
+        u64::from(current.memory_words()),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from("canonical current requirement was accepted"));
@@ -239,7 +312,7 @@ fn portable_capacity_matches_historical_diagnostic() -> TestResult {
     let required_memory_words = u64::from(HISTORICAL_WORDS).saturating_add(1);
     let Err(canonical) = preflight_profile(
         historical,
-        HISTORICAL_WORDS.saturating_add(1),
+        u64::from(HISTORICAL_WORDS.saturating_add(1)),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from("canonical historical overflow was accepted"));
@@ -289,7 +362,7 @@ fn historical_capacity_excess_names_historical_ceiling() -> TestResult {
     let required_memory_words = HISTORICAL_WORDS.saturating_add(1);
     let Err(error) = preflight_profile(
         historical,
-        required_memory_words,
+        u64::from(required_memory_words),
         safe_rust_classic_capability(),
     ) else {
         return Err(String::from("historical capacity overflow was accepted"));
@@ -322,7 +395,7 @@ fn transition_profile_runs_on_equivalent_classic_capacity() -> TestResult {
         .ok_or_else(|| String::from("missing transition profile projection"))?;
     normalize_result(preflight_profile(
         transition,
-        transition.memory_words(),
+        u64::from(transition.memory_words()),
         safe_rust_classic_capability(),
     ))?;
     let machine = normalize_result(ExecutionMachine::from_source_for_profile(

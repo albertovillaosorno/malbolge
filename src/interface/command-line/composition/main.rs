@@ -48,7 +48,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
 
 use c_source::inspect_c_source;
-use malbolge::{Machine, ProfileMachine, RunOutcome, parse_capsule};
+use malbolge::{
+    ExecutionMachine, ExecutionMode, ProfileMachine, RunOutcome, parse_capsule,
+};
 
 const C_EXTENSION: &str = "c";
 const DOOM_IWAD_NAMES: [&str; 8] = [
@@ -62,6 +64,7 @@ const DOOM_IWAD_NAMES: [&str; 8] = [
     "tnt.wad",
 ];
 const C_RUN_PREFIX: &str = "malbolge-c-run";
+const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const RUN_CHUNK_STEPS: usize = 1_000_000;
 const ZIG_VERSION: &str = "0.16.0";
@@ -306,6 +309,9 @@ fn c_driver() -> Result<CDriver, String> {
             return Ok(CDriver::Cc(executable));
         }
     }
+    if let Some(repository_clang) = repository_clang() {
+        return Ok(CDriver::Cc(repository_clang.into_os_string()));
+    }
     Err(String::from(
         "no C compiler found; install Zig or set MALBOLGE_CC",
     ))
@@ -443,6 +449,21 @@ fn repository_zig() -> Option<PathBuf> {
     candidate.is_file().then_some(candidate)
 }
 
+fn repository_clang() -> Option<PathBuf> {
+    let executable_name = if cfg!(windows) {
+        "clang.exe"
+    } else {
+        "clang"
+    };
+    let candidate = repository_root()?
+        .join(".dependencies")
+        .join("llvm")
+        .join(LLVM_VERSION)
+        .join("bin")
+        .join(executable_name);
+    candidate.is_file().then_some(candidate)
+}
+
 fn run() -> Result<ExitCode, String> {
     let mut arguments = env::args_os().skip(1);
     let Some(first_argument) = arguments.next() else {
@@ -495,8 +516,12 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
 }
 
 fn run_classic(source: &[u8]) -> Result<(), String> {
-    let mut machine = Machine::from_source(source, Vec::new())
-        .map_err(|error| format!("classic Malbolge load failed: {error}"))?;
+    let mut machine = ExecutionMachine::from_source(
+        source,
+        Vec::new(),
+        ExecutionMode::Interpreter,
+    )
+    .map_err(|error| format!("classic Malbolge load failed: {error}"))?;
     let mut emitted = 0usize;
     let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
         format!("classic Malbolge execution failed: {error}")

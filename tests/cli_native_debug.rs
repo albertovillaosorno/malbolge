@@ -32,8 +32,10 @@
 
 //! End-to-end native C debug-run evidence for exact guest byte output.
 
-use std::path::Path;
-use std::process::Command;
+use std::env::temp_dir;
+use std::fs::{remove_file, write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, id};
 
 use malbolge as _;
 
@@ -69,6 +71,63 @@ fn freestanding_hello_world_debug_run_preserves_exact_bytes()
         return Err(format!(
             "native debug stderr was not empty: {}",
             String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+struct InvalidTemporaryCSource {
+    path: PathBuf,
+}
+
+#[cfg(windows)]
+impl InvalidTemporaryCSource {
+    fn create() -> Result<Self, String> {
+        let path = temp_dir().join(format!(
+            "malbolge-cli-invalid-clang-proof-{}.c",
+            id(),
+        ));
+        write(&path, b"int main(void) { this is not valid C; }
+")
+            .map_err(|error| format!("write invalid C proof: {error}"))?;
+        Ok(Self { path })
+    }
+}
+
+#[cfg(windows)]
+impl Drop for InvalidTemporaryCSource {
+    fn drop(&mut self) {
+        let _ignored = remove_file(&self.path);
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn repo_clang_is_selected_without_host_compiler_path() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = InvalidTemporaryCSource::create()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .current_dir(root)
+        .env_remove("MALBOLGE_CC")
+        .env("PATH", "")
+        .arg(&source.path)
+        .output()
+        .map_err(|error| {
+            format!("failed to run repository-local C debug CLI: {error}")
+        })?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !stderr.contains("C compilation failed with status")
+        || stderr.contains("no C compiler found")
+    {
+        return Err(format!(
+            concat!(
+                "repository-local compiler selection mismatch: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
         ));
     }
     Ok(())

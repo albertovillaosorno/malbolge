@@ -42,10 +42,13 @@ The C driver is selected in this order:
 2. Repository-local Zig 0.16.0 under `.dependencies/zig/0.16.0/`.
 3. `zig` on `PATH`.
 4. `clang`, `cc`, or `gcc` on `PATH`.
+5. Repository-local Clang 22.1.8 under `.dependencies/llvm/22.1.8/bin/`.
 
-On Windows the repository development setup pins Zig 0.16.0 as the portable C
-frontend/linker. Zig itself is development tooling; generated `.malbolge`
-programs must not require it at execution time.
+On Windows the repository development setup prefers Zig 0.16.0 as the portable
+C frontend/linker and retains pinned Clang 22.1.8 as a final repository-local
+debug fallback when neither Zig nor a host compiler is available. Both are
+development tooling; generated
+`.malbolge` programs must not require either compiler at execution time.
 
 When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
 `src/interface/command-line/adapter-outbound/adapters/doom/windows.c` as a
