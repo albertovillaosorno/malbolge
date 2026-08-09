@@ -48,6 +48,7 @@ SOURCE_ROOT_NAME = "src"
 VM_FUNCTION = "src/runtime/virtual-machine"
 EXPECTED_DOMAINS = (
     "automation",
+    "compiler",
     "examples",
     "interface",
     "interoperability",
