@@ -24,7 +24,7 @@
 # - Merge-When:
 #   - Merge when another suite owns this exact guest-library evidence lifecycle.
 # - Summary:
-#   - Locks malbolge-libc-v1 availability and executable memory/string behavior.
+#   - Locks malbolge-libc-v1 availability and executable guest behavior.
 # - Description:
 #   - Proves available routines are self-contained guest C and rejects others.
 # - Usage:
@@ -54,7 +54,9 @@ LIBC_ROOT = ROOT / "src/runtime/guest-c-library"
 INCLUDE = LIBC_ROOT / "contract/include"
 MEMORY = LIBC_ROOT / "domain/memory.c"
 STRING = LIBC_ROOT / "domain/string.c"
+MATH_EXACT = LIBC_ROOT / "domain/math_exact.c"
 ACCEPTED = ROOT / "tests/tidy/libc/accepted/libc_memory_string.c"
+ACCEPTED_MATH = ROOT / "tests/tidy/libc/accepted/libc_math_exact.c"
 REJECTED = ROOT / "tests/tidy/libc-rejected"
 HARNESS = ROOT / "tests/tidy/libc/guest_libc_harness.c"
 CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -67,7 +69,18 @@ WINDOWS_OS_NAME = "nt"
 EXPECTED_DIAGNOSTIC_LINE = 39
 EXPECTED_DIAGNOSTIC_COLUMN = 12
 MALLOC_ROUTINE = "malloc"
+MATH_OBJECT_STEM = "math_exact"
+MSVC_FLOAT_MARKER = frozenset({"_fltused"})
+WINDOWS_ABI_TARGETS = (
+    ("i686-pc-windows-msvc", frozenset({"__fltused"})),
+    ("x86_64-pc-windows-msvc", MSVC_FLOAT_MARKER),
+    ("aarch64-pc-windows-msvc", frozenset[str]()),
+)
+WASM_TARGET_MACHINERY = frozenset({"__stack_pointer"})
 EXPECTED_AVAILABLE = frozenset({
+    "ceil",
+    "fabs",
+    "floor",
     "memcmp",
     "memcpy",
     "memmove",
@@ -77,14 +90,12 @@ EXPECTED_AVAILABLE = frozenset({
     "strcpy",
     "strlen",
     "strncpy",
+    "trunc",
 })
 EXPECTED_UNAVAILABLE = frozenset({
     "atan2",
     "calloc",
-    "ceil",
     "cos",
-    "fabs",
-    "floor",
     "free",
     "getchar",
     "malloc",
@@ -93,7 +104,6 @@ EXPECTED_UNAVAILABLE = frozenset({
     "sin",
     "snprintf",
     "sqrt",
-    "trunc",
     "vsnprintf",
 })
 EXPECTED_FORBIDDEN = frozenset({
@@ -110,6 +120,41 @@ SOURCE_REJECTIONS = (
         "libc_malloc_unavailable.c",
         c_libc_source.DIAGNOSTIC_UNAVAILABLE,
         "malloc",
+    ),
+    (
+        "libc_calloc_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "calloc",
+    ),
+    (
+        "libc_realloc_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "realloc",
+    ),
+    (
+        "libc_free_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "free",
+    ),
+    (
+        "libc_getchar_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "getchar",
+    ),
+    (
+        "libc_putchar_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "putchar",
+    ),
+    (
+        "libc_snprintf_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "snprintf",
+    ),
+    (
+        "libc_vsnprintf_unavailable.c",
+        c_libc_source.DIAGNOSTIC_UNAVAILABLE,
+        "vsnprintf",
     ),
     (
         "libc_math_unavailable.c",
@@ -216,7 +261,7 @@ def test_guest_headers_are_repository_owned() -> None:
 def test_executable_guest_libc_compiles_for_frontend_target() -> None:
     """Available guest routines and their positive fixture are strict C23."""
     _require_clang()
-    for source in (MEMORY, STRING, ACCEPTED):
+    for source in (MEMORY, STRING, MATH_EXACT, ACCEPTED, ACCEPTED_MATH):
         completed = _run(
             [
                 str(CLANG),
@@ -281,6 +326,70 @@ def test_declaration_only_header_is_not_itself_a_rejection(
     assert c_libc_source.analyze_source(source) == ()
 
 
+def _undefined_symbols(object_file: Path) -> frozenset[str]:
+    completed = _run([str(LLVM_NM), "-u", str(object_file)], ROOT)
+    assert completed.returncode == 0, completed.stderr
+    return frozenset(
+        line.split()[-1]
+        for line in completed.stdout.splitlines()
+        if line.split()
+    )
+
+
+def _assert_native_guest_object_dependencies(objects: list[Path]) -> None:
+    for runtime_object in objects[:3]:
+        expected = (
+            MSVC_FLOAT_MARKER
+            if runtime_object.stem == MATH_OBJECT_STEM
+            else frozenset[str]()
+        )
+        assert _undefined_symbols(runtime_object) == expected
+
+
+def _assert_wasm_math_dependencies(tmp_path: Path) -> None:
+    wasm_math = tmp_path / "math-exact-wasm.o"
+    wasm_compiled = _run(
+        [
+            str(CLANG),
+            "--target=wasm32-unknown-unknown",
+            *STRICT_C,
+            f"-I{INCLUDE}",
+            "-c",
+            str(MATH_EXACT),
+            "-o",
+            str(wasm_math),
+        ],
+        ROOT,
+    )
+    assert wasm_compiled.returncode == 0, wasm_compiled.stderr
+    assert _undefined_symbols(wasm_math) == WASM_TARGET_MACHINERY
+
+
+@pytest.mark.skipif(
+    os.name != WINDOWS_OS_NAME,
+    reason="pinned Windows Clang object matrix is Windows-only",
+)
+def test_exact_math_has_only_target_float_markers(tmp_path: Path) -> None:
+    """Exact math never gains a callable compiler or host-library helper."""
+    for target, expected in WINDOWS_ABI_TARGETS:
+        object_file = tmp_path / f"math-{target}.obj"
+        compiled = _run(
+            [
+                str(CLANG),
+                f"--target={target}",
+                *STRICT_C,
+                f"-I{INCLUDE}",
+                "-c",
+                str(MATH_EXACT),
+                "-o",
+                str(object_file),
+            ],
+            ROOT,
+        )
+        assert compiled.returncode == 0, compiled.stderr
+        assert _undefined_symbols(object_file) == expected
+
+
 @pytest.mark.skipif(
     os.name != WINDOWS_OS_NAME,
     reason="no-CRT guest libc harness uses pinned Windows LLVM tools",
@@ -292,7 +401,7 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
             pytest.skip(f"repository-pinned tool is unavailable: {tool.name}")
 
     objects: list[Path] = []
-    for source in (MEMORY, STRING, HARNESS):
+    for source in (MEMORY, STRING, MATH_EXACT, HARNESS):
         output = tmp_path / f"{source.stem}.obj"
         compiled = _run(
             [
@@ -329,17 +438,19 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stderr
 
-    for runtime_object in objects[:2]:
-        symbols = _run([str(LLVM_NM), "-u", str(runtime_object)], ROOT)
-        assert symbols.returncode == 0, symbols.stderr
-        assert not symbols.stdout.strip()
+    _assert_native_guest_object_dependencies(objects)
+    _assert_wasm_math_dependencies(tmp_path)
 
 
 def test_manual_validator_runs_libc_preflight_before_tidy() -> None:
     """Admit available routines and reject unavailable allocation calls."""
     _require_clang()
-    accepted = _run([sys.executable, str(VALIDATOR), str(ACCEPTED)], ROOT)
-    assert accepted.returncode == 0, accepted.stderr
+    for accepted_source in (ACCEPTED, ACCEPTED_MATH):
+        accepted = _run(
+            [sys.executable, str(VALIDATOR), str(accepted_source)],
+            ROOT,
+        )
+        assert accepted.returncode == 0, accepted.stderr
 
     rejected = _run(
         [

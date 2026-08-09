@@ -87,6 +87,34 @@
       "signature": "char *strcat(char *restrict, const char *restrict)",
       "implementation": "guest-c",
       "semantics": "c23-append-through-null"
+    },
+    {
+      "name": "fabs",
+      "header": "math.h",
+      "signature": "double fabs(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-absolute-value-canonical-nan"
+    },
+    {
+      "name": "floor",
+      "header": "math.h",
+      "signature": "double floor(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-toward-negative-infinity"
+    },
+    {
+      "name": "ceil",
+      "header": "math.h",
+      "signature": "double ceil(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-toward-positive-infinity"
+    },
+    {
+      "name": "trunc",
+      "header": "math.h",
+      "signature": "double trunc(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-toward-zero"
     }
   ],
   "contracted_unavailable": [
@@ -147,38 +175,10 @@
       "owner": "guest-runtime-and-allocator"
     },
     {
-      "name": "fabs",
-      "header": "math.h",
-      "signature": "double fabs(double)",
-      "semantics": "binary64-absolute-value-canonical-nan",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
       "name": "sqrt",
       "header": "math.h",
       "signature": "double sqrt(double)",
       "semantics": "binary64-nearest-ties-even-canonical-nan",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "floor",
-      "header": "math.h",
-      "signature": "double floor(double)",
-      "semantics": "binary64-toward-negative-infinity",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "ceil",
-      "header": "math.h",
-      "signature": "double ceil(double)",
-      "semantics": "binary64-toward-positive-infinity",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "trunc",
-      "header": "math.h",
-      "signature": "double trunc(double)",
-      "semantics": "binary64-toward-zero",
       "owner": "guest-runtime-and-allocator"
     },
     {

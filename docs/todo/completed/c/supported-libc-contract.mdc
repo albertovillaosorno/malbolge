@@ -57,10 +57,12 @@ routines without hidden host shortcuts.
 - Completion evidence on 2026-08-08: `c-libc-v1.json` defines closed
   `malbolge-libc-v1` header and routine policy bound to `malbolge-c32-v1` and
   target profile `malbolge-2026`.
-- Completion evidence on 2026-08-08: nine memory/narrow-string routines are
-  repository-owned freestanding guest C; strict wasm32 C23 compilation passes,
-  a Windows `/nodefaultlib` harness executes all nine successfully, and the two
-  runtime objects have no undefined symbols.
+- Completion evidence on 2026-08-08: the initial nine memory/narrow-string
+  routines are repository-owned freestanding guest C; strict wasm32 C23
+  compilation passes and a Windows `/nodefaultlib` harness executes them.
+- Follow-on lane-8 evidence on 2026-08-09 adds exact binary64 `fabs`, `floor`,
+  `ceil`, and `trunc` as guest C with canonical NaN handling. The no-CRT harness
+  now executes all 13 available routines while harder math remains gated.
 - Completion evidence on 2026-08-08: declaration-only guest `stdlib.h`,
   `stdio.h`, and `math.h` reserve deterministic future signatures while source
   preflight emits `MALBOLGE-LIBC-001` for unavailable calls and
@@ -75,5 +77,6 @@ routines without hidden host shortcuts.
 - **Completion:** Completed on 2026-08-08 after the versioned guest library
   authority, executable memory/string subset, future declaration contracts,
   source-located availability diagnostics, native no-CRT dependency evidence,
-  and exhaustive repository validation all passed. Executable heap, stream,
-  formatting, and `libm` bodies remain owned by `guest-runtime-and-allocator`.
+  and exhaustive repository validation all passed. Heap, stream, formatting,
+  and remaining inexact `libm` bodies stay owned by
+  `guest-runtime-and-allocator`.

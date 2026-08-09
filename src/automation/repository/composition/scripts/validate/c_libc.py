@@ -70,6 +70,9 @@ COMPILER_HEADERS = (
 GUEST_HEADERS = ("math.h", "stdio.h", "stdlib.h", "string.h")
 UNAVAILABLE_HEADERS = ("stdbit.h",)
 AVAILABLE_ROUTINES = (
+    "ceil",
+    "fabs",
+    "floor",
     "memcmp",
     "memcpy",
     "memmove",
@@ -79,14 +82,12 @@ AVAILABLE_ROUTINES = (
     "strcpy",
     "strlen",
     "strncpy",
+    "trunc",
 )
 UNAVAILABLE_ROUTINES = (
     "atan2",
     "calloc",
-    "ceil",
     "cos",
-    "fabs",
-    "floor",
     "free",
     "getchar",
     "malloc",
@@ -95,7 +96,6 @@ UNAVAILABLE_ROUTINES = (
     "sin",
     "snprintf",
     "sqrt",
-    "trunc",
     "vsnprintf",
 )
 FORBIDDEN_ROUTINES = (

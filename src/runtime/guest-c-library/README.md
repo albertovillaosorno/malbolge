@@ -20,3 +20,14 @@ contracted facilities whose runtime implementation belongs to a later lane.
 
 - `contract/include/`: guest headers backed by executable guest code.
 - `domain/`: deterministic freestanding implementations of admitted routines.
+
+## Status
+
+Executable v1 memory, narrow-string, and exact binary64 math routines are
+implemented. Allocation
+wrappers are now implemented over the one-time startup-bound guest heap core,
+but remain unavailable in the canonical libc authority until compiler-generated
+startup proves the heap bind before user code. `getchar`/`putchar` wrappers are
+also implemented over stable declaration-only byte intrinsics, but remain
+unavailable until downstream lowering proves those intrinsic identities execute
+selected-profile input/output. Formatting and inexact math remain unavailable.

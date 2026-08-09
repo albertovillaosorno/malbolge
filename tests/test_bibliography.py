@@ -117,6 +117,7 @@ def test_source_record_requires_dated_provenance() -> None:
     """External evidence must retain a review or access date."""
     text = _c_record().replace("2026-07-26", "undated")
     text = text.replace("2026-08-08", "undated")
+    text = text.replace("2026-08-09", "undated")
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
@@ -130,6 +131,12 @@ def test_source_record_requires_nonempty_sources() -> None:
     wg14_source = "- <https://www9.open-std.org/"
     wg14_source += "JTC1/SC22/WG14/issues/c23/log.html> - accessed"
     text = text.replace(wg14_source, "accessed", 1)
+    math_source = "- <https://www.open-std.org/"
+    math_source += "jtc1/sc22/wg14/www/docs/dr_329.htm> - accessed"
+    text = text.replace(math_source, "accessed", 1)
+    draft_source = "- <https://www.open-std.org/"
+    draft_source += "jtc1/sc22/wg14/www/docs/n3220.pdf> - accessed"
+    text = text.replace(draft_source, "accessed", 1)
     _expect_failure(text, "Sources section contains no source entries")
 
 

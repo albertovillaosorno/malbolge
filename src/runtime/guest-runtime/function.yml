@@ -1,8 +1,8 @@
 schema: jig-function/v3
 identity:
-  id: guest-c-library
-  node: function:guest-c-library
-  path: src/runtime/guest-c-library
+  id: guest-runtime
+  node: function:guest-runtime
+  path: src/runtime/guest-runtime
   role: governed-function
 contracts:
   universal: graph-authority/v2
@@ -36,57 +36,56 @@ architecture:
     must_not: cross undeclared kind or function boundaries
     split_when: another capability needs independent policy
     merge_when: separate ownership has no independent meaning
-language_manifest: guest-c-library.jig
+language_manifest: guest-runtime.jig
 parts:
   - id: part-0001
-    path: contract/include/math.h
+    path: contract/guest-runtime-v1.json
     kind: contract
-    language: c
-    responsibility: Declare contracted deterministic binary64 math routines.
+    responsibility: Define version-one guest-runtime policy and identities.
   - id: part-0002
-    path: contract/include/stdio.h
+    path: contract/guest_runtime.h
     kind: contract
     language: c
-    responsibility: Declare contracted byte-stream and formatting routines.
+    responsibility: Define guest heap, frame, startup, and byte semantic APIs.
   - id: part-0003
-    path: contract/include/stdlib.h
+    path: contract/guest_intrinsics.h
     kind: contract
     language: c
-    responsibility: Declare contracted guest allocation routines.
+    responsibility: Declare stable byte-I/O symbols for downstream lowering.
   - id: part-0004
-    path: contract/include/string.h
+    path: domain/byte_stream.c
+    kind: domain
+    language: c
+    responsibility: Map profile I/O words to deterministic C byte semantics.
+  - id: part-0005
+    path: domain/heap.c
+    kind: domain
+    language: c
+    responsibility: Implement deterministic guest arena allocation semantics.
+  - id: part-0006
+    path: domain/frame.c
+    kind: domain
+    language: c
+    responsibility: Encode and validate the canonical hidden guest call frame.
+  - id: part-0007
+    path: domain/startup.c
+    kind: domain
+    language: c
+    responsibility: Bind one guest heap and delegate runtime allocation.
+  - id: part-0008
+    path: contract/guest_format.h
     kind: contract
     language: c
-    responsibility: Declare the executable v1 memory and string surface.
-  - id: part-0005
-    path: domain/memory.c
-    kind: domain
-    language: c
-    responsibility: Implement deterministic guest byte-memory primitives.
-  - id: part-0006
-    path: domain/string.c
-    kind: domain
-    language: c
-    responsibility: Implement deterministic guest narrow-string primitives.
-  - id: part-0007
-    path: domain/allocation.c
-    kind: domain
-    language: c
-    responsibility: Wrap guest heap semantics as C allocation APIs.
-  - id: part-0008
-    path: domain/stdio.c
-    kind: domain
-    language: c
-    responsibility: Wrap stable guest byte intrinsics as C getchar and putchar.
+    responsibility: Define typed locale-free bounded formatting primitives.
   - id: part-0009
-    path: domain/math_exact.c
+    path: domain/format.c
     kind: domain
     language: c
-    responsibility: Implement exact deterministic binary64 math routines.
+    responsibility: Implement typed integer, string, and character formatting.
 projects: []
 tests: []
 graph:
-  node: function:guest-c-library
+  node: function:guest-runtime
   labels:
     - hub
     - function
@@ -97,7 +96,7 @@ graph:
     - hub:domain:runtime
     - hub:role:governed-function
     - hub:lifecycle:implementation
-    - hub:function:guest-c-library
+    - hub:function:guest-runtime
 provenance:
   authority: .jig/taxonomy.json
   origin: authored

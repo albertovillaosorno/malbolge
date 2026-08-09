@@ -14,10 +14,11 @@ adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
 scope:
   - "tools/tidy/"
-  - "libc/"
-  - "runtime/"
+  - "src/runtime/"
   - "docs/technical/specification/"
   - "tests/tidy/"
+  - "tests/runtime/"
+  - "tests/test_guest_runtime_c.py"
 validation:
   - "jig validate --root ."
 ---
@@ -31,12 +32,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
 ## Acceptance
 
-- Allocation, streams, arithmetic and math helpers, calling convention support,
-  and other runtime facilities execute inside guest Malbolge semantics rather
-  than hidden host callbacks.
-- Fundamental compiler intrinsics such as byte output have executable Malbolge
-  lowerings; a native debug adapter may mirror them but cannot satisfy this
-  acceptance criterion.
+- Allocation, streams, arithmetic/math helpers, calling-convention support,
+  and other runtime facilities have deterministic guest-owned semantics and
+  freestanding implementations that do not delegate guest computation to hidden
+  host callbacks.
+- Fundamental compiler intrinsics such as byte output have explicit versioned
+  guest-runtime contracts suitable for downstream lowering. Native debug
+  adapters may mirror them but cannot define their semantics.
+- Executable ternary/Malbolge realization is downstream completion evidence for
+  `ternary-machine-lowering`; this lane must provide the stable runtime semantic
+  identities and implementation inputs that stage consumes unchanged.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - The declared scope contains no unresolved placeholder implementation or
@@ -46,9 +51,97 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
 ## Evidence
 
-- Expected durable artifact surface: `tools/tidy/`, `libc/`, `runtime/`,
-  `docs/technical/specification/`, `tests/tidy/`.
+- Expected durable artifact surface: `tools/tidy/`, `src/runtime/`,
+  `docs/technical/specification/`, `tests/tidy/`, `tests/runtime/`, and
+  `tests/test_guest_runtime_c.py`.
 - Required evidence: accepted/rejected source fixtures, source-located
-  diagnostics, and compiler/linter contract regression tests.
+  diagnostics, runtime semantic/conformance fixtures, and regression tests that
+  prove no host callback is required to define guest computation.
+- Implemented contract-authority evidence: tracked
+  `guest-runtime-v1.json` owns runtime-specific status values, heap metadata and
+  policy, startup behavior, frame-authority reference, byte intrinsic
+  identities,
+  and the no-host-fallback rule. `tests/test_guest_runtime_authority.py` ties
+  the
+  C projection back to that contract, `c-abi-v1.json`, current `malbolge.json`,
+  and staged `c-libc-v1.json` availability.
+- Implemented runtime-core evidence: governed `src/runtime/guest-runtime/`
+  owns a version-one C contract plus freestanding heap and byte-stream domains.
+  The heap uses 16-byte-aligned first-fit allocation with canonical 16-byte
+  little-endian metadata, checked 32-bit extents, split/coalesce/tail reclaim,
+  deterministic null for zero-size allocation, zeroed allocation, and resize
+  with old-allocation preservation on exhaustion. Every public heap mutation
+  preflights the entire canonical chain. Invalid later metadata rejects before
+  earlier state or result publication changes.
+- Implemented byte-stream evidence: profile input words `0..255` map to C byte
+  values, profile EOF `4,782,968` maps to `-1`, impossible intermediate words
+  fail explicitly, and output consumes the low eight bits without host stdio.
+- Implemented conformance evidence: `tests/test_guest_runtime_c.py` compiles the
+  independent C vectors with strict warnings for i686, x86-64, and AArch64
+  Windows ABIs, then executes the native vector suite. The vectors lock exact
+  metadata bytes, alignment, reuse, split/coalesce, calloc overflow/zeroing,
+  realloc in-place/tail-growth/move/failure preservation, corruption rejection,
+  late-corruption nonmutation, and I/O. A deterministic 4,000-operation stress
+  run validates payloads plus an
+  independently parsed raw metadata chain after every operation. ASan/UBSan and
+  path-sensitive Clang analysis are clean. Cross-ABI object-symbol checks
+  prevent compiler-injected library helpers from becoming hidden runtime
+  dependencies.
+- Implemented frame evidence: the runtime consumes the canonical
+  `malbolge-c32-v1` 32-byte hidden frame layout directly from ABI authority. Its
+  codec validates 16-byte frame extent, required argument-block pointer, and
+  zero v1 flags; encoding is little-endian and validation-gated, while decoding
+  stages fields before publication. The C vector locks exact frame bytes and
+  invalid-frame nonpublication.
+- Implemented startup/allocation-wrapper evidence: guest startup owns a
+  one-time heap binder; pre-bind allocation fails explicitly, invalid binding
+  leaves the runtime uninitialized, and successful binding cannot be replaced.
+  The four public libc allocation wrappers delegate only to guest-runtime
+  symbols. They intentionally remain unavailable in `malbolge-libc-v1` until
+  compiler-generated startup wiring proves the bind before user code.
+- Implemented byte-wrapper evidence: declaration-only intrinsic symbols own
+  profile input-word and output-byte effects; `getchar`/`putchar` wrappers use
+  only those symbols plus pure runtime mapping. Independent test intrinsics
+  prove byte, EOF, impossible-input, low-eight-bit, and return-value behavior.
+  The routines remain unavailable until `ternary-machine-lowering` realizes the
+  intrinsic symbols as selected-profile `/` and `<` operations.
+- Implemented formatting-kernel evidence: `guest_format.h`/`format.c` provide a
+  private typed substrate for integer bases 2/8/10/16, strings, characters,
+  width/precision/sign/prefix rules, bounded writes, and would-have-written
+  counting. Independent vectors cover truncation and overflow; cross-ABI object
+  checks show no Windows helper dependencies and only wasm target stack
+  machinery. Public `snprintf`/`vsnprintf` remain unavailable because format
+  parsing, guest `va_list`, floating conversions, and the full C23 grammar are
+  intentionally not implemented yet.
+- Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
+  ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero
+  and infinity semantics, map every NaN to the canonical quiet payload-zero NaN,
+  and execute in the no-CRT harness. A fixed-seed 274-pattern rational
+  differential independently verifies exact result bits. `sqrt`, `sin`, `cos`,
+  and `atan2` remain unavailable because their correctly-rounded algorithms are
+  not yet proven.
+- Resolved integer/scheduling boundary: version one introduces no separate
+  guest helper ABI for ordinary integer arithmetic or scheduling. Integer
+  operations are explicit typed-IR semantics consumed by lane 9; the selected
+  target profile is sequential and exposes no guest thread/scheduler API. A
+  future guest concurrency surface requires a new versioned contract rather than
+  hidden host scheduling.
+- Resolved integration boundary: allocation startup binding and byte-I/O target
+  effects are lane-9 realization work. This lane supplies their stable binder,
+  wrapper, frame, and intrinsic identities unchanged and does not make itself
+  depend on its downstream consumer merely to flip source availability.
+- Remaining lane-8 algorithm work: complete public printf parsing, guest
+  `va_list` decoding, floating formatting, and correctly-rounded `sqrt`, `sin`,
+  `cos`, and `atan2`. These routines remain source-unavailable, so their absence
+  does not invalidate currently accepted C; expanding availability must preserve
+  that lowerability invariant.
+- Implemented source-gate evidence: dedicated `malloc`, `calloc`, `realloc`,
+  `free`, `getchar`, `putchar`, `snprintf`, and `vsnprintf` rejected fixtures
+  prove implementation substrate does not prematurely change canonical
+  availability; each still produces an exact `MALBOLGE-LIBC-001` diagnostic at
+  its call site.
+- Dependency-boundary evidence: this lane intentionally stops before target
+  lowering. `ternary-machine-lowering` depends on these runtime identities and
+  owns their executable ternary/Malbolge realization, avoiding a planning cycle.
 - Prerequisite completion evidence: `supported-libc-contract`,
   `safe-rust-malbolge-vm`.

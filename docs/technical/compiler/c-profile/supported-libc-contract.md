@@ -2,10 +2,10 @@
 
 ## Status
 
-Implemented for `malbolge-libc-v1`. The memory and narrow-string subset is
-executable guest C today. Allocation, byte streams, formatting, and selected
-binary64 math are versioned declarations but remain unavailable until the guest
-runtime lane implements them.
+Implemented for `malbolge-libc-v1`. Memory, narrow-string, and exact binary64
+`fabs`/`floor`/`ceil`/`trunc` routines are executable guest C today. Allocation,
+byte streams, formatting, and correctly-rounded inexact math remain versioned
+but unavailable until their runtime/integration gates complete.
 
 ## Purpose
 
@@ -28,9 +28,9 @@ This contract governs:
 - `tests/tidy/libc/` and `tests/tidy/libc-rejected/` as executable boundary
   fixtures.
 
-This lane does not implement the heap, streams, formatting algorithms, or
-`libm`. Those executable facilities remain owned by
-`guest-runtime-and-allocator`.
+This contract lane does not own heap/stream integration, formatting, or the
+remaining correctly-rounded inexact `libm` algorithms. Those facilities remain
+owned by `guest-runtime-and-allocator`.
 
 ## Current Behavior
 
@@ -76,23 +76,27 @@ The guest library owns four version-one headers:
 - `<string.h>` declares the executable memory and narrow-string subset;
 - `<stdlib.h>` declares only the contracted allocation subset;
 - `<stdio.h>` declares only byte I/O and bounded formatting;
-- `<math.h>` declares only the contracted binary64 math subset.
+- `<math.h>` declares the executable exact and contracted inexact binary64
+  subset.
 
-The declaration-only headers are intentional. A source file may include them to
-share stable signatures across build configurations, but using an unavailable
-routine is rejected before lowering. Hosted objects such as `FILE`, locale
-state, process handles, and host descriptors are not exposed.
+Guest headers intentionally retain stable declarations for both executable and
+unavailable routines. A source may include them in any build configuration, but
+a call to an unavailable routine is rejected before lowering. Hosted objects
+such as `FILE`, locale state, process handles, and host descriptors are not
+exposed.
 
 ### Executable routines
 
-Nine routines are executable ordinary guest C today:
+Thirteen routines are executable ordinary guest C today:
 
 - `memcpy`, `memmove`, `memset`, and `memcmp`;
-- `strlen`, `strcmp`, `strcpy`, `strncpy`, and `strcat`.
+- `strlen`, `strcmp`, `strcpy`, `strncpy`, and `strcat`; and
+- `fabs`, `floor`, `ceil`, and `trunc` for exact binary64 operations.
 
-Their public declarations live in `contract/include/string.h`; implementations
-live in `domain/memory.c` and `domain/string.c`. The implementations are
-freestanding byte loops and have no undefined external symbols. `memmove` uses
+Memory/string declarations live in `contract/include/string.h`; implementations
+live in `domain/memory.c` and `domain/string.c`. Exact math declarations live in
+`contract/include/math.h` with implementation in `domain/math_exact.c`. The
+memory/string implementations are freestanding byte loops. `memmove` uses
 the version-one guest `uintptr_t` pointer encoding to choose copy direction;
 `memcmp` and `strcmp` compare unsigned byte values and return a deterministic
 negative, zero, or positive result.
@@ -113,8 +117,7 @@ emit `MALBOLGE-LIBC-001` until lane 8 supplies executable guest implementations:
 - allocation: `malloc`, `calloc`, `realloc`, and `free`;
 - byte streams: `getchar` and `putchar`;
 - bounded formatting: `snprintf` and `vsnprintf`;
-- binary64 math: `fabs`, `sqrt`, `floor`, `ceil`, `trunc`, `sin`, `cos`, and
-  `atan2`.
+- inexact binary64 math: `sqrt`, `sin`, `cos`, and `atan2`.
 
 Allocation is specified as guest-heap behavior rather than a host allocation
 service. Byte streams use the deterministic byte-I/O semantics already owned by
@@ -194,13 +197,17 @@ while still preventing accidental execution through host libraries.
 - strict C23 wasm32 frontend compilation of both executable guest modules and
   the accepted source fixture;
 - exact source-located diagnostics for unavailable allocation, unavailable
-  `libm`, and forbidden host-process control;
+  inexact `libm`, and forbidden host-process control;
 - source-defined forbidden-name spellings are not false positives;
 - declaration-only headers do not imply routine availability;
 - the manual validator runs libc preflight before clang-tidy;
-- on Windows, a pinned-Clang no-CRT executable exercises all nine available
+- on Windows, a pinned-Clang no-CRT executable exercises all 13 available
   routines and exits successfully;
-- `llvm-nm -u` reports no undefined symbols in the two runtime objects.
+- an independent 274-pattern rational differential locks exact binary64 math
+  across fixed edge encodings and deterministic pseudo-random inputs;
+- memory/string objects have no undefined symbols; the Windows math object has
+  only the MSVC `_fltused` marker supplied by the test harness, while the wasm32
+  math object has only target stack machinery and no library dependency.
 
 The no-CRT native harness is dependency evidence, not a claim that native
 execution is guest execution. The routines are admitted because their actual

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "runtime_id": "malbolge-guest-runtime-v1",
+  "abi_id": "malbolge-c32-v1",
+  "target_profile": "malbolge-2026",
+  "status": {
+    "valid": 0,
+    "invalid_argument": 1,
+    "out_of_memory": 2,
+    "corrupt_state": 3,
+    "invalid_input_word": 4,
+    "invalid_frame": 5,
+    "not_initialized": 6,
+    "already_initialized": 7
+  },
+  "heap": {
+    "alignment": 16,
+    "header_bytes": 16,
+    "metadata_endianness": "little",
+    "metadata_fields": [
+      {
+        "offset": 0,
+        "name": "span",
+        "type": "u32"
+      },
+      {
+        "offset": 4,
+        "name": "requested",
+        "type": "u32"
+      },
+      {
+        "offset": 8,
+        "name": "state",
+        "type": "u32-zero-free-one-allocated"
+      },
+      {
+        "offset": 12,
+        "name": "reserved",
+        "type": "u32-zero-v1"
+      }
+    ],
+    "policy": "first-fit-split-coalesce-tail-trim",
+    "zero_size_allocation": "null-success",
+    "nonnull_zero_size_resize": "invalid-request-c23-undefined-source-call",
+    "extent_domain": "u32-logical-bytes",
+    "corrupt_chain": "reject-before-mutation-or-result-publication"
+  },
+  "startup": {
+    "heap_binding": "one-shot",
+    "prebind_allocation": "not-initialized",
+    "failed_bind_mutates_state": false
+  },
+  "frame": {
+    "authority": "docs/technical/specification/c-abi-v1.json#call",
+    "encoding": "exact-32-byte-little-endian-authority-layout"
+  },
+  "byte_io": {
+    "input_intrinsic": "malbolge_guest_intrinsic_input_word",
+    "output_intrinsic": "malbolge_guest_intrinsic_output_byte",
+    "intrinsic_implementation_owner": "ternary-machine-lowering",
+    "input_mapping": "profile-byte-word-or-eof-to-int32-byte-or-minus-one",
+    "output_mapping": "low-eight-bits"
+  },
+  "host_fallback": "forbidden",
+  "formatting_kernel": {
+    "visibility": "internal-typed-kernel-not-public-snprintf",
+    "count_semantics": "snprintf-would-have-written-u32-fail-on-overflow",
+    "destination_semantics": "zero-capacity-allows-null-else-reserve-final-nul",
+    "integer_bases": [
+      2,
+      8,
+      10,
+      16
+    ],
+    "integer_flags": [
+      "left",
+      "plus",
+      "space",
+      "alternate",
+      "zero",
+      "uppercase"
+    ],
+    "precision": "u32-0xffffffff-means-omitted",
+    "string_precision": "maximum-narrow-bytes-before-nul",
+    "character": "single-low-byte-value",
+    "format_parser": "not-implemented",
+    "variadic_decoder": "not-implemented",
+    "floating_formatting": "not-implemented",
+    "public_routines": [
+      "snprintf",
+      "vsnprintf"
+    ],
+    "public_routines_available": false
+  }
+}

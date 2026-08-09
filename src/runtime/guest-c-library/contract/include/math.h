@@ -9,28 +9,28 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact declarations for the first deterministic guest binary64 math set.
+//   - Exact declarations for the deterministic guest binary64 math set.
 // - Must-Not:
 //   - Resolve through host libm or claim unimplemented rounding behavior.
 // - Allows:
 //   - Inputs: guest binary64 values admitted by malbolge-c32-v1.
-//   - Outputs: declarations only; source preflight owns availability rejection.
+//   - Outputs: exact routine declarations with per-routine availability.
 //   - Side effects: none.
 // - Split-When:
 //   - Split when float or long-double math gains independent support status.
 // - Merge-When:
 //   - Merge when another header owns these exact guest binary64 signatures.
 // - Summary:
-//   - Declaration-only version-one deterministic binary64 math contract.
+//   - Version-one deterministic binary64 math contract.
 // - Description:
-//   - Reserves exact future libm calls while lane 8 owns executable algorithms.
+//   - Exact routines execute as guest C; harder routines remain gated.
 // - Usage:
-//   - Included by guest source; calls fail preflight until runtime completion.
+//   - Included by guest source; unavailable calls still fail preflight.
 // - Defaults:
 //   - No host floating-point library is a fallback.
 //
 
-//! Declaration-only binary64 math surface for malbolge-libc-v1.
+//! Version-one binary64 math surface for malbolge-libc-v1.
 
 #ifndef MALBOLGE_GUEST_LIBC_MATH_H
 #define MALBOLGE_GUEST_LIBC_MATH_H

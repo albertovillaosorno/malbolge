@@ -23,9 +23,9 @@
 // - Summary:
 //   - Declaration-only version-one byte-stream and formatting contract.
 // - Description:
-//   - Reserves deterministic future APIs without importing hosted stdio state.
+//   - Declares deterministic APIs without importing hosted stdio state.
 // - Usage:
-//   - Included by guest source; calls fail preflight until runtime completion.
+//   - Calls fail preflight until startup/lowering availability gates complete.
 // - Defaults:
 //   - No host standard stream or formatter is a fallback.
 //
@@ -37,6 +37,8 @@
 
 #include <stdarg.h>
 #include <stddef.h>
+
+#define EOF (-1)
 
 int getchar(void);
 int putchar(int value);
