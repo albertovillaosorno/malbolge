@@ -863,7 +863,8 @@ def build_compatible_correction_bindings(
     contract rather than letting generic code guess.
 
     Returns:
-        No correction bindings until a DOOM bug probe is independently validated.
+        No correction bindings until a DOOM bug probe is independently
+        validated.
 
     """
     _ = plan
