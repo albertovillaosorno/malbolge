@@ -720,6 +720,18 @@ def _validate_binding(binding: ThresholdBinding) -> ThresholdBinding:
     return binding
 
 
+def validate_threshold_binding(
+    binding: ThresholdBinding,
+) -> ThresholdBinding:
+    """Validate one distributable threshold-binding envelope.
+
+    Returns:
+        The admitted binding unchanged.
+
+    """
+    return _validate_binding(binding)
+
+
 def _candidate_materials(
     candidate: IdentityTree,
     policy: AnchorPolicy,
@@ -787,7 +799,7 @@ def recover_secret(
         its commitment.
 
     """
-    admitted = _validate_binding(binding)
+    admitted = validate_threshold_binding(binding)
     if type(candidate) is not IdentityTree:
         message = (
             "source-binding candidate must use the exact IdentityTree type"

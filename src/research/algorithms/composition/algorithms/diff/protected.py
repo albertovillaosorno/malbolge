@@ -52,17 +52,19 @@ from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.payload import chacha20_poly1305_decrypt
 from algorithms.diff.payload import chacha20_poly1305_encrypt
-from algorithms.diff.source_binding import ThresholdBinding
+from algorithms.diff.source_binding import SourceBindingError
 from algorithms.diff.source_binding import bind_secret
 from algorithms.diff.source_binding import hkdf_expand_sha256
 from algorithms.diff.source_binding import hkdf_extract_sha256
 from algorithms.diff.source_binding import recover_secret
+from algorithms.diff.source_binding import validate_threshold_binding
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.model import ExactSegment
     from algorithms.diff.source_binding import SourceBindingPolicy
+    from algorithms.diff.source_binding import ThresholdBinding
 
 _ZERO = 0
 _ONE = 1
@@ -286,12 +288,11 @@ class ProtectedExactPlan:
                 "protected plan payload must use the exact authenticated type"
             )
             raise ProtectedPlanError(message)
-        if type(self.binding) is not ThresholdBinding:
-            message = (
-                "protected plan binding must use the exact ThresholdBinding "
-                "type"
-            )
-            raise ProtectedPlanError(message)
+        try:
+            _ = validate_threshold_binding(self.binding)
+        except SourceBindingError as error:
+            message = f"protected plan binding is invalid: {error}"
+            raise ProtectedPlanError(message) from error
 
 
 @dataclass(slots=True)

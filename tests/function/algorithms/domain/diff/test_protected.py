@@ -395,6 +395,30 @@ def test_protected_plan_envelope_requires_exact_runtime_types(
     _expect(not output.exists(), "foreign protected plan published output")
 
 
+def test_protected_plan_rejects_malformed_binding_metadata(
+    tmp_path: Path,
+) -> None:
+    """Validate the complete source binding before a plan becomes emit-ready."""
+    _, _, _, _, protected = _protected(tmp_path)
+    malformed_count = replace(protected.binding, threshold=True)
+    with pytest.raises(
+        ProtectedPlanError, match=r"binding is invalid.*threshold"
+    ):
+        _ = replace(protected, binding=malformed_count)
+
+    first = protected.binding.shares[0]
+    malformed_share = replace(first, x=True)
+    malformed_binding = replace(
+        protected.binding,
+        shares=(malformed_share, *protected.binding.shares[1:]),
+    )
+    with pytest.raises(
+        ProtectedPlanError,
+        match=r"binding is invalid.*coordinate",
+    ):
+        _ = replace(protected, binding=malformed_binding)
+
+
 def test_ciphertext_or_tag_tampering_fails_before_output(
     tmp_path: Path,
 ) -> None:
