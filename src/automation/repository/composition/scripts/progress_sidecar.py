@@ -1266,6 +1266,8 @@ def _validate_payload(
         _fail(f"{reference.context} bytes do not match sidecar presence")
     if payload is None:
         return None
+    if type(payload) is not bytes:
+        _fail(f"{reference.context} payload must use exact bytes")
     if _sha256_digest(payload) != reference.sha256:
         _fail(f"{reference.context} bytes do not match sidecar hash")
     if (

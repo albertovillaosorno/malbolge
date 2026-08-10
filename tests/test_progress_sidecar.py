@@ -1511,6 +1511,34 @@ def test_process_crash_preserves_last_committed_generation(
     assert progress.read(fixture.destination) == fixture.second
 
 
+def test_generation_payloads_reject_mutable_foreign_bytes(
+    tmp_path: Path,
+) -> None:
+    """Mutable payload aliases cannot cross immutable generation admission."""
+    checkpoint = b"checkpoint-generation-one"
+    partial = b"partial-generation-one"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=partial,
+    )
+    with pytest.raises(ERROR, match="checkpoint payload must use exact bytes"):
+        _ = progress.write_checkpoint_generation(
+            sidecar,
+            cast("bytes", bytearray(checkpoint)),
+            partial,
+        )
+    with pytest.raises(ERROR, match="partial payload must use exact bytes"):
+        _ = progress.write_checkpoint_generation(
+            sidecar,
+            checkpoint,
+            cast("bytes", bytearray(partial)),
+        )
+    assert not Path(sidecar.progress_path).exists()
+    assert not Path(sidecar.checkpoint_path or "").exists()
+    assert not Path(sidecar.partial_path or "").exists()
+
+
 def test_generation_payloads_fail_closed_before_pointer_update(
     tmp_path: Path,
 ) -> None:
