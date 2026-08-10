@@ -186,6 +186,7 @@ def test_missing_correction_binding_hook_fails_closed(tmp_path: Path) -> None:
     ):
         _ = load_diff_domain(module)
 
+
 def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     """Require a concrete regular authoring-policy module."""
     missing = tmp_path / "missing.py"

@@ -79,7 +79,12 @@ class DiffDomain:
     build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext]
 
     def __post_init__(self) -> None:
-        """Require every trusted consumer hook to remain callable."""
+        """Require every trusted consumer hook to remain callable.
+
+        Raises:
+            DomainContractError: Any trusted hook is not callable.
+
+        """
         hooks = (
             ("validate_source_provenance", self.validate_source_provenance),
             ("validate_authoring_oracle", self.validate_authoring_oracle),
