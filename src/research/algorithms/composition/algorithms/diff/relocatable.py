@@ -496,6 +496,23 @@ def _prepare_staging(output_root: Path) -> Path:
     return staging
 
 
+def _cleanup_relocatable_staging(path: Path) -> str | None:
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return str(error)
+    return None
+
+
+def _raise_relocatable_cleanup_failure(
+    error: Exception, cleanup_error: str
+) -> None:
+    message = f"{error}; relocatable staging cleanup failed: {cleanup_error}"
+    raise RelocationError(message) from error
+
+
 def _publish_relocatable_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
@@ -531,7 +548,8 @@ def materialize_relocatable_plan(
             output = _safe_path(staging, instruction.output_path)
             _write_relocatable_bytes(output, data, "relocatable output")
         _publish_relocatable_output(staging, output_root)
-    except Exception:
-        if staging.exists():
-            shutil.rmtree(staging)
+    except Exception as error:
+        cleanup_error = _cleanup_relocatable_staging(staging)
+        if cleanup_error is not None:
+            _raise_relocatable_cleanup_failure(error, cleanup_error)
         raise

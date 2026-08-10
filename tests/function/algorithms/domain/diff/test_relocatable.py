@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+import shutil
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -184,6 +185,39 @@ def test_relocatable_publication_collision_preserves_foreign_output(
 
     assert (output / "foreign.txt").read_bytes() == _FOREIGN_OUTPUT
     assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
+def test_relocatable_cleanup_failure_preserves_primary_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup failure augments rather than replaces the staging write error."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked relocatable write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        message = "blocked relocatable cleanup"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        RelocationError,
+        match=r"relocatable output write failed.*staging cleanup failed",
+    ):
+        materialize_relocatable_plan(candidate, plan, output)
 
 
 def test_relocatable_staging_status_error_fails_closed(
