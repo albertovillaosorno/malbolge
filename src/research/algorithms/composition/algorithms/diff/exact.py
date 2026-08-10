@@ -51,6 +51,7 @@ from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import TreeModelError
 from algorithms.diff.model import TreeSnapshot
+from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -686,6 +687,14 @@ def _resolved_output_root(output_root: Path) -> Path:
         raise ExactTreeError(message) from error
 
 
+def _publish_exact_output(staging: Path, destination: Path) -> None:
+    try:
+        publish_directory_no_replace(staging, destination)
+    except OSError as error:
+        message = f"exact output publication failed: {error}"
+        raise ExactTreeError(message) from error
+
+
 def materialize_exact_plan(
     source_root: Path,
     plan: ExactAuthoringPlan,
@@ -695,6 +704,7 @@ def materialize_exact_plan(
 
     The candidate source must match the authoring snapshot exactly. Fuzzy
     admission belongs to later layers.
+
     """
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
@@ -702,7 +712,7 @@ def materialize_exact_plan(
     staging_root = _prepare_staging(resolved_output)
     try:
         _populate_staging(resolved_source, staging_root, plan)
-        _ = staging_root.replace(resolved_output)
+        _publish_exact_output(staging_root, resolved_output)
     except Exception:
         if staging_root.exists():
             shutil.rmtree(staging_root)

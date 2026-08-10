@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from algorithms.diff import exact as exact_module
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import materialize_exact_plan
@@ -56,6 +57,7 @@ _PATCH_INSERTION = b"<inserted-target-only>"
 _PATCH_SUFFIX = b"fedcba9876543210" * 8
 _RUNTIME_DATA = b"runtime-data"
 _RUNTIME_EXTRA = b"runtime-extra"
+_FOREIGN_OUTPUT = b"foreign"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -236,6 +238,28 @@ def test_exact_materialization_wraps_tree_path_resolution_error(
     with pytest.raises(ExactTreeError, match="tree path resolution failed"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "resolution failure published output")
+
+
+def test_exact_publication_collision_preserves_foreign_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late destination race cannot be replaced by exact publication."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+
+    def collide(staging: Path, destination: Path) -> None:
+        _ = staging
+        destination.mkdir()
+        _ = (destination / "foreign.txt").write_bytes(_FOREIGN_OUTPUT)
+        raise FileExistsError(destination)
+
+    monkeypatch.setattr(exact_module, "publish_directory_no_replace", collide)
+    with pytest.raises(ExactTreeError, match="output publication failed"):
+        materialize_exact_plan(source, plan, output)
+
+    assert (output / "foreign.txt").read_bytes() == _FOREIGN_OUTPUT
+    assert not (tmp_path / ".result.staging").exists()
 
 
 def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
