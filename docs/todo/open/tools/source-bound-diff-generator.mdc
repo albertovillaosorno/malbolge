@@ -199,6 +199,9 @@ format.
   during authoring, but later runtime bytes and candidate-only files under those
   roots
   are preserved without changing the exact static source identity.
+- Exact snapshots, passthrough copies, revision-pin roots, and the DOOM C/H
+  lineage view now use error-reporting recursive walks; inaccessible subtrees
+  fail closed instead of disappearing from source identity or provenance.
 
 ## Acceptance
 

@@ -32,6 +32,9 @@
 
 """Synthetic tests for DOOM C source identity."""
 
+from __future__ import annotations
+
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from algorithms.doom.generator.doom import DOOM_SOURCE_PIN
@@ -47,7 +50,7 @@ from algorithms.doom.generator.doom import validate_authoring_oracle
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 _DIRECTIVE_END_FRAME = b"E\x00\x00\x00\x00"
 _LINE_SPLICE_BYTES = b"\\\n"
@@ -101,6 +104,31 @@ def test_unterminated_comment_fails_closed() -> None:
     """Reject malformed C instead of guessing an identity stream."""
     with pytest.raises(DoomIdentityError, match="unterminated C block comment"):
         _ = canonicalize_c_identity(b"int x; /* missing end")
+
+
+def test_identity_tree_walk_errors_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recursive scan failure cannot disappear from DOOM source identity."""
+    linux = tmp_path / "linuxdoom-1.10"
+    linux.mkdir()
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> object:
+        _ = path, top_down, follow_symlinks
+        assert on_error is not None
+        _ = on_error(PermissionError("blocked DOOM identity tree"))
+        return iter(())
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(DoomIdentityError, match="identity traversal failed"):
+        _ = build_identity_tree(tmp_path)
 
 
 def test_identity_tree_selects_linux_c_and_headers_only(tmp_path: Path) -> None:

@@ -622,9 +622,20 @@ def canonicalize_c_identity(data: bytes) -> bytes:
     return _tokenize_identity(without_comments)
 
 
+def _raise_identity_walk_error(error: OSError) -> None:
+    message = f"DOOM source identity traversal failed: {error}"
+    raise DoomIdentityError(message) from error
+
+
 def _identity_source_files(code_root: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory, directories, filenames in code_root.walk(
+        on_error=_raise_identity_walk_error
+    ):
+        paths.extend(directory / name for name in directories)
+        paths.extend(directory / name for name in filenames)
     selected: list[Path] = []
-    for path in sorted(code_root.rglob("*")):
+    for path in sorted(paths):
         if path.is_symlink():
             message = f"symlink is not accepted in DOOM source identity: {path}"
             raise DoomIdentityError(message)
