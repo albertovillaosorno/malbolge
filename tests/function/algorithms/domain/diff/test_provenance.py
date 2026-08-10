@@ -184,6 +184,25 @@ def test_pinned_entry_status_errors_fail_closed(
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
+def test_pinned_entry_read_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable admitted source file cannot leak a host exception."""
+    blocked = tmp_path / "src" / "a.c"
+    _write(tmp_path, "src/a.c", b"int a;")
+    original_read = Path.read_bytes
+
+    def fail_read(path: Path) -> bytes:
+        if path == blocked:
+            message = "blocked pinned source read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    with pytest.raises(SourcePinError, match="pinned source read failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
 def test_missing_or_symlinked_selected_root_fails_closed(
     tmp_path: Path,
 ) -> None:

@@ -259,6 +259,14 @@ def _resolved_source_root(root: Path) -> Path:
         raise SourcePinError(message) from error
 
 
+def _read_pinned_source(path: Path, relative: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"pinned source read failed for {relative}: {error}"
+        raise SourcePinError(message) from error
+
+
 def source_snapshot_evidence(
     root: Path, roots: tuple[str, ...]
 ) -> SourcePinEvidence:
@@ -276,8 +284,9 @@ def source_snapshot_evidence(
     files = _pinned_files(resolved_root, roots)
     digest.update(_u64(len(files)))
     for path in files:
-        relative = path.relative_to(resolved_root).as_posix().encode()
-        data = path.read_bytes()
+        relative_text = path.relative_to(resolved_root).as_posix()
+        relative = relative_text.encode()
+        data = _read_pinned_source(path, relative_text)
         digest.update(_frame(relative))
         digest.update(_frame(hashlib.sha256(data).digest()))
     return SourcePinEvidence(
