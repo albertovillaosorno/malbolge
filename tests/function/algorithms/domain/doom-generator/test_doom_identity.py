@@ -165,6 +165,27 @@ def test_identity_entry_status_error_fails_closed(
         _ = build_identity_tree(tmp_path)
 
 
+def test_identity_entry_read_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable admitted C/H file cannot leak a host exception."""
+    linux = tmp_path / "linuxdoom-1.10"
+    linux.mkdir()
+    blocked = linux / "main.c"
+    _ = blocked.write_bytes(b"int main(void){return 0;}" + bytes((10,)))
+    original_read = Path.read_bytes
+
+    def fail_read(path: Path) -> bytes:
+        if path == blocked:
+            message = "blocked DOOM identity read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    with pytest.raises(DoomIdentityError, match="entry read failed"):
+        _ = build_identity_tree(tmp_path)
+
+
 def test_identity_tree_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -687,6 +687,14 @@ def _identity_source_files(code_root: Path) -> tuple[Path, ...]:
     )
 
 
+def _read_identity_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"DOOM identity entry read failed: {path}: {error}"
+        raise DoomIdentityError(message) from error
+
+
 def build_identity_tree(source_root: Path) -> IdentityTree:
     """Build Linux DOOM C/H identity without opaque assets or IPX code.
 
@@ -710,7 +718,7 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
         raise DoomIdentityError(message)
     canonical_files = {
         path.relative_to(resolved_root).as_posix(): canonicalize_c_identity(
-            path.read_bytes()
+            _read_identity_bytes(path)
         )
         for path in source_files
     }
