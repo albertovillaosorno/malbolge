@@ -109,10 +109,11 @@ result.
 
 ## References
 
-<!-- jig-ignore-next-line: canonical source-record path is indivisible -->
-- [Malbolge 1998 specification and reference
-  interpreter](../../../bibliography/specifications-and-standards/malbolge/malbolge-1998.md)
+- [Malbolge 1998 specification and reference interpreter][malbolge-1998]
 - [Verification Trust
   Boundary](../../../technical/adr/verification-trust-boundary.md)
 - [Research Evidence And Algorithm
   Mirror](../../adr/research-evidence-and-algorithm-mirror.md)
+
+[malbolge-1998]:
+  ../../../bibliography/specifications-and-standards/malbolge/malbolge-1998.md
