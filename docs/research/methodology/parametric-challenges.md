@@ -52,8 +52,8 @@ independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
-`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and `pointer-walk/v1`.
-Each binds family,
+`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, and
+`alias-walk/v1`. Each binds family,
 version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
@@ -95,12 +95,12 @@ host execution guest semantic authority.
 
 Five deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration, hash-locked `arithmetic-dag/v1` and `pointer-walk/v1`
-replay vectors, profile-fingerprint binding, difficulty growth for all six
+replay vectors, profile-fingerprint binding, difficulty growth for all seven
 topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for representative node
-counts in all six families.
+counts in all seven families.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and executed
@@ -110,8 +110,8 @@ families also remain open.
 ## Threats to Validity
 
 The current families cover unsigned arithmetic with DAG, strict-chain,
-branch-diamond, fixed-array memory-walk, helper-call, and live
-pointer-selected memory topologies. They still omit broader workload structure
+branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected memory, and potentially aliasing
+pointer-pair topologies. They still omit broader workload structure
 and substantially larger stress shapes.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
@@ -123,7 +123,7 @@ agreement risk; it does not prove downstream compiler correctness.
 
 Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
 domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, and
-`call-chain/v1` as deterministic challenge substrates while expanding family
+`call-chain/v1` and `alias-walk/v1` as deterministic challenge substrates while expanding family
 coverage and waiting
 for an
 end-to-end generated Malbolge execution path before completing this planning

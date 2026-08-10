@@ -41,7 +41,7 @@ exactly the same problem rather than on vaguely similar examples.
 
 - `benchmarks/challenges/generate.py` implements deterministic
   `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
-  `memory-walk/v1`, `call-chain/v1`, and `pointer-walk/v1` challenges
+  `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, and `alias-walk/v1` challenges
   identified by family, version, unsigned seed, canonical target-profile
   fingerprint, and node count. Every node feeds the next node on a live
   dependency spine so difficulty cannot grow through dead
@@ -58,17 +58,19 @@ exactly the same problem rather than on vaguely similar examples.
   guest libc calls.
 - Analysis evidence locks byte-identical replay, hash-locked
   `arithmetic-dag/v1` and `pointer-walk/v1` vectors, difficulty growth for all
-  six topologies,
+  seven topologies,
   invalid identity rejection, non-destructive no-replace publication including a
   raced
   final-path collision, ABI/libc admission, and pinned-Clang agreement between
-  emitted C and the independent Python oracle for all six families. The
+  emitted C and the independent Python oracle for all seven families. The
   normalized frontend additionally preserves the branch family’s expected
   `if-statement` count, the memory family’s exact array-subscript count, and
   one helper call per call-family node. `pointer-walk/v1` selects one array
   slot from the live value through a local pointer on every node; normalized
   frontend evidence retains one runtime-dependent subscript, one pointer
-  declaration, and address/read/write unary operations per node.
+  declaration, and address/read/write unary operations per node. `alias-walk/v1`
+  adds two runtime-selected pointers per node; those pointers may alias the same
+  cell and the independent oracle preserves the emitted sequential write order.
 - The objective remains open: larger-stress and broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet
   implemented.
