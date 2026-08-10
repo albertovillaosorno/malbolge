@@ -501,11 +501,12 @@ placement, conservative opaque-file gates, candidate-only preservation,
 target-only
 conflict checks, and transactional postconditions into an in-memory compatible
 plan.
-Bug correction routing remains intentionally fail-closed until correction IDs
-are
-attached to specific semantic edits; target-only bytes also remain local
-authoring
-material until compatible source-bound serialization exists.
+Named bug corrections can now be bound to deterministic semantic edit indexes.
+Materialization requires every bound correction to receive exactly one behavior
+`apply` or `skip` route and rejects routes for unbound corrections. Skipped edits
+preserve upstream fixes while unconditional semantic edits still apply. Consumer
+domains still need to author those bindings, and target-only bytes remain local
+authoring material until compatible source-bound serialization exists.
 
 The first full DOOM compatible-authoring smoke exposed a scalability defect in
 generic

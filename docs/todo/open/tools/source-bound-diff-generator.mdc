@@ -175,10 +175,12 @@ format.
 
 - Compatible tree authoring now composes lineage + behavior admission, semantic
   placement, conservative opaque exact gates, target-only conflict checks,
-  candidate-
-  only preservation, historical removals, and transactional postconditions. Bug
-  correction routes still fail closed until correction IDs are attached to
-  edits.
+  candidate-only preservation, historical removals, and transactional
+  postconditions. `CompatibleCorrectionBinding` attaches named corrections to
+  deterministic semantic edit indexes; behavior `apply`/`skip` routes must cover
+  those bindings exactly, so an upstream-fixed edit can be skipped without
+  suppressing unrelated edits. Consumer-domain binding authoring and DOOM bug
+  probes remain open.
 - Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors +
   LIS
   reduced the full read-only DOOM compatible-plan smoke from runner timeout to

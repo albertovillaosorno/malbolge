@@ -396,9 +396,10 @@ before
 staging. Compatible instructions, plan envelopes, and request envelopes reject
 foreign or contradictory metadata before filesystem work. Consumer mappers must
 return exact mapped views or `None`; mapper and postcondition exceptions remain
-inside the compatible error boundary. Target-only path conflicts, opaque-file
-drift, unsupported bug routing, and postcondition failure all reject before
-publication.
+inside the compatible error boundary. Named corrections can bind to semantic
+edit indexes; behavior routes apply or skip those edits while unbound or missing
+routes reject before staging. Target-only path conflicts, opaque-file drift, and
+postcondition failure also reject before publication.
 
 The semantic matcher no longer uses quadratic-prone generic sequence matching.
 It
@@ -421,10 +422,10 @@ The 117 semantic files contain 6,257 edits totaling 251,933 raw replacement
 bytes,
 compared with 2,116,232 target-only bytes in the exact baseline. These are
 authoring
-measurements, not yet a distributable compatible transform. Bug correction IDs
-still
-need to be attached to named edits, and compatible target material still needs
-source-bound serialization/runtime support.
+measurements, not yet a distributable compatible transform. Generic named-edit
+correction binding and apply/skip routing now exist, but consumer domains still
+need to author those bindings and DOOM has no validated bug probes yet. Compatible
+target material still needs source-bound serialization/runtime support.
 
 ## Exact and Compatible Modes
 
