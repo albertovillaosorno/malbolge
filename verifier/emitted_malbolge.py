@@ -47,7 +47,7 @@ _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _PROFILE_MEMORY_WORDS: Final = 59_049
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v1"
+_SCHEMA: Final = "malbolge-static-image/v2"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -57,6 +57,10 @@ _GRAPHICAL_END: Final = 126
 _DECODE_PERIOD: Final = 94
 _SOURCE_WHITESPACE: Final = frozenset((0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20))
 _ALLOWED_INSTRUCTIONS: Final = frozenset(b"ji*p</vo")
+_ENCRYPTION_TARGET_CURRENT: Final = "current-code-pointer"
+_ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
+_ENCRYPTION_TARGET_NONE: Final = "none"
+_DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
 _XLAT1: Final = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
     rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
@@ -66,7 +70,7 @@ _LIMITS: Final = (
     "control-flow-reachability:not-analyzed",
     "dataflow:not-analyzed",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:profile-required-not-analyzed",
+    "self-modification:target-classification-only",
     "source-map-context:not-analyzed",
     "wraparound-reachability:not-analyzed",
 )
@@ -92,6 +96,8 @@ class InitialCell:
     byte_offset: int
     source_byte: int
     decoded_byte: int
+    post_step_encryption_target: str
+    data_alias_can_change_encryption_input: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +140,14 @@ def _decoded_byte(source_byte: int, position: int) -> int:
     return _XLAT1[index]
 
 
+def _encryption_target(decoded_byte: int) -> str:
+    if decoded_byte == ord("v"):
+        return _ENCRYPTION_TARGET_NONE
+    if decoded_byte == ord("i"):
+        return _ENCRYPTION_TARGET_POST_JUMP
+    return _ENCRYPTION_TARGET_CURRENT
+
+
 def _initial_cells(source: bytes) -> tuple[InitialCell, ...]:
     words = tuple(
         (offset, byte)
@@ -145,7 +159,11 @@ def _initial_cells(source: bytes) -> tuple[InitialCell, ...]:
             position=position,
             byte_offset=offset,
             source_byte=byte,
-            decoded_byte=_decoded_byte(byte, position),
+            decoded_byte=(decoded := _decoded_byte(byte, position)),
+            post_step_encryption_target=_encryption_target(decoded),
+            data_alias_can_change_encryption_input=(
+                decoded in _DATA_WRITING_INSTRUCTIONS
+            ),
         )
         for position, (offset, byte) in enumerate(words)
     )

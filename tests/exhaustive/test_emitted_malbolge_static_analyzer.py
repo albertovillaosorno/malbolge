@@ -63,7 +63,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v1"
+_SCHEMA = "malbolge-static-image/v2"
 _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
 _GRAPHICAL_START = 33
 _GRAPHICAL_END = 126
@@ -74,6 +74,8 @@ _HISTORICAL_JUMP_DATA_ASSIGNMENT = "case 'j': d = mem[d]; break;"
 _HISTORICAL_JUMP_CODE_ASSIGNMENT = "case 'i': c = mem[d]; break;"
 _HISTORICAL_CODE_WRAP = "if ( c == 59048 ) c = 0; else c++;"
 _HISTORICAL_DATA_WRAP = "if ( d == 59048 ) d = 0; else d++;"
+_HISTORICAL_HALT = "case 'v': return;"
+_HISTORICAL_ENCRYPTION = "mem[c] = xlat2[mem[c] - 33];"
 _TEST_ALLOWED_INSTRUCTIONS = frozenset(b"ji*p</vo")
 _TEST_XLAT1 = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
@@ -94,6 +96,8 @@ class _Cell(Protocol):
     byte_offset: int
     source_byte: int
     decoded_byte: int
+    post_step_encryption_target: str
+    data_alias_can_change_encryption_input: bool
 
 
 class _Report(Protocol):
@@ -338,6 +342,36 @@ def test_graphical_but_forbidden_initial_decode_reports_position() -> None:
     assert finding.decoded_byte == _FORBIDDEN_DECODE_BYTE
 
 
+def test_initial_cells_classify_self_modification_target() -> None:
+    """Classify encryption target shape without a reachability claim."""
+    interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
+    assert _HISTORICAL_HALT in interpreter
+    assert _HISTORICAL_JUMP_CODE_ASSIGNMENT in interpreter
+    assert _HISTORICAL_ENCRYPTION in interpreter
+    expected = {
+        ord("i"): ("post-jump-code-pointer", False),
+        ord("v"): ("none", False),
+        ord("*"): ("current-code-pointer", True),
+        ord("p"): ("current-code-pointer", True),
+        ord("j"): ("current-code-pointer", False),
+        ord("<"): ("current-code-pointer", False),
+        ord("/"): ("current-code-pointer", False),
+        ord("o"): ("current-code-pointer", False),
+    }
+    for decoded_byte, classification in expected.items():
+        index = _TEST_XLAT1.index(decoded_byte)
+        first = index + _GRAPHICAL_START
+        second_index = _TEST_XLAT1.index(ord("o"))
+        second = ((second_index - 1) % _DECODE_PERIOD) + _GRAPHICAL_START
+        report = _ANALYZER_MODULE.analyze_source(bytes((first, second)))
+        cell = report.initial_cells[0]
+        assert cell.decoded_byte == decoded_byte
+        assert (
+            cell.post_step_encryption_target,
+            cell.data_alias_can_change_encryption_input,
+        ) == classification
+
+
 def test_historical_address_domain_is_structurally_closed() -> None:
     """Classic pointers stay inside the fixed 59,049-word memory domain."""
     interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
@@ -358,7 +392,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "control-flow-reachability:not-analyzed",
         "dataflow:not-analyzed",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:profile-required-not-analyzed",
+        "self-modification:target-classification-only",
         "source-map-context:not-analyzed",
         "wraparound-reachability:not-analyzed",
     )

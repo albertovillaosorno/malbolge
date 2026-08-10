@@ -47,14 +47,17 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Rejected initial
-  images still emit JSON but return a nonzero CLI status. The report also states
-  the structurally closed historical address domain: pointers and words stay in
+  offsets, stable finding codes, and explicit analysis limits. Schema v2 also
+  classifies each initial instruction's post-step encryption target and flags
+  `*`/`p` cells whose encryption input may change when data aliases code.
+  Rejected initial images still emit JSON but return a nonzero CLI status. The
+  report also states the structurally closed historical address domain: pointers
+  and words stay in
   `0..=59048` with modulo-59,049 pointer succession.
-- Dynamic control-flow reachability, dataflow, code/data aliasing,
-  self-modification evolution, source-map context, whether a concrete execution
-  reaches pointer wraparound, and input-dependent cycles remain open and are
-  never inferred from initial-image admission.
+- Dynamic control-flow reachability, dataflow, resolved code/data aliasing,
+  evolved self-modification values, source-map context, whether a concrete
+  execution reaches pointer wraparound, and input-dependent cycles remain open
+  and are never inferred from initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.
@@ -67,7 +70,9 @@ executable cells, and input-dependent cycles or hangs.
   all 8,836 graphical-byte/position decode pairs against an independent table
   anchored to the preserved historical interpreter `xlat1`, load-admission
   parity anchored to its `strchr("ji*p</vo", ...)` check, historical pointer
-  assignment/wrap closure, graphical-but-forbidden positional decode, byte-exact
-  CLI/library report parity, explicit
-  dynamic-analysis limits, CLI semantic-rejection status, and CLI missing-source
+  assignment/wrap closure, post-step encryption-target classification anchored
+  to the interpreter's `i`/`v` ordering, graphical-but-forbidden positional
+  decode, byte-exact CLI/library report parity, explicit dynamic-analysis
+  limits,
+  CLI semantic-rejection status, and CLI missing-source
   failure.
