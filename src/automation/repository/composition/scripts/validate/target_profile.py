@@ -450,6 +450,12 @@ def validate_document(document: JsonObject) -> None:
     _validate_profile_identities(current_profile, validated)
 
 
+def _validated_profile_id(value: object) -> str:
+    if type(value) is not str or not value:
+        _fail("profile identity must be a non-empty string")
+    return value
+
+
 def profile_geometry(
     document: JsonObject,
     profile_id: str,
@@ -461,10 +467,11 @@ def profile_geometry(
 
     """
     validate_document(document)
+    admitted_id = _validated_profile_id(profile_id)
     profiles = _expect_mapping(document["profiles"], "profiles")
     profile = _expect_mapping(
-        profiles.get(profile_id),
-        f"profiles.{profile_id}",
+        profiles.get(admitted_id),
+        f"profiles.{admitted_id}",
     )
     word = _expect_mapping(profile["word"], f"profiles.{profile_id}.word")
     memory = _expect_mapping(
@@ -492,7 +499,7 @@ def profile_geometry(
             semantics["output_instruction"],
             f"profiles.{profile_id}.semantics.output_instruction",
         ),
-        profile_id=profile_id,
+        profile_id=admitted_id,
         word_modulus=_expect_int(
             word["modulus"],
             f"profiles.{profile_id}.word.modulus",
@@ -514,11 +521,12 @@ def current_profile_geometry(
 
     """
     canonical = load_document(DEFAULT_PROFILE) if document is None else document
+    admitted = _expect_mapping(canonical, "target profile document")
     current_profile = _expect_string(
-        canonical["current_profile"],
+        admitted["current_profile"],
         "current_profile",
     )
-    return profile_geometry(canonical, current_profile)
+    return profile_geometry(admitted, current_profile)
 
 
 def _profile_definition(profile: JsonObject, context: str) -> JsonObject:
@@ -735,12 +743,15 @@ def canonical_profile_bytes(document: JsonObject, profile_id: str) -> bytes:
 
     """
     validate_document(document)
+    admitted_id = _validated_profile_id(profile_id)
     profiles = _expect_mapping(document["profiles"], "profiles")
-    if profile_id not in profiles:
-        _fail(f"unknown profile identity: {profile_id}")
-    profile = _expect_mapping(profiles[profile_id], f"profiles.{profile_id}")
+    if admitted_id not in profiles:
+        _fail(f"unknown profile identity: {admitted_id}")
+    profile = _expect_mapping(
+        profiles[admitted_id], f"profiles.{admitted_id}"
+    )
     schema_version = _expect_int(document["schema_version"], "schema_version")
-    return _canonical_identity_bytes(profile_id, profile, schema_version)
+    return _canonical_identity_bytes(admitted_id, profile, schema_version)
 
 
 def profile_fingerprint(document: JsonObject, profile_id: str) -> str:
@@ -751,12 +762,15 @@ def profile_fingerprint(document: JsonObject, profile_id: str) -> str:
 
     """
     validate_document(document)
+    admitted_id = _validated_profile_id(profile_id)
     profiles = _expect_mapping(document["profiles"], "profiles")
-    if profile_id not in profiles:
-        _fail(f"unknown profile identity: {profile_id}")
-    profile = _expect_mapping(profiles[profile_id], f"profiles.{profile_id}")
+    if admitted_id not in profiles:
+        _fail(f"unknown profile identity: {admitted_id}")
+    profile = _expect_mapping(
+        profiles[admitted_id], f"profiles.{admitted_id}"
+    )
     schema_version = _expect_int(document["schema_version"], "schema_version")
-    return _fingerprint_identity(profile_id, profile, schema_version)
+    return _fingerprint_identity(admitted_id, profile, schema_version)
 
 
 def render_profile_fingerprint_manifest(document: JsonObject) -> str:
