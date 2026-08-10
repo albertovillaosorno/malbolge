@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from typing import TYPE_CHECKING
 
@@ -51,8 +52,6 @@ from algorithms.diff.mapped import MappedView
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.compatible import CompatibleAuthoringPlan
 
@@ -242,6 +241,28 @@ def test_opaque_candidate_change_fails_exact_gate(tmp_path: Path) -> None:
     ):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "opaque-rejected output was published")
+
+
+def test_compatible_materialization_wraps_path_resolution_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep path resolution failures inside compatible materialization."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    blocked = candidate / "blob.bin"
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == blocked:
+            message = "blocked compatible path"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    output = tmp_path / "out"
+    with pytest.raises(CompatiblePlanError, match="path resolution failed"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "resolution failure published output")
 
 
 def test_target_only_path_conflict_fails_closed(tmp_path: Path) -> None:

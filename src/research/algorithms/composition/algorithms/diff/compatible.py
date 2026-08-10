@@ -258,10 +258,18 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        _ = path.resolve().relative_to(root.resolve())
-    except ValueError as exc:
+        resolved_path = path.resolve()
+        resolved_root = root.resolve()
+    except OSError as error:
+        message = (
+            f"compatible path resolution failed: {relative_path!r}: {error}"
+        )
+        raise CompatiblePlanError(message) from error
+    try:
+        _ = resolved_path.relative_to(resolved_root)
+    except ValueError as error:
         message = f"compatible path escapes tree root: {relative_path!r}"
-        raise CompatiblePlanError(message) from exc
+        raise CompatiblePlanError(message) from error
     return path
 
 
