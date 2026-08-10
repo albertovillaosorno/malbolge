@@ -24,8 +24,11 @@ For an intended output named `program.malbolge`, the canonical progress path is
 `program.malbolge.progress.json`. Durable generations use immutable paths such
 as `program.malbolge.checkpoint.00000000000000000001` and
 `program.malbolge.partial.00000000000000000001`. The sidecar is the only mutable
-pointer to the latest committed generation. The final requested path is never
-replaced until the artifact is complete and independently verified.
+pointer to the latest committed generation. A persistent
+`program.malbolge.progress.json.lock` file coordinates sidecar writers; its
+contents carry no recovery semantics and the operating-system lock is released
+when the owning process exits. The final requested path is never replaced until
+the artifact is complete and independently verified.
 
 ## Current Behavior
 
@@ -34,20 +37,26 @@ durable generation writer in `scripts/progress_sidecar.py`. It defines canonical
 sequence-addressed paths, backend-neutral resume identity, exact timing and
 lifecycle invariants, monotonic transition validation, duplicate-key rejection,
 canonical JSON, immutable checkpoint/partial persistence, and atomic sidecar
-replacement after generation payloads are durable.
+replacement after generation payloads are durable. Mutable pointer updates are
+serialized across processes from prior-sidecar validation through replacement,
+so a stale writer cannot overwrite a generation committed concurrently.
 
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
 immutable records. Booleans cannot alias counters or sequence numbers, foreign
-objects do not leak decoder/type exceptions, and impossible UTC calendar
-timestamps are reported through the stable sidecar error boundary.
+objects do not leak decoder/type exceptions, oversized JSON integer literals
+that hit the interpreter conversion limit remain inside the stable sidecar error
+boundary, and impossible UTC calendar timestamps are reported the same way.
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
 timing evidence.
 
 `write_atomic()` also validates every referenced checkpoint and partial payload
 before moving the mutable pointer: the files must exist, hashes must match, and
-partial byte counts must agree. A caller therefore cannot publish a
-syntactically valid sidecar that points at absent or corrupted generation bytes.
+partial byte counts must agree. Its read-transition-validation-replacement
+transaction is serialized by a process-shared sibling `.lock` file so two
+writers cannot both validate against one stale predecessor and then race the
+mutable pointer backward. A caller therefore cannot publish a syntactically
+valid sidecar that points at absent or corrupted generation bytes.
 
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer
@@ -111,9 +120,15 @@ missing storage rather than escaping as a decoder exception.
   POSIX uses a same-filesystem hard link. A collided destination is re-read to
   prove byte identity; if that destination disappears or becomes unreadable
   during the collision check, publication fails with the stable sidecar error
-  rather than leaking a raw filesystem exception.
+  rather than leaking a raw filesystem exception. Canonical sidecar,
+  writer-lock, checkpoint, and partial-generation paths reject symlink or
+  junction components
+  from the leaf through the ancestor chain; a byte-identical redirected target
+  is not accepted as mutable or immutable state.
 - A rejected transition, malformed direct API value, missing generation, or
-  payload/hash/length mismatch never replaces the last valid sidecar.
+  payload/hash/length mismatch never replaces the last valid sidecar. Concurrent
+  writers serialize transition validation and pointer replacement through the
+  same persistent sibling lock path.
 - The final `.malbolge` path is published atomically only after independent
   verification succeeds.
 - Resume compatibility binds source identity, target profile, exact repository
@@ -141,7 +156,10 @@ state and preserves the most recent valid generation. On abrupt process or host
 failure, restart follows only the last atomically committed sidecar pointer.
 Later unreferenced generation files cannot invalidate that pointer. Missing,
 stale, overwritten, or incompatible generation data is rejected with a stable
-diagnostic and never guessed into validity.
+diagnostic and never guessed into validity. Sidecar reads, writer-lock
+lifecycle, and mutable or immutable publication failures are likewise translated
+into the
+stable sidecar error boundary rather than leaking host filesystem exceptions.
 
 If checkpoint persistence fails, the job may continue only when the caller
 explicitly accepts non-resumable execution. Public CLI defaults fail closed for
@@ -156,7 +174,9 @@ jobs that requested resumability.
   readable and resumable across torn next-generation state.
 - Resume tests cover unchanged jobs, monotonic transitions, exact repository
   revision and source/profile/toolchain mismatch, overwritten or missing
-  generations, cancellation, and terminal-job reopening.
+  generations, cancellation, and terminal-job reopening. Two-process fixtures
+  prove both lock exclusion and post-lock revalidation: a stale candidate that
+  waited behind a newer commit is rejected before mutable-pointer replacement.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive

@@ -36,19 +36,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import replace
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Protocol
-from typing import cast
+import time
+from dataclasses import dataclass, replace
+from hashlib import sha256
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
 from scripts import progress_sidecar as progress
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
 
 SOURCE_HASH = "sha256:" + ("1" * 64)
 TOOLCHAIN_HASH = "sha256:" + ("2" * 64)
@@ -76,6 +79,7 @@ SUMMARY_FIELDS = (
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
 WINDOWS_PAYLOAD = b"windows-payload"
 POSIX_PAYLOAD = b"posix-payload"
+EMPTY_PAYLOAD = b""
 CRASH_EXIT = 73
 AFTER_CHECKPOINT = "after-checkpoint"
 BEFORE_SIDECAR = "before-sidecar"
@@ -84,6 +88,60 @@ CHECKPOINT_BEFORE_CRASH = b"checkpoint-before-crash"
 PARTIAL_BEFORE_CRASH = b"partial-before-crash"
 CHECKPOINT_AFTER_CRASH = b"checkpoint-after-crash"
 PARTIAL_AFTER_CRASH = b"partial-after-crash"
+LOCK_ACQUIRED = "acquired"
+LOCK_CRASH_EXIT = 74
+WRITER_LOCK_SCRIPT = """
+from pathlib import Path
+import os
+import sys
+import time
+from scripts import progress_sidecar as progress
+
+destination = Path(sys.argv[1])
+role = sys.argv[2]
+held = Path(sys.argv[3])
+attempted = Path(sys.argv[4])
+release = Path(sys.argv[5])
+acquired = Path(sys.argv[6])
+writer_lock = vars(progress)["_writer_lock"]
+if role == "holder":
+    with writer_lock(destination):
+        held.write_text("held", encoding="utf-8")
+        deadline = time.monotonic() + 20.0
+        while not release.exists():
+            if time.monotonic() >= deadline:
+                raise SystemExit(91)
+            time.sleep(0.01)
+elif role == "crasher":
+    with writer_lock(destination):
+        held.write_text("held", encoding="utf-8")
+        os._exit(74)
+elif role == "contender":
+    attempted.write_text("attempted", encoding="utf-8")
+    with writer_lock(destination):
+        acquired.write_text("acquired", encoding="utf-8")
+else:
+    raise SystemExit(92)
+""".strip()
+
+STALE_WRITER_EXIT = 75
+MOVED_BACKWARD = b"moved backward"
+STALE_WRITER_SCRIPT = """
+from pathlib import Path
+import sys
+from scripts import progress_sidecar as progress
+
+candidate = progress.read(Path(sys.argv[1]))
+attempted = Path(sys.argv[2])
+attempted.write_text("attempted", encoding="utf-8")
+try:
+    progress.write_atomic(candidate)
+except progress.ProgressSidecarError as error:
+    sys.stderr.write(str(error))
+    raise SystemExit(75) from error
+raise SystemExit(0)
+""".strip()
+
 CRASH_SCRIPT = """
 from pathlib import Path
 import os
@@ -119,6 +177,22 @@ raise AssertionError("configured crash boundary was not reached")
 
 def _digest(payload: bytes) -> str:
     return "sha256:" + sha256(payload).hexdigest()
+
+
+class WriterLock(Protocol):
+    """Typed view of the internal cross-process writer lock."""
+
+    def __call__(self, destination: Path) -> AbstractContextManager[None]:
+        """Acquire one destination-scoped writer lock."""
+        ...
+
+
+class AtomicByteWriter(Protocol):
+    """Typed view of the internal atomic mutable-byte publisher."""
+
+    def __call__(self, destination: Path, payload: bytes) -> Path:
+        """Replace one mutable byte record atomically."""
+        ...
 
 
 class ImmutableWriter(Protocol):
@@ -203,9 +277,7 @@ def _sidecar(
         checkpoint_path=None,
         checkpoint_sequence=0,
         checkpoint_sha256=None,
-        compatibility_fingerprint=(
-            progress.resume_compatibility_fingerprint(identity)
-        ),
+        compatibility_fingerprint=(progress.resume_compatibility_fingerprint(identity)),
         completed_at=COMPLETED if terminal else None,
         device=None,
         diagnostic_code="MALBOLGE-JOB-001" if failed else None,
@@ -248,9 +320,7 @@ def _checkpointed(
         sidecar,
         active_elapsed_ns=sidecar.active_elapsed_ns + 100,
         checkpoint_elapsed_ns=sidecar.checkpoint_elapsed_ns + 10,
-        checkpoint_path=str(
-            progress.checkpoint_path(sidecar.output_path, sequence)
-        ),
+        checkpoint_path=str(progress.checkpoint_path(sidecar.output_path, sequence)),
         checkpoint_sequence=sequence,
         checkpoint_sha256=_digest(checkpoint),
         partial_bytes=len(partial) if partial is not None else None,
@@ -349,6 +419,163 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
     )
 
 
+def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
+    """Direct reads keep missing storage inside the stable error boundary."""
+    missing = tmp_path / PROGRESS_NAME
+    with pytest.raises(ERROR, match="progress sidecar is unavailable"):
+        _ = progress.read(missing)
+
+
+def test_read_rejects_linked_progress_path(tmp_path: Path) -> None:
+    """Reading a sidecar never follows a redirected canonical leaf."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    foreign = tmp_path / "foreign-readable-progress.json"
+    payload = progress.encode(sidecar)
+    _ = foreign.write_bytes(payload)
+    try:
+        destination.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.read(destination)
+    assert destination.is_symlink()
+    assert foreign.read_bytes() == payload
+
+
+def _linked_directory(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    target = tmp_path / f"{name}-target"
+    target.mkdir()
+    linked = tmp_path / name
+    try:
+        linked.symlink_to(target.resolve(), target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable on this host: {error}")
+    return linked, target
+
+
+def test_read_rejects_linked_progress_parent(tmp_path: Path) -> None:
+    """Reading a sidecar never follows a redirected parent directory."""
+    linked, target = _linked_directory(tmp_path, "linked-read-parent")
+    sidecar = _sidecar(tmp_path / "read-fixture")
+    payload = progress.encode(sidecar)
+    real = target / PROGRESS_NAME
+    _ = real.write_bytes(payload)
+
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.read(linked / PROGRESS_NAME)
+    assert real.read_bytes() == payload
+
+
+def test_write_atomic_rejects_linked_progress_parent(tmp_path: Path) -> None:
+    """Writing a sidecar never follows a redirected parent directory."""
+    linked, target = _linked_directory(tmp_path, "linked-write-parent")
+    base = _sidecar(tmp_path / "write-fixture")
+    sidecar = replace(
+        base,
+        output_path=str(linked / "program.malbolge"),
+        progress_path=str(linked / PROGRESS_NAME),
+    )
+
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert not (target / PROGRESS_NAME).exists()
+    assert not (target / f"{PROGRESS_NAME}.lock").exists()
+
+
+@pytest.mark.skipif(
+    os.name != progress.WINDOWS_PLATFORM,
+    reason="NTFS junctions are a Windows path-redirection boundary",
+)
+def test_write_atomic_rejects_junction_progress_parent(tmp_path: Path) -> None:
+    """Writing a sidecar never follows an NTFS junction parent."""
+    target = (tmp_path / "junction-target").resolve()
+    target.mkdir()
+    linked = (tmp_path / "junction-parent").resolve()
+    command_interpreter = Path(os.environ["COMSPEC"])
+    created = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            str(command_interpreter),
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(linked),
+            str(target),
+        ],
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    if created.returncode != 0 or not linked.is_junction():
+        pytest.skip("directory junction creation is unavailable on this host")
+    base = _sidecar(tmp_path / "junction-fixture")
+    sidecar = replace(
+        base,
+        output_path=str(linked / "program.malbolge"),
+        progress_path=str(linked / PROGRESS_NAME),
+    )
+
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert not (target / PROGRESS_NAME).exists()
+    assert not (target / f"{PROGRESS_NAME}.lock").exists()
+
+
+def test_write_atomic_rejects_linked_progress_path(tmp_path: Path) -> None:
+    """A linked mutable sidecar leaf is preserved rather than followed."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    foreign = tmp_path / "foreign-progress.json"
+    payload = progress.encode(sidecar)
+    _ = foreign.write_bytes(payload)
+    try:
+        destination.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    with pytest.raises(ERROR, match="progress sidecar path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert destination.is_symlink()
+    assert foreign.read_bytes() == payload
+
+
+def test_write_atomic_rejects_linked_writer_lock(tmp_path: Path) -> None:
+    """A linked lock leaf cannot redirect process serialization."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    lock_path = Path(f"{destination}.lock")
+    foreign = tmp_path / "foreign-lock"
+    _ = foreign.write_bytes(EMPTY_PAYLOAD)
+    try:
+        lock_path.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    with pytest.raises(ERROR, match="progress writer lock path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert lock_path.is_symlink()
+    assert foreign.read_bytes() == EMPTY_PAYLOAD
+    assert not destination.exists()
+
+
+def test_writer_lock_rejects_linked_parent(tmp_path: Path) -> None:
+    """The internal lock primitive rejects a redirected parent directory."""
+    linked, target = _linked_directory(tmp_path, "linked-lock-parent")
+    destination = linked / PROGRESS_NAME
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    with (
+        pytest.raises(ERROR, match="progress writer lock path is linked"),
+        writer_lock(destination),
+    ):
+        pass
+    assert not (target / f"{PROGRESS_NAME}.lock").exists()
+
+
 def test_canonical_roundtrip_and_atomic_replace(tmp_path: Path) -> None:
     """Write, replace, and read one complete canonical sidecar."""
     original = _sidecar(tmp_path)
@@ -388,24 +615,22 @@ def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(ERROR, match="missing progress keys"):
         _ = progress.loads(json.dumps(missing_revision))
 
+    huge_integer = '{"x":' + ("9" * 5_000) + "}"
+    with pytest.raises(ERROR, match="invalid progress JSON"):
+        _ = progress.loads(huge_integer)
+
 
 def test_impossible_timing_and_units_fail(tmp_path: Path) -> None:
     """Impossible counters or elapsed-time partitions are rejected."""
     sidecar = _sidecar(tmp_path)
     with pytest.raises(ERROR, match="units_completed"):
-        _ = progress.validate(
-            replace(sidecar, units_completed=2, units_total=1)
-        )
+        _ = progress.validate(replace(sidecar, units_completed=2, units_total=1))
     with pytest.raises(ERROR, match="exactly partition"):
         _ = progress.validate(replace(sidecar, active_elapsed_ns=601))
     with pytest.raises(ERROR, match="precedes"):
-        _ = progress.validate(
-            replace(sidecar, updated_at="2026-08-06T13:59:59Z")
-        )
+        _ = progress.validate(replace(sidecar, updated_at="2026-08-06T13:59:59Z"))
     with pytest.raises(ERROR, match="valid UTC timestamp"):
-        _ = progress.validate(
-            replace(sidecar, updated_at="2026-02-30T14:00:01Z")
-        )
+        _ = progress.validate(replace(sidecar, updated_at="2026-02-30T14:00:01Z"))
 
 
 def test_direct_records_reject_negative_or_boolean_numbers(
@@ -477,9 +702,7 @@ def test_checkpoint_and_partial_members_are_atomic(tmp_path: Path) -> None:
         _ = progress.validate(
             replace(
                 _checkpointed(sidecar),
-                checkpoint_path=str(
-                    progress.checkpoint_path(sidecar.output_path, 2)
-                ),
+                checkpoint_path=str(progress.checkpoint_path(sidecar.output_path, 2)),
             )
         )
     assert progress.validate(_checkpointed(sidecar)) == _checkpointed(sidecar)
@@ -630,6 +853,37 @@ def test_write_atomic_rejects_unavailable_or_corrupt_generation(
     assert progress.read(destination) == sidecar
 
 
+def test_checkpoint_generation_wraps_immutable_publication_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep immutable filesystem failures inside the sidecar boundary."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+
+    def fail_publication(
+        destination: Path,
+        payload: bytes,
+        *,
+        platform: str = os.name,
+    ) -> Path:
+        del destination, payload, platform
+        message = "injected immutable publication failure"
+        raise OSError(message)
+
+    monkeypatch.setattr(progress, "_write_immutable", fail_publication)
+    with pytest.raises(
+        ERROR,
+        match="immutable progress payload publication failed",
+    ):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert not Path(sidecar.progress_path).exists()
+
+
 def test_checkpoint_generation_publishes_payloads_before_pointer(
     tmp_path: Path,
 ) -> None:
@@ -653,6 +907,73 @@ def test_checkpoint_generation_publishes_payloads_before_pointer(
     )
     assert Path(sidecar.checkpoint_path or "").read_bytes() == checkpoint
     assert Path(sidecar.partial_path or "").read_bytes() == partial
+
+
+def test_checkpoint_generation_rejects_linked_immutable_path(
+    tmp_path: Path,
+) -> None:
+    """Reject a linked immutable generation even when its bytes match."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    foreign = tmp_path / "foreign-checkpoint"
+    _ = foreign.write_bytes(checkpoint)
+    try:
+        checkpoint_path.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    with pytest.raises(
+        ERROR,
+        match="immutable progress payload path is linked",
+    ):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert checkpoint_path.is_symlink()
+    assert foreign.read_bytes() == checkpoint
+    assert not Path(sidecar.progress_path).exists()
+
+
+def test_immutable_writer_rejects_linked_parent(tmp_path: Path) -> None:
+    """Immutable publication rejects a redirected parent directory."""
+    linked, target = _linked_directory(tmp_path, "linked-immutable-parent")
+    destination = linked / "checkpoint.bin"
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    with pytest.raises(ERROR, match="immutable progress payload path is linked"):
+        _ = writer(destination, b"checkpoint", platform=os.name)
+    assert not (target / "checkpoint.bin").exists()
+
+
+def test_checkpoint_read_rejects_link_replacing_published_generation(
+    tmp_path: Path,
+) -> None:
+    """A post-publication link cannot satisfy an immutable payload hash."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path),
+        checkpoint=checkpoint,
+        partial=None,
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    checkpoint_path.unlink()
+    foreign = tmp_path / "foreign-checkpoint-after-publish"
+    _ = foreign.write_bytes(checkpoint)
+    try:
+        checkpoint_path.symlink_to(foreign)
+    except OSError as error:
+        pytest.skip(f"file symlinks unavailable on this host: {error}")
+
+    with pytest.raises(ERROR, match="checkpoint payload path is linked"):
+        _ = progress.read_checkpoint_generation(sidecar)
+    with pytest.raises(ERROR, match="checkpoint payload path is linked"):
+        _ = progress.write_atomic(sidecar)
+    assert checkpoint_path.is_symlink()
+    assert foreign.read_bytes() == checkpoint
 
 
 def test_checkpoint_generation_rejects_overwrite_hash_and_missing_payload(
@@ -724,9 +1045,7 @@ def test_terminal_status_controls_metadata(tmp_path: Path) -> None:
             replace(
                 completed,
                 partial_bytes=len(partial),
-                partial_path=str(
-                    progress.partial_path(completed.output_path, 1)
-                ),
+                partial_path=str(progress.partial_path(completed.output_path, 1)),
                 partial_sha256=_digest(partial),
             )
         )
@@ -828,6 +1147,266 @@ def _subprocess_environment() -> dict[str, str]:
     return environment
 
 
+@dataclass(frozen=True, slots=True)
+class StaleWriterFixture:
+    """One committed predecessor plus stale/newer competing updates."""
+
+    attempted: Path
+    candidate: Path
+    destination: Path
+    newer: progress.ProgressSidecar
+
+
+def _stale_writer_fixture(tmp_path: Path) -> StaleWriterFixture:
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    stale = replace(
+        original,
+        active_elapsed_ns=original.active_elapsed_ns + 100,
+        units_completed=original.units_completed + 1,
+        updated_at="2026-08-06T14:00:02Z",
+        wall_elapsed_ns=original.wall_elapsed_ns + 100,
+    )
+    newer = replace(
+        original,
+        active_elapsed_ns=original.active_elapsed_ns + 200,
+        units_completed=original.units_completed + 2,
+        updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=original.wall_elapsed_ns + 200,
+    )
+    candidate = tmp_path / "stale-candidate.json"
+    _ = candidate.write_bytes(progress.encode(stale))
+    return StaleWriterFixture(
+        attempted=tmp_path / "stale-attempted",
+        candidate=candidate,
+        destination=destination,
+        newer=newer,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class WriterLockSignals:
+    """Filesystem rendezvous points for two child lock contenders."""
+
+    acquired: Path
+    attempted: Path
+    held: Path
+    release: Path
+
+
+def _wait_for_signal(path: Path, timeout_seconds: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            message = f"timed out waiting for {path}"
+            raise AssertionError(message)
+        time.sleep(0.01)
+
+
+def _writer_lock_signals(tmp_path: Path) -> WriterLockSignals:
+    return WriterLockSignals(
+        acquired=tmp_path / "contender-acquired",
+        attempted=tmp_path / "contender-attempted",
+        held=tmp_path / "holder-held",
+        release=tmp_path / "release-holder",
+    )
+
+
+def _spawn_writer_lock(
+    destination: Path,
+    role: str,
+    signals: WriterLockSignals,
+    *,
+    environment: dict[str, str],
+) -> sp.Popen[bytes]:
+    return sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-c",
+            WRITER_LOCK_SCRIPT,
+            str(destination),
+            role,
+            str(signals.held),
+            str(signals.attempted),
+            str(signals.release),
+            str(signals.acquired),
+        ],
+        env=environment,
+        shell=False,
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+    )
+
+
+def _terminate_child(process: sp.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.kill()
+        _ = process.wait(timeout=10)
+
+
+def test_writer_lock_serializes_cross_process_sidecar_updates(
+    tmp_path: Path,
+) -> None:
+    """A competing writer cannot enter while another process owns the lock."""
+    destination = tmp_path / PROGRESS_NAME
+    signals = _writer_lock_signals(tmp_path)
+    environment = _subprocess_environment()
+    holder = _spawn_writer_lock(
+        destination,
+        "holder",
+        signals,
+        environment=environment,
+    )
+    try:
+        _wait_for_signal(signals.held)
+        contender = _spawn_writer_lock(
+            destination, "contender", signals, environment=environment
+        )
+        try:
+            _wait_for_signal(signals.attempted)
+            time.sleep(0.2)
+            assert not signals.acquired.exists()
+            _ = signals.release.write_text("release", encoding="utf-8")
+            stdout, stderr = contender.communicate(timeout=10)
+            assert contender.returncode == 0, (stdout, stderr)
+            assert signals.acquired.read_text(encoding="utf-8") == LOCK_ACQUIRED
+        finally:
+            _terminate_child(contender)
+    finally:
+        _ = signals.release.write_text("release", encoding="utf-8")
+        stdout, stderr = holder.communicate(timeout=10)
+        assert holder.returncode == 0, (stdout, stderr)
+    assert Path(f"{destination}.lock").is_file()
+
+
+class CloseFailingStream:
+    """Minimal lock stream whose close operation fails."""
+
+    def __init__(self) -> None:
+        """Initialize the deterministic close failure message."""
+        self.message: str = "injected writer lock close failure"
+
+    def close(self) -> None:
+        """Raise the injected descriptor-close failure.
+
+        Raises:
+            OSError: Always, with the deterministic injected failure.
+
+        """
+        raise OSError(self.message)
+
+
+def test_writer_lock_wraps_descriptor_close_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Descriptor close remains inside the progress error boundary."""
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+
+    def fake_open(
+        _path: Path,
+        *_args: object,
+        **_kwargs: object,
+    ) -> CloseFailingStream:
+        del _path, _args, _kwargs
+        return CloseFailingStream()
+
+    def release() -> None:
+        return None
+
+    def fake_acquire(_stream: object) -> Callable[[], None]:
+        del _stream
+        return release
+
+    monkeypatch.setattr(Path, "open", fake_open)
+    monkeypatch.setattr(progress, "_acquire_writer_lock", fake_acquire)
+    destination = tmp_path / PROGRESS_NAME
+    with (
+        pytest.raises(ERROR, match="writer lock cannot be closed"),
+        writer_lock(destination),
+    ):
+        pass
+
+
+def test_write_atomic_wraps_mutable_publication_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable filesystem failures remain inside the sidecar error boundary."""
+    candidate = _sidecar(tmp_path)
+
+    def fail_publication(destination: Path, payload: bytes) -> Path:
+        del destination, payload
+        message = "injected mutable publication failure"
+        raise OSError(message)
+
+    monkeypatch.setattr(progress, "_write_atomic_bytes", fail_publication)
+    with pytest.raises(ERROR, match="progress sidecar publication failed"):
+        _ = progress.write_atomic(candidate)
+
+
+def test_write_atomic_revalidates_stale_candidate_after_lock(
+    tmp_path: Path,
+) -> None:
+    """A waiting stale writer cannot replace a newer committed sidecar."""
+    fixture = _stale_writer_fixture(tmp_path)
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    write_bytes = cast(
+        "AtomicByteWriter",
+        vars(progress)["_write_atomic_bytes"],
+    )
+    with writer_lock(fixture.destination):
+        # jig-ignore-next-line: Ruff suppression is indivisible
+        contender = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [
+                sys.executable,
+                "-c",
+                STALE_WRITER_SCRIPT,
+                str(fixture.candidate),
+                str(fixture.attempted),
+            ],
+            env=_subprocess_environment(),
+            shell=False,
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+        )
+        try:
+            _wait_for_signal(fixture.attempted)
+            time.sleep(0.2)
+            assert contender.poll() is None
+            _ = write_bytes(fixture.destination, progress.encode(fixture.newer))
+        except BaseException:
+            _terminate_child(contender)
+            raise
+    stdout, stderr = contender.communicate(timeout=10)
+    assert contender.returncode == STALE_WRITER_EXIT, (stdout, stderr)
+    assert MOVED_BACKWARD in stderr
+    assert progress.read(fixture.destination) == fixture.newer
+
+
+def test_writer_lock_is_released_after_process_death(tmp_path: Path) -> None:
+    """The operating system releases a writer lock when its process dies."""
+    destination = tmp_path / PROGRESS_NAME
+    signals = _writer_lock_signals(tmp_path)
+    environment = _subprocess_environment()
+    crasher = _spawn_writer_lock(
+        destination, "crasher", signals, environment=environment
+    )
+    _wait_for_signal(signals.held)
+    stdout, stderr = crasher.communicate(timeout=10)
+    assert crasher.returncode == LOCK_CRASH_EXIT, (stdout, stderr)
+    contender = _spawn_writer_lock(
+        destination, "contender", signals, environment=environment
+    )
+    try:
+        _wait_for_signal(signals.attempted)
+        stdout, stderr = contender.communicate(timeout=10)
+        assert contender.returncode == 0, (stdout, stderr)
+        assert signals.acquired.read_text(encoding="utf-8") == LOCK_ACQUIRED
+    finally:
+        _terminate_child(contender)
+
+
 def _crash_fixture(tmp_path: Path) -> CrashFixture:
     first = _checkpointed(
         _sidecar(tmp_path),
@@ -889,9 +1468,7 @@ def test_process_crash_preserves_last_committed_generation(
         shell=False,
         timeout=30,
     )
-    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
-        errors="replace"
-    )
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(errors="replace")
     assert progress.read(fixture.destination) == fixture.first
     assert progress.read_checkpoint_generation(fixture.first) == (
         fixture.checkpoint_one,
@@ -1021,9 +1598,7 @@ def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
     with pytest.raises(ERROR, match="non-negative integer"):
         _ = progress.ProgressTimer.start(clock=SequenceClock([-1]))
     with pytest.raises(ERROR, match="non-negative integer"):
-        _ = progress.ProgressTimer.start(
-            clock=cast("SequenceClock", lambda: True)
-        )
+        _ = progress.ProgressTimer.start(clock=cast("SequenceClock", lambda: True))
 
     timer = progress.ProgressTimer.start(clock=SequenceClock([100, 99]))
     with pytest.raises(ERROR, match="exact enum type"):

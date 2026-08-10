@@ -35,27 +35,23 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
-from dataclasses import fields
-from datetime import UTC
-from datetime import datetime
-from enum import Enum
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import re
 import sys
 import tempfile
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, fields
+from datetime import UTC, datetime
+from enum import Enum
+from hashlib import sha256
+from importlib import import_module
+from pathlib import Path
 from time import monotonic_ns
-from typing import Final
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, Final, Never, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
 
 SCHEMA_ID: Final = "malbolge-progress-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -77,6 +73,44 @@ type JsonObject = dict[str, JsonValue]
 
 class ProgressSidecarError(ValueError):
     """One progress sidecar is malformed or internally inconsistent."""
+
+
+class _LockStream(Protocol):
+    """Seekable descriptor surface required by platform lock primitives."""
+
+    def fileno(self) -> int:
+        """Return the operating-system file descriptor."""
+        ...
+
+    def seek(self, target: int, whence: int = 0, /) -> int:
+        """Move the descriptor-relative file position."""
+        ...
+
+    def close(self) -> None:
+        """Close the operating-system lock stream."""
+        ...
+
+
+class _WindowsLockModule(Protocol):
+    """Typed subset of the Windows CRT region-lock API."""
+
+    LK_LOCK: int
+    LK_UNLCK: int
+
+    def locking(self, fd: int, mode: int, nbytes: int) -> None:
+        """Lock or unlock one file region."""
+        ...
+
+
+class _PosixLockModule(Protocol):
+    """Typed subset of the POSIX advisory flock API."""
+
+    LOCK_EX: int
+    LOCK_UN: int
+
+    def flock(self, fd: int, operation: int) -> None:
+        """Acquire or release one advisory file lock."""
+        ...
 
 
 class ProgressStatus(Enum):
@@ -560,9 +594,7 @@ def _validate_identity(sidecar: ProgressSidecar) -> None:
 def _validate_checkpoint_path(sidecar: ProgressSidecar) -> None:
     if sidecar.checkpoint_path is None:
         return
-    expected = str(
-        checkpoint_path(sidecar.output_path, sidecar.checkpoint_sequence)
-    )
+    expected = str(checkpoint_path(sidecar.output_path, sidecar.checkpoint_sequence))
     if sidecar.checkpoint_path != expected:
         _fail("checkpoint_path does not match output and sequence")
 
@@ -570,9 +602,7 @@ def _validate_checkpoint_path(sidecar: ProgressSidecar) -> None:
 def _validate_partial_path(sidecar: ProgressSidecar) -> None:
     if sidecar.partial_path is None:
         return
-    expected = str(
-        partial_path(sidecar.output_path, sidecar.checkpoint_sequence)
-    )
+    expected = str(partial_path(sidecar.output_path, sidecar.checkpoint_sequence))
     if sidecar.partial_path != expected:
         _fail("partial_path does not match output and sequence")
 
@@ -764,26 +794,32 @@ def validate(sidecar: ProgressSidecar) -> ProgressSidecar:
 
 
 _ALLOWED_TRANSITIONS: Final = {
-    ProgressStatus.QUEUED: frozenset({
-        ProgressStatus.CANCELLED,
-        ProgressStatus.FAILED,
-        ProgressStatus.QUEUED,
-        ProgressStatus.RUNNING,
-    }),
-    ProgressStatus.RUNNING: frozenset({
-        ProgressStatus.CANCELLED,
-        ProgressStatus.CHECKPOINTED,
-        ProgressStatus.COMPLETED,
-        ProgressStatus.FAILED,
-        ProgressStatus.RUNNING,
-    }),
-    ProgressStatus.CHECKPOINTED: frozenset({
-        ProgressStatus.CANCELLED,
-        ProgressStatus.CHECKPOINTED,
-        ProgressStatus.COMPLETED,
-        ProgressStatus.FAILED,
-        ProgressStatus.RUNNING,
-    }),
+    ProgressStatus.QUEUED: frozenset(
+        {
+            ProgressStatus.CANCELLED,
+            ProgressStatus.FAILED,
+            ProgressStatus.QUEUED,
+            ProgressStatus.RUNNING,
+        }
+    ),
+    ProgressStatus.RUNNING: frozenset(
+        {
+            ProgressStatus.CANCELLED,
+            ProgressStatus.CHECKPOINTED,
+            ProgressStatus.COMPLETED,
+            ProgressStatus.FAILED,
+            ProgressStatus.RUNNING,
+        }
+    ),
+    ProgressStatus.CHECKPOINTED: frozenset(
+        {
+            ProgressStatus.CANCELLED,
+            ProgressStatus.CHECKPOINTED,
+            ProgressStatus.COMPLETED,
+            ProgressStatus.FAILED,
+            ProgressStatus.RUNNING,
+        }
+    ),
 }
 
 
@@ -934,13 +970,18 @@ def loads(text: str) -> ProgressSidecar:
     Returns:
         Immutable validated progress sidecar.
 
+    Raises:
+        ProgressSidecarError: If JSON or sidecar invariants are invalid.
+
     """
     try:
         parsed = cast(
             "object",
             json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
-    except json.JSONDecodeError as error:
+    except ProgressSidecarError:
+        raise
+    except ValueError as error:
         _fail(f"invalid progress JSON: {error}")
     return validate(_from_document(_mapping(parsed, "progress sidecar")))
 
@@ -952,10 +993,13 @@ def read(path: Path) -> ProgressSidecar:
         Immutable validated progress sidecar.
 
     """
+    _reject_path_redirect(path, "progress sidecar")
     try:
         text = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid progress UTF-8: {error}")
+    except OSError as error:
+        _fail(f"progress sidecar is unavailable: {error}")
     return loads(text)
 
 
@@ -967,6 +1011,74 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _writer_lock_path(destination: Path) -> Path:
+    return Path(f"{destination}.lock")
+
+
+def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
+    file_descriptor = stream.fileno()
+    _ = stream.seek(0)
+    if os.name == WINDOWS_PLATFORM:
+        module = cast(
+            "_WindowsLockModule",
+            cast("object", import_module("msvcrt")),
+        )
+        module.locking(file_descriptor, module.LK_LOCK, 1)
+
+        def release() -> None:
+            _ = stream.seek(0)
+            module.locking(file_descriptor, module.LK_UNLCK, 1)
+
+        return release
+    module = cast("_PosixLockModule", cast("object", import_module("fcntl")))
+    module.flock(file_descriptor, module.LOCK_EX)
+
+    def release() -> None:
+        module.flock(file_descriptor, module.LOCK_UN)
+
+    return release
+
+
+def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
+    try:
+        _reject_path_redirect(lock_path.parent, "progress writer lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        _reject_path_redirect(lock_path, "progress writer lock")
+        return lock_path.open("a+b")
+    except OSError as error:
+        _fail(f"progress writer lock cannot be opened: {error}")
+
+
+def _release_writer_lock(release: Callable[[], None]) -> None:
+    try:
+        release()
+    except OSError as error:
+        _fail(f"progress writer lock cannot be released: {error}")
+
+
+def _close_writer_lock_stream(stream: _LockStream) -> None:
+    try:
+        stream.close()
+    except OSError as error:
+        _fail(f"progress writer lock cannot be closed: {error}")
+
+
+@contextmanager
+def _writer_lock(destination: Path) -> Generator[None]:
+    stream = _open_writer_lock_stream(_writer_lock_path(destination))
+    try:
+        try:
+            release = _acquire_writer_lock(stream)
+        except OSError as error:
+            _fail(f"progress writer lock cannot be acquired: {error}")
+        try:
+            yield
+        finally:
+            _release_writer_lock(release)
+    finally:
+        _close_writer_lock_stream(stream)
 
 
 def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
@@ -989,6 +1101,27 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     return destination
 
 
+def _path_redirects(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
+
+
+def _redirecting_component(path: Path) -> Path | None:
+    candidate = path
+    while True:
+        if _path_redirects(candidate):
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            return None
+        candidate = parent
+
+
+def _reject_path_redirect(path: Path, context: str) -> None:
+    redirect = _redirecting_component(path)
+    if redirect is not None:
+        _fail(f"{context} path is linked: {redirect}")
+
+
 def _publish_no_replace(
     temporary: Path,
     destination: Path,
@@ -1001,13 +1134,47 @@ def _publish_no_replace(
         os.link(temporary, destination)
 
 
+def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
+    with os.fdopen(descriptor, "wb") as stream:
+        _ = stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
+    _reject_path_redirect(destination, "immutable progress payload")
+    try:
+        existing = destination.read_bytes()
+    except OSError as error:
+        _fail(f"immutable progress payload publication failed: {error}")
+    if existing != payload:
+        _fail(f"immutable progress payload already differs: {destination}")
+
+
+def _publish_immutable_payload(
+    temporary: Path,
+    destination: Path,
+    payload: bytes,
+    *,
+    platform: str,
+) -> None:
+    try:
+        _publish_no_replace(temporary, destination, platform=platform)
+    except FileExistsError:
+        _admit_existing_immutable(destination, payload)
+    except OSError as error:
+        _fail(f"immutable progress payload publication failed: {error}")
+
+
 def _write_immutable(
     destination: Path,
     payload: bytes,
     *,
     platform: str = os.name,
 ) -> Path:
+    _reject_path_redirect(destination.parent, "immutable progress payload")
     destination.parent.mkdir(parents=True, exist_ok=True)
+    _reject_path_redirect(destination, "immutable progress payload")
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
         prefix=f".{destination.name}.",
@@ -1015,23 +1182,13 @@ def _write_immutable(
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            _ = stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            _publish_no_replace(temporary, destination, platform=platform)
-        except FileExistsError:
-            try:
-                existing = destination.read_bytes()
-            except OSError as error:
-                _fail(f"immutable progress payload publication failed: {error}")
-            if existing != payload:
-                _fail(
-                    f"immutable progress payload already differs: {destination}"
-                )
-        except OSError as error:
-            _fail(f"immutable progress payload publication failed: {error}")
+        _write_payload_descriptor(descriptor, payload)
+        _publish_immutable_payload(
+            temporary,
+            destination,
+            payload,
+            platform=platform,
+        )
         _flush_parent(destination.parent)
     finally:
         temporary.unlink(missing_ok=True)
@@ -1063,15 +1220,13 @@ def _validate_payload(
         return None
     if _sha256_digest(payload) != reference.sha256:
         _fail(f"{reference.context} bytes do not match sidecar hash")
-    if (
-        reference.byte_count is not None
-        and len(payload) != reference.byte_count
-    ):
+    if reference.byte_count is not None and len(payload) != reference.byte_count:
         _fail(f"{reference.context} byte count does not match sidecar")
     return payload
 
 
 def _read_payload(path: Path, context: str) -> bytes:
+    _reject_path_redirect(path, f"{context} payload")
     try:
         return path.read_bytes()
     except OSError as error:
@@ -1114,10 +1269,67 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     """
     validated = validate(sidecar)
     destination = Path(validated.progress_path)
+    _reject_path_redirect(destination, "progress sidecar")
+    with _writer_lock(destination):
+        _reject_path_redirect(destination, "progress sidecar")
+        if destination.exists():
+            _ = validate_transition(read(destination), validated)
+        _validate_referenced_generation(validated)
+        try:
+            return _write_atomic_bytes(destination, encode(validated))
+        except OSError as error:
+            _fail(f"progress sidecar publication failed: {error}")
+
+
+def _preflight_generation_destination(sidecar: ProgressSidecar) -> None:
+    destination = Path(sidecar.progress_path)
+    _reject_path_redirect(destination, "progress sidecar")
     if destination.exists():
-        _ = validate_transition(read(destination), validated)
-    _validate_referenced_generation(validated)
-    return _write_atomic_bytes(destination, encode(validated))
+        _ = validate_transition(read(destination), sidecar)
+
+
+def _validated_generation_payloads(
+    sidecar: ProgressSidecar,
+    checkpoint: bytes,
+    partial: bytes | None,
+) -> tuple[bytes, bytes | None]:
+    checkpoint_payload = _validate_payload(
+        checkpoint,
+        _PayloadReference(
+            byte_count=None,
+            context="checkpoint",
+            path=sidecar.checkpoint_path,
+            sha256=sidecar.checkpoint_sha256,
+        ),
+    )
+    partial_payload = _validate_payload(
+        partial,
+        _PayloadReference(
+            byte_count=sidecar.partial_bytes,
+            context="partial",
+            path=sidecar.partial_path,
+            sha256=sidecar.partial_sha256,
+        ),
+    )
+    if checkpoint_payload is None or sidecar.checkpoint_path is None:
+        _fail("checkpoint generation requires checkpoint bytes")
+    return checkpoint_payload, partial_payload
+
+
+def _publish_generation_payloads(
+    sidecar: ProgressSidecar,
+    checkpoint: bytes,
+    partial: bytes | None,
+) -> None:
+    checkpoint_path_value = sidecar.checkpoint_path
+    if checkpoint_path_value is None:
+        _fail("checkpoint generation requires checkpoint path")
+    try:
+        _ = _write_immutable(Path(checkpoint_path_value), checkpoint)
+        if partial is not None and sidecar.partial_path is not None:
+            _ = _write_immutable(Path(sidecar.partial_path), partial)
+    except OSError as error:
+        _fail(f"immutable progress payload publication failed: {error}")
 
 
 def write_checkpoint_generation(
@@ -1132,32 +1344,13 @@ def write_checkpoint_generation(
 
     """
     validated = validate(sidecar)
-    destination = Path(validated.progress_path)
-    if destination.exists():
-        _ = validate_transition(read(destination), validated)
-    checkpoint_payload = _validate_payload(
+    _preflight_generation_destination(validated)
+    checkpoint_payload, partial_payload = _validated_generation_payloads(
+        validated,
         checkpoint,
-        _PayloadReference(
-            byte_count=None,
-            context="checkpoint",
-            path=validated.checkpoint_path,
-            sha256=validated.checkpoint_sha256,
-        ),
-    )
-    partial_payload = _validate_payload(
         partial,
-        _PayloadReference(
-            byte_count=validated.partial_bytes,
-            context="partial",
-            path=validated.partial_path,
-            sha256=validated.partial_sha256,
-        ),
     )
-    if checkpoint_payload is None or validated.checkpoint_path is None:
-        _fail("checkpoint generation requires checkpoint bytes")
-    _ = _write_immutable(Path(validated.checkpoint_path), checkpoint_payload)
-    if partial_payload is not None and validated.partial_path is not None:
-        _ = _write_immutable(Path(validated.partial_path), partial_payload)
+    _publish_generation_payloads(validated, checkpoint_payload, partial_payload)
     return write_atomic(validated)
 
 

@@ -62,16 +62,23 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 - `scripts/progress_sidecar.py` implements the flat v1 reference schema,
   canonical backend-neutral resume fingerprint binding the exact Git revision,
   duplicate-key rejection, exact lifecycle/timing validation, monotonic
-  transitions, immutable
-  sequence-addressed checkpoint/partial generations, sidecar-last atomic
-  publication, typed fail-closed collision rechecks when an immutable target
-  races away, direct-construction type admission, referenced-generation
-  validation before pointer replacement, and an injected monotonic phase timer.
+  transitions, immutable sequence-addressed checkpoint/partial generations,
+  sidecar-last atomic
+  publication, process-shared writer serialization around transition validation
+  and pointer replacement, typed fail-closed collision rechecks when an
+  immutable target races away, direct-construction type admission,
+  referenced-generation
+  validation before pointer replacement, stable read plus writer-lock lifecycle
+  and mutable/immutable publication filesystem failures, rejection of linked
+  components in sidecar/lock/checkpoint/partial paths, and an injected monotonic
+  phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,
   rejected regressions, terminal states, overwritten and missing generation
   payloads, raced-away immutable publication collisions, invalid UTF-8 inspector
   input, source/repository identity mismatches, child-process crashes after
-  checkpoint publication and before the next sidecar pointer, direct field and
+  checkpoint publication and before the next sidecar pointer, cross-process
+  writer-lock exclusion plus stale-candidate revalidation after lock
+  acquisition, linked-parent redirection rejection, direct field and
   resume-identity mutations, boolean counter/sequence aliases, impossible UTC
   dates, corrupt direct pointer targets, and exact operator-facing elapsed-time
   summaries.
