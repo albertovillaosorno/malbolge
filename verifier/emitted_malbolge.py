@@ -44,34 +44,28 @@ from typing import Final
 from typing import Never
 
 if __package__:
+    from verifier import emitted_malbolge_classic as classic
     from verifier import emitted_malbolge_entry as entry_transfer
     from verifier import emitted_malbolge_prefix as prefix_transfer
 else:
+    import emitted_malbolge_classic as classic
     import emitted_malbolge_entry as entry_transfer
     import emitted_malbolge_prefix as prefix_transfer
 
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
-_PROFILE_MEMORY_WORDS: Final = 59_049
 _RECURRENCE_BASE_WORDS: Final = 2
 _SCHEMA: Final = "malbolge-static-image/v4"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
 _DECODE_CODE: Final = "MALBOLGE-STATIC-004"
-_GRAPHICAL_START: Final = 33
-_GRAPHICAL_END: Final = 126
-_DECODE_PERIOD: Final = 94
 _SOURCE_WHITESPACE: Final = frozenset((0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20))
 _ALLOWED_INSTRUCTIONS: Final = frozenset(b"ji*p</vo")
 _ENCRYPTION_TARGET_CURRENT: Final = "current-code-pointer"
 _ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
 _ENCRYPTION_TARGET_NONE: Final = "none"
 _DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
-_XLAT1: Final = (
-    b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
-    rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
-)
 _LIMITS: Final = (
     "code-data-aliasing:two-transition-prefix-only",
     "control-flow-reachability:two-transition-prefix-only",
@@ -134,7 +128,7 @@ def _lexical_finding(source: bytes) -> StaticFinding | None:
     for offset, byte in enumerate(source):
         if byte in _SOURCE_WHITESPACE:
             continue
-        if not _GRAPHICAL_START <= byte <= _GRAPHICAL_END:
+        if not classic.is_graphical(byte):
             return StaticFinding(
                 code=_LEXICAL_CODE,
                 message="source byte is outside graphical ASCII",
@@ -145,8 +139,11 @@ def _lexical_finding(source: bytes) -> StaticFinding | None:
 
 
 def _decoded_byte(source_byte: int, position: int) -> int:
-    index = (source_byte - _GRAPHICAL_START + position) % _DECODE_PERIOD
-    return _XLAT1[index]
+    decoded = classic.decode(source_byte, position)
+    if decoded is None:
+        message = "graphical initial source cell must decode"
+        raise AssertionError(message)
+    return decoded
 
 
 def _encryption_target(decoded_byte: int) -> str:
@@ -249,7 +246,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
                 ),
             )
         )
-    if required > _PROFILE_MEMORY_WORDS:
+    if required > classic.PROFILE_MEMORY_WORDS:
         findings.append(
             StaticFinding(
                 code=_CAPACITY_CODE,
@@ -258,7 +255,9 @@ def analyze_source(source: bytes) -> StaticImageReport:
                 ),
             )
         )
-    within_profile = _RECURRENCE_BASE_WORDS <= required <= _PROFILE_MEMORY_WORDS
+    within_profile = (
+        _RECURRENCE_BASE_WORDS <= required <= classic.PROFILE_MEMORY_WORDS
+    )
     cells, entry_transition, second_transition, decode_findings = (
         _analyze_admitted_cells(
             source,
@@ -271,7 +270,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         schema=_SCHEMA,
         profile_id=_PROFILE_ID,
         profile_version=_PROFILE_VERSION,
-        profile_memory_words=_PROFILE_MEMORY_WORDS,
+        profile_memory_words=classic.PROFILE_MEMORY_WORDS,
         profile_address_domain_closed=True,
         source_sha256="sha256:" + sha256(source).hexdigest(),
         required_source_words=required,
