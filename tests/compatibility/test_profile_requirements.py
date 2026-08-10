@@ -35,13 +35,13 @@
 """Python target-profile requirement and capability-preflight regressions."""
 
 # jig-ignore-next-line: indivisible reviewed identifier
-# ruff: file-ignore[magic-value-comparison, pytest-raises-too-broad, set-attr-with-constant, undocumented-public-function]
+# ruff: file-ignore[magic-value-comparison, pytest-raises-too-broad, undocumented-public-function]
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
-from dataclasses import FrozenInstanceError
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import cast
 
@@ -55,6 +55,7 @@ CURRENT_ID = "malbolge-2026"
 TRANSITION_ID = "malbolge-2026.1"
 HISTORICAL_ID = "malbolge-1998"
 CURRENT_WORDS = 4_782_969
+CURRENT_TRITS = 14
 HISTORICAL_WORDS = 59_049
 CURRENT_RUNTIME_DIAGNOSTIC = (
     "MALBOLGE-PROFILE-001 profile=malbolge-2026 version=2026 "
@@ -81,9 +82,7 @@ def _requirement(
     required_memory_words: int | None = None,
 ) -> requirements.ProfileRequirement:
     memory_words = (
-        CURRENT_WORDS
-        if required_memory_words is None
-        else required_memory_words
+        CURRENT_WORDS if required_memory_words is None else required_memory_words
     )
     return requirements.build_profile_requirement(
         _document(),
@@ -158,6 +157,31 @@ def test_safe_rust_capabilities_are_explicit() -> None:
     assert profiled.features == requirements.NORMATIVE_PROFILE_FEATURES
 
 
+def test_profiled_runtime_capacity_does_not_follow_current_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forged = deepcopy(_document())
+    profiles = cast("dict[str, object]", forged["profiles"])
+    current = cast("dict[str, object]", profiles[CURRENT_ID])
+    forged_trits = CURRENT_TRITS + 1
+    forged_words = 3**forged_trits
+    cast("dict[str, object]", current["word"])["trits"] = forged_trits
+    cast("dict[str, object]", current["word"])["modulus"] = forged_words
+    cast("dict[str, object]", current["memory"])["words"] = forged_words
+    semantics = cast("dict[str, object]", current["semantics"])
+    semantics["eof_word"] = forged_words - 1
+    alternate = tmp_path / "malbolge.json"
+    _ = alternate.write_text(json.dumps(forged), encoding="utf-8")
+    monkeypatch.setattr(target_profile, "DEFAULT_PROFILE", alternate)
+    target_profile.validate_document(target_profile.load_document(alternate))
+
+    capability = requirements.safe_rust_profiled_capability()
+
+    assert capability.max_word_trits == CURRENT_TRITS
+    assert capability.max_memory_words == CURRENT_WORDS
+
+
 def test_current_classic_diagnostic_matches_rust_byte_for_byte() -> None:
     with pytest.raises(requirements.ProfileRequirementError) as caught:
         requirements.preflight_profile_requirement(
@@ -216,8 +240,7 @@ def test_historical_capacity_diagnostic_matches_rust_byte_for_byte() -> None:
 
     error = caught.value
     assert (
-        error.kind
-        is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
+        error.kind is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
     )
     assert error.code == "MALBOLGE-PROFILE-002"
     assert error.missing_dimensions == ()
@@ -340,7 +363,8 @@ def test_runtime_features_require_exact_tuple() -> None:
 
 
 @pytest.mark.parametrize(
-    "capability_id", ["", "bad capability", cast("str", object())]
+    "capability_id",
+    ["", "bad capability", cast("str", object())],
 )
 def test_runtime_identity_requires_canonical_ascii(capability_id: str) -> None:
     with pytest.raises(
@@ -368,13 +392,22 @@ def test_runtime_word_limit_requires_positive_integer(value: int) -> None:
         _ = _runtime(max_word_trits=value)
 
 
-@pytest.mark.parametrize("required_memory_words", [0, -1, True])
-def test_required_memory_requires_positive_integer(
+def test_zero_required_memory_matches_rust_preflight_domain() -> None:
+    requirement = _requirement(required_memory_words=0)
+    assert requirement.required_memory_words == 0
+    requirements.preflight_profile_requirement(
+        requirement,
+        requirements.safe_rust_profiled_capability(),
+    )
+
+
+@pytest.mark.parametrize("required_memory_words", [-1, True])
+def test_required_memory_requires_non_negative_integer(
     required_memory_words: int,
 ) -> None:
     with pytest.raises(
         requirements.ProfileRequirementValidationError,
-        match="positive integer",
+        match="non-negative integer",
     ):
         _ = requirements.build_profile_requirement(
             _document(),
@@ -384,7 +417,8 @@ def test_required_memory_requires_positive_integer(
 
 
 @pytest.mark.parametrize(
-    "profile_id", ["", "bad profile", cast("str", object())]
+    "profile_id",
+    ["", "bad profile", cast("str", object())],
 )
 def test_profile_identity_requires_canonical_ascii(profile_id: str) -> None:
     with pytest.raises(
@@ -439,10 +473,12 @@ def test_requirement_and_runtime_are_immutable() -> None:
     requirement = _requirement()
     runtime = _runtime()
 
+    requirement_field = "profile_id"
+    runtime_field = "max_memory_words"
     with pytest.raises(FrozenInstanceError):
-        setattr(requirement, "profile_id", HISTORICAL_ID)
+        setattr(requirement, requirement_field, HISTORICAL_ID)
     with pytest.raises(FrozenInstanceError):
-        setattr(runtime, "max_memory_words", 1)
+        setattr(runtime, runtime_field, 1)
 
 
 def test_preflight_rejects_foreign_requirement_type() -> None:
@@ -480,6 +516,85 @@ def test_preflight_revalidates_tampered_requirement() -> None:
         requirements.preflight_profile_requirement(tampered, _runtime())
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("kind", target_profile.HISTORICAL_KIND),
+        ("version", "forged-version"),
+        ("word_trits", CURRENT_TRITS + 1),
+        ("memory_words", CURRENT_WORDS + 1),
+    ],
+)
+def test_preflight_rejects_tampered_canonical_profile_fields(
+    field: str, value: object
+) -> None:
+    tampered = replace(_requirement(), **{field: value})
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="must match canonical profile authority",
+    ):
+        requirements.preflight_profile_requirement(tampered, _runtime())
+
+
+def test_preflight_cannot_inflate_historical_profile_capacity() -> None:
+    historical = requirements.build_profile_requirement(
+        _document(),
+        HISTORICAL_ID,
+        required_memory_words=HISTORICAL_WORDS + 1,
+    )
+    forged = replace(historical, memory_words=HISTORICAL_WORDS + 1)
+    oversized_runtime = _runtime(
+        max_memory_words=HISTORICAL_WORDS + 1,
+        max_word_trits=historical.word_trits,
+    )
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="must match canonical profile authority",
+    ):
+        requirements.preflight_profile_requirement(forged, oversized_runtime)
+
+
+def test_preflight_rejects_valid_noncanonical_profile_document() -> None:
+    forged = deepcopy(_document())
+    profiles = cast("dict[str, object]", forged["profiles"])
+    current = cast("dict[str, object]", profiles[CURRENT_ID])
+    forged_trits = CURRENT_TRITS + 1
+    forged_words = 3**forged_trits
+    cast("dict[str, object]", current["word"])["trits"] = forged_trits
+    cast("dict[str, object]", current["word"])["modulus"] = forged_words
+    cast("dict[str, object]", current["memory"])["words"] = forged_words
+    semantics = cast("dict[str, object]", current["semantics"])
+    semantics["eof_word"] = forged_words - 1
+    target_profile.validate_document(forged)
+    requirement = requirements.build_profile_requirement(
+        forged,
+        CURRENT_ID,
+        required_memory_words=1,
+    )
+    runtime = _runtime(
+        max_memory_words=forged_words,
+        max_word_trits=forged_trits,
+    )
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="must match canonical profile authority",
+    ):
+        requirements.preflight_profile_requirement(requirement, runtime)
+
+
+def test_preflight_rejects_direct_unknown_profile_identity() -> None:
+    forged = replace(_requirement(), profile_id="malbolge-invented")
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="unknown profile identity",
+    ):
+        requirements.preflight_profile_requirement(forged, _runtime())
+
+
 def test_preflight_revalidates_tampered_runtime() -> None:
     tampered = replace(
         _runtime(),
@@ -491,6 +606,44 @@ def test_preflight_revalidates_tampered_runtime() -> None:
         match="not canonically ordered",
     ):
         requirements.preflight_profile_requirement(_requirement(), tampered)
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        replace(
+            requirements.safe_rust_classic_capability(),
+            max_memory_words=CURRENT_WORDS,
+            max_word_trits=CURRENT_TRITS,
+        ),
+        replace(
+            requirements.safe_rust_profiled_capability(),
+            max_memory_words=CURRENT_WORDS - 1,
+        ),
+    ],
+)
+def test_preflight_rejects_forged_reserved_runtime(
+    runtime: requirements.RuntimeCapability,
+) -> None:
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="reserved runtime fields must match canonical runtime authority",
+    ):
+        requirements.preflight_profile_requirement(_requirement(), runtime)
+
+
+def test_forged_classic_runtime_cannot_admit_current_profile() -> None:
+    forged = replace(
+        requirements.safe_rust_classic_capability(),
+        max_memory_words=CURRENT_WORDS,
+        max_word_trits=CURRENT_TRITS,
+    )
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="reserved runtime fields must match canonical runtime authority",
+    ):
+        requirements.preflight_profile_requirement(_requirement(), forged)
 
 
 def test_repeated_failure_text_is_deterministic() -> None:

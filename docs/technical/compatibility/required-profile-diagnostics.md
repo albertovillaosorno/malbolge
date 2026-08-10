@@ -92,7 +92,19 @@ unknown IDs without fallback, and emits byte-identical `MALBOLGE-PROFILE-001`
 and `MALBOLGE-PROFILE-002` text for the shared reference cases. Direct public
 error construction validates the exact error enum, immutable canonical missing
 dimensions, a real rejected requirement/runtime pair, and profile-capacity
-precedence before rendering diagnostic text.
+precedence before rendering diagnostic text. Public requirement objects are
+re-resolved against canonical `malbolge.json` during preflight: profile kind,
+version, word width, memory capacity, and normative features must still match
+the declared profile identity exactly. Only the program-specific required-memory
+footprint may vary within that canonical profile capacity; zero is a valid
+footprint for an empty region/source preflight, while profile/runtime capacities
+remain strictly positive. Reserved Python
+runtime identities are revalidated too: `safe-rust-classic` and
+`safe-rust-profiled` cannot be reused with forged feature, word, or memory
+capabilities. The profiled runtime limit is implementation capacity, so it stays
+at 14 trits and 4,782,969 words even if a future canonical current profile
+selects a larger valid geometry. Explicitly named external runtime identities
+may still carry their own validated envelopes.
 
 The current `malbolge-2026` profile therefore fails preflight when explicitly
 sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by
@@ -144,7 +156,8 @@ descriptor preflight. The current-profile envelope is therefore rejected by
 stable `missing=` list.
 
 `preflight_portable_profile_requirement()` additionally accepts an exact `u64`
-program-memory requirement. It checks that value against profile capacity before
+program-memory requirement, including zero. It checks that value against profile
+capacity before
 runtime capability and emits the same `MALBOLGE-PROFILE-002` text as canonical
 preflight, including `historical-profile-ceiling` for `malbolge-1998`.
 `RegionEffectProgram::required_memory_words()` derives this value from every C/D

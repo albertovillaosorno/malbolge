@@ -40,7 +40,6 @@ required memory or address capacity, and missing runtime capability. When
 `malbolge-1998` is selected, report its 59,049-word ceiling explicitly as a
 historical-profile constraint.
 
-
 **Current implementation.**
 
 - The target-profile validator renders
@@ -68,9 +67,16 @@ historical-profile constraint.
   immutable profile requirements and explicit runtime envelopes derived from the
   validated canonical document. Its `001` current/classic and `002` historical
   ceiling diagnostics are byte-identical to Rust, with profile capacity checked
-  before runtime capacity and missing dimensions kept in stable order. Direct
-  public error construction now admits only the exact enum, canonical immutable
-  dimensions, and a real rejected preflight pair with the same precedence.
+  before runtime capacity and missing dimensions kept in stable order. Preflight
+  re-resolves public requirement objects against canonical `malbolge.json`, so
+  callers cannot inflate a known profile's kind, version, word width, or
+  capacity. Reserved Python runtime IDs likewise cannot be reused with forged
+  feature, word, or memory capabilities, and `safe-rust-profiled` remains bound
+  to its implemented 14-trit capacity rather than following a future current
+  profile automatically.
+  Direct public error construction admits only the exact enum, canonical
+  immutable dimensions, and a real rejected preflight pair with the same
+  precedence.
 - Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now
   carry exact profile ID/fingerprint plus published version, ordered semantic
   features, word trits, profile capacity, and derived `u64` region memory.
@@ -124,6 +130,7 @@ historical-profile constraint.
   `tests/compatibility/test_profile_requirements.py`,
   `tests/vm/profile_requirements.rs`, `tests/cli_malbolge.rs`, and the remaining
   compatibility/profile Python suites.
+
 - Required evidence: `malbolge-1998` specification-conformance corpus plus
   current/profile boundary fixtures and exact diagnostics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,

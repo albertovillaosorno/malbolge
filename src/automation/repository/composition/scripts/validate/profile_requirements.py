@@ -40,9 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from re import compile as compile_pattern
-from typing import Final
-from typing import Never
-from typing import cast
+from typing import Final, Never, cast
 
 from scripts.validate import target_profile
 
@@ -50,6 +48,10 @@ PROFILE_RUNTIME_DIAGNOSTIC_CODE: Final = "MALBOLGE-PROFILE-001"
 PROFILE_CAPACITY_DIAGNOSTIC_CODE: Final = "MALBOLGE-PROFILE-002"
 SAFE_RUST_CLASSIC_CAPABILITY_ID: Final = "safe-rust-classic"
 SAFE_RUST_PROFILED_CAPABILITY_ID: Final = "safe-rust-profiled"
+SAFE_RUST_CLASSIC_MAX_WORD_TRITS: Final = 10
+SAFE_RUST_CLASSIC_MAX_MEMORY_WORDS: Final = 59_049
+SAFE_RUST_PROFILED_MAX_WORD_TRITS: Final = 14
+SAFE_RUST_PROFILED_MAX_MEMORY_WORDS: Final = 4_782_969
 HISTORICAL_PROFILE_CEILING: Final = "historical-profile-ceiling"
 PROFILE_CAPACITY_CEILING: Final = "profile-capacity-ceiling"
 WORD_TRITS_DIMENSION: Final = "word-trits"
@@ -64,9 +66,7 @@ NORMATIVE_PROFILE_FEATURES: Final = (
     "self-modification",
     "sequential-guest",
 )
-_IDENTIFIER_PATTERN: Final = compile_pattern(
-    r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
-)
+_IDENTIFIER_PATTERN: Final = compile_pattern(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _FEATURE_ORDER: Final = {
     feature: index for index, feature in enumerate(NORMATIVE_PROFILE_FEATURES)
 }
@@ -169,7 +169,7 @@ def build_profile_requirement(
         memory_words=_positive_int(memory["words"], "profile memory words"),
         profile_id=validated_profile_id,
         required_features=NORMATIVE_PROFILE_FEATURES,
-        required_memory_words=_positive_int(
+        required_memory_words=_non_negative_int(
             required_memory_words,
             "required memory words",
         ),
@@ -219,8 +219,8 @@ def safe_rust_classic_capability() -> RuntimeCapability:
     return build_runtime_capability(
         capability_id=SAFE_RUST_CLASSIC_CAPABILITY_ID,
         features=NORMATIVE_PROFILE_FEATURES,
-        max_memory_words=target_profile.HISTORICAL_WORDS,
-        max_word_trits=10,
+        max_memory_words=SAFE_RUST_CLASSIC_MAX_MEMORY_WORDS,
+        max_word_trits=SAFE_RUST_CLASSIC_MAX_WORD_TRITS,
     )
 
 
@@ -231,12 +231,11 @@ def safe_rust_profiled_capability() -> RuntimeCapability:
         Fourteen-trit, 4,782,969-word normative runtime capability.
 
     """
-    geometry = target_profile.current_profile_geometry()
     return build_runtime_capability(
         capability_id=SAFE_RUST_PROFILED_CAPABILITY_ID,
         features=NORMATIVE_PROFILE_FEATURES,
-        max_memory_words=geometry.memory_words,
-        max_word_trits=geometry.word_trits,
+        max_memory_words=SAFE_RUST_PROFILED_MAX_MEMORY_WORDS,
+        max_word_trits=SAFE_RUST_PROFILED_MAX_WORD_TRITS,
     )
 
 
@@ -252,10 +251,7 @@ def preflight_profile_requirement(
     """
     validated_requirement = _validated_requirement(requirement)
     validated_runtime = _validated_runtime(runtime)
-    if (
-        validated_requirement.required_memory_words
-        > validated_requirement.memory_words
-    ):
+    if validated_requirement.required_memory_words > validated_requirement.memory_words:
         raise ProfileRequirementError(
             ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED,
             validated_requirement,
@@ -334,9 +330,7 @@ def _validate_error_match(
     if expected_kind is None:
         _raise_validation("diagnostic requires a rejected profile preflight")
     if kind is not expected_kind:
-        _raise_validation(
-            "diagnostic kind does not match the preflight rejection"
-        )
+        _raise_validation("diagnostic kind does not match the preflight rejection")
     if dimensions != expected_dimensions:
         _raise_validation(
             "diagnostic missing dimensions do not match the preflight rejection"
@@ -368,11 +362,19 @@ def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:
         _raise_validation("profile kind is unsupported")
     _ = _positive_int(value.word_trits, "profile word trits")
     _ = _positive_int(value.memory_words, "profile memory words")
-    _ = _positive_int(value.required_memory_words, "required memory words")
+    _ = _non_negative_int(
+        value.required_memory_words,
+        "required memory words",
+    )
     if value.required_features != NORMATIVE_PROFILE_FEATURES:
-        _raise_validation(
-            "profile features must equal the normative feature set"
-        )
+        _raise_validation("profile features must equal the normative feature set")
+    canonical = build_profile_requirement(
+        target_profile.load_document(target_profile.DEFAULT_PROFILE),
+        value.profile_id,
+        required_memory_words=value.required_memory_words,
+    )
+    if value != canonical:
+        _raise_validation("profile fields must match canonical profile authority")
     return value
 
 
@@ -386,7 +388,22 @@ def _validated_runtime(value: RuntimeCapability) -> RuntimeCapability:
     _ = _validated_features(value.features)
     _ = _positive_int(value.max_memory_words, "runtime maximum memory words")
     _ = _positive_int(value.max_word_trits, "runtime maximum word trits")
+    canonical = _canonical_runtime_capability(value.capability_id)
+    if canonical is not None and value != canonical:
+        _raise_validation(
+            "reserved runtime fields must match canonical runtime authority"
+        )
     return value
+
+
+def _canonical_runtime_capability(
+    capability_id: str,
+) -> RuntimeCapability | None:
+    if capability_id == SAFE_RUST_CLASSIC_CAPABILITY_ID:
+        return safe_rust_classic_capability()
+    if capability_id == SAFE_RUST_PROFILED_CAPABILITY_ID:
+        return safe_rust_profiled_capability()
+    return None
 
 
 def _validated_features(value: tuple[str, ...]) -> tuple[str, ...]:
@@ -418,9 +435,7 @@ def _missing_dimensions(
         missing.append(MEMORY_WORDS_DIMENSION)
     available = frozenset(runtime.features)
     missing.extend(
-        feature
-        for feature in requirement.required_features
-        if feature not in available
+        feature for feature in requirement.required_features if feature not in available
     )
     return tuple(missing)
 
@@ -433,27 +448,31 @@ def _diagnostic_text(error: ProfileRequirementError) -> str:
             if requirement.kind == target_profile.HISTORICAL_KIND
             else PROFILE_CAPACITY_CEILING
         )
-        return " ".join((
-            PROFILE_CAPACITY_DIAGNOSTIC_CODE,
+        return " ".join(
+            (
+                PROFILE_CAPACITY_DIAGNOSTIC_CODE,
+                f"profile={requirement.profile_id}",
+                f"version={requirement.version}",
+                f"constraint={constraint}",
+                f"required_memory_words={requirement.required_memory_words}",
+                f"profile_memory_words={requirement.memory_words}",
+            )
+        )
+    runtime = error.runtime
+    return " ".join(
+        (
+            PROFILE_RUNTIME_DIAGNOSTIC_CODE,
             f"profile={requirement.profile_id}",
             f"version={requirement.version}",
-            f"constraint={constraint}",
-            f"required_memory_words={requirement.required_memory_words}",
-            f"profile_memory_words={requirement.memory_words}",
-        ))
-    runtime = error.runtime
-    return " ".join((
-        PROFILE_RUNTIME_DIAGNOSTIC_CODE,
-        f"profile={requirement.profile_id}",
-        f"version={requirement.version}",
-        f"required_features={",".join(requirement.required_features)}",
-        f"required_word_trits={requirement.word_trits}",
-        f"required_memory_words={requirement.memory_words}",
-        f"runtime={runtime.capability_id}",
-        f"max_word_trits={runtime.max_word_trits}",
-        f"max_memory_words={runtime.max_memory_words}",
-        f"missing={",".join(error.missing_dimensions)}",
-    ))
+            f"required_features={','.join(requirement.required_features)}",
+            f"required_word_trits={requirement.word_trits}",
+            f"required_memory_words={requirement.memory_words}",
+            f"runtime={runtime.capability_id}",
+            f"max_word_trits={runtime.max_word_trits}",
+            f"max_memory_words={runtime.max_memory_words}",
+            f"missing={','.join(error.missing_dimensions)}",
+        )
+    )
 
 
 def _mapping(value: object, context: str) -> target_profile.JsonObject:
@@ -465,6 +484,12 @@ def _mapping(value: object, context: str) -> target_profile.JsonObject:
 def _string(value: object, context: str) -> str:
     if type(value) is not str or not value:
         _raise_validation(f"{context} must be a nonempty string")
+    return value
+
+
+def _non_negative_int(value: object, context: str) -> int:
+    if type(value) is not int or value < 0:
+        _raise_validation(f"{context} must be a non-negative integer")
     return value
 
 
