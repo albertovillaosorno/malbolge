@@ -177,6 +177,28 @@ def test_exact_materialization_rejects_changed_source_before_output(
     _expect(not staging.exists(), "rejected staging tree survived")
 
 
+def test_exact_materialization_wraps_tree_path_resolution_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep source-path resolution failures inside the exact-tree boundary."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    blocked = source / _MOVED_SOURCE
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == blocked:
+            message = "blocked source path"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    output = tmp_path / "result"
+    with pytest.raises(ExactTreeError, match="tree path resolution failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "resolution failure published output")
+
+
 def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
     """Never overwrite an existing output tree implicitly."""
     source, oracle = _synthetic_pair(tmp_path)
