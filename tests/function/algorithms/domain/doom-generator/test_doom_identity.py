@@ -51,6 +51,7 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Iterator
 
 _DIRECTIVE_END_FRAME = b"E\x00\x00\x00\x00"
 _LINE_SPLICE_BYTES = b"\\\n"
@@ -299,6 +300,59 @@ def test_quality_oracle_preflight_accepts_exact_root_surface(
     _quality_oracle_fixture(tmp_path)
 
     validate_authoring_oracle(tmp_path)
+
+
+def test_quality_oracle_rejects_linked_root_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Do not resolve a linked oracle root before surface validation."""
+    target = tmp_path / "target"
+    _quality_oracle_fixture(target)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    with pytest.raises(DoomIdentityError, match="root must not be linked"):
+        validate_authoring_oracle(linked)
+
+
+def test_quality_oracle_enumeration_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible oracle scan cannot look like a surface mismatch."""
+    _quality_oracle_fixture(tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_iterdir(path: Path) -> Iterator[Path]:
+        if path == tmp_path:
+            message = "blocked quality oracle"
+            raise PermissionError(message)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+    with pytest.raises(DoomIdentityError, match="enumeration failed"):
+        validate_authoring_oracle(tmp_path)
+
+
+def test_quality_oracle_entry_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible expected entry cannot degrade to a kind mismatch."""
+    _quality_oracle_fixture(tmp_path)
+    blocked = tmp_path / "LICENSE-MIT"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == blocked:
+            message = "blocked quality entry"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(DoomIdentityError, match="entry status failed"):
+        validate_authoring_oracle(tmp_path)
 
 
 def test_quality_oracle_preflight_rejects_unexpected_root(

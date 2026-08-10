@@ -739,11 +739,36 @@ def validate_source_provenance(source_root: Path) -> SourcePinEvidence:
     return require_source_pin(source_root, DOOM_SOURCE_PIN)
 
 
+def _quality_oracle_mode(path: Path, description: str) -> int | None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = (
+            f"DOOM quality oracle {description} status failed: {path}: {error}"
+        )
+        raise DoomIdentityError(message) from error
+    if S_ISLNK(mode) or path.is_junction():
+        message = (
+            f"DOOM quality oracle {description} must not be linked: {path}"
+        )
+        raise DoomIdentityError(message)
+    return mode
+
+
 def _quality_oracle_entries(oracle_root: Path) -> dict[str, Path]:
-    if not oracle_root.is_dir():
+    mode = _quality_oracle_mode(oracle_root, "root")
+    if mode is None or not S_ISDIR(mode):
         message = f"missing DOOM quality oracle root: {oracle_root}"
         raise DoomIdentityError(message)
-    return {entry.name: entry for entry in oracle_root.iterdir()}
+    try:
+        return {entry.name: entry for entry in oracle_root.iterdir()}
+    except OSError as error:
+        message = (
+            f"DOOM quality oracle enumeration failed: {oracle_root}: {error}"
+        )
+        raise DoomIdentityError(message) from error
 
 
 def _require_quality_oracle_names(entries: dict[str, Path]) -> None:
@@ -761,11 +786,13 @@ def _require_quality_oracle_names(entries: dict[str, Path]) -> None:
 
 def _require_quality_oracle_kinds(entries: dict[str, Path]) -> None:
     for name in _QUALITY_ORACLE_DIRECTORIES:
-        if entries[name].is_symlink() or not entries[name].is_dir():
+        mode = _quality_oracle_mode(entries[name], "entry")
+        if mode is None or not S_ISDIR(mode):
             message = f"DOOM quality oracle root must be a directory: {name}"
             raise DoomIdentityError(message)
     for name in _QUALITY_ORACLE_FILES:
-        if entries[name].is_symlink() or not entries[name].is_file():
+        mode = _quality_oracle_mode(entries[name], "entry")
+        if mode is None or not S_ISREG(mode):
             message = f"DOOM quality oracle root must be a file: {name}"
             raise DoomIdentityError(message)
 
