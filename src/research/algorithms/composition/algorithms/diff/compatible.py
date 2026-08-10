@@ -274,8 +274,51 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     return path
 
 
+def _path_present(path: Path, context: str) -> bool:
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        message = f"{context} status failed: {path}: {error}"
+        raise CompatiblePlanError(message) from error
+    return True
+
+
+def _read_compatible_bytes(path: Path, context: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"{context} read failed: {path}: {error}"
+        raise CompatiblePlanError(message) from error
+
+
+def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_bytes(data)
+    except OSError as error:
+        message = f"{context} write failed: {path}: {error}"
+        raise CompatiblePlanError(message) from error
+
+
+def _make_compatible_directory(
+    path: Path,
+    context: str,
+    *,
+    parents: bool,
+    exist_ok: bool,
+) -> None:
+    try:
+        path.mkdir(parents=parents, exist_ok=exist_ok)
+    except OSError as error:
+        message = f"{context} creation failed: {path}: {error}"
+        raise CompatiblePlanError(message) from error
+
+
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
-    return _safe_path(root, relative_path).read_bytes()
+    path = _safe_path(root, relative_path)
+    return _read_compatible_bytes(path, "compatible tree file")
 
 
 def _source_path(
@@ -524,14 +567,19 @@ def _instruction_bytes(
 
 
 def _prepare_staging(output_root: Path) -> Path:
-    if output_root.exists():
+    if _path_present(output_root, "compatible output root"):
         message = f"compatible output root already exists: {output_root}"
         raise CompatiblePlanError(message)
     staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
-    if staging.exists():
+    if _path_present(staging, "compatible staging root"):
         message = f"compatible staging root already exists: {staging}"
         raise CompatiblePlanError(message)
-    staging.mkdir(parents=True)
+    _make_compatible_directory(
+        staging,
+        "compatible staging root",
+        parents=True,
+        exist_ok=False,
+    )
     return staging
 
 
@@ -566,8 +614,8 @@ def _copy_candidate_only(
     for path in paths:
         source = _safe_path(candidate_root, path)
         output = _safe_path(staging, path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        _ = output.write_bytes(source.read_bytes())
+        data = _read_compatible_bytes(source, "candidate-only source")
+        _write_compatible_bytes(output, data, "candidate-only output")
 
 
 def _require_literal_conflict_absent(
@@ -620,8 +668,7 @@ def _populate_staging(
     for instruction in request.plan.instructions:
         data = _instruction_bytes(context, instruction)
         output = _safe_path(staging, instruction.output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        _ = output.write_bytes(data)
+        _write_compatible_bytes(output, data, "compatible instruction output")
     _copy_candidate_only(
         request.candidate_root,
         staging,

@@ -268,6 +268,57 @@ def test_compatible_materialization_wraps_path_resolution_error(
     _expect(not output.exists(), "resolution failure published output")
 
 
+def test_compatible_staging_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible staging path cannot masquerade as absent."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.compatible-staging"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == staging:
+            message = "blocked compatible staging status"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(CompatiblePlanError, match="staging root status failed"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "status failure published compatible output")
+
+
+def test_compatible_output_write_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staging write failure remains inside CompatiblePlanError."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.compatible-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked compatible output write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    with pytest.raises(
+        CompatiblePlanError,
+        match="compatible instruction output write failed",
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "write failure published compatible output")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "compatible staging survived write failure",
+    )
+
+
 def test_target_only_path_conflict_fails_closed(tmp_path: Path) -> None:
     """Reject upstream conflict with required target-only material."""
     plan = _plan(tmp_path)
