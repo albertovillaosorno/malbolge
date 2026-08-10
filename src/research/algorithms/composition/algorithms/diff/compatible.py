@@ -190,6 +190,8 @@ class _BuildContext:
 class _MaterializeContext:
     candidate_root: Path
     mapper: Mapper
+    corrections_to_apply: frozenset[str]
+    corrections_to_skip: frozenset[str]
 
 
 def _validate_request_path(value: object, context: str) -> None:
@@ -851,6 +853,26 @@ def _materialize_copy(
     return _candidate_bytes(context, instruction)
 
 
+def _routed_semantic_plan(
+    context: _MaterializeContext,
+    instruction: CompatibleInstruction,
+) -> SemanticAuthoringPlan:
+    if instruction.semantic is None:
+        message = "compatible semantic instruction lost its authoring plan"
+        raise CompatiblePlanError(message)
+    edits = tuple(
+        edit
+        for edit, correction_id in zip(
+            instruction.semantic.edits,
+            _normalized_correction_ids(instruction),
+            strict=True,
+        )
+        if correction_id is None
+        or correction_id in context.corrections_to_apply
+    )
+    return SemanticAuthoringPlan(edits=edits)
+
+
 def _materialize_semantic(
     context: _MaterializeContext,
     instruction: CompatibleInstruction,
@@ -862,7 +884,7 @@ def _materialize_semantic(
     view = _require_mapped(context.mapper, instruction.source_path, candidate)
     return apply_semantic_plan(
         view,
-        instruction.semantic,
+        _routed_semantic_plan(context, instruction),
         lambda data: _require_mapped(
             context.mapper,
             instruction.output_path,
@@ -997,11 +1019,30 @@ def _require_literal_conflicts_absent(
         _require_literal_conflict_absent(request, candidate_paths, instruction)
 
 
-def _require_bug_routing_wired(behavior: BehaviorEvidence) -> None:
-    if behavior.corrections_to_apply or behavior.corrections_to_skip:
-        message = (
-            "compatible bug correction routing is not wired to tree edits yet"
-        )
+def _plan_correction_ids(
+    plan: CompatibleAuthoringPlan,
+) -> frozenset[str]:
+    return frozenset(
+        correction_id
+        for instruction in plan.instructions
+        for correction_id in _normalized_correction_ids(instruction)
+        if correction_id is not None
+    )
+
+
+def _require_correction_routes(
+    plan: CompatibleAuthoringPlan,
+    behavior: BehaviorEvidence,
+) -> None:
+    attached = _plan_correction_ids(plan)
+    routed = frozenset(
+        (*behavior.corrections_to_apply, *behavior.corrections_to_skip)
+    )
+    if routed - attached:
+        message = "behavior routes an unbound compatible correction ID"
+        raise CompatiblePlanError(message)
+    if attached - routed:
+        message = "compatible correction binding lacks a behavior route"
         raise CompatiblePlanError(message)
 
 
@@ -1013,6 +1054,8 @@ def _populate_staging(
     context = _MaterializeContext(
         candidate_root=request.candidate_root,
         mapper=request.mapper,
+        corrections_to_apply=frozenset(request.behavior.corrections_to_apply),
+        corrections_to_skip=frozenset(request.behavior.corrections_to_skip),
     )
     for instruction in request.plan.instructions:
         data = _instruction_bytes(context, instruction)
@@ -1089,7 +1132,7 @@ def materialize_compatible_plan(
     """
     request = _require_materialize_request(request)
     admitted = _admit(request)
-    _require_bug_routing_wired(request.behavior)
+    _require_correction_routes(request.plan, request.behavior)
     candidate = snapshot_tree(request.candidate_root)
     candidate_paths = frozenset(item.path for item in candidate.files)
     _require_literal_conflicts_absent(request, candidate_paths)

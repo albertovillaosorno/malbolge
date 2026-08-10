@@ -77,6 +77,7 @@ _REMOVED = b"historical-remove"
 _CANDIDATE_ONLY = b"candidate-only"
 _CANDIDATE_CODE = b"extra ; alpha   = old ; omega tail"
 _EXPECTED_CODE = b"extra ; alpha   = new ; omega tail"
+_FIXED_CANDIDATE_CODE = b"extra ; alpha = new ; omega tail"
 _FOREIGN_OUTPUT = b"foreign-output"
 _FOREIGN_STAGING = b"foreign-writer"
 
@@ -121,14 +122,17 @@ def _policy() -> AdmissionPolicy:
 
 
 def _behavior(
-    *, admitted: bool = True, routed: bool = False
+    *,
+    admitted: bool = True,
+    apply: tuple[str, ...] = (),
+    skip: tuple[str, ...] = (),
 ) -> BehaviorEvidence:
     return BehaviorEvidence(
         similarity=1.0 if admitted else 0.0,
         matched_identity_probes=1 if admitted else 0,
         total_identity_probes=1,
-        corrections_to_apply=("fix",) if routed else (),
-        corrections_to_skip=(),
+        corrections_to_apply=apply,
+        corrections_to_skip=skip,
         reasons=() if admitted else ("synthetic behavior rejection",),
     )
 
@@ -610,17 +614,84 @@ def test_target_only_path_conflict_fails_closed(tmp_path: Path) -> None:
     _expect(not output.exists(), "conflicting target-only output was published")
 
 
-def test_bug_routing_fails_closed_until_edits_are_named(tmp_path: Path) -> None:
-    """Reject apply/skip routing until correction IDs are attached to edits."""
+def test_unbound_bug_routing_fails_closed(tmp_path: Path) -> None:
+    """Reject behavior routes that are not attached to semantic edits."""
     plan = _plan(tmp_path)
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
 
-    with pytest.raises(CompatiblePlanError, match="routing is not wired"):
+    with pytest.raises(CompatiblePlanError, match="unbound compatible correction"):
         _ = materialize_compatible_plan(
-            _request(candidate, plan, output, behavior=_behavior(routed=True))
+            _request(
+                candidate,
+                plan,
+                output,
+                behavior=_behavior(apply=("fix",)),
+            )
         )
-    _expect(not output.exists(), "unwired bug routing published output")
+    _expect(not output.exists(), "unbound bug routing published output")
+
+
+def test_bound_bug_correction_applies_named_semantic_edit(tmp_path: Path) -> None:
+    """Apply a named semantic correction when behavior reports the defect."""
+    plan = bind_compatible_corrections(
+        _plan(tmp_path),
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    evidence = materialize_compatible_plan(
+        _request(
+            candidate,
+            plan,
+            output,
+            behavior=_behavior(apply=("fix",)),
+        )
+    )
+
+    _expect(evidence.behavior.corrections_to_apply == ("fix",), "apply route was lost")
+    _expect((output / "code.src").read_bytes() == _EXPECTED_CODE, "fix missing")
+
+
+def test_bound_bug_correction_skips_already_fixed_semantic_edit(
+    tmp_path: Path,
+) -> None:
+    """Preserve an upstream fix when behavior routes its correction to skip."""
+    plan = bind_compatible_corrections(
+        _plan(tmp_path),
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    candidate = _candidate(tmp_path)
+    _write(candidate, "code.src", _FIXED_CANDIDATE_CODE)
+    output = tmp_path / "out"
+    evidence = materialize_compatible_plan(
+        _request(
+            candidate,
+            plan,
+            output,
+            behavior=_behavior(skip=("fix",)),
+        )
+    )
+
+    _expect(evidence.behavior.corrections_to_skip == ("fix",), "skip route was lost")
+    _expect(
+        (output / "code.src").read_bytes() == _FIXED_CANDIDATE_CODE,
+        "upstream fix was overwritten",
+    )
+
+
+def test_bound_bug_correction_requires_behavior_route(tmp_path: Path) -> None:
+    """Reject a bound conditional edit when behavior supplies no route."""
+    plan = bind_compatible_corrections(
+        _plan(tmp_path),
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    with pytest.raises(CompatiblePlanError, match="lacks a behavior route"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "unrouted bound correction published output")
 
 
 def _reject_postcondition(root: Path) -> bool:
