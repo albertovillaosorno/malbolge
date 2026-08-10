@@ -195,6 +195,65 @@ def test_scratch_executable_can_be_produced_then_run(tmp_path: Path) -> None:
     _expect(transcript.digested_commands == 1, "scratch executable did not run")
 
 
+def test_missing_tool_executable_fails_closed(tmp_path: Path) -> None:
+    """A missing tool binding cannot fall through to process launch."""
+    source = tmp_path / "source"
+    source.mkdir()
+    context = ProbeRunContext(
+        source_root=source,
+        repository_root=tmp_path,
+        tools=((_PYTHON_TOOL, tmp_path / "missing-tool.exe"),),
+    )
+
+    with pytest.raises(ProbeExecutionError, match="executable is unavailable"):
+        _ = run_probe_program(_program("missing-tool", "pass"), context)
+
+
+def test_tool_executable_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preserve an inaccessible executable as a probe status failure."""
+    source = tmp_path / "source"
+    source.mkdir()
+    tool = tmp_path / "tool.exe"
+    _ = tool.write_bytes(b"not executed")
+    context = ProbeRunContext(source, tmp_path, ((_PYTHON_TOOL, tool),))
+    resolved_tool = tool.resolve()
+    original_stat = Path.stat
+
+    def fail_stat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == resolved_tool:
+            message = "blocked tool executable"
+            raise PermissionError(message)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fail_stat)
+    with pytest.raises(ProbeExecutionError, match="status failed"):
+        _ = run_probe_program(_program("blocked-tool", "pass"), context)
+
+
+def test_tool_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wrap tool-path resolution failures in the probe execution boundary."""
+    source = tmp_path / "source"
+    source.mkdir()
+    tool = tmp_path / "tool.exe"
+    _ = tool.write_bytes(b"not executed")
+    context = ProbeRunContext(source, tmp_path, ((_PYTHON_TOOL, tool),))
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tool:
+            message = "blocked tool resolution"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(ProbeExecutionError, match="tool resolution failed"):
+        _ = run_probe_program(_program("blocked-resolution", "pass"), context)
+
+
 def test_exit_code_can_be_observed_instead_of_required(tmp_path: Path) -> None:
     """Allow behavior probes to digest a nonzero process result as evidence."""
     source = tmp_path / "source"

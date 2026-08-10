@@ -41,6 +41,7 @@ import hashlib
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
+from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
@@ -365,8 +366,32 @@ def _rooted_path(
     return candidate
 
 
+def _resolved_tool_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError as error:
+        message = f"probe tool resolution failed: {path}: {error}"
+        raise ProbeExecutionError(message) from error
+
+
 def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
-    return {tool_id: path.resolve() for tool_id, path in context.tools}
+    return {
+        tool_id: _resolved_tool_path(path) for tool_id, path in context.tools
+    }
+
+
+def _require_executable(path: Path) -> None:
+    try:
+        mode = path.stat().st_mode
+    except FileNotFoundError as error:
+        message = "probe executable is unavailable"
+        raise ProbeExecutionError(message) from error
+    except OSError as error:
+        message = f"probe executable status failed: {path}: {error}"
+        raise ProbeExecutionError(message) from error
+    if not S_ISREG(mode):
+        message = "probe executable is unavailable"
+        raise ProbeExecutionError(message)
 
 
 def _resolve_executable(
@@ -381,9 +406,7 @@ def _resolve_executable(
             raise ProbeExecutionError(message)
     else:
         path = _rooted_path(executable, context, scratch_root)
-    if not path.is_file():
-        message = "probe executable is unavailable"
-        raise ProbeExecutionError(message)
+    _require_executable(path)
     return path
 
 
