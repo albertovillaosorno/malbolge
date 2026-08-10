@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff import relocatable as relocatable_module
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
@@ -60,6 +61,7 @@ _INSERTION = b"candidate-insertion-preserved"
 _TARGET = b"TARGET-ONLY-CORRECTION"
 _CREATED = b"created-target"
 _FOREIGN_STAGING = b"foreign-writer"
+_FOREIGN_OUTPUT = b"foreign-output"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -155,6 +157,33 @@ def test_relocatable_materialization_wraps_path_resolution_error(
     with pytest.raises(RelocationError, match="path resolution failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "resolution failure published output")
+
+
+def test_relocatable_publication_collision_preserves_foreign_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late destination race cannot be replaced by relocatable output."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+
+    def collide(staging: Path, destination: Path) -> None:
+        _ = staging
+        destination.mkdir()
+        _ = (destination / "foreign.txt").write_bytes(_FOREIGN_OUTPUT)
+        raise FileExistsError(destination)
+
+    monkeypatch.setattr(
+        relocatable_module, "publish_directory_no_replace", collide
+    )
+    with pytest.raises(RelocationError, match="output publication failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+
+    assert (output / "foreign.txt").read_bytes() == _FOREIGN_OUTPUT
+    assert not (tmp_path / ".out.relocatable-staging").exists()
 
 
 def test_byte_boundary_change_remains_fail_closed(tmp_path: Path) -> None:

@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
+from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
     from algorithms.diff.model import ExactInstruction
@@ -447,6 +448,14 @@ def _prepare_staging(output_root: Path) -> Path:
     return staging
 
 
+def _publish_relocatable_output(staging: Path, destination: Path) -> None:
+    try:
+        publish_directory_no_replace(staging, destination)
+    except OSError as error:
+        message = f"relocatable output publication failed: {error}"
+        raise RelocationError(message) from error
+
+
 def materialize_relocatable_plan(
     candidate_root: Path,
     plan: RelocatableAuthoringPlan,
@@ -474,7 +483,7 @@ def materialize_relocatable_plan(
             output = _safe_path(staging, instruction.output_path)
             output.parent.mkdir(parents=True, exist_ok=True)
             _ = output.write_bytes(data)
-        _ = staging.replace(output_root)
+        _publish_relocatable_output(staging, output_root)
     except Exception:
         if staging.exists():
             shutil.rmtree(staging)
