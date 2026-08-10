@@ -9,19 +9,21 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Independent two-transition differential evidence for the static analyzer.
+#   - Independent three-transition differential evidence for the static
+#     analyzer.
 # - Must-Not:
 #   - Import verifier transition helpers or execute an unbounded guest loop.
 # - Allows:
 #   - Inputs: fixed admitted two-word sources and the analyzer CLI JSON report.
-#   - Outputs: exact agreement with a test-local historical two-step model.
+#   - Outputs: exact agreement with a test-local historical bounded-prefix
+#     model.
 #   - Side effects: test-local source files and bounded subprocess execution.
 # - Split-When:
-#   - Third-step differential reachability needs a separately bounded model.
+#   - Fourth-step differential reachability needs a separately bounded model.
 # - Merge-When:
-#   - Another verifier differential owns the same two-step public surface.
+#   - Another verifier differential owns the same bounded public surface.
 # - Summary:
-#   - Compares schema-v4 second transitions to independent 1998 semantics.
+#   - Compares schema-v5 second/third transitions to independent 1998 semantics.
 # - Description:
 #   - Covers every admitted second opcode after exact output or input entry.
 # - Usage:
@@ -30,7 +32,7 @@
 #   - Unknown input followed by crazy remains explicitly unresolved.
 #
 
-"""Independent two-transition differential tests for emitted Malbolge."""
+"""Independent bounded-prefix differential tests for emitted Malbolge."""
 
 from __future__ import annotations
 
@@ -70,6 +72,38 @@ _STATUS_CONTINUED: Final = "continued"
 _STATUS_HALTED: Final = "halted"
 _STATUS_REJECTED: Final = "rejected-invalid-self-encryption"
 _STATUS_UNRESOLVED: Final = "unresolved-input-dependent-accumulator"
+_STATUS_STUCK: Final = "stuck-non-graphical-fetch"
+
+
+@dataclass(frozen=True, slots=True)
+class _ReferenceMemory:
+    source: tuple[int, int]
+    writes: tuple[tuple[int, int], ...] = ()
+
+    def read(self, address: int) -> int:
+        """Read one value after bounded reference-model writes.
+
+        Returns:
+            Latest written value or exact initial recurrence memory.
+
+        """
+        for write_address, value in reversed(self.writes):
+            if write_address == address:
+                return value
+        return _initial_memory(self.source, address)
+
+    def commit(
+        self, address: int | None, value: int | None
+    ) -> _ReferenceMemory:
+        """Append one known write to immutable reference memory.
+
+        Returns:
+            Updated immutable memory state, or self for an absent write.
+
+        """
+        if address is None or value is None:
+            return self
+        return _ReferenceMemory(self.source, (*self.writes, (address, value)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,6 +359,73 @@ def _expected_second(
     )
 
 
+def _memory_after_second(
+    source: tuple[int, int],
+    expected: _ExpectedSecond,
+) -> _ReferenceMemory:
+    entry_encryption = _XLAT2[source[0] - _GRAPHICAL_START]
+    memory = _ReferenceMemory(source).commit(0, entry_encryption)
+    memory = memory.commit(expected.write_address, expected.write_value)
+    return memory.commit(
+        expected.encryption_address,
+        expected.encryption_output,
+    )
+
+
+def _assert_stuck_addresses(
+    document: dict[str, object],
+    expected: _ExpectedSecond,
+    data_pointer: int,
+) -> None:
+    assert document["fetched_address"] == expected.next_fetch
+    assert document["data_address"] == data_pointer
+    assert document["code_data_alias"] == (expected.next_fetch == data_pointer)
+    assert document["result_code_pointer"] == expected.next_fetch
+    assert document["result_data_pointer"] == data_pointer
+    assert document["next_fetch_address"] == expected.next_fetch
+
+
+def _assert_stuck_effects(document: dict[str, object]) -> None:
+    assert document["decoded_byte"] is None
+    assert document["data_value"] is None
+    assert document["planned_data_write_address"] is None
+    assert document["planned_data_write_value"] is None
+    assert document["encryption_address"] is None
+    assert document["encryption_input"] is None
+    assert document["encryption_output"] is None
+    assert document["provable_cycle"] is True
+
+
+def _assert_third_prefix(
+    observed: object,
+    source: tuple[int, int],
+    expected: _ExpectedSecond,
+) -> None:
+    if expected.status != _STATUS_CONTINUED or expected.next_fetch is None:
+        assert observed is None
+        return
+    document = cast("dict[str, object]", observed)
+    data_pointer = expected.data_pointer
+    assert data_pointer is not None
+    memory = _memory_after_second(source, expected)
+    fetched = memory.read(expected.next_fetch)
+    assert not _GRAPHICAL_START <= fetched <= _GRAPHICAL_END
+    assert document["status"] == _STATUS_STUCK
+    assert document["fetched_value"] == fetched
+    _assert_stuck_addresses(document, expected, data_pointer)
+    _assert_stuck_effects(document)
+    assert document["input_dependent_accumulator"] == (
+        expected.accumulator is None
+    )
+    assert document["result_accumulator"] == expected.accumulator
+
+
+def _expected_cli_code(expected: _ExpectedSecond) -> int:
+    if expected.status == _STATUS_HALTED:
+        return 0
+    return 1
+
+
 def _report(
     tmp_path: Path,
     source: bytes,
@@ -383,6 +484,7 @@ def test_two_transition_cli_matches_independent_historical_model(
     source = bytes(source_tuple)
     expected = _expected_second(first, second, source_tuple)
     returncode, document = _report(tmp_path, source)
-    assert returncode in {0, 1}
     observed = cast("dict[str, object]", document["second_transition"])
     _assert_second(observed, expected)
+    _assert_third_prefix(document["third_transition"], source_tuple, expected)
+    assert returncode == _expected_cli_code(expected)
