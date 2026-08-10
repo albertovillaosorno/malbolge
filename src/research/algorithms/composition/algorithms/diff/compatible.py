@@ -48,9 +48,11 @@ from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
+from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.publication import publish_directory_no_replace
+from algorithms.diff.semantic import SemanticAuthoringPlan
 from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 
@@ -60,10 +62,8 @@ if TYPE_CHECKING:
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.gate import TransformAdmissionEvidence
     from algorithms.diff.model import ExactAuthoringPlan
-    from algorithms.diff.model import ExactInstruction
     from algorithms.diff.model import FileRecord
     from algorithms.diff.model import TreeSnapshot
-    from algorithms.diff.semantic import SemanticAuthoringPlan
 
 _ONE = 1
 _STAGING_SUFFIX = ".compatible-staging"
@@ -227,7 +227,50 @@ _INSTRUCTION_VALIDATORS = {
 }
 
 
+def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:
+    if type(instruction.output_path) is not str:
+        message = "compatible output path must use the exact string type"
+        raise CompatiblePlanError(message)
+    _validate_relative_path(instruction.output_path)
+    if type(instruction.kind) is not CompatibleFileKind:
+        message = "compatible instruction kind must use the exact enum type"
+        raise CompatiblePlanError(message)
+    if instruction.source_path is not None:
+        if type(instruction.source_path) is not str:
+            message = "compatible source path must use the exact string type"
+            raise CompatiblePlanError(message)
+        _validate_relative_path(instruction.source_path)
+    if instruction.source_sha256 is not None:
+        value = instruction.source_sha256
+        if (
+            type(value) is not str
+            or len(value) != hashlib.sha256().digest_size * 2
+            or any(char not in "0123456789abcdef" for char in value)
+        ):
+            message = "compatible source sha256 must be 64 lowercase hex digits"
+            raise CompatiblePlanError(message)
+    if (
+        instruction.semantic is not None
+        and type(instruction.semantic) is not SemanticAuthoringPlan
+    ):
+        message = "compatible semantic evidence must use the exact plan type"
+        raise CompatiblePlanError(message)
+    if (
+        instruction.exact is not None
+        and type(instruction.exact) is not ExactInstruction
+    ):
+        message = "compatible exact evidence must use the exact instruction type"
+        raise CompatiblePlanError(message)
+    if (
+        instruction.literal is not None
+        and type(instruction.literal) is not bytes
+    ):
+        message = "compatible literal evidence must use exact bytes"
+        raise CompatiblePlanError(message)
+
+
 def _validate_instruction(instruction: CompatibleInstruction) -> None:
+    _validate_instruction_metadata(instruction)
     validator = _INSTRUCTION_VALIDATORS.get(instruction.kind)
     if validator is None:
         message = f"unknown compatible instruction kind: {instruction.kind}"

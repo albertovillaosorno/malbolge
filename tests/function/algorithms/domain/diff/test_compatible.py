@@ -46,12 +46,16 @@ from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.behavior import BehaviorEvidence
 from algorithms.diff.compatible import CompatibleBuildRequest
+from algorithms.diff.compatible import CompatibleFileKind
+from algorithms.diff.compatible import CompatibleInstruction
 from algorithms.diff.compatible import CompatibleMaterializeRequest
 from algorithms.diff.compatible import CompatiblePlanError
 from algorithms.diff.compatible import build_compatible_plan
 from algorithms.diff.compatible import materialize_compatible_plan
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
+from algorithms.diff.model import ExactInstruction
+from algorithms.diff.model import ExactInstructionKind
 import pytest
 
 if TYPE_CHECKING:
@@ -176,6 +180,49 @@ def _request(
         mapper=_mapper,
         output_root=output,
     )
+
+
+def test_compatible_instruction_rejects_foreign_metadata() -> None:
+    """Reject malformed direct instruction evidence at construction time."""
+    with pytest.raises(CompatiblePlanError, match="output path"):
+        _ = CompatibleInstruction(
+            output_path=cast("str", 1),
+            kind=CompatibleFileKind.COPY_CANDIDATE,
+            source_path="file.bin",
+        )
+    with pytest.raises(CompatiblePlanError, match="exact enum type"):
+        _ = CompatibleInstruction(
+            output_path="file.bin",
+            kind=cast("CompatibleFileKind", "copy-candidate"),
+            source_path="file.bin",
+        )
+    with pytest.raises(CompatiblePlanError, match="unsafe compatible tree path"):
+        _ = CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.COPY_CANDIDATE,
+            source_path="../file.bin",
+        )
+
+    exact = ExactInstruction(
+        output_path="file.bin",
+        kind=ExactInstructionKind.COPY_SOURCE,
+        expected_sha256="0" * 64,
+        source_path="file.bin",
+    )
+    with pytest.raises(CompatiblePlanError, match="64 lowercase hex digits"):
+        _ = CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.EXACT_GATED,
+            source_path="file.bin",
+            source_sha256="A" * 64,
+            exact=exact,
+        )
+    with pytest.raises(CompatiblePlanError, match="exact bytes"):
+        _ = CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=cast("bytes", bytearray(b"created")),
+        )
 
 
 def test_compatible_public_apis_reject_foreign_request_records(
