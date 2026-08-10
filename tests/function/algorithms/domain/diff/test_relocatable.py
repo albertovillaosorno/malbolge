@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -51,8 +52,6 @@ from algorithms.diff.relocatable import materialize_relocatable_plan
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.relocatable import RelocatableAuthoringPlan
 
@@ -130,6 +129,31 @@ def test_candidate_insertion_inside_source_range_is_preserved(
         (output / "created.bin").read_bytes() == _CREATED,
         "created target file changed",
     )
+
+
+def test_relocatable_materialization_wraps_path_resolution_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep candidate resolution failures inside relocatable placement."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    blocked = candidate / "code.bin"
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == blocked:
+            message = "blocked relocatable path"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    output = tmp_path / "out"
+    with pytest.raises(RelocationError, match="path resolution failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "resolution failure published output")
 
 
 def test_byte_boundary_change_remains_fail_closed(tmp_path: Path) -> None:
