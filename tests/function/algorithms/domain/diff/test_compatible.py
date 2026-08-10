@@ -38,6 +38,7 @@ from pathlib import Path
 import re
 import shutil
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff import compatible as compatible_module
 from algorithms.diff.admission import AdmissionError
@@ -175,6 +176,25 @@ def _request(
         mapper=_mapper,
         output_root=output,
     )
+
+
+def test_compatible_public_apis_reject_foreign_request_records(
+    tmp_path: Path,
+) -> None:
+    """Reject foreign request objects before compatible filesystem work."""
+    with pytest.raises(
+        CompatiblePlanError, match="exact CompatibleBuildRequest"
+    ):
+        _ = build_compatible_plan(cast("CompatibleBuildRequest", object()))
+
+    output = tmp_path / "out"
+    with pytest.raises(
+        CompatiblePlanError, match="exact CompatibleMaterializeRequest"
+    ):
+        _ = materialize_compatible_plan(
+            cast("CompatibleMaterializeRequest", object())
+        )
+    _expect(not output.exists(), "foreign materialize request wrote output")
 
 
 def test_compatible_tree_preserves_candidate_and_target_topology(

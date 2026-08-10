@@ -414,6 +414,25 @@ def _compatible_instruction(
     return _exact_instruction(context, instruction, source_path)
 
 
+def _require_build_request(value: object) -> CompatibleBuildRequest:
+    if type(value) is not CompatibleBuildRequest:
+        message = "compatible authoring requires exact CompatibleBuildRequest"
+        raise CompatiblePlanError(message)
+    return value
+
+
+def _require_materialize_request(
+    value: object,
+) -> CompatibleMaterializeRequest:
+    if type(value) is not CompatibleMaterializeRequest:
+        message = (
+            "compatible materialization requires exact "
+            "CompatibleMaterializeRequest"
+        )
+        raise CompatiblePlanError(message)
+    return value
+
+
 def build_compatible_plan(
     request: CompatibleBuildRequest,
 ) -> CompatibleAuthoringPlan:
@@ -424,6 +443,7 @@ def build_compatible_plan(
         exact gates for unmapped files.
 
     """
+    request = _require_build_request(request)
     exact = build_exact_plan(request.source_root, request.oracle_root)
     context = _BuildContext(
         request=request,
@@ -728,6 +748,7 @@ def materialize_compatible_plan(
         Passing conjunctive source-lineage and behavior evidence.
 
     """
+    request = _require_materialize_request(request)
     admitted = _admit(request)
     _require_bug_routing_wired(request.behavior)
     candidate = snapshot_tree(request.candidate_root)
