@@ -37,6 +37,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import importlib.util
+from stat import S_ISLNK
+from stat import S_ISREG
 import sys
 from typing import TYPE_CHECKING
 from typing import cast
@@ -70,15 +72,31 @@ class DiffDomain:
 
 
 def _module_name(path: Path) -> str:
-    digest = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:16]
+    digest = hashlib.sha256(str(path).encode()).hexdigest()[:16]
     return f"_malbolge_diff_domain_{digest}"
 
 
-def _load_module(path: Path) -> ModuleType:
-    resolved = path.resolve()
-    if path.is_symlink() or not resolved.is_file():
+def _regular_module_path(path: Path) -> Path:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError as error:
+        message = f"diff domain module is not a regular file: {path}"
+        raise DomainContractError(message) from error
+    except OSError as error:
+        message = f"diff domain module status failed: {path}: {error}"
+        raise DomainContractError(message) from error
+    if S_ISLNK(mode) or path.is_junction() or not S_ISREG(mode):
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
+    try:
+        return path.resolve(strict=True)
+    except OSError as error:
+        message = f"diff domain module resolution failed: {path}: {error}"
+        raise DomainContractError(message) from error
+
+
+def _load_module(path: Path) -> ModuleType:
+    resolved = _regular_module_path(path)
     name = _module_name(resolved)
     spec = importlib.util.spec_from_file_location(name, resolved)
     if spec is None or spec.loader is None:

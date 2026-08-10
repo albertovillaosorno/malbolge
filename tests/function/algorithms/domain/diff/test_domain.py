@@ -34,14 +34,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.domain import load_diff_domain
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _COMPLETE = """def validate_source_provenance(root):
     return None
@@ -138,3 +135,41 @@ def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
         pytest.skip("symlink creation is unavailable")
     with pytest.raises(DomainContractError, match="regular file"):
         _ = load_diff_domain(link)
+
+
+def test_domain_file_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preserve an inaccessible module as a status failure, not absence."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == module:
+            message = "blocked domain module"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(DomainContractError, match="status failed"):
+        _ = load_diff_domain(module)
+
+
+def test_domain_file_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preserve a post-admission resolution race as a domain error."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == module and strict:
+            message = "domain module disappeared"
+            raise FileNotFoundError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(DomainContractError, match="resolution failed"):
+        _ = load_diff_domain(module)
