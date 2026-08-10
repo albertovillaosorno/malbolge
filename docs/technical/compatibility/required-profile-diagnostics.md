@@ -101,7 +101,12 @@ footprint for an empty region/source preflight, while profile/runtime capacities
 remain strictly positive. Reserved Python
 runtime identities are revalidated too: `safe-rust-classic` and
 `safe-rust-profiled` cannot be reused with forged feature, word, or memory
-capabilities. The profiled runtime limit is implementation capacity, so it stays
+capabilities. Canonical profile parsing admits the top-level mapping and public
+JSON/path input types before iteration, JSON decoding, or pathlib access, and
+runtime feature members are type-checked before duplicate hashing. These direct
+input failures therefore remain typed profile validation errors rather than raw
+Python exceptions. The profiled runtime limit is implementation capacity, so it
+stays
 at 14 trits and 4,782,969 words even if a future canonical current profile
 selects a larger valid geometry. Explicitly named external runtime identities
 may still carry their own validated envelopes.
