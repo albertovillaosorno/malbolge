@@ -186,6 +186,62 @@ def test_relocatable_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".out.relocatable-staging").exists()
 
 
+def test_relocatable_staging_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible staging path cannot masquerade as absent."""
+    source, oracle, _ = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", _blocks("base"))
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.relocatable-staging"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == staging:
+            message = "blocked relocatable staging status"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(RelocationError, match="staging root status failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "status failure published relocatable output")
+
+
+def test_relocatable_output_write_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staging write failure remains inside RelocationError."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked relocatable output write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    with pytest.raises(
+        RelocationError, match="relocatable output write failed"
+    ):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "write failure published relocatable output")
+    _expect(
+        not (tmp_path / ".out.relocatable-staging").exists(),
+        "relocatable staging survived write failure",
+    )
+
+
 def test_byte_boundary_change_remains_fail_closed(tmp_path: Path) -> None:
     """Document why semantic token placement is the next compatibility layer."""
     source, oracle, base = _fixture(tmp_path)
@@ -229,6 +285,26 @@ def test_ambiguous_boundary_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(RelocationError, match="ambiguous"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "ambiguous relocatable output was published")
+
+
+def test_relocatable_authoring_read_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An authoring source read failure remains inside RelocationError."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    blocked = source / "code.bin"
+    original_read = Path.read_bytes
+
+    def fail_read(path: Path) -> bytes:
+        if path == blocked:
+            message = "blocked relocatable authoring read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    with pytest.raises(RelocationError, match="relocatable source read failed"):
+        _ = build_relocatable_plan(source, exact)
 
 
 def test_relocatable_plan_is_deterministic(tmp_path: Path) -> None:

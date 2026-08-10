@@ -281,7 +281,7 @@ def _instruction(
         message = "exact patch instruction lost source path"
         raise RelocationError(message)
     source_path = _safe_path(source_root, exact_instruction.source_path)
-    source = source_path.read_bytes()
+    source = _read_relocatable_bytes(source_path, "relocatable source")
     return RelocatableInstruction(
         output_path=exact_instruction.output_path,
         source_path=exact_instruction.source_path,
@@ -291,6 +291,48 @@ def _instruction(
             for segment in exact_instruction.segments
         ),
     )
+
+
+def _path_present(path: Path, context: str) -> bool:
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        message = f"{context} status failed: {path}: {error}"
+        raise RelocationError(message) from error
+    return True
+
+
+def _read_relocatable_bytes(path: Path, context: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"{context} read failed: {path}: {error}"
+        raise RelocationError(message) from error
+
+
+def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_bytes(data)
+    except OSError as error:
+        message = f"{context} write failed: {path}: {error}"
+        raise RelocationError(message) from error
+
+
+def _make_relocatable_directory(
+    path: Path,
+    context: str,
+    *,
+    parents: bool,
+    exist_ok: bool,
+) -> None:
+    try:
+        path.mkdir(parents=parents, exist_ok=exist_ok)
+    except OSError as error:
+        message = f"{context} creation failed: {path}: {error}"
+        raise RelocationError(message) from error
 
 
 def _validate_path(value: object, context: str) -> None:
@@ -430,21 +472,27 @@ def _instruction_bytes(
     if instruction.source_path is None:
         message = "relocatable instruction lost source path"
         raise RelocationError(message)
-    candidate = _safe_path(candidate_root, instruction.source_path).read_bytes()
+    candidate_path = _safe_path(candidate_root, instruction.source_path)
+    candidate = _read_relocatable_bytes(candidate_path, "relocatable candidate")
     if instruction.copy_candidate_file:
         return candidate
     return _patch_bytes(candidate, instruction.segments)
 
 
 def _prepare_staging(output_root: Path) -> Path:
-    if output_root.exists():
+    if _path_present(output_root, "relocatable output root"):
         message = f"output root already exists: {output_root}"
         raise RelocationError(message)
     staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
-    if staging.exists():
+    if _path_present(staging, "relocatable staging root"):
         message = f"relocatable staging root already exists: {staging}"
         raise RelocationError(message)
-    staging.mkdir(parents=True)
+    _make_relocatable_directory(
+        staging,
+        "relocatable staging root",
+        parents=True,
+        exist_ok=False,
+    )
     return staging
 
 
@@ -481,8 +529,7 @@ def materialize_relocatable_plan(
         for instruction in plan.instructions:
             data = _instruction_bytes(candidate_root, instruction)
             output = _safe_path(staging, instruction.output_path)
-            output.parent.mkdir(parents=True, exist_ok=True)
-            _ = output.write_bytes(data)
+            _write_relocatable_bytes(output, data, "relocatable output")
         _publish_relocatable_output(staging, output_root)
     except Exception:
         if staging.exists():
