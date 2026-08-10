@@ -8,12 +8,13 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v2 classifies the post-step encryption target shape for
-each initial instruction and flags `*`/`p` cells where a data/code alias can
-change the encryption input. It records the closed classic address range while
-explicitly leaving resolved aliasing, dynamic control flow, dataflow, evolved
-memory values, source-map context, concrete wraparound reachability, and
-input-dependent cycles unproved.
+load decode. Schema v3 keeps the per-cell encryption-target classification and
+also resolves the exact first historical transition from all-zero registers for
+an admitted initial image. The bounded entry-step evidence records data writes,
+code/data aliasing, encryption input/output, input-dependent accumulator state,
+halt, pointer succession, and wrap at that one transition. It records the closed
+classic address range while explicitly leaving second-step and later control
+flow, evolved memory, source-map context, and input-dependent cycles unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
 that exceed 59,049 loaded words receive a capacity finding without materializing

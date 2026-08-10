@@ -30,29 +30,33 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v2` also classifies each initial instruction's post-step
-encryption target as the current code pointer, the post-`i` code pointer, or
-none for halt. `*` and `p` cells additionally flag that a data/code alias can
-change the value consumed by encryption. The report records that the historical
+`malbolge-static-image/v3` retains each initial instruction's post-step
+encryption-target classification and adds one exact `entry_transition` from the
+historical all-zero register state. That transition resolves the first fetched
+instruction, C/D alias, planned data write, encryption address/input/output,
+input-dependent accumulator state, halt, pointer succession, and whether that
+single successor step wraps. Historical recurrence words are derived only as
+needed to resolve a post-`i` encryption target. The report still records that
+the
 profile's address range is structurally closed: code/data pointers and memory
 words share `0..=59048`, and pointer successors wrap modulo 59,049.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
-current slice does not claim dynamic control-flow reachability, dataflow,
-resolved code/data aliasing, evolved memory values, source-map context, whether
-a particular execution reaches pointer wraparound, or input-dependent cycle/hang
-detection. Those remain open under this TODO.
+current slice proves only the entry transition. It does not claim reachability,
+dataflow, resolved aliasing, evolved memory, or wraparound after that first
+step, and it does not analyze source-map context or input-dependent
+cycles/hangs.
+Those remain open under this TODO.
 
 ## Invariants
 
 - The fixed historical address range is closed structurally; this does not
   imply which addresses are reachable or whether a particular run wraps a
   pointer.
-- Static encryption-target classification describes instruction semantics only;
-  it never implies reachability, a concrete target address, or an evolved memory
-  value.
-- Initial-image admission never implies dynamic control-flow, dataflow, resolved
-  aliasing, source-map, or cycle/hang safety.
+- Per-cell encryption-target classification does not imply reachability. The
+  separate entry transition resolves only the historical first step.
+- Entry-step evidence never implies second-step or later control flow, dataflow,
+  evolved aliasing, source-map, wraparound, or cycle/hang safety.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
 - Future dynamic analyses must state their bounded assumptions rather than
