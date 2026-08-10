@@ -74,6 +74,7 @@ executable cells, and input-dependent cycles or hangs.
   assignment/wrap closure, post-step encryption-target classification anchored
   to the interpreter's `i`/`v` ordering, graphical-but-forbidden positional
   decode, byte-exact CLI/library report parity, exact second-step input, halt,
-  invalid self-encryption and input-dependent-crazy fixtures, explicit bounded
-  analysis limits, CLI second-step rejection status, and CLI missing-source
-  failure.
+  invalid self-encryption and input-dependent-crazy fixtures, a 24-case public
+  CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
+  positional mutations with byte-exact replay, explicit bounded analysis limits,
+  CLI second-step rejection status, and CLI missing-source failure.

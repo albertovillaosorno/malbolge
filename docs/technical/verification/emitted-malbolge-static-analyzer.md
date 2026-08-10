@@ -86,9 +86,11 @@ Unreadable source fails before a semantic report is emitted.
   assignment/wrap closure, `i`/`v`/ordinary post-step encryption-target
   classification anchored to the preserved interpreter order, positional decode
   rejection, exact second-step input/no-op/halt/invalid-encryption fixtures,
-  explicit input-dependent-crazy unresolved evidence, byte-exact CLI/library
-  report parity, bounded analysis limits, CLI second-step rejection status, and
-  CLI read failure.
+  explicit input-dependent-crazy unresolved evidence, a 24-case public CLI
+  differential including recurrence-backed entry `j`, 16 seeded invalid
+  positional mutations with byte-exact replay, byte-exact CLI/library report
+  parity, bounded analysis limits, CLI second-step rejection status, and CLI read
+  failure.
 
 ## References
 
