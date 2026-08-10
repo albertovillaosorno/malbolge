@@ -40,6 +40,7 @@ import hashlib
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff.admission import IdentityTree
 from algorithms.diff.exact import materialize_exact_plan
 from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
@@ -60,7 +61,6 @@ from algorithms.diff.source_binding import recover_secret
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactSegment
     from algorithms.diff.source_binding import SourceBindingPolicy
 
@@ -510,6 +510,23 @@ def _binding_context(aad: bytes, context: bytes) -> bytes:
     return digest.digest()
 
 
+def _validate_protect_inputs(
+    plan: object, reference_identity: object, context: object
+) -> None:
+    if type(plan) is not ExactAuthoringPlan:
+        message = (
+            "protected authoring plan must use the exact ExactAuthoringPlan "
+            "type"
+        )
+        raise ProtectedPlanError(message)
+    if type(reference_identity) is not IdentityTree:
+        message = "protected reference must use the exact IdentityTree type"
+        raise ProtectedPlanError(message)
+    if type(context) is not bytes or not context:
+        message = "protected authoring context must use non-empty exact bytes"
+        raise ProtectedPlanError(message)
+
+
 def protect_exact_plan(
     plan: ExactAuthoringPlan,
     reference_identity: IdentityTree,
@@ -528,6 +545,7 @@ def protect_exact_plan(
         Deterministic exact plan containing no plaintext oracle literals.
 
     """
+    _validate_protect_inputs(plan, reference_identity, context)
     builder = _PayloadBuilder(bytearray())
     instructions = tuple(
         _protect_instruction(instruction, builder)

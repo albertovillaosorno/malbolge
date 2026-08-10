@@ -267,6 +267,38 @@ def test_unrelated_source_identity_cannot_recover_literals(
         _ = recover_exact_plan(protected, _identity(unrelated))
 
 
+def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
+    """Validate authoring records before instructions or source evidence."""
+    source, oracle, source_files = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    identity = _identity(source_files)
+    policy = _policy()
+
+    with pytest.raises(ProtectedPlanError, match="exact ExactAuthoringPlan"):
+        _ = protect_exact_plan(
+            cast("ExactAuthoringPlan", object()),
+            identity,
+            binding_policy=policy,
+            context=_CONTEXT,
+        )
+    with pytest.raises(ProtectedPlanError, match="exact IdentityTree"):
+        _ = protect_exact_plan(
+            exact,
+            cast("IdentityTree", object()),
+            binding_policy=policy,
+            context=_CONTEXT,
+        )
+    with pytest.raises(
+        ProtectedPlanError, match=r"authoring context.*exact bytes"
+    ):
+        _ = protect_exact_plan(
+            exact,
+            identity,
+            binding_policy=policy,
+            context=cast("bytes", cast("object", bytearray(_CONTEXT))),
+        )
+
+
 def test_protected_metadata_requires_exact_runtime_records(
     tmp_path: Path,
 ) -> None:
