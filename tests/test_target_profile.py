@@ -73,9 +73,7 @@ def test_validate_document_rejects_foreign_top_level_type() -> None:
     with pytest.raises(
         validator.ProfileValidationError, match="must be an object"
     ):
-        validator.validate_document(
-            cast("validator.JsonObject", object())
-        )
+        validator.validate_document(cast("validator.JsonObject", object()))
 
 
 def test_profile_text_rejects_foreign_input_type() -> None:
@@ -108,6 +106,27 @@ def test_current_profile_identity_is_distinct() -> None:
     assert document["current_profile"] != validator.HISTORICAL_PROFILE
 
 
+def test_geometry_views_reject_foreign_direct_inputs() -> None:
+    """Validate geometry documents and IDs before lookup operations."""
+    with pytest.raises(
+        validator.ProfileValidationError, match="must be an object"
+    ):
+        _ = validator.current_profile_geometry(
+            cast("validator.JsonObject", object())
+        )
+
+    document = validator.load_document(PROFILE_PATH)
+    foreign_id = cast("str", cast("object", []))
+    with pytest.raises(
+        validator.ProfileValidationError, match="profile identity"
+    ):
+        _ = validator.profile_geometry(document, foreign_id)
+    with pytest.raises(
+        validator.ProfileValidationError, match="profile identity"
+    ):
+        _ = validator.profile_fingerprint(document, foreign_id)
+
+
 def test_current_profile_geometry_view_matches_canonical_document() -> None:
     """Implemented consumers receive exact selected geometry from one API."""
     geometry = validator.current_profile_geometry()
@@ -123,7 +142,7 @@ def test_current_profile_geometry_view_matches_canonical_document() -> None:
 def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:
     """Profile file encoding failure remains a typed validation error."""
     path = tmp_path / "profile.json"
-    _ = path.write_bytes(bytes((0x7b, 0xff, 0x7d)))
+    _ = path.write_bytes(bytes((0x7B, 0xFF, 0x7D)))
     with pytest.raises(
         validator.ProfileValidationError,
         match="invalid target-profile UTF-8",
