@@ -75,6 +75,28 @@ class DiffDomain:
     build_behavior_programs: Callable[[], BehaviorPrograms]
     build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext]
 
+    def __post_init__(self) -> None:
+        """Require every trusted consumer hook to remain callable."""
+        hooks = (
+            ("validate_source_provenance", self.validate_source_provenance),
+            ("validate_authoring_oracle", self.validate_authoring_oracle),
+            ("build_identity_tree", self.build_identity_tree),
+            ("map_compatible_file", self.map_compatible_file),
+            (
+                "build_compatible_correction_bindings",
+                self.build_compatible_correction_bindings,
+            ),
+            ("build_behavior_programs", self.build_behavior_programs),
+            (
+                "build_behavior_probe_context",
+                self.build_behavior_probe_context,
+            ),
+        )
+        for name, hook in hooks:
+            if not callable(hook):
+                message = f"diff domain hook must be callable: {name}"
+                raise DomainContractError(message)
+
 
 def _module_name(path: Path) -> str:
     digest = hashlib.sha256(str(path).encode()).hexdigest()[:16]

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -130,6 +131,19 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
         callable(domain.build_behavior_probe_context),
         "probe-context builder is not callable",
     )
+
+
+def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
+    """Do not let direct dataclass construction bypass callable admission."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    domain = load_diff_domain(module)
+
+    with pytest.raises(DomainContractError, match="map_compatible_file"):
+        _ = replace(
+            domain,
+            map_compatible_file=cast("object", object()),
+        )
 
 
 def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:
