@@ -177,6 +177,23 @@ def test_build_amalgamation_rejects_missing_terminal_unit(
         _ = oracle.build_amalgamation(tmp_path)
 
 
+def test_linked_code_root_is_rejected_when_supported(tmp_path: Path) -> None:
+    """Reject a linked code root before canonical path resolution."""
+    real = tmp_path / "real"
+    real.mkdir()
+    _accepted_tree(real)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="must not be linked"
+    ):
+        _ = oracle.build_amalgamation(linked)
+
+
 def test_code_root_enumeration_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

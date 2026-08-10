@@ -397,6 +397,7 @@ def build_amalgamation(code_root: Path) -> tuple[bytes, AmalgamationStats]:
         UTF-8 oracle bytes and deterministic construction statistics.
 
     """
+    _require_directory(code_root, "accepted DOOM code root")
     resolved_root = code_root.resolve()
     wrapper, unit_count, private_bindings = _wrapper_text(resolved_root)
     output, state = _flatten_wrapper(resolved_root, wrapper)
