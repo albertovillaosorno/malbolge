@@ -660,6 +660,25 @@ def test_invalid_profile_projection_encoding_is_domain_error(
         _ = _GENERATOR_MODULE.generate(_identity())
 
 
+def test_public_api_rejects_foreign_identity_and_output_types() -> None:
+    """Direct API misuse stays inside the challenge error boundary."""
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError,
+        match="identity must use the exact immutable type",
+    ):
+        _ = _GENERATOR_MODULE.generate(
+            cast("_ChallengeIdentity", cast("object", object()))
+        )
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError,
+        match="output root must use pathlib Path",
+    ):
+        _GENERATOR_MODULE.write_challenge(
+            _identity(),
+            cast("Path", cast("object", "challenge")),
+        )
+
+
 def test_invalid_identity_fails_closed() -> None:
     """Malformed or non-canonical identity dimensions never generate output."""
     invalid = (

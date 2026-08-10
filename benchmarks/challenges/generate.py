@@ -603,6 +603,20 @@ def _manifest_bytes(
     return f"{text}\n".encode()
 
 
+def _validated_identity(value: object) -> ChallengeIdentity:
+    if type(value) is not ChallengeIdentity:
+        message = "challenge identity must use the exact immutable type"
+        _fail(message)
+    return value
+
+
+def _validated_output_root(value: object) -> Path:
+    if not isinstance(value, Path):
+        message = "challenge output root must use pathlib Path"
+        _fail(message)
+    return value
+
+
 def generate(identity: ChallengeIdentity) -> GeneratedChallenge:
     """Generate one deterministic versioned parametric challenge.
 
@@ -610,11 +624,17 @@ def generate(identity: ChallengeIdentity) -> GeneratedChallenge:
         Exact source, oracle, and canonical manifest bytes.
 
     """
-    identity.validate()
-    profile_fingerprint = _canonical_profile_fingerprint(identity.profile)
-    source, oracle = _program_payload(identity)
+    admitted_identity = _validated_identity(identity)
+    admitted_identity.validate()
+    profile_fingerprint = _canonical_profile_fingerprint(
+        admitted_identity.profile
+    )
+    source, oracle = _program_payload(admitted_identity)
     manifest = _manifest_bytes(
-        identity, source, oracle, profile_fingerprint=profile_fingerprint
+        admitted_identity,
+        source,
+        oracle,
+        profile_fingerprint=profile_fingerprint,
     )
     return GeneratedChallenge(source=source, oracle=oracle, manifest=manifest)
 
@@ -776,16 +796,18 @@ def _publish_staging_no_replace(
 
 def write_challenge(identity: ChallengeIdentity, output_root: Path) -> None:
     """Publish without deleting pre-existing unrelated state."""
-    generated = generate(identity)
-    _validate_output_root(output_root)
-    _reject_linked_output_ancestor(output_root.parent)
-    if _existing_output_is_replay(output_root, generated):
+    admitted_identity = _validated_identity(identity)
+    admitted_output = _validated_output_root(output_root)
+    generated = generate(admitted_identity)
+    _validate_output_root(admitted_output)
+    _reject_linked_output_ancestor(admitted_output.parent)
+    if _existing_output_is_replay(admitted_output, generated):
         return
-    staging = _staging_path(output_root)
+    staging = _staging_path(admitted_output)
     _claim_staging(staging)
     try:
         _write_staging(staging, generated)
-        _publish_staging_no_replace(staging, output_root)
+        _publish_staging_no_replace(staging, admitted_output)
     except OSError as error:
         shutil.rmtree(staging, ignore_errors=True)
         message = f"challenge publication failed: {error}"
