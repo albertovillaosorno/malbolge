@@ -38,6 +38,7 @@ from dataclasses import replace
 import hashlib
 import shutil
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.exact import build_exact_plan
@@ -46,9 +47,14 @@ from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.payload import PayloadCryptoError
+from algorithms.diff.protected import PayloadSlice
+from algorithms.diff.protected import ProtectedInstruction
+from algorithms.diff.protected import ProtectedInstructionKind
+from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import ProtectedPlanError
 from algorithms.diff.protected import materialize_protected_exact_plan
 from algorithms.diff.protected import protect_exact_plan
+from algorithms.diff.protected import protected_plan_aad
 from algorithms.diff.protected import recover_exact_plan
 from algorithms.diff.source_binding import SourceBindingError
 from algorithms.diff.source_binding import SourceBindingPolicy
@@ -258,6 +264,57 @@ def test_unrelated_source_identity_cannot_recover_literals(
         match="insufficient source-bound anchors",
     ):
         _ = recover_exact_plan(protected, _identity(unrelated))
+
+
+def test_protected_metadata_requires_exact_runtime_records(
+    tmp_path: Path,
+) -> None:
+    """Reject mutable aliases and foreign records before AAD serialization."""
+    _, _, _, _, protected = _protected(tmp_path)
+    digest = protected.instructions[0].expected_sha256
+
+    boolean_alias: object = True
+    with pytest.raises(ProtectedPlanError, match="exact integers"):
+        _ = PayloadSlice(cast("int", boolean_alias), 0)
+    with pytest.raises(ProtectedPlanError, match="output path"):
+        _ = ProtectedInstruction(
+            output_path=cast("str", object()),
+            kind=ProtectedInstructionKind.COPY_SOURCE,
+            expected_sha256=digest,
+            source_path="source.bin",
+        )
+    with pytest.raises(ProtectedPlanError, match="64 lowercase hex"):
+        _ = ProtectedInstruction(
+            output_path="target.bin",
+            kind=ProtectedInstructionKind.COPY_SOURCE,
+            expected_sha256=cast("str", object()),
+            source_path="source.bin",
+        )
+    with pytest.raises(ProtectedPlanError, match="exact immutable records"):
+        _ = ProtectedMetadata(
+            source=protected.source,
+            target=protected.target,
+            instructions=cast(
+                "tuple[ProtectedInstruction, ...]",
+                cast("object", [*protected.instructions]),
+            ),
+        )
+    with pytest.raises(ProtectedPlanError, match="exact ProtectedMetadata"):
+        _ = protected_plan_aad(
+            cast("ProtectedMetadata", object()),
+            context=_CONTEXT,
+        )
+    metadata = ProtectedMetadata(
+        source=protected.source,
+        target=protected.target,
+        instructions=protected.instructions,
+        passthrough_roots=protected.passthrough_roots,
+    )
+    with pytest.raises(ProtectedPlanError, match="exact bytes"):
+        _ = protected_plan_aad(
+            metadata,
+            context=cast("bytes", cast("object", bytearray(_CONTEXT))),
+        )
 
 
 def test_ciphertext_or_tag_tampering_fails_before_output(

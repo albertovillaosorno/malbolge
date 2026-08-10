@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.exact import materialize_exact_plan
 from algorithms.diff.exact import snapshot_tree_excluding
@@ -46,6 +47,7 @@ from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.payload import chacha20_poly1305_decrypt
 from algorithms.diff.payload import chacha20_poly1305_encrypt
 from algorithms.diff.source_binding import bind_secret
@@ -58,7 +60,6 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactSegment
-    from algorithms.diff.model import TreeSnapshot
     from algorithms.diff.payload import AuthenticatedPayload
     from algorithms.diff.source_binding import SourceBindingPolicy
     from algorithms.diff.source_binding import ThresholdBinding
@@ -68,6 +69,8 @@ _ONE = 1
 _PAYLOAD_KEY_BYTES = 32
 _SINGLE_MESSAGE_NONCE = bytes(12)
 _FRAME_BYTES = 8
+_SHA256_HEX_LENGTH = 64
+_HEX_DIGITS = frozenset("0123456789abcdef")
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
@@ -85,6 +88,25 @@ class ProtectedInstructionKind(StrEnum):
     PAYLOAD = "payload"
 
 
+def _require_sha256_hex(value: object, context: str) -> None:
+    if type(value) is not str or len(value) != _SHA256_HEX_LENGTH:
+        message = f"{context} must be 64 lowercase hex digits"
+        raise ProtectedPlanError(message)
+    if any(char not in _HEX_DIGITS for char in value):
+        message = f"{context} must be 64 lowercase hex digits"
+        raise ProtectedPlanError(message)
+
+
+def _validate_protected_segments(value: object) -> None:
+    if type(value) is not tuple:
+        message = "protected instruction segments must use an immutable tuple"
+        raise ProtectedPlanError(message)
+    segments = cast("tuple[object, ...]", value)
+    if any(type(item) not in {SourceSlice, PayloadSlice} for item in segments):
+        message = "protected instruction contains a foreign segment record"
+        raise ProtectedPlanError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class PayloadSlice:
     """A byte range inside the authenticated literal plaintext stream."""
@@ -99,6 +121,9 @@ class PayloadSlice:
             ProtectedPlanError: Offset or length is negative.
 
         """
+        if type(self.offset) is not int or type(self.length) is not int:
+            message = "payload slice coordinates must use exact integers"
+            raise ProtectedPlanError(message)
         if self.offset < _ZERO or self.length < _ZERO:
             message = "payload slices require non-negative offset and length"
             raise ProtectedPlanError(message)
@@ -119,35 +144,64 @@ class ProtectedInstruction:
     segments: tuple[ProtectedSegment, ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject ambiguous protected instruction payloads.
+        """Reject foreign metadata or fields inconsistent with the kind.
 
         Raises:
-            ProtectedPlanError: Fields do not match the instruction kind.
+            ProtectedPlanError: Metadata types or kind-specific fields are
+                invalid.
 
         """
+        self._validate_metadata()
+        if not self._shape_is_valid():
+            message = f"invalid protected instruction fields for {self.kind!r}"
+            raise ProtectedPlanError(message)
+
+    def _validate_metadata(self) -> None:
+        if type(self.output_path) is not str or not self.output_path:
+            message = "protected instruction output path must be non-empty"
+            raise ProtectedPlanError(message)
+        if type(self.kind) is not ProtectedInstructionKind:
+            message = "protected instruction kind must use the exact enum type"
+            raise ProtectedPlanError(message)
+        _require_sha256_hex(
+            self.expected_sha256, "protected instruction sha256"
+        )
+        if self.source_path is not None and (
+            type(self.source_path) is not str or not self.source_path
+        ):
+            message = (
+                "protected instruction source path must be non-empty or None"
+            )
+            raise ProtectedPlanError(message)
+        if (
+            self.payload_slice is not None
+            and type(self.payload_slice) is not PayloadSlice
+        ):
+            message = (
+                "protected instruction payload slice must use the exact record"
+            )
+            raise ProtectedPlanError(message)
+        _validate_protected_segments(self.segments)
+
+    def _shape_is_valid(self) -> bool:
         if self.kind is ProtectedInstructionKind.COPY_SOURCE:
-            valid = (
+            return (
                 self.source_path is not None
                 and self.payload_slice is None
                 and not self.segments
             )
-        elif self.kind is ProtectedInstructionKind.PATCH_SOURCE:
-            valid = (
+        if self.kind is ProtectedInstructionKind.PATCH_SOURCE:
+            return (
                 self.source_path is not None
                 and self.payload_slice is None
                 and bool(self.segments)
             )
-        elif self.kind is ProtectedInstructionKind.PAYLOAD:
-            valid = (
-                self.source_path is None
-                and self.payload_slice is not None
-                and not self.segments
-            )
-        else:
-            valid = False
-        if not valid:
-            message = f"invalid protected instruction fields for {self.kind!r}"
-            raise ProtectedPlanError(message)
+        return (
+            self.kind is ProtectedInstructionKind.PAYLOAD
+            and self.source_path is None
+            and self.payload_slice is not None
+            and not self.segments
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +212,39 @@ class ProtectedMetadata:
     target: TreeSnapshot
     instructions: tuple[ProtectedInstruction, ...]
     passthrough_roots: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Require exact immutable authenticated metadata records.
+
+        Raises:
+            ProtectedPlanError: Metadata is mutable, foreign, or malformed.
+
+        """
+        if (
+            type(self.source) is not TreeSnapshot
+            or type(self.target) is not TreeSnapshot
+        ):
+            message = (
+                "protected metadata snapshots must use exact TreeSnapshot "
+                "records"
+            )
+            raise ProtectedPlanError(message)
+        if type(self.instructions) is not tuple or any(
+            type(item) is not ProtectedInstruction for item in self.instructions
+        ):
+            message = (
+                "protected metadata instructions must be exact immutable "
+                "records"
+            )
+            raise ProtectedPlanError(message)
+        if type(self.passthrough_roots) is not tuple:
+            message = "protected passthrough roots must use an immutable tuple"
+            raise ProtectedPlanError(message)
+        if any(
+            type(root) is not str or not root for root in self.passthrough_roots
+        ):
+            message = "protected passthrough roots must be non-empty strings"
+            raise ProtectedPlanError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,8 +360,11 @@ def protected_plan_aad(
         ProtectedPlanError: Context is empty.
 
     """
-    if not context:
-        message = "protected-plan context must be non-empty"
+    if type(metadata) is not ProtectedMetadata:
+        message = "protected metadata must use the exact ProtectedMetadata type"
+        raise ProtectedPlanError(message)
+    if type(context) is not bytes or not context:
+        message = "protected-plan context must be non-empty exact bytes"
         raise ProtectedPlanError(message)
     instruction_bytes = b"".join(
         _instruction_bytes(instruction) for instruction in metadata.instructions
