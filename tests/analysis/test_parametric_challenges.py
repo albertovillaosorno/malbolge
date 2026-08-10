@@ -67,6 +67,9 @@ _STANDALONE_MAIN = "low-31-bits-only-not-oracle"
 _ARRAY_SUBSCRIPT_KIND = "array-subscript-expression"
 _CALL_EXPRESSION_KIND = "call-expression"
 _IF_STATEMENT_KIND = "if-statement"
+_UNARY_EXPRESSION_KIND = "unary-expression"
+_VARIABLE_DECLARATION_KIND = "variable-declaration"
+_POINTER_TYPE = "ptr(u32)"
 _MEMORY_WALK_SUBSCRIPTS_PER_NODE = 3
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
@@ -434,6 +437,54 @@ def test_memory_family_is_admitted_by_normalized_frontend(
     )
     expected = 1 + (_MEMORY_WALK_SUBSCRIPTS_PER_NODE * nodes)
     assert observed == expected
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_pointer_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep runtime indexing and pointers explicit after normalization."""
+    nodes = 11
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_POINTER_WALK_FAMILY, seed=37, nodes=nodes)
+    )
+    source = tmp_path / "pointer.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/pointer-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    pointer_declarations = sum(
+        node.get("kind") == _VARIABLE_DECLARATION_KIND
+        and node.get("type") == _POINTER_TYPE
+        for node in normalized
+    )
+    unary_operations = sum(
+        node.get("kind") == _UNARY_EXPRESSION_KIND for node in normalized
+    )
+    assert subscripts == nodes + 1
+    assert pointer_declarations == nodes
+    assert unary_operations == 3 * nodes
 
 
 def _assert_native_oracle(
