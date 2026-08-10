@@ -48,6 +48,7 @@ from scripts.validate import target_profile
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ANALYZER = _ROOT / "verifier" / "emitted_malbolge.py"
+_CLASSIC = _ROOT / "verifier" / "emitted_malbolge_classic.py"
 _FIXTURE = (
     _ROOT / "tests/compatibility/specification/spec-io-roundtrip.malbolge"
 )
@@ -84,6 +85,7 @@ _GRAPHICAL_END = 126
 _DECODE_PERIOD = 94
 _HISTORICAL_XLAT1_DECLARATION = "const char xlat1[] ="
 _HISTORICAL_XLAT2_DECLARATION = "const char xlat2[] ="
+_HISTORICAL_CRAZY_DECLARATION = "static const unsigned short o[9][9] ="
 _HISTORICAL_LOAD_ADMISSION_PREFIX = 'strchr( "'
 _HISTORICAL_JUMP_DATA_ASSIGNMENT = "case 'j': d = mem[d]; break;"
 _HISTORICAL_JUMP_CODE_ASSIGNMENT = "case 'i': c = mem[d]; break;"
@@ -111,6 +113,9 @@ _TEST_XLAT2_HEX_PARTS = (
     "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940",
 )
 _TEST_XLAT2 = bytes.fromhex("".join(_TEST_XLAT2_HEX_PARTS))
+_CRAZY_POWERS = (1, 9, 81, 729, 6561)
+_CRAZY_TABLE_VALUES = 81
+_CRAZY_SAMPLES = (0, 1, 2, 8, 9, 40, 98, 116, 59_048)
 
 
 class _Finding(Protocol):
@@ -192,6 +197,12 @@ class _Report(Protocol):
     analysis_limits: tuple[str, ...]
 
 
+class _ClassicModule(Protocol):
+    def crazy(self, data: int, accumulator: int) -> int:
+        """Return one classic crazy-operation result."""
+        ...
+
+
 class _AnalyzerModule(Protocol):
     def analyze_source(self, source: bytes) -> _Report:
         """Analyze source without running it."""
@@ -217,7 +228,21 @@ def _load_analyzer() -> _AnalyzerModule:
     return cast("_AnalyzerModule", cast("object", module))
 
 
+def _load_classic() -> _ClassicModule:
+    spec = importlib.util.spec_from_file_location(
+        "emitted_malbolge_classic_primary_test", _CLASSIC
+    )
+    if spec is None or spec.loader is None:
+        message = "classic verifier module cannot be loaded"
+        raise RuntimeError(message)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return cast("_ClassicModule", cast("object", module))
+
+
 _ANALYZER_MODULE = _load_analyzer()
+_CLASSIC_MODULE = _load_classic()
 
 
 def _historical_xlat1_literals(tail: str) -> list[str]:
@@ -262,6 +287,42 @@ def _historical_xlat2() -> bytes:
         message = "historical interpreter xlat2 literal is malformed"
         raise AssertionError(message) from error
     return decoded.encode("ascii")
+
+
+def _parse_crazy_values(body: str) -> tuple[int, ...]:
+    parsed: list[int] = []
+    for line in body.splitlines():
+        row = line.strip().strip("{}, ")
+        if row:
+            parsed.extend(int(value.strip()) for value in row.split(","))
+    return tuple(parsed)
+
+
+def _historical_crazy_matrix() -> tuple[tuple[int, ...], ...]:
+    source = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
+    _, declaration, tail = source.partition(_HISTORICAL_CRAZY_DECLARATION)
+    if not declaration:
+        message = "historical interpreter crazy table is missing"
+        raise AssertionError(message)
+    body, terminator, _ = tail.partition("};")
+    if not terminator:
+        message = "historical interpreter crazy table terminator is missing"
+        raise AssertionError(message)
+    values = _parse_crazy_values(body)
+    if len(values) != _CRAZY_TABLE_VALUES:
+        message = "historical interpreter crazy table shape is invalid"
+        raise AssertionError(message)
+    return tuple(
+        values[offset : offset + 9] for offset in range(0, len(values), 9)
+    )
+
+
+def _historical_c_op(accumulator: int, data: int) -> int:
+    matrix = _historical_crazy_matrix()
+    return sum(
+        matrix[(data // place) % 9][(accumulator // place) % 9] * place
+        for place in _CRAZY_POWERS
+    )
 
 
 def _historical_load_instructions() -> frozenset[int]:
@@ -317,6 +378,14 @@ def test_independent_decode_table_matches_preserved_interpreter() -> None:
 def test_independent_encryption_table_matches_preserved_interpreter() -> None:
     """Independent encryption expectations are anchored to primary evidence."""
     assert _historical_xlat2() == _TEST_XLAT2
+
+
+def test_crazy_operand_orientation_matches_preserved_interpreter() -> None:
+    """Anchor VM data/accumulator orientation to the historical C `op`."""
+    for data in _CRAZY_SAMPLES:
+        for accumulator in _CRAZY_SAMPLES:
+            expected = _historical_c_op(accumulator, data)
+            assert _CLASSIC_MODULE.crazy(data, accumulator) == expected
 
 
 def test_load_admission_set_matches_preserved_interpreter() -> None:
