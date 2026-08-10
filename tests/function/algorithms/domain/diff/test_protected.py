@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.protected import ProtectedExactPlan
+    from algorithms.diff.source_binding import ThresholdBinding
 
 _CONTEXT = b"synthetic-protected-exact-v1"
 _BLOCK_COUNT = 48
@@ -315,6 +316,51 @@ def test_protected_metadata_requires_exact_runtime_records(
             metadata,
             context=cast("bytes", cast("object", bytearray(_CONTEXT))),
         )
+
+
+def test_protected_plan_envelope_requires_exact_runtime_types(
+    tmp_path: Path,
+) -> None:
+    """Reject forged plan envelope fields before recovery reads evidence."""
+    source, _, source_files, _, protected = _protected(tmp_path)
+    identity = _identity(source_files)
+
+    with pytest.raises(ProtectedPlanError, match=r"context.*exact bytes"):
+        _ = replace(
+            protected,
+            context=cast("bytes", cast("object", bytearray(_CONTEXT))),
+        )
+    with pytest.raises(ProtectedPlanError, match=r"nonce.*exact 12-byte"):
+        _ = replace(
+            protected,
+            nonce=cast("bytes", cast("object", bytearray(protected.nonce))),
+        )
+    with pytest.raises(
+        ProtectedPlanError, match=r"payload.*exact authenticated"
+    ):
+        _ = replace(
+            protected,
+            payload=cast("AuthenticatedPayload", object()),
+        )
+    with pytest.raises(
+        ProtectedPlanError, match=r"binding.*exact ThresholdBinding"
+    ):
+        _ = replace(
+            protected,
+            binding=cast("ThresholdBinding", object()),
+        )
+    foreign = cast("ProtectedExactPlan", object())
+    with pytest.raises(ProtectedPlanError, match="exact ProtectedExactPlan"):
+        _ = recover_exact_plan(foreign, identity)
+    output = tmp_path / "foreign-plan-out"
+    with pytest.raises(ProtectedPlanError, match="exact ProtectedExactPlan"):
+        materialize_protected_exact_plan(
+            source,
+            identity,
+            plan=foreign,
+            output_root=output,
+        )
+    _expect(not output.exists(), "foreign protected plan published output")
 
 
 def test_ciphertext_or_tag_tampering_fails_before_output(

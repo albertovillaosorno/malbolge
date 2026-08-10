@@ -48,8 +48,10 @@ from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import TreeSnapshot
+from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.payload import chacha20_poly1305_decrypt
 from algorithms.diff.payload import chacha20_poly1305_encrypt
+from algorithms.diff.source_binding import ThresholdBinding
 from algorithms.diff.source_binding import bind_secret
 from algorithms.diff.source_binding import hkdf_expand_sha256
 from algorithms.diff.source_binding import hkdf_extract_sha256
@@ -60,9 +62,7 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactSegment
-    from algorithms.diff.payload import AuthenticatedPayload
     from algorithms.diff.source_binding import SourceBindingPolicy
-    from algorithms.diff.source_binding import ThresholdBinding
 
 _ZERO = 0
 _ONE = 1
@@ -259,6 +259,39 @@ class ProtectedExactPlan:
     nonce: bytes
     payload: AuthenticatedPayload
     binding: ThresholdBinding
+
+    def __post_init__(self) -> None:
+        """Require exact immutable protected-plan envelope types.
+
+        Raises:
+            ProtectedPlanError: Plan envelope metadata is foreign or malformed.
+
+        """
+        _ = ProtectedMetadata(
+            source=self.source,
+            target=self.target,
+            instructions=self.instructions,
+            passthrough_roots=self.passthrough_roots,
+        )
+        if type(self.context) is not bytes or not self.context:
+            message = "protected plan context must use non-empty exact bytes"
+            raise ProtectedPlanError(message)
+        if type(self.nonce) is not bytes or len(self.nonce) != len(
+            _SINGLE_MESSAGE_NONCE
+        ):
+            message = "protected plan nonce must use exact 12-byte input"
+            raise ProtectedPlanError(message)
+        if type(self.payload) is not AuthenticatedPayload:
+            message = (
+                "protected plan payload must use the exact authenticated type"
+            )
+            raise ProtectedPlanError(message)
+        if type(self.binding) is not ThresholdBinding:
+            message = (
+                "protected plan binding must use the exact ThresholdBinding "
+                "type"
+            )
+            raise ProtectedPlanError(message)
 
 
 @dataclass(slots=True)
@@ -588,6 +621,13 @@ def _exact_instruction(
     )
 
 
+def _require_protected_exact_plan(value: object) -> ProtectedExactPlan:
+    if type(value) is not ProtectedExactPlan:
+        message = "protected plan must use the exact ProtectedExactPlan type"
+        raise ProtectedPlanError(message)
+    return value
+
+
 def recover_exact_plan(
     plan: ProtectedExactPlan,
     candidate_identity: IdentityTree,
@@ -598,6 +638,7 @@ def recover_exact_plan(
         In-memory exact plan suitable for transactional materialization.
 
     """
+    plan = _require_protected_exact_plan(plan)
     metadata = _metadata(
         plan.source,
         plan.target,
@@ -637,6 +678,7 @@ def materialize_protected_exact_plan(
         ProtectedPlanError: The exact source snapshot changed.
 
     """
+    plan = _require_protected_exact_plan(plan)
     if (
         snapshot_tree_excluding(source_root, plan.passthrough_roots)
         != plan.source
