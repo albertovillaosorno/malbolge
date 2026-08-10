@@ -50,6 +50,7 @@ from algorithms.diff.behavior import IdentityProbe
 from algorithms.diff.behavior import evaluate_behavior
 from algorithms.diff.probe_exec import ProbeExecutionError
 from algorithms.diff.probe_exec import ProbeProgram
+from algorithms.diff.probe_exec import ProbeRunContext
 from algorithms.diff.probe_exec import run_probe_program
 from algorithms.diff.probe_exec import run_probe_programs
 
@@ -58,7 +59,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.behavior import BehaviorEvidence
-    from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.probe_exec import ProbeTranscript
 
 
@@ -149,6 +149,27 @@ class BehaviorPrograms:
             raise BehaviorProgramError(message)
 
 
+def _require_exact_probe_program(value: object, context: str) -> ProbeProgram:
+    if type(value) is not ProbeProgram:
+        message = f"{context} requires an exact ProbeProgram"
+        raise BehaviorProgramError(message)
+    return value
+
+
+def _require_correction_identifier(value: object, context: str) -> str:
+    if type(value) is not str or not value:
+        message = f"{context} requires a correction identifier"
+        raise BehaviorProgramError(message)
+    return value
+
+
+def _require_authored_digest(value: object, context: str) -> bytes:
+    if type(value) is not bytes or not value:
+        message = f"{context} must use non-empty exact bytes"
+        raise BehaviorProgramError(message)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class AuthoredBugProgram:
     """Bug program with source-present and oracle-fixed transcript baselines."""
@@ -157,6 +178,27 @@ class AuthoredBugProgram:
     correction_id: str
     present_digest: bytes
     fixed_digest: bytes
+
+    def __post_init__(self) -> None:
+        """Require exact unambiguous authored bug evidence.
+
+        Raises:
+            BehaviorProgramError: Present and fixed digests are identical.
+
+        """
+        _ = _require_exact_probe_program(self.program, "authored bug")
+        _ = _require_correction_identifier(self.correction_id, "authored bug")
+        present = _require_authored_digest(
+            self.present_digest,
+            "authored bug present digest",
+        )
+        fixed = _require_authored_digest(
+            self.fixed_digest,
+            "authored bug fixed digest",
+        )
+        if present == fixed:
+            message = "authored bug digests must distinguish present from fixed"
+            raise BehaviorProgramError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +209,71 @@ class AuthoredBehaviorPrograms:
     identity: tuple[ProbeProgram, ...]
     compatibility: tuple[ProbeProgram, ...]
     bugs: tuple[AuthoredBugProgram, ...]
+
+    def __post_init__(self) -> None:
+        """Require exact programs aligned with the behavior profile.
+
+        Raises:
+            BehaviorProgramError: Authored programs are invalid or misaligned.
+
+        """
+        if type(self.profile) is not BehaviorProfile:
+            message = "authored behavior requires an exact BehaviorProfile"
+            raise BehaviorProgramError(message)
+        _require_program_tuple(self.identity, "authored identity programs")
+        _require_program_tuple(
+            self.compatibility,
+            "authored compatibility programs",
+        )
+        _require_authored_bug_tuple(self.bugs)
+        _require_authored_profile_alignment(self)
+
+
+def _require_authored_bug_tuple(value: object) -> None:
+    if type(value) is not tuple:
+        message = "authored bugs must use the exact immutable tuple type"
+        raise BehaviorProgramError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not AuthoredBugProgram for item in items):
+        message = "authored bugs contain a foreign authored bug record"
+        raise BehaviorProgramError(message)
+
+
+def _require_authored_profile_alignment(
+    authored: AuthoredBehaviorPrograms,
+) -> None:
+    identity_ids = tuple(item.probe_id for item in authored.identity)
+    profile_identity_ids = tuple(
+        item.probe_id for item in authored.profile.identity
+    )
+    compatibility_ids = tuple(item.probe_id for item in authored.compatibility)
+    profile_compatibility_ids = tuple(
+        item.probe_id for item in authored.profile.compatibility
+    )
+    bugs = tuple(
+        (item.program.probe_id, item.correction_id) for item in authored.bugs
+    )
+    profile_bugs = tuple(
+        (item.probe_id, item.correction_id) for item in authored.profile.bugs
+    )
+    if identity_ids != profile_identity_ids:
+        message = "authored identity programs do not match behavior profile"
+        raise BehaviorProgramError(message)
+    if compatibility_ids != profile_compatibility_ids:
+        message = (
+            "authored compatibility programs do not match behavior profile"
+        )
+        raise BehaviorProgramError(message)
+    if bugs != profile_bugs:
+        message = "authored bug programs do not match behavior profile"
+        raise BehaviorProgramError(message)
+
+
+def _require_run_context(value: object, context: str) -> ProbeRunContext:
+    if type(value) is not ProbeRunContext:
+        message = f"{context} must use the exact ProbeRunContext type"
+        raise BehaviorProgramError(message)
+    return value
 
 
 def _sorted_unique(identifiers: tuple[str, ...], kind: str) -> tuple[str, ...]:
@@ -284,7 +391,19 @@ def author_behavior_programs(
     Returns:
         Portable authored programs plus the evaluator profile.
 
+    Raises:
+        BehaviorProgramError: Program metadata or contexts are invalid.
+
     """
+    if type(programs) is not BehaviorPrograms:
+        message = "behavior authoring requires exact BehaviorPrograms"
+        raise BehaviorProgramError(message)
+    source_context = _require_run_context(
+        source_context, "source behavior context"
+    )
+    oracle_context = _require_run_context(
+        oracle_context, "oracle behavior context"
+    )
     _require_matching_contexts(source_context, oracle_context)
     source_transcripts = _transcript_map(
         run_probe_programs(_all_programs(programs), source_context)
@@ -399,7 +518,14 @@ def observe_behavior_programs(
     Returns:
         Normalized observations consumable by the generic behavior evaluator.
 
+    Raises:
+        BehaviorProgramError: Authored metadata or execution context is invalid.
+
     """
+    if type(authored) is not AuthoredBehaviorPrograms:
+        message = "behavior observation requires exact AuthoredBehaviorPrograms"
+        raise BehaviorProgramError(message)
+    context = _require_run_context(context, "behavior observation context")
     return BehaviorObservations(
         identity=_observe_identity(authored.identity, context),
         compatibility=_observe_compatibility(authored.compatibility, context),

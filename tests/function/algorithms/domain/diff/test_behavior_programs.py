@@ -41,6 +41,8 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.behavior import BugState
+from algorithms.diff.behavior_programs import AuthoredBehaviorPrograms
+from algorithms.diff.behavior_programs import AuthoredBugProgram
 from algorithms.diff.behavior_programs import BehaviorProgramError
 from algorithms.diff.behavior_programs import BehaviorPrograms
 from algorithms.diff.behavior_programs import BugProgram
@@ -56,7 +58,7 @@ from algorithms.diff.probe_exec import ToolExecutable
 import pytest
 
 if TYPE_CHECKING:
-    from algorithms.diff.behavior_programs import AuthoredBehaviorPrograms
+    from algorithms.diff.behavior import BehaviorProfile
 
 _PYTHON_TOOL = "python"
 _READ_BYTES = (
@@ -230,6 +232,96 @@ def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
             identity=(program,),
             compatibility=(),
             bugs=(cast("BugProgram", object()),),
+        )
+
+
+def test_authored_behavior_records_reject_foreign_incoherent_inputs(
+    tmp_path: Path,
+) -> None:
+    """Reject direct authored records that bypass profile coherence."""
+    program = _read_program("identity-stable", "identity.txt")
+    with pytest.raises(BehaviorProgramError, match="exact ProbeProgram"):
+        _ = AuthoredBugProgram(
+            cast("ProbeProgram", object()),
+            "fix",
+            b"present",
+            b"fixed",
+        )
+    with pytest.raises(BehaviorProgramError, match="non-empty exact bytes"):
+        _ = AuthoredBugProgram(
+            program,
+            "fix",
+            cast("bytes", cast("object", bytearray(b"present"))),
+            b"fixed",
+        )
+    with pytest.raises(BehaviorProgramError, match="distinguish"):
+        _ = AuthoredBugProgram(program, "fix", b"same", b"same")
+
+    authored, _, _ = _authored(tmp_path)
+    with pytest.raises(BehaviorProgramError, match="exact BehaviorProfile"):
+        _ = AuthoredBehaviorPrograms(
+            profile=cast("BehaviorProfile", object()),
+            identity=authored.identity,
+            compatibility=authored.compatibility,
+            bugs=authored.bugs,
+        )
+    with pytest.raises(BehaviorProgramError, match="immutable tuple"):
+        _ = AuthoredBehaviorPrograms(
+            profile=authored.profile,
+            identity=cast(
+                "tuple[ProbeProgram, ...]",
+                cast("object", list(authored.identity)),
+            ),
+            compatibility=authored.compatibility,
+            bugs=authored.bugs,
+        )
+    with pytest.raises(
+        BehaviorProgramError,
+        match="do not match behavior profile",
+    ):
+        _ = AuthoredBehaviorPrograms(
+            profile=authored.profile,
+            identity=(_read_program("other", "identity.txt"),),
+            compatibility=authored.compatibility,
+            bugs=authored.bugs,
+        )
+
+
+def test_behavior_program_apis_reject_foreign_records_before_execution(
+    tmp_path: Path,
+) -> None:
+    """Validate public records before authoring or observation dereference."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    oracle_context = _context(oracle, tmp_path)
+    with pytest.raises(BehaviorProgramError, match="exact BehaviorPrograms"):
+        _ = author_behavior_programs(
+            cast("BehaviorPrograms", object()),
+            source_context,
+            oracle_context,
+        )
+    with pytest.raises(BehaviorProgramError, match="exact ProbeRunContext"):
+        _ = author_behavior_programs(
+            _programs(),
+            cast("ProbeRunContext", object()),
+            oracle_context,
+        )
+
+    authored = author_behavior_programs(
+        _programs(), source_context, oracle_context
+    )
+    with pytest.raises(
+        BehaviorProgramError,
+        match="exact AuthoredBehaviorPrograms",
+    ):
+        _ = observe_behavior_programs(
+            cast("AuthoredBehaviorPrograms", object()),
+            source_context,
+        )
+    with pytest.raises(BehaviorProgramError, match="exact ProbeRunContext"):
+        _ = observe_behavior_programs(
+            authored,
+            cast("ProbeRunContext", object()),
         )
 
 
