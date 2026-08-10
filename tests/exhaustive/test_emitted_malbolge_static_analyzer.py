@@ -64,6 +64,13 @@ _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
 _SCHEMA = "malbolge-static-image/v3"
+_ENTRY_CONTINUED = "continued"
+_ENTRY_HALTED = "halted"
+_ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
+_FIXTURE_ENCRYPTION_INPUT = 99
+_ROTATED_ENTRY_VALUE = 13
+_JUMP_ENTRY_ADDRESS = 98
+_JUMP_ENTRY_ENCRYPTION_INPUT = 29_492
 _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
 _GRAPHICAL_START = 33
 _GRAPHICAL_END = 126
@@ -130,6 +137,7 @@ class _EntryTransition(Protocol):
     result_data_pointer: int
     next_fetch_address: int | None
     pointer_wraps: bool
+    accepted: bool
 
 
 class _Report(Protocol):
@@ -432,14 +440,17 @@ def test_entry_transition_resolves_known_fixture() -> None:
     report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
     transition = report.entry_transition
     assert transition is not None
-    assert transition.status == "continued"
+    assert transition.status == _ENTRY_CONTINUED
     assert transition.fetched_address == 0
     assert transition.decoded_byte == ord("<")
     assert transition.data_address == 0
     assert transition.code_data_alias
     assert transition.encryption_address == 0
-    assert transition.encryption_input == 99
-    assert transition.encryption_output == _TEST_XLAT2[99 - 33]
+    assert transition.encryption_input == _FIXTURE_ENCRYPTION_INPUT
+    assert (
+        transition.encryption_output
+        == _TEST_XLAT2[_FIXTURE_ENCRYPTION_INPUT - 33]
+    )
     assert transition.result_accumulator == 0
     assert transition.result_code_pointer == 1
     assert transition.result_data_pointer == 1
@@ -456,12 +467,12 @@ def test_entry_rotate_alias_detects_invalid_self_encryption() -> None:
     transition = report.entry_transition
     assert transition is not None
     assert transition.decoded_byte == ord("*")
-    assert transition.status == "rejected-invalid-self-encryption"
+    assert transition.status == _ENTRY_INVALID_ENCRYPTION
     assert transition.planned_data_write_address == 0
-    assert transition.planned_data_write_value == 13
+    assert transition.planned_data_write_value == _ROTATED_ENTRY_VALUE
     assert transition.data_write_aliases_encryption
     assert transition.encryption_address == 0
-    assert transition.encryption_input == 13
+    assert transition.encryption_input == _ROTATED_ENTRY_VALUE
     assert transition.encryption_output is None
     assert transition.result_accumulator == 0
     assert transition.result_code_pointer == 0
@@ -479,9 +490,9 @@ def test_entry_jump_resolves_initial_recurrence_encryption_target() -> None:
     transition = report.entry_transition
     assert transition is not None
     assert transition.decoded_byte == ord("i")
-    assert transition.status == "rejected-invalid-self-encryption"
-    assert transition.encryption_address == 98
-    assert transition.encryption_input == 29_492
+    assert transition.status == _ENTRY_INVALID_ENCRYPTION
+    assert transition.encryption_address == _JUMP_ENTRY_ADDRESS
+    assert transition.encryption_input == _JUMP_ENTRY_ENCRYPTION_INPUT
     assert transition.encryption_output is None
     assert transition.result_code_pointer == 0
     assert transition.result_data_pointer == 0
@@ -495,7 +506,7 @@ def test_entry_halt_skips_encryption_and_pointer_advance() -> None:
     transition = report.entry_transition
     assert transition is not None
     assert transition.decoded_byte == ord("v")
-    assert transition.status == "halted"
+    assert transition.status == _ENTRY_HALTED
     assert transition.encryption_address is None
     assert transition.encryption_input is None
     assert transition.result_accumulator == 0
@@ -511,7 +522,7 @@ def test_entry_input_marks_only_accumulator_as_input_dependent() -> None:
     transition = report.entry_transition
     assert transition is not None
     assert transition.decoded_byte == ord("/")
-    assert transition.status == "continued"
+    assert transition.status == _ENTRY_CONTINUED
     assert transition.input_dependent_accumulator
     assert transition.result_accumulator is None
     assert transition.result_code_pointer == 1
@@ -573,6 +584,29 @@ def test_cli_prints_same_report_as_library() -> None:
     ).encode("utf-8")
     assert completed.stdout == expected
     assert not completed.stderr
+
+
+def test_cli_rejects_statically_invalid_entry_transition(
+    tmp_path: Path,
+) -> None:
+    """A loadable image cannot pass when entry analysis proves rejection."""
+    source = tmp_path / "invalid-entry.malbolge"
+    _ = source.write_bytes(bytes((39, 38)))
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [sys.executable, str(_ANALYZER), str(source)],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    assert document["admitted_initial_image"] is True
+    transition = cast("dict[str, object]", document["entry_transition"])
+    assert transition["status"] == "rejected-invalid-self-encryption"
 
 
 def test_cli_rejected_image_returns_failure_with_report(

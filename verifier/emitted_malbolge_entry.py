@@ -73,6 +73,11 @@ class EntryTransition:
     next_fetch_address: int | None
     pointer_wraps: bool
 
+    @property
+    def accepted(self) -> bool:
+        """Return whether the bounded entry transition avoids static rejection."""
+        return self.status != _ENTRY_INVALID_ENCRYPTION
+
 
 def _crazy(data: int, accumulator: int) -> int:
     result = 0
@@ -126,14 +131,93 @@ def _halted(decoded: int) -> EntryTransition:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _EntryPlan:
+    code_pointer: int = 0
+    data_pointer: int = 0
+    accumulator: int | None = 0
+    data_write_address: int | None = None
+    data_write_value: int | None = None
+    input_dependent: bool = False
+    halted: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _EncryptionState:
+    address: int
+    input_value: int
+    aliases_data_write: bool
+
+
+def _plan_noop(_: int) -> _EntryPlan:
+    return _EntryPlan()
+
+
+def _plan_halt(_: int) -> _EntryPlan:
+    return _EntryPlan(halted=True)
+
+
+def _plan_jump_data(data_value: int) -> _EntryPlan:
+    return _EntryPlan(data_pointer=data_value)
+
+
+def _plan_jump_code(data_value: int) -> _EntryPlan:
+    return _EntryPlan(code_pointer=data_value)
+
+
+def _plan_rotate(data_value: int) -> _EntryPlan:
+    rotated = _rotate(data_value)
+    return _EntryPlan(
+        accumulator=rotated,
+        data_write_address=0,
+        data_write_value=rotated,
+    )
+
+
+def _plan_crazy(data_value: int) -> _EntryPlan:
+    result = _crazy(data_value, 0)
+    return _EntryPlan(
+        accumulator=result,
+        data_write_address=0,
+        data_write_value=result,
+    )
+
+
+def _plan_input(_: int) -> _EntryPlan:
+    return _EntryPlan(accumulator=None, input_dependent=True)
+
+
+_ENTRY_PLANNERS = {
+    ord("j"): _plan_jump_data,
+    ord("i"): _plan_jump_code,
+    ord("*"): _plan_rotate,
+    ord("p"): _plan_crazy,
+    ord("/"): _plan_input,
+    ord("v"): _plan_halt,
+}
+
+
+def _instruction_plan(decoded: int, data_value: int) -> _EntryPlan:
+    return _ENTRY_PLANNERS.get(decoded, _plan_noop)(data_value)
+
+
+def _encryption_state(
+    words: tuple[int, ...], plan: _EntryPlan
+) -> _EncryptionState:
+    address = plan.code_pointer
+    aliases = plan.data_write_address == address
+    input_value = (
+        plan.data_write_value
+        if aliases and plan.data_write_value is not None
+        else _initial_memory_value(words, address)
+    )
+    return _EncryptionState(address, input_value, aliases)
+
+
 def _rejected(
     decoded: int,
-    data_write_address: int | None,
-    data_write_value: int | None,
-    encryption_address: int,
-    encryption_input: int,
-    aliases_encryption: bool,
-    input_dependent: bool,
+    plan: _EntryPlan,
+    encryption: _EncryptionState,
 ) -> EntryTransition:
     return EntryTransition(
         status=_ENTRY_INVALID_ENCRYPTION,
@@ -141,18 +225,49 @@ def _rejected(
         decoded_byte=decoded,
         data_address=0,
         code_data_alias=True,
-        planned_data_write_address=data_write_address,
-        planned_data_write_value=data_write_value,
-        encryption_address=encryption_address,
-        encryption_input=encryption_input,
+        planned_data_write_address=plan.data_write_address,
+        planned_data_write_value=plan.data_write_value,
+        encryption_address=encryption.address,
+        encryption_input=encryption.input_value,
         encryption_output=None,
-        data_write_aliases_encryption=aliases_encryption,
-        input_dependent_accumulator=input_dependent,
+        data_write_aliases_encryption=encryption.aliases_data_write,
+        input_dependent_accumulator=plan.input_dependent,
         result_accumulator=0,
         result_code_pointer=0,
         result_data_pointer=0,
         next_fetch_address=None,
         pointer_wraps=False,
+    )
+
+
+def _continued(
+    decoded: int,
+    plan: _EntryPlan,
+    encryption: _EncryptionState,
+) -> EntryTransition:
+    result_code = _pointer_successor(plan.code_pointer)
+    result_data = _pointer_successor(plan.data_pointer)
+    return EntryTransition(
+        status=_ENTRY_CONTINUED,
+        fetched_address=0,
+        decoded_byte=decoded,
+        data_address=0,
+        code_data_alias=True,
+        planned_data_write_address=plan.data_write_address,
+        planned_data_write_value=plan.data_write_value,
+        encryption_address=encryption.address,
+        encryption_input=encryption.input_value,
+        encryption_output=_XLAT2[encryption.input_value - _GRAPHICAL_START],
+        data_write_aliases_encryption=encryption.aliases_data_write,
+        input_dependent_accumulator=plan.input_dependent,
+        result_accumulator=plan.accumulator,
+        result_code_pointer=result_code,
+        result_data_pointer=result_data,
+        next_fetch_address=result_code,
+        pointer_wraps=(
+            plan.code_pointer == _PROFILE_MEMORY_WORDS - 1
+            or plan.data_pointer == _PROFILE_MEMORY_WORDS - 1
+        ),
     )
 
 
@@ -165,71 +280,10 @@ def analyze_entry_transition(
         Entry-state transfer or atomic invalid-self-encryption rejection.
 
     """
-    data_value = words[0]
-    planned_code = 0
-    planned_data = 0
-    planned_accumulator: int | None = 0
-    data_write_address: int | None = None
-    data_write_value: int | None = None
-    input_dependent = False
-
-    if decoded == ord("v"):
+    plan = _instruction_plan(decoded, words[0])
+    if plan.halted:
         return _halted(decoded)
-    if decoded == ord("j"):
-        planned_data = data_value
-    elif decoded == ord("i"):
-        planned_code = data_value
-    elif decoded == ord("*"):
-        planned_accumulator = _rotate(data_value)
-        data_write_address = 0
-        data_write_value = planned_accumulator
-    elif decoded == ord("p"):
-        planned_accumulator = _crazy(data_value, 0)
-        data_write_address = 0
-        data_write_value = planned_accumulator
-    elif decoded == ord("/"):
-        planned_accumulator = None
-        input_dependent = True
-
-    encryption_address = planned_code
-    aliases_encryption = data_write_address == encryption_address
-    encryption_input = (
-        data_write_value
-        if aliases_encryption and data_write_value is not None
-        else _initial_memory_value(words, encryption_address)
-    )
-    if not _GRAPHICAL_START <= encryption_input <= _GRAPHICAL_END:
-        return _rejected(
-            decoded,
-            data_write_address,
-            data_write_value,
-            encryption_address,
-            encryption_input,
-            aliases_encryption,
-            input_dependent,
-        )
-
-    result_code = _pointer_successor(planned_code)
-    result_data = _pointer_successor(planned_data)
-    return EntryTransition(
-        status=_ENTRY_CONTINUED,
-        fetched_address=0,
-        decoded_byte=decoded,
-        data_address=0,
-        code_data_alias=True,
-        planned_data_write_address=data_write_address,
-        planned_data_write_value=data_write_value,
-        encryption_address=encryption_address,
-        encryption_input=encryption_input,
-        encryption_output=_XLAT2[encryption_input - _GRAPHICAL_START],
-        data_write_aliases_encryption=aliases_encryption,
-        input_dependent_accumulator=input_dependent,
-        result_accumulator=planned_accumulator,
-        result_code_pointer=result_code,
-        result_data_pointer=result_data,
-        next_fetch_address=result_code,
-        pointer_wraps=(
-            planned_code == _PROFILE_MEMORY_WORDS - 1
-            or planned_data == _PROFILE_MEMORY_WORDS - 1
-        ),
-    )
+    encryption = _encryption_state(words, plan)
+    if not _GRAPHICAL_START <= encryption.input_value <= _GRAPHICAL_END:
+        return _rejected(decoded, plan, encryption)
+    return _continued(decoded, plan, encryption)

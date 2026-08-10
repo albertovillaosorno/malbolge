@@ -44,11 +44,9 @@ from typing import Final
 from typing import Never
 
 if __package__:
-    from .emitted_malbolge_entry import EntryTransition
-    from .emitted_malbolge_entry import analyze_entry_transition
+    from verifier import emitted_malbolge_entry as entry_transfer
 else:
-    from emitted_malbolge_entry import EntryTransition
-    from emitted_malbolge_entry import analyze_entry_transition
+    import emitted_malbolge_entry as entry_transfer
 
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
@@ -120,7 +118,7 @@ class StaticImageReport:
     required_source_words: int
     admitted_initial_image: bool
     initial_cells: tuple[InitialCell, ...]
-    entry_transition: EntryTransition | None
+    entry_transition: entry_transfer.EntryTransition | None
     findings: tuple[StaticFinding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -196,6 +194,30 @@ def _decode_findings(
     )
 
 
+def _analyze_admitted_cells(
+    source: bytes,
+    words: tuple[int, ...],
+    *,
+    can_decode: bool,
+) -> tuple[
+    tuple[InitialCell, ...],
+    entry_transfer.EntryTransition | None,
+    tuple[StaticFinding, ...],
+]:
+    if not can_decode:
+        return (), None, ()
+    cells = _initial_cells(source)
+    findings = _decode_findings(cells)
+    entry = (
+        None
+        if findings
+        else entry_transfer.analyze_entry_transition(
+            words, cells[0].decoded_byte
+        )
+    )
+    return cells, entry, findings
+
+
 def analyze_source(source: bytes) -> StaticImageReport:
     """Analyze one classic source image without executing guest instructions.
 
@@ -227,16 +249,13 @@ def analyze_source(source: bytes) -> StaticImageReport:
                 ),
             )
         )
-    cells: tuple[InitialCell, ...] = ()
-    entry_transition: EntryTransition | None = None
     within_profile = _RECURRENCE_BASE_WORDS <= required <= _PROFILE_MEMORY_WORDS
-    if lexical is None and within_profile:
-        cells = _initial_cells(source)
-        findings.extend(_decode_findings(cells))
-        if not findings:
-            entry_transition = analyze_entry_transition(
-                words, cells[0].decoded_byte
-            )
+    cells, entry_transition, decode_findings = _analyze_admitted_cells(
+        source,
+        words,
+        can_decode=lexical is None and within_profile,
+    )
+    findings.extend(decode_findings)
     return StaticImageReport(
         schema=_SCHEMA,
         profile_id=_PROFILE_ID,
@@ -272,8 +291,8 @@ def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero for an admitted initial image, otherwise one after writing the
-        canonical rejection report.
+        Zero when initial-image admission and the bounded entry transition both
+        succeed, otherwise one after writing the canonical report.
 
     """
     argv = sys.argv[1:] if arguments is None else arguments
@@ -287,7 +306,11 @@ def main(arguments: list[str] | None = None) -> int:
     report = analyze_source(source)
     payload = render_report(report).encode("utf-8")
     _ = sys.stdout.buffer.write(payload)
-    return 0 if report.admitted_initial_image else 1
+    entry = report.entry_transition
+    accepted = (
+        report.admitted_initial_image and entry is not None and entry.accepted
+    )
+    return 0 if accepted else 1
 
 
 if __name__ == "__main__":
