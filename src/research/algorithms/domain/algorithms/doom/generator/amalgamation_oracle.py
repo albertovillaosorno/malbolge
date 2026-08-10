@@ -37,6 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 import sys
 from typing import TYPE_CHECKING
 
@@ -76,7 +79,9 @@ AMALGAMATION_ORACLE = (
 _STRING_UNIT = "m_string.c"
 _LANGUAGE_UNIT = "d_language.c"
 _STATUS_BAR_UNIT = "st_lib.c"
+_TRANSLATION_UNIT_SUFFIX = ".c"
 _HEADER_SUFFIX = ".h"
+_PARENT = ".."
 _TERMINAL_UNITS = (_STRING_UNIT, _LANGUAGE_UNIT)
 _DSTRINGS_GUARD = "__DSTRINGS__"
 _INCLUDE_PATTERN = re.compile(r'^(\s*#\s*include\s*)"([^"]+)"(.*)$')
@@ -127,17 +132,54 @@ class _FlattenState:
     cycle_elisions: int = 0
 
 
+def _entry_mode(path: Path, description: str) -> int | None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"{description} status failed: {path}: {error}"
+        raise DoomAmalgamationError(message) from error
+    if S_ISLNK(mode) or path.is_junction():
+        message = f"{description} must not be linked: {path}"
+        raise DoomAmalgamationError(message)
+    return mode
+
+
 def _require_regular(path: Path, description: str) -> None:
-    if path.is_symlink() or not path.is_file():
+    mode = _entry_mode(path, description)
+    if mode is None or not S_ISREG(mode):
         message = f"{description} must be a regular file: {path}"
         raise DoomAmalgamationError(message)
 
 
-def _translation_units(code_root: Path) -> tuple[Path, ...]:
-    if not code_root.is_dir():
-        message = f"missing accepted DOOM code root: {code_root}"
+def _require_directory(path: Path, description: str) -> None:
+    mode = _entry_mode(path, description)
+    if mode is None or not S_ISDIR(mode):
+        message = f"{description} must be a directory: {path}"
         raise DoomAmalgamationError(message)
-    units = tuple(sorted(code_root.glob("*.c"), key=lambda path: path.name))
+
+
+def _directory_entries(path: Path, description: str) -> tuple[Path, ...]:
+    try:
+        return tuple(path.iterdir())
+    except OSError as error:
+        message = f"{description} enumeration failed: {path}: {error}"
+        raise DoomAmalgamationError(message) from error
+
+
+def _translation_units(code_root: Path) -> tuple[Path, ...]:
+    _require_directory(code_root, "accepted DOOM code root")
+    units = tuple(
+        sorted(
+            (
+                path
+                for path in _directory_entries(code_root, "DOOM code root")
+                if path.suffix == _TRANSLATION_UNIT_SUFFIX
+            ),
+            key=lambda path: path.name,
+        )
+    )
     if not units:
         message = f"no C translation units found under: {code_root}"
         raise DoomAmalgamationError(message)
@@ -222,11 +264,14 @@ def _relative_project_path(code_root: Path, path: Path) -> str:
     except ValueError as exc:
         message = f"project include escapes accepted code root: {path}"
         raise DoomAmalgamationError(message) from exc
+    if _PARENT in relative.parts:
+        message = f"project include escapes accepted code root: {path}"
+        raise DoomAmalgamationError(message)
     return relative.as_posix()
 
 
 def _project_include(base: Path, name: str, code_root: Path) -> Path:
-    target = (base / name).resolve()
+    target = base / name
     _ = _relative_project_path(code_root, target)
     _require_regular(target, "project include")
     return target

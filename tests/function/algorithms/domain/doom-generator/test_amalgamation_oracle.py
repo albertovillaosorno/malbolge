@@ -34,13 +34,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from algorithms.doom.generator import amalgamation_oracle as oracle
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Iterator
+    from os import stat_result
 
 EXPECTED_UNITS = 4
 MISSING_TERMINAL = "missing terminal translation units"
@@ -172,4 +174,102 @@ def test_build_amalgamation_rejects_missing_terminal_unit(
     _ = _write(tmp_path, "alpha.c", "int alpha;\n")
 
     with pytest.raises(oracle.DoomAmalgamationError, match=MISSING_TERMINAL):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_code_root_enumeration_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible code-root scan cannot look like an empty source tree."""
+    _accepted_tree(tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_iterdir(path: Path) -> Iterator[Path]:
+        if path == tmp_path:
+            message = "blocked code root"
+            raise PermissionError(message)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="enumeration failed"
+    ):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_translation_unit_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stat failure cannot silently remove an oracle translation unit."""
+    _accepted_tree(tmp_path)
+    blocked = tmp_path / "p_spec.c"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> stat_result:
+        if path == blocked:
+            message = "blocked translation unit"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(oracle.DoomAmalgamationError, match="status failed"):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_project_include_symlink_is_rejected_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Reject project include links before regular-file admission."""
+    _accepted_tree(tmp_path)
+    real = tmp_path / "real-shared.h"
+    _ = real.write_text("int shared;" + chr(10), encoding="utf-8")
+    linked = tmp_path / "shared.h"
+    linked.unlink()
+    try:
+        linked.symlink_to(real.name)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this host")
+
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="must not be linked"
+    ):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_project_include_parent_escape_fails_before_resolution(
+    tmp_path: Path,
+) -> None:
+    """Reject lexical parent escape even when the outside header exists."""
+    _accepted_tree(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.h"
+    _ = outside.write_text("int outside;" + chr(10), encoding="utf-8")
+    _ = _write(
+        tmp_path,
+        "p_spec.c",
+        f'#include "../{outside.name}"'
+        + chr(10)
+        + "typedef int anim_t;"
+        + chr(10),
+    )
+
+    with pytest.raises(oracle.DoomAmalgamationError, match="escapes accepted"):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_project_include_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible included header cannot disappear from the oracle."""
+    _accepted_tree(tmp_path)
+    blocked = tmp_path / "shared.h"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> stat_result:
+        if path == blocked:
+            message = "blocked project include"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(oracle.DoomAmalgamationError, match="status failed"):
         _ = oracle.build_amalgamation(tmp_path)
