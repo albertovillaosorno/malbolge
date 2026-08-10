@@ -104,6 +104,39 @@ class StableAnchor:
             raise FingerprintPolicyError(message)
 
 
+def _require_coverage_count(value: object, context: str) -> int:
+    if type(value) is not int or value < _ZERO:
+        message = f"{context} must be a non-negative integer"
+        raise FingerprintPolicyError(message)
+    return value
+
+
+def _require_coverage_ratio(value: object) -> float:
+    if type(value) is not float or not 0.0 <= value <= 1.0:
+        message = "anchor coverage ratio must be an exact float in [0, 1]"
+        raise FingerprintPolicyError(message)
+    return value
+
+
+def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
+    matched = _require_coverage_count(
+        coverage.matched,
+        "matched anchor coverage",
+    )
+    total = _require_coverage_count(
+        coverage.total,
+        "total anchor coverage",
+    )
+    if matched > total:
+        message = "matched anchor coverage cannot exceed total anchors"
+        raise FingerprintPolicyError(message)
+    ratio = _require_coverage_ratio(coverage.ratio)
+    expected = 1.0 if total == _ZERO else matched / total
+    if ratio != expected:
+        message = "anchor coverage ratio does not match anchor counts"
+        raise FingerprintPolicyError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class AnchorCoverage:
     """Measured overlap between reference and candidate stable anchors."""
@@ -111,6 +144,10 @@ class AnchorCoverage:
     matched: int
     total: int
     ratio: float
+
+    def __post_init__(self) -> None:
+        """Require coverage counts and ratio to describe the same overlap."""
+        _validate_anchor_coverage(self)
 
 
 def _digest_window(window: bytes) -> bytes:

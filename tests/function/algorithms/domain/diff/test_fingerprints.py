@@ -35,6 +35,7 @@
 import hashlib
 from typing import cast
 
+from algorithms.diff.fingerprints import AnchorCoverage
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.fingerprints import FingerprintPolicyError
 from algorithms.diff.fingerprints import StableAnchor
@@ -130,6 +131,16 @@ def test_anchor_functions_reject_foreign_runtime_types() -> None:
         )
     with pytest.raises(FingerprintPolicyError, match="foreign anchor"):
         _ = anchor_coverage((cast("StableAnchor", object()),), ())
+
+
+def test_anchor_coverage_rejects_incoherent_direct_construction() -> None:
+    """Coverage records cannot contradict their own matched/total counts."""
+    with pytest.raises(FingerprintPolicyError, match="cannot exceed total"):
+        _ = AnchorCoverage(matched=2, total=1, ratio=1.0)
+    with pytest.raises(FingerprintPolicyError, match="does not match"):
+        _ = AnchorCoverage(matched=1, total=2, ratio=1.0)
+    with pytest.raises(FingerprintPolicyError, match="non-negative integer"):
+        _ = AnchorCoverage(matched=True, total=1, ratio=1.0)
 
 
 def test_stable_anchor_rejects_malformed_digest_and_offset() -> None:
