@@ -146,6 +146,29 @@ def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
     )
 
 
+def test_exact_planning_wraps_oracle_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later oracle read failure stays inside the exact-tree boundary."""
+    source, oracle = _synthetic_pair(tmp_path)
+    blocked = oracle / "created.txt"
+    original_read = Path.read_bytes
+    reads = 0
+
+    def fail_second_read(path: Path) -> bytes:
+        nonlocal reads
+        if path == blocked:
+            reads += 1
+            if reads > 1:
+                message = "blocked oracle replay read"
+                raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    with pytest.raises(ExactTreeError, match="tree file read failed"):
+        _ = build_exact_plan(source, oracle)
+
+
 def test_exact_plan_is_deterministic(tmp_path: Path) -> None:
     """Produce the same immutable plan and instruction order repeatedly."""
     source, oracle = _synthetic_pair(tmp_path)
@@ -160,6 +183,32 @@ def test_exact_plan_is_deterministic(tmp_path: Path) -> None:
         observed_paths == expected_paths,
         "instructions are not path sorted",
     )
+
+
+def test_exact_materialization_wraps_instruction_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replay source read failure cannot leak a host filesystem exception."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    blocked = source / _MOVED_SOURCE
+    original_read = Path.read_bytes
+    reads = 0
+
+    def fail_second_read(path: Path) -> bytes:
+        nonlocal reads
+        if path == blocked:
+            reads += 1
+            if reads > 1:
+                message = "blocked instruction read"
+                raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    output = tmp_path / "result"
+    with pytest.raises(ExactTreeError, match="instruction source read failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "instruction read failure published output")
 
 
 def test_exact_materialization_rejects_changed_source_before_output(

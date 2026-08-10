@@ -270,7 +270,8 @@ def _source_paths_by_content(
 
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
     relative = PurePosixPath(relative_path)
-    return root.joinpath(*relative.parts).read_bytes()
+    path = root.joinpath(*relative.parts)
+    return _read_file_bytes(path, "tree file")
 
 
 def _oracle_bytes(oracle_root: Path, target_record: FileRecord) -> bytes:
@@ -546,7 +547,7 @@ def _instruction_bytes(
         message = "source-backed instruction lost its source path"
         raise ExactTreeError(message)
     source_path = _safe_tree_path(source_root, instruction.source_path)
-    source = source_path.read_bytes()
+    source = _read_file_bytes(source_path, "instruction source")
     if instruction.kind is ExactInstructionKind.COPY_SOURCE:
         return source
     return _patch_bytes(source, instruction.segments)
@@ -592,7 +593,7 @@ def _prepare_staging(output_root: Path) -> Path:
 
 def _copy_passthrough_file(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    _ = target.write_bytes(source.read_bytes())
+    _ = target.write_bytes(_read_file_bytes(source, "passthrough file"))
 
 
 def _copy_passthrough_entry(
