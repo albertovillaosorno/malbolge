@@ -30,23 +30,21 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v3` retains each initial instruction's post-step
-encryption-target classification and adds one exact `entry_transition` from the
-historical all-zero register state. That transition resolves the first fetched
-instruction, C/D alias, planned data write, encryption address/input/output,
-input-dependent accumulator state, halt, pointer succession, and whether that
-single successor step wraps. Historical recurrence words are derived only as
-needed to resolve a post-`i` encryption target. The report still records that
-the
-profile's address range is structurally closed: code/data pointers and memory
-words share `0..=59048`, and pointer successors wrap modulo 59,049.
+`malbolge-static-image/v4` retains the exact `entry_transition` from the
+historical all-zero register state and adds one exact or explicitly unresolved
+`second_transition`. The prefix replays committed entry writes before resolving
+the reachable second fetch/data cells, decode, C/D alias, planned data write,
+encryption address/input/output, accumulator dependency, halt/rejection, pointer
+succession, and wrap. A second `p` whose accumulator depends on prior input is
+reported unresolved rather than assigned a guessed value. Historical recurrence
+words are derived only when a bounded read needs them. The report still records
+that the profile's code/data pointers and words stay in `0..=59048`.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
-current slice proves only the entry transition. It does not claim reachability,
-dataflow, resolved aliasing, evolved memory, or wraparound after that first
-step, and it does not analyze source-map context or input-dependent
-cycles/hangs.
-Those remain open under this TODO.
+current slice proves only a two-transition prefix. It does not claim third-step
+or later reachability, general dataflow/evolved-memory equivalence, source-map
+context, or input-dependent cycle/hang safety. Those remain open under this
+TODO.
 
 ## Invariants
 
@@ -54,9 +52,10 @@ Those remain open under this TODO.
   imply which addresses are reachable or whether a particular run wraps a
   pointer.
 - Per-cell encryption-target classification does not imply reachability. The
-  separate entry transition resolves only the historical first step.
-- Entry-step evidence never implies second-step or later control flow, dataflow,
-  evolved aliasing, source-map, wraparound, or cycle/hang safety.
+  bounded transfer records resolve only the first two historical transitions.
+- Two-transition evidence never implies third-step or later control flow,
+  general dataflow/evolved-memory equivalence, source-map context, or cycle/hang
+  safety.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
 - Future dynamic analyses must state their bounded assumptions rather than
@@ -86,8 +85,10 @@ Unreadable source fails before a semantic report is emitted.
   parity anchored to its `strchr("ji*p</vo", ...)` check, historical pointer
   assignment/wrap closure, `i`/`v`/ordinary post-step encryption-target
   classification anchored to the preserved interpreter order, positional decode
-  rejection, byte-exact CLI/library report parity, explicit analysis limits,
-  CLI semantic-rejection status, and CLI read failure.
+  rejection, exact second-step input/no-op/halt/invalid-encryption fixtures,
+  explicit input-dependent-crazy unresolved evidence, byte-exact CLI/library
+  report parity, bounded analysis limits, CLI second-step rejection status, and
+  CLI read failure.
 
 ## References
 

@@ -313,7 +313,7 @@ def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero when initial-image admission and the bounded entry transition both
+        Zero when initial-image admission and the bounded two-transition prefix
         succeed, otherwise one after writing the canonical report.
 
     """
