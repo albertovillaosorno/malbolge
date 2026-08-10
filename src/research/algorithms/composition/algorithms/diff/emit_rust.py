@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from secrets import token_hex
 from typing import TYPE_CHECKING
 
 from algorithms.diff.protected import ProtectedMetadata
@@ -221,6 +222,42 @@ def emit_rust_transform(
     return rendered.replace("\r\n", "\n")
 
 
+def _temporary_output_path(output_path: Path) -> Path:
+    return output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
+
+
+def _cleanup_owned_temporary(path: Path) -> str | None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return str(error)
+    return None
+
+
+def _claim_and_write_temporary(path: Path, source: str) -> None:
+    owned = False
+    try:
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
+            owned = True
+            _ = stream.write(source)
+            stream.flush()
+    except OSError:
+        if owned:
+            _ = _cleanup_owned_temporary(path)
+        raise
+
+
+def _raise_publication_error(
+    error: OSError, *, cleanup_error: str | None = None
+) -> None:
+    message = f"Rust transform publication failed: {error}"
+    if cleanup_error is not None:
+        message = f"{message}; temporary cleanup failed: {cleanup_error}"
+    raise RustEmissionError(message) from error
+
+
 def write_rust_transform(
     plan: ProtectedExactPlan,
     profile: str,
@@ -228,10 +265,17 @@ def write_rust_transform(
 ) -> None:
     """Write one generated transform atomically."""
     source = emit_rust_transform(plan, profile, output_path)
-    parent = output_path.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_name(f".{output_path.name}.temp")
-    if temporary.exists():
-        temporary.unlink()
-    _ = temporary.write_text(source, encoding="utf-8", newline="\n")
-    _ = temporary.replace(output_path)
+    temporary = _temporary_output_path(output_path)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        _raise_publication_error(error)
+    try:
+        _claim_and_write_temporary(temporary, source)
+    except OSError as error:
+        _raise_publication_error(error)
+    try:
+        _ = temporary.replace(output_path)
+    except OSError as error:
+        cleanup_error = _cleanup_owned_temporary(temporary)
+        _raise_publication_error(error, cleanup_error=cleanup_error)

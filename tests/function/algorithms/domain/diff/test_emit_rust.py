@@ -43,8 +43,11 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
 
+from algorithms.diff import emit_rust as emit_rust_module
 from algorithms.diff.admission import identity_tree
+from algorithms.diff.emit_rust import RustEmissionError
 from algorithms.diff.emit_rust import emit_rust_transform
+from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
@@ -74,6 +77,9 @@ _MAX_GENERATED_LINE_LENGTH = 80
 _GENERATED_PATH = "generated/main.rs"
 _BOUNDARY_HEADER = "// Boundary-Contract:"
 _LARGE_FILE_HEADER = "// Large file:\n//   - true"
+_LEGACY_TEMP = b"legacy-temp"
+_FOREIGN_TEMP = b"foreign-temp"
+_TEMP_COLLISION_ID = "collision-id"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
@@ -252,6 +258,46 @@ def test_emitted_rust_compiles_and_materializes_exact_tree(
     _expect(
         snapshot_tree(output) == snapshot_tree(oracle), "Rust output changed"
     )
+
+
+def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
+    """A stale legacy temp cannot be deleted by a new Rust emission."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "transform.rs"
+    output.parent.mkdir(parents=True)
+    legacy = output.with_name(f".{output.name}.temp")
+    _ = legacy.write_bytes(_LEGACY_TEMP)
+
+    write_rust_transform(protected, _PROFILE, output)
+
+    assert output.read_text(encoding="utf-8")
+    assert legacy.read_bytes() == _LEGACY_TEMP
+
+
+def test_writer_preserves_unowned_token_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exclusive temp claim failure cannot delete another writer's file."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "transform.rs"
+    output.parent.mkdir(parents=True)
+    temporary = output.with_name(f".{output.name}.{_TEMP_COLLISION_ID}.tmp")
+    _ = temporary.write_bytes(_FOREIGN_TEMP)
+
+    def fixed_temporary_id(_: int | None = None) -> str:
+        return _TEMP_COLLISION_ID
+
+    monkeypatch.setattr(
+        emit_rust_module,
+        "token_hex",
+        fixed_temporary_id,
+    )
+
+    with pytest.raises(RustEmissionError, match="publication failed"):
+        write_rust_transform(protected, _PROFILE, output)
+
+    assert temporary.read_bytes() == _FOREIGN_TEMP
+    assert not output.exists()
 
 
 def test_emitted_rust_rejects_wrong_source_before_output(
