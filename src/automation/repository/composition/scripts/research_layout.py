@@ -34,12 +34,25 @@
 
 from __future__ import annotations
 
+from stat import S_ISLNK
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 STATE_GRAPH_ID = "self-modification-state-graph-optimizer"
+
+
+def _manifest_is_file(path: Path) -> bool:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return False
+    if S_ISLNK(status.st_mode) or path.is_junction():
+        message = f"research manifest path must not redirect: {path}"
+        raise OSError(message)
+    return S_ISREG(status.st_mode)
 
 
 def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
@@ -53,10 +66,10 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     entries = {
         directory.name: directory
         for directory in domain_root.iterdir()
-        if (directory / "experiment.toml").is_file()
+        if _manifest_is_file(directory / "experiment.toml")
     }
     state_graph = root / "src/research/algorithms/composition/state-graph"
-    if (state_graph / "experiment.toml").is_file():
+    if _manifest_is_file(state_graph / "experiment.toml"):
         entries[STATE_GRAPH_ID] = state_graph
     return tuple(sorted(entries.items()))
 
