@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import shutil
 from typing import TYPE_CHECKING
 
 from algorithms.diff import compatible as compatible_module
@@ -266,6 +267,36 @@ def test_compatible_materialization_wraps_path_resolution_error(
     with pytest.raises(CompatiblePlanError, match="path resolution failed"):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "resolution failure published output")
+
+
+def test_compatible_cleanup_failure_preserves_primary_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup failure augments rather than replaces the staging write error."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.compatible-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked compatible write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        message = "blocked compatible cleanup"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        CompatiblePlanError,
+        match=r"instruction output write failed.*staging cleanup failed",
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
 
 
 def test_compatible_staging_status_error_fails_closed(

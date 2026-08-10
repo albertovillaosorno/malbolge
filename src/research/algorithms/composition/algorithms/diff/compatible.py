@@ -694,6 +694,23 @@ def _admit(request: CompatibleMaterializeRequest) -> TransformAdmissionEvidence:
     return require_transform_admission(source_evidence, request.behavior)
 
 
+def _cleanup_compatible_staging(path: Path) -> str | None:
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return str(error)
+    return None
+
+
+def _raise_compatible_cleanup_failure(
+    error: Exception, cleanup_error: str
+) -> None:
+    message = f"{error}; compatible staging cleanup failed: {cleanup_error}"
+    raise CompatiblePlanError(message) from error
+
+
 def _publish_compatible_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
@@ -721,8 +738,9 @@ def materialize_compatible_plan(
         _populate_staging(request, candidate, staging)
         _require_postcondition(request.postcondition, staging)
         _publish_compatible_output(staging, request.output_root)
-    except Exception:
-        if staging.exists():
-            shutil.rmtree(staging)
+    except Exception as error:
+        cleanup_error = _cleanup_compatible_staging(staging)
+        if cleanup_error is not None:
+            _raise_compatible_cleanup_failure(error, cleanup_error)
         raise
     return admitted
