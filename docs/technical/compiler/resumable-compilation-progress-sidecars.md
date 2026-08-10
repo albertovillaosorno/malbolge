@@ -48,14 +48,18 @@ objects do not leak decoder/type exceptions, oversized JSON integer literals
 that hit the interpreter conversion limit remain inside the stable sidecar error
 boundary, and impossible UTC calendar timestamps are reported the same way.
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
-timing evidence. Snapshotting also revalidates its internal anchors and
-accumulated
-phase partition, so directly constructed or corrupted timer state cannot be
-misclassified as verification time.
+timing evidence. Non-callable clocks and callback failures remain inside the
+stable sidecar error boundary. Snapshotting also revalidates its internal
+anchors and accumulated phase partition, so directly constructed or corrupted
+timer state cannot be misclassified as verification time. Public path helpers
+reject foreign objects instead of stringifying them, and direct reads require a
+real `pathlib.Path` before filesystem inspection.
 
 `write_atomic()` also validates every referenced checkpoint and partial payload
 before moving the mutable pointer: the files must exist, hashes must match, and
-partial byte counts must agree. Its read-transition-validation-replacement
+partial byte counts must agree. Direct generation publication requires exact
+immutable `bytes`; mutable or foreign aliases fail before hashing or creating a
+generation file. Its read-transition-validation-replacement
 transaction is serialized by a process-shared sibling `.lock` file so two
 writers cannot both validate against one stale predecessor and then race the
 mutable pointer backward. A caller therefore cannot publish a syntactically
