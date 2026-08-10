@@ -472,6 +472,20 @@ parts:
     kind: composition
     language: rust
     responsibility: Wire runtime policy and executable entrypoints.
+  - id: part-0093
+    path: domain/algorithms/superoptimization-research-program/README.md
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0094
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/superoptimization-research-program/experiment.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
+  - id: part-0095
+    # jig-ignore-next-line: canonical tracked part path
+    path: domain/algorithms/superoptimization-research-program/lifecycle.toml
+    kind: domain
+    responsibility: Own pure rules and domain models.
 projects: []
 tests: []
 graph:

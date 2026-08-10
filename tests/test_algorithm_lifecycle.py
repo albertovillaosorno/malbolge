@@ -53,6 +53,7 @@ EXPECTED_IDS = (
     "search-pruning-and-state-canonicalization",
     "self-modification-state-graph-optimizer",
     "stochastic-and-guided-search",
+    "superoptimization-research-program",
     "template",
 )
 EVIDENCE = "docs/research/methodology/scientific-method.md"
@@ -112,7 +113,7 @@ def _expect_failure(text: str, message: str) -> None:
 def test_lifecycle_file_rejects_invalid_utf8(tmp_path: Path) -> None:
     """Lifecycle file encoding failure remains a typed validation error."""
     path = tmp_path / "lifecycle.toml"
-    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    _ = path.write_bytes(bytes((0x5B, 0xFF, 0x5D)))
     with pytest.raises(
         validator.AlgorithmLifecycleError,
         match="invalid algorithm lifecycle UTF-8",

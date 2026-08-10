@@ -1,6 +1,6 @@
 ---
 id: "superoptimization-research-program"
-status: "pending"
+status: "active"
 lane: "5"
 area: "research"
 task: "TODO - Superoptimization research program"
@@ -64,6 +64,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   `academic-research-methodology-and-evidence-model`,
   `repository-bibliography-taxonomy-and-citation-provenance`,
   `algorithm-research-mirror-and-local-output-contract`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Initial bibliography-backed context maps STOKE, Souper, and `egg` to
+  falsifiable Malbolge hypotheses and rejection conditions. The mirrored
+  `superoptimization-research-program` schema-one plan now preregisters the
+  first classic stochastic-versus-enumeration comparison with exact profile,
+  seed, resource budgets, baseline, verifier, and lifecycle identity. Recorded
+  runs, raw measurements, retained negative/null results, plans for the other
+  techniques, and a reviewed conclusion with threats to validity remain
+  pending.

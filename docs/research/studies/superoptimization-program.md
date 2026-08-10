@@ -2,12 +2,12 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Research Question
 
-What evidence and method are required to evaluate superoptimization research
-program?
+Which search strategies find smaller or faster independently verified Malbolge
+blocks under equal time and candidate-evaluation budgets?
 
 ## Background
 
@@ -20,15 +20,49 @@ evaluation, and prior Malbolge code generation techniques. Maintain a source-
 backed bibliography and convert useful results into explicit compiler
 hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
-- Status: Proposed
+- Status: Active
 - Record type: Study
 - Planning identity: `superoptimization-research-program`
-- Last reviewed: 2026-07-26
+- Last reviewed: 2026-08-09
 
 ## Prior Work
 
-Prior-work claims must resolve through canonical records under
-`docs/bibliography/`.
+The initial source map uses three canonical primary-source records. STOKE
+provides the stochastic-search comparison point, Souper provides the
+synthesis-over-IR comparison point, and `egg` provides the equality-saturation
+comparison point. None is assumed to transfer directly to self-modifying
+Malbolge.
+
+- `../../bibliography/publications/superoptimization/stoke.md`
+- `../../bibliography/publications/superoptimization/souper.md`
+- `../../bibliography/publications/superoptimization/egg.md`
+
+### Technique-to-hypothesis map
+
+**STOKE-style stochastic search.** Hypothesis: proposal search lowers time to
+first verified block at an equal evaluation budget. The baseline is stable
+deterministic enumeration over the same candidate language. Reject or materially
+weaken the hypothesis when no preregistered challenge family improves, or when
+verifier acceptance differs between otherwise equivalent comparisons.
+
+**Souper-style synthesis over IR.** Hypothesis: a smaller semantic IR reduces
+candidate work before Malbolge layout compared with raw-byte synthesis. The
+baseline is synthesis over the equivalent raw Malbolge candidate surface. Reject
+or materially weaken the hypothesis when solver plus validation work is not
+reduced, or when lowering loses exact equivalence.
+
+**`egg`-style equality saturation.** Hypothesis: e-graphs reduce rewrite-order
+sensitivity for pure pre-layout expressions whose equivalences are independently
+checkable. The baseline is deterministic ordered rewriting over the same
+admitted equivalences. Reject or materially weaken the hypothesis when
+self-modifying state must enter the e-graph relation, proof obligations cannot
+be
+discharged, or resource use dominates the baseline.
+
+The already implemented exact-byte duplicate pruning is a conservative
+correctness baseline, not evidence that any of the three broader techniques is
+faster. Future comparisons use the same parametric challenge identities, target
+profile, verifier, wall-clock/evaluation budgets, and retained failure counts.
 
 ## Hypothesis
 
@@ -50,9 +84,22 @@ Prior-work claims must resolve through canonical records under
 
 ## Method
 
-Work under this record uses stable identities, explicit inputs and assumptions,
-independent correctness evidence where applicable, and retained negative/null
-results. Source claims resolve through `docs/bibliography/`.
+Every comparison fixes the challenge family/version/seed/profile, semantic
+verifier, candidate language, and either wall-clock or candidate-evaluation
+budget before comparing strategies. A strategy reports time to first verified
+candidate, accepted-candidate quality, total verifier work, and failure/null
+outcomes; verifier rejection never becomes search success. Where randomness is
+used, the seed set and aggregate distribution are part of the experiment
+identity rather than selecting only the best run.
+
+The deterministic enumeration and exact-byte duplicate-pruning paths are the
+initial correctness baselines. The first preregistered comparison is mirrored as
+`superoptimization-research-program`: a classic-profile stochastic-proposal
+pilot against deterministic enumeration with fixed seed, target fingerprint,
+wall-clock, candidate-evaluation, memory, and verifier bounds. New synthesis,
+equality-saturation, learned, or accelerator-guided strategies must add their
+own equally identified comparisons rather than inheriting a result from that
+pilot. Source claims resolve through `docs/bibliography/`.
 
 ## Evidence
 
@@ -60,19 +107,22 @@ results. Source claims resolve through `docs/bibliography/`.
   `benchmarks/research/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Initial bibliography-backed technique mapping and falsifiable rejection
+  conditions are recorded above. The first schema-one experiment plan,
+  lifecycle record, and two-sided research mirror now establish reproducible
+  identity before measurement. Recorded runs, raw measurements, retained
+  negative/null results, additional technique plans, and a reviewed comparative
+  conclusion remain pending.
 
 ## Results
 
-No completed research result or implementation claim is made by this proposed
-record.
+No completed comparative research result or product implementation claim is made
+by this active record.
 
 ## Threats to Validity
 
-The record is proposed; implementation bias, workload selection, hardware
-effects, and incomplete replication remain threats until measured.
+The record is active but unmeasured; implementation bias, workload selection,
+hardware effects, and incomplete replication remain threats until measured.
 
 ## Conclusion
 

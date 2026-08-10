@@ -45,6 +45,7 @@ EXPECTED_IDS = (
     "search-pruning-and-state-canonicalization",
     "self-modification-state-graph-optimizer",
     "stochastic-and-guided-search",
+    "superoptimization-research-program",
     "template",
 )
 

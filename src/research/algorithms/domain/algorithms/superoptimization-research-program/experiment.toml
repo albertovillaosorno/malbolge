@@ -1,0 +1,30 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "plan"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-verified-block-search-v1"
+difficulty = 1
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 10000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "trusted-semantic-verifier"
+baseline = "deterministic-enumeration"
+
+[provenance]
+# jig-ignore-next-line: indivisible reviewed identifier
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"

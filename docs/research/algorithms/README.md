@@ -21,4 +21,5 @@ Product semantics, legal permission, source identity, or ordinary engineering.
 - `search-pruning-and-state-canonicalization/`
 - `self-modification-state-graph-optimizer/`
 - `stochastic-and-guided-search/`
+- `superoptimization-research-program/`
 - `template/`

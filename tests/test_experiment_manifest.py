@@ -50,6 +50,7 @@ EXPECTED_IDS = (
     "search-pruning-and-state-canonicalization",
     "self-modification-state-graph-optimizer",
     "stochastic-and-guided-search",
+    "superoptimization-research-program",
     "template",
 )
 RESOURCE_EXHAUSTED = "resource-exhausted"
@@ -130,7 +131,7 @@ def test_manifest_file_rejects_invalid_utf8(
     """Manifest file encoding failure remains a typed validation error."""
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     path = tmp_path / "experiment.toml"
-    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    _ = path.write_bytes(bytes((0x5B, 0xFF, 0x5D)))
     with pytest.raises(
         validator.ExperimentManifestError,
         match="invalid experiment manifest UTF-8",

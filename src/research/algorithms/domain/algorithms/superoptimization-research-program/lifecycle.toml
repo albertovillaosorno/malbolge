@@ -1,0 +1,9 @@
+schema_version = 1
+
+[algorithm]
+id = "superoptimization-research-program"
+state = "experimental"
+# jig-ignore-next-line: indivisible reviewed identifier
+research_record = "docs/research/algorithms/superoptimization-research-program/research.md"
+# jig-ignore-next-line: indivisible reviewed identifier
+experiment_manifest = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
