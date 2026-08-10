@@ -900,7 +900,17 @@ def _require_postcondition(
     postcondition: Postcondition | None,
     staging: Path,
 ) -> None:
-    if postcondition is not None and not postcondition(staging):
+    if postcondition is None:
+        return
+    try:
+        accepted = postcondition(staging)
+    except Exception as error:
+        message = f"compatible output postcondition failed: {error}"
+        raise CompatiblePlanError(message) from error
+    if type(accepted) is not bool:
+        message = "compatible output postcondition must return an exact boolean"
+        raise CompatiblePlanError(message)
+    if not accepted:
         message = "compatible output postcondition rejected staging tree"
         raise CompatiblePlanError(message)
 

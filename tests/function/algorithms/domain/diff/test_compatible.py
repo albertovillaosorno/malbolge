@@ -622,6 +622,39 @@ def test_compatible_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".out.compatible-staging").exists()
 
 
+def test_postcondition_failures_are_wrapped_and_cleaned(
+    tmp_path: Path,
+) -> None:
+    """Contain postcondition exceptions and require exact boolean results."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    def fail_postcondition(root: Path) -> bool:
+        _ = root
+        raise RuntimeError("synthetic postcondition failure")
+
+    request = replace(
+        _request(candidate, plan, output),
+        postcondition=fail_postcondition,
+    )
+    with pytest.raises(CompatiblePlanError, match="postcondition failed"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "failed postcondition published output")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "failed postcondition left staging behind",
+    )
+
+    def foreign_result(root: Path) -> bool:
+        _ = root
+        return cast("bool", 1)
+
+    request = replace(request, postcondition=foreign_result)
+    with pytest.raises(CompatiblePlanError, match="exact boolean"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "foreign postcondition result published output")
+
 def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:
     """Keep downstream quality validation inside the transactional boundary."""
     plan = _plan(tmp_path)
