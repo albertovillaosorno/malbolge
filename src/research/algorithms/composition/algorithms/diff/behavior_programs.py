@@ -181,11 +181,23 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
     return transcript.digest
 
 
+def _resolved_context_path(path: Path, description: str) -> Path:
+    try:
+        return path.resolve()
+    except OSError as error:
+        message = f"behavior {description} resolution failed: {path}: {error}"
+        raise BehaviorProgramError(message) from error
+
+
 def _context_signature(
     context: ProbeRunContext,
 ) -> tuple[Path, tuple[tuple[str, Path], ...]]:
-    tools = tuple((tool_id, path.resolve()) for tool_id, path in context.tools)
-    return context.repository_root.resolve(), tools
+    tools = tuple(
+        (tool_id, _resolved_context_path(path, "tool"))
+        for tool_id, path in context.tools
+    )
+    repository = _resolved_context_path(context.repository_root, "repository")
+    return repository, tools
 
 
 def _require_matching_contexts(

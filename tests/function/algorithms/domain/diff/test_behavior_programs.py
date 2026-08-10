@@ -155,6 +155,53 @@ def _authored(
     return authored, source, oracle
 
 
+def test_context_repository_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep repository resolution failures inside behavior authoring."""
+    source, oracle = _trees(tmp_path)
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            message = "blocked behavior repository"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        BehaviorProgramError, match="repository resolution failed"
+    ):
+        _ = author_behavior_programs(
+            _programs(),
+            _context(source, tmp_path),
+            _context(oracle, tmp_path),
+        )
+
+
+def test_context_tool_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep tool resolution failures inside behavior authoring."""
+    source, oracle = _trees(tmp_path)
+    tool = Path(sys.executable)
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tool:
+            message = "blocked behavior tool"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(BehaviorProgramError, match="tool resolution failed"):
+        _ = author_behavior_programs(
+            _programs(),
+            _context(source, tmp_path),
+            _context(oracle, tmp_path),
+        )
+
+
 def test_authoring_derives_identity_and_distinct_bug_baselines(
     tmp_path: Path,
 ) -> None:
