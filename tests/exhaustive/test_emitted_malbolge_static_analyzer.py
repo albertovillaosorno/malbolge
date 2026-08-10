@@ -167,15 +167,17 @@ class _AnalyzerModule(Protocol):
 
 
 def _load_analyzer() -> _AnalyzerModule:
-    spec = importlib.util.spec_from_file_location(
-        "verifier.emitted_malbolge", _ANALYZER
-    )
+    spec = importlib.util.spec_from_file_location("emitted_malbolge", _ANALYZER)
     if spec is None or spec.loader is None:
         message = "static analyzer module cannot be loaded"
         raise RuntimeError(message)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(_ANALYZER.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        _ = sys.path.pop(0)
     return cast("_AnalyzerModule", cast("object", module))
 
 
