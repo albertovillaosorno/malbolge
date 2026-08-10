@@ -105,6 +105,40 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
         _ = require_source_pin(tmp_path, pin)
 
 
+def test_pinned_source_root_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible pin root cannot be normalized into a weaker error."""
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == tmp_path:
+            message = "blocked pin root"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(SourcePinError, match="pinned source status failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+def test_pinned_source_rejects_linked_root_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Do not resolve a linked pin root before applying provenance policy."""
+    target = tmp_path / "target"
+    _write(target, "README", b"release")
+    _write(target, "src/a.c", b"int a;" + bytes((10,)))
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    with pytest.raises(SourcePinError, match="symlink is not accepted"):
+        _ = source_snapshot_evidence(linked, ("README", "src"))
+
+
 def test_pinned_snapshot_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -247,6 +247,18 @@ def _validate_root_path(root: object) -> None:
         raise SourcePinError(message)
 
 
+def _resolved_source_root(root: Path) -> Path:
+    mode = _source_mode(root, ".")
+    if mode is None or not S_ISDIR(mode):
+        message = f"pinned source root must be a directory: {root}"
+        raise SourcePinError(message)
+    try:
+        return root.resolve(strict=True)
+    except OSError as error:
+        message = f"pinned source root resolution failed: {root}: {error}"
+        raise SourcePinError(message) from error
+
+
 def source_snapshot_evidence(
     root: Path, roots: tuple[str, ...]
 ) -> SourcePinEvidence:
@@ -260,7 +272,7 @@ def source_snapshot_evidence(
     _validate_roots(roots)
     digest = hashlib.sha256()
     digest.update(_DOMAIN)
-    resolved_root = root.resolve()
+    resolved_root = _resolved_source_root(root)
     files = _pinned_files(resolved_root, roots)
     digest.update(_u64(len(files)))
     for path in files:
