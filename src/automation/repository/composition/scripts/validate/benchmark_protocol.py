@@ -37,6 +37,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PureWindowsPath
+from stat import S_ISLNK
+from stat import S_ISREG
 import sys
 import tomllib
 from typing import Never
@@ -439,6 +441,20 @@ def _read_utf8(path: Path, context: str) -> str:
         _fail(f"invalid {context} UTF-8: {error}")
 
 
+def _regular_file_size(path: Path, context: str) -> int | None:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        _fail(f"{context} status failed: {error}")
+    if S_ISLNK(status.st_mode) or path.is_junction():
+        _fail(f"{context} must not redirect")
+    if not S_ISREG(status.st_mode):
+        return None
+    return status.st_size
+
+
 def validate_example(path: Path) -> BenchmarkProtocolRecord:
     """Validate one protocol example and its linked run/raw evidence.
 
@@ -446,13 +462,14 @@ def validate_example(path: Path) -> BenchmarkProtocolRecord:
         Parsed protocol after run-identity and raw-output checks.
 
     """
-    if not path.is_file():
+    if _regular_file_size(path, "benchmark protocol example") is None:
         _fail(f"benchmark protocol example not found: {path}")
     record = parse_protocol(_read_utf8(path, "benchmark protocol"))
     run = _linked_run(record)
     _validate_linked_identity(record, run)
     raw_path = ROOT / record.raw_path
-    if not raw_path.is_file() or raw_path.stat().st_size == 0:
+    raw_size = _regular_file_size(raw_path, "benchmark raw samples")
+    if raw_size is None or raw_size == 0:
         _fail(f"benchmark raw samples not retained: {record.raw_path}")
     return record
 
@@ -461,7 +478,7 @@ def _linked_run(
     record: BenchmarkProtocolRecord,
 ) -> experiment_manifest.RunIdentity:
     path = ROOT / record.experiment_manifest
-    if not path.is_file():
+    if _regular_file_size(path, "benchmark experiment run") is None:
         _fail(
             f"benchmark experiment run not found: {record.experiment_manifest}"
         )
@@ -492,10 +509,14 @@ def validate_repository_examples() -> tuple[BenchmarkProtocolRecord, ...]:
         Protocol examples in stable path order.
 
     """
-    examples = tuple(
-        validate_example(path)
-        for path in sorted(EXAMPLES_ROOT.glob("*.benchmark.toml"))
+    example_paths = tuple(
+        sorted(
+            path
+            for path in EXAMPLES_ROOT.iterdir()
+            if path.name.endswith(".benchmark.toml")
+        )
     )
+    examples = tuple(validate_example(path) for path in example_paths)
     if not examples:
         _fail("repository contains no benchmark protocol examples")
     return examples

@@ -81,6 +81,8 @@ The checked-in examples under `benchmarks/research/protocol/examples/` are
 schema
 fixtures, not Malbolge performance claims. They demonstrate deterministic and
 stochastic records plus linked run manifests and retained raw CSV files.
+Repository validation enumerates that checked-in corpus directly; a directory
+scan failure is a validation failure, not evidence that an example is absent.
 
 ## Evidence
 

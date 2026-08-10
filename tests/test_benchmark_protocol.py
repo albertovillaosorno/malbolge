@@ -35,6 +35,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Never
+from typing import cast
 
 import pytest
 from scripts.validate import benchmark_protocol as validator
@@ -59,6 +61,13 @@ STOCHASTIC = (
 )
 
 
+class _DeniedExamplesRoot:
+    @staticmethod
+    def iterdir() -> Never:
+        message = "injected benchmark examples scan failure"
+        raise PermissionError(message)
+
+
 def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -78,12 +87,61 @@ def _expect_failure(text: str, message: str) -> None:
 def test_protocol_file_rejects_invalid_utf8(tmp_path: Path) -> None:
     """Protocol file encoding failure remains a typed validation error."""
     path = tmp_path / "invalid.benchmark.toml"
-    _ = path.write_bytes(bytes((0x5b, 0xff, 0x5d)))
+    _ = path.write_bytes(bytes((0x5B, 0xFF, 0x5D)))
     with pytest.raises(
         validator.BenchmarkProtocolError,
         match="invalid benchmark protocol UTF-8",
     ):
         _ = validator.validate_example(path)
+
+
+def test_repository_example_scan_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An inaccessible checked-in example directory cannot look empty."""
+    denied = cast("Path", cast("object", _DeniedExamplesRoot()))
+    monkeypatch.setattr(validator, "EXAMPLES_ROOT", denied)
+    with pytest.raises(PermissionError, match="injected benchmark examples"):
+        _ = validator.validate_repository_examples()
+
+
+def test_protocol_status_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An inaccessible protocol file cannot be misclassified as missing."""
+    original_lstat = Path.lstat
+
+    def fail_protocol_status(path: Path) -> object:
+        if path == STOCHASTIC:
+            message = "injected benchmark protocol status failure"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_protocol_status)
+    with pytest.raises(
+        validator.BenchmarkProtocolError,
+        match="benchmark protocol example status failed",
+    ):
+        _ = validator.validate_example(STOCHASTIC)
+
+
+def test_redirected_protocol_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redirected protocol path cannot provide checked-in evidence."""
+    original_is_junction = Path.is_junction
+
+    def report_junction(path: Path) -> bool:
+        if path == STOCHASTIC:
+            return True
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", report_junction)
+    with pytest.raises(
+        validator.BenchmarkProtocolError,
+        match="benchmark protocol example must not redirect",
+    ):
+        _ = validator.validate_example(STOCHASTIC)
 
 
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:
