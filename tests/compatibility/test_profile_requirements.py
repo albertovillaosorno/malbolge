@@ -345,6 +345,15 @@ def test_runtime_features_reject_duplicates() -> None:
         _ = _runtime(features=features)
 
 
+def test_runtime_features_reject_unhashable_foreign_member() -> None:
+    foreign = cast("str", cast("object", []))
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="unsupported feature",
+    ):
+        _ = _runtime(features=(foreign,))
+
+
 def test_runtime_features_reject_unknown_feature() -> None:
     with pytest.raises(
         requirements.ProfileRequirementValidationError,

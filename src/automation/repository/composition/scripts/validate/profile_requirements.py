@@ -430,11 +430,11 @@ def _validated_features(value: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def _validate_feature_members(value: tuple[str, ...]) -> None:
-    if len(value) != len(set(value)):
-        _raise_validation("runtime features contain duplicates")
     for feature in value:
         if type(feature) is not str or feature not in _FEATURE_ORDER:
             _raise_validation("runtime features contain an unsupported feature")
+    if len(value) != len(set(value)):
+        _raise_validation("runtime features contain duplicates")
 
 
 def _missing_dimensions(
