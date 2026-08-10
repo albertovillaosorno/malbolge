@@ -670,10 +670,11 @@ def validate_custom_profile_document(
 
     """
     validate_document(canonical_document)
-    _expect_exact_keys(document, CUSTOM_PROFILE_KEYS, "custom profile document")
-    _validate_custom_target_schema(document, canonical_document)
-    profile_id = _expect_string(document["profile_id"], "profile_id")
-    profile = _validate_profile_definition(profile_id, document["profile"])
+    admitted = _expect_mapping(document, "custom profile document")
+    _expect_exact_keys(admitted, CUSTOM_PROFILE_KEYS, "custom profile document")
+    _validate_custom_target_schema(admitted, canonical_document)
+    profile_id = _expect_string(admitted["profile_id"], "profile_id")
+    profile = _validate_profile_definition(profile_id, admitted["profile"])
     canonical_profiles = _expect_mapping(
         canonical_document["profiles"],
         "canonical profiles",
@@ -696,12 +697,13 @@ def custom_profile_fingerprint(
         The same fingerprint a canonical registry entry would receive.
 
     """
+    admitted = _expect_mapping(document, "custom profile document")
     profile_id, profile = validate_custom_profile_document(
-        document,
+        admitted,
         canonical_document,
     )
     target_schema = _expect_int(
-        document["target_schema_version"],
+        admitted["target_schema_version"],
         "target_schema_version",
     )
     return _fingerprint_identity(profile_id, profile, target_schema)

@@ -94,6 +94,20 @@ def test_profile_loader_rejects_foreign_path_type() -> None:
         )
 
 
+def test_custom_profile_apis_reject_foreign_top_level_type() -> None:
+    """Custom-profile APIs admit the document before key inspection."""
+    canonical = validator.load_document(PROFILE_PATH)
+    foreign = cast("validator.JsonObject", object())
+    with pytest.raises(
+        validator.ProfileValidationError, match="must be an object"
+    ):
+        _ = validator.validate_custom_profile_document(foreign, canonical)
+    with pytest.raises(
+        validator.ProfileValidationError, match="must be an object"
+    ):
+        _ = validator.custom_profile_fingerprint(foreign, canonical)
+
+
 def test_canonical_profile_is_valid() -> None:
     """The committed canonical profile satisfies schema v2."""
     validator.validate_text(_canonical_text())
