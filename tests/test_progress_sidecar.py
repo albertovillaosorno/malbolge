@@ -1633,6 +1633,29 @@ def test_monotonic_timer_rejects_corrupt_direct_state() -> None:
         _ = inconsistent.snapshot()
 
 
+def test_monotonic_timer_contains_foreign_clock_failures() -> None:
+    """Foreign or failing clocks stay inside the sidecar error boundary."""
+    with pytest.raises(ERROR, match="clock must be callable"):
+        _ = progress.ProgressTimer.start(
+            clock=cast("Callable[[], int]", cast("object", object()))
+        )
+
+    def fail_clock() -> int:
+        raise RuntimeError("synthetic clock failure")
+
+    with pytest.raises(ERROR, match="monotonic clock failed"):
+        _ = progress.ProgressTimer.start(clock=fail_clock)
+
+    direct = progress.ProgressTimer(
+        _clock=cast("Callable[[], int]", cast("object", object())),
+        _phase=progress.TimingPhase.ACTIVE,
+        _segment_started_ns=0,
+        _started_ns=0,
+    )
+    with pytest.raises(ERROR, match="clock must be callable"):
+        _ = direct.snapshot()
+
+
 def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
     """Invalid phases or clocks fail before corrupting elapsed-time evidence."""
     with pytest.raises(ERROR, match="exact enum type"):

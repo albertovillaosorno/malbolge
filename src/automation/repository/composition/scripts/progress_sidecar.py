@@ -153,6 +153,18 @@ def _monotonic_sample(value: object) -> int:
     return value
 
 
+def _sample_clock(clock: Callable[[], int]) -> int:
+    if not callable(clock):
+        _fail("monotonic clock must be callable")
+    try:
+        value = clock()
+    except ProgressSidecarError:
+        raise
+    except Exception as error:
+        _fail(f"monotonic clock failed: {error}")
+    return _monotonic_sample(value)
+
+
 @dataclass(frozen=True, slots=True)
 class ProgressTiming:
     """One exact snapshot of accumulated monotonic durations."""
@@ -192,7 +204,7 @@ class ProgressTimer:
 
         """
         _validate_timing_phase(phase)
-        now = _monotonic_sample(clock())
+        now = _sample_clock(clock)
         return cls(
             _clock=clock,
             _phase=phase,
@@ -202,6 +214,8 @@ class ProgressTimer:
 
     def _validate_state(self) -> None:
         _validate_timing_phase(self._phase)
+        if not callable(self._clock):
+            _fail("monotonic clock must be callable")
         values = (
             (self._segment_started_ns, "timer segment start"),
             (self._started_ns, "timer start"),
@@ -234,7 +248,7 @@ class ProgressTimer:
 
     def _sample(self) -> int:
         self._validate_state()
-        now = _monotonic_sample(self._clock())
+        now = _sample_clock(self._clock)
         if now < self._segment_started_ns:
             _fail("monotonic clock moved backward")
         return now
