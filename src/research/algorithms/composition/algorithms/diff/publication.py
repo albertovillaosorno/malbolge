@@ -38,14 +38,11 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
+from pathlib import Path
 import sys
 from typing import Final
 from typing import Protocol
-from typing import TYPE_CHECKING
 from typing import cast
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
@@ -98,6 +95,32 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
         )
 
 
+def _validate_publication_inputs(
+    staging: object,
+    destination: object,
+    *,
+    os_name: object,
+    platform: object,
+) -> tuple[Path, Path, str, str]:
+    if not isinstance(staging, Path) or not isinstance(destination, Path):
+        raise OSError(
+            errno.EINVAL,
+            "directory publication paths must use pathlib Path",
+        )
+    if type(os_name) is not str or type(platform) is not str:
+        raise OSError(
+            errno.EINVAL,
+            "directory publication host selectors must use exact strings",
+        )
+    if staging == destination:
+        raise OSError(
+            errno.EINVAL,
+            "directory publication staging and destination must differ",
+            destination,
+        )
+    return staging, destination, os_name, platform
+
+
 def publish_directory_no_replace(
     staging: Path,
     destination: Path,
@@ -112,6 +135,12 @@ def publish_directory_no_replace(
             unavailable.
 
     """
+    staging, destination, os_name, platform = _validate_publication_inputs(
+        staging,
+        destination,
+        os_name=os_name,
+        platform=platform,
+    )
     if os_name == _WINDOWS_OS_NAME:
         _ = staging.rename(destination)
         return

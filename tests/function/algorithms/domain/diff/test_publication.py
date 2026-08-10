@@ -39,6 +39,7 @@ import errno
 import os
 from pathlib import Path
 import sys
+from typing import cast
 
 from algorithms.diff import publication
 import pytest
@@ -47,6 +48,31 @@ _WINDOWS_OS_NAME = "nt"
 _LINUX_PLATFORM = "linux"
 _OURS = b"ours"
 _FOREIGN = b"foreign"
+
+
+def test_publication_rejects_foreign_or_aliased_inputs() -> None:
+    """Validate path and host metadata before any platform rename primitive."""
+    staging = Path("staging")
+    destination = Path("destination")
+    with pytest.raises(OSError, match="pathlib Path") as foreign_path:
+        publication.publish_directory_no_replace(
+            cast("Path", cast("object", "staging")),
+            destination,
+        )
+    assert foreign_path.value.errno == errno.EINVAL
+
+    boolean_host: object = True
+    with pytest.raises(OSError, match="host selectors") as foreign_host:
+        publication.publish_directory_no_replace(
+            staging,
+            destination,
+            os_name=cast("str", cast("object", boolean_host)),
+        )
+    assert foreign_host.value.errno == errno.EINVAL
+
+    with pytest.raises(OSError, match="must differ") as aliased:
+        publication.publish_directory_no_replace(staging, staging)
+    assert aliased.value.errno == errno.EINVAL
 
 
 def test_windows_route_uses_path_rename(
