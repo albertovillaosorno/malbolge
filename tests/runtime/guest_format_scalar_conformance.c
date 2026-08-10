@@ -9,21 +9,23 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Independent vectors for resolved scalar guest printf execution.
+//   - Independent vectors for resolved non-dereferencing printf execution.
 // - Must-Not:
 //   - Use host printf, dereference guest pointers, or execute floating
-//   conversion.
+//     conversion.
 // - Allows:
 //   - Inputs: parsed scalar directives plus explicit canonical promoted bits.
 //   - Outputs: zero only when emitted bytes/counts and rejection atomicity
-//   match.
+//     match.
 //   - Side effects: test-local sinks and resolved argument records only.
 // - Split-When:
-//   - Pointer-backed or floating execution gains independent conformance.
+//   - Pointer-dereferencing or floating execution gains independent
+//     conformance.
 // - Merge-When:
 //   - Complete formatter conformance owns these exact scalar vectors directly.
 // - Summary:
-//   - Locks promotion-aware narrowing and integer/character/percent execution.
+//   - Locks promotion-aware narrowing and integer/character/pointer/percent
+//     execution.
 // - Description:
 //   - Covers signed minima, dirty high bits, prefixes, precision, and padding.
 // - Usage:
@@ -122,6 +124,25 @@ static int test_unsigned_narrowing(void) {
   return 0;
 }
 
+static int test_pointer_encoding(void) {
+  if (!expect_text("%p", UINT64_C(0), "0", UINT32_C(1))) {
+    return 1;
+  }
+  if (!expect_text("%p", UINT64_C(1), "0x1", UINT32_C(3))) {
+    return 2;
+  }
+  if (!expect_text("%8p", UINT64_C(0x2a), "    0x2a", UINT32_C(8))) {
+    return 3;
+  }
+  if (!expect_text("%-8p", UINT64_C(0x2a), "0x2a    ", UINT32_C(8))) {
+    return 4;
+  }
+  if (!expect_text("%p", UINT64_C(0xffffffff), "0xffffffff", UINT32_C(10))) {
+    return 5;
+  }
+  return 0;
+}
+
 static int test_character_and_percent(void) {
   if (!expect_text("%-3c", UINT64_C(65), "A  ", UINT32_C(3))) {
     return 1;
@@ -162,7 +183,6 @@ static int test_rejections(void) {
 
   if (!reject_without_sink_change("%f", UINT64_C(0)) ||
       !reject_without_sink_change("%s", UINT64_C(4)) ||
-      !reject_without_sink_change("%p", UINT64_C(4)) ||
       !reject_without_sink_change("%n", UINT64_C(4))) {
     return 1;
   }
@@ -206,12 +226,19 @@ static int test_rejections(void) {
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT) {
     return 8;
   }
+  if (!build_resolved("%p", UINT64_C(0x100000000), &resolved) ||
+      malbolge_guest_format_execute_scalar(&sink, &resolved) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
+      sink.required != UINT32_C(0)) {
+    return 9;
+  }
   return 0;
 }
 
 int main(void) {
   const int signed_result = test_signed_narrowing();
   const int unsigned_result = test_unsigned_narrowing();
+  const int pointer_result = test_pointer_encoding();
   const int character_result = test_character_and_percent();
   const int rejected = test_rejections();
 
@@ -221,8 +248,11 @@ int main(void) {
   if (unsigned_result != 0) {
     return 20 + unsigned_result;
   }
-  if (character_result != 0) {
-    return 30 + character_result;
+  if (pointer_result != 0) {
+    return 30 + pointer_result;
   }
-  return rejected == 0 ? 0 : 40 + rejected;
+  if (character_result != 0) {
+    return 40 + character_result;
+  }
+  return rejected == 0 ? 0 : 50 + rejected;
 }

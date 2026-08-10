@@ -10,7 +10,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Stable token representation and semantic admission for C23 printf
-//   grammar.
+//     grammar.
 // - Must-Not:
 //   - Consume variadic arguments, emit output bytes, or call host formatting.
 // - Allows:
@@ -25,12 +25,12 @@
 //   - Tokenizes and admits C23 printf directives without coupling to va_list.
 // - Description:
 //   - Preserves dynamic fields, specific-width modifiers, and closed
-//   specifiers.
+//     specifiers.
 // - Usage:
 //   - Repeated from offset zero until an end token is returned.
 // - Defaults:
 //   - Decimal overflow, incomplete directives, and unknown specifiers fail
-//   closed.
+//     closed.
 //
 
 //! Deterministic C23 printf-format tokenizer below guest variadic decoding.

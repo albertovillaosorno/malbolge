@@ -121,7 +121,8 @@ parts:
     path: domain/format_scalar.c
     kind: domain
     language: c
-    responsibility: Execute promotion-aware integer, character, and percent output.
+    responsibility: >-
+      Execute promotion-aware integer, character, pointer, and percent output.
 projects: []
 tests: []
 graph:

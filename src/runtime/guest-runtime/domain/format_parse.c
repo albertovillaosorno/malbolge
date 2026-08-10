@@ -26,7 +26,7 @@
 //   - Enforces conversion/length/precision/flag rules and guest width support.
 // - Usage:
 //   - Called repeatedly by future snprintf/vsnprintf execution above typed
-//   sinks.
+//     sinks.
 // - Defaults:
 //   - Width/precision/length-width arithmetic is checked in the uint32 domain.
 //

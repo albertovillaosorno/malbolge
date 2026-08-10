@@ -254,8 +254,9 @@ static int test_semantic_admission(void) {
       "%-10p",     "%hhn",      "%w8n",   "%wf32n", "%%",
   };
   static const char *const rejected[] = {
-      "%Ld", "%llf", "%hc",  "%hs",  "%lp",  "%w32f", "%w24d", "%#d",
-      "%+u", "%0s",  "%.2c", "%.2p", "%.2n", "%5%",   "%10n",  "%-n",
+      "%Ld",  "%llf", "%hc", "%hs",  "%lp",  "%w32f", "%w24d",
+      "%#d",  "%+u",  "%0s", "%.2c", "%.2p", "%.2n",  "%5%",
+      "%10n", "%-n",  "%+p", "%0p",  "%#p",
   };
   uint32_t index = UINT32_C(0);
   MalbolgeGuestFormatDirective malformed = {

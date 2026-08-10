@@ -9,24 +9,26 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Execution of resolved non-pointer, non-floating printf conversions.
+//   - Execution of resolved non-dereferencing, non-floating conversions.
 // - Must-Not:
 //   - Dereference guest pointers, execute %n, float-format, or inspect va_list.
 // - Allows:
 //   - Inputs: admitted/resolved scalar format argument and bounded format sink.
-//   - Outputs: deterministic integer/character/percent bytes and count updates.
+//   - Outputs: deterministic integer/character/pointer/percent bytes and count
+//     updates.
 //   - Side effects: bounded sink writes only through the typed formatting
-//   kernel.
+//     kernel.
 // - Split-When:
-//   - Pointer-backed or floating conversions gain independent execution policy.
+//   - Pointer-dereferencing or floating conversions gain independent execution
+//     policy.
 // - Merge-When:
 //   - Full formatter execution can own all conversion families without
-//   ambiguity.
+//     ambiguity.
 // - Summary:
-//   - Executes d/i/u/o/x/X/b/B/c/% after explicit promotion-aware resolution.
+//   - Executes d/i/u/o/x/X/b/B/c/p/% after promotion-aware resolution.
 // - Description:
 //   - Narrows hh/h/w8/w16 by bits and sign-extends without host signed
-//   overflow.
+//     overflow.
 // - Usage:
 //   - Called after atomic dynamic-field and promoted-argument resolution.
 // - Defaults:

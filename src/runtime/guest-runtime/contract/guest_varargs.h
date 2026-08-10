@@ -12,12 +12,12 @@
 //   - Canonical cursor semantics for promoted malbolge-c32-v1 variadic objects.
 // - Must-Not:
 //   - Expose host va_list layout, infer registers, or consume native stack
-//   state.
+//     state.
 // - Allows:
 //   - Inputs: one guest argument-byte block, decoded logical address, and kind.
 //   - Outputs: raw canonical value bits plus an advanced fail-closed cursor.
 //   - Side effects: caller-owned cursor/result publication after complete
-//   reads.
+//     reads.
 // - Split-When:
 //   - Public C va_list bridging needs an independently versioned compiler ABI.
 // - Merge-When:
@@ -26,7 +26,7 @@
 //   - Decodes naturally aligned promoted variadic objects from guest bytes.
 // - Description:
 //   - Uses guest logical alignment and little-endian object representation
-//   only.
+//     only.
 // - Usage:
 //   - Compiler/runtime bridges decode hidden-frame variadic_begin to its
 //     zero-based logical byte address before initialization.

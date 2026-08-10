@@ -92,12 +92,23 @@
     "variadic_decoder": "canonical-promoted-block-cursor-implemented",
     "variadic_cursor_address": "decoded-object-pointer-zero-based-offset",
     "variadic_cursor_maximum_byte_offset": 4294967294,
-    "variadic_kinds": ["i32", "u32", "i64", "u64", "f64-bits", "f128-bits", "pointer32"],
+    "variadic_kinds": [
+      "i32",
+      "u32",
+      "i64",
+      "u64",
+      "f64-bits",
+      "f128-bits",
+      "pointer32"
+    ],
     "source_va_list_bridge": "compiler-lowering-required",
-    "format_argument_resolution": "atomic-dynamic-fields-and-promoted-conversion",
-    "scalar_conversion_execution": "d-i-u-o-x-X-b-B-c-percent-implemented",
+    "format_argument_resolution":
+      "atomic-dynamic-fields-and-promoted-conversion",
+    "scalar_conversion_execution": "d-i-u-o-x-X-b-B-c-p-percent-implemented",
     "wide_character_argument": "wint-t-not-defined-v1-fail-closed",
-    "pointer_conversion_execution": "not-implemented",
+    "pointer_conversion_execution": "p-object-pointer-encoding-hex-implemented",
+    "pointer_null_format": "0",
+    "pointer_nonnull_format": "0x-lowercase-guest-encoding",
     "floating_formatting": "not-implemented",
     "public_routines": [
       "snprintf",

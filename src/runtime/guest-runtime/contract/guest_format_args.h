@@ -10,33 +10,33 @@
 // Boundary-Contract:
 // - Owns:
 //   - Atomic resolution of admitted printf directives against guest vararg
-//   bytes.
+//     bytes.
 // - Must-Not:
 //   - Execute conversions, dereference guest pointers, or use host va_list
-//   state.
+//     state.
 // - Allows:
 //   - Inputs: admitted directive plus canonical promoted-argument cursor.
 //   - Outputs: resolved width/precision and one raw promoted conversion
-//   argument.
+//     argument.
 //   - Side effects: cursor/result publication only after every required read
-//   passes.
+//     passes.
 // - Split-When:
 //   - Pointer-backed string/count access gains an independent memory-view
-//   policy.
+//     policy.
 // - Merge-When:
 //   - Full formatter execution owns this exact argument-resolution transaction.
 // - Summary:
 //   - Consumes dynamic fields and conversion arguments without partial
-//   advancement.
+//     advancement.
 // - Description:
 //   - Applies C negative-width and negative-precision rules in uint32
-//   arithmetic.
+//     arithmetic.
 // - Usage:
 //   - Runs after format directive admission and before typed conversion
-//   execution.
+//     execution.
 // - Defaults:
 //   - Percent conversion consumes no argument and publishes a NONE argument
-//   kind.
+//     kind.
 //
 
 //! Atomic guest format-argument resolution above the canonical vararg cursor.

@@ -56,6 +56,9 @@ terms into the repository MIT license.
 - WG14 N3220 specifies the C23 formatted-output grammar and bounded
   `snprintf`/`vsnprintf` semantics, including the would-have-written result
   when the destination truncates output.
+- The C formatted-output contract leaves `%p` pointer text
+  implementation-defined, so the guest runtime may select and document a stable
+  representation instead of inheriting host pointer spelling.
 
 ### Unresolved
 

@@ -30,7 +30,7 @@
 //   - Rejection occurs at the vsnprintf reference in this source file.
 //
 
-//! Public variadic formatting stays gated until guest va_list decoding exists.
+//! Public vsnprintf still needs source va_list, guest memory, and floats.
 
 #include <stdio.h>
 

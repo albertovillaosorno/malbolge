@@ -9,15 +9,16 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Promotion-aware execution of resolved scalar printf conversions.
+//   - Promotion-aware execution of resolved non-dereferencing conversions.
 // - Must-Not:
 //   - Dereference pointers, execute %n, format floating values, or call host
-//   libc.
+//     libc.
 // - Allows:
 //   - Inputs: validated resolved directive/value plus typed bounded sink.
-//   - Outputs: integer, character, or percent bytes with exact sink accounting.
+//   - Outputs: integer, character, pointer, or percent bytes with exact sink
+//     accounting.
 //   - Side effects: sink mutation delegated only to guest formatting
-//   primitives.
+//     primitives.
 // - Split-When:
 //   - Another conversion family needs separate execution and proof obligations.
 // - Merge-When:
@@ -26,11 +27,11 @@
 //   - Converts raw promoted bits to C-directed scalar widths then emits them.
 // - Description:
 //   - Signed narrowing uses explicit two's-complement magnitude, never host
-//   casts.
+//     casts.
 // - Usage:
 //   - Runs after malbolge_guest_format_resolve_argument succeeds.
 // - Defaults:
-//   - Pointer-backed and floating conversions return INVALID_ARGUMENT.
+//   - String/count pointer dereferences and floating conversions fail closed.
 //
 
 //! Scalar printf conversion execution over resolved canonical guest arguments.
@@ -128,7 +129,8 @@ canonical_argument(const MalbolgeGuestResolvedFormatArgument *resolved) {
     return resolved->argument.low == UINT64_C(0);
   }
   if (resolved->argument_kind == MALBOLGE_GUEST_VARARG_I32 ||
-      resolved->argument_kind == MALBOLGE_GUEST_VARARG_U32) {
+      resolved->argument_kind == MALBOLGE_GUEST_VARARG_U32 ||
+      resolved->argument_kind == MALBOLGE_GUEST_VARARG_POINTER32) {
     return resolved->argument.low <= UINT32_MAX;
   }
   return resolved->argument_kind == MALBOLGE_GUEST_VARARG_I64 ||
@@ -164,6 +166,16 @@ execute_unsigned(MalbolgeGuestFormatSink *sink,
   const uint64_t value = narrow_unsigned(resolved->argument.low,
                                          integer_width(&resolved->directive));
   return malbolge_guest_format_unsigned(sink, value, &format);
+}
+
+static MalbolgeGuestRuntimeStatus
+execute_pointer(MalbolgeGuestFormatSink *sink,
+                const MalbolgeGuestResolvedFormatArgument *resolved) {
+  MalbolgeGuestIntegerFormat format =
+      integer_format(&resolved->directive, UINT32_C(16), 0);
+
+  format.flags |= MALBOLGE_GUEST_FORMAT_ALTERNATE;
+  return malbolge_guest_format_unsigned(sink, resolved->argument.low, &format);
 }
 
 MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_scalar(
@@ -203,8 +215,10 @@ MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_scalar(
   case MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER:
   case MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL:
   case MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL_UPPER:
-  case MALBOLGE_GUEST_FORMAT_CONVERSION_STRING:
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
   case MALBOLGE_GUEST_FORMAT_CONVERSION_POINTER:
+    return execute_pointer(sink, resolved);
+  case MALBOLGE_GUEST_FORMAT_CONVERSION_STRING:
   case MALBOLGE_GUEST_FORMAT_CONVERSION_COUNT:
   default:
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;

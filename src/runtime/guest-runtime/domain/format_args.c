@@ -10,7 +10,7 @@
 // Boundary-Contract:
 // - Owns:
 //   - Transactional guest printf argument resolution over canonical vararg
-//   bytes.
+//     bytes.
 // - Must-Not:
 //   - Format output, dereference guest pointers, or inspect a native va_list.
 // - Allows:
@@ -19,7 +19,7 @@
 //   - Side effects: original cursor/result mutation only on complete success.
 // - Split-When:
 //   - Conversion execution or guest-memory dereference needs separate
-//   ownership.
+//     ownership.
 // - Merge-When:
 //   - One public formatter can own resolution without hiding ABI semantics.
 // - Summary:

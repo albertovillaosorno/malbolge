@@ -14,10 +14,10 @@
 //   - Use host va_list, native stack inspection, or host object representation.
 // - Allows:
 //   - Inputs: explicit little-endian promoted argument bytes and guest
-//   addresses.
+//     addresses.
 //   - Outputs: zero only when alignment, decoding, and failure atomicity match.
 //   - Side effects: test-local blocks, cursors, and decoded-value structures
-//   only.
+//     only.
 // - Split-When:
 //   - Public va_list bridging gains independent compiler integration evidence.
 // - Merge-When:
@@ -26,7 +26,7 @@
 //   - Locks promoted scalar decoding with guest natural alignment and bounds.
 // - Description:
 //   - Exercises 32/64/128-bit values, pointers, padding, overflow, and
-//   failures.
+//     failures.
 // - Usage:
 //   - Built and executed by tests/test_guest_runtime_c.py.
 // - Defaults:

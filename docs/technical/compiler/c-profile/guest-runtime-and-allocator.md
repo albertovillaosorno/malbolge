@@ -116,7 +116,8 @@ constant work per emitted segment rather than by looping over bytes that cannot
 fit the destination.
 
 The typed kernel deliberately does not consume `va_list` or format floating
-values. `guest_format_parse.h` and `format_parse.c` now own a separate C23 narrow
+values. `guest_format_parse.h` and `format_parse.c` now own a separate C23
+narrow
 format tokenizer. Literal spans, escaped percent, flags, literal/dynamic width
 and precision, classic and `wN`/`wfN` length modifiers, and closed conversion
 tags are preserved without consuming arguments. Decimal overflow, incomplete
@@ -126,18 +127,21 @@ relationships and limits guest `wN`/`wfN` support to 8, 16, 32, and 64 bits.
 
 The canonical promoted-block vararg cursor and transactional argument resolver
 consume dynamic width/precision plus the main promoted value without partial
-cursor advancement. A scalar executor now completes `d/i/u/o/x/X/b/B/c/%`
+cursor advancement. A scalar executor now completes `d/i/u/o/x/X/b/B/c/p/%`
 through the typed kernel, including post-promotion `hh`/`h`/`wN` narrowing by
-explicit bits. `%lc` fails closed because version one defines `wchar_t` but has
-no `wint_t` authority. Pointer-backed `%s/%p/%n` execution remains separate from
-the scalar core because it needs guest-memory policy.
+explicit bits. C permits `%p` output to be implementation-defined, so the guest
+contract fixes null as `0` and non-null object pointers as lowercase `0x` plus
+the canonical 32-bit guest pointer encoding. No host address is exposed. `%lc`
+fails closed because version one defines `wchar_t` but has no `wint_t`
+authority. `%s` and `%n` remain separate because they require guest-memory
+dereference/write policy.
 
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
 contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor, pointer-backed execution is defined,
-and floating formatting is complete.
+into the canonical promoted-block cursor, `%s`/`%n` guest-memory execution is
+defined, and floating formatting is complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -147,7 +151,8 @@ literal/conversion streaming, `%b`/`%B`, dynamic fields, classic and specific-
 width modifiers, decimal-overflow rejection, malformed directives, and error
 non-publication. Vararg/resolution vectors cover natural guest alignment,
 32/64/128-bit promoted values, negative dynamic fields, rollback on late
-failure, and promotion-aware scalar narrowing. Windows i686/x64/ARM64 syntax
+failure, promotion-aware scalar narrowing, and exact guest-pointer `%p` text.
+Windows i686/x64/ARM64 syntax
 checks, native execution, and wasm32 symbol inspection keep the formatting
 layers independent of host formatting. The typed vectors also pass pinned
 ASan/UBSan and path-sensitive Clang analysis.
@@ -183,7 +188,8 @@ arbitrary-precision `isqrt`, including subnormal and exponent-boundary cases.
 Cross-ABI object inspection proves the implementation adds no callable host or
 compiler helper beyond the same target float/stack markers already allowed for
 ordinary guest math. `sin`, `cos`, and `atan2` remain unavailable until their
-correctly-rounded guest algorithms satisfy the stronger transcendental contracts.
+correctly-rounded guest algorithms satisfy the stronger transcendental
+contracts.
 
 Version one needs no separate guest scheduler or ordinary-integer-helper API:
 integer operations are explicit typed-IR semantics for lane-9 lowering, and the
@@ -238,6 +244,7 @@ lowered through host-dependent behavior.
   runtime semantic identities and implementation inputs.
 - Prerequisite completion evidence: `supported-libc-contract`,
   `safe-rust-malbolge-vm`.
+
 ## References
 
 - [Deterministic C Surface And Clang

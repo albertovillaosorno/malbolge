@@ -16,14 +16,14 @@
 //   - Inputs: tracked guest bytes, zero-based linear address, and value kind.
 //   - Outputs: raw little-endian value bits and advanced canonical cursor.
 //   - Side effects: cursor/result mutation only after complete bounds
-//   admission.
+//     admission.
 // - Split-When:
 //   - Aggregate variadic values become an independently supported ABI family.
 // - Merge-When:
 //   - One formatter cursor directly owns this exact promoted-object decoding.
 // - Summary:
 //   - Applies guest natural alignment and decodes scalar variadic
-//   representations.
+//     representations.
 // - Description:
 //   - Covers i32/u32/i64/u64/f64/f128/object-pointer promoted storage shapes.
 // - Usage:

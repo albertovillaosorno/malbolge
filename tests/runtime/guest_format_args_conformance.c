@@ -15,9 +15,9 @@
 // - Allows:
 //   - Inputs: parsed directives and explicit promoted guest argument bytes.
 //   - Outputs: zero only when dynamic fields, kinds, values, and atomicity
-//   match.
+//     match.
 //   - Side effects: test-local bytes, cursor, and resolved-result structures
-//   only.
+//     only.
 // - Split-When:
 //   - Floating or guest-memory conversion execution gains independent vectors.
 // - Merge-When:
@@ -26,12 +26,12 @@
 //   - Locks dynamic width/precision consumption and conversion-argument reads.
 // - Description:
 //   - Includes negative fields, INT_MIN width, promoted hhu, percent, and
-//   rollback.
+//     rollback.
 // - Usage:
 //   - Built and executed by tests/test_guest_runtime_c.py.
 // - Defaults:
 //   - A late missing conversion argument rolls back earlier dynamic-field
-//   reads.
+//     reads.
 //
 
 //! Atomic format-argument resolution vectors over canonical guest varargs.
