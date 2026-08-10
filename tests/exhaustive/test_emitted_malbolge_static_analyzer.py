@@ -63,12 +63,13 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v2"
+_SCHEMA = "malbolge-static-image/v3"
 _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
 _GRAPHICAL_START = 33
 _GRAPHICAL_END = 126
 _DECODE_PERIOD = 94
 _HISTORICAL_XLAT1_DECLARATION = "const char xlat1[] ="
+_HISTORICAL_XLAT2_DECLARATION = "const char xlat2[] ="
 _HISTORICAL_LOAD_ADMISSION_PREFIX = 'strchr( "'
 _HISTORICAL_JUMP_DATA_ASSIGNMENT = "case 'j': d = mem[d]; break;"
 _HISTORICAL_JUMP_CODE_ASSIGNMENT = "case 'i': c = mem[d]; break;"
@@ -76,10 +77,21 @@ _HISTORICAL_CODE_WRAP = "if ( c == 59048 ) c = 0; else c++;"
 _HISTORICAL_DATA_WRAP = "if ( d == 59048 ) d = 0; else d++;"
 _HISTORICAL_HALT = "case 'v': return;"
 _HISTORICAL_ENCRYPTION = "mem[c] = xlat2[mem[c] - 33];"
+_HISTORICAL_RECURRENCE = (
+    "while ( i < 59049 ) mem[i] = op( mem[i - 1], mem[i - 2] ), i++;"
+)
+_HISTORICAL_ROTATE = (
+    "case '*': a = mem[d] = mem[d] / 3 + mem[d] % 3 * 19683; break;"
+)
 _TEST_ALLOWED_INSTRUCTIONS = frozenset(b"ji*p</vo")
 _TEST_XLAT1 = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
     rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
+)
+_TEST_XLAT2 = bytes.fromhex(
+    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51"
+    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c"
+    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940"
 )
 
 
@@ -100,6 +112,26 @@ class _Cell(Protocol):
     data_alias_can_change_encryption_input: bool
 
 
+class _EntryTransition(Protocol):
+    status: str
+    fetched_address: int
+    decoded_byte: int
+    data_address: int
+    code_data_alias: bool
+    planned_data_write_address: int | None
+    planned_data_write_value: int | None
+    encryption_address: int | None
+    encryption_input: int | None
+    encryption_output: int | None
+    data_write_aliases_encryption: bool
+    input_dependent_accumulator: bool
+    result_accumulator: int | None
+    result_code_pointer: int
+    result_data_pointer: int
+    next_fetch_address: int | None
+    pointer_wraps: bool
+
+
 class _Report(Protocol):
     schema: str
     profile_id: str
@@ -110,6 +142,7 @@ class _Report(Protocol):
     required_source_words: int
     admitted_initial_image: bool
     initial_cells: tuple[_Cell, ...]
+    entry_transition: _EntryTransition | None
     findings: tuple[_Finding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -125,7 +158,9 @@ class _AnalyzerModule(Protocol):
 
 
 def _load_analyzer() -> _AnalyzerModule:
-    spec = importlib.util.spec_from_file_location("emitted_malbolge", _ANALYZER)
+    spec = importlib.util.spec_from_file_location(
+        "verifier.emitted_malbolge", _ANALYZER
+    )
     if spec is None or spec.loader is None:
         message = "static analyzer module cannot be loaded"
         raise RuntimeError(message)
@@ -163,6 +198,21 @@ def _historical_xlat1() -> bytes:
         decoded = "".join(ast.literal_eval(literal) for literal in literals)
     except (SyntaxError, ValueError) as error:
         message = "historical interpreter xlat1 literal is malformed"
+        raise AssertionError(message) from error
+    return decoded.encode("ascii")
+
+
+def _historical_xlat2() -> bytes:
+    source = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
+    _, declaration, tail = source.partition(_HISTORICAL_XLAT2_DECLARATION)
+    if not declaration:
+        message = "historical interpreter xlat2 declaration is missing"
+        raise AssertionError(message)
+    literals = _historical_xlat1_literals(tail)
+    try:
+        decoded = "".join(ast.literal_eval(literal) for literal in literals)
+    except (SyntaxError, ValueError) as error:
+        message = "historical interpreter xlat2 literal is malformed"
         raise AssertionError(message) from error
     return decoded.encode("ascii")
 
@@ -210,6 +260,11 @@ def test_report_profile_identity_matches_canonical_authority() -> None:
 def test_independent_decode_table_matches_preserved_interpreter() -> None:
     """Independent decode expectations are anchored to primary evidence."""
     assert _historical_xlat1() == _TEST_XLAT1
+
+
+def test_independent_encryption_table_matches_preserved_interpreter() -> None:
+    """Independent encryption expectations are anchored to primary evidence."""
+    assert _historical_xlat2() == _TEST_XLAT2
 
 
 def test_load_admission_set_matches_preserved_interpreter() -> None:
@@ -372,6 +427,98 @@ def test_initial_cells_classify_self_modification_target() -> None:
         ) == classification
 
 
+def test_entry_transition_resolves_known_fixture() -> None:
+    """Resolve the exact first transition without executing a guest loop."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    transition = report.entry_transition
+    assert transition is not None
+    assert transition.status == "continued"
+    assert transition.fetched_address == 0
+    assert transition.decoded_byte == ord("<")
+    assert transition.data_address == 0
+    assert transition.code_data_alias
+    assert transition.encryption_address == 0
+    assert transition.encryption_input == 99
+    assert transition.encryption_output == _TEST_XLAT2[99 - 33]
+    assert transition.result_accumulator == 0
+    assert transition.result_code_pointer == 1
+    assert transition.result_data_pointer == 1
+    assert transition.next_fetch_address == 1
+    assert not transition.pointer_wraps
+
+
+def test_entry_rotate_alias_detects_invalid_self_encryption() -> None:
+    """Resolve the entry C/D alias before historical xlat2 table access."""
+    interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
+    assert _HISTORICAL_ROTATE in interpreter
+    report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
+    assert report.admitted_initial_image
+    transition = report.entry_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("*")
+    assert transition.status == "rejected-invalid-self-encryption"
+    assert transition.planned_data_write_address == 0
+    assert transition.planned_data_write_value == 13
+    assert transition.data_write_aliases_encryption
+    assert transition.encryption_address == 0
+    assert transition.encryption_input == 13
+    assert transition.encryption_output is None
+    assert transition.result_accumulator == 0
+    assert transition.result_code_pointer == 0
+    assert transition.result_data_pointer == 0
+    assert transition.next_fetch_address is None
+
+
+def test_entry_jump_resolves_initial_recurrence_encryption_target() -> None:
+    """Resolve one post-jump encryption target through initial recurrence."""
+    interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
+    assert _HISTORICAL_RECURRENCE in interpreter
+    assert _HISTORICAL_JUMP_CODE_ASSIGNMENT in interpreter
+    report = _ANALYZER_MODULE.analyze_source(b"b'")
+    assert report.admitted_initial_image
+    transition = report.entry_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("i")
+    assert transition.status == "rejected-invalid-self-encryption"
+    assert transition.encryption_address == 98
+    assert transition.encryption_input == 29_492
+    assert transition.encryption_output is None
+    assert transition.result_code_pointer == 0
+    assert transition.result_data_pointer == 0
+    assert transition.next_fetch_address is None
+
+
+def test_entry_halt_skips_encryption_and_pointer_advance() -> None:
+    """Halt is an exact terminal entry transition with unchanged registers."""
+    report = _ANALYZER_MODULE.analyze_source(bytes((81, 80)))
+    assert report.admitted_initial_image
+    transition = report.entry_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("v")
+    assert transition.status == "halted"
+    assert transition.encryption_address is None
+    assert transition.encryption_input is None
+    assert transition.result_accumulator == 0
+    assert transition.result_code_pointer == 0
+    assert transition.result_data_pointer == 0
+    assert transition.next_fetch_address is None
+
+
+def test_entry_input_marks_only_accumulator_as_input_dependent() -> None:
+    """Unknown first input does not make entry pointer flow unknown."""
+    report = _ANALYZER_MODULE.analyze_source(bytes((117, 116)))
+    assert report.admitted_initial_image
+    transition = report.entry_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("/")
+    assert transition.status == "continued"
+    assert transition.input_dependent_accumulator
+    assert transition.result_accumulator is None
+    assert transition.result_code_pointer == 1
+    assert transition.result_data_pointer == 1
+    assert transition.next_fetch_address == 1
+
+
 def test_historical_address_domain_is_structurally_closed() -> None:
     """Classic pointers stay inside the fixed 59,049-word memory domain."""
     interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
@@ -388,13 +535,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:not-analyzed",
-        "control-flow-reachability:not-analyzed",
-        "dataflow:not-analyzed",
+        "code-data-aliasing:entry-step-only",
+        "control-flow-reachability:entry-step-only",
+        "dataflow:entry-step-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:target-classification-only",
+        "self-modification:entry-step-only",
         "source-map-context:not-analyzed",
-        "wraparound-reachability:not-analyzed",
+        "wraparound-reachability:entry-step-only",
     )
 
 

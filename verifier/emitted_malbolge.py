@@ -43,11 +43,18 @@ import sys
 from typing import Final
 from typing import Never
 
+if __package__:
+    from .emitted_malbolge_entry import EntryTransition
+    from .emitted_malbolge_entry import analyze_entry_transition
+else:
+    from emitted_malbolge_entry import EntryTransition
+    from emitted_malbolge_entry import analyze_entry_transition
+
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _PROFILE_MEMORY_WORDS: Final = 59_049
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v2"
+_SCHEMA: Final = "malbolge-static-image/v3"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -66,13 +73,13 @@ _XLAT1: Final = (
     rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
 )
 _LIMITS: Final = (
-    "code-data-aliasing:not-analyzed",
-    "control-flow-reachability:not-analyzed",
-    "dataflow:not-analyzed",
+    "code-data-aliasing:entry-step-only",
+    "control-flow-reachability:entry-step-only",
+    "dataflow:entry-step-only",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:target-classification-only",
+    "self-modification:entry-step-only",
     "source-map-context:not-analyzed",
-    "wraparound-reachability:not-analyzed",
+    "wraparound-reachability:entry-step-only",
 )
 
 
@@ -113,12 +120,13 @@ class StaticImageReport:
     required_source_words: int
     admitted_initial_image: bool
     initial_cells: tuple[InitialCell, ...]
+    entry_transition: EntryTransition | None
     findings: tuple[StaticFinding, ...]
     analysis_limits: tuple[str, ...]
 
 
-def _source_word_requirement(source: bytes) -> int:
-    return sum(byte not in _SOURCE_WHITESPACE for byte in source)
+def _loaded_source_words(source: bytes) -> tuple[int, ...]:
+    return tuple(byte for byte in source if byte not in _SOURCE_WHITESPACE)
 
 
 def _lexical_finding(source: bytes) -> StaticFinding | None:
@@ -195,7 +203,8 @@ def analyze_source(source: bytes) -> StaticImageReport:
         Deterministic bounded initial-image analysis.
 
     """
-    required = _source_word_requirement(source)
+    words = _loaded_source_words(source)
+    required = len(words)
     findings: list[StaticFinding] = []
     lexical = _lexical_finding(source)
     if lexical is not None:
@@ -219,10 +228,15 @@ def analyze_source(source: bytes) -> StaticImageReport:
             )
         )
     cells: tuple[InitialCell, ...] = ()
+    entry_transition: EntryTransition | None = None
     within_profile = _RECURRENCE_BASE_WORDS <= required <= _PROFILE_MEMORY_WORDS
     if lexical is None and within_profile:
         cells = _initial_cells(source)
         findings.extend(_decode_findings(cells))
+        if not findings:
+            entry_transition = analyze_entry_transition(
+                words, cells[0].decoded_byte
+            )
     return StaticImageReport(
         schema=_SCHEMA,
         profile_id=_PROFILE_ID,
@@ -233,6 +247,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         required_source_words=required,
         admitted_initial_image=not findings,
         initial_cells=cells,
+        entry_transition=entry_transition,
         findings=tuple(findings),
         analysis_limits=_LIMITS,
     )
