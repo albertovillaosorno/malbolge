@@ -180,6 +180,14 @@ def _is_redirect(path: Path, mode: int) -> bool:
     return S_ISLNK(mode) or path.is_junction()
 
 
+def _read_file_bytes(path: Path, context: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"{context} read failed: {path}: {error}"
+        raise ExactTreeError(message) from error
+
+
 def _record_file(root: Path, path: Path) -> FileRecord | None:
     mode = _entry_mode(path, "tree entry")
     if mode is None:
@@ -195,7 +203,7 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
         raise ExactTreeError(message)
     relative = path.relative_to(root).as_posix()
     relative_path = _validate_relative_path(relative)
-    data = path.read_bytes()
+    data = _read_file_bytes(path, "tree entry")
     return FileRecord(path=relative_path, sha256=_sha256(data), size=len(data))
 
 

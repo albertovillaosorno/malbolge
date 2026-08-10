@@ -354,6 +354,27 @@ def test_snapshot_entry_status_errors_fail_closed(
         _ = snapshot_tree(root)
 
 
+def test_snapshot_entry_read_errors_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable regular file cannot leak a host filesystem exception."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    blocked = root / "blocked.txt"
+    _ = blocked.write_bytes(b"evidence")
+    original_read = Path.read_bytes
+
+    def fail_read(path: Path) -> bytes:
+        if path == blocked:
+            message = "blocked exact read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    with pytest.raises(ExactTreeError, match="tree entry read failed"):
+        _ = snapshot_tree(root)
+
+
 def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
     """Do not silently dereference source-tree symlinks."""
     root = tmp_path / "tree"
