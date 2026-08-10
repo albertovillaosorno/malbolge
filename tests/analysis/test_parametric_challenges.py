@@ -100,6 +100,15 @@ _ARITHMETIC_DAG_V1_ORACLE_SHA256 = (
 _ARITHMETIC_DAG_V1_MANIFEST_SHA256 = (
     "f51043df00825e1b16fc9ded26cfeec71b10979bc852fd9533184b8aefe2d489"
 )
+_POINTER_WALK_V1_SOURCE_SHA256 = (
+    "97a040fffa3d73fd1114944b6cd41e8fff158c54e19b6f1a9ef8209a8c4d0181"
+)
+_POINTER_WALK_V1_ORACLE_SHA256 = (
+    "ac0317e131d5170fc13ff5b310406b1dce9473cd3c92575a8a8438acab24ada8"
+)
+_POINTER_WALK_V1_MANIFEST_SHA256 = (
+    "e92dcb30cc2a6f1477564b3c9843a6bc47c04ed06beaafa74589dbaf788854cf"
+)
 
 
 class _ChallengeIdentity(Protocol):
@@ -220,6 +229,25 @@ def test_arithmetic_dag_v1_preserves_known_replay_vector() -> None:
     assert (
         hashlib.sha256(generated.manifest).hexdigest()
         == _ARITHMETIC_DAG_V1_MANIFEST_SHA256
+    )
+
+
+def test_pointer_walk_v1_preserves_known_replay_vector() -> None:
+    """Keep published v1 pointer identities byte-compatible."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_POINTER_WALK_FAMILY, seed=0x1234, nodes=64)
+    )
+    assert (
+        hashlib.sha256(generated.source).hexdigest()
+        == _POINTER_WALK_V1_SOURCE_SHA256
+    )
+    assert (
+        hashlib.sha256(generated.oracle).hexdigest()
+        == _POINTER_WALK_V1_ORACLE_SHA256
+    )
+    assert (
+        hashlib.sha256(generated.manifest).hexdigest()
+        == _POINTER_WALK_V1_MANIFEST_SHA256
     )
 
 
