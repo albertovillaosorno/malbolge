@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import importlib.util
+from pathlib import Path
 from stat import S_ISLNK
 from stat import S_ISREG
 import sys
@@ -45,7 +46,6 @@ from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
     from types import ModuleType
 
     from algorithms.diff.admission import IdentityTree
@@ -106,9 +106,10 @@ def _load_module(path: Path) -> ModuleType:
     sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception as error:
         _ = sys.modules.pop(name, None)
-        raise
+        message = f"diff domain module execution failed: {resolved}: {error}"
+        raise DomainContractError(message) from error
     return module
 
 
@@ -120,13 +121,19 @@ def _callable(module: ModuleType, name: str) -> Callable[..., object]:
     return value
 
 
-def load_diff_domain(path: Path) -> DiffDomain:
+def load_diff_domain(path: object) -> DiffDomain:
     """Load and validate the trusted local consumer module used for authoring.
 
     Returns:
         Explicit diff-domain hook bundle.
 
+    Raises:
+        DomainContractError: Module path or execution is invalid.
+
     """
+    if not isinstance(path, Path):
+        message = "diff domain module path must use pathlib Path"
+        raise DomainContractError(message)
     module = _load_module(path)
     return DiffDomain(
         validate_source_provenance=cast(

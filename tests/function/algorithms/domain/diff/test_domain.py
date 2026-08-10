@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.domain import load_diff_domain
@@ -72,6 +73,23 @@ def _write(path: Path, text: str) -> None:
 def _expect(condition: object, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def test_domain_loader_rejects_foreign_path_before_filesystem() -> None:
+    """Require a pathlib path before module status or loading work."""
+    with pytest.raises(DomainContractError, match="pathlib Path"):
+        _ = load_diff_domain(cast("Path", cast("object", "domain.py")))
+
+
+def test_domain_module_execution_failure_uses_contract_error(
+    tmp_path: Path,
+) -> None:
+    """Contain consumer import failures inside the domain contract boundary."""
+    module = tmp_path / "domain.py"
+    _write(module, 'raise RuntimeError("consumer boom")' + chr(10))
+
+    with pytest.raises(DomainContractError, match="module execution failed"):
+        _ = load_diff_domain(module)
 
 
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
