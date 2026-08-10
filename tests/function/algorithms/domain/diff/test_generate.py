@@ -119,6 +119,10 @@ def map_compatible_file(path, data):
     return None
 
 
+def build_compatible_correction_bindings(plan):
+    return ()
+
+
 def build_behavior_programs():
     return None
 

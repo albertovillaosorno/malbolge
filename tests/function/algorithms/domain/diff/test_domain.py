@@ -57,6 +57,10 @@ def map_compatible_file(path, data):
     return None
 
 
+def build_compatible_correction_bindings(plan):
+    return ()
+
+
 def build_behavior_programs():
     return None
 
@@ -115,6 +119,10 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
         "mapped-file adapter is not callable",
     )
     _expect(
+        callable(domain.build_compatible_correction_bindings),
+        "correction-binding builder is not callable",
+    )
+    _expect(
         callable(domain.build_behavior_programs),
         "behavior builder is not callable",
     )
@@ -137,6 +145,24 @@ def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(DomainContractError, match="map_compatible_file"):
         _ = load_diff_domain(module)
 
+
+def test_missing_correction_binding_hook_fails_closed(tmp_path: Path) -> None:
+    """Require explicit consumer ownership of conditional semantic edits."""
+    module = tmp_path / "domain.py"
+    newline = chr(10)
+    missing_hook = (
+        "def build_compatible_correction_bindings(plan):"
+        + newline
+        + "    return ()"
+        + newline
+        + newline
+    )
+    _write(module, _COMPLETE.replace(missing_hook, ""))
+
+    with pytest.raises(
+        DomainContractError, match="build_compatible_correction_bindings"
+    ):
+        _ = load_diff_domain(module)
 
 def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
     """Require a concrete regular authoring-policy module."""

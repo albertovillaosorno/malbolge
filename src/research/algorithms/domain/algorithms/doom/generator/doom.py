@@ -63,6 +63,8 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior_programs import BehaviorPrograms
+    from algorithms.diff.compatible import CompatibleAuthoringPlan
+    from algorithms.diff.compatible import CompatibleCorrectionBinding
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.provenance import SourcePinEvidence
 
@@ -849,6 +851,23 @@ def map_compatible_file(path: str, data: bytes) -> MappedView | None:
         and candidate.suffix.lower() in _CODE_SUFFIXES
     )
     return mapped_c_identity(data) if is_linux_code else None
+
+
+def build_compatible_correction_bindings(
+    plan: CompatibleAuthoringPlan,
+) -> tuple[CompatibleCorrectionBinding, ...]:
+    """Return currently authored semantic correction bindings for DOOM.
+
+    DOOM has no validated bug behavior probes yet, so no semantic edit is
+    conditional. The explicit hook keeps that absence part of the domain
+    contract rather than letting generic code guess.
+
+    Returns:
+        No correction bindings until a DOOM bug probe is independently validated.
+
+    """
+    _ = plan
+    return ()
 
 
 def build_behavior_programs() -> BehaviorPrograms:
