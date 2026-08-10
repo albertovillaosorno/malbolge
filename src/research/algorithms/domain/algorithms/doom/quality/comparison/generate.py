@@ -43,6 +43,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repo-local executables; no shell.
@@ -258,20 +259,40 @@ def _run(
     )
 
 
+def _raise_corpus_walk_error(error: OSError) -> Never:
+    message = f"corpus traversal failed: {error}"
+    raise _ComparisonError(message) from error
+
+
+def _regular_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for directory, _, filenames in root.walk(on_error=_raise_corpus_walk_error):
+        for name in filenames:
+            path = directory / name
+            try:
+                mode = path.stat().st_mode
+            except OSError as error:
+                message = f"corpus entry status failed: {path}: {error}"
+                raise _ComparisonError(message) from error
+            if S_ISREG(mode):
+                files.append(path)
+    return sorted(files)
+
+
 def _source_files(root: Path) -> list[Path]:
-    return sorted(
+    return [
         path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in SOURCE_EXTENSIONS
-    )
+        for path in _regular_files(root)
+        if path.suffix.lower() in SOURCE_EXTENSIONS
+    ]
 
 
 def _text_files(root: Path) -> list[Path]:
-    return sorted(
+    return [
         path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS
-    )
+        for path in _regular_files(root)
+        if path.suffix.lower() in TEXT_EXTENSIONS
+    ]
 
 
 def _encoding_result(
@@ -424,12 +445,11 @@ def _tree_hash(paths: list[Path], root: Path) -> str:
 
 
 def _corpus_metrics(root: Path) -> _CorpusMetrics:
-    sources = _source_files(root)
-    assets = sorted(
-        path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in ASSET_EXTENSIONS
-    )
+    files = _regular_files(root)
+    sources = [
+        path for path in files if path.suffix.lower() in SOURCE_EXTENSIONS
+    ]
+    assets = [path for path in files if path.suffix.lower() in ASSET_EXTENSIONS]
     physical = 0
     nonblank = 0
     for path in sources:
@@ -438,7 +458,7 @@ def _corpus_metrics(root: Path) -> _CorpusMetrics:
         physical += len(lines)
         nonblank += sum(1 for line in lines if line.strip())
     return _CorpusMetrics(
-        files=sum(1 for path in root.rglob("*") if path.is_file()),
+        files=len(files),
         c_files=sum(1 for path in sources if path.suffix.lower() == C_SUFFIX),
         headers=sum(
             1 for path in sources if path.suffix.lower() in HEADER_EXTENSIONS
