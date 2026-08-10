@@ -667,7 +667,7 @@ def test_public_api_rejects_foreign_identity_and_output_types() -> None:
         match="identity must use the exact immutable type",
     ):
         _ = _GENERATOR_MODULE.generate(
-            cast("_ChallengeIdentity", cast("object", object()))
+            cast("_ChallengeIdentity", object())
         )
     with pytest.raises(
         _GENERATOR_MODULE.ChallengeError,
