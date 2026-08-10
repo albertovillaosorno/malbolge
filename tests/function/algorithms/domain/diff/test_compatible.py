@@ -164,6 +164,23 @@ def _plan(tmp_path: Path) -> CompatibleAuthoringPlan:
     )
 
 
+def _plan_with_code(
+    tmp_path: Path, source_code: bytes, target_code: bytes
+) -> CompatibleAuthoringPlan:
+    source, oracle = _roots(tmp_path)
+    _write(source, "code.src", source_code)
+    _write(oracle, "code.src", target_code)
+    return build_compatible_plan(
+        CompatibleBuildRequest(
+            source_root=source,
+            oracle_root=oracle,
+            reference_identity=_identity(source),
+            admission_policy=_policy(),
+            mapper=_mapper,
+        )
+    )
+
+
 def _candidate(tmp_path: Path) -> Path:
     candidate = tmp_path / "candidate"
     _write(candidate, "code.src", _CANDIDATE_CODE)
@@ -677,6 +694,55 @@ def test_bound_bug_correction_skips_already_fixed_semantic_edit(
     _expect(
         (output / "code.src").read_bytes() == _FIXED_CANDIDATE_CODE,
         "upstream fix was overwritten",
+    )
+
+
+def test_skipped_correction_keeps_unconditional_semantic_edits(
+    tmp_path: Path,
+) -> None:
+    """Skip one named fix without suppressing another target semantic change."""
+    source_code = (
+        b"alpha = old ; stable1 ; stable2 ; beta = old ; omega"
+    )
+    target_code = (
+        b"alpha = new ; stable1 ; stable2 ; beta = new ; omega"
+    )
+    candidate_code = (
+        b"extra ; alpha = new ; stable1 ; stable2 ; "
+        b"beta   = old ; omega tail"
+    )
+    expected = (
+        b"extra ; alpha = new ; stable1 ; stable2 ; "
+        b"beta   = new ; omega tail"
+    )
+    plan = _plan_with_code(tmp_path, source_code, target_code)
+    semantic = next(
+        item
+        for item in plan.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    if semantic.semantic is None:
+        raise AssertionError("mixed fixture lost semantic plan")
+    _expect(len(semantic.semantic.edits) == 2, "mixed fixture lost edit split")
+    plan = bind_compatible_corrections(
+        plan,
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    candidate = _candidate(tmp_path)
+    _write(candidate, "code.src", candidate_code)
+    output = tmp_path / "out"
+
+    _ = materialize_compatible_plan(
+        _request(
+            candidate,
+            plan,
+            output,
+            behavior=_behavior(skip=("fix",)),
+        )
+    )
+    _expect(
+        (output / "code.src").read_bytes() == expected,
+        "skipped correction suppressed an unconditional edit",
     )
 
 
