@@ -203,10 +203,19 @@ def _ordered_units(units: tuple[Path, ...]) -> tuple[Path, ...]:
     return ordinary + tuple(by_name[name] for name in _TERMINAL_UNITS)
 
 
+def _read_utf8_text(path: Path, description: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        message = f"{description} read failed: {path}: {error}"
+        raise DoomAmalgamationError(message) from error
+
+
 def _dstrings_aliases(code_root: Path) -> tuple[str, ...]:
     path = code_root / "dstrings.h"
     _require_regular(path, "dstrings alias header")
-    names = set(_DEFINE_PATTERN.findall(path.read_text(encoding="utf-8")))
+    text = _read_utf8_text(path, "dstrings alias header")
+    names = set(_DEFINE_PATTERN.findall(text))
     names.discard(_DSTRINGS_GUARD)
     if not names:
         message = "dstrings.h exposes no aliases to isolate before d_language.c"
@@ -335,7 +344,9 @@ class _Flattener:
             active=(*frame.active, target),
         )
         output = [f'#line 1 "{relative}"']
-        output.extend(self.expand(target.read_text(encoding="utf-8"), nested))
+        output.extend(
+            self.expand(_read_utf8_text(target, "project include"), nested)
+        )
         output.append(f'#line {line_number + 1} "{frame.parent_name}"')
         return output
 

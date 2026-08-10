@@ -50,6 +50,7 @@ SYSTEM_INCLUDE = "#include <stdint.h>"
 QUOTED_INCLUDE = '#include "'
 P_SPEC_ANIM = "__doom_tu_p_spec_anim_t"
 WI_STUFF_ANIM = "__doom_tu_wi_stuff_anim_t"
+_INVALID_UTF8 = bytes((255,))
 _FOREIGN_TEMP = b"foreign-temp"
 _TEMP_COLLISION_ID = "collision-id"
 
@@ -210,6 +211,30 @@ def test_oracle_write_preserves_unowned_temp_collision(
 
     _expect(temporary.read_bytes() == _FOREIGN_TEMP, "foreign temp was deleted")
     _expect(not output.exists(), "collision published oracle output")
+
+
+def test_dstrings_decode_error_fails_closed(tmp_path: Path) -> None:
+    """Invalid UTF-8 in the alias authority stays inside the oracle boundary."""
+    _accepted_tree(tmp_path)
+    _ = (tmp_path / "dstrings.h").write_bytes(_INVALID_UTF8)
+
+    with pytest.raises(
+        oracle.DoomAmalgamationError,
+        match="dstrings alias header read failed",
+    ):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
+def test_project_include_decode_error_fails_closed(tmp_path: Path) -> None:
+    """Invalid UTF-8 in an included header stays inside the oracle boundary."""
+    _accepted_tree(tmp_path)
+    _ = (tmp_path / "shared.h").write_bytes(_INVALID_UTF8)
+
+    with pytest.raises(
+        oracle.DoomAmalgamationError,
+        match="project include read failed",
+    ):
+        _ = oracle.build_amalgamation(tmp_path)
 
 
 def test_build_amalgamation_rejects_missing_terminal_unit(
