@@ -14,10 +14,8 @@
 #   - Parse experiment manifests or redefine research identities.
 # - Allows:
 #   - Inputs: test-local repository roots and injected filesystem failures.
-# - Outputs:
-#   - Deterministic discovery or propagated filesystem errors.
-# - Side effects:
-#   - Test-local filesystem writes only.
+#   - Outputs: deterministic discovery or propagated filesystem errors.
+#   - Side effects: test-local filesystem writes only.
 # - Split-When:
 #   - Another discovery backend gains independent failure semantics.
 # - Merge-When:

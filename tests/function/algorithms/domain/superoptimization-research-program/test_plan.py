@@ -14,11 +14,8 @@
 #   - Claim a benchmark result, execute search, or replace manifest validation.
 # - Allows:
 #   - Inputs: the versioned experiment and lifecycle TOML records.
-# - Outputs:
-#   - Deterministic assertions over the fixed pilot identity and stopping
-#     bounds.
-# - Side effects:
-#   - Repository-local reads only.
+#   - Outputs: deterministic assertions over fixed pilot identity and bounds.
+#   - Side effects: repository-local reads only.
 # - Split-When:
 #   - Recorded runs gain an independently governed evidence contract.
 # - Merge-When:
