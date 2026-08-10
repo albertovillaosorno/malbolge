@@ -45,14 +45,16 @@ from typing import Never
 
 if __package__:
     from verifier import emitted_malbolge_entry as entry_transfer
+    from verifier import emitted_malbolge_prefix as prefix_transfer
 else:
     import emitted_malbolge_entry as entry_transfer
+    import emitted_malbolge_prefix as prefix_transfer
 
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _PROFILE_MEMORY_WORDS: Final = 59_049
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v3"
+_SCHEMA: Final = "malbolge-static-image/v4"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -71,13 +73,13 @@ _XLAT1: Final = (
     rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
 )
 _LIMITS: Final = (
-    "code-data-aliasing:entry-step-only",
-    "control-flow-reachability:entry-step-only",
-    "dataflow:entry-step-only",
+    "code-data-aliasing:two-transition-prefix-only",
+    "control-flow-reachability:two-transition-prefix-only",
+    "dataflow:two-transition-prefix-only",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:entry-step-only",
+    "self-modification:two-transition-prefix-only",
     "source-map-context:not-analyzed",
-    "wraparound-reachability:entry-step-only",
+    "wraparound-reachability:two-transition-prefix-only",
 )
 
 
@@ -119,6 +121,7 @@ class StaticImageReport:
     admitted_initial_image: bool
     initial_cells: tuple[InitialCell, ...]
     entry_transition: entry_transfer.EntryTransition | None
+    second_transition: prefix_transfer.SecondTransition | None
     findings: tuple[StaticFinding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -202,10 +205,11 @@ def _analyze_admitted_cells(
 ) -> tuple[
     tuple[InitialCell, ...],
     entry_transfer.EntryTransition | None,
+    prefix_transfer.SecondTransition | None,
     tuple[StaticFinding, ...],
 ]:
     if not can_decode:
-        return (), None, ()
+        return (), None, None, ()
     cells = _initial_cells(source)
     findings = _decode_findings(cells)
     entry = (
@@ -215,7 +219,12 @@ def _analyze_admitted_cells(
             words, cells[0].decoded_byte
         )
     )
-    return cells, entry, findings
+    second = (
+        None
+        if entry is None
+        else prefix_transfer.analyze_second_transition(words, entry)
+    )
+    return cells, entry, second, findings
 
 
 def analyze_source(source: bytes) -> StaticImageReport:
@@ -250,10 +259,12 @@ def analyze_source(source: bytes) -> StaticImageReport:
             )
         )
     within_profile = _RECURRENCE_BASE_WORDS <= required <= _PROFILE_MEMORY_WORDS
-    cells, entry_transition, decode_findings = _analyze_admitted_cells(
-        source,
-        words,
-        can_decode=lexical is None and within_profile,
+    cells, entry_transition, second_transition, decode_findings = (
+        _analyze_admitted_cells(
+            source,
+            words,
+            can_decode=lexical is None and within_profile,
+        )
     )
     findings.extend(decode_findings)
     return StaticImageReport(
@@ -267,6 +278,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         admitted_initial_image=not findings,
         initial_cells=cells,
         entry_transition=entry_transition,
+        second_transition=second_transition,
         findings=tuple(findings),
         analysis_limits=_LIMITS,
     )
@@ -281,6 +293,16 @@ def render_report(report: StaticImageReport) -> str:
     """
     document = asdict(report)
     return json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
+    entry = report.entry_transition
+    if not report.admitted_initial_image or entry is None or not entry.accepted:
+        return False
+    if entry.next_fetch_address is None:
+        return True
+    second = report.second_transition
+    return second is not None and second.accepted
 
 
 def _fail(message: str) -> Never:
@@ -306,11 +328,7 @@ def main(arguments: list[str] | None = None) -> int:
     report = analyze_source(source)
     payload = render_report(report).encode("utf-8")
     _ = sys.stdout.buffer.write(payload)
-    entry = report.entry_transition
-    accepted = (
-        report.admitted_initial_image and entry is not None and entry.accepted
-    )
-    return 0 if accepted else 1
+    return 0 if _bounded_prefix_accepted(report) else 1
 
 
 if __name__ == "__main__":

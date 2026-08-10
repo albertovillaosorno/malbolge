@@ -63,11 +63,14 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v3"
+_SCHEMA = "malbolge-static-image/v4"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
+_SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 _FIXTURE_ENCRYPTION_INPUT = 99
+_FIXTURE_SECOND_VALUE = 116
+_SECOND_SUCCESSOR = 2
 _ROTATED_ENTRY_VALUE = 13
 _JUMP_ENTRY_ADDRESS = 98
 _JUMP_ENTRY_ENCRYPTION_INPUT = 29_492
@@ -141,6 +144,30 @@ class _EntryTransition(Protocol):
     accepted: bool
 
 
+class _SecondTransition(Protocol):
+    status: str
+    fetched_address: int
+    fetched_value: int
+    decoded_byte: int | None
+    data_address: int
+    data_value: int | None
+    code_data_alias: bool
+    planned_data_write_address: int | None
+    planned_data_write_value: int | None
+    encryption_address: int | None
+    encryption_input: int | None
+    encryption_output: int | None
+    data_write_aliases_encryption: bool
+    input_dependent_accumulator: bool
+    result_accumulator: int | None
+    result_code_pointer: int | None
+    result_data_pointer: int | None
+    next_fetch_address: int | None
+    pointer_wraps: bool
+    provable_cycle: bool
+    accepted: bool
+
+
 class _Report(Protocol):
     schema: str
     profile_id: str
@@ -152,6 +179,7 @@ class _Report(Protocol):
     admitted_initial_image: bool
     initial_cells: tuple[_Cell, ...]
     entry_transition: _EntryTransition | None
+    second_transition: _SecondTransition | None
     findings: tuple[_Finding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -239,6 +267,11 @@ def _historical_load_instructions() -> frozenset[int]:
         message = "historical interpreter load-admission literal is malformed"
         raise AssertionError(message)
     return frozenset(literal.encode("ascii"))
+
+
+def _source_byte_for_decode(decoded: int, position: int) -> int:
+    index = _TEST_XLAT1.index(decoded)
+    return ((index - position) % _DECODE_PERIOD) + _GRAPHICAL_START
 
 
 def test_report_hash_binds_exact_source_bytes() -> None:
@@ -533,6 +566,110 @@ def test_entry_input_marks_only_accumulator_as_input_dependent() -> None:
     assert transition.next_fetch_address == 1
 
 
+def test_second_transition_resolves_known_fixture() -> None:
+    """Resolve the fixture's reachable input step without consuming input."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    transition = report.second_transition
+    assert transition is not None
+    assert transition.status == _ENTRY_CONTINUED
+    assert transition.fetched_address == 1
+    assert transition.fetched_value == _FIXTURE_SECOND_VALUE
+    assert transition.decoded_byte == ord("/")
+    assert transition.data_address == 1
+    assert transition.data_value == _FIXTURE_SECOND_VALUE
+    assert transition.code_data_alias
+    assert transition.encryption_address == 1
+    assert transition.encryption_input == _FIXTURE_SECOND_VALUE
+    expected_encryption = _TEST_XLAT2[
+        _FIXTURE_SECOND_VALUE - _GRAPHICAL_START
+    ]
+    assert transition.encryption_output == expected_encryption
+    assert transition.input_dependent_accumulator
+    assert transition.result_accumulator is None
+    assert transition.result_code_pointer == _SECOND_SUCCESSOR
+    assert transition.result_data_pointer == _SECOND_SUCCESSOR
+    assert transition.next_fetch_address == _SECOND_SUCCESSOR
+    assert transition.accepted
+
+
+def test_second_transition_rejects_reachable_rotate_alias() -> None:
+    """A valid initial image can fail exact self-encryption on step two."""
+    source = bytes((
+        _source_byte_for_decode(ord("<"), 0),
+        _source_byte_for_decode(ord("*"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    assert report.admitted_initial_image
+    entry = report.entry_transition
+    assert entry is not None
+    assert entry.accepted
+    transition = report.second_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("*")
+    assert transition.status == _ENTRY_INVALID_ENCRYPTION
+    assert transition.planned_data_write_address == 1
+    assert transition.data_write_aliases_encryption
+    expected = source[1] // 3 + source[1] % 3 * 19_683
+    assert transition.planned_data_write_value == expected
+    assert transition.encryption_input == expected
+    assert transition.encryption_output is None
+    assert not transition.accepted
+
+
+def test_second_transition_keeps_input_dependent_crazy_unresolved() -> None:
+    """Unknown input accumulator never gets guessed for reachable crazy."""
+    source = bytes((
+        _source_byte_for_decode(ord("/"), 0),
+        _source_byte_for_decode(ord("p"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    transition = report.second_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("p")
+    assert transition.status == _SECOND_INPUT_UNRESOLVED
+    assert transition.input_dependent_accumulator
+    assert transition.result_accumulator is None
+    assert transition.result_code_pointer is None
+    assert transition.result_data_pointer is None
+    assert transition.next_fetch_address is None
+    assert not transition.accepted
+
+
+def test_second_transition_preserves_input_dependency_through_noop() -> None:
+    """Keep an input-dependent accumulator unknown through an exact no-op."""
+    source = bytes((
+        _source_byte_for_decode(ord("/"), 0),
+        _source_byte_for_decode(ord("o"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    transition = report.second_transition
+    assert transition is not None
+    assert transition.decoded_byte == ord("o")
+    assert transition.status == _ENTRY_CONTINUED
+    assert transition.input_dependent_accumulator
+    assert transition.result_accumulator is None
+    assert transition.result_code_pointer == _SECOND_SUCCESSOR
+    assert transition.result_data_pointer == _SECOND_SUCCESSOR
+    assert transition.accepted
+
+
+def test_second_transition_halt_is_exact_terminal_state() -> None:
+    """A reachable second-step halt needs no later transition proof."""
+    source = bytes((
+        _source_byte_for_decode(ord("<"), 0),
+        _source_byte_for_decode(ord("v"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    transition = report.second_transition
+    assert transition is not None
+    assert transition.status == _ENTRY_HALTED
+    assert transition.decoded_byte == ord("v")
+    assert transition.result_code_pointer == 1
+    assert transition.result_data_pointer == 1
+    assert transition.next_fetch_address is None
+    assert transition.accepted
+
+
 def test_historical_address_domain_is_structurally_closed() -> None:
     """Classic pointers stay inside the fixed 59,049-word memory domain."""
     interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
@@ -549,13 +686,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:entry-step-only",
-        "control-flow-reachability:entry-step-only",
-        "dataflow:entry-step-only",
+        "code-data-aliasing:two-transition-prefix-only",
+        "control-flow-reachability:two-transition-prefix-only",
+        "dataflow:two-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:entry-step-only",
+        "self-modification:two-transition-prefix-only",
         "source-map-context:not-analyzed",
-        "wraparound-reachability:entry-step-only",
+        "wraparound-reachability:two-transition-prefix-only",
     )
 
 
@@ -609,6 +746,32 @@ def test_cli_rejects_statically_invalid_entry_transition(
     document = cast("dict[str, object]", json.loads(completed.stdout))
     assert document["admitted_initial_image"] is True
     transition = cast("dict[str, object]", document["entry_transition"])
+    assert transition["status"] == _ENTRY_INVALID_ENCRYPTION
+
+
+def test_cli_rejects_statically_invalid_second_transition(
+    tmp_path: Path,
+) -> None:
+    """CLI failure includes a reachable second-step rejection in JSON."""
+    source = tmp_path / "invalid-second-step.malbolge"
+    _ = source.write_bytes(bytes((
+        _source_byte_for_decode(ord("<"), 0),
+        _source_byte_for_decode(ord("*"), 1),
+    )))
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [sys.executable, str(_ANALYZER), str(source)],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    assert document["admitted_initial_image"] is True
+    transition = cast("dict[str, object]", document["second_transition"])
     assert transition["status"] == _ENTRY_INVALID_ENCRYPTION
 
 
