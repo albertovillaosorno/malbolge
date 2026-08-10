@@ -37,10 +37,11 @@ format.
   mode
   remains fail-closed before output.
 - Public recipe, identity, anchor, behavior, probe, provenance, payload,
-  source-binding, exact/relocatable, and mapped/semantic metadata now validates
-  exact runtime types before becoming evidence or touching output. Boolean
-  numeric aliases, mutable collection substitutes, and foreign records fail
-  through the owning domain boundary.
+  source-binding, exact/relocatable/compatible, and mapped/semantic metadata now
+  validates exact runtime types before becoming evidence or touching output.
+  Boolean numeric aliases, mutable collection substitutes, and foreign records
+  fail through the owning domain boundary. Compatible mappers and postconditions
+  also keep exceptions and foreign return records inside that boundary.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

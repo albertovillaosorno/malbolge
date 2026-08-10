@@ -57,11 +57,13 @@ the local oracle.
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
-provenance pins, mapped and semantic edits, exact and relocatable plans, and
-source-bound shares require immutable exact records. Cryptographic key, nonce,
-plaintext, AAD, and payload fields require exact bytes. Invalid direct Python
-construction fails through the owning domain error rather than relying on
-coercion or leaking `TypeError`, `AttributeError`, or `OverflowError`.
+provenance pins, mapped and semantic edits, exact, relocatable, and compatible
+plans, and source-bound shares require immutable exact records. Cryptographic
+key, nonce, plaintext, AAD, and payload fields require exact bytes. Invalid
+direct Python construction fails through the owning domain error rather than
+relying on coercion or leaking `TypeError`, `AttributeError`, or `OverflowError`.
+Compatible consumer mappers and output postconditions also wrap callback failures
+and reject foreign return records before publication.
 
 ### Exact Authoring Baseline
 

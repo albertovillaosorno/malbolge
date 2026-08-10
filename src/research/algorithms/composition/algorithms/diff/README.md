@@ -393,9 +393,12 @@ omits historical source-only files, and preserves candidate-only paths by
 default.
 Materialization requires conjunctive source-lineage and behavior admission
 before
-staging. Target-only path conflicts, opaque-file drift, unsupported bug routing,
-and
-postcondition failure all reject before publication.
+staging. Compatible instructions, plan envelopes, and request envelopes reject
+foreign or contradictory metadata before filesystem work. Consumer mappers must
+return exact mapped views or `None`; mapper and postcondition exceptions remain
+inside the compatible error boundary. Target-only path conflicts, opaque-file
+drift, unsupported bug routing, and postcondition failure all reject before
+publication.
 
 The semantic matcher no longer uses quadratic-prone generic sequence matching.
 It
