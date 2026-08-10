@@ -39,7 +39,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::instruction::decode_instruction;
 use crate::memory::{Memory, MemoryError};
-use crate::word::{Word, MEMORY_WORDS};
+use crate::word::{MEMORY_WORDS, Word};
 
 /// Deterministic failure while admitting classic Malbolge source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,9 +69,9 @@ pub enum LoadError {
 impl Display for LoadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
-            Self::InsufficientRecurrenceBase => {
-                f.write_str("classic source requires at least two non-whitespace words")
-            }
+            Self::InsufficientRecurrenceBase => f.write_str(
+                "classic source requires at least two non-whitespace words",
+            ),
             Self::InvalidInstruction { position, byte } => write!(
                 f,
                 "source byte {byte} at loaded position {position} is invalid"
@@ -80,10 +80,12 @@ impl Display for LoadError {
                 f,
                 "source byte {byte} at offset {offset} is not graphical ASCII"
             ),
-            Self::SourceTooLong => {
-                f.write_str("classic source exceeds the 59049-word memory image")
-            }
-            Self::InternalInvariant => f.write_str("classic loader internal invariant failed"),
+            Self::SourceTooLong => f.write_str(
+                "classic source exceeds the 59049-word memory image",
+            ),
+            Self::InternalInvariant => {
+                f.write_str("classic loader internal invariant failed")
+            },
         }
     }
 }
@@ -150,7 +152,8 @@ fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
 }
 
 fn fill_memory(admitted: Vec<u8>) -> Result<Memory, LoadError> {
-    let mut words: Vec<Word> = admitted.into_iter().map(Word::from_byte).collect();
+    let mut words: Vec<Word> =
+        admitted.into_iter().map(Word::from_byte).collect();
     let mut reverse = words.iter().rev().copied();
     let mut previous = reverse.next().ok_or(LoadError::InternalInvariant)?;
     let mut older = reverse.next().ok_or(LoadError::InternalInvariant)?;
@@ -165,9 +168,10 @@ fn fill_memory(admitted: Vec<u8>) -> Result<Memory, LoadError> {
 
 fn validate_source(admitted: &[u8]) -> Result<(), LoadError> {
     for (position, byte) in admitted.iter().copied().enumerate() {
-        let pointer_value =
-            u16::try_from(position).map_err(|_error| LoadError::InternalInvariant)?;
-        let pointer = Word::new(pointer_value).map_err(|_error| LoadError::InternalInvariant)?;
+        let pointer_value = u16::try_from(position)
+            .map_err(|_error| LoadError::InternalInvariant)?;
+        let pointer = Word::new(pointer_value)
+            .map_err(|_error| LoadError::InternalInvariant)?;
         let decoded = decode_instruction(Word::from_byte(byte), pointer)
             .ok_or(LoadError::InternalInvariant)?;
         if !matches!(

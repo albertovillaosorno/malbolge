@@ -39,9 +39,9 @@ use std::fs::{remove_file, write};
 use std::path::Path;
 #[cfg(windows)]
 use std::path::PathBuf;
+use std::process::Command;
 #[cfg(windows)]
 use std::process::id;
-use std::process::Command;
 
 use malbolge as _;
 
@@ -55,7 +55,8 @@ struct InvalidTemporaryCSource {
 #[cfg(windows)]
 impl InvalidTemporaryCSource {
     fn create() -> Result<Self, String> {
-        let path = temp_dir().join(format!("malbolge-cli-invalid-clang-proof-{}.c", id()));
+        let path = temp_dir()
+            .join(format!("malbolge-cli-invalid-clang-proof-{}.c", id()));
         write(
             &path,
             b"int main(void) { this is not valid C; }
@@ -74,9 +75,11 @@ impl Drop for InvalidTemporaryCSource {
 }
 
 #[test]
-fn freestanding_hello_world_debug_run_preserves_exact_bytes() -> Result<(), String> {
+fn freestanding_hello_world_debug_run_preserves_exact_bytes()
+-> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let source = root.join("src/examples/programs/contract/self_host/hello-world/main.c");
+    let source = root
+        .join("src/examples/programs/contract/self_host/hello-world/main.c");
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .current_dir(root)
         .arg(source)
@@ -117,7 +120,9 @@ fn repo_clang_is_selected_without_host_compiler_path() -> Result<(), String> {
         .env("PATH", "")
         .arg(&source.path)
         .output()
-        .map_err(|error| format!("failed to run repository-local C debug CLI: {error}"))?;
+        .map_err(|error| {
+            format!("failed to run repository-local C debug CLI: {error}")
+        })?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.status.success()
         || !output.stdout.is_empty()

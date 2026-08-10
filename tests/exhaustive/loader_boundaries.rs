@@ -35,8 +35,9 @@
 //! Exhaustive classic loader byte and positional-decode admission checks.
 
 use malbolge::{
-    decode_instruction, historical_profile, is_source_whitespace, load, LoadError, ProfileMachine,
-    ProfileMachineError, ProfileRequirementErrorKind, Word, MEMORY_WORDS,
+    LoadError, MEMORY_WORDS, ProfileMachine, ProfileMachineError,
+    ProfileRequirementErrorKind, Word, decode_instruction, historical_profile,
+    is_source_whitespace, load,
 };
 
 const ALLOWED_INSTRUCTIONS: &[u8; 8] = b"ji*p</vo";
@@ -45,9 +46,10 @@ const DECODE_MIDPOINT: usize = 47;
 const DECODE_PHASES: usize = 94;
 
 fn pointer(position: usize) -> Result<Word, String> {
-    let raw =
-        u16::try_from(position).map_err(|error| format!("pointer conversion failed: {error}"))?;
-    Word::new(raw).map_err(|error| format!("pointer construction failed: {error}"))
+    let raw = u16::try_from(position)
+        .map_err(|error| format!("pointer conversion failed: {error}"))?;
+    Word::new(raw)
+        .map_err(|error| format!("pointer construction failed: {error}"))
 }
 
 fn is_admitted(byte: u8, position: usize) -> Result<bool, String> {
@@ -77,7 +79,8 @@ fn every_non_whitespace_non_graphical_byte_is_rejected() -> Result<(), String> {
     let prefix = byte_with_admission(0, true)?;
     let suffix = byte_with_admission(1, true)?;
     for raw in 0u16..=u16::from(u8::MAX) {
-        let byte = u8::try_from(raw).map_err(|error| format!("byte conversion failed: {error}"))?;
+        let byte = u8::try_from(raw)
+            .map_err(|error| format!("byte conversion failed: {error}"))?;
         if is_source_whitespace(byte) || (33..=126).contains(&byte) {
             continue;
         }
@@ -93,17 +96,23 @@ fn every_non_whitespace_non_graphical_byte_is_rejected() -> Result<(), String> {
 #[test]
 fn ascii_whitespace_preserves_loaded_positions() -> Result<(), String> {
     let canonical = valid_phase_source()?;
-    let expected = load(&canonical).map_err(|error| format!("canonical source: {error}"))?;
+    let expected = load(&canonical)
+        .map_err(|error| format!("canonical source: {error}"))?;
     for whitespace in ASCII_WHITESPACE {
         for insertion in [0usize, DECODE_MIDPOINT, DECODE_PHASES] {
             let mut source = canonical.clone();
             source.insert(insertion, whitespace);
             let observed = load(&source).map_err(|error| {
-                format!("whitespace={whitespace} insertion={insertion}: {error}")
+                format!(
+                    "whitespace={whitespace} insertion={insertion}: {error}"
+                )
             })?;
             if observed != expected {
                 return Err(format!(
-                    concat!("whitespace changed loaded memory: byte={} ", "insertion={}",),
+                    concat!(
+                        "whitespace changed loaded memory: byte={} ",
+                        "insertion={}",
+                    ),
                     whitespace, insertion,
                 ));
             }
@@ -113,9 +122,11 @@ fn ascii_whitespace_preserves_loaded_positions() -> Result<(), String> {
 }
 
 #[test]
-fn every_decode_phase_has_valid_and_invalid_instruction_bytes() -> Result<(), String> {
+fn every_decode_phase_has_valid_and_invalid_instruction_bytes()
+-> Result<(), String> {
     let source = valid_phase_source()?;
-    let _memory = load(&source).map_err(|error| format!("valid source: {error}"))?;
+    let _memory =
+        load(&source).map_err(|error| format!("valid source: {error}"))?;
     for position in 0..DECODE_PHASES {
         let invalid = byte_with_admission(position, false)?;
         let mut mutated = source.clone();
@@ -124,10 +135,8 @@ fn every_decode_phase_has_valid_and_invalid_instruction_bytes() -> Result<(), St
         };
         *slot = invalid;
         let observed = load(&mutated);
-        let expected = Err(LoadError::InvalidInstruction {
-            position,
-            byte: invalid,
-        });
+        let expected =
+            Err(LoadError::InvalidInstruction { position, byte: invalid });
         if observed != expected {
             return Err(format!(
                 "invalid pos={position} byte={invalid}: {observed:?}"
@@ -142,7 +151,9 @@ fn recurrence_and_capacity_boundaries_fail_closed() -> Result<(), String> {
     for source in [Vec::new(), b" \t\r\n".to_vec()] {
         let observed = load(&source);
         if observed != Err(LoadError::InsufficientRecurrenceBase) {
-            return Err(format!("empty recurrence base mismatch: {observed:?}"));
+            return Err(format!(
+                "empty recurrence base mismatch: {observed:?}"
+            ));
         }
     }
     let one_word = vec![byte_with_admission(0, true)?];
@@ -155,22 +166,28 @@ fn recurrence_and_capacity_boundaries_fail_closed() -> Result<(), String> {
     let oversized = vec![b'!'; MEMORY_WORDS.saturating_add(1)];
     let oversized_observed = load(&oversized);
     if oversized_observed != Err(LoadError::SourceTooLong) {
-        return Err(format!("oversized source mismatch: {oversized_observed:?}"));
+        return Err(format!(
+            "oversized source mismatch: {oversized_observed:?}"
+        ));
     }
-    let Err(profiled_oversized) =
-        ProfileMachine::from_source(historical_profile(), &oversized, Vec::new())
-    else {
+    let Err(profiled_oversized) = ProfileMachine::from_source(
+        historical_profile(),
+        &oversized,
+        Vec::new(),
+    ) else {
         return Err(String::from("profiled oversized source was admitted"));
     };
     let ProfileMachineError::Profile(requirement) = profiled_oversized else {
         let message = "profiled oversized source lost profile precedence";
         return Err(format!("{message}: {profiled_oversized:?}"));
     };
-    if requirement.kind() != ProfileRequirementErrorKind::ProfileCapacityExceeded
+    if requirement.kind()
+        != ProfileRequirementErrorKind::ProfileCapacityExceeded
         || requirement.profile().id() != historical_profile().id()
         || requirement.required_memory_words()
-            != u64::try_from(MEMORY_WORDS.saturating_add(1))
-                .map_err(|error| format!("required memory conversion failed: {error}"))?
+            != u64::try_from(MEMORY_WORDS.saturating_add(1)).map_err(
+                |error| format!("required memory conversion failed: {error}"),
+            )?
     {
         return Err(format!(
             "profiled oversized source requirement mismatch: {requirement:?}"

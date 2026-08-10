@@ -40,7 +40,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from re import compile as compile_pattern
-from typing import Final, Never, cast
+from typing import Final
+from typing import Never
+from typing import cast
 
 from scripts.validate import target_profile
 
@@ -66,7 +68,9 @@ NORMATIVE_PROFILE_FEATURES: Final = (
     "self-modification",
     "sequential-guest",
 )
-_IDENTIFIER_PATTERN: Final = compile_pattern(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+_IDENTIFIER_PATTERN: Final = compile_pattern(
+    r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
+)
 _FEATURE_ORDER: Final = {
     feature: index for index, feature in enumerate(NORMATIVE_PROFILE_FEATURES)
 }
@@ -251,7 +255,10 @@ def preflight_profile_requirement(
     """
     validated_requirement = _validated_requirement(requirement)
     validated_runtime = _validated_runtime(runtime)
-    if validated_requirement.required_memory_words > validated_requirement.memory_words:
+    if (
+        validated_requirement.required_memory_words
+        > validated_requirement.memory_words
+    ):
         raise ProfileRequirementError(
             ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED,
             validated_requirement,
@@ -330,7 +337,9 @@ def _validate_error_match(
     if expected_kind is None:
         _raise_validation("diagnostic requires a rejected profile preflight")
     if kind is not expected_kind:
-        _raise_validation("diagnostic kind does not match the preflight rejection")
+        _raise_validation(
+            "diagnostic kind does not match the preflight rejection"
+        )
     if dimensions != expected_dimensions:
         _raise_validation(
             "diagnostic missing dimensions do not match the preflight rejection"
@@ -367,14 +376,18 @@ def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:
         "required memory words",
     )
     if value.required_features != NORMATIVE_PROFILE_FEATURES:
-        _raise_validation("profile features must equal the normative feature set")
+        _raise_validation(
+            "profile features must equal the normative feature set"
+        )
     canonical = build_profile_requirement(
         target_profile.load_document(target_profile.DEFAULT_PROFILE),
         value.profile_id,
         required_memory_words=value.required_memory_words,
     )
     if value != canonical:
-        _raise_validation("profile fields must match canonical profile authority")
+        _raise_validation(
+            "profile fields must match canonical profile authority"
+        )
     return value
 
 
@@ -435,7 +448,9 @@ def _missing_dimensions(
         missing.append(MEMORY_WORDS_DIMENSION)
     available = frozenset(runtime.features)
     missing.extend(
-        feature for feature in requirement.required_features if feature not in available
+        feature
+        for feature in requirement.required_features
+        if feature not in available
     )
     return tuple(missing)
 
@@ -448,31 +463,27 @@ def _diagnostic_text(error: ProfileRequirementError) -> str:
             if requirement.kind == target_profile.HISTORICAL_KIND
             else PROFILE_CAPACITY_CEILING
         )
-        return " ".join(
-            (
-                PROFILE_CAPACITY_DIAGNOSTIC_CODE,
-                f"profile={requirement.profile_id}",
-                f"version={requirement.version}",
-                f"constraint={constraint}",
-                f"required_memory_words={requirement.required_memory_words}",
-                f"profile_memory_words={requirement.memory_words}",
-            )
-        )
-    runtime = error.runtime
-    return " ".join(
-        (
-            PROFILE_RUNTIME_DIAGNOSTIC_CODE,
+        return " ".join((
+            PROFILE_CAPACITY_DIAGNOSTIC_CODE,
             f"profile={requirement.profile_id}",
             f"version={requirement.version}",
-            f"required_features={','.join(requirement.required_features)}",
-            f"required_word_trits={requirement.word_trits}",
-            f"required_memory_words={requirement.memory_words}",
-            f"runtime={runtime.capability_id}",
-            f"max_word_trits={runtime.max_word_trits}",
-            f"max_memory_words={runtime.max_memory_words}",
-            f"missing={','.join(error.missing_dimensions)}",
-        )
-    )
+            f"constraint={constraint}",
+            f"required_memory_words={requirement.required_memory_words}",
+            f"profile_memory_words={requirement.memory_words}",
+        ))
+    runtime = error.runtime
+    return " ".join((
+        PROFILE_RUNTIME_DIAGNOSTIC_CODE,
+        f"profile={requirement.profile_id}",
+        f"version={requirement.version}",
+        f"required_features={",".join(requirement.required_features)}",
+        f"required_word_trits={requirement.word_trits}",
+        f"required_memory_words={requirement.memory_words}",
+        f"runtime={runtime.capability_id}",
+        f"max_word_trits={runtime.max_word_trits}",
+        f"max_memory_words={runtime.max_memory_words}",
+        f"missing={",".join(error.missing_dimensions)}",
+    ))
 
 
 def _mapping(value: object, context: str) -> target_profile.JsonObject:

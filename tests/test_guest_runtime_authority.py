@@ -36,17 +36,21 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
+import re
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 ABI_PATH = ROOT / "docs/technical/specification/c-abi-v1.json"
 PROFILE_PATH = ROOT / "malbolge.json"
 LIBC_PATH = ROOT / "docs/technical/specification/c-libc-v1.json"
-RUNTIME_CONTRACT = ROOT / "src/runtime/guest-runtime/contract/guest-runtime-v1.json"
+RUNTIME_CONTRACT = (
+    ROOT / "src/runtime/guest-runtime/contract/guest-runtime-v1.json"
+)
 RUNTIME_HEADER = ROOT / "src/runtime/guest-runtime/contract/guest_runtime.h"
-INTRINSIC_HEADER = ROOT / "src/runtime/guest-runtime/contract/guest_intrinsics.h"
+INTRINSIC_HEADER = (
+    ROOT / "src/runtime/guest-runtime/contract/guest_intrinsics.h"
+)
 FRAME_SOURCE = ROOT / "src/runtime/guest-runtime/domain/frame.c"
 HEAP_SOURCE = ROOT / "src/runtime/guest-runtime/domain/heap.c"
 
@@ -91,18 +95,16 @@ FORMAT_BASES = [2, 8, 10, 16]
 FORMAT_PUBLIC_ROUTINES = ["snprintf", "vsnprintf"]
 FORMAT_PRECISION_POLICY = "u32-0xffffffff-means-omitted"
 
-GATED_ROUTINES = frozenset(
-    {
-        "malloc",
-        "calloc",
-        "realloc",
-        "free",
-        "getchar",
-        "putchar",
-        "snprintf",
-        "vsnprintf",
-    }
-)
+GATED_ROUTINES = frozenset({
+    "malloc",
+    "calloc",
+    "realloc",
+    "free",
+    "getchar",
+    "putchar",
+    "snprintf",
+    "vsnprintf",
+})
 
 STATUS_PATTERN = re.compile(
     r"^  MALBOLGE_GUEST_RUNTIME_(?P<name>[A-Z_]+) = (?P<value>[0-9]+)[,]?$",
@@ -112,21 +114,19 @@ HEAP_OFFSET_PATTERN = re.compile(
     r"^#define OFFSET_(?P<name>[A-Z_]+) UINT32_C\((?P<value>[0-9]+)\)$",
     re.MULTILINE,
 )
-RUNTIME_TOP_LEVEL_KEYS = frozenset(
-    {
-        "schema_version",
-        "runtime_id",
-        "abi_id",
-        "target_profile",
-        "status",
-        "heap",
-        "startup",
-        "frame",
-        "byte_io",
-        "formatting_kernel",
-        "host_fallback",
-    }
-)
+RUNTIME_TOP_LEVEL_KEYS = frozenset({
+    "schema_version",
+    "runtime_id",
+    "abi_id",
+    "target_profile",
+    "status",
+    "heap",
+    "startup",
+    "frame",
+    "byte_io",
+    "formatting_kernel",
+    "host_fallback",
+})
 
 MACRO_PATTERN = re.compile(
     r"^#define (?P<name>[A-Z0-9_]+) UINT32_C\((?P<value>[0-9]+)\)$",
@@ -172,7 +172,9 @@ def frame_offsets() -> dict[str, int]:
     """
     return {
         match.group("name").lower(): int(match.group("value"))
-        for match in OFFSET_PATTERN.finditer(FRAME_SOURCE.read_text(encoding="utf-8"))
+        for match in OFFSET_PATTERN.finditer(
+            FRAME_SOURCE.read_text(encoding="utf-8")
+        )
     }
 
 
@@ -223,7 +225,8 @@ def test_runtime_contract_is_closed_and_matches_c_projection() -> None:
     assert macros["MALBOLGE_GUEST_HEAP_HEADER_SIZE"] == heap["header_bytes"]
     fields = cast("list[dict[str, object]]", heap["metadata_fields"])
     expected_offsets = {
-        cast("str", field["name"]): cast("int", field["offset"]) for field in fields
+        cast("str", field["name"]): cast("int", field["offset"])
+        for field in fields
     }
     assert heap_offsets() == expected_offsets
 
@@ -242,26 +245,38 @@ def test_formatting_kernel_stays_private_and_gated() -> None:
     assert formatting["precision"] == FORMAT_PRECISION_POLICY
     assert formatting["format_parser"] == FORMAT_PARSER
     assert formatting["format_parser_binary"] == FORMAT_PARSER_BINARY
-    assert formatting["format_parser_dynamic_fields"] == FORMAT_PARSER_DYNAMIC_FIELDS
-    assert formatting["format_parser_specific_width"] == FORMAT_PARSER_SPECIFIC_WIDTH
+    assert (
+        formatting["format_parser_dynamic_fields"]
+        == FORMAT_PARSER_DYNAMIC_FIELDS
+    )
+    assert (
+        formatting["format_parser_specific_width"]
+        == FORMAT_PARSER_SPECIFIC_WIDTH
+    )
     assert (
         formatting["format_parser_semantic_validation"]
         == FORMAT_PARSER_SEMANTIC_VALIDATION
     )
     assert (
-        formatting["format_specific_width_supported_bits"] == FORMAT_SPECIFIC_WIDTH_BITS
+        formatting["format_specific_width_supported_bits"]
+        == FORMAT_SPECIFIC_WIDTH_BITS
     )
     assert formatting["variadic_decoder"] == FORMAT_VARIADIC_DECODER
     assert formatting["variadic_cursor_address"] == FORMAT_VARIADIC_ADDRESS
     assert (
-        formatting["variadic_cursor_maximum_byte_offset"] == FORMAT_VARIADIC_MAX_OFFSET
+        formatting["variadic_cursor_maximum_byte_offset"]
+        == FORMAT_VARIADIC_MAX_OFFSET
     )
     assert formatting["variadic_kinds"] == FORMAT_VARIADIC_KINDS
     assert formatting["source_va_list_bridge"] == FORMAT_VA_LIST_BRIDGE
-    assert formatting["format_argument_resolution"] == FORMAT_ARGUMENT_RESOLUTION
+    assert (
+        formatting["format_argument_resolution"] == FORMAT_ARGUMENT_RESOLUTION
+    )
     assert formatting["scalar_conversion_execution"] == FORMAT_SCALAR_EXECUTION
     assert formatting["wide_character_argument"] == FORMAT_WIDE_CHARACTER
-    assert formatting["pointer_conversion_execution"] == FORMAT_POINTER_EXECUTION
+    assert (
+        formatting["pointer_conversion_execution"] == FORMAT_POINTER_EXECUTION
+    )
     _assert_pointer_formatting(formatting)
     assert formatting["floating_formatting"] == FORMAT_NOT_IMPLEMENTED
     assert formatting["public_routines"] == FORMAT_PUBLIC_ROUTINES
@@ -280,7 +295,9 @@ def test_runtime_constants_match_abi_and_current_profile() -> None:
     current = cast("dict[str, object]", profiles[current_name])
     semantics = cast("dict[str, object]", current["semantics"])
 
-    assert macros["MALBOLGE_GUEST_FRAME_HEADER_SIZE"] == call["frame_header_bytes"]
+    assert (
+        macros["MALBOLGE_GUEST_FRAME_HEADER_SIZE"] == call["frame_header_bytes"]
+    )
     assert macros["MALBOLGE_GUEST_HEAP_ALIGNMENT"] == call["stack_alignment"]
     assert macros["MALBOLGE_GUEST_PROFILE_EOF_WORD"] == semantics["eof_word"]
     assert semantics["output_modulus"] == OUTPUT_MODULUS
@@ -294,7 +311,8 @@ def test_frame_codec_offsets_match_c_abi_authority() -> None:
     call = cast("dict[str, object]", abi["call"])
     fields = cast("list[dict[str, object]]", call["frame_fields"])
     expected = {
-        cast("str", field["name"]): cast("int", field["offset"]) for field in fields
+        cast("str", field["name"]): cast("int", field["offset"])
+        for field in fields
     }
     assert frame_offsets() == expected
 

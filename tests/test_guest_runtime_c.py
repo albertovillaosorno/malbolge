@@ -36,15 +36,17 @@
 from __future__ import annotations
 
 import os
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
 LLVM_NM = ROOT / ".dependencies/llvm/22.1.8/bin/llvm-nm.exe"
-SANITIZER_RUNTIME_DIR = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22/lib/windows"
+SANITIZER_RUNTIME_DIR = (
+    ROOT / ".dependencies/llvm/22.1.8/lib/clang/22/lib/windows"
+)
 RUNTIME_ROOT = ROOT / "src/runtime/guest-runtime"
 INCLUDE = RUNTIME_ROOT / "contract"
 HEAP_SOURCE = RUNTIME_ROOT / "domain/heap.c"
@@ -67,7 +69,9 @@ GUEST_LIBC_INCLUDE = GUEST_LIBC_ROOT / "contract/include"
 ALLOCATION_WRAPPERS = GUEST_LIBC_ROOT / "domain/allocation.c"
 STDIO_WRAPPERS = GUEST_LIBC_ROOT / "domain/stdio.c"
 STDIO_HARNESS = ROOT / "tests/runtime/guest_stdio_wrapper_conformance.c"
-ALLOCATION_HARNESS = ROOT / "tests/runtime/guest_allocation_wrapper_conformance.c"
+ALLOCATION_HARNESS = (
+    ROOT / "tests/runtime/guest_allocation_wrapper_conformance.c"
+)
 WINDOWS_OS_NAME = "nt"
 WINDOWS_ABI_TARGETS = (
     "i686-pc-windows-msvc",
@@ -112,52 +116,42 @@ EXPECTED_RUNTIME_UNDEFINED: dict[Path, frozenset[str]] = {
     HEAP_SOURCE: EMPTY_SYMBOLS,
     STREAM_SOURCE: EMPTY_SYMBOLS,
     FRAME_SOURCE: EMPTY_SYMBOLS,
-    STARTUP_SOURCE: frozenset(
-        {
-            "malbolge_guest_heap_allocate",
-            "malbolge_guest_heap_allocate_zeroed",
-            "malbolge_guest_heap_init",
-            "malbolge_guest_heap_release",
-            "malbolge_guest_heap_resize",
-        }
-    ),
+    STARTUP_SOURCE: frozenset({
+        "malbolge_guest_heap_allocate",
+        "malbolge_guest_heap_allocate_zeroed",
+        "malbolge_guest_heap_init",
+        "malbolge_guest_heap_release",
+        "malbolge_guest_heap_resize",
+    }),
     FORMAT_SOURCE: EMPTY_SYMBOLS,
     FORMAT_PARSE_SOURCE: EMPTY_SYMBOLS,
     VARARGS_SOURCE: EMPTY_SYMBOLS,
-    FORMAT_ARGS_SOURCE: frozenset(
-        {
-            "malbolge_guest_format_argument_kind",
-            "malbolge_guest_format_directive_validate",
-            "malbolge_guest_varargs_read",
-            "malbolge_guest_varargs_validate",
-        }
-    ),
-    FORMAT_SCALAR_SOURCE: frozenset(
-        {
-            "malbolge_guest_format_argument_kind",
-            "malbolge_guest_format_character",
-            "malbolge_guest_format_signed_decimal",
-            "malbolge_guest_format_unsigned",
-        }
-    ),
+    FORMAT_ARGS_SOURCE: frozenset({
+        "malbolge_guest_format_argument_kind",
+        "malbolge_guest_format_directive_validate",
+        "malbolge_guest_varargs_read",
+        "malbolge_guest_varargs_validate",
+    }),
+    FORMAT_SCALAR_SOURCE: frozenset({
+        "malbolge_guest_format_argument_kind",
+        "malbolge_guest_format_character",
+        "malbolge_guest_format_signed_decimal",
+        "malbolge_guest_format_unsigned",
+    }),
 }
 WASM_STACK_UNDEFINED = frozenset({"_stack_pointer"})
-EXPECTED_WRAPPER_UNDEFINED = frozenset(
-    {
-        "malbolge_guest_runtime_allocate",
-        "malbolge_guest_runtime_allocate_zeroed",
-        "malbolge_guest_runtime_release",
-        "malbolge_guest_runtime_resize",
-    }
-)
-EXPECTED_STDIO_UNDEFINED = frozenset(
-    {
-        "malbolge_guest_decode_input_word",
-        "malbolge_guest_intrinsic_input_word",
-        "malbolge_guest_intrinsic_output_byte",
-        "malbolge_guest_output_byte",
-    }
-)
+EXPECTED_WRAPPER_UNDEFINED = frozenset({
+    "malbolge_guest_runtime_allocate",
+    "malbolge_guest_runtime_allocate_zeroed",
+    "malbolge_guest_runtime_release",
+    "malbolge_guest_runtime_resize",
+})
+EXPECTED_STDIO_UNDEFINED = frozenset({
+    "malbolge_guest_decode_input_word",
+    "malbolge_guest_intrinsic_input_word",
+    "malbolge_guest_intrinsic_output_byte",
+    "malbolge_guest_output_byte",
+})
 
 
 def run_command(
@@ -194,7 +188,9 @@ def undefined_symbols(object_file: Path) -> frozenset[str]:
     completed = run_command((str(LLVM_NM), "-u", str(object_file)), ROOT)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     symbols = (
-        line.split()[-1] for line in completed.stdout.splitlines() if line.split()
+        line.split()[-1]
+        for line in completed.stdout.splitlines()
+        if line.split()
     )
     return frozenset(symbol.removeprefix("_") for symbol in symbols)
 
@@ -240,7 +236,10 @@ def test_guest_runtime_c_conformance(tmp_path: Path) -> None:
             assert object_build.returncode == 0, (
                 object_build.stdout + object_build.stderr
             )
-            assert undefined_symbols(object_file) == EXPECTED_RUNTIME_UNDEFINED[source]
+            assert (
+                undefined_symbols(object_file)
+                == EXPECTED_RUNTIME_UNDEFINED[source]
+            )
 
     for source in RUNTIME_SOURCES:
         object_file = tmp_path / f"{source.stem}.o"
@@ -259,7 +258,9 @@ def test_guest_runtime_c_conformance(tmp_path: Path) -> None:
             ROOT,
         )
         assert compiled.returncode == 0, compiled.stdout + compiled.stderr
-        assert undefined_symbols(object_file) == EXPECTED_RUNTIME_UNDEFINED[source]
+        assert (
+            undefined_symbols(object_file) == EXPECTED_RUNTIME_UNDEFINED[source]
+        )
 
     wrapper_syntax = run_command(
         (
@@ -445,7 +446,9 @@ def test_guest_format_conformance(tmp_path: Path) -> None:
         ),
         ROOT,
     )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stdout + wasm_compiled.stderr
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
+    )
     assert undefined_symbols(wasm_object) == WASM_STACK_UNDEFINED
 
     executable = tmp_path / "guest-format.exe"
@@ -494,7 +497,7 @@ def test_guest_runtime_sanitizers(tmp_path: Path) -> None:
 
     sanitizer_env = dict(os.environ)
     sanitizer_env["PATH"] = (
-        f"{SANITIZER_RUNTIME_DIR}{os.pathsep}{sanitizer_env.get('PATH', '')}"
+        f"{SANITIZER_RUNTIME_DIR}{os.pathsep}{sanitizer_env.get("PATH", "")}"
     )
     sanitizer_env["ASAN_OPTIONS"] = "halt_on_error=1"
     sanitizer_env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
@@ -668,7 +671,9 @@ def test_guest_format_parser_conformance(tmp_path: Path) -> None:
         ),
         ROOT,
     )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stdout + wasm_compiled.stderr
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
+    )
     assert undefined_symbols(wasm_object) == WASM_STACK_UNDEFINED
 
     executable = tmp_path / "guest-format-parse.exe"
@@ -733,7 +738,9 @@ def test_guest_varargs_conformance(tmp_path: Path) -> None:
         ),
         ROOT,
     )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stdout + wasm_compiled.stderr
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
+    )
     assert undefined_symbols(wasm_object) == WASM_STACK_UNDEFINED
 
     executable = tmp_path / "guest-varargs.exe"
@@ -799,16 +806,16 @@ def test_guest_format_argument_resolution(tmp_path: Path) -> None:
         ),
         ROOT,
     )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stdout + wasm_compiled.stderr
-    assert undefined_symbols(wasm_object) == frozenset(
-        {
-            "_stack_pointer",
-            "malbolge_guest_format_argument_kind",
-            "malbolge_guest_format_directive_validate",
-            "malbolge_guest_varargs_read",
-            "malbolge_guest_varargs_validate",
-        }
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
     )
+    assert undefined_symbols(wasm_object) == frozenset({
+        "_stack_pointer",
+        "malbolge_guest_format_argument_kind",
+        "malbolge_guest_format_directive_validate",
+        "malbolge_guest_varargs_read",
+        "malbolge_guest_varargs_validate",
+    })
 
     executable = tmp_path / "guest-format-args.exe"
     linked = run_command(
@@ -873,16 +880,16 @@ def test_guest_scalar_format_execution(tmp_path: Path) -> None:
         ),
         ROOT,
     )
-    assert wasm_compiled.returncode == 0, wasm_compiled.stdout + wasm_compiled.stderr
-    assert undefined_symbols(wasm_object) == frozenset(
-        {
-            "_stack_pointer",
-            "malbolge_guest_format_argument_kind",
-            "malbolge_guest_format_character",
-            "malbolge_guest_format_signed_decimal",
-            "malbolge_guest_format_unsigned",
-        }
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
     )
+    assert undefined_symbols(wasm_object) == frozenset({
+        "_stack_pointer",
+        "malbolge_guest_format_argument_kind",
+        "malbolge_guest_format_character",
+        "malbolge_guest_format_signed_decimal",
+        "malbolge_guest_format_unsigned",
+    })
 
     executable = tmp_path / "guest-format-scalar.exe"
     linked = run_command(

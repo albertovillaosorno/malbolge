@@ -39,9 +39,10 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError
+from dataclasses import replace
+import json
 from pathlib import Path
 from typing import cast
 
@@ -82,7 +83,9 @@ def _requirement(
     required_memory_words: int | None = None,
 ) -> requirements.ProfileRequirement:
     memory_words = (
-        CURRENT_WORDS if required_memory_words is None else required_memory_words
+        CURRENT_WORDS
+        if required_memory_words is None
+        else required_memory_words
     )
     return requirements.build_profile_requirement(
         _document(),
@@ -240,7 +243,8 @@ def test_historical_capacity_diagnostic_matches_rust_byte_for_byte() -> None:
 
     error = caught.value
     assert (
-        error.kind is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
+        error.kind
+        is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
     )
     assert error.code == "MALBOLGE-PROFILE-002"
     assert error.missing_dimensions == ()

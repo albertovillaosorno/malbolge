@@ -36,14 +36,16 @@
 use std::iter::repeat_n;
 
 use malbolge::{
-    current_profile, historical_profile, preflight_portable_profile_requirement, preflight_profile,
-    preflight_runtime_requirement, safe_rust_classic_capability, safe_rust_profiled_capability,
-    target_profile, ExecutionErrorKind, ExecutionMachine, ExecutionMode, ProfileKind,
+    ExecutionErrorKind, ExecutionMachine, ExecutionMode, ProfileKind,
     ProfileMachine, ProfileMachineError, ProfileRequirementErrorKind,
-    RuntimeProfileRequirementError, TargetProfileRequirement,
+    RuntimeProfileRequirementError, TargetProfileRequirement, current_profile,
+    historical_profile, preflight_portable_profile_requirement,
+    preflight_profile, preflight_runtime_requirement,
+    safe_rust_classic_capability, safe_rust_profiled_capability,
+    target_profile,
 };
 
-use super::{check_equal, normalize_result, TestResult};
+use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_FINGERPRINT: &str = concat!(
     "malbolge-profile-v1:sha256:",
@@ -139,7 +141,8 @@ fn source_capacity_preflight_precedes_loader_errors() -> TestResult {
     ) else {
         return Err(String::from("oversized classic source was accepted"));
     };
-    let ExecutionErrorKind::Profile(classic_requirement) = classic_error.kind() else {
+    let ExecutionErrorKind::Profile(classic_requirement) = classic_error.kind()
+    else {
         return Err(format!(
             "classic source capacity lost profile precedence: {classic_error}"
         ));
@@ -155,10 +158,13 @@ fn source_capacity_preflight_precedes_loader_errors() -> TestResult {
         "classic source required memory",
     )?;
 
-    let Err(profile_error) = ProfileMachine::from_source(historical, &source, Vec::new()) else {
+    let Err(profile_error) =
+        ProfileMachine::from_source(historical, &source, Vec::new())
+    else {
         return Err(String::from("oversized profiled source was accepted"));
     };
-    let ProfileMachineError::Profile(profile_requirement) = profile_error else {
+    let ProfileMachineError::Profile(profile_requirement) = profile_error
+    else {
         return Err(format!(
             "profiled source capacity lost profile precedence: {profile_error}"
         ));
@@ -227,7 +233,11 @@ fn portable_requirement_canonical_admission_is_exact() -> TestResult {
         ("version drift", version_drift),
         ("word-width drift", width_drift),
     ] {
-        check_equal(&requirement.is_canonical_for(current.id()), &false, label)?;
+        check_equal(
+            &requirement.is_canonical_for(current.id()),
+            &false,
+            label,
+        )?;
     }
     Ok(())
 }
@@ -243,9 +253,11 @@ fn portable_requirement_matches_canonical_runtime_diagnostic() -> TestResult {
     ) else {
         return Err(String::from("canonical current requirement was accepted"));
     };
-    let Err(portable) =
-        preflight_runtime_requirement(current.id(), &requirement, safe_rust_classic_capability())
-    else {
+    let Err(portable) = preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_classic_capability(),
+    ) else {
         return Err(String::from("portable current requirement was accepted"));
     };
     check_equal(
@@ -268,8 +280,12 @@ fn portable_requirement_matches_canonical_runtime_diagnostic() -> TestResult {
         &format!("{canonical}"),
         "portable/canonical diagnostic parity",
     )?;
-    preflight_runtime_requirement(current.id(), &requirement, safe_rust_profiled_capability())
-        .map_err(|error| format!("profiled runtime rejected envelope: {error}"))
+    preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("profiled runtime rejected envelope: {error}"))
 }
 
 #[test]
@@ -279,9 +295,11 @@ fn portable_requirement_rejects_unknown_feature_fail_closed() -> TestResult {
     requirement
         .features
         .push(String::from("unknown-capability"));
-    let Err(error) =
-        preflight_runtime_requirement(current.id(), &requirement, safe_rust_profiled_capability())
-    else {
+    let Err(error) = preflight_runtime_requirement(
+        current.id(),
+        &requirement,
+        safe_rust_profiled_capability(),
+    ) else {
         return Err(String::from("unknown portable feature was accepted"));
     };
     let diagnostic = format!("{error}");

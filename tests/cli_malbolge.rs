@@ -35,7 +35,7 @@
 use std::env::temp_dir;
 use std::fs::{remove_file, write};
 use std::path::{Path, PathBuf};
-use std::process::{id, Command};
+use std::process::{Command, id};
 
 use malbolge as _;
 
@@ -47,7 +47,8 @@ struct TemporarySource {
 
 impl TemporarySource {
     fn oversized() -> Result<Self, String> {
-        let path = temp_dir().join(format!("malbolge-cli-oversized-{}.malbolge", id()));
+        let path = temp_dir()
+            .join(format!("malbolge-cli-oversized-{}.malbolge", id()));
         write(&path, vec![b'!'; 59_050])
             .map_err(|error| format!("write oversized source: {error}"))?;
         Ok(Self { path })
@@ -73,7 +74,9 @@ fn raw_source_uses_interpreter_authority() -> Result<(), String> {
         .arg(source)
         .output()
         .map_err(|error| format!("run raw Malbolge CLI: {error}"))?;
-    if !output.status.success() || output.stdout != EXPECTED_EOF_OUTPUT || !output.stderr.is_empty()
+    if !output.status.success()
+        || output.stdout != EXPECTED_EOF_OUTPUT
+        || !output.stderr.is_empty()
     {
         return Err(format!(
             concat!(

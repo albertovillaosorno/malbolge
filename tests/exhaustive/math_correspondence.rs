@@ -33,8 +33,9 @@
 //! Exhaustive bounded correspondence for promoted Malbolge equations.
 
 use malbolge::{
-    current_profile, decode_instruction, encrypt_profile_cell, historical_profile, load, Machine,
-    Memory, Registers, StepOutcome, Word, MAX_WORD_VALUE, MEMORY_WORDS,
+    MAX_WORD_VALUE, MEMORY_WORDS, Machine, Memory, Registers, StepOutcome,
+    Word, current_profile, decode_instruction, encrypt_profile_cell,
+    historical_profile, load,
 };
 
 const GRAPHICAL_END: u8 = 126;
@@ -43,7 +44,8 @@ const NO_OPERATION: u8 = b'o';
 const TERNARY_RADIX: u32 = 3;
 const CLASSIC_TRITS: usize = 10;
 const CLASSIC_HIGH_TRIT_WEIGHT: u16 = 19_683;
-const TEST_XLAT2: &[u8; 94] = b"5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1C\
+const TEST_XLAT2: &[u8; 94] =
+    b"5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1C\
 B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
 const IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
@@ -51,8 +53,10 @@ const IO_ROUNDTRIP: &[u8] =
 type TestResult<Value = ()> = Result<Value, String>;
 
 fn word(raw: usize) -> TestResult<Word> {
-    let value = u16::try_from(raw).map_err(|error| format!("word conversion failed: {error}"))?;
-    Word::new(value).map_err(|error| format!("word construction failed: {error}"))
+    let value = u16::try_from(raw)
+        .map_err(|error| format!("word conversion failed: {error}"))?;
+    Word::new(value)
+        .map_err(|error| format!("word construction failed: {error}"))
 }
 
 const fn profile_modulus(trits: u8) -> u32 {
@@ -67,7 +71,8 @@ const fn profile_modulus(trits: u8) -> u32 {
 
 fn noop_pointer(cell: Word) -> TestResult<Word> {
     for raw in 0u16..94u16 {
-        let pointer = Word::new(raw).map_err(|error| format!("decode pointer failed: {error}"))?;
+        let pointer = Word::new(raw)
+            .map_err(|error| format!("decode pointer failed: {error}"))?;
         if decode_instruction(cell, pointer) == Some(NO_OPERATION) {
             return Ok(pointer);
         }
@@ -125,18 +130,21 @@ fn classic_encryption_matches_every_graphical_cell() -> TestResult {
             code_pointer: pointer,
             data_pointer: Word::ZERO,
         };
-        let mut machine = Machine::with_registers(memory, Vec::new(), registers);
+        let mut machine =
+            Machine::with_registers(memory, Vec::new(), registers);
         let outcome = machine
             .step()
             .map_err(|error| format!("encryption step failed: {error}"))?;
         if outcome != StepOutcome::Continued {
-            return Err(format!("encryption step did not continue for cell {raw}"));
+            return Err(format!(
+                "encryption step did not continue for cell {raw}"
+            ));
         }
         let index = usize::from(raw.saturating_sub(GRAPHICAL_START));
-        let expected_byte = TEST_XLAT2
-            .get(index)
-            .copied()
-            .ok_or_else(|| String::from("test encryption table escaped domain"))?;
+        let expected_byte =
+            TEST_XLAT2.get(index).copied().ok_or_else(|| {
+                String::from("test encryption table escaped domain")
+            })?;
         let observed = machine
             .memory_word(pointer)
             .map_err(|error| format!("encrypted read failed: {error}"))?;
@@ -194,11 +202,9 @@ fn encryption_cycle_lengths() -> TestResult<Vec<usize>> {
     let mut cycle_lengths = Vec::new();
     for start in GRAPHICAL_START..=GRAPHICAL_END {
         let index = usize::from(start.saturating_sub(GRAPHICAL_START));
-        if covered
-            .get(index)
-            .copied()
-            .ok_or_else(|| String::from("encryption coverage index escaped domain"))?
-        {
+        if covered.get(index).copied().ok_or_else(|| {
+            String::from("encryption coverage index escaped domain")
+        })? {
             continue;
         }
         let orbit = independent_encryption_orbit(start)?;
@@ -207,15 +213,17 @@ fn encryption_cycle_lengths() -> TestResult<Vec<usize>> {
         }
         for (visits, cell) in orbit.iter().copied().enumerate() {
             let cell_index = usize::from(cell.saturating_sub(GRAPHICAL_START));
-            let seen = covered
-                .get_mut(cell_index)
-                .ok_or_else(|| String::from("encryption coverage cell escaped domain"))?;
+            let seen = covered.get_mut(cell_index).ok_or_else(|| {
+                String::from("encryption coverage cell escaped domain")
+            })?;
             if *seen {
                 return Err(format!("encryption orbit overlaps at {cell}"));
             }
             *seen = true;
-            let runtime = encrypt_profile_cell(u32::from(cell))
-                .ok_or_else(|| format!("runtime rejected graphical cell {cell}"))?;
+            let runtime =
+                encrypt_profile_cell(u32::from(cell)).ok_or_else(|| {
+                    format!("runtime rejected graphical cell {cell}")
+                })?;
             let expected = u32::from(independent_encryption(cell)?);
             if runtime != expected {
                 return Err(format!(
@@ -270,16 +278,22 @@ fn encryption_history_reduces_to_six_modular_orbits() -> TestResult {
 #[test]
 fn classic_rotation_history_reduces_modulo_ten_trits() -> TestResult {
     for raw in 0u16..=MAX_WORD_VALUE {
-        let original = Word::new(raw).map_err(|error| format!("rotation word failed: {error}"))?;
+        let original = Word::new(raw)
+            .map_err(|error| format!("rotation word failed: {error}"))?;
         let mut runtime = original;
         let mut independent = raw;
         for visits in 1..=CLASSIC_TRITS.saturating_mul(2) {
             runtime = runtime.rotate();
             independent = independent_classic_rotate(independent);
             if runtime.value() != independent {
-                return Err(format!("rotation mismatch word={raw} visits={visits}"));
+                return Err(format!(
+                    "rotation mismatch word={raw} visits={visits}"
+                ));
             }
-            let reduced = independent_classic_rotate_visits(raw, visits.rem_euclid(CLASSIC_TRITS));
+            let reduced = independent_classic_rotate_visits(
+                raw,
+                visits.rem_euclid(CLASSIC_TRITS),
+            );
             if runtime.value() != reduced {
                 return Err(format!(
                     "modular rotation mismatch word={raw} visits={visits}"
@@ -292,7 +306,8 @@ fn classic_rotation_history_reduces_modulo_ten_trits() -> TestResult {
 
 #[test]
 fn classic_loader_fill_matches_crazy_recurrence() -> TestResult {
-    let memory = load(IO_ROUNDTRIP).map_err(|error| format!("roundtrip load failed: {error}"))?;
+    let memory = load(IO_ROUNDTRIP)
+        .map_err(|error| format!("roundtrip load failed: {error}"))?;
     let loaded_words = IO_ROUNDTRIP
         .iter()
         .filter(|byte| !byte.is_ascii_whitespace())
@@ -301,12 +316,12 @@ fn classic_loader_fill_matches_crazy_recurrence() -> TestResult {
         let older_address = word(raw.saturating_sub(2))?;
         let previous_address = word(raw.saturating_sub(1))?;
         let address = word(raw)?;
-        let older = memory
-            .read(older_address)
-            .map_err(|error| format!("older recurrence read failed: {error}"))?;
-        let previous = memory
-            .read(previous_address)
-            .map_err(|error| format!("previous recurrence read failed: {error}"))?;
+        let older = memory.read(older_address).map_err(|error| {
+            format!("older recurrence read failed: {error}")
+        })?;
+        let previous = memory.read(previous_address).map_err(|error| {
+            format!("previous recurrence read failed: {error}")
+        })?;
         let observed = memory
             .read(address)
             .map_err(|error| format!("recurrence read failed: {error}"))?;
@@ -321,7 +336,8 @@ fn classic_loader_fill_matches_crazy_recurrence() -> TestResult {
 #[test]
 fn classic_successor_matches_modular_equation() -> TestResult {
     for raw in 0u16..=MAX_WORD_VALUE {
-        let value = Word::new(raw).map_err(|error| format!("successor word failed: {error}"))?;
+        let value = Word::new(raw)
+            .map_err(|error| format!("successor word failed: {error}"))?;
         let expected = if raw == MAX_WORD_VALUE {
             0
         } else {
@@ -341,8 +357,9 @@ fn classic_word_domain_matches_ten_trit_modulus() -> TestResult {
             return Err(format!("classic domain rejected word={raw}"));
         }
     }
-    let first_outside = u16::try_from(MEMORY_WORDS)
-        .map_err(|error| format!("domain ceiling conversion failed: {error}"))?;
+    let first_outside = u16::try_from(MEMORY_WORDS).map_err(|error| {
+        format!("domain ceiling conversion failed: {error}")
+    })?;
     if Word::new(first_outside).is_ok() {
         return Err(String::from("classic domain accepted 59049"));
     }
