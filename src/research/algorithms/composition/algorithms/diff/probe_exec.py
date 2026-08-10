@@ -337,16 +337,24 @@ def _validate_relative_path(relative_path: object) -> None:
         raise ProbeProgramError(message)
 
 
+def _resolved_root(path: Path, description: str) -> Path:
+    try:
+        return path.resolve()
+    except OSError as error:
+        message = f"probe {description} root resolution failed: {path}: {error}"
+        raise ProbeExecutionError(message) from error
+
+
 def _root_path(
     root: ProbeRoot,
     context: ProbeRunContext,
     scratch_root: Path,
 ) -> Path:
     if root is ProbeRoot.SOURCE:
-        return context.source_root.resolve()
+        return _resolved_root(context.source_root, "source")
     if root is ProbeRoot.REPOSITORY:
-        return context.repository_root.resolve()
-    return scratch_root.resolve()
+        return _resolved_root(context.repository_root, "repository")
+    return _resolved_root(scratch_root, "scratch")
 
 
 def _rooted_path(
@@ -357,12 +365,17 @@ def _rooted_path(
     root = _root_path(argument.root, context, scratch_root)
     candidate = root.joinpath(*PurePosixPath(argument.relative_path).parts)
     try:
-        _ = candidate.resolve().relative_to(root)
-    except ValueError as exc:
+        resolved = candidate.resolve()
+    except OSError as error:
+        message = f"probe path resolution failed: {candidate}: {error}"
+        raise ProbeExecutionError(message) from error
+    try:
+        _ = resolved.relative_to(root)
+    except ValueError as error:
         message = (
             f"probe path escapes authorized root: {argument.relative_path!r}"
         )
-        raise ProbeExecutionError(message) from exc
+        raise ProbeExecutionError(message) from error
     return candidate
 
 

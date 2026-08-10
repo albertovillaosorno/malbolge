@@ -195,6 +195,73 @@ def test_scratch_executable_can_be_produced_then_run(tmp_path: Path) -> None:
     _expect(transcript.digested_commands == 1, "scratch executable did not run")
 
 
+def test_repository_root_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wrap an inaccessible authorized root in the probe execution boundary."""
+    source = tmp_path / "source"
+    source.mkdir()
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            message = "blocked repository root"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    program = ProbeProgram(
+        "root-resolution",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    "pass",
+                    PathArgument(ProbeRoot.REPOSITORY, "input.txt"),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="repository root resolution"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
+def test_rooted_argument_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wrap an inaccessible rooted argument before process launch."""
+    source = tmp_path / "source"
+    source.mkdir()
+    candidate = tmp_path / "input.txt"
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == candidate:
+            message = "blocked rooted argument"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    program = ProbeProgram(
+        "argument-resolution",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    "pass",
+                    PathArgument(ProbeRoot.REPOSITORY, "input.txt"),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(
+        ProbeExecutionError, match="probe path resolution failed"
+    ):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
 def test_missing_tool_executable_fails_closed(tmp_path: Path) -> None:
     """A missing tool binding cannot fall through to process launch."""
     source = tmp_path / "source"
