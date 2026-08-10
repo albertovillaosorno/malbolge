@@ -47,10 +47,12 @@ from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.behavior import BehaviorEvidence
 from algorithms.diff.compatible import CompatibleBuildRequest
+from algorithms.diff.compatible import CompatibleCorrectionBinding
 from algorithms.diff.compatible import CompatibleFileKind
 from algorithms.diff.compatible import CompatibleInstruction
 from algorithms.diff.compatible import CompatibleMaterializeRequest
 from algorithms.diff.compatible import CompatiblePlanError
+from algorithms.diff.compatible import bind_compatible_corrections
 from algorithms.diff.compatible import build_compatible_plan
 from algorithms.diff.compatible import materialize_compatible_plan
 from algorithms.diff.mapped import MappedUnit
@@ -227,6 +229,52 @@ def test_compatible_instruction_rejects_foreign_metadata() -> None:
             literal=cast("bytes", bytearray(b"created")),
         )
 
+
+
+def test_compatible_correction_bindings_name_semantic_edits(
+    tmp_path: Path,
+) -> None:
+    """Attach correction identities only to deterministic semantic edit indexes."""
+    plan = _plan(tmp_path)
+    bound = bind_compatible_corrections(
+        plan,
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    semantic = next(
+        item
+        for item in bound.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    _expect(semantic.correction_ids == ("fix",), "correction was not attached")
+
+    with pytest.raises(CompatiblePlanError, match="semantic instruction"):
+        _ = bind_compatible_corrections(
+            plan,
+            (CompatibleCorrectionBinding("blob.bin", 0, "fix"),),
+        )
+    with pytest.raises(CompatiblePlanError, match="exceeds semantic plan"):
+        _ = bind_compatible_corrections(
+            plan,
+            (CompatibleCorrectionBinding("code.src", 99, "fix"),),
+        )
+    with pytest.raises(CompatiblePlanError, match="unique edit locations"):
+        _ = bind_compatible_corrections(
+            plan,
+            (
+                CompatibleCorrectionBinding("code.src", 0, "fix-a"),
+                CompatibleCorrectionBinding("code.src", 0, "fix-b"),
+            ),
+        )
+
+
+def test_compatible_correction_binding_rejects_foreign_metadata() -> None:
+    """Reject malformed correction records before they can annotate a plan."""
+    with pytest.raises(CompatiblePlanError, match="correction path"):
+        _ = CompatibleCorrectionBinding(cast("str", 1), 0, "fix")
+    with pytest.raises(CompatiblePlanError, match="edit index"):
+        _ = CompatibleCorrectionBinding("code.src", cast("int", True), "fix")
+    with pytest.raises(CompatiblePlanError, match="correction ID"):
+        _ = CompatibleCorrectionBinding("code.src", 0, "")
 
 
 def test_compatible_request_envelopes_reject_foreign_fields(

@@ -36,12 +36,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import replace
 from enum import StrEnum
 import hashlib
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import IdentityTree
@@ -88,6 +90,28 @@ class CompatibleFileKind(StrEnum):
     CREATE_LITERAL = "create-literal"
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class CompatibleCorrectionBinding:
+    """One named bug correction attached to one semantic edit index."""
+
+    output_path: str
+    edit_index: int
+    correction_id: str
+
+    def __post_init__(self) -> None:
+        """Require deterministic path, edit index, and correction identity."""
+        if type(self.output_path) is not str:
+            message = "compatible correction path must use the exact string type"
+            raise CompatiblePlanError(message)
+        _validate_relative_path(self.output_path)
+        if type(self.edit_index) is not int or self.edit_index < 0:
+            message = "compatible correction edit index must be non-negative"
+            raise CompatiblePlanError(message)
+        if type(self.correction_id) is not str or not self.correction_id:
+            message = "compatible correction ID must be a non-empty string"
+            raise CompatiblePlanError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class CompatibleInstruction:
     """One target-path instruction for compatible authoring."""
@@ -99,6 +123,7 @@ class CompatibleInstruction:
     semantic: SemanticAuthoringPlan | None = None
     exact: ExactInstruction | None = None
     literal: bytes | None = None
+    correction_ids: tuple[str | None, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject incomplete instruction forms."""
@@ -229,6 +254,7 @@ def _validate_copy(instruction: CompatibleInstruction) -> None:
             instruction.semantic,
             instruction.exact,
             instruction.literal,
+            instruction.correction_ids or None,
         )
     ):
         message = "compatible candidate copy carries unrelated payload evidence"
@@ -239,6 +265,11 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     _require_source(instruction)
     if instruction.semantic is None:
         message = "compatible semantic patch lost its semantic plan"
+        raise CompatiblePlanError(message)
+    if instruction.correction_ids and len(instruction.correction_ids) != len(
+        instruction.semantic.edits
+    ):
+        message = "compatible correction IDs must align with semantic edits"
         raise CompatiblePlanError(message)
     if any(
         value is not None
@@ -257,7 +288,11 @@ def _validate_exact(instruction: CompatibleInstruction) -> None:
     if instruction.exact is None or instruction.source_sha256 is None:
         message = "exact-gated compatible instruction is incomplete"
         raise CompatiblePlanError(message)
-    if instruction.semantic is not None or instruction.literal is not None:
+    if (
+        instruction.semantic is not None
+        or instruction.literal is not None
+        or instruction.correction_ids
+    ):
         message = "exact-gated instruction carries unrelated semantic evidence"
         raise CompatiblePlanError(message)
 
@@ -272,6 +307,7 @@ def _validate_literal(instruction: CompatibleInstruction) -> None:
             instruction.source_sha256,
             instruction.semantic,
             instruction.exact,
+            instruction.correction_ids or None,
         )
     ):
         message = "compatible literal creation carries source-only evidence"
@@ -325,6 +361,15 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:
         and type(instruction.literal) is not bytes
     ):
         message = "compatible literal evidence must use exact bytes"
+        raise CompatiblePlanError(message)
+    if type(instruction.correction_ids) is not tuple:
+        message = "compatible correction IDs must use an immutable tuple"
+        raise CompatiblePlanError(message)
+    if any(
+        value is not None and (type(value) is not str or not value)
+        for value in instruction.correction_ids
+    ):
+        message = "compatible correction IDs must be non-empty strings or None"
         raise CompatiblePlanError(message)
 
 
@@ -413,6 +458,90 @@ def _validate_authoring_plan(plan: CompatibleAuthoringPlan) -> None:
             source_records,
             target_records,
         )
+
+
+def _normalized_correction_ids(
+    instruction: CompatibleInstruction,
+) -> tuple[str | None, ...]:
+    if instruction.semantic is None:
+        return ()
+    if instruction.correction_ids:
+        return instruction.correction_ids
+    return (None,) * len(instruction.semantic.edits)
+
+
+def _validate_correction_bindings(
+    bindings: object,
+) -> tuple[CompatibleCorrectionBinding, ...]:
+    if type(bindings) is not tuple:
+        message = "compatible correction bindings must use an immutable tuple"
+        raise CompatiblePlanError(message)
+    items = cast("tuple[object, ...]", bindings)
+    if any(type(item) is not CompatibleCorrectionBinding for item in items):
+        message = "compatible correction bindings contain a foreign record"
+        raise CompatiblePlanError(message)
+    admitted = cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
+    locations = tuple((item.output_path, item.edit_index) for item in admitted)
+    if locations != tuple(sorted(locations)):
+        message = "compatible correction bindings must be sorted by edit location"
+        raise CompatiblePlanError(message)
+    if len(locations) != len(set(locations)):
+        message = "compatible correction bindings must use unique edit locations"
+        raise CompatiblePlanError(message)
+    return admitted
+
+
+def _bind_instruction_corrections(
+    instruction: CompatibleInstruction,
+    bindings: tuple[CompatibleCorrectionBinding, ...],
+) -> CompatibleInstruction:
+    if not bindings:
+        return instruction
+    if instruction.semantic is None:
+        message = "compatible correction binding requires a semantic instruction"
+        raise CompatiblePlanError(message)
+    correction_ids = list(_normalized_correction_ids(instruction))
+    for binding in bindings:
+        if binding.edit_index >= len(correction_ids):
+            message = "compatible correction edit index exceeds semantic plan"
+            raise CompatiblePlanError(message)
+        existing = correction_ids[binding.edit_index]
+        if existing is not None and existing != binding.correction_id:
+            message = "compatible semantic edit already has another correction ID"
+            raise CompatiblePlanError(message)
+        correction_ids[binding.edit_index] = binding.correction_id
+    return replace(instruction, correction_ids=tuple(correction_ids))
+
+
+def bind_compatible_corrections(
+    plan: CompatibleAuthoringPlan,
+    bindings: tuple[CompatibleCorrectionBinding, ...],
+) -> CompatibleAuthoringPlan:
+    """Attach named behavior corrections to deterministic semantic edit indexes.
+
+    Returns:
+        A new compatible authoring plan with correction IDs aligned to edits.
+
+    """
+    if type(plan) is not CompatibleAuthoringPlan:
+        message = "compatible correction binding requires the exact plan type"
+        raise CompatiblePlanError(message)
+    admitted = _validate_correction_bindings(bindings)
+    by_path: dict[str, list[CompatibleCorrectionBinding]] = {}
+    for binding in admitted:
+        by_path.setdefault(binding.output_path, []).append(binding)
+    known_paths = {instruction.output_path for instruction in plan.instructions}
+    if set(by_path) - known_paths:
+        message = "compatible correction binding targets an unknown output path"
+        raise CompatiblePlanError(message)
+    instructions = tuple(
+        _bind_instruction_corrections(
+            instruction,
+            tuple(by_path.get(instruction.output_path, ())),
+        )
+        for instruction in plan.instructions
+    )
+    return replace(plan, instructions=instructions)
 
 
 def _record_map(snapshot: TreeSnapshot) -> dict[str, FileRecord]:
